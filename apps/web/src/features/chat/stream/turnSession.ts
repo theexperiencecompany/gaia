@@ -12,6 +12,7 @@ import {
   chatApi,
   DuplicateTurnError,
   RateLimitError,
+  SubscriptionRequiredError,
 } from "@/features/chat/api/chatApi";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
 import { loadingLabelForEvent } from "@/features/chat/utils/loadingHints";
@@ -842,9 +843,13 @@ export class TurnSession {
       error.message || "An error occurred while processing your message";
 
     if (error.name !== "AbortError") {
-      // A usage-wall rejection already showed the rate-limit upsell toast at
-      // the stream layer — a second generic toast would bury it.
-      if (!(error instanceof RateLimitError)) {
+      // A usage-wall rejection already showed the rate-limit upsell toast,
+      // and a paid-only rejection already opened the paywall, at the stream
+      // layer — a second generic toast would bury either one.
+      if (
+        !(error instanceof RateLimitError) &&
+        !(error instanceof SubscriptionRequiredError)
+      ) {
         toast.error(reason);
       }
       // Give the user their prompt back to retry.

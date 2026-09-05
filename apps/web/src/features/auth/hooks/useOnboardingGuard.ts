@@ -1,5 +1,4 @@
 import { RedirectType, redirect } from "next/navigation";
-import { ONBOARDING_PROCESSING_PHASES } from "@/features/auth/constants";
 import { readPendingCheckout } from "@/features/pricing/lib/pendingCheckout";
 import { usePathname } from "@/i18n/navigation";
 
@@ -19,13 +18,20 @@ export const useOnboardingGuard = () => {
   // before redirecting; `redirect` performs the same client-side navigation
   // router.push did.
   const isOnboardingCompleted = user.onboarding?.completed;
-  const phase = user.onboarding?.phase;
-  const isStillProcessing = !!phase && ONBOARDING_PROCESSING_PHASES.has(phase);
 
   if (pathname === "/onboarding") {
-    // Don't redirect while the intelligence pipeline is still running.
-    if (isOnboardingCompleted && !isStillProcessing) {
-      redirect("/c", RedirectType.push);
+    // Submitting the answers IS completion now — nothing is generated
+    // afterwards, so there is no processing phase to hold the user here.
+    if (isOnboardingCompleted) {
+      // Completion seeds GAIA's "Getting started" conversation, so land the
+      // user inside it rather than on an empty composer. A seed that failed is
+      // never a reason to strand them — fall back to the chat home.
+      const seededConversationId =
+        user.onboarding?.getting_started_conversation_id;
+      redirect(
+        seededConversationId ? `/c/${seededConversationId}` : "/c",
+        RedirectType.push,
+      );
     }
   } else if (!isOnboardingCompleted) {
     // If not on onboarding page but onboarding is not completed, redirect to onboarding

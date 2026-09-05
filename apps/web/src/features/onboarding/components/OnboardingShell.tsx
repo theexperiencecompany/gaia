@@ -35,25 +35,13 @@ interface OnboardingShellProps {
 }
 
 function getContentFingerprint(state: OnboardingState, stage: Stage): string {
-  const b = state.server;
-  const progress = Object.values(state.progressByStage).join("");
   return [
     stage,
     state.questionIndex,
-    progress,
-    state.completedStages.size,
-    state.ackedWritingStyle ? 1 : 0,
-    state.ackedTodos ? 1 : 0,
-    state.workflowsConfirmed ? 1 : 0,
+    state.selectedNeeds.length,
+    state.paidRevealAcked ? 1 : 0,
     state.platformsConfirmed ? 1 : 0,
     state.connectedPlatform ?? "",
-    b?.writing_style?.style_summary ?? "",
-    b?.onboarding_todos?.length ?? 0,
-    b?.suggested_workflows?.length ?? 0,
-    b?.first_message_conversation_id ?? "",
-    state.todoExecutionMessage ?? "",
-    Object.keys(state.clarifyAnswers).length,
-    state.clarifySubmitted ? 1 : 0,
   ].join("|");
 }
 
@@ -115,7 +103,7 @@ export function OnboardingShell({
 
       <div
         ref={scrollRef}
-        className="relative z-10 flex-1 overflow-y-auto px-4 pt-20"
+        className="relative z-10 flex-1 overflow-y-auto px-4 pt-20 sm:pt-36"
       >
         <div
           className="relative mx-auto w-full max-w-3xl"
@@ -138,11 +126,7 @@ export function OnboardingShell({
       {composer && (
         <div
           ref={composerRef}
-          className={
-            stage === "clarify"
-              ? "fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-xl pb-3"
-              : "fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-lg pb-3"
-          }
+          className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-lg pb-3"
         >
           {composer}
         </div>

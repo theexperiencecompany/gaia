@@ -9,6 +9,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.db.redis import redis_cache
+from app.models.payment_models import PlanType
+from app.services.payments.payment_service import payment_service
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -37,12 +41,41 @@ def _make_mock_task() -> MagicMock:
     return t
 
 
-def _make_subscription_mock():
-    from app.models.payment_models import PlanType
-
+def _make_subscription_mock(plan_type: PlanType | None = None) -> MagicMock:
     sub = MagicMock()
-    sub.plan_type = PlanType.FREE
+    # PRO by default: GAIA is paid-only (require_subscription gates the
+    # endpoint before any of the mechanics below run), so these tests — which
+    # exercise response shape, headers, and background-task wiring rather than
+    # the paywall itself — need a plan that clears the gate. FREE-plan
+    # behavior is covered separately by TestChatStreamPaywall.
+    sub.plan_type = plan_type or PlanType.PRO
     return sub
+
+
+@pytest.fixture(autouse=True)
+def fresh_redis_client():
+    """Every test runs on its own event loop, and a connection the previous
+    test opened stays bound to a loop that no longer runs: the cost-budget
+    read uses the raw client and dies on it with a RuntimeError the fail-open
+    handler does not cover. Start each test from a lazily-created client."""
+    redis_cache.redis = None
+    yield
+    redis_cache.redis = None
+
+
+@pytest.fixture(autouse=True)
+def bypass_plan_cache():
+    """The paid-only gate reads the plan through a Redis cache. A value left
+    there by another test — or by a previous run against the same Redis —
+    would override the subscription mock every test below relies on, so the
+    lookup is answered straight from that mock."""
+
+    async def _uncached(user_id: str) -> PlanType:
+        status = await payment_service.get_user_subscription_status(user_id)
+        return PlanType(status.plan_type)
+
+    with patch.object(payment_service, "get_cached_plan_type", side_effect=_uncached):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +421,74 @@ class TestChatStreamEndpoint:
             json={"messages": []},  # no 'message' key
         )
         assert response.status_code == 422
+
+
+@pytest.mark.integration
+class TestChatStreamPaywall:
+    """GAIA is paid-only: a FREE-plan user must 402 before any stream work starts."""
+
+    @patch(
+        "app.api.v1.endpoints.chat.spawn_background_task",
+        side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
+    )
+    @patch(
+        "app.decorators.entitlements.payment_service.create_pro_checkout",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+        new_callable=AsyncMock,
+    )
+    async def test_free_user_gets_402_with_the_exact_wire_contract(
+        self,
+        mock_subscription,
+        mock_checkout,
+        mock_spawn,
+        test_client,
+    ):
+        mock_subscription.return_value = _make_subscription_mock(PlanType.FREE)
+        checkout = MagicMock()
+        checkout.checkout.payment_link = "https://checkout.dodo.test/xyz"
+        mock_checkout.return_value = checkout
+
+        response = await test_client.post("/api/v1/chat-stream", json=_VALID_BODY)
+
+        assert response.status_code == 402
+        assert response.json()["detail"] == {
+            "code": "subscription_required",
+            "message": "GAIA is paid only. Subscribe to GAIA Pro to keep chatting.",
+            "checkout_url": "https://checkout.dodo.test/xyz",
+            "discount_code": None,
+        }
+
+    @patch(
+        "app.api.v1.endpoints.chat.spawn_background_task",
+        side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
+    )
+    @patch(
+        "app.decorators.entitlements.payment_service.create_pro_checkout",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+        new_callable=AsyncMock,
+    )
+    async def test_free_user_never_starts_the_background_stream(
+        self,
+        mock_subscription,
+        mock_checkout,
+        mock_spawn,
+        test_client,
+    ):
+        mock_subscription.return_value = _make_subscription_mock(PlanType.FREE)
+        checkout = MagicMock()
+        checkout.checkout.payment_link = None
+        mock_checkout.return_value = checkout
+
+        response = await test_client.post("/api/v1/chat-stream", json=_VALID_BODY)
+
+        assert response.status_code == 402
+        mock_spawn.assert_not_called()
 
 
 @pytest.mark.integration

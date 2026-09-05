@@ -13,6 +13,12 @@ import type { SearchMode } from "@/types/shared/searchTypes";
 interface ComposerState {
   // Text input state
   pendingPrompt: string | null;
+  /**
+   * Send `pendingPrompt` as the user's turn on arrival instead of dropping it
+   * into the composer. Onboarding's web path uses this so the first message
+   * shows up as a real user bubble with GAIA's streamed reply under it.
+   */
+  pendingPromptAutoSend: boolean;
   inputText: string;
 
   // Mode and tool selection
@@ -36,7 +42,7 @@ interface ComposerState {
 interface ComposerActions {
   // Text input actions
   appendToInput: (text: string) => void;
-  setPendingPrompt: (prompt: string | null) => void;
+  setPendingPrompt: (prompt: string | null, autoSend?: boolean) => void;
   clearPendingPrompt: () => void;
   setInputText: (text: string) => void;
   appendToInputText: (text: string) => void;
@@ -75,6 +81,7 @@ type ComposerStore = ComposerState & ComposerActions;
 const initialState: ComposerState = {
   // Text input state
   pendingPrompt: null,
+  pendingPromptAutoSend: false,
   inputText: "",
 
   // Mode and tool selection
@@ -103,7 +110,11 @@ export const useComposerStore = create<ComposerStore>()(
 
         // Text input actions
         appendToInput: (text) => {
-          set({ pendingPrompt: text }, false, "appendToInput");
+          set(
+            { pendingPrompt: text, pendingPromptAutoSend: false },
+            false,
+            "appendToInput",
+          );
           // Navigate to chat page if not already there
           if (
             typeof window !== "undefined" &&
@@ -115,11 +126,19 @@ export const useComposerStore = create<ComposerStore>()(
           }
         },
 
-        setPendingPrompt: (pendingPrompt) =>
-          set({ pendingPrompt }, false, "setPendingPrompt"),
+        setPendingPrompt: (pendingPrompt, pendingPromptAutoSend = false) =>
+          set(
+            { pendingPrompt, pendingPromptAutoSend },
+            false,
+            "setPendingPrompt",
+          ),
 
         clearPendingPrompt: () => {
-          set({ pendingPrompt: null }, false, "clearPendingPrompt");
+          set(
+            { pendingPrompt: null, pendingPromptAutoSend: false },
+            false,
+            "clearPendingPrompt",
+          );
         },
 
         setInputText: (inputText) => {
@@ -252,6 +271,7 @@ export const useComposerStore = create<ComposerStore>()(
         partialize: (state) => ({
           inputText: state.inputText,
           pendingPrompt: state.pendingPrompt,
+          pendingPromptAutoSend: state.pendingPromptAutoSend,
           useDefaultModels: state.useDefaultModels,
           commsModel: state.commsModel,
           executorModel: state.executorModel,
@@ -263,6 +283,9 @@ export const useComposerStore = create<ComposerStore>()(
 ); // Selectors for easy access
 export const usePendingPrompt = () =>
   useComposerStore((state) => state.pendingPrompt);
+
+export const usePendingPromptAutoSend = () =>
+  useComposerStore((state) => state.pendingPromptAutoSend);
 
 export const useAppendToInput = () =>
   useComposerStore((state) => state.appendToInput);

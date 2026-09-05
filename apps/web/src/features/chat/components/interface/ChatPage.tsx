@@ -1,20 +1,22 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback } from "react";
 import {
   MessageScrollerProvider,
   useMessageScroller,
 } from "@/components/ui/message-scroller";
-import { chatApi } from "@/features/chat/api/chatApi";
 import Composer from "@/features/chat/components/composer/Composer";
+import { PaywallNotice } from "@/features/chat/components/composer/PaywallNotice";
 
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { FounderLetter } from "@/features/chat/components/interface/founder-letter/FounderLetter";
+import { useActiveConversation } from "@/features/chat/components/interface/hooks/useActiveConversation";
+import { useAutoSendPendingPrompt } from "@/features/chat/components/interface/hooks/useAutoSendPendingPrompt";
 import { useChatLayout } from "@/features/chat/components/interface/hooks/useChatLayout";
+import { useVoiceModeControls } from "@/features/chat/components/interface/hooks/useVoiceModeControls";
+import { useWorkflowAutoSend } from "@/features/chat/components/interface/hooks/useWorkflowAutoSend";
 import { ChatWithMessages } from "@/features/chat/components/interface/layouts/ChatWithMessages";
 import { NewChatLayout } from "@/features/chat/components/interface/layouts/NewChatLayout";
-import { usePrefetchConnectionDetails } from "@/features/chat/components/voice-agent/hooks/useConnectionDetails";
 import {
   VoiceControlBarContainer,
   VoiceControlBarSlot,
@@ -22,93 +24,21 @@ import {
 import { VoiceModeBackground } from "@/features/chat/components/voice-agent/VoiceModeBackground";
 import { useStreamResume } from "@/features/chat/hooks/useStreamResume";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
-import { useSendMessage } from "@/hooks/useSendMessage";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { db } from "@/lib/db/chatDb";
 import { toast } from "@/lib/toast";
-import { syncSingleConversation } from "@/services/syncService";
-import { useChatStore } from "@/stores/chatStore";
-import {
-  useComposerTextActions,
-  usePendingPrompt,
-} from "@/stores/composerStore";
-import { usePricingModalStore } from "@/stores/pricingModalStore";
-import {
-  useDiscoveredConversationId,
-  useVoiceModeActions,
-  useVoiceModeActive,
-} from "@/stores/voiceModeStore";
-import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 
 const MainChat = React.memo(function MainChat() {
-  const voiceModeActive = useVoiceModeActive();
-  const storeDiscoveredId = useDiscoveredConversationId();
-  const { enterVoiceMode, exitVoiceMode } = useVoiceModeActions();
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
-  const openPricingModal = usePricingModalStore((s) => s.openModal);
-  const pendingPrompt = usePendingPrompt();
-  const { clearPendingPrompt } = useComposerTextActions();
-  const setActiveConversationId = useChatStore(
-    (state) => state.setActiveConversationId,
-  );
-  const router = useRouter();
-
-  // --- Workflow auto-send ---
-  // Hosted at ChatPage (not Composer) because ChatPage is memoized and never
-  // remounts, whereas Composer remounts across the NewChatLayout →
-  // ChatWithMessages layout switch that fires when the optimistic message
-  // flips hasMessages to true. Keeping the once-only guard (autoSendFiredRef)
-  // here stops that remount from resetting it and firing the workflow twice.
-  const sendMessage = useSendMessage();
-  const selectedWorkflow = useWorkflowSelectionStore((s) => s.selectedWorkflow);
-  const autoSend = useWorkflowSelectionStore((s) => s.autoSend);
-  // Exactly-once guard for the deferred auto-send below. Set inside the timer
-  // callback (not at schedule time) so StrictMode's simulated remount and
-  // dep-driven re-runs reschedule instead of assuming the send already fired.
-  const autoSendFiredRef = useRef(false);
-
   // Mounting useIntegrations refreshes the personalized catalog (staleTime: 0)
   // so the composer's tool lock state is current when a chat opens.
   useIntegrations();
-
-  useEffect(() => {
-    if (!(selectedWorkflow && autoSend)) return;
-    if (autoSendFiredRef.current) return;
-
-    const workflow = selectedWorkflow;
-
-    // Defer one macrotask so navigation settles, then clear + send inside
-    // the callback: clearing the store HERE (in the effect body) would
-    // re-render before the macrotask fires, running this effect's cleanup
-    // and cancelling the send — silently dropping the execution (an e2e-
-    // verified regression). With the clear inside the callback, a cleanup
-    // on supersede is harmless: firedRef makes the next pass a no-op.
-    const sendTimer = setTimeout(() => {
-      autoSendFiredRef.current = true;
-      useWorkflowSelectionStore.getState().clearSelectedWorkflow();
-      sendMessage("Run this workflow", {
-        selectedWorkflow: workflow,
-        selectedTool: null,
-        selectedToolCategory: null,
-        conversationId: null,
-      });
-    }, 0);
-
-    // Supersede semantics: a genuinely NEW selection replaces the pending
-    // send; genuine unmount cancels it (master's own behavior).
-    return () => clearTimeout(sendTimer);
-  }, [selectedWorkflow, autoSend, sendMessage]);
+  useWorkflowAutoSend();
 
   const {
     hasMessages,
-    isWelcomeConversation,
     chatRef,
     dummySectionRef,
     inputRef,
     fileUploadRef,
-    appendToInputRef,
     convoIdParam,
   } = useChatLayout();
 
@@ -117,43 +47,7 @@ const MainChat = React.memo(function MainChat() {
   // the on-open freshness sync, sequenced AFTER resume — syncing first would
   // race the live-turn discovery and sweep the optimistic user message.
   useStreamResume(convoIdParam || null);
-
-  // Set active conversation ID and mark as read when opening.
-  // During a new voice session (no URL param), use the store's provisional
-  // UUID so the chat store points at the correct in-flight conversation —
-  // prevents this parent effect from overwriting VoiceSessionInner's ID with null.
-  useEffect(() => {
-    if (voiceModeActive && !convoIdParam && storeDiscoveredId) {
-      setActiveConversationId(storeDiscoveredId);
-    } else {
-      setActiveConversationId(convoIdParam || null);
-    }
-
-    if (convoIdParam) {
-      const conversations = useChatStore.getState().conversations;
-      const conversation = conversations.find((c) => c.id === convoIdParam);
-      if (conversation?.isUnread) {
-        useChatStore
-          .getState()
-          .upsertConversation({ ...conversation, isUnread: false });
-        db.updateConversationFields(convoIdParam, { isUnread: false });
-        chatApi.markAsRead(convoIdParam).catch(console.error);
-      }
-      // Freshness sync happens in useStreamResume, sequenced after the
-      // live-turn discovery so it can't sweep an in-flight optimistic message.
-    }
-
-    return () => {
-      useChatStore.getState().clearOptimisticMessage();
-    };
-  }, [
-    convoIdParam,
-    setActiveConversationId,
-    voiceModeActive,
-    storeDiscoveredId,
-    // NOTE: Not including conversations or upsertConversation in deps
-    // to avoid re-triggering when manually toggling read/unread status
-  ]);
+  useActiveConversation(convoIdParam);
 
   // Imperative scroll control from the message scroller (Provider wraps this
   // component). Used by the composer to snap to the live edge on send.
@@ -176,88 +70,24 @@ const MainChat = React.memo(function MainChat() {
     multiple: true,
   });
 
-  useEffect(() => {
-    if (pendingPrompt && appendToInputRef.current) {
-      appendToInputRef.current(pendingPrompt);
-      clearPendingPrompt();
-    }
-  }, [pendingPrompt, clearPendingPrompt, appendToInputRef]);
+  useAutoSendPendingPrompt();
 
-  useEffect(() => {
-    const queryParam = new URLSearchParams(window.location.search).get("q");
-    if (queryParam && appendToInputRef.current) {
-      appendToInputRef.current(queryParam);
-      const url = new URL(window.location.href);
-      url.searchParams.delete("q");
-      router.replace(url.pathname + url.search, { scroll: false });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const prefetchConnectionDetails = usePrefetchConnectionDetails(
-    convoIdParam || undefined,
-  );
+  const { voiceModeActive, onVoiceModeHover, startVoiceMode, endVoiceCall } =
+    useVoiceModeControls(convoIdParam);
 
   const composerProps = {
     inputRef,
     scrollToBottom,
     fileUploadRef,
-    appendToInputRef,
     hasMessages,
-    // Warm the session token on hover so clicking starts ~instantly. Gated
-    // on subscription — /token is plan-limited and free users get the modal.
-    onVoiceModeHover: () => {
-      if (subscriptionStatus?.is_subscribed) prefetchConnectionDetails();
-    },
-    voiceModeActive: () => {
-      // Voice mode is paid-only (the /token endpoint enforces it server-side
-      // too). Free users get the upgrade modal instead of a session.
-      if (!subscriptionStatus?.is_subscribed) {
-        trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
-          voice_mode_enabled: false,
-          conversation_id: convoIdParam,
-          blocked_reason: "upgrade_required",
-        });
-        openPricingModal();
-        return;
-      }
-      trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
-        voice_mode_enabled: true,
-        conversation_id: convoIdParam,
-      });
-      enterVoiceMode(convoIdParam || undefined);
-    },
-  };
-
-  const handleEndVoiceCall = () => {
-    trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
-      voice_mode_enabled: false,
-      conversation_id: convoIdParam,
-    });
-    // Capture the active id BEFORE exiting (exitVoiceMode clears the store id).
-    const activeId = useChatStore.getState().activeConversationId;
-    exitVoiceMode();
-    if (activeId) {
-      // During voice the URL was updated in-place via history.replaceState, so
-      // the App Router segment is still /c (convoIdParam undefined for a new
-      // chat). A real navigation resolves the conversation route so the
-      // just-finished voice chat renders without a manual reload.
-      if (!convoIdParam) {
-        router.replace(`/c/${activeId}`);
-      }
-      // Pull server canonical messages so the chat shows them without the
-      // in-memory voice turns; prevents duplicate-after-refresh.
-      syncSingleConversation(activeId).catch((err) =>
-        console.error("[ChatPage] post-voice sync failed", err),
-      );
-    }
+    onVoiceModeHover,
+    voiceModeActive: startVoiceMode,
   };
 
   // Voice mode forces the messages layout so the gradient + bar always have
   // a stable container; the user can speak from a fresh /c without flipping
   // layouts mid-call.
-  const useMessagesLayout =
-    voiceModeActive || hasMessages || isWelcomeConversation;
+  const useMessagesLayout = voiceModeActive || hasMessages;
 
   if (voiceModeActive) {
     return (
@@ -272,7 +102,7 @@ const MainChat = React.memo(function MainChat() {
           <ChatWithMessages
             chatRef={chatRef}
             dragHandlers={dragHandlers}
-            bottomBar={<VoiceControlBarSlot onEndCall={handleEndVoiceCall} />}
+            bottomBar={<VoiceControlBarSlot onEndCall={endVoiceCall} />}
           />
         </VoiceControlBarContainer>
       </div>
@@ -289,7 +119,12 @@ const MainChat = React.memo(function MainChat() {
         <ChatWithMessages
           chatRef={chatRef}
           dragHandlers={dragHandlers}
-          bottomBar={<Composer {...composerProps} />}
+          bottomBar={
+            <>
+              <PaywallNotice className="mb-10" />
+              <Composer {...composerProps} />
+            </>
+          }
         />
       ) : (
         <NewChatLayout

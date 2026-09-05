@@ -165,6 +165,7 @@ PLATFORM_DISPLAY_NAMES: dict[ConversationSource, str] = {
     ConversationSource.DISCORD: "Discord",
     ConversationSource.SLACK: "Slack",
     ConversationSource.WHATSAPP: "WhatsApp",
+    ConversationSource.IMESSAGE: "iMessage",
 }
 
 

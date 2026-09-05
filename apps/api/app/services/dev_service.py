@@ -57,9 +57,8 @@ async def require_dev_user(email: str) -> UserDocument:
 
 async def mint_dev_user(email: str, name: str | None = None) -> UserDocument:
     """Idempotently find-or-create a dev user via the real signup path."""
-    resolved_name = name or email.split("@", 1)[0]
     user_id, is_new = await store_user_info(
-        name=resolved_name,
+        name=name,
         email=email,
         picture_url=None,
         # Same stored shape as real signup, but a minted dev user must never
@@ -147,9 +146,10 @@ async def seed_dev_data(
         user_id,
         phase=OnboardingPhase.COMPLETED,
         bio_status=BioStatus.NO_GMAIL,
-        pipeline_mode="full",
         preferences=OnboardingPreferences(
             profession="Developer",
+            needs=None,
+            other_need=None,
             response_style="casual",
             custom_instructions=None,
         ),

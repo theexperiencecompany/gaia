@@ -5,6 +5,7 @@ Exposes main middleware classes, decorators, and utilities for easy import.
 """
 
 from .auth import PostHogRequestContextMiddleware, WorkOSAuthMiddleware
+from .entitlement import EntitlementMiddleware
 from .logging import LoggingMiddleware, log_function_call
 from .profiling import ProfilingMiddleware
 from .rate_limiter import limiter
@@ -18,6 +19,7 @@ from .tiered_rate_limiter import (
 # app/decorators/rate_limiting.py. A second copy in this package drifted and
 # silently skipped rate limiting — import it from `app.decorators`.
 __all__ = [
+    "EntitlementMiddleware",
     "PostHogRequestContextMiddleware",
     "WorkOSAuthMiddleware",
     "LoggingMiddleware",

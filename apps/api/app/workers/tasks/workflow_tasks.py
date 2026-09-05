@@ -38,7 +38,9 @@ from app.constants.agents import (
     AgentTag,
     wrap_agent_payload,
 )
-from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.cache import (
+    EXECUTOR_BUSY_PREFIX,
+)
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import get_websocket_manager
 from app.db.repositories.playbooks import playbook_repository
@@ -46,6 +48,7 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import enforce_daily_cost_budget
+from app.decorators.entitlements import is_subscription_active
 from app.decorators.rate_limiting import enforce_tiered_limit
 from app.models.chat_models import MessageModel, ToolDataEntry
 from app.models.message_models import MessageRequestWithHistory
@@ -67,6 +70,7 @@ from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
     CreateWorkflowRequest,
+    IntegrationRef,
     PlaybookDiscard,
     TriggerConfig,
     TriggerType,
@@ -96,6 +100,7 @@ from app.services.workflow.execution_service import (
     complete_execution,
     create_execution,
 )
+from app.services.workflow.integration_pause import pause_workflow_for_missing_integrations
 from app.services.workflow.notifications import send_workflow_completion_notification
 from app.services.workflow.playbook.check import HEAL_STATUSES, distrust_fresh_playbook
 from app.services.workflow.playbook.evaluator import PlaybookUser
@@ -108,6 +113,9 @@ from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.services.workflow.run_trace import build_trace
 from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
 from app.services.workflow.service import WorkflowService
+from app.services.workflow.subscription_pause import (
+    deactivate_workflows_for_lapsed_subscription,
+)
 from app.services.workflow.thread_reset import reset_workflow_threads
 from app.utils.errors import create_error
 from app.utils.occurrence import parse_occurrence_stamp
@@ -445,9 +453,75 @@ async def _rate_limit_failure_content(
     return body, upgrade_action
 
 
+async def _limit_notice_already_sent(workflow: Workflow) -> bool:
+    """Whether this workflow already reported its limit wall in the current window.
+
+    One production thread ended on six identical limit notices: the wall is one
+    fact per day, so it is worth one message per day. The gate lives with the
+    workflow entity (``claim_limit_notice``); the run itself is still skipped
+    and re-armed either way.
+    """
+    return not await workflow_repository.claim_limit_notice(workflow.user_id, workflow.id)
+
+
+async def _notify_workflow_paused_for_integrations(
+    workflow: Workflow, missing: list[IntegrationRef]
+) -> None:
+    """The single notice a workflow paused for a dead integration is allowed to send.
+
+    Best-effort like every other notification here: failing to tell the user must
+    not turn a clean skip into a worker error. The workflow is already paused, so
+    a lost notice costs one message, not a message per occurrence.
+    """
+    names = ", ".join(ref.name for ref in missing)
+    first = missing[0]
+    try:
+        await notification_service.create_notification(
+            NotificationRequest(
+                user_id=workflow.user_id,
+                source=NotificationSourceEnum.INTEGRATION_EXPIRED,
+                type=NotificationType.WARNING,
+                content=NotificationContent(
+                    title=f"Workflow Paused: {workflow.title}",
+                    body=(
+                        f"'{workflow.title}' needs {names}, which isn't connected. "
+                        f"It's paused and will run again once you reconnect."
+                    ),
+                    actions=[
+                        NotificationAction(
+                            type=ActionType.REDIRECT,
+                            label=f"Connect {first.name}",
+                            style=ActionStyle.PRIMARY,
+                            config=ActionConfig(
+                                redirect=RedirectConfig(
+                                    url=f"/integrations?id={first.id}",
+                                    open_in_new_tab=False,
+                                    close_notification=True,
+                                )
+                            ),
+                        )
+                    ],
+                ),
+                metadata={
+                    "workflow_id": workflow.id,
+                    "missing_integrations": ",".join(ref.id for ref in missing),
+                },
+            )
+        )
+    except Exception as notify_err:
+        log.warning(
+            f"{LogTag.WORKER} Could not send the integration-paused notice",
+            workflow_id=workflow.id,
+            error=str(notify_err),
+            error_type=type(notify_err).__name__,
+        )
+
+
 async def _notify_workflow_failed(error: Exception, workflow: Workflow) -> None:
     """Tell the user the workflow failed. Best-effort: a notification failure must
     not mask the error that caused it."""
+    if isinstance(error, RateLimitExceededException) and await _limit_notice_already_sent(workflow):
+        return
     try:
         if isinstance(error, RateLimitExceededException):
             body, upgrade_action = await _rate_limit_failure_content(error, workflow)
@@ -1032,6 +1106,18 @@ async def _admit_fire(
         )
         await _rearm_quietly(workflow_scheduler, workflow, context, workflow_id)
         return f"Workflow {workflow_id} skipped — user has not completed onboarding"
+
+    # A system-initiated fire whose integration is gone can only produce another
+    # "X isn't connected" message, so it pauses itself instead of running: one
+    # notice, then nothing until the reconnect reactivates it. A MANUAL fire is
+    # the user standing there — they get the in-chat connect card and their
+    # workflow stays as they left it.
+    if trigger_type != TriggerType.MANUAL.value:
+        missing = await pause_workflow_for_missing_integrations(workflow)
+        if missing:
+            await _notify_workflow_paused_for_integrations(workflow, missing)
+            names = ", ".join(ref.id for ref in missing)
+            return f"Workflow {workflow_id} paused — not connected: {names}"
     return None
 
 
@@ -1338,6 +1424,20 @@ async def execute_workflow_by_id(
 
         if not workflow:
             return f"Workflow {workflow_id} not found"
+
+        # Paid-only gate: no workflow may run for a lapsed/free user, regardless
+        # of trigger type (schedule, manual run-now, or a Composio/email trigger
+        # fire) — every one of those paths enqueues this same ARQ task, so this
+        # is the single choke point that covers all of them. Deactivate the
+        # user's workflows so the trigger stops re-enqueuing this task.
+        if not await is_subscription_active(workflow.user_id):
+            log.warning(
+                f"{LogTag.WORKER} Workflow skipped — subscription required, deactivating",
+                workflow_id=workflow_id,
+                user_id=workflow.user_id,
+            )
+            await deactivate_workflows_for_lapsed_subscription(workflow.user_id)
+            return f"Workflow {workflow_id} skipped — subscription required"
 
         # A coalesced trigger run carries its events (keyed by batch_key) in
         # Redis rather than in the job payload, so that concurrent enqueues

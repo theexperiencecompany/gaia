@@ -24,6 +24,7 @@ from app.constants.memory import (
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
+from app.constants.notifications import MEMORY_SETTINGS_URL
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.memory.consolidation import cancel_consolidation
@@ -45,7 +46,6 @@ from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import MemoryContext, UserContext, log
 
 _BACKFILL_TASK = "backfill_user_memories"
-_MEMORY_SETTINGS_URL = "/settings/memory"
 
 
 def _active_since() -> datetime:
@@ -196,7 +196,7 @@ async def _notify_memory_ready(user_id: str) -> None:
                             style=ActionStyle.PRIMARY,
                             config=ActionConfig(
                                 redirect=RedirectConfig(
-                                    url=_MEMORY_SETTINGS_URL,
+                                    url=MEMORY_SETTINGS_URL,
                                     open_in_new_tab=False,
                                     close_notification=True,
                                 )

@@ -22,7 +22,6 @@ import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUs
 import GeneratedImageSheet from "@/features/chat/components/image/GeneratedImageSheet";
 import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIndicator";
 import MemoryModal from "@/features/chat/components/memory/MemoryModal";
-import { WelcomeChat } from "@/features/chat/components/welcome/WelcomeChat";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { useMessageHighlight } from "@/features/chat/hooks/useMessageHighlight";
@@ -38,6 +37,7 @@ import {
   useIsAwaitingExecutor,
   useIsConversationStreaming,
 } from "@/stores/streamStore";
+import { useUserStore } from "@/stores/userStore";
 import type {
   ChatBubbleBotProps,
   ChatBubbleUserProps,
@@ -297,15 +297,16 @@ export default function ChatRenderer({
     improvedPrompt: "",
   });
 
+  // The seeded Getting-started thread is system-generated too, but it is the
+  // user's first screen after onboarding, not a run that appeared on its own.
+  const gettingStartedConversationId = useUserStore(
+    (s) => s.onboarding?.getting_started_conversation_id,
+  );
   const conversation = useMemo(() => {
     return conversations.find(
       (convo) => convo.conversation_id === convoIdParam,
     );
   }, [conversations, convoIdParam]);
-
-  // Read off the conversation, not userStore, to avoid a stale-rehydrate race.
-  const isWelcomeConversation =
-    conversation?.is_onboarding_conversation === true;
 
   // Handle retry callback. `retryMessage` gets a new identity on most renders
   // (its deps chain up to an unstable `sendMessage`), so we read it through a
@@ -449,8 +450,12 @@ export default function ChatRenderer({
         onClose={() => setOpenMemoryModal(false)}
       />
       <SearchedImageDialog />
-      <CreatedByGAIABanner show={conversation?.is_system_generated === true} />
-      {isWelcomeConversation && <WelcomeChat />}
+      <CreatedByGAIABanner
+        show={
+          conversation?.is_system_generated === true &&
+          conversation.conversation_id !== gettingStartedConversationId
+        }
+      />
       {messagesWithDeduplicatedToolCalls?.map(
         (message: MessageType, index: number) => {
           // Consecutive bot bubble grouping (iMessage-style):

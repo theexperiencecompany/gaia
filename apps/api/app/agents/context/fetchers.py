@@ -23,16 +23,20 @@ from app.agents.context.text import (
     GAIA_KNOWLEDGE_HEADER,
     MEMORY_RECALL_HEADER,
 )
+from app.agents.prompts.new_user_prompts import build_new_user_guidance
 from app.agents.workspace.paths import session_dir
 from app.constants.cache import TRACKED_TODOS_SUMMARY_CACHE_KEY, TRACKED_TODOS_SUMMARY_CACHE_TTL
+from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.todos import todo_repository
 from app.decorators.caching import Cacheable
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.todo_models import TodoDocument
+from app.models.user_models import OnboardingNeed, OnboardingPreferences
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_connected_integrations_named
+from app.services.onboarding.first_question import seeded_chips
 from app.services.tracked_todo_service import tracked_todo_service
 from app.utils.artifact_utils import artifact_url_base
 from shared.py.wide_events import log
@@ -193,6 +197,72 @@ async def build_tracked_todos_block(ctx: SectionContext) -> str:
             user_id=ctx.user_id,
         )
         return ""
+
+
+#: How many of the user's own conversations still count as "we just met". The
+#: live one is included in the count, so 3 covers a first session plus two
+#: returns; past that there is real history to lead from and the playbooks stop.
+NEW_USER_CONVERSATION_LIMIT = 3
+
+
+def _selected_needs(preferences: dict[str, object]) -> list[OnboardingNeed]:
+    """The onboarding needs off a raw preferences bag, in the order picked.
+
+    The bag comes from Mongo, so the values are plain strings; a value this
+    build does not know (an older client, a need since renamed) is skipped
+    rather than dropped the whole block on the floor.
+    """
+    raw_needs = preferences.get("needs")
+    if not isinstance(raw_needs, list):
+        return []
+    selected: list[OnboardingNeed] = []
+    for raw in raw_needs:
+        try:
+            selected.append(OnboardingNeed(raw))
+        except ValueError:
+            log.warning("Unknown onboarding need in preferences", need=str(raw))
+    return selected
+
+
+async def build_new_user_guidance_block(ctx: SectionContext) -> str:
+    """Per-need first-conversation playbooks, while the user is still new.
+
+    The needs check runs BEFORE the conversation count, so users who predate
+    the persona questions never pay for the lookup at all.
+    """
+    if not (ctx.user_id and ctx.user_preferences):
+        return ""
+    needs = _selected_needs(ctx.user_preferences)
+    other_need = ctx.user_preferences.get("other_need")
+    if not isinstance(other_need, str):
+        other_need = None
+    if not needs and not other_need:
+        return ""
+    try:
+        conversations = await conversation_repository.count_non_onboarding(ctx.user_id)
+    except Exception as e:
+        log.warning(
+            "Error counting conversations for new-user guidance",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=ctx.user_id,
+        )
+        return ""
+    if conversations > NEW_USER_CONVERSATION_LIMIT:
+        return ""
+    profession = ctx.user_preferences.get("profession")
+    # The chips GAIA itself offered at the end of the seeded conversation. Their
+    # first message is usually one of them, and without this the model treats a
+    # one-word choice as a fragment it has to ask about.
+    chips = await seeded_chips(
+        ctx.user_id,
+        OnboardingPreferences(
+            profession=str(profession) if profession else None,
+            needs=needs,
+            other_need=other_need,
+        ),
+    )
+    return build_new_user_guidance(str(profession) if profession else "", needs, other_need, chips)
 
 
 async def build_background_banner(ctx: SectionContext) -> str:

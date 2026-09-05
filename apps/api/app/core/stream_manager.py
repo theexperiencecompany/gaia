@@ -64,6 +64,7 @@ from app.constants.streaming import (
     STREAM_ERROR_SIGNAL,
 )
 from app.db.redis import redis_cache
+from app.utils.message_breaks import append_message_bubble
 from shared.py.wide_events import log
 
 
@@ -77,7 +78,13 @@ class StreamProgress:
 
     conversation_id: str
     user_id: str
+    #: Settled bubbles only — text whose message reached a boundary that kept it.
     complete_message: str = ""
+    #: Text streamed since the last boundary. Held out of ``complete_message``
+    #: because a message that goes on to announce a tool call is a preamble the
+    #: user must not keep (see ``MessageBoundaryPayload``); the driver's own
+    #: accumulator holds it the same way in ``message_texts``.
+    pending_message: str = ""
     tool_data: dict[str, Any] = field(default_factory=dict)
     started_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     is_cancelled: bool = False
@@ -493,8 +500,8 @@ class StreamManager:
             return
 
         if message_chunk:
-            progress_data["complete_message"] = (
-                progress_data.get("complete_message", "") + message_chunk
+            progress_data["pending_message"] = (
+                progress_data.get("pending_message", "") + message_chunk
             )
 
         if tool_data:
@@ -512,6 +519,29 @@ class StreamManager:
         # The turn is demonstrably alive, so keep the resume index alive with it
         # — the event log already self-refreshes on every publish_chunk.
         await cls._refresh_active_index(progress_data)
+
+    @classmethod
+    async def settle_message_progress(cls, stream_id: str, *, discarded: bool) -> None:
+        """Close the message that just ended: keep its text as a bubble, or drop it.
+
+        The recovery mirror of ``_settle_message_boundary`` in the graph driver.
+        Without it the progress record is a blind concatenation of every token
+        the turn streamed, so a turn recovered from Redis carries the planning
+        preamble ("let me start by gathering context…") glued straight onto the
+        real reply, and two kept bubbles run into one sentence.
+        """
+        key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
+        progress_data = await redis_cache.get(key)
+        if not progress_data:
+            return
+
+        pending = progress_data.pop("pending_message", "")
+        progress_data["pending_message"] = ""
+        if pending and not discarded:
+            progress_data["complete_message"] = append_message_bubble(
+                progress_data.get("complete_message") or "", pending
+            )
+        await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
 
     @classmethod
     async def get_progress(cls, stream_id: str) -> dict[str, Any] | None:

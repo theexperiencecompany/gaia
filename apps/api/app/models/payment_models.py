@@ -30,6 +30,36 @@ class PlanDuration(StrEnum):
     YEARLY = "yearly"
 
 
+PAYMENT_RESULT_PATH = "/payment/success"
+ONBOARDING_CHECKOUT_RETURN_PATH = "/onboarding?checkout=returned"
+
+
+class CheckoutSource(StrEnum):
+    """Where in the product a checkout was started.
+
+    The server is the single emitter of ``payment:checkout_started``, so the
+    attribution the funnel reads has to arrive on the request. Closed and
+    repository-owned: it mirrors ``CheckoutSource`` in
+    ``apps/web/src/features/pricing/hooks/useDodoPayments.ts``, and a new
+    surface adds a member on both sides in the same change.
+    """
+
+    PAYWALL_MODAL = "paywall_modal"
+    PRICING_CARD = "pricing_card"
+    PAYMENT_RETRY = "payment_retry"
+    CHECKOUT_RESUME = "checkout_resume"
+    ONBOARDING = "onboarding"
+
+    @property
+    def return_path(self) -> str:
+        """Where Dodo sends the browser after checkout. A checkout started inside
+        the onboarding wizard returns to the wizard, which confirms the payment
+        in place; every other checkout lands on the standalone result page."""
+        if self is CheckoutSource.ONBOARDING:
+            return ONBOARDING_CHECKOUT_RETURN_PATH
+        return PAYMENT_RESULT_PATH
+
+
 class SubscriptionStatus(str, Enum):
     """Subscription status with clear definitions."""
 
@@ -49,6 +79,30 @@ class CreateSubscriptionRequest(BaseModel):
     quantity: int = Field(1, description="Quantity of subscriptions")
     discount_code: str | None = Field(
         None, description="Discount code pre-applied on the hosted checkout page"
+    )
+    # Optional here, required on /checkout-session: this endpoint has bundles
+    # already deployed against it, and 422-ing a stale one would cost a real
+    # checkout. A null source is honest in the funnel; a rejected sale is not.
+    source: CheckoutSource | None = Field(
+        None, description="Where in the product this checkout was started"
+    )
+
+
+class CreateCheckoutSessionRequest(BaseModel):
+    """Which Pro billing cycle the embedded overlay should check out.
+
+    No product id: GAIA is paid-only with a single paid tier, so the server
+    resolves the plan from the catalogue rather than trusting the client with a
+    Dodo product id.
+    """
+
+    billing_cycle: PlanDuration = Field(
+        PlanDuration.MONTHLY, description="Billing cycle of the Pro plan to check out"
+    )
+    # Required: this path replaced the client-side emitter, so an unattributed
+    # checkout would vanish from the funnel entirely rather than land unsplit.
+    source: CheckoutSource = Field(
+        ..., description="Where in the product this checkout was started"
     )
 
 
@@ -103,6 +157,12 @@ class UserSubscriptionStatus(BaseModel):
     days_remaining: int | None = Field(None, description="Days remaining in current period")
     can_upgrade: bool = Field(True, description="Whether user can upgrade")
     can_downgrade: bool = Field(True, description="Whether user can downgrade")
+
+    has_ever_subscribed: bool = Field(
+        False,
+        description="Whether the user has ever had a subscription, in any status — "
+        "separates a lapsed subscriber from one who has never paid",
+    )
 
     has_subscription: bool | None = Field(None, description="Legacy field - use is_subscribed")
     plan_type: PlanType | None = Field(None, description="Legacy field - check current_plan")
@@ -224,6 +284,18 @@ class ProcessedWebhookUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: str | None = None
+
+
+class VerifyPaymentRequest(BaseModel):
+    """The subscription Dodo handed back on its return URL, when it did.
+
+    Purely a hint — the client controls it, so the server asks Dodo what the id
+    really is and whether it belongs to the caller before acting on it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    subscription_id: str | None = None
 
 
 class PaymentVerificationResponse(BaseModel):

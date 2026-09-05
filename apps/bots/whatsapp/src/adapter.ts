@@ -23,6 +23,7 @@ import {
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
+  consumeInboundLinkCode,
   createBotLogger,
   extractSubcommandArgs,
   friendlyMediaError,
@@ -555,12 +556,24 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     const typing = this.startWhatsAppTyping(waId, messageId);
 
     try {
-      await this.ensureWelcomed(waId, typing.refresh, 2_000);
-
       const target = this.createWaTarget(waId, messageId);
 
-      if (text.startsWith("/")) {
-        const withoutSlash = text.slice(1);
+      // Before the welcome: an unlinked sender arriving with a one-tap code is
+      // linking, not being greeted with "run /auth".
+      const chatText = await consumeInboundLinkCode({
+        gaia: this.gaia,
+        platform: this.platform,
+        platformUserId: waId,
+        text,
+        target,
+        isLinked: () => this.isWaUserLinked(waId),
+      });
+      if (chatText === null) return;
+
+      await this.ensureWelcomed(waId, typing.refresh, 2_000);
+
+      if (chatText.startsWith("/")) {
+        const withoutSlash = chatText.slice(1);
         const spaceIndex = withoutSlash.indexOf(" ");
         const commandName = (
           spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
@@ -588,7 +601,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleStreamingMessage(waId, text);
+      await this.handleStreamingMessage(waId, chatText);
     } finally {
       typing.stop();
     }

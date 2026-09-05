@@ -19,6 +19,7 @@ Two shapes here stay ``dict[str, Any]`` on purpose (Type Safety item 14):
   parameter, so naming it would have to retype those in the same pass.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 from typing import Any, cast
@@ -34,13 +35,20 @@ from app.utils.stream_publishers import (
 )
 
 
+@dataclass(slots=True)
+class ChunkAccumulators:
+    """Per-turn accumulators that :func:`process_data_chunk` mutates in place."""
+
+    tool_data: dict[str, Any]
+    tool_outputs: dict[str, str]
+    todo_progress: dict[str, Any]
+    follow_up_actions: list[str]
+
+
 async def process_data_chunk(
     stream_id: str,
     chunk: str,
-    tool_data: dict[str, Any],
-    tool_outputs: dict[str, str],
-    todo_progress_accumulated: dict[str, Any],
-    follow_up_actions: list[str],
+    acc: ChunkAccumulators,
     *,
     forward_subagents: bool = False,
 ) -> tuple[list[str], bool]:
@@ -62,15 +70,18 @@ async def process_data_chunk(
     chunk_json = _parse_chunk_json(chunk_payload)
     lifecycle_forwarded = False
     if forward_subagents and chunk_json:
-        lifecycle_forwarded = await _forward_subagent_lifecycle(stream_id, chunk_json, tool_data)
-    accumulate_todo_progress(chunk_json, todo_progress_accumulated)
+        lifecycle_forwarded = await _forward_subagent_lifecycle(
+            stream_id, chunk_json, acc.tool_data
+        )
+    accumulate_todo_progress(chunk_json, acc.todo_progress)
+    await _settle_boundary(stream_id, chunk_json)
 
     new_data = extract_tool_data(chunk_payload)
     if not new_data:
         if lifecycle_forwarded:
             # Already published as dedicated lifecycle frames — republishing the
             # raw chunk would send the same event twice.
-            return follow_up_actions, True
+            return acc.follow_up_actions, True
         # No tool data — pass through as-is.
         await stream_manager.publish_chunk(stream_id, chunk)
         response_text = extract_response_text(chunk)
@@ -80,11 +91,11 @@ async def process_data_chunk(
                 message_chunk=response_text,
                 tool_data=None,
             )
-        return follow_up_actions, True
+        return acc.follow_up_actions, True
 
-    follow_up_actions = await publish_other_data(stream_id, new_data, follow_up_actions)
-    await publish_tool_data(stream_id, new_data, tool_data)
-    await publish_tool_output(stream_id, new_data, tool_outputs)
+    acc.follow_up_actions = await publish_other_data(stream_id, new_data, acc.follow_up_actions)
+    await publish_tool_data(stream_id, new_data, acc.tool_data)
+    await publish_tool_output(stream_id, new_data, acc.tool_outputs)
 
     if chunk_json and "todo_progress" in chunk_json:
         await stream_manager.publish_chunk(
@@ -98,7 +109,25 @@ async def process_data_chunk(
         message_chunk=response_text,
         tool_data=new_data,
     )
-    return follow_up_actions, True
+    return acc.follow_up_actions, True
+
+
+async def _settle_boundary(stream_id: str, chunk_json: dict[str, Any] | None) -> None:
+    """Apply a ``message_boundary`` frame to the Redis progress record.
+
+    The frame is the turn's own verdict on the message that just ended — kept,
+    or a discarded preamble to a tool call. The live client acts on it; the
+    progress record used for recovery has to act on it too, or a recovered turn
+    resurrects text the user was explicitly told to drop.
+    """
+    if not chunk_json:
+        return
+    boundary = chunk_json.get("message_boundary")
+    if not isinstance(boundary, dict):
+        return
+    await stream_manager.settle_message_progress(
+        stream_id, discarded=bool(boundary.get("discarded"))
+    )
 
 
 async def _forward_subagent_lifecycle(

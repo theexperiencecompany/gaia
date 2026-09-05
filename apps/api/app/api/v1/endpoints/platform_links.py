@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX
 from app.db.redis import redis_cache
+from app.decorators import enforce_rate_limit
 from app.models.platform_models import (
     DisconnectPlatformResponse,
     GetPlatformLinksResponse,
@@ -12,11 +13,18 @@ from app.models.platform_models import (
     InitiatePlatformConnectResponse,
     LinkPlatformRequest,
     LinkPlatformResponse,
+    MintPlatformLinkCodeResponse,
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.account_fs import schedule_account_sync
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
-from app.services.outbound_delivery import notify_account_linked
+from app.services.onboarding.first_message import compose_first_message
+from app.services.onboarding.onboarding_service import get_user_onboarding_status
+from app.services.platform_link_code_service import (
+    build_handoff_links,
+    build_handoff_text,
+    mint_platform_link_code,
+)
+from app.services.platform_link_completion import complete_platform_link
 from app.services.platform_link_service import (
     Platform,
     PlatformLinkService,
@@ -26,6 +34,8 @@ from app.services.platform_link_service import (
 )
 from app.utils.errors import create_error
 from shared.py.wide_events import log
+
+PLATFORM_LINK_CODE_FEATURE_KEY = "platform_link_code"
 
 router = APIRouter()
 
@@ -58,6 +68,42 @@ async def get_platform_links(
     # Constructing the response is the validation boundary — see PlatformLinkEntry
     # on why the service hands these over unvalidated.
     return GetPlatformLinksResponse(platform_links=platform_links)
+
+
+# Declared before /{platform}: FastAPI matches in definition order, so the
+# parameterized route would otherwise swallow this literal path.
+@router.post("/code")
+async def mint_link_code(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> MintPlatformLinkCodeResponse:
+    """Mint a single-use code that links the user on their first bot message.
+
+    The code carries the opening message composed from their onboarding answers,
+    so the platform they pick starts a real conversation instead of asking them
+    to type /auth.
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user_id = _require_user_id(current_user)
+    log.set(user={"id": user_id}, operation="mint_platform_link_code")
+
+    await enforce_rate_limit(user_id, PLATFORM_LINK_CODE_FEATURE_KEY)
+
+    status = await get_user_onboarding_status(user_id)
+    first_message = compose_first_message(status.preferences)
+    code = await mint_platform_link_code(user_id, first_message)
+
+    # The code is the credential — the audit names the actor and the outcome,
+    # never the code itself.
+    log.audit("platform link code issued", actor=user_id)
+    log.set(outcome="success")
+    return MintPlatformLinkCodeResponse(
+        code=code,
+        first_message=first_message,
+        handoff_text=build_handoff_text(first_message, code),
+        links=build_handoff_links(code, first_message),
+    )
 
 
 @router.post("/{platform}")
@@ -138,38 +184,18 @@ async def link_platform(
     if token_data.get("display_name"):
         profile["display_name"] = token_data["display_name"]
 
-    # Only the state change is guarded: a ValueError out of the notification
-    # below is not a link conflict and must not be reported (or audited) as one.
-    try:
-        result = await PlatformLinkService.link_account(
-            user_id, platform, platform_user_id, profile=profile or None
-        )
-        if result.is_new_link:
-            await notify_account_linked(platform, user_id)
-        schedule_account_sync(user_id)
-        log.set(outcome="success")
-        capture_context_event(
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": platform, "is_new_link": bool(result.is_new_link)},
-        )
-        # is_new_link is an internal signal for the greeting above, not part of
-        # the payload the client reads — build the response field by field.
-        return LinkPlatformResponse(
-            status=result.status,
-            platform=result.platform,
-            platform_user_id=result.platform_user_id,
-            connected_at=result.connected_at,
-        )
-    except ValueError as e:
-        log.audit(
-            "platform account link rejected",
-            actor=user_id,
-            resource=platform_user_id,
-            provider=platform,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        raise HTTPException(status_code=409, detail=str(e)) from e
+    result = await complete_platform_link(
+        user_id, platform, platform_user_id, profile=profile or None
+    )
+    log.set(outcome="success")
+    # is_new_link is an internal signal for the greeting, not part of the
+    # payload the client reads — build the response field by field.
+    return LinkPlatformResponse(
+        status=result.status,
+        platform=result.platform,
+        platform_user_id=result.platform_user_id,
+        connected_at=result.connected_at,
+    )
 
 
 # The unlink is audited inside platform_link_service.disconnect_platform_account

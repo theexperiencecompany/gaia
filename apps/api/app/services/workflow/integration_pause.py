@@ -14,12 +14,15 @@ longer tracks.
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
-from app.models.workflow_models import DeactivationReason
+from app.models.workflow_models import DeactivationReason, IntegrationRef, Workflow
 from app.services.triggers.subscription_service import (
     pause_subscriptions_for_trigger_names,
     resync_subscriptions_for_trigger_names,
 )
-from app.services.workflow.integration_requirements import compute_required_integrations
+from app.services.workflow.integration_requirements import (
+    compute_missing_integrations,
+    compute_required_integrations,
+)
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
@@ -67,6 +70,39 @@ async def pause_workflows_for_expired_integration(user_id: str, integration_id: 
             paused=len(paused),
         )
     return paused
+
+
+async def pause_workflow_for_missing_integrations(workflow: Workflow) -> list[IntegrationRef]:
+    """Pause ``workflow`` when an integration it needs is not connected; return what was missing.
+
+    The fire-time counterpart of :func:`pause_workflows_for_expired_integration`,
+    which only runs when Composio delivers a connection-lifecycle webhook. A grant
+    revoked upstream, a webhook that never arrived, or an integration the user
+    never connected produces no such event, so the workflow stays activated and
+    every occurrence fires, spends a run and delivers another "X isn't connected"
+    message — 186 of 649 bot messages in the production sample, one thread with 22
+    identical ones. Pausing on the first such fire turns that into one notice;
+    reconnecting resumes it through
+    :func:`resume_workflows_for_reconnected_integration`, which only reactivates
+    workflows carrying this same reason.
+
+    Returns an empty list when nothing is missing (the fire may proceed).
+    """
+    required = compute_required_integrations(workflow.steps, workflow.trigger_config)
+    missing = await compute_missing_integrations(required, workflow.user_id)
+    if not missing or not workflow.id:
+        return []
+
+    await WorkflowService.deactivate_workflow(
+        workflow.id, workflow.user_id, reason=DeactivationReason.INTEGRATION_EXPIRED
+    )
+    log.warning(
+        f"{LogTag.WORKFLOW} Workflow paused at fire time — required integration not connected",
+        workflow_id=workflow.id,
+        user_id=workflow.user_id,
+        missing_integrations=[ref.id for ref in missing],
+    )
+    return missing
 
 
 def _trigger_names_for_integration(integration_id: str) -> set[str]:

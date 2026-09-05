@@ -12,9 +12,9 @@ import React, { useId } from "react";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
-  MESSAGE_BREAK_DURATION_SECONDS,
+  DEFAULT_PART_CHOREOGRAPHY,
   MESSAGE_BREAK_EASE_OUT_QUART,
-  MESSAGE_BREAK_STAGGER_SECONDS,
+  type PartChoreography,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
@@ -363,7 +363,10 @@ export default function TextBubble({
   error,
   onRetry,
   isRetrying,
-}: Readonly<ChatBubbleBotProps>) {
+  partChoreography = DEFAULT_PART_CHOREOGRAPHY,
+}: Readonly<ChatBubbleBotProps> & {
+  partChoreography?: PartChoreography;
+}) {
   const baseId = useId();
 
   // Persist a HIL approval decision into THIS message's tool_data, so the pending
@@ -508,9 +511,9 @@ export default function TextBubble({
                 const hasOpenUI = segments.some((s) => s.type === "openui");
                 const partKey = `${baseId}-text-part-${originalIndex}`;
                 const partTransition: PartTransition = {
-                  duration: MESSAGE_BREAK_DURATION_SECONDS,
+                  duration: partChoreography.durationSeconds,
                   ease: MESSAGE_BREAK_EASE_OUT_QUART,
-                  delay: visibleIndex * MESSAGE_BREAK_STAGGER_SECONDS,
+                  delay: visibleIndex * partChoreography.staggerSeconds,
                 };
 
                 return hasOpenUI ? (

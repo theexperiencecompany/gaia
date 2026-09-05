@@ -8,10 +8,8 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
 from app.services.onboarding.intelligence_job import (
-    enqueue_intelligence_job,
-    enqueue_workflows_job,
+    enqueue_gmail_personalization,
     is_intelligence_job_live,
-    is_workflows_job_live,
 )
 from shared.py.wide_events import log
 
@@ -24,36 +22,16 @@ class _RequeueOutcome(Enum):
     ERROR = "error"
 
 
-async def _requeue_stuck_workflows(user_id: str, onboarding: dict[str, Any]) -> _RequeueOutcome:
-    """Re-queue the deferred workflows phase for a split-mode user whose early
-    intelligence finished but whose workflows job is no longer live."""
-    if not onboarding.get("workflows_job_id"):
-        # Early half finished; user is still choosing integrations — waiting on
-        # input, not stuck.
-        return _RequeueOutcome.SKIPPED
-    if await is_workflows_job_live(user_id):
-        return _RequeueOutcome.SKIPPED
-
-    job_id = await enqueue_workflows_job(user_id)
-    if not job_id:
-        return _RequeueOutcome.ERROR
-    log.info(
-        f"{LogTag.WORKER} re-queued stuck workflows phase",
-        user_id=user_id,
-        job_id=job_id,
-    )
-    return _RequeueOutcome.QUEUED
-
-
 async def _requeue_stuck_user(user: UserDocument) -> _RequeueOutcome:
-    """Re-queue the appropriate onboarding job for one stuck user, skipping any
-    whose ARQ job is still live (a slow-but-healthy pipeline is never aborted)."""
+    """Re-queue the personalization job for one stuck user, skipping any whose
+    ARQ job is still live (a slow-but-healthy pipeline is never aborted).
+
+    Legacy safety net: only users who submitted onboarding before the pipeline
+    moved to Gmail-connect can still be at personalization_pending, and
+    enqueue_gmail_personalization no-ops for any of them whose pipeline
+    already ran."""
     user_id = user.id
     last_update = str(user.updated_at) if user.updated_at is not None else "unknown"
-    onboarding = user.onboarding or {}
-
-    if onboarding.get("pipeline_mode") == "split" and onboarding.get("early_intelligence_done_at"):
-        return await _requeue_stuck_workflows(user_id, onboarding)
 
     if await is_intelligence_job_live(user_id):
         log.info(
@@ -63,7 +41,7 @@ async def _requeue_stuck_user(user: UserDocument) -> _RequeueOutcome:
         )
         return _RequeueOutcome.SKIPPED
 
-    job_id = await enqueue_intelligence_job(user_id)
+    job_id = await enqueue_gmail_personalization(user_id)
     if not job_id:
         log.warning(f"{LogTag.WORKER} enqueue returned no job", user_id=user_id)
         return _RequeueOutcome.ERROR

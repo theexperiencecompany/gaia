@@ -273,11 +273,11 @@ class TestDodoWebhookReplay:
                 processed_repo,
             ),
             patch(
-                "app.services.payments.payment_webhook_service.subscription_repository",
+                "app.services.payments.subscription_activation.subscription_repository",
                 subs_repo,
             ),
             patch(
-                "app.services.payments.payment_webhook_service.user_repository.get",
+                "app.services.payments.subscription_activation.user_repository.get",
                 AsyncMock(return_value=None),
             ),
             patch(
@@ -285,7 +285,7 @@ class TestDodoWebhookReplay:
                 invalidate_cache,
             ),
             patch(
-                "app.services.payments.payment_webhook_service.track_subscription_event",
+                "app.services.payments.subscription_activation.track_subscription_event",
                 track,
             ),
         ):

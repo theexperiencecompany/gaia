@@ -55,6 +55,9 @@ export default function PopupComposer({
     if (!hasContent || isStreaming) return;
     const content = text;
     setText("");
+    // No client-side paid-only pre-check here: a free user's send gets a 402
+    // from chat-stream, and `PopupPaywallNotice` renders that block in the
+    // feed window (this pill has no room for it). See sync.ts.
     sendMessage(content);
   };
 

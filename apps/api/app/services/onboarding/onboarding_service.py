@@ -1,40 +1,44 @@
-import asyncio
 from typing import Any
 
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import HTTPException
 
 from app.constants.log_tags import LogTag
+from app.constants.onboarding import (
+    FIRST_CONVERSATION_ID_FIELD,
+    GETTING_STARTED_CONVERSATION_ID_FIELD,
+    HOLO_CONVERSATION_ID_FIELD,
+)
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
-from app.models.onboarding_models import (
-    ClarifyAnswerRecord,
-    OnboardingResetCounts,
-)
+from app.models.onboarding_models import OnboardingResetCounts
 from app.models.user_models import (
     BioStatus,
-    IntegrationSlug,
-    OnboardingIntegrationsStatus,
     OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
     OnboardingStatusResponse,
     UserDocument,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_event, identify_user
 from app.services.integrations.integration_connection_service import (
     disconnect_integration,
 )
-from app.services.onboarding.intelligence_job import (
-    abort_active_intelligence_job,
-    abort_active_workflows_job,
-    enqueue_intelligence_job,
-    enqueue_workflows_job,
-    is_workflows_job_live,
+from app.services.onboarding.first_conversation import (
+    compose_first_conversation,
+    with_starting_jobs,
 )
-from app.services.onboarding.post_onboarding_service import seed_initial_user_data
+from app.services.onboarding.first_question import (
+    prewarm_first_question,
+    resolve_first_question,
+)
+from app.services.onboarding.intelligence_job import abort_active_intelligence_job
+from app.services.platform_link_service import linked_platforms_of
 from app.services.workflow.service import WorkflowService
+from app.utils.background_tasks import spawn_background_task
+from app.utils.seeding_utils import seed_first_conversation
 from shared.py.wide_events import log
 
 
@@ -57,56 +61,32 @@ def _serialize_user(user: UserDocument) -> dict[str, Any]:
 async def complete_onboarding(
     user_id: str,
     onboarding_data: OnboardingRequest,
-    background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
     """Complete a user's onboarding submission. Idempotent under concurrent
-    retries via an atomic `onboarding: {$exists: false}` gate."""
+    retries via an atomic `onboarding.completed` gate in the repository.
+
+    Submitting the answers IS completion: nothing is generated here, so the
+    phase lands on COMPLETED and the user is routed straight into chat. The
+    intelligence pipeline runs when Gmail is connected, whenever that is."""
     log.set(auth={"user_id": user_id})
 
     try:
         preferences = OnboardingPreferences(
             profession=onboarding_data.profession,
+            needs=onboarding_data.needs,
+            other_need=onboarding_data.other_need,
             response_style="casual",  # Default response style
             custom_instructions=None,
         )
 
-        clarify_answers: list[ClarifyAnswerRecord] | None = None
-        if onboarding_data.clarify_answers:
-            kept: list[ClarifyAnswerRecord] = [
-                {
-                    "id": a.id,
-                    "kind": a.kind,
-                    "question": a.question,
-                    "value": (a.value or "").strip() or None,
-                }
-                for a in onboarding_data.clarify_answers
-                if a.value and a.value.strip()
-            ]
-            clarify_answers = kept or None
-
-        focus = None
-        if onboarding_data.focus and onboarding_data.focus.strip():
-            focus = onboarding_data.focus.strip()
-
         # Atomic gate inside the repository: only the request that creates the
         # `onboarding` subdoc wins; concurrent POSTs and replays get None.
-        # selected_integrations is already lowercased/stripped/deduped by the
-        # IntegrationSlug type on OnboardingRequest — store as-is.
         updated_user = await user_repository.complete_onboarding(
             user_id,
-            name=onboarding_data.name.strip(),
             timezone=onboarding_data.timezone.strip() if onboarding_data.timezone else None,
-            phase=OnboardingPhase.PERSONALIZATION_PENDING,
+            phase=OnboardingPhase.COMPLETED,
             bio_status=BioStatus.PENDING,
-            pipeline_mode="split" if onboarding_data.defer_workflows else "full",
             preferences=preferences,
-            focus=focus,
-            clarify_answers=clarify_answers,
-            selected_integrations=(
-                list(onboarding_data.selected_integrations)
-                if onboarding_data.selected_integrations
-                else None
-            ),
         )
 
         if updated_user is None:
@@ -120,37 +100,28 @@ async def complete_onboarding(
             )
             return _serialize_user(existing)
 
-        # Enqueue the pipeline before any other side effects; roll back the
-        # subdoc on failure so the user isn't stuck with no worker job.
-        try:
-            await enqueue_intelligence_job(user_id)
-        except Exception as e:
-            log.error(
-                f"{LogTag.ONBOARDING} Enqueue failed, rolling back onboarding state for user",
-                user_id=user_id,
-                error=str(e),
-                error_type=type(e).__name__,
-                exc_info=True,
-            )
-            try:
-                await user_repository.clear_onboarding(user_id)
-            except Exception as rollback_error:
-                log.error(
-                    f"{LogTag.ONBOARDING} Rollback also failed for user",
-                    user_id=user_id,
-                    error=str(rollback_error),
-                    error_type=type(rollback_error).__name__,
-                    exc_info=True,
-                )
-            raise HTTPException(
-                status_code=503,
-                detail="Could not start onboarding. Please retry.",
-            ) from e
+        # `dedupe_key` guards against a retried POST re-counting the milestone.
+        # The typed need is free text, so only its presence travels; the
+        # profession is a picked value (or a short typed job) and goes onto the
+        # person profile so cohorts can cut by it.
+        capture_event(
+            user_id,
+            AnalyticsEvents.ONBOARDING_COMPLETED,
+            {
+                "needs": sorted(need.value for need in onboarding_data.needs),
+                "has_other_need": bool(onboarding_data.other_need),
+            },
+            dedupe_key=user_id,
+        )
+        identify_user(
+            user_id,
+            {"profession": onboarding_data.profession, "onboarding_completed": True},
+        )
 
-        background_tasks.add_task(seed_initial_user_data, user_id)
+        seeded_user = await _seed_first_conversation(updated_user, preferences)
 
         log.info(f"{LogTag.ONBOARDING} Onboarding completed successfully for user", user_id=user_id)
-        return _serialize_user(updated_user)
+        return _serialize_user(seeded_user or updated_user)
 
     except HTTPException:
         raise
@@ -165,48 +136,42 @@ async def complete_onboarding(
         raise HTTPException(status_code=500, detail="Failed to complete onboarding") from e
 
 
-async def submit_onboarding_integrations(
-    user_id: str,
-    selected_integrations: list[IntegrationSlug],
-) -> OnboardingIntegrationsStatus:
-    """Persist the user's selected integrations and enqueue the workflows-phase
-    job. Only valid for split-mode onboarding; idempotent under retries."""
-    log.set(auth={"user_id": user_id})
+async def _seed_first_conversation(
+    user: UserDocument, preferences: OnboardingPreferences
+) -> UserDocument | None:
+    """Seed GAIA's opening conversation and stamp its id on the onboarding subdoc.
 
-    user = await user_repository.get(user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    onboarding = user.onboarding or {}
-    if not onboarding:
-        raise HTTPException(status_code=409, detail="Onboarding has not been submitted yet")
-    if onboarding.get("pipeline_mode") != "split":
-        raise HTTPException(
-            status_code=409, detail="Onboarding is not awaiting integration selection"
+    Best-effort by design: the welcome is a nicety, and a user whose completion
+    write already landed must not be bounced back into the wizard because a
+    conversation could not be created. Returns the re-read user document when the
+    id was stored, so the completion response carries it.
+    """
+    user_id = user.id
+    try:
+        # Linking happens on the platform-pick step, before the answers are
+        # submitted, so the link is already on the document we just wrote. A user
+        # who skipped that step simply gets no platform line.
+        connected_platform = next(iter(linked_platforms_of(user)), None)
+        composed = compose_first_conversation(preferences, connected_platform)
+        # Almost always a Redis read: the answers PATCH that preceded this
+        # fired the model call in the background, so the user pays for it while
+        # they are still clicking. A miss costs at most two seconds, and a
+        # failed call means no chips rather than invented ones.
+        jobs = await resolve_first_question(user_id, preferences, connected_platform)
+        if jobs is not None:
+            composed = with_starting_jobs(composed, jobs.chips)
+        conversation_id = await seed_first_conversation(user_id, composed)
+        if conversation_id is None:
+            return None
+        return await user_repository.set_first_conversation_id(user_id, conversation_id)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.ONBOARDING} complete_onboarding failed to seed the first conversation",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
         )
-
-    if onboarding.get("first_message_conversation_id"):
-        log.info(f"{LogTag.ONBOARDING} integrations replay — onboarding already complete")
-        return OnboardingIntegrationsStatus.ALREADY_COMPLETE
-    if onboarding.get("workflows_job_id") and await is_workflows_job_live(user_id):
-        log.info(f"{LogTag.ONBOARDING} integrations replay — workflows job already running")
-        return OnboardingIntegrationsStatus.ALREADY_RUNNING
-
-    await user_repository.set_selected_integrations(user_id, list(selected_integrations))
-
-    job_id = await enqueue_workflows_job(user_id)
-    if job_id is None:
-        raise HTTPException(
-            status_code=503, detail="Could not start workflow creation. Please retry."
-        )
-
-    log.info(
-        f"{LogTag.ONBOARDING} integrations submitted, workflows phase queued",
-        user_id=user_id,
-        selected_count=len(selected_integrations),
-        job_id=job_id,
-    )
-    return OnboardingIntegrationsStatus.QUEUED
+        return None
 
 
 async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
@@ -226,7 +191,10 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
             preferences=OnboardingPreferences.model_validate(
                 onboarding_data.get("preferences") or {}
             ),
-            first_message_conversation_id=onboarding_data.get("first_message_conversation_id"),
+            first_message_conversation_id=onboarding_data.get(FIRST_CONVERSATION_ID_FIELD),
+            getting_started_conversation_id=onboarding_data.get(
+                GETTING_STARTED_CONVERSATION_ID_FIELD
+            ),
         )
 
     except HTTPException:
@@ -270,6 +238,27 @@ async def update_onboarding_preferences(
         if updated_user is None:
             raise HTTPException(status_code=404, detail="User not found")
 
+        # Detached on purpose: the wizard's next screens are the latency budget
+        # for the one model call the seeded conversation needs, and the PATCH
+        # that saved the answers is where that budget starts. Failures stay
+        # inside the task; a settings save must never fail over a nicety.
+        try:
+            spawn_background_task(
+                prewarm_first_question(
+                    user_id,
+                    preferences,
+                    next(iter(linked_platforms_of(updated_user)), None),
+                ),
+                name=f"prewarm_first_question:{user_id}",
+            )
+        except Exception as e:
+            log.warning(
+                f"{LogTag.ONBOARDING} could not start the first question prewarm",
+                user_id=user_id,
+                error=str(e)[:200],
+                error_type=type(e).__name__,
+            )
+
         log.info(
             f"{LogTag.ONBOARDING} Onboarding preferences updated successfully for user",
             user_id=user_id,
@@ -300,30 +289,32 @@ async def reset_onboarding(user_id: str) -> OnboardingResetCounts:
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Abort any in-flight pipeline first so it can't emit stage events
-    # after the doc is wiped. Run both aborts independently — a failure in one
-    # must not leave the other job live and still writing onboarding state.
-    intelligence_result, workflows_result = await asyncio.gather(
-        abort_active_intelligence_job(user_id),
-        abort_active_workflows_job(user_id),
-        return_exceptions=True,
-    )
-    if isinstance(intelligence_result, Exception):
+    # Abort any in-flight pipeline first so it can't emit stage events after the
+    # doc is wiped.
+    try:
+        await abort_active_intelligence_job(user_id)
+    except Exception as e:
         log.warning(
-            f"{LogTag.ONBOARDING} reset_onboarding failed to abort intelligence job",
-            intelligence_result=intelligence_result,
-            user_id=user_id,
-        )
-    if isinstance(workflows_result, Exception):
-        log.warning(
-            f"{LogTag.ONBOARDING} reset_onboarding failed to abort workflows job",
-            workflows_result=workflows_result,
+            f"{LogTag.ONBOARDING} reset_onboarding failed to abort personalization job",
+            error=str(e),
+            error_type=type(e).__name__,
             user_id=user_id,
         )
 
     onboarding = user.onboarding or {}
-    workflow_ids: list[str] = onboarding.get("suggested_workflows", []) or []
-    first_conversation_id: str | None = onboarding.get("first_message_conversation_id")
+    # Legacy state: users who ran the pre-relocation onboarding still carry the
+    # workflows it generated and the conversation it seeded. Nothing writes
+    # either any more, but a reset must still clear them.
+    workflow_ids: list[str] = onboarding.get("suggested_workflows") or []
+    seeded_conversation_ids: list[str] = [
+        cid
+        for cid in (
+            onboarding.get(FIRST_CONVERSATION_ID_FIELD),
+            onboarding.get(GETTING_STARTED_CONVERSATION_ID_FIELD),
+            onboarding.get(HOLO_CONVERSATION_ID_FIELD),
+        )
+        if cid
+    ]
 
     workflows_deleted = 0
     for wf_id in workflow_ids:
@@ -354,13 +345,14 @@ async def reset_onboarding(user_id: str) -> OnboardingResetCounts:
         )
 
     conversation_deleted = 0
-    if first_conversation_id:
+    for conversation_id in seeded_conversation_ids:
         try:
-            deleted = await conversation_repository.delete(first_conversation_id, user_id=user_id)
-            conversation_deleted = int(deleted)
+            deleted = await conversation_repository.delete(conversation_id, user_id=user_id)
+            conversation_deleted += int(deleted)
         except Exception as e:
             log.warning(
                 f"{LogTag.ONBOARDING} reset_onboarding failed to delete conversation",
+                conversation_id=conversation_id,
                 error=str(e),
                 error_type=type(e).__name__,
                 user_id=user_id,

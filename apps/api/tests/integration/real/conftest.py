@@ -34,6 +34,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 import uvicorn
 
+from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX, SUBSCRIPTION_PLAN_CACHE_TTL
+from app.db.redis import redis_cache
+from app.models.payment_models import PlanType
 from tests.helpers import (
     HeaderDrivenAuthMiddleware,
     pick_free_port,
@@ -278,6 +281,59 @@ def make_conversation(conversations_collection):
         return conv_id
 
     return _make
+
+
+@pytest.fixture
+async def make_pro_subscription(mongo_db, real_redis: Redis):
+    """Factory that makes a user PRO for the paid-only gate, in real storage.
+
+    Writes both halves of the state a paying user actually has, because in this
+    suite only one of them is readable:
+
+    * the ``subscriptions`` row — what makes a user PRO in production
+      (``subscription_repository.get_active_for_user``: any active row resolves
+      to ``PlanType.PRO``);
+    * the Redis plan cache entry ``subscription:<user_id>`` — the value
+      ``get_cached_plan_type`` reads FIRST, written by production itself on
+      every cache miss.
+
+    The cache entry is not an optimization here, it is the only thing the gate
+    can see: the root ``conftest.py`` patches
+    ``payment_service.get_user_subscription_status`` to a FREE stub for the
+    whole session (on the shared service singleton, so every caller gets it),
+    which is what a cache miss would fall through to. The row is still seeded —
+    it is the real state, it is what any unpatched reader resolves, and a
+    fixture that only wrote a cache entry would be describing a user who never
+    paid.
+
+    Both are removed afterwards, so a lapsed-user test later in the session
+    cannot inherit a stale PRO.
+    """
+    seeded: list[tuple[str, object]] = []
+
+    async def _make(user_id: str) -> None:
+        now = datetime.now(UTC)
+        result = await mongo_db["subscriptions"].insert_one(
+            {
+                "dodo_subscription_id": f"sub_test_{ObjectId()}",
+                "user_id": user_id,
+                "status": "active",
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+        seeded.append((user_id, result.inserted_id))
+        await redis_cache.set(
+            f"{SUBSCRIPTION_PLAN_CACHE_PREFIX}{user_id}",
+            {"plan_type": PlanType.PRO.value},
+            ttl=SUBSCRIPTION_PLAN_CACHE_TTL,
+        )
+
+    yield _make
+
+    for user_id, inserted_id in seeded:
+        await mongo_db["subscriptions"].delete_one({"_id": inserted_id})
+        await real_redis.delete(f"{SUBSCRIPTION_PLAN_CACHE_PREFIX}{user_id}")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

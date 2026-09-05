@@ -141,10 +141,18 @@ import {
   richMessageToMarkdown,
 } from "@gaia/shared/bots";
 import type { Message } from "@grammyjs/types";
+// From source, not the mocked barrel: GaiaApiError is the error class the real
+// link-code path branches on, and the mock does not re-export it.
+import { GaiaApiError } from "../../../../libs/shared/ts/src/bots/api";
 import {
   extractTelegramMedia,
   TelegramAdapter,
 } from "../../telegram/src/adapter";
+
+/** A real-shaped one-tap link code: 22 urlsafe-base64 characters. */
+const LINK_CODE = "Ab3-_xY9zQ1234567890wE";
+const FIRST_MESSAGE =
+  "Hi! I'm a founder. I could use help with my inbox. Who are you?";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -849,6 +857,82 @@ describe("TelegramAdapter - registerCommands command routing", () => {
     await startHandler(ctx);
 
     expect(helpExecute).toHaveBeenCalled();
+  });
+
+  it("redeems a /start deep-link payload and chats the returned first message", async () => {
+    const helpExecute = vi.fn().mockResolvedValue(undefined);
+    const helpCommand = {
+      name: "help",
+      description: "Get help",
+      options: [],
+      execute: helpExecute,
+    };
+    (adapter as unknown as { commands: Map<string, unknown> }).commands.set(
+      "help",
+      helpCommand,
+    );
+    const redeemLinkCode = vi
+      .fn()
+      .mockResolvedValue({ linked: true, firstMessage: FIRST_MESSAGE });
+    (adapter as unknown as { gaia: unknown }).gaia = {
+      redeemLinkCode,
+      getFrontendUrl: () => "https://gaia.test",
+    };
+
+    await (
+      adapter as unknown as {
+        registerCommands: (cmds: (typeof helpCommand)[]) => Promise<void>;
+      }
+    ).registerCommands([helpCommand]);
+
+    const startHandler = vi
+      .mocked(mockBotCommand)
+      .mock.calls.find((c) => c[0] === "start")![1] as (
+      ctx: ReturnType<typeof makeCtx>,
+    ) => Promise<void>;
+
+    await startHandler(makeCtx({ match: LINK_CODE }));
+
+    expect(redeemLinkCode).toHaveBeenCalledWith(
+      "telegram",
+      "999",
+      LINK_CODE,
+      expect.objectContaining({ username: "aliceuser", displayName: "Alice" }),
+    );
+    // The opener runs through the normal chat path, as the user's own turn.
+    expect(handleStreamingChat).toHaveBeenCalledOnce();
+    expect(vi.mocked(handleStreamingChat).mock.calls[0][1]).toMatchObject({
+      message: FIRST_MESSAGE,
+      platform: "telegram",
+      platformUserId: "999",
+    });
+    expect(helpExecute).not.toHaveBeenCalled();
+  });
+
+  it("does not chat when the /start payload fails to redeem", async () => {
+    const redeemLinkCode = vi
+      .fn()
+      .mockRejectedValue(new GaiaApiError("expired", 400));
+    (adapter as unknown as { gaia: unknown }).gaia = {
+      redeemLinkCode,
+      getFrontendUrl: () => "https://gaia.test",
+    };
+
+    await (
+      adapter as unknown as {
+        registerCommands: (c: unknown[]) => Promise<void>;
+      }
+    ).registerCommands([]);
+
+    const startHandler = vi
+      .mocked(mockBotCommand)
+      .mock.calls.find((c) => c[0] === "start")![1] as (
+      ctx: ReturnType<typeof makeCtx>,
+    ) => Promise<void>;
+
+    await startHandler(makeCtx({ match: LINK_CODE }));
+
+    expect(handleStreamingChat).not.toHaveBeenCalled();
   });
 
   it("skips the 'gaia' command from the loop (routes to registerGaiaCommand)", async () => {

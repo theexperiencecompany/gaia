@@ -34,7 +34,7 @@ import {
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { ChevronRight, Github } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
-import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { WhatsNewTimelineMenu } from "@/features/whats-new/components/WhatsNewTimelineMenu";
 import { useReleases } from "@/features/whats-new/hooks/useReleases";
@@ -43,7 +43,7 @@ import {
   usePlatformDetection,
 } from "@/hooks/ui/usePlatformDetection";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { usePricingModalStore } from "@/stores/pricingModalStore";
+import { usePaywallModalStore } from "@/stores/paywallModalStore";
 import { settingsPageItems, socialMediaItems } from "../config/settingsConfig";
 import { useNestedMenu } from "../hooks/useNestedMenu";
 import { NestedMenuTooltip } from "./NestedMenuTooltip";
@@ -250,8 +250,8 @@ export default function SettingsMenu({
     string | undefined
   >();
   const [modalAction, setModalAction] = useState<ModalAction | null>(null);
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
-  const openPricingModal = usePricingModalStore((s) => s.openModal);
+  const { isPaid, isUnknown } = useIsPaid();
+  const openPaywallModal = usePaywallModalStore((s) => s.openModal);
   const { unseen: unseenReleases } = useReleases();
 
   const whatsNewMenu = useNestedMenu();
@@ -292,7 +292,9 @@ export default function SettingsMenu({
   };
 
   const menuSections = [
-    ...(subscriptionStatus?.is_subscribed
+    // Never show the upgrade item while the plan is unknown — a cold-cache
+    // paying user would otherwise see an "Upgrade to Pro" entry on reload.
+    ...(isUnknown || isPaid
       ? []
       : [
           {
@@ -302,8 +304,9 @@ export default function SettingsMenu({
             items: [
               {
                 key: "upgrade_to_pro",
-                label: "Upgrade to Pro",
-                action: openPricingModal,
+                label: "Subscribe to GAIA Pro",
+                action: () =>
+                  openPaywallModal(undefined, { dismissible: true }),
                 icon: CircleArrowUp02Icon,
                 iconColor: "#00bbff",
                 customClassNames: { title: "text-primary font-medium" },
@@ -392,6 +395,13 @@ export default function SettingsMenu({
         isOpen={isMenuOpen}
         onOpenChange={(open) => {
           setIsMenuOpen(open);
+          // The flyouts are anchored to menu items that unmount with the
+          // menu; left open, one keeps floating after the menu is gone.
+          if (!open) {
+            for (const menu of Object.values(submenuByKey)) {
+              menu.setIsOpen(false);
+            }
+          }
           onOpenChange?.(open);
         }}
       >

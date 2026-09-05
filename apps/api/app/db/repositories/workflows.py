@@ -20,22 +20,28 @@ scan/routing reads are not keyed by id. Matches the ``workflow_executions``
 repository. Revisit only with evidence of a hot by-id read path.
 """
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 import re
 from typing import Any
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
+from app.constants.cache import (
+    REPO_GLOBAL_SCOPE,
+    WORKFLOW_LIMIT_NOTICE_PREFIX,
+    WORKFLOW_LIMIT_NOTICE_TTL,
+)
+from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
     DeactivationReason,
     PublicWorkflowRow,
-    TriggerConfig,
+    SystemWorkflowDefinition,
     TriggerType,
     WorkflowDocument,
+    WorkflowRearm,
     WorkflowStep,
     WorkflowUpdate,
+    _Unset,
 )
 from app.utils.creator import creator_lookup_stage
 from app.utils.occurrence import occurrence_window
@@ -62,42 +68,6 @@ _COMMUNITY_MATCH: dict[str, Any] = {
     "is_public": True,
     "$or": [{"is_explore": {"$exists": False}}, {"is_explore": False}],
 }
-
-
-class _Unset:
-    """Sentinel for a ``set_status`` field that was not provided — distinct from an
-    explicit ``None``, which the recovery scan legitimately writes (a reaped
-    non-recurring workflow clears its ``scheduled_at``)."""
-
-
-UNSET = _Unset()
-
-
-@dataclass(frozen=True, slots=True)
-class WorkflowReArm:
-    """The scheduler's re-arm fields for ``set_status``, grouped into one argument.
-
-    ``scheduled_at``/``next_run`` keep the ``UNSET`` sentinel because ``None`` is a
-    meaningful clear the recovery scan writes; ``occurrence_count``/``repeat`` are
-    applied only when provided.
-    """
-
-    scheduled_at: datetime | _Unset | None = UNSET
-    occurrence_count: int | None = None
-    repeat: str | None = None
-    next_run: datetime | _Unset | None = UNSET
-
-
-@dataclass(frozen=True, slots=True)
-class SystemWorkflowDefinition:
-    """A system workflow's canonical definition, re-applied on ``reset_system_workflow``."""
-
-    title: str
-    description: str
-    prompt: str
-    steps: list[WorkflowStep]
-    trigger_config: TriggerConfig
-    composio_trigger_ids: list[str]
 
 
 class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
@@ -556,24 +526,11 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         )
         return result is not None
 
-    async def set_status(
-        self,
-        workflow_id: str,
-        status: ScheduledTaskStatus,
-        *,
-        user_id: str | None = None,
-        rearm: WorkflowReArm | None = None,
-    ) -> bool:
-        """Set a workflow's run-state ``status`` plus the scheduler's re-arm fields.
-        Returns whether a workflow matched. ``user_id`` adds the owner guard where
-        the caller has one; the worker paths update by id alone. The re-arm fields
-        (``scheduled_at``/``occurrence_count``/``repeat``/``next_run``) are grouped
-        in ``rearm`` — see ``WorkflowReArm`` for the per-field write semantics."""
-        rearm = rearm or WorkflowReArm()
-        filter_: dict[str, Any] = {"_id": workflow_id}
-        if user_id:
-            filter_["user_id"] = user_id
-        set_fields: dict[str, Any] = {"status": status.value}
+    @staticmethod
+    def _rearm_set_fields(rearm: WorkflowRearm) -> dict[str, Any]:
+        """Translate a ``WorkflowRearm`` into a Mongo ``$set`` fragment — see
+        ``WorkflowRearm``'s docstring for the ``UNSET``-vs-``None`` semantics."""
+        set_fields: dict[str, Any] = {}
         if not isinstance(rearm.scheduled_at, _Unset):
             set_fields["scheduled_at"] = rearm.scheduled_at
         if rearm.occurrence_count is not None:
@@ -582,6 +539,27 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             set_fields["repeat"] = rearm.repeat
         if not isinstance(rearm.next_run, _Unset):
             set_fields[NEXT_RUN_FIELD] = rearm.next_run
+        return set_fields
+
+    async def set_status(
+        self,
+        workflow_id: str,
+        status: ScheduledTaskStatus,
+        *,
+        user_id: str | None = None,
+        rearm: WorkflowRearm | None = None,
+    ) -> bool:
+        """Set a workflow's run-state ``status`` plus the scheduler's re-arm fields.
+        Returns whether a workflow matched. ``user_id`` adds the owner guard where
+        the caller has one; the worker paths update by id alone.
+        """
+        filter_: dict[str, Any] = {"_id": workflow_id}
+        if user_id:
+            filter_["user_id"] = user_id
+        set_fields: dict[str, Any] = {
+            "status": status.value,
+            **self._rearm_set_fields(rearm or WorkflowRearm()),
+        }
         result = await self._apply_raw_update(
             filter_, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
         )
@@ -631,9 +609,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def reset_system_workflow(
         self, workflow_id: str, definition: SystemWorkflowDefinition
     ) -> WorkflowDocument | None:
-        """Re-apply a system workflow's original definition (title/description/prompt/
-        steps/trigger_config), preserving liveness, stats and ``created_at``. ``next_run``
-        stays a native datetime (python-mode dump), consistent with create/re-arm."""
+        """Re-apply a system workflow's original definition, preserving liveness,
+        stats and ``created_at``. ``next_run`` stays a native datetime (python-mode
+        dump), consistent with create/re-arm.
+        """
         trigger_doc = definition.trigger_config.model_dump()
         trigger_doc["composio_trigger_ids"] = definition.composio_trigger_ids
         return await self._apply_raw_update(
@@ -654,14 +633,33 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         """Delete the user's workflow. Returns whether a document was removed."""
         return await self._remove(workflow_id, REPO_GLOBAL_SCOPE, {"user_id": user_id})
 
-    async def delete_many_for_user(self, workflow_ids: list[str], user_id: str) -> int:
-        """Delete many of the user's workflows in one round trip (idempotency purge
-        of stale suggestions). Returns the count deleted."""
-        if not workflow_ids:
-            return 0
-        return await self._delete_many(
-            {"_id": {"$in": workflow_ids}, "user_id": user_id}, scope=REPO_GLOBAL_SCOPE
-        )
+    async def distinct_users_with_activated_workflows(self) -> list[str]:
+        """Every user id that owns at least one activated workflow — the paid-only
+        migration's candidate pool, checked one by one against subscription status."""
+        return await self._distinct("user_id", {"activated": True})
+
+    async def claim_limit_notice(self, user_id: str, workflow_id: str) -> bool:
+        """Whether this run may send the workflow's limit-wall notice.
+
+        A daily quota or budget wall is hit again by every occurrence until it
+        resets, and each hit used to send its own identical notification. The
+        wall is one fact per day, so a Redis ``SET NX EX`` gate allows one
+        notice per workflow per window. Fails open: if Redis cannot answer, the
+        user gets the notice.
+        """
+        client = redis_cache.redis
+        if client is None:
+            return True
+        try:
+            acquired = await client.set(
+                f"{WORKFLOW_LIMIT_NOTICE_PREFIX}{user_id}:{workflow_id}",
+                "1",
+                nx=True,
+                ex=WORKFLOW_LIMIT_NOTICE_TTL,
+            )
+        except Exception:
+            return True
+        return bool(acquired)
 
 
 workflow_repository = WorkflowsRepository()

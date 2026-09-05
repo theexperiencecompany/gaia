@@ -6,10 +6,13 @@ from typing import cast
 
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
+from app.db.repositories.reminders import reminder_repository
+from app.decorators.entitlements import is_subscription_active
 from app.models.chat_models import ConversationSource
 from app.models.reminder_models import (
     AgentType,
     ReminderModel,
+    ReminderStatus,
     StaticReminderPayload,
 )
 from app.models.user_models import AuthenticatedUser
@@ -135,6 +138,19 @@ async def execute_reminder_by_agent(
     if not reminder.id:
         log.error("Reminder has no ID, skipping execution", agent=reminder.agent)
         raise ValueError(f"Reminder {reminder.id} has no ID, skipping execution.")
+
+    # Paid-only gate, at the single choke point every reminder fire passes
+    # through (scheduler tick and direct execution alike). Pausing rather than
+    # cancelling is deliberate: the scheduler stops re-arming it, and the
+    # reminder is still there to resume if the user subscribes again.
+    if not await is_subscription_active(reminder.user_id):
+        log.warning(
+            "Reminder skipped — subscription required, pausing",
+            reminder_id=reminder.id,
+            user_id=reminder.user_id,
+        )
+        await reminder_repository.set_status(reminder.id, ReminderStatus.PAUSED)
+        return
 
     try:
         if reminder.agent == AgentType.STATIC:

@@ -1,15 +1,19 @@
 /**
- * `questions` stage. Active until every required question has been
- * answered. The transcript renders in `MessagesRegion`; this file only
- * owns the active question's composer (text / Autocomplete / Gmail).
+ * `questions` stage. Active until Q1 (profession) and Q2 (needs) are both
+ * answered. The transcript renders in `MessagesRegion`; this file owns the
+ * user's reply to the active question, rendered in the thread on their side.
  */
 
 "use client";
 
+import * as m from "motion/react-m";
 import type { Dispatch } from "react";
-import { useCallback, useEffect, useRef } from "react";
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCallback } from "react";
 import { FIELD_NAMES, questions } from "../../constants";
+import { MOTION_FADE_UP } from "../../constants/motion";
+import { usePaceDone } from "../../hooks/useTypedLines";
+import { canSubmitNeeds } from "../../state/derive";
+import { questionRevealKey } from "../../state/paceStore";
 import type { Action, OnboardingState } from "../../state/types";
 import { OnboardingInput } from "../OnboardingInput";
 
@@ -18,85 +22,67 @@ interface QuestionsProps {
   dispatch: Dispatch<Action>;
 }
 
-export function QuestionsComposer({ state, dispatch }: QuestionsProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const user = useUser();
+export function QuestionsReply({ state, dispatch }: QuestionsProps) {
   const currentQuestion = questions[state.questionIndex];
-  const prefilledRef = useRef(false);
+  // The reply only shows up once GAIA has finished "typing" the question.
+  const gaiaDone = usePaceDone(questionRevealKey(currentQuestion?.id ?? ""));
 
-  // Pre-fill the name draft from the account name at most once per mount,
-  // retrying until the persisted user store has actually hydrated.
-  useEffect(() => {
-    if (prefilledRef.current) return;
-    if (
-      currentQuestion?.fieldName === FIELD_NAMES.NAME &&
-      !state.responses[FIELD_NAMES.NAME] &&
-      !state.draftText &&
-      user.name
-    ) {
-      prefilledRef.current = true;
-      dispatch({ type: "draftText", value: user.name });
-    }
-  }, [currentQuestion, state.responses, state.draftText, user.name, dispatch]);
-
-  const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!currentQuestion) return;
-
-      const field = currentQuestion.fieldName;
-      const value =
-        field === FIELD_NAMES.PROFESSION
-          ? state.draftProfession?.trim() || null
-          : state.draftText.trim() || null;
-
-      if (!value) return;
-      dispatch({ type: "answer", field, value });
-    },
-    [currentQuestion, state.draftProfession, state.draftText, dispatch],
-  );
-
-  const handleInputChange = useCallback(
-    (value: string) => {
-      dispatch({ type: "draftText", value });
-    },
+  const handleSelectProfession = useCallback(
+    (value: string) => dispatch({ type: "draftProfession", value }),
     [dispatch],
   );
 
-  const handleProfessionInputChange = useCallback(
-    (value: string) => {
-      dispatch({ type: "draftProfession", value: value || null });
-    },
+  const { draftProfession } = state;
+  const handleSubmitProfession = useCallback(() => {
+    if (!draftProfession) return;
+    dispatch({
+      type: "answer",
+      field: FIELD_NAMES.PROFESSION,
+      value: draftProfession,
+    });
+  }, [dispatch, draftProfession]);
+
+  const handleToggleNeed = useCallback(
+    (value: string) => dispatch({ type: "toggleNeed", value }),
     [dispatch],
   );
 
-  const handleProfessionSelect = useCallback(
-    (key: React.Key | null) => {
-      const value = key != null ? String(key) : null;
-      dispatch({ type: "draftProfession", value });
-      if (value) {
-        dispatch({ type: "answer", field: FIELD_NAMES.PROFESSION, value });
-      }
-    },
+  const handleOtherNeedChange = useCallback(
+    (value: string) => dispatch({ type: "setOtherNeed", value }),
     [dispatch],
   );
 
-  const handleGmailSkip = useCallback(() => {
-    dispatch({ type: "answer", field: FIELD_NAMES.GMAIL, value: "skipped" });
-  }, [dispatch]);
+  const handleSubmitNeeds = useCallback(
+    () => dispatch({ type: "submitNeeds" }),
+    [dispatch],
+  );
+
+  if (!currentQuestion || !gaiaDone) return null;
+
+  if (currentQuestion.fieldName === FIELD_NAMES.NEEDS) {
+    return (
+      <m.div {...MOTION_FADE_UP}>
+        <OnboardingInput
+          mode="needs"
+          selectedNeeds={state.selectedNeeds}
+          otherNeed={state.otherNeed}
+          canContinue={canSubmitNeeds(state)}
+          onToggleNeed={handleToggleNeed}
+          onOtherNeedChange={handleOtherNeedChange}
+          onContinue={handleSubmitNeeds}
+        />
+      </m.div>
+    );
+  }
 
   return (
-    <OnboardingInput
-      mode="qa"
-      questionIndex={state.questionIndex}
-      draftText={state.draftText}
-      draftProfession={state.draftProfession}
-      inputRef={inputRef}
-      onSubmit={handleSubmit}
-      onInputChange={handleInputChange}
-      onProfessionSelect={handleProfessionSelect}
-      onProfessionInputChange={handleProfessionInputChange}
-      onGmailSkip={handleGmailSkip}
-    />
+    <m.div {...MOTION_FADE_UP}>
+      <OnboardingInput
+        mode="profession"
+        draftProfession={draftProfession}
+        onSelectProfession={handleSelectProfession}
+        onContinue={handleSubmitProfession}
+      />
+    </m.div>
   );
 }

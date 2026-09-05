@@ -15,7 +15,7 @@ import InboxZeroAiClient from "./InboxZeroAiClient";
 export const metadata: Metadata = generatePageMetadata({
   title: "Inbox Zero with AI — Automated Email Triage by GAIA",
   description:
-    "GAIA reads your inbox, labels emails by urgency, drafts replies, and creates tasks automatically. Reach inbox zero without spending hours in email. Free tier available.",
+    "GAIA reads your inbox, labels emails by urgency, drafts replies, and creates tasks automatically. Reach inbox zero without spending hours in email.",
   path: "/inbox-zero-ai",
   keywords: [
     "inbox zero AI",
@@ -72,7 +72,7 @@ const triageSteps = [
 export default function InboxZeroAiPage() {
   const webPageSchema = generateWebPageSchema(
     "Inbox Zero with AI — Automated Email Triage by GAIA",
-    "GAIA reads your inbox, labels emails by urgency, drafts replies, and creates tasks automatically. Reach inbox zero without spending hours in email. Free tier available.",
+    "GAIA reads your inbox, labels emails by urgency, drafts replies, and creates tasks automatically. Reach inbox zero without spending hours in email.",
     `${siteConfig.url}/inbox-zero-ai`,
     [
       { name: "Home", url: siteConfig.url },

@@ -20,7 +20,6 @@ export interface IConversation {
   userId?: string;
   starred?: boolean;
   isSystemGenerated?: boolean;
-  isOnboardingConversation?: boolean;
   systemPurpose?: SystemPurpose | null;
   isUnread?: boolean;
   source?: string; // ConversationSource from backend (web, telegram, discord, etc.)

@@ -1,7 +1,7 @@
 /**
  * Profession-keyed message scripts for the platform preview shown in the
- * `platforms` onboarding stage. The 20 profession enum values are grouped
- * into 5 archetypes; each archetype owns three scripts (one per platform)
+ * `platformPick` onboarding stage. The profession enum values are grouped
+ * into 5 archetypes; each archetype owns two scripts (one per platform)
  * that demonstrate the three things the copy promises: morning briefings,
  * urgent email flags, and workflow-finished pings.
  *
@@ -24,31 +24,32 @@ export type {
 } from "./platformPreviewMessages.types";
 
 const PROFESSION_TO_ARCHETYPE: Record<string, ProfessionArchetype> = {
-  engineer: "builder",
-  developer: "builder",
-  designer: "builder",
+  engineering: "builder",
+  product: "builder",
 
-  manager: "operator",
-  consultant: "operator",
-  analyst: "operator",
-  accountant: "operator",
+  executive: "operator",
   sales: "operator",
   marketing: "operator",
+  finance: "operator",
 
-  entrepreneur: "founder",
-  freelancer: "founder",
+  founder: "founder",
 
   student: "scholar",
-  teacher: "scholar",
-  researcher: "scholar",
-  doctor: "scholar",
-  lawyer: "scholar",
-  writer: "scholar",
 
-  artist: "default",
-  retired: "default",
+  creative: "default",
   other: "default",
 };
+
+const PREVIEW_PLATFORMS: ReadonlySet<string> = new Set<PlatformPreviewPlatform>(
+  ["telegram", "whatsapp", "imessage"],
+);
+
+/** Whether a platform has a preview script. */
+export function isPreviewPlatform(
+  platform: string,
+): platform is PlatformPreviewPlatform {
+  return PREVIEW_PLATFORMS.has(platform);
+}
 
 export function getArchetype(
   profession: string | undefined,
@@ -62,27 +63,23 @@ type ArchetypeScripts = Record<PlatformPreviewPlatform, PlatformScript>;
 export const PLATFORM_PREVIEW_ORDER: PlatformPreviewPlatform[] = [
   "telegram",
   "whatsapp",
-  "slack",
-  "discord",
+  "imessage",
 ];
 
 export const PLATFORM_LABELS: Record<PlatformPreviewPlatform, string> = {
   telegram: "Telegram",
   whatsapp: "WhatsApp",
-  slack: "Slack",
-  discord: "Discord",
+  imessage: "iMessage",
 };
 
 export const PLATFORM_ICONS: Record<PlatformPreviewPlatform, string> = {
   telegram: "/images/icons/macos/telegram.webp",
   whatsapp: "/images/icons/macos/whatsapp.webp",
-  slack: "/images/icons/macos/slack.webp",
-  discord: "/images/icons/macos/discord.webp",
+  imessage: "/images/icons/macos/imessage.webp",
 };
 
 const USER_PLACEHOLDER_NAME = "__user__";
 const USER_PLACEHOLDER_AVATAR = "__user_avatar__";
-const USER_COLOR = "#FFB37A";
 const FALLBACK_USER_AVATAR = "/aryan-avatar.webp";
 
 const BUILDER: ArchetypeScripts = {
@@ -140,57 +137,29 @@ const BUILDER: ArchetypeScripts = {
       },
     ],
   },
-  slack: {
-    title: "eng",
+  imessage: {
+    title: "GAIA",
     messages: [
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "you've got 2 code reviews waiting today. one is a small fix, the other is a bigger change to how login works.",
-        time: "9:12 AM",
+        from: "them",
+        text: "Heads up: the deploy you kicked off last night finished clean. Zero errors in the logs.",
+        time: "7:52",
       },
       {
-        author: USER_PLACEHOLDER_NAME,
-        avatar: USER_PLACEHOLDER_AVATAR,
-        authorColor: USER_COLOR,
-        text: "tell me about the bigger one",
-        time: "9:13 AM",
+        from: "them",
+        text: "Two PRs are waiting on your review. I summarised both, the second one touches auth.",
+        time: "7:52",
       },
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "it rewrites the login flow, so it really needs careful eyes before merging. want me to pull it up for you?",
-        time: "9:13 AM",
-      },
-    ],
-  },
-  discord: {
-    title: "releases",
-    messages: [
-      {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "this week's changelog is all written up. 14 updates, ready to publish whenever you are.",
-        time: "Fri 5:30 PM",
+        from: "me",
+        text: "move standup to 10, I want to read the auth one first",
+        time: "7:55",
+        status: "read",
       },
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "want me to post it right now, or should i wait and auto publish it at 6?",
-        time: "Fri 5:30 PM",
-      },
-      {
-        author: USER_PLACEHOLDER_NAME,
-        avatar: USER_PLACEHOLDER_AVATAR,
-        authorColor: USER_COLOR,
-        text: "post it now",
-        time: "Fri 5:31 PM",
-      },
-      {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "posted! also wanted to flag, one task has been stuck for over a week now. should i nudge the dev about it?",
-        time: "Fri 5:31 PM",
+        from: "them",
+        text: "Done. Standup is at 10, the team has the new invite.",
+        time: "7:55",
       },
     ],
   },
@@ -261,57 +230,29 @@ const OPERATOR: ArchetypeScripts = {
       },
     ],
   },
-  slack: {
-    title: "leadership",
+  imessage: {
+    title: "GAIA",
     messages: [
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "heads up, your client meeting is at 2pm today. i drafted talking points and saved them to your notes.",
-        time: "1:05 PM",
+        from: "them",
+        text: "Morning. Three things need you today, the rest I handled.",
+        time: "8:05",
       },
       {
-        author: USER_PLACEHOLDER_NAME,
-        avatar: USER_PLACEHOLDER_AVATAR,
-        authorColor: USER_COLOR,
-        text: "can you add last quarter's numbers too?",
-        time: "1:06 PM",
+        from: "them",
+        text: "The Q3 forecast deck is due at 2. I pulled the numbers from the sheet and drafted the summary slide.",
+        time: "8:05",
       },
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "added! revenue, retention, and customer satisfaction scores are all in the doc now.",
-        time: "1:06 PM",
-      },
-    ],
-  },
-  discord: {
-    title: "leadership",
-    messages: [
-      {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "your monthly report is ready. growth was flat this month, but churn is down 1.2%.",
-        time: "Mon 9:00 AM",
+        from: "me",
+        text: "who's the 11am with again?",
+        time: "8:09",
+        status: "read",
       },
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "biggest win was enterprise sales, up 18% from last month.",
-        time: "Mon 9:00 AM",
-      },
-      {
-        author: USER_PLACEHOLDER_NAME,
-        avatar: USER_PLACEHOLDER_AVATAR,
-        authorColor: USER_COLOR,
-        text: "post a quick summary in here too",
-        time: "Mon 9:01 AM",
-      },
-      {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "posted! i also flagged it so it'll come up in monday's standup.",
-        time: "Mon 9:01 AM",
+        from: "them",
+        text: "Priya from Northwind, renewal call. Her last email asked about the new pricing, brief is in your calendar.",
+        time: "8:09",
       },
     ],
   },
@@ -376,57 +317,30 @@ const FOUNDER: ArchetypeScripts = {
       },
     ],
   },
-  slack: {
-    title: "founders",
+  imessage: {
+    title: "GAIA",
     messages: [
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "your investor update goes out friday. the draft is ready in your notes whenever you want to take a look.",
-        time: "10:14 AM",
+        from: "them",
+        text: "Your investor update draft is ready, built from this week's numbers. Want to read it before it goes?",
+        time: "9:10",
       },
       {
-        author: USER_PLACEHOLDER_NAME,
-        avatar: USER_PLACEHOLDER_AVATAR,
-        authorColor: USER_COLOR,
-        text: "can you tighten up the numbers section?",
-        time: "10:15 AM",
+        from: "me",
+        text: "yes, and chase the two candidates who went quiet",
+        time: "9:12",
+        status: "read",
       },
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "done! i trimmed it down to revenue, costs, and how long the cash will last. want me to send you a preview?",
-        time: "10:15 AM",
+        from: "them",
+        text: "Read it in the doc. Both candidates chased, one already replied: she can do Thursday.",
+        time: "9:12",
       },
-    ],
-  },
-  discord: {
-    title: "sales",
-    messages: [
+      { from: "me", text: "book her", time: "9:14", status: "read" },
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "12 personalized intros are queued up and ready to go out monday morning.",
-        time: "Sun 8:00 PM",
-      },
-      {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "fyi 3 of them are warm leads. they actually replied to your last message.",
-        time: "Sun 8:00 PM",
-      },
-      {
-        author: USER_PLACEHOLDER_NAME,
-        avatar: USER_PLACEHOLDER_AVATAR,
-        authorColor: USER_COLOR,
-        text: "approve them all",
-        time: "Sun 8:01 PM",
-      },
-      {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "going out monday at 9am. i'll flag any replies as they come in.",
-        time: "Sun 8:01 PM",
+        from: "them",
+        text: "Booked, Thursday 3pm, invite sent.",
+        time: "9:14",
       },
     ],
   },
@@ -503,57 +417,30 @@ const SCHOLAR: ArchetypeScripts = {
       },
     ],
   },
-  slack: {
-    title: "lab",
+  imessage: {
+    title: "GAIA",
     messages: [
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "your weekly reading digest is up. 6 new papers in your research area this week.",
-        time: "Mon 8:30 AM",
+        from: "them",
+        text: "Lecture moved to room 204. Your reading for it is summarised, the two key papers are up top.",
+        time: "8:30",
       },
       {
-        author: USER_PLACEHOLDER_NAME,
-        avatar: USER_PLACEHOLDER_AVATAR,
-        authorColor: USER_COLOR,
-        text: "rank them for me by what's most important",
-        time: "Mon 8:31 AM",
+        from: "me",
+        text: "when is the essay due again",
+        time: "8:31",
+        status: "read",
       },
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "the top one is worth your monday. it actually cites a paper you bookmarked last month.",
-        time: "Mon 8:31 AM",
+        from: "them",
+        text: "Friday, 5pm. Outline is drafted from your notes, want it in the doc?",
+        time: "8:31",
       },
-    ],
-  },
-  discord: {
-    title: "research",
-    messages: [
+      { from: "me", text: "yes please", time: "8:32", status: "read" },
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "this week's reading digest is up. 6 new papers in your area.",
-        time: "Sun 7:00 PM",
-      },
-      {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "one of them cites a paper you bookmarked last month. same author too.",
-        time: "Sun 7:00 PM",
-      },
-      {
-        author: USER_PLACEHOLDER_NAME,
-        avatar: USER_PLACEHOLDER_AVATAR,
-        authorColor: USER_COLOR,
-        text: "summarize the top 3 for me",
-        time: "Sun 7:01 PM",
-      },
-      {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "summaries are in your notes, ranked by relevance to your current work.",
-        time: "Sun 7:01 PM",
+        from: "them",
+        text: "In the doc. Reminder set for Thursday morning.",
+        time: "8:32",
       },
     ],
   },
@@ -625,57 +512,30 @@ const DEFAULT_SCRIPTS: ArchetypeScripts = {
       { from: "me", text: "yes please", time: "3:22 PM", status: "read" },
     ],
   },
-  slack: {
-    title: "general",
+  imessage: {
+    title: "GAIA",
     messages: [
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "your weekly digest is ready. nothing urgent this week, just the highlights.",
-        time: "Sun 6:00 PM",
+        from: "them",
+        text: "Morning. Your inbox is sorted, two emails need a reply from you and I drafted both.",
+        time: "8:15",
+      },
+      { from: "me", text: "what's on today?", time: "8:17", status: "read" },
+      {
+        from: "them",
+        text: "Dentist at 11, call with Sam at 3. Sam wants the proposal first, it's attached to the invite.",
+        time: "8:17",
       },
       {
-        author: USER_PLACEHOLDER_NAME,
-        avatar: USER_PLACEHOLDER_AVATAR,
-        authorColor: USER_COLOR,
-        text: "anything i should look at first?",
-        time: "Sun 6:01 PM",
+        from: "me",
+        text: "great, send the proposal now",
+        time: "8:18",
+        status: "read",
       },
       {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "your annual review is due in 2 weeks. that's really the only firm deadline coming up.",
-        time: "Sun 6:01 PM",
-      },
-    ],
-  },
-  discord: {
-    title: "personal",
-    messages: [
-      {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "your weekly digest is ready. a few things worth a glance.",
-        time: "Sun 6:00 PM",
-      },
-      {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "nothing urgent though, just the highlights this week.",
-        time: "Sun 6:00 PM",
-      },
-      {
-        author: USER_PLACEHOLDER_NAME,
-        avatar: USER_PLACEHOLDER_AVATAR,
-        authorColor: USER_COLOR,
-        text: "anything with a deadline?",
-        time: "Sun 6:01 PM",
-      },
-      {
-        author: "GAIA",
-        authorColor: "#9CC3FF",
-        text: "yep, your annual review is due in 2 weeks.",
-        time: "Sun 6:01 PM",
+        from: "them",
+        text: "Sent. I'll nudge you before the call.",
+        time: "8:18",
       },
     ],
   },

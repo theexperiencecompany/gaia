@@ -14,9 +14,15 @@ from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
-from app.api.v1.endpoints.bot import _bot_rate_limit_notice, bot_chat_stream
+from app.api.v1.endpoints.bot import (
+    _bot_rate_limit_notice,
+    bot_chat_stream,
+    redeem_link_code,
+)
+from app.constants.auth import AUDIT_ACTOR_BOT_API
 from app.core.stream_manager import with_heartbeat
-from app.models.bot_models import BotChatRequest
+from app.db.redis import redis_cache
+from app.models.bot_models import BotChatRequest, RedeemLinkCodeRequest
 from app.models.payment_models import (
     CreateSubscriptionResponse,
     PlanDuration,
@@ -24,7 +30,10 @@ from app.models.payment_models import (
     PlanType,
     ProCheckout,
 )
+from app.models.platform_models import PlatformLinkResult
 from app.services.analytics_service import AnalyticsEvents
+from app.services.platform_link_code_service import PlatformLinkCodePayload
+from app.utils.errors import AppError
 from shared.py.wide_events import log, log_context
 
 BOT_BASE = "/api/v1/bot"
@@ -44,6 +53,37 @@ def _make_request(bot_api_key_valid: bool = True, **extra_state: object) -> Magi
     state.user = extra_state.get("user")
     state.authenticated = extra_state.get("authenticated", False)
     return state
+
+
+@pytest.fixture(autouse=True)
+def _no_real_redis_cost_budget():
+    """``bot_chat_stream`` calls ``enforce_daily_cost_budget`` -> ``get_cost``
+    directly (unmocked in the tests below), which reads the module-singleton
+    ``redis_cache.redis`` — a real client pointed at the test env's local Redis
+    (``tests/conftest.py``). Under randomized test order a connection opened by
+    an earlier test's event loop can outlive it, and a later ``.get()`` on the
+    same pooled connection raises ``RuntimeError: Event loop is closed`` instead
+    of the ``RedisError``/``OSError`` ``get_cost`` actually catches — an
+    unhandled 500, not a flaky assertion. Nulling the client forces the
+    documented fail-open (cost reads 0.0) with no network call at all.
+    """
+    original = redis_cache.redis
+    redis_cache.redis = None
+    yield
+    redis_cache.redis = original
+
+
+@pytest.fixture(autouse=True)
+def _pro_plan_by_default():
+    """GAIA is paid-only: default every test in this file to a paying user.
+
+    Most of these tests exercise chat mechanics, quota metering, or unrelated
+    bot endpoints — not the paywall itself (see TestBotChatStreamSubscriptionGate
+    for that). A test that needs FREE re-patches PLAN_PATCH inside its own
+    `with` block, which nests inside (and correctly overrides) this one.
+    """
+    with patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +135,395 @@ class TestCreateLinkToken:
             json={"platform": "discord", "platform_user_id": "u1"},
         )
         assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# POST /bot/redeem-link-code
+# ---------------------------------------------------------------------------
+
+REDEEM_BODY = {"platform": "telegram", "platform_user_id": "TG42", "code": "CODE123"}
+FIRST_MESSAGE = "Hi! I'm a founder. I could use help with my inbox. Who are you?"
+PEEK_PATCH = "app.api.v1.endpoints.bot.peek_platform_link_code"
+DISCARD_PATCH = "app.api.v1.endpoints.bot.discard_platform_link_code"
+COMPLETE_PATCH = "app.api.v1.endpoints.bot.complete_platform_link"
+
+
+def _link_result(is_new_link: bool = True) -> PlatformLinkResult:
+    return PlatformLinkResult(
+        status="linked",
+        platform="telegram",
+        platform_user_id="TG42",
+        connected_at="2026-09-01T00:00:00Z",
+        is_new_link=is_new_link,
+    )
+
+
+class TestRedeemLinkCode:
+    """POST /api/v1/bot/redeem-link-code"""
+
+    async def test_no_api_key(self, client: AsyncClient):
+        response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+        assert response.status_code == 401
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_happy_path_links_and_returns_the_first_message(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        with (
+            patch(
+                PEEK_PATCH,
+                new_callable=AsyncMock,
+                return_value=PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE),
+            ),
+            patch(DISCARD_PATCH, new_callable=AsyncMock) as mock_discard,
+            patch(
+                COMPLETE_PATCH, new_callable=AsyncMock, return_value=_link_result()
+            ) as mock_complete,
+        ):
+            response = await client.post(
+                f"{BOT_BASE}/redeem-link-code",
+                json={**REDEEM_BODY, "username": "tg_user", "display_name": "TG User"},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {"linked": True, "first_message": FIRST_MESSAGE}
+        mock_discard.assert_awaited_once_with("CODE123")
+        # The code, not the request body, decides which GAIA user gets linked.
+        mock_complete.assert_awaited_once_with(
+            "user1",
+            "telegram",
+            "TG42",
+            profile={"username": "tg_user", "display_name": "TG User"},
+        )
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_expired_or_unknown_code_is_rejected_without_linking(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        with (
+            patch(PEEK_PATCH, new_callable=AsyncMock, return_value=None),
+            patch(DISCARD_PATCH, new_callable=AsyncMock),
+            patch(COMPLETE_PATCH, new_callable=AsyncMock) as mock_complete,
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 400
+        assert "expired" in response.json()["message"].lower()
+        mock_complete.assert_not_awaited()
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_reused_code_is_rejected_on_the_second_call(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        """Single-use: the store hands the binding over exactly once."""
+        payload = PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE)
+        with (
+            patch(PEEK_PATCH, new_callable=AsyncMock, side_effect=[payload, None]),
+            patch(DISCARD_PATCH, new_callable=AsyncMock),
+            patch(COMPLETE_PATCH, new_callable=AsyncMock, return_value=_link_result()),
+        ):
+            first = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+            second = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert first.status_code == 200
+        assert second.status_code == 400
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_account_linked_elsewhere_returns_409(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        with (
+            patch(
+                PEEK_PATCH,
+                new_callable=AsyncMock,
+                return_value=PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE),
+            ),
+            patch(DISCARD_PATCH, new_callable=AsyncMock) as mock_discard,
+            patch(
+                COMPLETE_PATCH,
+                new_callable=AsyncMock,
+                side_effect=AppError(
+                    message="This telegram account is already linked to another GAIA user",
+                    status_code=409,
+                ),
+            ),
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 409
+        # The refusal asks the user to unlink and tap again: the code must still work.
+        mock_discard.assert_not_awaited()
+        assert "already linked" in response.json()["message"]
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_invalid_platform_is_rejected(self, _auth: AsyncMock, client: AsyncClient):
+        response = await client.post(
+            f"{BOT_BASE}/redeem-link-code", json={**REDEEM_BODY, "platform": "myspace"}
+        )
+        assert response.status_code == 422
+        # The rejection names the offending platform — a bot operator sending a
+        # typo'd platform has to be able to tell what was wrong from the body.
+        errors = response.json()["detail"]
+        assert [err["loc"] for err in errors] == [["body", "platform"]]
+        assert "myspace" in errors[0]["msg"]
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_header_mismatch_is_rejected_before_the_code_is_consumed(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        """An API-key holder must not redeem a code onto someone else's handle."""
+
+        async def _mismatched_request(request):
+            request.state.bot_platform = "telegram"
+            request.state.bot_platform_user_id = "SOMEONE_ELSE"
+
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.require_bot_api_key",
+                new=AsyncMock(side_effect=_mismatched_request),
+            ),
+            patch(PEEK_PATCH, new_callable=AsyncMock) as mock_peek,
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 403
+        mock_peek.assert_not_awaited()
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_a_platform_mismatch_alone_is_enough_to_reject(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        """The two halves of the guard are independent: a Discord key redeeming a
+        Telegram code carries the SAME handle it is authenticated for, so only
+        the platform half can catch it."""
+
+        async def _wrong_platform(request):
+            request.state.bot_platform = "discord"
+            request.state.bot_platform_user_id = "TG42"
+
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.require_bot_api_key",
+                new=AsyncMock(side_effect=_wrong_platform),
+            ),
+            patch(PEEK_PATCH, new_callable=AsyncMock) as mock_peek,
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 403
+        mock_peek.assert_not_awaited()
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_the_expired_code_body_tells_the_user_what_to_do_next(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        """This body is the whole reply a bot user sees when a one-tap link goes
+        stale — the why/fix pair is what turns a dead end into a retry."""
+        with (
+            patch(PEEK_PATCH, new_callable=AsyncMock, return_value=None),
+            patch(DISCARD_PATCH, new_callable=AsyncMock),
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 400
+        assert response.json() == {
+            "message": "This link has expired or was already used.",
+            "why": "the one-tap code is single-use and short-lived",
+            "fix": "head back to GAIA on the web and pick your platform again",
+        }
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_the_header_mismatch_body_names_the_mismatch(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        async def _mismatched_request(request):
+            request.state.bot_platform = "telegram"
+            request.state.bot_platform_user_id = "SOMEONE_ELSE"
+
+        with patch(
+            "app.api.v1.endpoints.bot.require_bot_api_key",
+            new=AsyncMock(side_effect=_mismatched_request),
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 403
+        assert response.json() == {
+            "message": "Request body does not match the authenticated bot headers"
+        }
+
+    async def test_a_matching_header_is_not_treated_as_a_mismatch(self, client: AsyncClient):
+        """The guard compares for INEQUALITY: flipped to `==`, the ordinary case
+        where the bot's own headers match the body would 403 every redemption."""
+
+        async def _matching_request(request):
+            request.state.bot_platform = "telegram"
+            request.state.bot_platform_user_id = "TG42"
+
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.require_bot_api_key",
+                new=AsyncMock(side_effect=_matching_request),
+            ),
+            patch(
+                PEEK_PATCH,
+                new_callable=AsyncMock,
+                return_value=PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE),
+            ),
+            patch(DISCARD_PATCH, new_callable=AsyncMock),
+            patch(COMPLETE_PATCH, new_callable=AsyncMock, return_value=_link_result()),
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 200
+
+    async def test_the_presented_code_is_the_one_redeemed_and_the_plan_is_checked(
+        self, client: AsyncClient
+    ):
+        """The code is the credential and the plan check is the paywall: a call
+        that loses either argument links the wrong person, or nobody's plan."""
+        with (
+            patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock()),
+            patch(
+                PEEK_PATCH,
+                new_callable=AsyncMock,
+                return_value=PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE),
+            ) as mock_peek,
+            patch(DISCARD_PATCH, new_callable=AsyncMock) as mock_discard,
+            patch(
+                "app.api.v1.endpoints.bot.require_platform_plan", new_callable=AsyncMock
+            ) as mock_plan,
+            patch(COMPLETE_PATCH, new_callable=AsyncMock, return_value=_link_result()),
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 200
+        mock_peek.assert_awaited_once_with("CODE123")
+        mock_plan.assert_awaited_once_with("user1", "telegram")
+        # Spent exactly once, and only after the link was written.
+        mock_discard.assert_awaited_once_with("CODE123")
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_a_plan_wall_leaves_the_code_live_for_the_retry(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        """A lapsed user who taps the link, subscribes, and taps again must not
+        be told the link expired: the wall refuses without spending the code."""
+        with (
+            patch(
+                PEEK_PATCH,
+                new_callable=AsyncMock,
+                return_value=PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE),
+            ),
+            patch(DISCARD_PATCH, new_callable=AsyncMock) as mock_discard,
+            patch(
+                "app.api.v1.endpoints.bot.require_platform_plan",
+                new=AsyncMock(
+                    side_effect=AppError(message="Subscription required", status_code=402)
+                ),
+            ),
+            patch(COMPLETE_PATCH, new_callable=AsyncMock) as mock_complete,
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 402
+        mock_complete.assert_not_awaited()
+        mock_discard.assert_not_awaited()
+
+    async def test_a_successful_redemption_stamps_the_wide_event_and_the_audit_trail(self):
+        """Linking a platform account is an auth-grade event: the audit entry is
+        the only record of which GAIA user claimed which handle, and the wide
+        event is what makes the redemption findable at all."""
+        body = RedeemLinkCodeRequest(platform="telegram", platform_user_id="TG42", code="CODE123")
+        request = MagicMock()
+        request.state = _make_request()
+
+        with (
+            patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock()),
+            patch(
+                PEEK_PATCH,
+                new_callable=AsyncMock,
+                return_value=PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE),
+            ),
+            patch(DISCARD_PATCH, new_callable=AsyncMock),
+            patch("app.api.v1.endpoints.bot.require_platform_plan", new=AsyncMock()),
+            patch(COMPLETE_PATCH, new_callable=AsyncMock, return_value=_link_result()),
+        ):
+            async with log_context("redeem_link_code_test"):
+                result = await redeem_link_code(request, body)
+                event = dict(log.get())
+
+        assert result.linked is True
+        assert event["operation"] == "redeem_link_code"
+        assert event["platform"] == "telegram"
+        assert event["user"] == {"id": "user1"}
+        assert event["outcome"] == "success"
+        assert event["is_new_link"] is True
+        assert event["audit"] == [
+            {
+                "msg": "platform account linked via one-tap code",
+                "actor": "user1",
+                "resource": "TG42",
+                "provider": "telegram",
+            }
+        ]
+
+    async def test_a_rejected_code_is_audited_with_its_reason_and_never_the_code(self):
+        """A probe hammering codes has to be findable, and the audit entry is the
+        only place that records it — never carrying the code, which is the
+        credential being guessed."""
+        body = RedeemLinkCodeRequest(platform="telegram", platform_user_id="TG42", code="CODE123")
+        request = MagicMock()
+        request.state = _make_request()
+
+        with (
+            patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock()),
+            patch(PEEK_PATCH, new_callable=AsyncMock, return_value=None),
+            patch(DISCARD_PATCH, new_callable=AsyncMock),
+        ):
+            async with log_context("redeem_link_code_test"):
+                with pytest.raises(AppError) as exc_info:
+                    await redeem_link_code(request, body)
+                event = dict(log.get())
+
+        assert exc_info.value.status_code == 400
+        assert event["audit"] == [
+            {
+                "msg": "platform link code rejected",
+                "actor": AUDIT_ACTOR_BOT_API,
+                "resource": "TG42",
+                "provider": "telegram",
+                "reason": "unknown_or_expired_code",
+            }
+        ]
+        assert "CODE123" not in str(event)
+
+    async def test_a_header_mismatch_is_audited_as_a_mismatch_not_a_bad_code(self):
+        """Two rejections share one audit message, so `reason` is the only thing
+        separating an expired link from an API key reaching for someone else's
+        handle — the second is an attack, the first is a Tuesday."""
+        body = RedeemLinkCodeRequest(platform="telegram", platform_user_id="TG42", code="CODE123")
+        request = MagicMock()
+        request.state = _make_request(bot_platform="telegram", bot_platform_user_id="SOMEONE_ELSE")
+
+        with patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock()):
+            async with log_context("redeem_link_code_test"):
+                with pytest.raises(AppError) as exc_info:
+                    await redeem_link_code(request, body)
+                event = dict(log.get())
+
+        assert exc_info.value.status_code == 403
+        assert exc_info.value.message == "Request body does not match the authenticated bot headers"
+        assert event["operation"] == "redeem_link_code"
+        assert event["platform"] == "telegram"
+        assert event["audit"] == [
+            {
+                "msg": "platform link code rejected",
+                "actor": AUDIT_ACTOR_BOT_API,
+                "resource": "TG42",
+                "provider": "telegram",
+                "reason": "platform_header_mismatch",
+            }
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -638,7 +1067,14 @@ class TestBotChatStream:
 
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/event-stream")
-        assert response.text == 'data: {"error": "not_authenticated"}\n\n'
+        # GAIA is paid-only: an unlinked user is told to link AND subscribe, via
+        # a `notice` frame ahead of the untouched not_authenticated error frame
+        # (the /auth-link flow it triggers is unchanged).
+        assert response.text == (
+            'data: {"notice": {"text": "GAIA is paid only. Link your account '
+            'with /auth, then subscribe to GAIA Pro to chat."}}\n\n'
+            'data: {"error": "not_authenticated"}\n\n'
+        )
 
     @patch("app.api.v1.endpoints.bot.enforce_tiered_limit", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
@@ -706,8 +1142,12 @@ class TestBotChatStream:
         assert refusal.args[2] == {"platform": "imessage", "reason": "plan_required"}
 
     @pytest.mark.parametrize(
+        # Both PRO: paid-only means a FREE user never reaches quota on any
+        # platform now (see TestBotChatStreamSubscriptionGate) — this proves a
+        # PAYING user reaches it regardless of whether the platform is
+        # premium-gated (imessage) or not (telegram).
         ("platform", "plan"),
-        [("imessage", PlanType.PRO), ("telegram", PlanType.FREE)],
+        [("imessage", PlanType.PRO), ("telegram", PlanType.PRO)],
     )
     @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
@@ -916,6 +1356,65 @@ class TestBotChatStream:
         assert response.status_code == 200
         mock_get_user.assert_awaited_once_with("discord", "disc_1")
 
+    @patch("app.api.v1.endpoints.bot.spawn_background_task")
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background")
+    @patch("app.api.v1.endpoints.bot.create_bot_session_token")
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture_event", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    async def test_the_background_stream_is_wired_with_the_exact_session_and_body(
+        self,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+        mock_session_token: MagicMock,
+        mock_run_background: MagicMock,
+        mock_spawn: MagicMock,
+    ):
+        """Every argument that reaches the background stream and the session
+        token — a wrong platform, user, or conversation id here silently
+        streams to (or authenticates) the wrong session."""
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-77")
+        mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
+        mock_sm.start_stream = AsyncMock()
+        mock_get_user.return_value = {"user_id": "uid-1", "_id": "uid-1"}
+        mock_session_token.return_value = "tok-77"
+
+        body = BotChatRequest(message="hello", platform="telegram", platform_user_id="tg_1")
+        request = MagicMock()
+        request.state = _make_request()
+
+        response = await bot_chat_stream(request, body)
+
+        assert response.status_code == 200
+        mock_session_token.assert_called_once_with(
+            user_id="uid-1",
+            platform="telegram",
+            platform_user_id="tg_1",
+            expires_minutes=15,
+        )
+        mock_sm.start_stream.assert_awaited_once()
+        start_stream_call = mock_sm.start_stream.call_args
+        stream_id = start_stream_call.args[0]
+        assert start_stream_call.args[1:] == ("conv-77", "uid-1")
+
+        run_call = mock_run_background.call_args
+        assert run_call.kwargs["stream_id"] == stream_id
+        assert run_call.kwargs["conversation_id"] == "conv-77"
+        assert run_call.kwargs["source"] == "telegram"
+        assert run_call.kwargs["user"] == {"user_id": "uid-1", "_id": "uid-1"}
+        message_request = run_call.kwargs["body"]
+        assert message_request.message == "hello"
+        assert message_request.conversation_id == "conv-77"
+        spawn_call = mock_spawn.call_args
+        assert spawn_call.kwargs["on_done"].__name__ == "_log_stream_failure"
+
 
 # ---------------------------------------------------------------------------
 # The streamed body of POST /bot/chat-stream — translation + keepalive
@@ -1094,6 +1593,133 @@ class TestBotChatStreamBody:
 
         assert body.index('"session_token": "tok"') < body.index('"done"')
 
+    async def test_a_disconnected_client_stops_forwarding_before_any_frame(
+        self, client: AsyncClient
+    ):
+        """`request.is_disconnected()` is checked before translating each chunk —
+        a client gone before the first one gets neither text nor `done`, and the
+        background task (already launched) is left to persist the result alone."""
+
+        async def answer() -> AsyncGenerator[str, None]:
+            yield 'data: {"response": "too late"}\n\n'
+            yield "data: [DONE]\n\n"
+
+        with patch("starlette.requests.Request.is_disconnected", new=AsyncMock(return_value=True)):
+            body = await self._collect(client, answer())
+
+        assert '"text"' not in body
+        assert '"done"' not in body
+        assert '"session_token": "tok"' in body
+
+    async def test_a_subscription_error_yields_a_generic_error_frame(self, client: AsyncClient):
+        """An exception from `subscribe_stream` must still end the turn with a
+        frame the bot can render, not a silently dead connection."""
+
+        async def broken() -> AsyncGenerator[str, None]:
+            yield 'data: {"response": "partial"}\n\n'
+            raise RuntimeError("redis blew up")
+
+        body = await self._collect(client, broken())
+
+        assert '"text": "partial"' in body
+        assert '"error": "Stream error occurred"' in body
+
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
+    @patch(
+        "app.api.v1.endpoints.bot.create_bot_session_token",
+        new=MagicMock(return_value="tok"),
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    async def test_message_request_is_built_for_the_resolved_user(
+        self,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+        client: AsyncClient,
+    ):
+        """`_build_bot_message_request`'s third argument is whose conversation
+        history gets loaded — swapping it for `None` (or another user's id)
+        would load the wrong user's history, or none at all, silently."""
+        mock_get_user.return_value = {"user_id": "uid1", "_id": "uid1"}
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
+        mock_sm.start_stream = AsyncMock()
+
+        async def _empty_stream():
+            if False:  # pragma: no cover
+                yield
+
+        mock_sm.subscribe_stream.return_value = _empty_stream()
+
+        built = AsyncMock(return_value=MagicMock())
+        with patch("app.api.v1.endpoints.bot._build_bot_message_request", built):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("discord"))
+            assert response.status_code == 200
+            await response.aread()
+
+        built.assert_awaited_once()
+        _body_arg, conversation_id_arg, user_id_arg = built.await_args.args
+        assert conversation_id_arg == "conv-1"
+        assert user_id_arg == "uid1"
+
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
+    @patch(
+        "app.api.v1.endpoints.bot.create_bot_session_token",
+        new=MagicMock(return_value="tok"),
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    async def test_background_failure_logger_is_built_for_this_stream_and_conversation(
+        self,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+        client: AsyncClient,
+    ):
+        """`_bot_stream_failure_logger`'s two args identify WHICH stream and
+        conversation a background crash belongs to — swapping either for
+        `None` would make a real failure unattributable in the logs."""
+        mock_get_user.return_value = {"user_id": "uid1", "_id": "uid1"}
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
+        mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
+        mock_sm.start_stream = AsyncMock()
+
+        async def _empty_stream():
+            if False:  # pragma: no cover
+                yield
+
+        mock_sm.subscribe_stream.return_value = _empty_stream()
+
+        logger_factory = MagicMock(return_value=MagicMock())
+        with patch("app.api.v1.endpoints.bot._bot_stream_failure_logger", logger_factory):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("discord"))
+            assert response.status_code == 200
+            await response.aread()
+
+        logger_factory.assert_called_once()
+        called_stream_id, called_conversation_id = logger_factory.call_args.args
+        assert called_conversation_id == "conv-1"
+        # stream_id is a fresh uuid4 per request — pin it to the id the stream
+        # was actually started under, not just "truthy", so a swap for None
+        # (or any other value) is caught.
+        started_stream_id = mock_sm.start_stream.await_args.args[0]
+        assert called_stream_id == started_stream_id
+        assert called_stream_id is not None
+
 
 # ---------------------------------------------------------------------------
 # POST /bot/transcribe — voice / audio transcription for bot adapters
@@ -1163,6 +1789,58 @@ class TestBotTranscribe:
             "transcript_length": len("hello there"),
         }
         assert "hello there" not in str(args[2])
+
+    @patch(
+        "app.api.v1.endpoints.bot.transcribe_audio",
+        new_callable=AsyncMock,
+        return_value="hello there",
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_transcribe_free_user_gets_402_and_never_transcribes(
+        self,
+        mock_auth: AsyncMock,
+        mock_transcribe: AsyncMock,
+        client: AsyncClient,
+    ):
+        """Transcription is Whisper spend, so a linked-but-unsubscribed user is
+        turned away. Gated imperatively rather than by decorator so the bot API
+        key is verified first — see the comment on the handler."""
+        with patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE):
+            response = await client.post(
+                f"{BOT_BASE}/transcribe",
+                files={"file": ("voice.ogg", b"fake-audio-bytes", "audio/ogg")},
+            )
+
+        assert response.status_code == 402
+        assert response.json()["detail"]["code"] == "subscription_required"
+        mock_transcribe.assert_not_called()
+
+    @patch(
+        "app.api.v1.endpoints.bot.transcribe_audio",
+        new_callable=AsyncMock,
+        return_value="hello there",
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_the_gate_is_asked_about_this_caller_and_this_feature(
+        self,
+        mock_auth: AsyncMock,
+        mock_transcribe: AsyncMock,
+        client: AsyncClient,
+        fake_user: dict,
+    ):
+        """The user id is what makes the gate a gate — asked about nobody, every
+        caller passes — and `feature` is what the 402 and its metrics are keyed
+        on, so a wrong one turns transcription refusals into someone else's."""
+        with patch(
+            "app.api.v1.endpoints.bot.require_active_subscription", new_callable=AsyncMock
+        ) as mock_gate:
+            response = await client.post(
+                f"{BOT_BASE}/transcribe",
+                files={"file": ("voice.ogg", b"fake-audio-bytes", "audio/ogg")},
+            )
+
+        assert response.status_code == 200
+        mock_gate.assert_awaited_once_with(str(fake_user["user_id"]), feature="bot_transcribe")
 
     @patch("app.api.v1.endpoints.bot.capture_event")
     @patch(
@@ -1344,6 +2022,143 @@ class TestBotChatStreamMetering:
             )
 
         limiter.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# POST /bot/chat-stream — the paid-only gate
+# ---------------------------------------------------------------------------
+
+
+class TestBotChatStreamSubscriptionGate:
+    """GAIA is paid-only: a linked FREE user is refused before any LangGraph run.
+
+    Distinct from platform_requires_upgrade above, which only gates premium
+    platforms (iMessage) — this gates every platform. The refusal must reach
+    the bot as a real outbound message (a `notice` frame), not a bare error
+    code, because it carries a per-user checkout link.
+    """
+
+    @staticmethod
+    def _pro_checkout(payment_link: str | None) -> AsyncMock:
+        return AsyncMock(
+            return_value=ProCheckout(
+                plan=PlanResponse(
+                    id="plan_pro",
+                    dodo_product_id="prod_pro",
+                    name="Pro",
+                    amount=3000,
+                    currency="USD",
+                    duration=PlanDuration.MONTHLY,
+                    is_active=True,
+                    created_at=datetime(2026, 1, 1, tzinfo=UTC),
+                    updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+                ),
+                checkout=CreateSubscriptionResponse(
+                    subscription_id="cs_1", payment_link=payment_link, status="pending"
+                ),
+            )
+        )
+
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.enforce_tiered_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_linked_free_user_gets_a_notice_with_their_checkout_link(
+        self,
+        mock_auth: AsyncMock,
+        mock_limit: AsyncMock,
+        mock_tiered: AsyncMock,
+        mock_capture: MagicMock,
+        client: AsyncClient,
+    ):
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new_callable=AsyncMock,
+                return_value={"_id": "u1"},
+            ),
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
+            patch(
+                "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
+                self._pro_checkout("https://checkout.dodopayments.com/s/cs_1"),
+            ),
+        ):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("telegram"))
+
+        assert response.status_code == 200
+        assert response.text == (
+            'data: {"notice": {"text": "GAIA is paid only. Subscribe to GAIA Pro '
+            'to keep chatting: https://checkout.dodopayments.com/s/cs_1"}}\n\n'
+            'data: {"done": true, "conversation_id": ""}\n\n'
+        )
+        # No LangGraph run, and no plan quota charged for a turn that never happened.
+        mock_tiered.assert_not_awaited()
+
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.enforce_tiered_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_discount_code_is_appended_when_configured(
+        self,
+        mock_auth: AsyncMock,
+        mock_limit: AsyncMock,
+        mock_tiered: AsyncMock,
+        mock_capture: MagicMock,
+        client: AsyncClient,
+    ):
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new_callable=AsyncMock,
+                return_value={"_id": "u1"},
+            ),
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
+            patch(
+                "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
+                self._pro_checkout(None),
+            ),
+            patch("app.api.v1.endpoints.bot.settings.PAYWALL_DISCOUNT_CODE", "SAVE20"),
+        ):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("telegram"))
+
+        assert "Use code SAVE20 for a discount." in response.text
+
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.enforce_tiered_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_the_refusal_is_captured_with_its_own_reason_not_as_submitted(
+        self,
+        mock_auth: AsyncMock,
+        mock_limit: AsyncMock,
+        mock_tiered: AsyncMock,
+        mock_capture: MagicMock,
+        client: AsyncClient,
+    ):
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new_callable=AsyncMock,
+                return_value={"_id": "u1"},
+            ),
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
+            patch(
+                "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
+                self._pro_checkout(None),
+            ),
+        ):
+            await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("telegram"))
+
+        captured = [call.args[1] for call in mock_capture.call_args_list]
+        assert AnalyticsEvents.CHAT_MESSAGE_SUBMITTED not in captured
+        assert AnalyticsEvents.CHAT_MESSAGE_REFUSED in captured
+        refusal = next(
+            call
+            for call in mock_capture.call_args_list
+            if call.args[1] == AnalyticsEvents.CHAT_MESSAGE_REFUSED
+        )
+        assert refusal.args[0] == "u1"
+        assert refusal.args[2] == {"platform": "telegram", "reason": "subscription_required"}
 
 
 class TestBotRateLimitNotice:

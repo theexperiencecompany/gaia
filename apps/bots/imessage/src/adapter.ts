@@ -5,6 +5,7 @@ import {
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
+  consumeInboundLinkCode,
   createBotLogger,
   extractSubcommandArgs,
   friendlyMediaError,
@@ -309,12 +310,25 @@ export class ImessageAdapter extends BaseBotAdapter {
     );
 
     try {
-      await this.ensureWelcomed(handle, space);
-
       const target = this.createImessageTarget(handle, space);
 
-      if (text.startsWith("/")) {
-        const withoutSlash = text.slice(1);
+      // Before the welcome: an unlinked sender arriving with a one-tap code is
+      // linking, not being greeted with "run /auth".
+      const chatText = await consumeInboundLinkCode({
+        gaia: this.gaia,
+        platform: this.platform,
+        platformUserId: handle,
+        text,
+        target,
+        isLinked: () =>
+          this.isUserLinked(handle, WELCOME_AUTH_CHECK_TIMEOUT_MS),
+      });
+      if (chatText === null) return;
+
+      await this.ensureWelcomed(handle, space);
+
+      if (chatText.startsWith("/")) {
+        const withoutSlash = chatText.slice(1);
         const spaceIndex = withoutSlash.indexOf(" ");
         const commandName = (
           spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
@@ -341,7 +355,7 @@ export class ImessageAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleStreamingMessage(handle, space, text);
+      await this.handleStreamingMessage(handle, space, chatText);
     } finally {
       await space.stopTyping().catch(() => undefined);
     }

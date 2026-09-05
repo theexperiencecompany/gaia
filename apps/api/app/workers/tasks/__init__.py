@@ -10,7 +10,6 @@ from .memory_sweep_tasks import sweep_expired_memories
 from .nurture_tasks import run_nurture_sequence_task
 from .onboarding_tasks import (
     process_onboarding_intelligence_task,
-    process_onboarding_workflows_task,
 )
 from .platform_link_tasks import sweep_abandoned_imessage_registrations
 from .reminder_tasks import cleanup_expired_reminders, process_reminder
@@ -29,7 +28,6 @@ from .workflow_tasks import (
 __all__ = [
     "process_gmail_emails_to_memory",
     "process_onboarding_intelligence_task",
-    "process_onboarding_workflows_task",
     "process_reminder",
     "cleanup_expired_reminders",
     "check_inactive_users",

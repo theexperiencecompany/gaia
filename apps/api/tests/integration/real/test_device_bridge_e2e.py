@@ -386,13 +386,28 @@ def _client(base_url: str, user_id: str | None = None) -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=base_url, headers=headers, timeout=35.0)
 
 
+OWNER_USER_ID = "device-e2e-owner"
+
+
 class TestFullDeviceLifecycle:
     async def test_pair_up_real_mcp_round_trip_then_revoke(
-        self, tmp_path, live_api_server, clean_bridge_tables, everything_server_cached, warm_cli
+        self,
+        tmp_path,
+        live_api_server,
+        clean_bridge_tables,
+        everything_server_cached,
+        warm_cli,
+        make_pro_subscription,
     ):
         """The golden path, end to end, with no shortcuts anywhere in the chain."""
+        # The device tunnel is paid-only and checks the subscription at connect
+        # (device_ws.py), so the owner needs a real active subscription before
+        # the daemon dials — otherwise the handshake is refused with a 403 and
+        # the whole lifecycle never starts. A free user's rejection is covered
+        # by tests/unit/api/test_device_ws_paid_only_gate.py.
+        await make_pro_subscription(OWNER_USER_ID)
         daemon = BridgeDaemon(tmp_path / "home")
-        owner = _client(live_api_server.url, "device-e2e-owner")
+        owner = _client(live_api_server.url, OWNER_USER_ID)
         try:
             # 1. Real `gaia bridge login` subprocess starts RFC 8628 pairing.
             await daemon.start_login(live_api_server.url, "e2e-test-machine")

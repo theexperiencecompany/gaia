@@ -13,6 +13,7 @@ these tests mock that repository method (never the DB).
 """
 
 from collections.abc import AsyncGenerator
+import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -308,6 +309,68 @@ class TestConsumeAgentStreamCallsTheAgent:
             user_message_id=state.user_message_id,
             bot_message_id=state.bot_message_id,
         )
+
+
+class TestConsumeAgentStreamAccumulatesAcrossChunks:
+    """The turn's accumulators are handed to the dispatcher one chunk at a time.
+    They are the turn's only memory of what arrived before, so a chunk that
+    carries neither todos nor chips must still leave both intact — the dispatcher
+    returns the running follow-up list rather than recomputing it, and the todo
+    snapshots are merged in place. Both failures are silent live: the stream
+    looks identical and only the saved turn is missing its todos or its chips.
+    """
+
+    async def _consume(self, chunks: list[dict[str, Any]]) -> _StreamState:
+        async def _chunks() -> AsyncGenerator[str, None]:
+            for chunk in chunks:
+                yield f"data: {json.dumps(chunk)}\n\n"
+
+        async def fake_call_agent(**_: Any) -> AsyncGenerator[str, None]:
+            return _chunks()
+
+        state = _StreamState(turn_id="turn-1")
+        turn = _TurnContext(
+            conversation_id="conv-1",
+            stream_id="stream-1",
+            source=None,
+            usage_callback=UsageMetadataCallbackHandler(),
+        )
+        sm = AsyncMock()
+        sm.is_cancelled = AsyncMock(return_value=False)
+
+        with (
+            patch.object(chat_stream, "call_agent", fake_call_agent),
+            patch.object(chat_stream, "stream_manager", sm),
+            patch("app.services.chat.chunks.stream_manager", sm),
+            patch("app.utils.stream_publishers.stream_manager", sm),
+        ):
+            await _consume_agent_stream(
+                MessageRequestWithHistory(message="hi", messages=[], conversation_id="conv-1"),
+                {"user_id": "u1"},
+                turn,
+                None,
+                state,
+            )
+        return state
+
+    async def test_todo_snapshots_are_merged_into_the_turns_own_accumulator(self) -> None:
+        snapshot = {"source": "executor", "todos": [{"id": "t1", "status": "done"}]}
+        state = await self._consume([{"todo_progress": snapshot}])
+
+        assert state.todo_progress_accumulated == {"executor": snapshot}
+
+    async def test_chips_from_an_earlier_chunk_survive_a_later_plain_chunk(self) -> None:
+        """The dispatcher returns the running list for every chunk, including the
+        ones that carry no chips — so the last chunk of a turn does not blank
+        them."""
+        state = await self._consume(
+            [
+                {"follow_up_actions": ["Draft a reply", "Add to calendar"]},
+                {"response": "Anything else?"},
+            ]
+        )
+
+        assert state.follow_up_actions == ["Draft a reply", "Add to calendar"]
 
 
 class TestRunChatStreamTurnDerivations:

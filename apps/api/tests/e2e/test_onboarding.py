@@ -1,50 +1,45 @@
-"""Onboarding as the user actually experiences it: submit, watch, finish, reset.
+"""Onboarding as the user actually experiences it: submit, connect Gmail, reset.
 
-The flow spans five layers that no test crossed together — the endpoints, the
-service gate, the ARQ job lifecycle, the intelligence DAG, and the second job
-that finishes the split (Gmail) shape. The unit suites underneath fake every
-node at its own boundary, so orchestration is asserted in isolation and the
-seams between layers are asserted nowhere. Two of the functions the user's data
-depends on most had no test at all: ``submit_onboarding_integrations`` (which
-decides whether a second pipeline starts) and ``reset_onboarding`` (which
-deletes workflows, todos, conversations, integrations and memories, and aborts
-whatever is still running).
+The flow spans layers no other test crosses together — the HTTP endpoints, the
+onboarding service, the OAuth connect handler, the ARQ job slot, and the Gmail
+personalization DAG. The unit suites underneath fake every node at its own
+boundary, so orchestration is asserted in isolation and the seams between layers
+are asserted nowhere.
 
-What that costs when it breaks is invisible. Every stage is a fire-and-forget
-WebSocket emit wrapped in ``try/except``, every node runs under ``_safe_run``,
-and both ARQ tasks swallow their own failure and mark the phase complete anyway.
-So a broken pipeline does not error — it produces an onboarding that finishes
-with no todos, no workflows, no first message, and a reveal screen that shows
-defaults. A double-submit produces something worse: two pipelines emitting
-interleaved stages onto the same socket, which the frontend's stage cursor
-cannot untangle.
+The shape changed: submitting the form *is* completion. Nothing is queued, no
+todo is seeded and no conversation is created there. Everything the user gets —
+the inbox scan, memories, writing style, triage, social profiles, the holo card
+and the conversation that hands it over — is earned by connecting Gmail, exactly
+once per user. What that costs when it breaks is invisible: every stage emit is
+fire-and-forget, every node swallows its own failure, and the task returns a
+string rather than raising. A broken pipeline does not error, it just leaves a
+user with no card and no memories and nothing anywhere saying so. A pipeline
+that runs *twice* is worse — a second holo card and a second announcement
+conversation for a user who merely reconnected Gmail.
 
 **What is real here.** The HTTP endpoints, ``onboarding_service``,
-``intelligence_job``, both ARQ task wrappers, and the whole
-``intelligence_service`` DAG including every stage emit and the branch
-selection. ARQ is real too: jobs are enqueued onto a real ``ArqRedis`` (backed
-by fakeredis), read back off the queue by ``run_queued_jobs`` exactly as the
-worker does, and aborts land in arq's real ``abort`` sorted set — so "the job is
-live" and "the job was aborted" are answered by arq, not by a mock.
+``handle_oauth_connection``'s Gmail branch, ``intelligence_job``, the ARQ task
+wrapper, and the whole ``intelligence_service`` DAG including triage, writing
+style, the holo card and the seeded announcement. ARQ is real too: jobs are
+enqueued onto a real ``ArqRedis`` (backed by fakeredis), read back off the queue
+by ``run_queued_jobs`` exactly as the worker does, and aborts land in arq's real
+``abort`` sorted set — so "the job is live" and "the job was aborted" are
+answered by arq, not by a mock.
 
-**What is doubled.** Only external I/O: the LLM, Gmail, Composio, and the
-persistence layer. ``_UserStore`` stands in for Mongo and mirrors three
-conditional repository contracts — the ``onboarding: {$exists: false}`` gate,
-compare-and-clear on the job id, and set-social-profiles-if-unset — each of
-which is certified against real Mongo in ``tests/contracts/test_users_repository.py``.
-The tests below assert what the *services* do with each outcome, which is the
-part no other test covers.
+**What is doubled.** Only external I/O: the LLM, Gmail, Composio, notifications
+and the persistence layer. ``_UserStore`` stands in for Mongo and mirrors two
+conditional repository contracts — the ``onboarding: {$exists: false}`` gate and
+compare-and-clear on the job id — each of which is certified against real Mongo
+in ``tests/contracts/test_users_repository.py``.
 """
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-import time
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -52,53 +47,61 @@ from arq.connections import ArqRedis
 from arq.constants import abort_jobs_ss, default_queue_name, job_key_prefix
 from arq.jobs import Job
 import fakeredis.aioredis
+from fastapi import BackgroundTasks
 from httpx import AsyncClient
-from langchain_core.messages import AIMessage
 import pytest
 
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.onboarding import (
+    GETTING_STARTED_CONVERSATION_ID_FIELD,
+    GMAIL_PERSONALIZATION_MARKER,
+    HOLO_CONVERSATION_ID_FIELD,
     INTELLIGENCE_TASK,
-    WORKFLOWS_TASK,
+    LEGACY_PERSONALIZATION_MARKER,
 )
+from app.models.oauth_models import OAuthIntegration
 from app.models.onboarding_models import (
     EmailSummary,
+    HoloCardLLMOutput,
     InboxTriageOutput,
     SocialProfile,
     WritingStyleExampleBlocks,
     WritingStyleOutput,
 )
-from app.models.user_models import OnboardingIntegrationsStatus, OnboardingPhase, UserDocument
-from app.models.workflow_models import SuggestedTrigger, TriggerConfig, TriggerType
-from app.services.onboarding import intelligence_service
-from app.services.onboarding.intelligence_service import (
-    OnboardingStage,
-    _FocusTodoList,
-    _TodoListFromEmails,
-    _TodoSpec,
-    _WorkflowList,
-    _WorkflowSpec,
-)
+from app.models.user_models import OnboardingPhase, PersonalizationBundle, UserDocument
+from app.services.oauth.oauth_service import handle_oauth_connection
+from app.services.onboarding.intelligence_service import OnboardingStage, holo_card_url
 from app.utils.redis_utils import RedisPoolManager
-from app.workers.tasks.onboarding_tasks import (
-    process_onboarding_intelligence_task,
-    process_onboarding_workflows_task,
-)
+from app.workers.tasks.onboarding_tasks import process_onboarding_intelligence_task
 from tests.conftest import FAKE_USER
 
 pytestmark = pytest.mark.e2e
 
 USER_ID: str = FAKE_USER["user_id"]
 
-#: The sender the triage LLM reports as important. Todo specs that cite it keep
-#: their ``source_email``; anything else is dropped as hallucinated.
+#: Patch-target prefix for the onboarding service package.
+SVC = "app.services.onboarding"
+
+#: The sender the triage LLM reports as important.
 REAL_SENDER = "priya@client.com"
 REAL_SUBJECT = "Contract redlines"
 
 SUBMIT = "/api/v1/onboarding"
-INTEGRATIONS = "/api/v1/onboarding/integrations"
 RESET = "/api/v1/onboarding/reset"
 STATUS = "/api/v1/onboarding/status"
 PERSONALIZATION = "/api/v1/onboarding/personalization"
+
+MEMORY_TASK = "process_gmail_emails_to_memory"
+
+GMAIL_CONFIG = OAuthIntegration(
+    id=GMAIL_INTEGRATION_ID,
+    name="Gmail",
+    description="Email",
+    category="productivity",
+    provider="google",
+    scopes=[],
+    managed_by="self",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -110,11 +113,11 @@ class _UserStore:
     """The user collection, in process.
 
     Only the named methods the onboarding flow calls are implemented, under the
-    repository's own names, so production code is unchanged. The three methods
+    repository's own names, so production code is unchanged. The two methods
     whose real semantics live in a Mongo filter rather than in Python —
-    ``complete_onboarding``'s existence gate, ``clear_active_job_if_matches``'s
-    compare-and-clear, and ``set_social_profiles_if_unset`` — are reproduced
-    here; each is certified against real Mongo by the repository contract suite.
+    ``complete_onboarding``'s existence gate and ``clear_active_job_if_matches``'s
+    compare-and-clear — are reproduced here; each is certified against real Mongo
+    by the repository contract suite.
     """
 
     def __init__(self) -> None:
@@ -133,10 +136,6 @@ class _UserStore:
 
     def onboarding_of(self, user_id: str) -> dict[str, Any]:
         return deepcopy(self.docs[user_id].get("onboarding") or {})
-
-    def first_message_of(self, user_id: str) -> str | None:
-        """Read straight through, for the stage sink's mid-flight snapshots."""
-        return (self.docs.get(user_id, {}).get("onboarding") or {}).get("first_message")
 
     def _sub(self, user_id: str) -> dict[str, Any] | None:
         doc = self.docs.get(user_id)
@@ -159,8 +158,6 @@ class _UserStore:
         doc = self.docs.get(user_id)
         if doc is None or "onboarding" in doc:
             return None
-        if fields.get("name") is not None:
-            doc["name"] = fields["name"]
         if fields.get("timezone") is not None:
             doc["timezone"] = fields["timezone"]
         sub: dict[str, Any] = {
@@ -168,12 +165,8 @@ class _UserStore:
             "completed_at": datetime.now(UTC),
             "phase": fields["phase"],
             "bio_status": fields["bio_status"],
-            "pipeline_mode": fields["pipeline_mode"],
             "preferences": fields["preferences"].model_dump(),
         }
-        for key in ("focus", "clarify_answers", "selected_integrations"):
-            if fields.get(key) is not None:
-                sub[key] = fields[key]
         doc["onboarding"] = sub
         return await self.get(user_id)
 
@@ -183,11 +176,6 @@ class _UserStore:
     async def reset_onboarding(self, user_id: str) -> None:
         self.docs.get(user_id, {}).pop("onboarding", None)
 
-    async def set_selected_integrations(self, user_id: str, integrations: list[str]) -> None:
-        sub = self._sub(user_id)
-        if sub is not None:
-            sub["selected_integrations"] = integrations
-
     async def set_onboarding_phase(self, user_id: str, phase: OnboardingPhase) -> bool:
         sub = self._sub(user_id)
         if sub is None:
@@ -195,7 +183,21 @@ class _UserStore:
         sub["phase"] = phase
         return True
 
-    # -- job slots ---------------------------------------------------------
+    async def set_bio_status(self, user_id: str, bio_status: Any) -> None:
+        sub = self._sub(user_id)
+        if sub is not None:
+            sub["bio_status"] = bio_status
+
+    async def set_first_conversation_id(
+        self, user_id: str, conversation_id: str
+    ) -> UserDocument | None:
+        sub = self._sub(user_id)
+        if sub is None:
+            return None
+        sub[GETTING_STARTED_CONVERSATION_ID_FIELD] = conversation_id
+        return await self.get(user_id)
+
+    # -- job slot ----------------------------------------------------------
     async def set_active_job(self, user_id: str, field_path: str, job_id: str) -> None:
         sub = self._sub(user_id)
         if sub is not None:
@@ -213,30 +215,15 @@ class _UserStore:
             sub.pop(key)
 
     # -- pipeline writes ---------------------------------------------------
-    async def set_pipeline_completion(
-        self, user_id: str, *, phase: OnboardingPhase, conversation_id: str | None = None
+    async def mark_gmail_personalization_done(
+        self, user_id: str, *, conversation_id: str | None = None
     ) -> None:
         sub = self._sub(user_id)
         if sub is None:
             return
-        sub["phase"] = phase
+        sub[GMAIL_PERSONALIZATION_MARKER] = datetime.now(UTC)
         if conversation_id is not None:
-            sub["first_message_conversation_id"] = conversation_id
-
-    async def set_first_message(self, user_id: str, first_message: str) -> None:
-        sub = self._sub(user_id)
-        if sub is not None:
-            sub["first_message"] = first_message
-
-    async def mark_early_intelligence_done(self, user_id: str) -> None:
-        sub = self._sub(user_id)
-        if sub is not None:
-            sub["early_intelligence_done_at"] = datetime.now(UTC)
-
-    async def set_suggested_workflows(self, user_id: str, workflow_ids: list[str]) -> None:
-        sub = self._sub(user_id)
-        if sub is not None:
-            sub["suggested_workflows"] = workflow_ids
+            sub[HOLO_CONVERSATION_ID_FIELD] = conversation_id
 
     async def set_social_profiles_if_unset(
         self, user_id: str, profiles: list[SocialProfile]
@@ -265,10 +252,10 @@ class _UserStore:
         if triage_summary is not None:
             sub["triage_summary"] = triage_summary.model_dump()
 
-    async def save_personalization(self, user_id: str, **fields: Any) -> None:
+    async def save_personalization(self, user_id: str, bundle: PersonalizationBundle) -> None:
         sub = self._sub(user_id)
         if sub is not None:
-            sub.update({k: v for k, v in fields.items() if k != "workflow_ids"})
+            sub.update(bundle.model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -277,39 +264,16 @@ class _UserStore:
 
 
 class _StageSink:
-    """Every ``onboarding_stage`` event the socket would have carried, in order.
+    """Every ``onboarding_stage`` event the socket would have carried, in order."""
 
-    Also snapshots the user document at the instant each stage goes out, and can
-    hold a stage open. Both exist because ordering claims are otherwise
-    unfalsifiable here: a write that moves to after its stage still leaves the
-    right value behind by the time the test looks, and an emit that stops being
-    awaited still tends to land first when nothing in the pipeline does real I/O.
-    """
-
-    def __init__(self, users: _UserStore) -> None:
+    def __init__(self) -> None:
         self.events: list[tuple[str, dict[str, Any]]] = []
-        self.entered: list[str] = []
-        self.first_message_at: dict[str, str | None] = {}
-        self._users = users
-        self._gates: dict[str, asyncio.Event] = {}
-
-    def hold(self, stage: OnboardingStage) -> asyncio.Event:
-        """Make the socket block on ``stage`` until the returned event is set."""
-        gate = asyncio.Event()
-        self._gates[stage.value] = gate
-        return gate
 
     async def broadcast_to_user(self, *, user_id: str, message: dict[str, Any]) -> None:
         if message.get("type") != "onboarding_stage":
             return
         data = message["data"]
-        stage = data["stage"]
-        self.entered.append(stage)
-        gate = self._gates.get(stage)
-        if gate is not None:
-            await gate.wait()
-        self.events.append((stage, data["payload"]))
-        self.first_message_at[stage] = self._users.first_message_of(user_id)
+        self.events.append((data["stage"], data["payload"]))
 
     @property
     def names(self) -> list[str]:
@@ -325,9 +289,6 @@ class _StageSink:
     def emitted(self, stage: OnboardingStage) -> bool:
         return stage.value in self.names
 
-    def index(self, stage: OnboardingStage) -> int:
-        return self.names.index(stage.value)
-
 
 # ---------------------------------------------------------------------------
 # External-service doubles
@@ -338,31 +299,44 @@ class _StageSink:
 class _Externals:
     """Everything outside the process, recorded."""
 
-    has_gmail: bool = False
-    #: When set, the Composio round trip blocks on it — the only way to observe
-    #: what the user's screen shows *while* that call is outstanding.
-    composio_gate: asyncio.Event | None = None
+    has_gmail: bool = True
     inbox: list[dict[str, Any]] = field(default_factory=list)
     sent_emails: list[dict[str, Any]] = field(default_factory=list)
     llm_labels: list[str] = field(default_factory=list)
     llm_prompts: dict[str, str] = field(default_factory=dict)
     llm_failures: set[str] = field(default_factory=set)
-    workflows_created: list[str] = field(default_factory=list)
-    workflow_timezones: list[str] = field(default_factory=list)
-    todos_created: list[str] = field(default_factory=list)
-    workflows_deleted: list[str] = field(default_factory=list)
-    workflow_delete_error: str | None = None
-    seeded_conversation_id: str | None = "conv-seeded"
+    #: (conversation_id, description) per seeded conversation, and the bot turn
+    #: appended to it — the announcement the user actually opens.
+    seeded_conversations: list[tuple[str, str]] = field(default_factory=list)
+    #: bot turns per seeded conversation id — keyed, not flat, so a test can
+    #: assert one conversation's turns without the other's leaking in.
+    seeded_messages: dict[str, list[str]] = field(default_factory=dict)
+    seeding_fails: bool = False
+    notifications: list[str] = field(default_factory=list)
+    conversations_deleted: list[str] = field(default_factory=list)
+    demo_conversations: int = 0
+    todos_purged: int = 0
+    memories_cleared: int = 0
     integrations_connected: list[str] = field(default_factory=list)
     disconnected: list[str] = field(default_factory=list)
-    memories_cleared: int = 0
-    todos_purged: int = 0
-    demo_conversations: int = 0
-    conversation_deleted: bool = True
-    provisioned: list[str] = field(default_factory=list)
-    memory_jobs: list[str] = field(default_factory=list)
-    seeded_users: list[str] = field(default_factory=list)
-    purged_workflow_ids: list[list[str]] = field(default_factory=list)
+
+
+#: The two conversations this flow seeds, by the description each carries. One
+#: is earned by submitting the form, the other by connecting Gmail — asserting
+#: on the description is what keeps a test from passing on the wrong one.
+GETTING_STARTED_DESCRIPTION = "Getting started"
+HOLO_CARD_DESCRIPTION = "Your holo card is ready"
+
+
+def seeded_descriptions(externals: _Externals) -> list[str]:
+    return [description for _, description in externals.seeded_conversations]
+
+
+def seeded_id_of(externals: _Externals, description: str) -> str:
+    """The id of the one seeded conversation carrying ``description``."""
+    ids = [cid for cid, desc in externals.seeded_conversations if desc == description]
+    assert len(ids) == 1, f"expected exactly one {description!r} conversation, got {ids}"
+    return ids[0]
 
 
 def _gmail_message(idx: int) -> dict[str, Any]:
@@ -385,18 +359,24 @@ def _sent_email(idx: int) -> dict[str, Any]:
     }
 
 
-def _structured_result(schema: type, ext: _Externals) -> Any:
+STYLE_SUMMARY = "Direct and warm; short paragraphs, signs off with 'Cheers'."
+TRIAGE_SUMMARY = "Two threads need a reply today."
+HOLO_PHRASE = "Midnight Architect"
+HOLO_BIO = "Builds quietly, ships loudly."
+
+
+def _structured_result(schema: type) -> Any:
     """A valid instance of whatever schema the caller asked the model for."""
     if schema is WritingStyleOutput:
         return WritingStyleOutput(
-            summary="Direct and warm; short paragraphs, signs off with 'Cheers'.",
+            summary=STYLE_SUMMARY,
             example=WritingStyleExampleBlocks(
                 greeting="Hey,", body=["Sending the draft over."], signoff="Cheers", name="Test"
             ),
         )
     if schema is InboxTriageOutput:
         return InboxTriageOutput(
-            summary="Two threads need a reply today.",
+            summary=TRIAGE_SUMMARY,
             important_emails=[
                 EmailSummary(
                     sender=REAL_SENDER,
@@ -406,49 +386,9 @@ def _structured_result(schema: type, ext: _Externals) -> Any:
             ],
             patterns=["Most mail arrives before noon"],
         )
-    if schema is _TodoListFromEmails:
-        return _TodoListFromEmails(
-            todos=[
-                _TodoSpec(
-                    title="Reply to the contract redlines",
-                    description="Draft a response to the outstanding redlines.",
-                    source_sender=REAL_SENDER,
-                    source_subject=REAL_SUBJECT,
-                ),
-                _TodoSpec(
-                    title="Summarize this week's invoices",
-                    description="Pull the invoice threads into one summary.",
-                    source_sender="ghost@nowhere.com",
-                    source_subject="Never sent",
-                ),
-            ]
-        )
-    if schema is _FocusTodoList:
-        return _FocusTodoList(todos=["Draft the Q3 plan", "Chase the pending signature"])
-    if schema is _WorkflowList:
-        return _WorkflowList(
-            workflows=[
-                _WorkflowSpec(
-                    title=f"Workflow {n}",
-                    description=f"Does thing {n} every morning.",
-                    categories=["gmail"] if n == 1 else ["todos"],
-                )
-                for n in range(1, 5)
-            ]
-        )
+    if schema is HoloCardLLMOutput:
+        return HoloCardLLMOutput(personality_phrase=HOLO_PHRASE, user_bio=HOLO_BIO)
     raise AssertionError(f"no scripted result for {schema!r}")
-
-
-class _FakeWorkflow:
-    def __init__(self, workflow_id: str) -> None:
-        self.id = workflow_id
-        self.steps: list[dict[str, Any]] = []
-        self.trigger_config = TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
-
-
-class _FakeTodo:
-    def __init__(self, todo_id: str) -> None:
-        self.id = todo_id
 
 
 @pytest.fixture
@@ -468,8 +408,8 @@ async def arq_pool() -> Any:
     """A real ArqRedis on fakeredis, installed as the process pool.
 
     Real arq rather than a mock because job *liveness* is a branch of the code
-    under test: ``submit_onboarding_integrations`` asks arq whether the previous
-    workflows job is still running, and ``reset_onboarding`` asks arq to abort it.
+    under test: the personalization slot aborts an in-flight job on reset, and
+    "nothing was queued" has to be answered by the queue itself.
     """
     fake = fakeredis.aioredis.FakeRedis()
     pool = ArqRedis(connection_pool=fake.connection_pool)
@@ -481,23 +421,104 @@ async def arq_pool() -> Any:
 
 
 @pytest.fixture
-def stages(users: _UserStore) -> _StageSink:
-    return _StageSink(users)
+def stages() -> _StageSink:
+    return _StageSink()
 
 
-@pytest.fixture(autouse=True)
-def world(
-    users: _UserStore,
-    stages: _StageSink,
-    externals: _Externals,
-    arq_pool: ArqRedis,
-) -> Iterator[None]:
-    """Wire the store, the socket and every external service into the real flow."""
-    svc = "app.services.onboarding"
+def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _Externals) -> None:
+    """Every write the flow makes, routed into ``users``/``externals`` instead of Mongo."""
+
+    async def _create_conversation(conversation: Any, _user: Any) -> Any:
+        if externals.seeding_fails:
+            raise RuntimeError("mongo down")
+        externals.seeded_conversations.append(
+            (conversation.conversation_id, conversation.description)
+        )
+        return conversation
+
+    async def _append_messages(
+        conversation_id: str, *, user_id: str, messages: list[Any]
+    ) -> list[str]:
+        externals.seeded_messages.setdefault(conversation_id, []).extend(
+            m.response for m in messages
+        )
+        return [f"msg-{i}" for i, _ in enumerate(messages)]
+
+    async def _list_user_integrations(_user_id: str) -> list[Any]:
+        out = []
+        for slug in externals.integrations_connected:
+            entry = AsyncMock()
+            entry.integration_id = slug
+            out.append(entry)
+        return out
+
+    async def _disconnect(_user_id: str, integration_id: str) -> None:
+        externals.disconnected.append(integration_id)
+
+    seeding_conversations = AsyncMock()
+    seeding_conversations.append_messages.side_effect = _append_messages
+
+    todo_repo = AsyncMock()
+    todo_repo.delete_onboarding_todos.side_effect = lambda _uid: externals.todos_purged
+    todo_repo.list_onboarding_todos.return_value = []
+
+    conversation_repo = AsyncMock()
+
+    async def _delete_conversation(conversation_id: str, *, user_id: str) -> bool:
+        externals.conversations_deleted.append(conversation_id)
+        return True
+
+    conversation_repo.delete.side_effect = _delete_conversation
+    conversation_repo.delete_onboarding_demos.side_effect = lambda _uid: (
+        externals.demo_conversations
+    )
+
+    integrations_repo = AsyncMock()
+    integrations_repo.list_for_user.side_effect = _list_user_integrations
+
+    memory = AsyncMock()
+    memory.delete_all.side_effect = lambda _uid: externals.memories_cleared
+
+    for patcher in (
+        patch(f"{SVC}.onboarding_service.user_repository", users),
+        patch(f"{SVC}.intelligence_job.user_repository", users),
+        patch(f"{SVC}.intelligence_service.user_repository", users),
+        patch("app.api.v1.endpoints.onboarding.user_repository", users),
+        patch("app.services.oauth.oauth_service.user_repository", users),
+        patch("app.utils.profile_card.user_repository", users),
+        patch(f"{SVC}.onboarding_service.todo_repository", todo_repo),
+        patch("app.api.v1.endpoints.onboarding.todo_repository", todo_repo),
+        patch("app.api.v1.endpoints.onboarding.workflow_repository", AsyncMock()),
+        patch(f"{SVC}.onboarding_service.conversation_repository", conversation_repo),
+        patch("app.utils.seeding_utils.conversation_repository", seeding_conversations),
+        patch("app.utils.seeding_utils.create_conversation_service", _create_conversation),
+        patch(f"{SVC}.onboarding_service.user_integration_repository", integrations_repo),
+        patch(f"{SVC}.onboarding_service.memory_engine", memory),
+        patch(f"{SVC}.onboarding_service.disconnect_integration", _disconnect),
+    ):
+        stack.enter_context(patcher)
+
+
+def _enter_transport_patches(stack: ExitStack, stages: _StageSink, externals: _Externals) -> None:
+    """The socket and the notification service, recorded rather than delivered."""
+
+    async def _create_notification(request: Any) -> None:
+        externals.notifications.append(request.content.title)
+
+    notifications = AsyncMock()
+    notifications.create_notification.side_effect = _create_notification
+
+    for patcher in (
+        patch(f"{SVC}.intelligence_service.websocket_manager", stages),
+        patch(f"{SVC}.intelligence_service.notification_service", notifications),
+    ):
+        stack.enter_context(patcher)
+
+
+def _enter_external_service_patches(stack: ExitStack, externals: _Externals) -> None:
+    """Composio, Gmail, the LLM and the OAuth status write — the only real I/O left."""
 
     async def _check_connection(slugs: list[str], _user_id: str) -> dict[str, bool]:
-        if externals.composio_gate is not None:
-            await externals.composio_gate.wait()
         return {slug: (slug == "gmail" and externals.has_gmail) for slug in slugs}
 
     composio = AsyncMock()
@@ -506,12 +527,10 @@ def world(
     async def _fetch_emails(
         user_id: str,
         months: int = 1,
-        batch_size: int = 100,
         max_total: int = 100,
         on_batch: Callable[[int, str | None], Awaitable[None]] | None = None,
-        fmt: str = "metadata",
         into: list[dict[str, Any]] | None = None,
-        include_sent: bool = False,
+        options: Any = None,
     ) -> list[dict[str, Any]]:
         batch = list(externals.inbox)
         if into is not None:
@@ -525,156 +544,51 @@ def world(
         externals.llm_prompts[label] = str(prompt)
         if label in externals.llm_failures:
             raise RuntimeError(f"model refused: {label}")
-        return _structured_result(schema, externals)
-
-    async def _invoke_llm(_runnable: Any, messages: Any, *, label: str = "model", **_: Any) -> Any:
-        externals.llm_labels.append(label)
-        externals.llm_prompts[label] = str(messages)
-        if label in externals.llm_failures:
-            raise RuntimeError(f"model refused: {label}")
-        return AIMessage(content="Hey, you're all set.")
+        return _structured_result(schema)
 
     async def _search_messages(**_: Any) -> Any:
         result = AsyncMock()
         result.messages = externals.sent_emails
         return result
 
-    async def _create_workflow(
-        request: Any, _user_id: str, user_timezone: str = "UTC", **_: Any
-    ) -> _FakeWorkflow:
-        externals.workflows_created.append(request.title)
-        externals.workflow_timezones.append(user_timezone)
-        return _FakeWorkflow(f"wf-{len(externals.workflows_created)}")
-
-    async def _delete_workflow(workflow_id: str, _user_id: str) -> bool:
-        if externals.workflow_delete_error == workflow_id:
-            raise RuntimeError("composio trigger teardown failed")
-        externals.workflows_deleted.append(workflow_id)
-        return True
-
-    async def _generate_prompt(**_: Any) -> dict[str, Any]:
-        return {
-            "prompt": "Do the thing.",
-            "suggested_trigger": SuggestedTrigger(type="schedule", cron_expression="0 8 * * *"),
-        }
-
-    async def _create_todo(todo: Any, _user_id: str) -> _FakeTodo:
-        externals.todos_created.append(todo.title)
-        return _FakeTodo(f"todo-{len(externals.todos_created)}")
-
-    async def _list_onboarding_todos(_user_id: str, limit: int = 3) -> list[Any]:
-        todos = []
-        for idx, title in enumerate(externals.todos_created[:limit], start=1):
-            todo = AsyncMock()
-            todo.id = f"todo-{idx}"
-            todo.title = title
-            todo.description = None
-            todo.source_email = None
-            todos.append(todo)
-        return todos
-
-    async def _seed_conversation(**_: Any) -> str | None:
-        return externals.seeded_conversation_id
-
-    async def _seed_user_data(user_id: str) -> None:
-        externals.seeded_users.append(user_id)
-
-    async def _purge_workflows(workflow_ids: list[str], _user_id: str) -> int:
-        externals.purged_workflow_ids.append(list(workflow_ids))
-        return len(workflow_ids)
-
-    async def _provision(user_id: str, slug: str, *_args: Any, **_kw: Any) -> None:
-        externals.provisioned.append(slug)
-
-    async def _list_user_integrations(_user_id: str) -> list[Any]:
-        out = []
-        for slug in externals.integrations_connected:
-            entry = AsyncMock()
-            entry.integration_id = slug
-            out.append(entry)
-        return out
-
-    async def _disconnect(_user_id: str, integration_id: str) -> None:
-        externals.disconnected.append(integration_id)
-
-    todo_repo = AsyncMock()
-    todo_repo.delete_onboarding_todos.side_effect = lambda _uid: externals.todos_purged
-    todo_repo.list_onboarding_todos.side_effect = _list_onboarding_todos
-
-    conversation_repo = AsyncMock()
-    conversation_repo.delete.side_effect = lambda _cid, user_id: externals.conversation_deleted
-    conversation_repo.delete_onboarding_demos.side_effect = lambda _uid: (
-        externals.demo_conversations
-    )
-
-    integrations_repo = AsyncMock()
-    integrations_repo.list_for_user.side_effect = _list_user_integrations
-
-    memory = AsyncMock()
-    memory.delete_all.side_effect = lambda _uid: externals.memories_cleared
-
-    patches = [
-        # --- persistence -------------------------------------------------
-        patch(f"{svc}.onboarding_service.user_repository", users),
-        patch(f"{svc}.intelligence_job.user_repository", users),
-        patch(f"{svc}.intelligence_service.user_repository", users),
-        patch(f"{svc}.post_onboarding_service.user_repository", users),
-        patch("app.workers.tasks.onboarding_tasks.user_repository", users),
-        patch("app.api.v1.endpoints.onboarding.user_repository", users),
-        patch(f"{svc}.onboarding_service.todo_repository", todo_repo),
-        patch(f"{svc}.intelligence_job.todo_repository", todo_repo),
-        patch(f"{svc}.intelligence_service.todo_repository", todo_repo),
-        patch("app.api.v1.endpoints.onboarding.todo_repository", todo_repo),
-        patch("app.api.v1.endpoints.onboarding.workflow_repository", AsyncMock()),
-        patch(
-            f"{svc}.intelligence_service.workflow_repository.delete_many_for_user", _purge_workflows
-        ),
-        patch(f"{svc}.onboarding_service.conversation_repository", conversation_repo),
-        patch(f"{svc}.onboarding_service.user_integration_repository", integrations_repo),
-        patch(f"{svc}.onboarding_service.memory_engine", memory),
-        patch(f"{svc}.onboarding_service.disconnect_integration", _disconnect),
-        # --- transport ---------------------------------------------------
-        patch(f"{svc}.intelligence_service.websocket_manager", stages),
+    for patcher in (
         # --- composio ----------------------------------------------------
-        patch(f"{svc}.intelligence_service.get_composio_service", lambda: composio),
+        patch(f"{SVC}.intelligence_service.get_composio_service", lambda: composio),
         patch("app.api.v1.endpoints.onboarding.get_composio_service", lambda: composio),
         # --- gmail -------------------------------------------------------
-        patch(f"{svc}.intelligence_service.fetch_emails_for_onboarding", _fetch_emails),
-        patch(f"{svc}.writing_style_service.search_messages", _search_messages),
-        patch(f"{svc}.intelligence_service.inbox_scan_cache.get", AsyncMock(return_value=None)),
-        patch(f"{svc}.intelligence_service.inbox_scan_cache.put", AsyncMock()),
+        patch(f"{SVC}.intelligence_service.fetch_emails_for_onboarding", _fetch_emails),
+        patch(f"{SVC}.writing_style_service.search_messages", _search_messages),
+        patch(f"{SVC}.intelligence_service.inbox_scan_cache.get", AsyncMock(return_value=None)),
+        patch(f"{SVC}.intelligence_service.inbox_scan_cache.put", AsyncMock()),
         patch(
-            f"{svc}.intelligence_service.extract_social_profiles_from_emails",
+            f"{SVC}.intelligence_service.extract_social_profiles_from_emails",
             AsyncMock(return_value=[SocialProfile(platform="linkedin", url="https://li/x")]),
         ),
         # --- llm ---------------------------------------------------------
-        patch(f"{svc}.intelligence_service.ainvoke_structured", _structured),
-        patch(f"{svc}.writing_style_service.ainvoke_structured", _structured),
-        patch(f"{svc}.inbox_triage_service.ainvoke_structured", _structured),
-        patch(f"{svc}.first_message_service.ainvoke_llm", _invoke_llm),
-        patch(f"{svc}.first_message_service.get_helper_llm", lambda **_: AsyncMock()),
-        # --- downstream services ----------------------------------------
-        patch(f"{svc}.intelligence_service.WorkflowService.create_workflow", _create_workflow),
-        patch(f"{svc}.onboarding_service.WorkflowService.delete_workflow", _delete_workflow),
+        patch(f"{SVC}.writing_style_service.ainvoke_structured", _structured),
+        patch(f"{SVC}.inbox_triage_service.ainvoke_structured", _structured),
+        patch("app.utils.profile_card.ainvoke_structured", _structured),
+        # --- oauth connect side effects ----------------------------------
         patch(
-            f"{svc}.intelligence_service.WorkflowGenerationService.generate_workflow_prompt",
-            _generate_prompt,
+            "app.services.oauth.oauth_service.update_user_integration_status",
+            new_callable=AsyncMock,
         ),
-        patch(
-            f"{svc}.intelligence_service.compute_missing_integrations", AsyncMock(return_value=[])
-        ),
-        patch(f"{svc}.intelligence_service.TodoService.create_todo", _create_todo),
-        patch(f"{svc}.intelligence_service.seed_onboarding_conversation", _seed_conversation),
-        patch(f"{svc}.intelligence_service.provision_system_workflows", _provision),
-        patch(f"{svc}.post_onboarding_service.seed_onboarding_todo", _seed_user_data),
-        patch(
-            f"{svc}.intelligence_service.generate_holo_card_content",
-            AsyncMock(return_value=("Curious Adventurer", "A bio.", "completed")),
-        ),
-    ]
+    ):
+        stack.enter_context(patcher)
+
+
+@pytest.fixture(autouse=True)
+def world(
+    users: _UserStore,
+    stages: _StageSink,
+    externals: _Externals,
+    arq_pool: ArqRedis,
+) -> Iterator[None]:
+    """Wire the store, the socket and every external service into the real flow."""
     with ExitStack() as stack:
-        for patcher in patches:
-            stack.enter_context(patcher)
+        _enter_persistence_patches(stack, users, externals)
+        _enter_transport_patches(stack, stages, externals)
+        _enter_external_service_patches(stack, externals)
         yield
 
 
@@ -682,15 +596,12 @@ def world(
 # The worker
 # ---------------------------------------------------------------------------
 
-#: The two onboarding tasks a real worker would pick up. Anything else the
+#: The only onboarding task a real worker would pick up. Anything else the
 #: pipeline enqueues (gmail -> memory ingestion) is recorded, not run.
-_TASKS: dict[str, Any] = {
-    INTELLIGENCE_TASK: process_onboarding_intelligence_task,
-    WORKFLOWS_TASK: process_onboarding_workflows_task,
-}
+_TASKS: dict[str, Any] = {INTELLIGENCE_TASK: process_onboarding_intelligence_task}
 
 
-async def run_queued_jobs(pool: ArqRedis, externals: _Externals) -> list[str]:
+async def run_queued_jobs(pool: ArqRedis) -> list[str]:
     """Drain the arq queue through the real task functions, worker-style.
 
     Reads the queued job ids off the real sorted set and deserializes each one
@@ -708,41 +619,10 @@ async def run_queued_jobs(pool: ArqRedis, externals: _Externals) -> list[str]:
             assert info is not None, f"queued job {job_id} has no definition"
             await pool.zrem(default_queue_name, job_id)
             await pool.delete(job_key_prefix + job_id)
+            ran.append(info.function)
             if info.function in _TASKS:
-                ran.append(info.function)
                 await _TASKS[info.function]({"job_id": job_id}, *info.args)
-            else:
-                externals.memory_jobs.append(info.function)
     return ran
-
-
-async def drop_queued_jobs(pool: ArqRedis) -> None:
-    """Discard whatever is queued without running it — a worker that died."""
-    for raw in await pool.zrange(default_queue_name, 0, -1):
-        job_id = raw.decode() if isinstance(raw, bytes) else raw
-        await pool.zrem(default_queue_name, job_id)
-        await pool.delete(job_key_prefix + job_id)
-
-
-async def wait_for_stages(stages: _StageSink, count: int, timeout: float = 3.0) -> list[str]:
-    """The first ``count`` stages to reach the socket, or fail saying what did."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if len(stages.entered) >= count:
-            return list(stages.entered[:count])
-        await asyncio.sleep(0.005)
-    raise AssertionError(f"only {stages.entered} reached the socket within {timeout}s")
-
-
-async def wait_for_stage(stages: _StageSink, stage: OnboardingStage, timeout: float = 3.0) -> None:
-    """Block until ``stage`` reaches the socket. Bounded: a change that stops it
-    being emitted at all has to fail the test, not hang the run."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if stage.value in stages.entered:
-            return
-        await asyncio.sleep(0.005)
-    raise AssertionError(f"{stage.value} never reached the socket; got {stages.entered}")
 
 
 async def queued_job_names(pool: ArqRedis) -> list[str]:
@@ -755,23 +635,17 @@ async def queued_job_names(pool: ArqRedis) -> list[str]:
     return names
 
 
-#: A filled-in no-Gmail follow-up, shaped as the clarify endpoint returns it.
-CLARIFY_ANSWERS: list[dict[str, Any]] = [
-    {
-        "id": "scope",
-        "kind": "scope",
-        "question": "What are you working on right now?",
-        "value": "Migrating the billing stack",
-    }
-]
+async def connect_gmail() -> None:
+    """The real OAuth connect handler, Gmail branch — what actually starts the
+    personalization pipeline now."""
+    await handle_oauth_connection(USER_ID, GMAIL_CONFIG, BackgroundTasks())
 
 
 def submit_body(**overrides: Any) -> dict[str, Any]:
     return {
-        "name": "Test User",
         "profession": "Lawyer",
+        "needs": ["inbox", "briefings"],
         "timezone": "UTC",
-        "focus": "close the Q3 deals",
         **overrides,
     }
 
@@ -785,110 +659,78 @@ async def complete_submit(client: AsyncClient, **overrides: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-class TestSubmitStartsExactlyOnePipeline:
-    async def test_a_submission_queues_the_intelligence_job(
-        self, client: AsyncClient, arq_pool: ArqRedis, users: _UserStore
+class TestSubmittingTheFormIsCompletion:
+    async def test_the_phase_lands_on_complete_in_one_write(
+        self, client: AsyncClient, users: _UserStore
     ):
-        """Nothing else starts the pipeline. If the enqueue is lost the user sits
-        on the loading screen forever — there is no retry and no error."""
+        """Nothing runs after this any more, so anything short of complete parks
+        the user on a loading screen forever — there is no job to resolve it."""
         response = await complete_submit(client)
 
         assert response.status_code == 200
-        assert await queued_job_names(arq_pool) == [INTELLIGENCE_TASK]
-        assert users.onboarding_of(USER_ID)["intelligence_job_id"]
+        assert users.onboarding_of(USER_ID)["phase"] == OnboardingPhase.COMPLETED.value
 
-    async def test_a_double_submit_queues_only_one_pipeline(
-        self, client: AsyncClient, arq_pool: ArqRedis
+    async def test_no_job_is_queued_and_only_the_opener_is_seeded(
+        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals
     ):
-        """Two pipelines on one socket interleave their stage events and the
-        frontend's stage cursor cannot untangle them. The atomic gate is what
-        makes the second POST a replay instead of a second run."""
-        first = await complete_submit(client)
-        second = await complete_submit(client)
-
-        assert first.status_code == 200
-        assert second.status_code == 200
-        assert await queued_job_names(arq_pool) == [INTELLIGENCE_TASK]
-
-    async def test_a_replayed_submit_still_returns_the_stored_user(self, client: AsyncClient):
-        """The frontend advances on this payload. Returning an error or an empty
-        body on a retried request would strand a user whose first POST landed."""
+        """The pipeline and the holo-card announcement are Gmail's to earn.
+        Queued here they run for users with no inbox at all, and hand every user
+        a holo card built from nothing. GAIA's own opener is the one thing
+        completion does seed — it is composed from the answers, not the inbox."""
         await complete_submit(client)
 
-        response = await complete_submit(client, name="Someone Else")
+        assert await queued_job_names(arq_pool) == []
+        assert seeded_descriptions(externals) == [GETTING_STARTED_DESCRIPTION]
 
-        assert response.json()["user"]["user_id"] == USER_ID
-        assert response.json()["user"]["name"] == "Test User"
-
-    async def test_a_replay_does_not_reseed_initial_data(
-        self, client: AsyncClient, externals: _Externals
+    async def test_the_seeded_opener_is_recorded_on_its_own_field(
+        self, client: AsyncClient, users: _UserStore, externals: _Externals
     ):
-        """The starter todo is seeded by a background task on the winning submit.
-        Firing it again on a retried request gives the user duplicates of the
-        first thing they ever see in their todo list."""
-        await complete_submit(client)
+        """The web lands the user in this conversation off the completion
+        response, and a reset tears it down by this id. Sharing the legacy
+        ``first_message_conversation_id`` would overwrite the conversation a
+        returning pre-relocation user still has, orphaning it forever."""
         await complete_submit(client)
 
-        assert externals.seeded_users == [USER_ID]
+        onboarding = users.onboarding_of(USER_ID)
+        seeded_id = seeded_id_of(externals, GETTING_STARTED_DESCRIPTION)
+        assert onboarding[GETTING_STARTED_CONVERSATION_ID_FIELD] == seeded_id
+        assert "first_message_conversation_id" not in onboarding
 
-    async def test_the_submitted_choices_are_what_the_pipeline_reads(
+    async def test_the_submitted_choices_are_persisted(
         self, client: AsyncClient, users: _UserStore
     ):
-        """Everything the form collects has to survive the write, because the
-        pipeline reads it back from the document and nothing re-asks the user."""
-        response = await complete_submit(
-            client,
-            selected_integrations=["slack", "slack", "notion"],
-            defer_workflows=True,
-            timezone="Europe/London",
-            clarify_answers=CLARIFY_ANSWERS,
-        )
+        """Both answers have to survive the write: the agent reads profession
+        and needs back off the document, and nothing re-asks the user."""
+        response = await complete_submit(client, timezone="Europe/London")
 
         assert response.status_code == 200
         onboarding = users.onboarding_of(USER_ID)
-        assert onboarding["selected_integrations"] == ["slack", "notion"]
-        assert onboarding["pipeline_mode"] == "split"
-        assert onboarding["focus"] == "close the Q3 deals"
-        assert onboarding["clarify_answers"] == CLARIFY_ANSWERS
+        assert onboarding["preferences"]["profession"] == "Lawyer"
+        assert onboarding["preferences"]["needs"] == ["inbox", "briefings"]
         assert users.docs[USER_ID]["timezone"] == "Europe/London"
 
-    async def test_the_submitted_timezone_is_what_workflows_are_scheduled_in(
-        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals
+    async def test_a_replayed_submit_returns_the_stored_user_unchanged(
+        self, client: AsyncClient, arq_pool: ArqRedis
     ):
-        """Dropped, every workflow silently schedules in UTC — a 9am briefing
-        that arrives in the middle of the user's night."""
-        await complete_submit(client, timezone="Asia/Kolkata")
-        await run_queued_jobs(arq_pool, externals)
+        """The frontend advances on this payload. Returning an error or an empty
+        body on a retried request would strand a user whose first POST landed —
+        and the atomic gate must keep the second one from overwriting anything."""
+        await complete_submit(client)
 
-        assert externals.workflow_timezones == ["Asia/Kolkata"] * 4
+        response = await complete_submit(client, profession="Doctor")
 
-    async def test_the_clarify_answers_reach_the_greeting(
-        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals
-    ):
-        """These are the only thing a no-Gmail user told us beyond their focus —
-        exactly the users this path serves. Dropped, the greeting is written as
-        if they never answered the follow-up questions at all."""
-        await complete_submit(client, clarify_answers=CLARIFY_ANSWERS)
-        await run_queued_jobs(arq_pool, externals)
+        assert response.status_code == 200
+        assert response.json()["user"]["user_id"] == USER_ID
+        assert response.json()["user"]["onboarding"]["preferences"]["profession"] == "Lawyer"
+        assert await queued_job_names(arq_pool) == []
 
-        assert "Migrating the billing stack" in externals.llm_prompts["onboarding_first_message"]
+    async def test_the_status_endpoint_reports_the_user_as_onboarded(self, client: AsyncClient):
+        await complete_submit(client)
 
-    async def test_a_failed_enqueue_rolls_the_submission_back(
-        self, client: AsyncClient, users: _UserStore
-    ):
-        """A user whose job never queued must be able to submit again. Leaving the
-        subdoc behind makes every retry a replay of a pipeline that never ran —
-        the loading screen never resolves."""
-        with patch.object(
-            RedisPoolManager, "get_pool", AsyncMock(side_effect=RuntimeError("redis down"))
-        ):
-            failed = await complete_submit(client)
+        body = (await client.get(STATUS)).json()
 
-        assert failed.status_code == 503
-        assert "onboarding" not in users.docs[USER_ID]
-
-        retry = await complete_submit(client)
-        assert retry.status_code == 200
+        assert body["completed"] is True
+        assert body["phase"] == OnboardingPhase.COMPLETED.value
 
     async def test_an_unknown_user_is_a_404_not_a_500(self, client: AsyncClient, users: _UserStore):
         users.docs.clear()
@@ -899,100 +741,95 @@ class TestSubmitStartsExactlyOnePipeline:
 
 
 # ---------------------------------------------------------------------------
-# The full (no-Gmail) pipeline
+# Connecting Gmail
 # ---------------------------------------------------------------------------
 
 
-class TestTheFullPipelineFinishes:
+class TestConnectingGmailEarnsThePersonalization:
     @pytest.fixture(autouse=True)
     async def _run(self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals):
-        await complete_submit(client, selected_integrations=["notion"])
-        self.ran = await run_queued_jobs(arq_pool, externals)
+        externals.inbox = [_gmail_message(i) for i in range(6)]
+        externals.sent_emails = [_sent_email(i) for i in range(8)]
+        await complete_submit(client)
+        await connect_gmail()
+        self.ran = await run_queued_jobs(arq_pool)
 
-    async def test_the_pipeline_ran_in_one_job(self):
-        """Full mode does all of it inline. A second job here would mean the
-        split branch was taken for a user with no Gmail to scan."""
-        assert self.ran == [INTELLIGENCE_TASK]
+    async def test_connecting_gmail_is_what_runs_the_pipeline(self):
+        """Exactly one personalization job, plus the memory ingestion the scan
+        queues behind it. A second personalization job here would rebuild the
+        card and re-announce it."""
+        assert self.ran == [INTELLIGENCE_TASK, MEMORY_TASK]
 
-    async def test_the_user_reaches_complete(self, stages: _StageSink):
-        """COMPLETE is the only event that dismisses the onboarding screen."""
-        assert stages.emitted(OnboardingStage.COMPLETE)
+    async def test_the_inbox_scan_reports_what_it_found(self, stages: _StageSink):
+        assert stages.emitted(OnboardingStage.INBOX_SCANNING)
+        assert stages.payload(OnboardingStage.TRIAGE_READY)["total_scanned"] == 6
 
-    async def test_complete_carries_the_conversation_the_user_lands_in(self, stages: _StageSink):
-        assert stages.payload(OnboardingStage.COMPLETE)["conversation_id"] == "conv-seeded"
-
-    async def test_workflows_are_reported_before_the_screen_is_dismissed(
-        self, stages: _StageSink, externals: _Externals
+    async def test_the_writing_style_the_user_sees_is_the_one_persisted(
+        self, stages: _StageSink, users: _UserStore
     ):
-        """WORKFLOWS_READY after COMPLETE lands on a screen that is already gone —
-        the user never sees the workflows the pipeline built for them. The tail
-        also has to have *waited* for them, not merely been beaten by them: the
-        greeting names what was built, and names nothing if the tail ran first."""
-        assert stages.index(OnboardingStage.WORKFLOWS_READY) < stages.index(
-            OnboardingStage.COMPLETE
-        )
-        assert len(stages.payload(OnboardingStage.WORKFLOWS_READY)["workflows"]) == 4
-        assert "Workflow 1" in externals.llm_prompts["onboarding_first_message"]
+        """The card is shown from the socket and re-read over HTTP. Two different
+        answers is a card that changes under the user on a refresh."""
+        emitted = stages.payload(OnboardingStage.WRITING_STYLE_READY)["style_summary"]
 
-    async def test_todos_are_reported_before_the_screen_is_dismissed(
-        self, stages: _StageSink, externals: _Externals
-    ):
-        """The twin of the workflows case: the list the user was shown is the list
-        the greeting talks about, and it arrived before the screen went away."""
-        assert stages.index(OnboardingStage.TODOS_READY) < stages.index(OnboardingStage.COMPLETE)
-        assert [t["title"] for t in stages.payload(OnboardingStage.TODOS_READY)["todos"]] == (
-            externals.todos_created
-        )
-        assert "Draft the Q3 plan" in externals.llm_prompts["onboarding_first_message"]
+        assert emitted == STYLE_SUMMARY
+        assert users.onboarding_of(USER_ID)["writing_style"]["summary"] == STYLE_SUMMARY
 
-    async def test_the_four_generated_workflows_are_created_and_remembered(
-        self, users: _UserStore, externals: _Externals
-    ):
-        """The reveal card reads them back by id from the user document."""
-        assert len(externals.workflows_created) == 4
-        assert users.onboarding_of(USER_ID)["suggested_workflows"] == [
-            "wf-1",
-            "wf-2",
-            "wf-3",
-            "wf-4",
+    async def test_the_triage_is_persisted_for_the_reveal(self, users: _UserStore):
+        triage = users.onboarding_of(USER_ID)["triage_summary"]
+
+        assert triage["summary"] == TRIAGE_SUMMARY
+        assert triage["important_emails"][0]["sender"] == REAL_SENDER
+
+    async def test_the_social_profiles_found_in_the_inbox_are_kept(self, users: _UserStore):
+        assert users.onboarding_of(USER_ID)["social_profiles"] == [
+            {"platform": "linkedin", "url": "https://li/x"}
         ]
 
-    async def test_todos_come_from_the_stated_focus_when_there_is_no_inbox(
+    async def test_the_holo_card_is_generated_from_what_was_learned(
+        self, users: _UserStore, externals: _Externals, stages: _StageSink
+    ):
+        """The card is the whole reward for connecting Gmail, and it is built
+        from the inbox — a card generated without the triage and style in its
+        prompt is the generic one every user would get for free."""
+        onboarding = users.onboarding_of(USER_ID)
+
+        assert onboarding["personality_phrase"] == HOLO_PHRASE
+        assert onboarding["user_bio"] == HOLO_BIO
+        assert stages.emitted(OnboardingStage.HOLO_READY)
+        prompt = externals.llm_prompts["holo_card"]
+        assert TRIAGE_SUMMARY in prompt
+        assert STYLE_SUMMARY in prompt
+        assert "Lawyer" in prompt  # the profession answer reaches the card prompt
+
+    async def test_the_user_is_handed_the_card_in_a_seeded_conversation(
         self, externals: _Externals
     ):
-        assert externals.todos_created == ["Draft the Q3 plan", "Chase the pending signature"]
+        """Chat has no holo-card renderer, so the card travels as its public
+        link. Losing the link leaves an announcement pointing at nothing."""
+        assert seeded_descriptions(externals) == [
+            GETTING_STARTED_DESCRIPTION,
+            HOLO_CARD_DESCRIPTION,
+        ]
+        holo_turns = externals.seeded_messages[seeded_id_of(externals, HOLO_CARD_DESCRIPTION)]
+        assert len(holo_turns) == 1
+        assert holo_card_url(USER_ID) in holo_turns[0]
 
-    async def test_the_first_message_is_persisted_before_complete_is_announced(
-        self, stages: _StageSink
+    async def test_the_notification_goes_out_too(self, externals: _Externals):
+        assert externals.notifications == ["Check your memories — I just added a lot"]
+
+    async def test_the_marker_and_the_conversation_id_are_persisted_together(
+        self, users: _UserStore, externals: _Externals
     ):
-        """COMPLETE triggers a personalization fetch. A first message written
-        after it means that fetch returns null and the chat opens empty.
+        """The marker is what makes a reconnect a no-op, and the conversation id
+        is what lets a reset tear the announcement back down."""
+        onboarding = users.onboarding_of(USER_ID)
 
-        Read at the instant COMPLETE went out, not afterwards: by the end of the
-        pipeline the value is there either way, so a test that looks at the end
-        passes with the write moved to after the emit."""
-        assert stages.first_message_at[OnboardingStage.COMPLETE.value] == "Hey, you're all set."
-
-    async def test_the_phase_advances_so_the_app_stops_showing_onboarding(self, users: _UserStore):
-        assert (
-            users.onboarding_of(USER_ID)["phase"] == OnboardingPhase.PERSONALIZATION_COMPLETE.value
+        assert onboarding[GMAIL_PERSONALIZATION_MARKER]
+        assert onboarding[HOLO_CONVERSATION_ID_FIELD] == seeded_id_of(
+            externals, HOLO_CARD_DESCRIPTION
         )
 
-    async def test_no_writing_style_stage_is_emitted_without_gmail(self, stages: _StageSink):
-        """Style learning and social extraction are Gmail-only and return before
-        their stages, so neither card is announced at all rather than announced
-        empty. This is the contract the frontend's no-Gmail reveal queue is built
-        on — that queue never lists these two, so their absence is expected."""
-        assert not stages.emitted(OnboardingStage.WRITING_STYLE_READY)
-        assert not stages.emitted(OnboardingStage.SOCIAL_PROFILES_READY)
-
-    async def test_no_inbox_work_is_started_without_gmail(
-        self, stages: _StageSink, externals: _Externals
-    ):
-        assert not stages.emitted(OnboardingStage.TRIAGE_READY)
-        assert externals.memory_jobs == []
-
-    async def test_the_job_id_is_released_when_the_pipeline_finishes(self, users: _UserStore):
+    async def test_the_job_slot_is_released_when_the_pipeline_finishes(self, users: _UserStore):
         """A stale id makes the next reset try to abort a job that is long gone."""
         assert "intelligence_job_id" not in users.onboarding_of(USER_ID)
 
@@ -1004,12 +841,87 @@ class TestTheFullPipelineFinishes:
         body = (await client.get(PERSONALIZATION)).json()
 
         assert body["has_personalization"] is True
-        assert body["first_message_conversation_id"] == "conv-seeded"
-        assert body["first_message"] == "Hey, you're all set."
+        assert body["personality_phrase"] == HOLO_PHRASE
+        assert body["user_bio"] == HOLO_BIO
+        assert body["writing_style"]["style_summary"] == STYLE_SUMMARY
+        assert body["triage_summary"]["summary"] == TRIAGE_SUMMARY
+        assert body["social_profiles"] == [{"platform": "linkedin", "url": "https://li/x"}]
 
 
-class TestTheFullPipelineDegrades:
-    async def test_a_workflow_model_outage_still_delivers_everything_else(
+class TestThePipelineRunsAtMostOnce:
+    async def test_a_reconnect_queues_ingestion_instead_of_a_second_pipeline(
+        self,
+        client: AsyncClient,
+        arq_pool: ArqRedis,
+        externals: _Externals,
+        users: _UserStore,
+    ):
+        """Reconnecting Gmail is routine — a re-auth, a scope change. Re-running
+        the pipeline would rewrite the holo card and seed a second announcement,
+        while skipping ingestion entirely would silently stop refreshing
+        memories on every reconnect from here on."""
+        externals.inbox = [_gmail_message(i) for i in range(4)]
+        externals.sent_emails = [_sent_email(i) for i in range(8)]
+        await complete_submit(client)
+        await connect_gmail()
+        await run_queued_jobs(arq_pool)
+        seeded_after_first = list(externals.seeded_conversations)
+
+        await connect_gmail()
+
+        assert await queued_job_names(arq_pool) == [MEMORY_TASK]
+        assert externals.seeded_conversations == seeded_after_first
+        assert users.onboarding_of(USER_ID)[HOLO_CONVERSATION_ID_FIELD]
+
+    async def test_a_legacy_user_who_already_has_a_card_is_not_re_run(
+        self, client: AsyncClient, arq_pool: ArqRedis, users: _UserStore
+    ):
+        """Users who finished the pre-relocation onboarding carry `house` and no
+        marker. Treating them as new hands them a second card."""
+        await complete_submit(client)
+        users.docs[USER_ID]["onboarding"][LEGACY_PERSONALIZATION_MARKER] = "explorer"
+
+        await connect_gmail()
+
+        assert await queued_job_names(arq_pool) == [MEMORY_TASK]
+
+    async def test_a_queued_job_that_lost_the_race_does_nothing(
+        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, users: _UserStore
+    ):
+        """A job can outlive a connect that already completed the pipeline. The
+        run-time re-check is the only thing between that and a duplicate card."""
+        externals.inbox = [_gmail_message(0)]
+        await complete_submit(client)
+        await connect_gmail()
+        users.docs[USER_ID]["onboarding"][GMAIL_PERSONALIZATION_MARKER] = datetime.now(UTC)
+
+        await run_queued_jobs(arq_pool)
+
+        assert seeded_descriptions(externals) == [GETTING_STARTED_DESCRIPTION]
+        assert externals.notifications == []
+
+
+class TestGmailIsNotActuallyConnected:
+    async def test_the_pipeline_aborts_without_claiming_it_ran(
+        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, users: _UserStore
+    ):
+        """Composio is the authority on the connection, not the callback. If the
+        connection is gone by the time the job runs, marking it done would deny
+        this user their personalization forever."""
+        externals.has_gmail = False
+        await complete_submit(client)
+        await connect_gmail()
+
+        # The connect handler enqueues optimistically; the job itself checks.
+        await run_queued_jobs(arq_pool)
+
+        onboarding = users.onboarding_of(USER_ID)
+        assert GMAIL_PERSONALIZATION_MARKER not in onboarding
+        assert seeded_descriptions(externals) == [GETTING_STARTED_DESCRIPTION]
+
+
+class TestThePipelineDegrades:
+    async def test_a_style_model_outage_still_delivers_the_card(
         self,
         client: AsyncClient,
         arq_pool: ArqRedis,
@@ -1017,628 +929,57 @@ class TestTheFullPipelineDegrades:
         users: _UserStore,
         stages: _StageSink,
     ):
-        """One node's model fails; the rest of the onboarding still has to arrive.
-
-        Asserted on the outputs rather than on the phase: the task wrapper marks
-        the phase complete even when the whole pipeline dies, so a phase-only
-        assertion passes for a user who got nothing at all. Here the workflow
-        model is the only thing broken, so the fallback workflow, the todos, the
-        greeting and COMPLETE must all still be there."""
-        externals.llm_failures = {"onboarding_workflow_suggestions"}
-
-        await complete_submit(client)
-        await run_queued_jobs(arq_pool, externals)
-
-        titles = [w["title"] for w in stages.payload(OnboardingStage.WORKFLOWS_READY)["workflows"]]
-
-        assert externals.todos_created == ["Draft the Q3 plan", "Chase the pending signature"]
-        assert titles == ["Daily Briefing"]
-        assert stages.emitted(OnboardingStage.COMPLETE)
-        assert users.onboarding_of(USER_ID)["first_message"] == "Hey, you're all set."
-
-    async def test_a_crash_inside_the_todos_node_does_not_take_the_pipeline_down(
-        self,
-        client: AsyncClient,
-        arq_pool: ArqRedis,
-        externals: _Externals,
-        stages: _StageSink,
-    ):
-        """The todos node runs inside the gather the whole pipeline waits on, so
-        it swallows its own failures. Without that, a bug in todo creation costs
-        the user their workflows, their greeting and the end of onboarding —
-        three things that have nothing to do with todos.
-
-        The card still has to be resolved, with the copy that says there is
-        nothing rather than being left mid-spin."""
-        with patch.object(
-            intelligence_service,
-            "_create_focus_todos",
-            AsyncMock(side_effect=RuntimeError("todo creation blew up")),
-        ):
-            await complete_submit(client)
-            await run_queued_jobs(arq_pool, externals)
-
-        assert stages.payload(OnboardingStage.TODOS_READY)["status_text"] == "No todos to save"
-        assert stages.payload(OnboardingStage.TODOS_READY)["todos"] == []
-        assert stages.emitted(OnboardingStage.COMPLETE)
-        assert len(externals.workflows_created) == 4
-
-    async def test_a_failed_first_message_falls_back_to_copy_not_an_empty_chat(
-        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, users: _UserStore
-    ):
-        """The chat opens on this message. A model failure has to leave written
-        copy behind, not an empty string the user lands on."""
-        externals.llm_failures = {"onboarding_first_message"}
-
-        await complete_submit(client)
-        await run_queued_jobs(arq_pool, externals)
-
-        first_message = users.onboarding_of(USER_ID)["first_message"]
-        assert first_message.startswith("Hey Test User, ok, you're all set up.")
-
-    async def test_the_pipelines_own_default_copy_is_used_when_the_node_is_gone(
-        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, users: _UserStore
-    ):
-        """One greeting, whichever layer catches the failure.
-
-        ``generate_first_message`` handles its own exceptions, so ``_safe_run``'s
-        default is only reachable if the node stops doing that — but it is the
-        last thing between a model outage and an empty first chat, so it stays.
-        What it must not be is *different* copy: the assertion below is the same
-        one ``test_a_failed_first_message_falls_back_to_copy_not_an_empty_chat``
-        makes, which is what keeps the two layers from drifting into two
-        different greetings for one failure mode."""
-        await complete_submit(client)
-        with patch.object(
-            intelligence_service,
-            "generate_first_message",
-            AsyncMock(side_effect=RuntimeError("node raised")),
-        ):
-            await run_queued_jobs(arq_pool, externals)
-
-        first_message = users.onboarding_of(USER_ID)["first_message"]
-        assert first_message.startswith("Hey Test User, ok, you're all set up.")
-
-    async def test_a_pipeline_crash_does_not_strand_the_user(
-        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, users: _UserStore
-    ):
-        """The task wrapper's rescue path: full mode owns the completion, so an
-        unhandled crash must still advance the phase."""
-        await complete_submit(client)
-        with patch.object(
-            intelligence_service, "_run_todos", AsyncMock(side_effect=RuntimeError("boom"))
-        ):
-            await run_queued_jobs(arq_pool, externals)
-
-        assert (
-            users.onboarding_of(USER_ID)["phase"] == OnboardingPhase.PERSONALIZATION_COMPLETE.value
-        )
-
-    async def test_a_failed_seed_still_completes_without_a_conversation(
-        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, stages: _StageSink
-    ):
-        externals.seeded_conversation_id = None
-
-        await complete_submit(client)
-        await run_queued_jobs(arq_pool, externals)
-
-        assert stages.payload(OnboardingStage.COMPLETE)["conversation_id"] is None
-
-
-# ---------------------------------------------------------------------------
-# Ordering the user can actually observe
-# ---------------------------------------------------------------------------
-
-
-class TestWhatTheScreenShowsWhileItWaits:
-    """Ordering claims asserted against a pipeline that is held mid-flight.
-
-    Reading the finished event list cannot distinguish "emitted before" from
-    "emitted at all": with no real I/O anywhere, a stage moved after a network
-    call, or detached from the thing that should await it, still lands in the
-    same place. Both tests below stop the pipeline at the exact point of
-    interest and look at the screen while it is stopped.
-    """
-
-    async def test_activity_is_announced_before_the_composio_round_trip(
-        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, stages: _StageSink
-    ):
-        """Both first-step cards must light up before the Gmail check, which is a
-        real network call to Composio. Announced after it, the user watches a
-        blank screen for the length of that round trip and concludes it hung."""
-        externals.composio_gate = asyncio.Event()
-        await complete_submit(client)
-
-        job = asyncio.create_task(run_queued_jobs(arq_pool, externals))
-        try:
-            announced = await wait_for_stages(stages, 2)
-        finally:
-            externals.composio_gate.set()
-            await job
-
-        assert set(announced) == {
-            OnboardingStage.INBOX_SCANNING.value,
-            OnboardingStage.TODOS_CREATING.value,
-        }
-
-    async def test_the_screen_is_not_dismissed_while_the_todos_stage_is_in_flight(
-        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, stages: _StageSink
-    ):
-        """The pipeline has to await the todos stage, not fire it and move on.
-
-        Held open at the socket: while TODOS_READY is still being delivered,
-        COMPLETE must not have gone out. Detach that emit and the tail runs
-        straight through — the client is told onboarding finished while the todo
-        list it is supposed to render is still on the wire, and on a slow socket
-        it is dropped entirely when the connection closes."""
-        gate = stages.hold(OnboardingStage.TODOS_READY)
-        await complete_submit(client)
-
-        job = asyncio.create_task(run_queued_jobs(arq_pool, externals))
-        try:
-            await wait_for_stage(stages, OnboardingStage.TODOS_READY)
-            # Hand the loop back repeatedly so the tail gets every chance to run
-            # on. Held correctly it cannot; detached it runs to COMPLETE here,
-            # which is what makes this deterministic rather than a race.
-            for _ in range(50):
-                await asyncio.sleep(0)
-            in_flight = list(stages.names)
-        finally:
-            gate.set()
-            await job
-
-        assert OnboardingStage.COMPLETE.value not in in_flight
-        assert stages.index(OnboardingStage.TODOS_READY) < stages.index(OnboardingStage.COMPLETE)
-
-
-# ---------------------------------------------------------------------------
-# The split (Gmail) pipeline: first half
-# ---------------------------------------------------------------------------
-
-
-class TestTheSplitPipelineStopsAndWaits:
-    @pytest.fixture(autouse=True)
-    async def _run(self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals):
-        externals.has_gmail = True
-        externals.inbox = [_gmail_message(i) for i in range(6)]
+        """One node's model fails; the rest of the reward still has to arrive.
+        The style card must resolve explicitly rather than spin forever."""
+        externals.inbox = [_gmail_message(i) for i in range(4)]
         externals.sent_emails = [_sent_email(i) for i in range(8)]
-        await complete_submit(client, defer_workflows=True)
-        self.ran = await run_queued_jobs(arq_pool, externals)
+        externals.llm_failures = {"onboarding_writing_style"}
 
-    async def test_the_first_job_does_not_finish_onboarding(self, stages: _StageSink):
-        """The whole point of the split is that the inbox work overlaps the time
-        the user spends picking integrations. Completing here would dismiss the
-        screen before they have picked anything."""
-        assert not stages.emitted(OnboardingStage.COMPLETE)
+        await complete_submit(client)
+        await connect_gmail()
+        await run_queued_jobs(arq_pool)
 
-    async def test_no_workflows_are_created_yet(self, externals: _Externals):
-        assert externals.workflows_created == []
-
-    async def test_the_early_marker_is_set_so_the_second_job_can_proceed(self, users: _UserStore):
-        """The workflows job polls for this for five minutes before giving up."""
-        assert users.onboarding_of(USER_ID)["early_intelligence_done_at"]
-
-    async def test_the_inbox_work_did_run(self, stages: _StageSink):
-        assert stages.emitted(OnboardingStage.TRIAGE_READY)
-        assert stages.payload(OnboardingStage.TRIAGE_READY)["total_scanned"] == 6
-
-    async def test_the_writing_style_the_user_sees_is_the_one_persisted(
-        self, stages: _StageSink, users: _UserStore
-    ):
-        """The card is shown from the socket and re-read over HTTP. Two different
-        answers is a card that changes under the user on a refresh."""
-        emitted = stages.payload(OnboardingStage.WRITING_STYLE_READY)["style_summary"]
-
-        assert emitted == users.onboarding_of(USER_ID)["writing_style"]["summary"]
-
-    async def test_todos_are_built_from_the_triaged_inbox(self, externals: _Externals):
-        assert externals.todos_created == [
-            "Reply to the contract redlines",
-            "Summarize this week's invoices",
+        assert stages.payload(OnboardingStage.WRITING_STYLE_READY)["style_summary"] is None
+        assert "writing_style" not in users.onboarding_of(USER_ID)
+        assert users.onboarding_of(USER_ID)["personality_phrase"] == HOLO_PHRASE
+        assert seeded_descriptions(externals) == [
+            GETTING_STARTED_DESCRIPTION,
+            HOLO_CARD_DESCRIPTION,
         ]
 
-    async def test_a_todo_keeps_only_a_source_email_that_really_exists(self, stages: _StageSink):
-        """The card renders "from <sender>" under the todo. A hallucinated citation
-        shows the user an email they never received."""
-        todos = stages.payload(OnboardingStage.TODOS_READY)["todos"]
-
-        assert todos[0]["source_email"]["sender"] == REAL_SENDER
-        assert "source_email" not in todos[1]
-
-    async def test_memory_ingestion_is_queued_off_the_scan(self, externals: _Externals):
-        assert externals.memory_jobs == ["process_gmail_emails_to_memory"]
-
-    async def test_the_phase_stays_pending_until_the_second_job(self, users: _UserStore):
-        assert (
-            users.onboarding_of(USER_ID)["phase"] == OnboardingPhase.PERSONALIZATION_PENDING.value
-        )
-
-
-class TestACrashedEarlyJobIsLeftForTheCleanupCron:
-    """The split half that must NOT rescue itself.
-
-    Full mode owns the completion, so its task wrapper advances the phase on a
-    crash. Split mode does not: the workflows job (or the stuck-personalization
-    cron, which selects on ``phase == personalization_pending``) is what finishes
-    the flow. Marking a crashed early job complete drops the user out of that
-    query, and nothing ever picks them up again.
-    """
-
-    @pytest.fixture(autouse=True)
-    async def _run(self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals):
-        externals.has_gmail = True
-        externals.inbox = [_gmail_message(i) for i in range(4)]
-        await complete_submit(client, defer_workflows=True)
-        with patch.object(
-            intelligence_service, "_run_todos", AsyncMock(side_effect=RuntimeError("worker died"))
-        ):
-            await run_queued_jobs(arq_pool, externals)
-
-    async def test_the_phase_is_left_pending_for_the_retry(self, users: _UserStore):
-        """The whole rescue. Advanced here, this user is invisible to the cron and
-        permanently stuck with no workflows, no greeting, and a reveal screen of
-        defaults — with nothing anywhere reporting a failure."""
-        assert (
-            users.onboarding_of(USER_ID)["phase"] == OnboardingPhase.PERSONALIZATION_PENDING.value
-        )
-
-    async def test_onboarding_was_not_announced_as_finished(self, stages: _StageSink):
-        assert not stages.emitted(OnboardingStage.COMPLETE)
-
-    async def test_nothing_was_written_that_would_look_finished(self, users: _UserStore):
-        onboarding = users.onboarding_of(USER_ID)
-
-        assert "first_message" not in onboarding
-        assert "first_message_conversation_id" not in onboarding
-
-
-class TestAnEmptySentFolder:
-    """Gmail connected, but too few sent emails to learn a style from.
-
-    The no-Gmail case skips the stage entirely; this one must not. The card is
-    already on screen by the time style learning finishes, and an explicit null
-    is what resolves it — the frontend distinguishes "learned nothing" from
-    "still learning", and only one of those ever stops spinning.
-    """
-
-    @pytest.fixture(autouse=True)
-    async def _run(self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals):
-        externals.has_gmail = True
+    async def test_an_empty_sent_folder_resolves_the_card_rather_than_spinning(
+        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, stages: _StageSink
+    ):
+        """The frontend distinguishes "learned nothing" from "still learning",
+        and only one of those ever stops spinning."""
         externals.inbox = [_gmail_message(i) for i in range(4)]
         externals.sent_emails = [_sent_email(0)]  # under the sampler's minimum
-        await complete_submit(client, defer_workflows=True)
-        await run_queued_jobs(arq_pool, externals)
 
-    async def test_the_card_is_told_there_was_nothing_to_learn(self, stages: _StageSink):
+        await complete_submit(client)
+        await connect_gmail()
+        await run_queued_jobs(arq_pool)
+
         payload = stages.payload(OnboardingStage.WRITING_STYLE_READY)
-
         assert payload["style_summary"] is None
         assert payload["example"] is None
-
-    async def test_no_style_is_persisted_from_an_empty_sample(self, users: _UserStore):
-        """A persisted style built from one email would be handed to every future
-        draft as if it were learned."""
-        assert "writing_style" not in users.onboarding_of(USER_ID)
-
-    async def test_the_rest_of_the_inbox_work_still_ran(self, stages: _StageSink):
         assert stages.emitted(OnboardingStage.TRIAGE_READY)
 
-
-# ---------------------------------------------------------------------------
-# POST /onboarding/integrations
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-async def awaiting_integrations(
-    client: AsyncClient, arq_pool: ArqRedis, externals: _Externals
-) -> None:
-    """A user parked exactly where the integration picker is shown."""
-    externals.has_gmail = True
-    externals.inbox = [_gmail_message(i) for i in range(4)]
-    await complete_submit(client, defer_workflows=True)
-    await run_queued_jobs(arq_pool, externals)
-
-
-class TestSubmittingIntegrations:
-    async def test_a_selection_queues_the_workflows_job(
-        self, client: AsyncClient, arq_pool: ArqRedis, awaiting_integrations: None
-    ):
-        response = await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-
-        assert response.json()["status"] == OnboardingIntegrationsStatus.QUEUED.value
-        assert await queued_job_names(arq_pool) == [WORKFLOWS_TASK]
-
-    async def test_the_selection_is_persisted_for_the_workflows_prompt(
-        self, client: AsyncClient, users: _UserStore, awaiting_integrations: None
-    ):
-        """These are what the generated workflows are anchored to. Losing them
-        gives the user four generic workflows for tools they never picked."""
-        await client.post(INTEGRATIONS, json={"selected_integrations": ["slack", "notion"]})
-
-        assert users.onboarding_of(USER_ID)["selected_integrations"] == ["slack", "notion"]
-
-    async def test_the_queued_job_is_tracked_so_it_can_be_aborted(
-        self, client: AsyncClient, users: _UserStore, awaiting_integrations: None
-    ):
-        await client.post(INTEGRATIONS, json={"selected_integrations": []})
-
-        assert users.onboarding_of(USER_ID)["workflows_job_id"]
-
-    async def test_a_double_submit_does_not_start_a_second_workflows_job(
-        self, client: AsyncClient, arq_pool: ArqRedis, awaiting_integrations: None
-    ):
-        """The picker's submit button is clickable twice. Two workflows jobs both
-        generate four workflows and both emit COMPLETE — the user ends up with
-        eight workflows and a screen that dismisses twice."""
-        first = await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-        second = await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-
-        assert first.json()["status"] == OnboardingIntegrationsStatus.QUEUED.value
-        assert second.json()["status"] == OnboardingIntegrationsStatus.ALREADY_RUNNING.value
-        assert await queued_job_names(arq_pool) == [WORKFLOWS_TASK]
-
-    async def test_a_resubmit_after_the_job_died_starts_a_fresh_one(
-        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals
-    ):
-        """A stored job id is not proof of a live job — a worker restart drops it.
-        Treating a dead id as running would leave the user stuck forever with no
-        way to retry."""
-        externals.has_gmail = True
-        await complete_submit(client, defer_workflows=True)
-        await run_queued_jobs(arq_pool, externals)
-        await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-        await drop_queued_jobs(arq_pool)
-
-        response = await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-
-        assert response.json()["status"] == OnboardingIntegrationsStatus.QUEUED.value
-        assert await queued_job_names(arq_pool) == [WORKFLOWS_TASK]
-
-    async def test_submitting_after_onboarding_finished_changes_nothing(
+    async def test_a_failed_seed_still_marks_the_pipeline_as_run(
         self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, users: _UserStore
     ):
-        """Replay of a request the user already completed — a stale tab, a retry.
-        Re-running the phase would regenerate their workflows and re-seed the
-        conversation they are already reading."""
-        externals.has_gmail = True
-        await complete_submit(client, defer_workflows=True)
-        await run_queued_jobs(arq_pool, externals)
-        await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-        await run_queued_jobs(arq_pool, externals)
-        created_before = list(externals.workflows_created)
+        """The announcement is a reward, not the work. Losing the marker because
+        a conversation write failed would re-run the entire pipeline — and pay
+        for the whole inbox scan again — on the user's next reconnect."""
+        externals.inbox = [_gmail_message(0)]
+        externals.seeding_fails = True
 
-        response = await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-
-        assert response.json()["status"] == OnboardingIntegrationsStatus.ALREADY_COMPLETE.value
-        assert await queued_job_names(arq_pool) == []
-        assert externals.workflows_created == created_before
-
-    async def test_a_full_mode_user_is_refused(
-        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals
-    ):
-        """Full mode already created the workflows inline. Accepting this would
-        run the workflows phase a second time on top of them."""
         await complete_submit(client)
-        await run_queued_jobs(arq_pool, externals)
+        await connect_gmail()
+        await run_queued_jobs(arq_pool)
 
-        response = await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-
-        assert response.status_code == 409
-        assert await queued_job_names(arq_pool) == []
-
-    async def test_a_user_who_never_submitted_onboarding_is_refused(self, client: AsyncClient):
-        """Two different 409s guard this endpoint and the frontend routes on the
-        detail: "not submitted" sends the user back to the form, "not awaiting
-        selection" does not. Dropping the first guard leaves the second answering
-        for it with the wrong instruction."""
-        response = await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-
-        assert response.status_code == 409
-        assert response.json()["detail"] == "Onboarding has not been submitted yet"
-
-    async def test_an_unknown_user_is_a_404(self, client: AsyncClient, users: _UserStore):
-        users.docs.clear()
-
-        response = await client.post(INTEGRATIONS, json={"selected_integrations": []})
-
-        assert response.status_code == 404
-
-    async def test_a_failed_enqueue_is_reported_as_retryable(
-        self, client: AsyncClient, awaiting_integrations: None
-    ):
-        """503 is what tells the picker to offer a retry. A 200 here would leave
-        the user watching for workflows that no job will ever create."""
-        with patch.object(ArqRedis, "enqueue_job", AsyncMock(return_value=None)):
-            response = await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-
-        assert response.status_code == 503
-
-
-class TestTheWorkflowsPhaseFinishesOnboarding:
-    @pytest.fixture(autouse=True)
-    async def _run(
-        self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, stages: _StageSink
-    ):
-        externals.has_gmail = True
-        externals.inbox = [_gmail_message(i) for i in range(4)]
-        externals.sent_emails = [_sent_email(i) for i in range(8)]
-        await complete_submit(client, defer_workflows=True)
-        await run_queued_jobs(arq_pool, externals)
-        await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-        stages.events.clear()
-        self.early_scan = list(externals.inbox)
-        self.labels_before = len(externals.llm_labels)
-        self.ran = await run_queued_jobs(arq_pool, externals)
-        self.phase_labels = externals.llm_labels[self.labels_before :]
-
-    async def test_the_second_job_ran(self):
-        assert self.ran == [WORKFLOWS_TASK]
-
-    async def test_the_user_finally_reaches_complete(self, stages: _StageSink):
-        assert stages.emitted(OnboardingStage.COMPLETE)
-        assert stages.payload(OnboardingStage.COMPLETE)["conversation_id"] == "conv-seeded"
-
-    async def test_workflows_are_created_in_this_phase(self, externals: _Externals):
-        assert len(externals.workflows_created) == 4
-
-    async def test_the_phase_advances_only_now(self, users: _UserStore):
-        assert (
-            users.onboarding_of(USER_ID)["phase"] == OnboardingPhase.PERSONALIZATION_COMPLETE.value
-        )
-
-    async def test_the_inbox_is_not_rescanned(self):
-        """The early phase already paid for the scan and persisted what it learned.
-        Re-triaging here would double the Gmail cost and the latency the split was
-        introduced to hide."""
-        assert self.phase_labels == [
-            "onboarding_workflow_suggestions",
-            "onboarding_first_message",
-        ]
-
-    async def test_the_workflows_are_grounded_in_what_the_early_phase_learned(
-        self, externals: _Externals
-    ):
-        """This phase rebuilds triage and writing style from the user document
-        rather than re-deriving them. If that read regressed the call still
-        succeeds and the user still gets four workflows — generic ones, with the
-        whole inbox scan thrown away and nothing anywhere saying so."""
-        prompt = externals.llm_prompts["onboarding_workflow_suggestions"]
-
-        assert REAL_SENDER in prompt
-        assert "Direct and warm" in prompt
-
-    async def test_the_selected_integrations_reach_the_workflow_prompt(self, externals: _Externals):
-        """Picking Slack and getting four Gmail workflows is the failure the
-        picker exists to prevent. Asserted on the rendered preference section, not
-        on the word: the prompt template names Slack in its own examples, so a
-        bare substring check passes with the selection thrown away. Gmail joins
-        the line because it is connected — the selection is what the user picked
-        plus what they are already on."""
-        prompt = externals.llm_prompts["onboarding_workflow_suggestions"]
-
-        assert "Preferred integrations" in prompt
-        assert prompt.split("Preferred integrations")[1].splitlines()[1] == "Slack, Gmail"
-
-    async def test_the_workflows_job_id_is_released(self, users: _UserStore):
-        assert "workflows_job_id" not in users.onboarding_of(USER_ID)
-
-
-class TestRetryingAKilledWorkflowsPhase:
-    """A workflows job that dies after creating workflows but before finishing.
-
-    Production reaches this through the stuck-personalization cron, which
-    re-enqueues the phase for a user still sitting at pending. Reached here the
-    same way it happens: the tail raises, the task wrapper rescues the user, and
-    the picker is submitted again.
-    """
-
-    @pytest.fixture(autouse=True)
-    async def _run(self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals):
-        externals.has_gmail = True
-        externals.inbox = [_gmail_message(i) for i in range(4)]
-        await complete_submit(client, defer_workflows=True)
-        await run_queued_jobs(arq_pool, externals)
-
-        await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-        with patch.object(
-            intelligence_service,
-            "_finalize_onboarding",
-            AsyncMock(side_effect=RuntimeError("worker killed")),
-        ):
-            await run_queued_jobs(arq_pool, externals)
-        self.after_first_attempt = list(externals.workflows_created)
-
-        self.retry = await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-        await run_queued_jobs(arq_pool, externals)
-
-    async def test_the_killed_attempt_did_create_workflows(self):
-        assert len(self.after_first_attempt) == 4
-
-    async def test_the_retry_is_accepted_rather_than_treated_as_a_replay(self):
-        """The user never reached a first message, so this is not a replay — a
-        stuck user has to be able to get through."""
-        assert self.retry.json()["status"] == OnboardingIntegrationsStatus.QUEUED.value
-
-    async def test_the_orphaned_workflows_are_purged_before_regenerating(
-        self, externals: _Externals
-    ):
-        """Without the purge the retry adds to the first attempt's output: the
-        user lands on eight workflows, four of which nothing points at."""
-        assert externals.purged_workflow_ids == [["wf-1", "wf-2", "wf-3", "wf-4"]]
-
-    async def test_the_user_ends_up_with_one_set_of_suggestions(self, users: _UserStore):
-        assert users.onboarding_of(USER_ID)["suggested_workflows"] == [
-            "wf-5",
-            "wf-6",
-            "wf-7",
-            "wf-8",
-        ]
-
-    async def test_the_retry_finishes_onboarding(self, users: _UserStore, stages: _StageSink):
-        assert stages.emitted(OnboardingStage.COMPLETE)
-        assert users.onboarding_of(USER_ID)["first_message_conversation_id"] == "conv-seeded"
-
-
-class TestTheWorkflowsPhaseWhenTheEarlyHalfNeverFinished:
-    """The early-phase wait timing out — the branch the real constants hide.
-
-    ``_wait_for_early_phase`` polls for five minutes for a marker that a killed
-    or aborted early job never writes. Reaching the timeout in a test means
-    shortening it, so the constants are patched down; everything after that
-    point is the real degraded path. It has to end with the user through
-    onboarding on whatever was persisted, because the alternative is a user
-    stuck behind a job that gave up.
-    """
-
-    @pytest.fixture(autouse=True)
-    async def _run(
-        self,
-        client: AsyncClient,
-        arq_pool: ArqRedis,
-        externals: _Externals,
-        monkeypatch: pytest.MonkeyPatch,
-    ):
-        monkeypatch.setattr(intelligence_service, "EARLY_PHASE_WAIT_TIMEOUT_S", 0.2)
-        monkeypatch.setattr(intelligence_service, "EARLY_PHASE_POLL_INTERVAL_S", 0.02)
-        externals.has_gmail = True
-        await complete_submit(client, defer_workflows=True)
-        # The early job is queued and then lost — a worker that died before
-        # picking it up, so the marker it would have written never appears.
-        await drop_queued_jobs(arq_pool)
-
-        self.submitted = await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-        self.ran = await run_queued_jobs(arq_pool, externals)
-
-    async def test_the_workflows_phase_is_accepted_and_runs(self):
-        assert self.submitted.json()["status"] == OnboardingIntegrationsStatus.QUEUED.value
-        assert self.ran == [WORKFLOWS_TASK]
-
-    async def test_the_user_still_gets_through_onboarding(
-        self, stages: _StageSink, users: _UserStore
-    ):
-        """Giving up here would leave them on the loading screen with a job that
-        already exited — no error, no retry, nothing to click."""
-        assert stages.emitted(OnboardingStage.COMPLETE)
-        assert (
-            users.onboarding_of(USER_ID)["phase"] == OnboardingPhase.PERSONALIZATION_COMPLETE.value
-        )
-
-    async def test_they_still_get_workflows_and_a_greeting(
-        self, externals: _Externals, users: _UserStore
-    ):
-        assert len(externals.workflows_created) == 4
-        assert users.onboarding_of(USER_ID)["first_message"] == "Hey, you're all set."
-
-    async def test_the_workflows_are_generated_without_the_learnings_that_never_landed(
-        self, externals: _Externals
-    ):
-        """Degraded, not wrong: with no persisted triage or style the prompt says
-        so rather than carrying a half-written one."""
-        prompt = externals.llm_prompts["onboarding_workflow_suggestions"]
-
-        assert "no email data" in prompt
-        assert "not analyzed" in prompt
+        onboarding = users.onboarding_of(USER_ID)
+        assert onboarding[GMAIL_PERSONALIZATION_MARKER]
+        assert HOLO_CONVERSATION_ID_FIELD not in onboarding
 
 
 # ---------------------------------------------------------------------------
@@ -1647,63 +988,76 @@ class TestTheWorkflowsPhaseWhenTheEarlyHalfNeverFinished:
 
 
 @pytest.fixture
-async def onboarded(client: AsyncClient, arq_pool: ArqRedis, externals: _Externals) -> None:
+async def personalized(client: AsyncClient, arq_pool: ArqRedis, externals: _Externals) -> None:
     externals.integrations_connected = ["slack", "notion"]
     externals.memories_cleared = 7
     externals.todos_purged = 3
     externals.demo_conversations = 2
+    externals.inbox = [_gmail_message(i) for i in range(4)]
+    externals.sent_emails = [_sent_email(i) for i in range(8)]
     await complete_submit(client)
-    await run_queued_jobs(arq_pool, externals)
+    await connect_gmail()
+    await run_queued_jobs(arq_pool)
 
 
 class TestResettingOnboarding:
     async def test_the_user_can_run_onboarding_again(
-        self, client: AsyncClient, users: _UserStore, arq_pool: ArqRedis, onboarded: None
+        self, client: AsyncClient, users: _UserStore, personalized: None
     ):
         """This is the only thing reset is for. If the subdoc survives, the next
-        submit is treated as a replay and no pipeline is ever queued again."""
+        submit is treated as a replay and the user never gets back in."""
         await client.post(RESET)
 
         assert "onboarding" not in users.docs[USER_ID]
         again = await complete_submit(client)
         assert again.status_code == 200
-        assert await queued_job_names(arq_pool) == [INTELLIGENCE_TASK]
 
-    async def test_the_status_endpoint_agrees_the_user_is_no_longer_onboarded(
-        self, client: AsyncClient, onboarded: None
+    async def test_both_seeded_conversations_are_torn_down(
+        self, client: AsyncClient, externals: _Externals, personalized: None
     ):
-        await client.post(RESET)
+        """Left behind, the user restarts onboarding still holding a chat that
+        hands them a holo card built from the personalization they just wiped,
+        and an opener written from the answers they just replaced. Completion
+        and the pipeline each seed one, so a reset that knows about only one
+        field always orphans the other."""
+        body = (await client.post(RESET)).json()
 
-        body = (await client.get(STATUS)).json()
+        assert externals.conversations_deleted == [
+            seeded_id_of(externals, GETTING_STARTED_DESCRIPTION),
+            seeded_id_of(externals, HOLO_CARD_DESCRIPTION),
+        ]
+        assert body["conversation_deleted"] == 2
 
-        assert body["completed"] is False
-        assert body["first_message_conversation_id"] is None
-
-    async def test_the_generated_workflows_are_torn_down(
-        self, client: AsyncClient, externals: _Externals, onboarded: None
+    async def test_a_legacy_first_message_conversation_is_deleted_too(
+        self, client: AsyncClient, externals: _Externals, users: _UserStore, personalized: None
     ):
-        """Deleted through the workflow service, not the collection, so their
-        schedules and Composio triggers go with them. Orphaned triggers keep
-        firing into an account the user thinks they have wiped."""
-        response = await client.post(RESET)
+        """Users from the pre-relocation flow carry that field as well. Nothing
+        writes it any more, so a reset is the only thing that will ever clear
+        it — skip it and the old first-message chat is orphaned forever."""
+        users.docs[USER_ID]["onboarding"]["first_message_conversation_id"] = "conv-legacy"
 
-        assert externals.workflows_deleted == ["wf-1", "wf-2", "wf-3", "wf-4"]
-        assert response.json()["workflows_deleted"] == 4
+        body = (await client.post(RESET)).json()
+
+        assert externals.conversations_deleted == [
+            "conv-legacy",
+            seeded_id_of(externals, GETTING_STARTED_DESCRIPTION),
+            seeded_id_of(externals, HOLO_CARD_DESCRIPTION),
+        ]
+        assert body["conversation_deleted"] == 3
 
     async def test_everything_the_pipeline_created_is_counted_as_deleted(
-        self, client: AsyncClient, onboarded: None
+        self, client: AsyncClient, personalized: None
     ):
         """The counts are what the reset screen shows back to the user."""
         body = (await client.post(RESET)).json()
 
         assert body["todos_deleted"] == 3
-        assert body["conversation_deleted"] == 1
         assert body["demo_conversations_deleted"] == 2
         assert body["integrations_disconnected"] == 2
         assert body["memories_cleared"] == 7
 
     async def test_the_connected_integrations_are_disconnected(
-        self, client: AsyncClient, externals: _Externals, onboarded: None
+        self, client: AsyncClient, externals: _Externals, personalized: None
     ):
         await client.post(RESET)
 
@@ -1712,9 +1066,11 @@ class TestResettingOnboarding:
     async def test_a_live_pipeline_is_aborted_before_the_document_is_wiped(
         self, client: AsyncClient, arq_pool: ArqRedis, users: _UserStore
     ):
-        """A job that survives the reset keeps writing stages onto the socket of a
-        user who has already restarted — the two runs interleave on the new one."""
+        """A job that survives the reset keeps writing stages onto the socket of
+        a user who has already restarted, and re-marks a document that was
+        supposed to be blank."""
         await complete_submit(client)
+        await connect_gmail()
         job_id = users.onboarding_of(USER_ID)["intelligence_job_id"]
 
         await client.post(RESET)
@@ -1722,41 +1078,8 @@ class TestResettingOnboarding:
         aborted = await arq_pool.zrange(abort_jobs_ss, 0, -1)
         assert [raw.decode() if isinstance(raw, bytes) else raw for raw in aborted] == [job_id]
 
-    async def test_a_queued_workflows_job_is_aborted_too(
-        self,
-        client: AsyncClient,
-        arq_pool: ArqRedis,
-        users: _UserStore,
-        awaiting_integrations: None,
-    ):
-        """Both slots are aborted independently — cancelling only the first leaves
-        the second half of the split still running against a wiped document."""
-        await client.post(INTEGRATIONS, json={"selected_integrations": ["slack"]})
-        workflows_job = users.onboarding_of(USER_ID)["workflows_job_id"]
-
-        await client.post(RESET)
-
-        aborted = {
-            raw.decode() if isinstance(raw, bytes) else raw
-            for raw in await arq_pool.zrange(abort_jobs_ss, 0, -1)
-        }
-        assert workflows_job in aborted
-
-    async def test_one_failed_deletion_does_not_abandon_the_rest(
-        self, client: AsyncClient, externals: _Externals, onboarded: None
-    ):
-        """A half-reset is worse than none: the user restarts onboarding while
-        their old todos and memories are still feeding the new run's context."""
-        externals.workflow_delete_error = "wf-2"
-
-        body = (await client.post(RESET)).json()
-
-        assert externals.workflows_deleted == ["wf-1", "wf-3", "wf-4"]
-        assert body["workflows_deleted"] == 3
-        assert body["memories_cleared"] == 7
-
     async def test_a_failed_abort_does_not_block_the_reset(
-        self, client: AsyncClient, users: _UserStore, onboarded: None
+        self, client: AsyncClient, users: _UserStore, personalized: None
     ):
         with patch(
             "app.services.onboarding.onboarding_service.abort_active_intelligence_job",
@@ -1778,5 +1101,27 @@ class TestResettingOnboarding:
         body = (await client.post(RESET)).json()
 
         assert body["success"] is True
-        assert body["workflows_deleted"] == 0
-        assert externals.workflows_deleted == []
+        assert body["conversation_deleted"] == 0
+        assert externals.conversations_deleted == []
+
+
+class TestTheRescueCronOnlyPicksUpTheGenuinelyStuck:
+    """Only pre-relocation users can still be at personalization_pending, and
+    the marker keeps the cron from re-running a pipeline that already ran."""
+
+    async def test_a_user_whose_pipeline_already_ran_is_never_re_queued(
+        self, client: AsyncClient, arq_pool: ArqRedis, users: _UserStore, personalized: None
+    ):
+        from app.workers.tasks.cleanup_tasks import cleanup_stuck_personalization
+
+        stuck = await users.get(USER_ID)
+        assert stuck is not None
+        with patch(
+            "app.workers.tasks.cleanup_tasks.user_repository.find_stuck_personalization",
+            new_callable=AsyncMock,
+            return_value=[stuck],
+        ):
+            result = await cleanup_stuck_personalization({}, max_age_minutes=30)
+
+        assert "0 re-queued" in result
+        assert await queued_job_names(arq_pool) == []

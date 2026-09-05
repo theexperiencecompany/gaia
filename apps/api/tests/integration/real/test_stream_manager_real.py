@@ -102,14 +102,22 @@ class TestStreamManagerReal:
         assert await StreamManager.is_cancelled("s5")
 
     async def test_update_progress_accumulates_text(self, real_redis):
-        """update_progress must append message_chunk to complete_message."""
+        """Chunks accumulate as pending text and land in complete_message once the
+        message boundary settles them (a retracted preamble is dropped instead)."""
         await StreamManager.start_stream("s6", "conv-6", "user-6")
 
         await StreamManager.update_progress("s6", message_chunk="Hello ")
         await StreamManager.update_progress("s6", message_chunk="world")
 
         progress = await StreamManager.get_progress("s6")
+        assert progress["pending_message"] == "Hello world"
+        assert progress["complete_message"] == ""
+
+        await StreamManager.settle_message_progress("s6", discarded=False)
+
+        progress = await StreamManager.get_progress("s6")
         assert progress["complete_message"] == "Hello world"
+        assert progress["pending_message"] == ""
 
     async def test_update_progress_merges_tool_data(self, real_redis):
         """update_progress must merge tool_data arrays."""

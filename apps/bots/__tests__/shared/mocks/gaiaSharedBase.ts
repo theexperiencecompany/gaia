@@ -18,6 +18,10 @@
  */
 
 import { vi } from "vitest";
+import {
+  consumeInboundLinkCode,
+  redeemLinkCode,
+} from "../../../../../libs/shared/ts/src/bots/link-codes";
 
 interface GaiaSharedMockOptions {
   /** Per-platform streaming configuration object */
@@ -206,6 +210,11 @@ export function makeGaiaSharedMock(
     unsupportedMediaMessage: vi.fn(
       (kind: string) => `I can't process ${kind} yet.`,
     ),
+    // The REAL link-code helpers: a codeless message must pass through
+    // untouched, and that is exactly what the adapter routing tests below
+    // depend on — a stub would prove nothing about production.
+    consumeInboundLinkCode: vi.fn(consumeInboundLinkCode),
+    redeemLinkCode: vi.fn(redeemLinkCode),
     extractSubcommandArgs: vi.fn((name: string, raw?: string) =>
       name === "todo" || name === "workflow"
         ? { subcommand: (raw ?? "").trim().split(/\s+/)[0] || "list" }

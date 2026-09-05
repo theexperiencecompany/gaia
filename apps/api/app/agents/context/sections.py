@@ -28,6 +28,7 @@ from app.agents.context.fetchers import (
     build_core_memory_block,
     build_gaia_knowledge_block,
     build_memory_recall_block,
+    build_new_user_guidance_block,
     build_tracked_todos_block,
     build_workspace_session_banner,
 )
@@ -185,6 +186,18 @@ async def _skills(ctx: SectionContext) -> str:
 SECTIONS: tuple[Section, ...] = (
     Section("user_identity", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 10, _user_identity),
     Section("user_prefs", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 20, _user_prefs),
+    # Comms only: the executor never opens a conversation, so first-contact
+    # coaching there would be tokens spent on a tier that cannot use them.
+    # Stable rather than volatile because it is a pure function of the signup
+    # answers plus a slow counter, so it is byte-identical every turn until the
+    # user outgrows it, and then invalidates the prefix exactly once.
+    Section(
+        "new_user_guidance",
+        PromptSlot.DYNAMIC_STABLE,
+        frozenset({AgentTier.COMMS}),
+        25,
+        build_new_user_guidance_block,
+    ),
     Section(
         "workspace_session",
         PromptSlot.DYNAMIC_STABLE,

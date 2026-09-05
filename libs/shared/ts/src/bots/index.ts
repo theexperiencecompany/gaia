@@ -54,11 +54,18 @@ export type {
   OutboundAttachment,
   OutboundMessageEnvelope,
 } from "./consumer/envelope";
-
 export {
   outboundAttachmentSchema,
   outboundMessageEnvelopeSchema,
 } from "./consumer/envelope";
+export type { InboundLinkCodeArgs, ParsedLinkCode } from "./link-codes";
+export {
+  buildLinkCodeFailureMessage,
+  consumeInboundLinkCode,
+  LINK_CODE_LENGTH,
+  parseTrailingLinkCode,
+  redeemLinkCode,
+} from "./link-codes";
 export type {
   AuthenticatedSettingsResponse,
   AuthStatus,

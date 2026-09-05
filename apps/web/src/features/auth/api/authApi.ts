@@ -10,6 +10,9 @@ export interface UserInfo {
     completed: boolean;
     completed_at?: string;
     phase?: string;
+    first_message_conversation_id?: string;
+    /** The seeded "Getting started" conversation the wizard hands off into. */
+    getting_started_conversation_id?: string;
     preferences?: {
       profession?: string;
       response_style?: string;
@@ -85,18 +88,10 @@ export const authApi = {
 
   // Complete onboarding
   completeOnboarding: async (onboardingData: {
-    name: string;
     profession: string;
+    needs: string[];
+    other_need?: string;
     timezone?: string;
-    focus?: string;
-    clarify_answers?: {
-      id: string;
-      kind: string;
-      question: string;
-      value: string | null;
-    }[];
-    selected_integrations?: string[];
-    defer_workflows?: boolean;
   }): Promise<{ success: boolean; message: string; user?: UserInfo }> => {
     return apiService.post("/onboarding", onboardingData, {
       silent: true,

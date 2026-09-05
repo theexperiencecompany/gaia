@@ -13,6 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.log_tags import LogTag
+
 MODULE = "app.services.system_workflows.provisioner"
 
 
@@ -510,6 +512,138 @@ class TestResetSystemWorkflowToDefault:
         definition = mock_repo.reset_system_workflow.await_args.args[1]
         assert definition.prompt == "the factory prompt"
 
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reset_writes_the_factorys_title_description_steps_and_triggers(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+    ) -> None:
+        """Every field ``SystemWorkflowDefinition`` is built from must be the
+        factory's/registration's actual value — swapping any one for ``None``,
+        or losing a non-empty value to a stale fallback, corrupts the reset
+        silently (the return value stays ``True``)."""
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(key="manual_wf", composio_trigger_ids=None, trigger_name=None)
+        )
+        mock_repo.reset_system_workflow = AsyncMock()
+
+        from app.models.workflow_models import TriggerType
+
+        trigger_config = MagicMock()
+        trigger_config.type = TriggerType.MANUAL
+        trigger_config.trigger_name = None
+        trigger_config.model_dump.return_value = {"type": "manual"}
+        mock_ensure.return_value = trigger_config
+
+        req = _make_workflow_request(title="Refreshed Title", description="Refreshed description")
+        req.steps = [{"action": "noop"}]
+        factory = MagicMock(return_value=req)
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"manual_wf": factory}):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        definition = mock_repo.reset_system_workflow.await_args.args[1]
+        assert definition.title == "Refreshed Title"
+        assert definition.description == "Refreshed description"
+        assert definition.steps == [{"action": "noop"}]
+        assert definition.trigger_config is trigger_config
+        # No integration trigger to re-register (MANUAL type) -> [], not None.
+        assert definition.composio_trigger_ids == []
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reset_preserves_a_genuinely_blank_description(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+    ) -> None:
+        """``request.description or ""`` only exists to turn a falsy
+        ``None`` into ``""`` — a blank-but-not-None description must reach
+        the definition unchanged, not some other fallback string."""
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(key="manual_wf", composio_trigger_ids=None, trigger_name=None)
+        )
+        mock_repo.reset_system_workflow = AsyncMock()
+
+        from app.models.workflow_models import TriggerType
+
+        trigger_config = MagicMock()
+        trigger_config.type = TriggerType.MANUAL
+        trigger_config.trigger_name = None
+        trigger_config.model_dump.return_value = {"type": "manual"}
+        mock_ensure.return_value = trigger_config
+
+        req = _make_workflow_request(title="Title", description="")
+        req.steps = []
+        factory = MagicMock(return_value=req)
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"manual_wf": factory}):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        definition = mock_repo.reset_system_workflow.await_args.args[1]
+        assert definition.description == ""
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reregister_and_unregister_receive_this_workflow_and_user(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+    ) -> None:
+        """The orchestrator's calls into the two trigger helpers must carry
+        THIS reset's workflow_id and user_id — swapping either for `None`
+        would register/unregister triggers under the wrong (or no) workflow
+        or user, silently."""
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(
+                composio_trigger_ids=["old-t1"], trigger_name="gmail_new_email"
+            )
+        )
+        mock_repo.reset_system_workflow = AsyncMock()
+
+        from app.models.workflow_models import TriggerType
+
+        trigger_config = MagicMock()
+        trigger_config.type = TriggerType.INTEGRATION
+        trigger_config.trigger_name = "gmail_new_email"
+        trigger_config.model_dump.return_value = {"type": "integration"}
+        mock_ensure.return_value = trigger_config
+
+        req = _make_workflow_request()
+        req.steps = []
+        factory = MagicMock(return_value=req)
+
+        reregister = AsyncMock(return_value=["new-t1"])
+        unregister = AsyncMock()
+        with (
+            patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"gmail_digest": factory}),
+            patch(f"{MODULE}._reregister_triggers_for_reset", reregister),
+            patch(f"{MODULE}._unregister_old_triggers_for_reset", unregister),
+        ):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        reregister.assert_awaited_once_with(trigger_config, "wf-1", "user-1")
+        unregister.assert_awaited_once_with(["old-t1"], "gmail_new_email", "wf-1", "user-1")
+
     def _schedule_trigger_config(self) -> MagicMock:
         from datetime import datetime
 
@@ -737,10 +871,10 @@ class TestReregisterIntegrationTriggers:
         cfg = self._integration_config()
 
         from app.services.system_workflows.provisioner import (
-            _reregister_integration_triggers,
+            _reregister_triggers_for_reset,
         )
 
-        result = await _reregister_integration_triggers("user-1", "wf-1", cfg)
+        result = await _reregister_triggers_for_reset(cfg, "wf-1", "user-1")
 
         assert result == ["new-t1"]
         mock_trigger_svc.register_triggers.assert_awaited_once_with(
@@ -762,10 +896,10 @@ class TestReregisterIntegrationTriggers:
         cfg = self._integration_config(trigger_name=None)
 
         from app.services.system_workflows.provisioner import (
-            _reregister_integration_triggers,
+            _reregister_triggers_for_reset,
         )
 
-        result = await _reregister_integration_triggers("user-1", "wf-1", cfg)
+        result = await _reregister_triggers_for_reset(cfg, "wf-1", "user-1")
 
         assert result == []
         mock_trigger_svc.register_triggers.assert_not_awaited()
@@ -779,10 +913,10 @@ class TestReregisterIntegrationTriggers:
         cfg = self._integration_config()
 
         from app.services.system_workflows.provisioner import (
-            _reregister_integration_triggers,
+            _reregister_triggers_for_reset,
         )
 
-        result = await _reregister_integration_triggers("user-1", "wf-1", cfg)
+        result = await _reregister_triggers_for_reset(cfg, "wf-1", "user-1")
 
         assert result is None
         _patch_log.error.assert_called_once_with(
@@ -802,10 +936,10 @@ class TestReregisterIntegrationTriggers:
         cfg = self._integration_config()
 
         from app.services.system_workflows.provisioner import (
-            _reregister_integration_triggers,
+            _reregister_triggers_for_reset,
         )
 
-        result = await _reregister_integration_triggers("user-1", "wf-1", cfg)
+        result = await _reregister_triggers_for_reset(cfg, "wf-1", "user-1")
 
         assert result is None
         _patch_log.error.assert_called_once_with(
@@ -824,9 +958,11 @@ class TestUnregisterOldTriggers:
     async def test_unregisters_with_exact_arguments(self, mock_trigger_svc: MagicMock) -> None:
         mock_trigger_svc.unregister_triggers = AsyncMock()
 
-        from app.services.system_workflows.provisioner import _unregister_old_triggers
+        from app.services.system_workflows.provisioner import (
+            _unregister_old_triggers_for_reset,
+        )
 
-        await _unregister_old_triggers("user-1", "wf-1", "gmail_new_email", ["old-1"])
+        await _unregister_old_triggers_for_reset(["old-1"], "gmail_new_email", "wf-1", "user-1")
 
         mock_trigger_svc.unregister_triggers.assert_awaited_once_with(
             user_id="user-1",
@@ -840,10 +976,12 @@ class TestUnregisterOldTriggers:
     async def test_skips_when_no_old_triggers(self, mock_trigger_svc: MagicMock) -> None:
         mock_trigger_svc.unregister_triggers = AsyncMock()
 
-        from app.services.system_workflows.provisioner import _unregister_old_triggers
+        from app.services.system_workflows.provisioner import (
+            _unregister_old_triggers_for_reset,
+        )
 
         # No old ids but a trigger_name — the `and` guard means nothing to tear down.
-        await _unregister_old_triggers("user-1", "wf-1", "gmail_new_email", [])
+        await _unregister_old_triggers_for_reset([], "gmail_new_email", "wf-1", "user-1")
 
         mock_trigger_svc.unregister_triggers.assert_not_awaited()
 
@@ -854,10 +992,12 @@ class TestUnregisterOldTriggers:
     ) -> None:
         mock_trigger_svc.unregister_triggers = AsyncMock(side_effect=RuntimeError("nope"))
 
-        from app.services.system_workflows.provisioner import _unregister_old_triggers
+        from app.services.system_workflows.provisioner import (
+            _unregister_old_triggers_for_reset,
+        )
 
         # Must NOT raise — teardown failure is best-effort.
-        await _unregister_old_triggers("user-1", "wf-1", "gmail_new_email", ["old-1"])
+        await _unregister_old_triggers_for_reset(["old-1"], "gmail_new_email", "wf-1", "user-1")
 
         _patch_log.warning.assert_called_once_with(
             "[WORKFLOW] Failed to unregister old triggers during reset of (non-fatal)",
@@ -911,3 +1051,91 @@ class TestResetDefinitionAssembly:
         definition = mock_repo.reset_system_workflow.await_args.args[1]
         assert definition.description == ""
         assert definition.steps == []
+
+
+class TestActivationForPayingUsers:
+    """A Pro user's freshly provisioned system workflow is switched on at once, so
+    the promise GAIA makes in the opening conversation ("I'll get into your
+    inbox tonight") is kept. Anyone else keeps it dormant."""
+
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.is_subscription_active", new_callable=AsyncMock)
+    async def test_a_pro_user_gets_the_workflow_activated(
+        self, is_active: AsyncMock, mock_service: MagicMock
+    ) -> None:
+        from app.services.system_workflows.provisioner import _activate_for_paying_user
+
+        is_active.return_value = True
+        mock_service.activate_workflow = AsyncMock()
+
+        await _activate_for_paying_user("wf-9", "user-1", "gmail:email_intelligence")
+
+        is_active.assert_awaited_once_with("user-1")
+        mock_service.activate_workflow.assert_awaited_once_with("wf-9", "user-1")
+
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.is_subscription_active", new_callable=AsyncMock)
+    async def test_a_user_without_a_plan_keeps_it_dormant(
+        self, is_active: AsyncMock, mock_service: MagicMock
+    ) -> None:
+        from app.services.system_workflows.provisioner import _activate_for_paying_user
+
+        is_active.return_value = False
+        mock_service.activate_workflow = AsyncMock()
+
+        await _activate_for_paying_user("wf-9", "user-1", "gmail:email_intelligence")
+
+        mock_service.activate_workflow.assert_not_awaited()
+
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.is_subscription_active", new_callable=AsyncMock)
+    async def test_an_activation_failure_is_logged_with_its_cause_and_swallowed(
+        self, is_active: AsyncMock, mock_service: MagicMock
+    ) -> None:
+        from app.services.system_workflows.provisioner import _activate_for_paying_user
+
+        is_active.return_value = True
+        cause = "composio down " * 60  # 780 chars: the wide event keeps the first 500
+        mock_service.activate_workflow = AsyncMock(side_effect=RuntimeError(cause))
+
+        with patch(f"{MODULE}.log") as mock_log:
+            await _activate_for_paying_user("wf-9", "user-1", "gmail:email_intelligence")
+
+        mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.args == (
+            f"{LogTag.WORKFLOW} Could not activate provisioned system workflow",
+        )
+        assert mock_log.warning.call_args.kwargs == {
+            "key": "gmail:email_intelligence",
+            "workflow_id": "wf-9",
+            "user_id": "user-1",
+            "error": cause[:500],
+            "error_type": "RuntimeError",
+        }
+
+    @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
+    @patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock)
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.workflow_repository")
+    async def test_provisioning_activates_each_created_workflow(
+        self,
+        mock_repo: MagicMock,
+        mock_service: MagicMock,
+        activate: AsyncMock,
+        _notify: AsyncMock,
+    ) -> None:
+        from app.services.system_workflows.provisioner import provision_system_workflows
+
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
+        created = MagicMock()
+        created.id = "wf-created"
+        mock_service.create_workflow = AsyncMock(return_value=created)
+        request = MagicMock()
+        request.trigger_config = MagicMock(type="manual", timezone="UTC")
+        with patch(
+            f"{MODULE}.SYSTEM_WORKFLOWS_BY_INTEGRATION",
+            {"gmail": [("gmail:email_intelligence", lambda: request)]},
+        ):
+            await provision_system_workflows("user-1", "gmail", "Gmail", notify=False)
+
+        activate.assert_awaited_once_with("wf-created", "user-1", "gmail:email_intelligence")

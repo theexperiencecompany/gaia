@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.decorators import tiered_rate_limit
+from app.decorators import require_subscription, tiered_rate_limit
 from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
 from app.models.message_models import MessageRequest
@@ -22,6 +22,7 @@ router = APIRouter()
 
 
 @router.post("/image/generate")
+@require_subscription()
 @tiered_rate_limit("generate_image")
 async def image(
     request: MessageRequest, _user: AuthenticatedUser = Depends(get_current_user)
@@ -34,6 +35,7 @@ async def image(
 
 
 @router.post("/image/text")
+@require_subscription()
 @tiered_rate_limit("file_analysis")
 async def image_to_text(
     message: str = Form(...),
@@ -53,6 +55,7 @@ async def image_to_text(
 
 
 @router.post("/image/generate/stream")
+@require_subscription()
 @tiered_rate_limit("generate_image")
 async def image_stream(
     request: MessageRequest, _user: AuthenticatedUser = Depends(get_current_user)

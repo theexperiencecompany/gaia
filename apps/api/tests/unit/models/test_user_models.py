@@ -17,8 +17,8 @@ class TestOnboardingRequestTimezone:
 
     def _build(self, timezone) -> OnboardingRequest:
         return OnboardingRequest(
-            name="Aryan",
             profession="Engineer",
+            needs=["inbox"],
             timezone=timezone,
         )
 

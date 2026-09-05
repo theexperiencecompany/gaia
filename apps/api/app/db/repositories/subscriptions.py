@@ -36,6 +36,14 @@ class SubscriptionsRepository(MongoRepository[SubscriptionDocument, Subscription
         """
         return await self._find({"user_id": user_id}, sort=[("created_at", -1)])
 
+    async def has_any_for_user(self, user_id: str) -> bool:
+        """Whether this user has ever had a subscription, in any status.
+
+        Distinguishes a lapsed subscriber from someone who has never paid — the
+        paywall shows different copy for each.
+        """
+        return await self._find_one({"user_id": user_id}) is not None
+
     async def get_by_dodo_id(self, dodo_subscription_id: str) -> SubscriptionDocument | None:
         return await self._find_one({"dodo_subscription_id": dodo_subscription_id})
 

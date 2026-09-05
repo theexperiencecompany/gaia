@@ -30,7 +30,7 @@ from app.models.platform_models import (
     PlatformLinkEntry,
     PlatformLinkResult,
 )
-from app.models.user_models import PlatformLinkRecord, user_to_legacy_dict
+from app.models.user_models import PlatformLinkRecord, UserDocument, user_to_legacy_dict
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.payments.payment_service import payment_service
@@ -373,6 +373,32 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
     return result
 
 
+def linked_platforms_of(user: UserDocument) -> dict[str, PlatformLinkEntry]:
+    """A loaded user's linked platforms, keyed by platform name in ``Platform`` order.
+
+    Only platforms stored as a dict with a non-empty "id" are returned; legacy
+    string/int values are skipped. Split out from
+    ``PlatformLinkService.get_linked_platforms`` so callers that already hold the
+    document (onboarding completion) do not pay for a second read.
+    """
+    platform_links = user.platform_links or {}
+    connected_at = user.platform_links_connected_at or {}
+
+    result: dict[str, PlatformLinkEntry] = {}
+    for platform in Platform.values():
+        stored = platform_links.get(platform)
+        if isinstance(stored, dict) and stored.get("id"):
+            result[platform] = {
+                "platform": platform,
+                "platformUserId": stored["id"],
+                "username": stored.get("username"),
+                "displayName": stored.get("display_name"),
+                "connectedAt": connected_at.get(platform),
+            }
+
+    return result
+
+
 class PlatformLinkService:
     """Service for platform account linking operations."""
 
@@ -532,28 +558,6 @@ class PlatformLinkService:
 
     @staticmethod
     async def get_linked_platforms(user_id: str) -> dict[str, PlatformLinkEntry]:
-        """Get all linked platforms for a user, mapping platform name to connection details.
-
-        Only platforms stored as a dict with a non-empty "id" are returned;
-        legacy string/int values are skipped.
-        """
+        """Get all linked platforms for a user, mapping platform name to connection details."""
         user = await user_repository.get(user_id)
-        if user is None:
-            return {}
-
-        platform_links = user.platform_links or {}
-        connected_at = user.platform_links_connected_at or {}
-
-        result: dict[str, PlatformLinkEntry] = {}
-        for platform in Platform.values():
-            stored = platform_links.get(platform)
-            if isinstance(stored, dict) and stored.get("id"):
-                result[platform] = {
-                    "platform": platform,
-                    "platformUserId": stored["id"],
-                    "username": stored.get("username"),
-                    "displayName": stored.get("display_name"),
-                    "connectedAt": connected_at.get(platform),
-                }
-
-        return result
+        return {} if user is None else linked_platforms_of(user)

@@ -7,11 +7,9 @@ export interface Message {
 
 export interface Question {
   id: string;
-  question: string;
-  placeholder: string;
+  /** GAIA's side of the turn, one bubble per line, given the answers so far. */
+  lines: (responses: Record<string, string>) => string[];
   fieldName: string;
-  chipOptions?: { label: string; value: string }[];
-  optional?: boolean;
 }
 
 export interface ProfessionOption {
@@ -19,18 +17,9 @@ export interface ProfessionOption {
   value: string;
 }
 
-export type ClarifyQuestionKind = "scope" | "blocker" | "constraint";
-
-export interface ClarifyQuestion {
-  id: string;
-  kind: ClarifyQuestionKind;
-  question: string;
-  options: string[];
-}
-
-export type ClarifyAnswerKind = "option" | "custom" | "skip";
-
-export interface ClarifyAnswer {
-  kind: ClarifyAnswerKind;
-  value: string | null;
+/** One Q2 option. `value` must match a backend `OnboardingNeed` member, except
+ * the `OTHER_NEED` catch-all, which is never sent as a need. */
+export interface NeedOption {
+  value: string;
+  label: string;
 }

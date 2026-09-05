@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.v1.dependencies.oauth_dependencies import (
@@ -15,8 +15,8 @@ from app.core.websocket_manager import websocket_manager
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
+from app.decorators import require_subscription, tiered_rate_limit
 from app.models.onboarding_models import (
-    ClarifyQuestionsResponse,
     OnboardingPhaseUpdateResponse,
     OnboardingResetResponse,
     PersistedTriageSummary,
@@ -33,8 +33,6 @@ from app.models.onboarding_models import (
 from app.models.user_models import (
     AuthenticatedUser,
     BioStatus,
-    OnboardingIntegrationsRequest,
-    OnboardingIntegrationsResponse,
     OnboardingPhaseUpdateRequest,
     OnboardingPreferences,
     OnboardingRequest,
@@ -45,12 +43,10 @@ from app.models.user_models import (
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.composio.composio_service import get_composio_service
-from app.services.onboarding.clarify_service import generate_clarify_questions
 from app.services.onboarding.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
     reset_onboarding,
-    submit_onboarding_integrations,
     update_onboarding_preferences,
 )
 from app.services.onboarding.social_profile_service import save_confirmed_profiles
@@ -94,11 +90,13 @@ def _normalize_example_blocks(raw: object) -> WritingStyleExampleBlocks | None:
 @router.post("", response_model=OnboardingResponse)
 async def complete_user_onboarding(
     onboarding_data: OnboardingRequest,
-    background_tasks: BackgroundTasks,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     tz_info: Annotated[GET_USER_TZ_TYPE, Depends(get_user_timezone)],
 ) -> OnboardingResponse:
-    """Complete user onboarding by storing preferences and queuing the intelligence pipeline."""
+    """Complete user onboarding by storing the user's preferences.
+
+    Nothing is generated here: the personalization pipeline fires when the user
+    connects Gmail, not at signup."""
     log.set(
         user={"id": user["user_id"]},
         onboarding={
@@ -109,14 +107,7 @@ async def complete_user_onboarding(
     )
 
     try:
-        updated_user = await complete_onboarding(
-            user["user_id"],
-            onboarding_data,
-            background_tasks,
-        )
-        # No completion event here: this only QUEUES the pipeline. The worker
-        # emits it once the phase actually reaches PERSONALIZATION_COMPLETE,
-        # so a pipeline that fails afterwards is not counted as a completion.
+        updated_user = await complete_onboarding(user["user_id"], onboarding_data)
         return OnboardingResponse(
             success=True, message="Onboarding completed successfully", user=updated_user
         )
@@ -131,64 +122,6 @@ async def complete_user_onboarding(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Failed to complete onboarding") from e
-
-
-@router.post(
-    "/integrations",
-    responses={500: {"description": "Failed to submit integrations"}},
-)
-async def submit_integrations(
-    request: OnboardingIntegrationsRequest,
-    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-) -> OnboardingIntegrationsResponse:
-    """Persist selected integrations and start the deferred workflows phase (split-mode onboarding)."""
-    log.set(
-        user={"id": user["user_id"]},
-        onboarding={"operation": "submit_integrations"},
-    )
-    try:
-        status = await submit_onboarding_integrations(
-            user["user_id"], request.selected_integrations
-        )
-        log.set(onboarding={"result_status": status.value})
-        return OnboardingIntegrationsResponse(success=True, status=status)
-    except HTTPException:
-        raise
-    except Exception as e:
-        log.error(
-            f"{LogTag.ONBOARDING} Error submitting integrations",
-            user_id=user["user_id"],
-            error_type=type(e).__name__,
-            error=str(e),
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail="Failed to submit integrations") from e
-
-
-class ClarifyQuestionsRequest(BaseModel):
-    name: str
-    profession: str
-    focus: str
-
-
-@router.post("/clarify-questions")
-async def get_clarify_questions(
-    payload: ClarifyQuestionsRequest,
-    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-) -> ClarifyQuestionsResponse:
-    """Generate the LLM 3-question follow-up for the no-Gmail path."""
-    log.set(
-        user={"id": user["user_id"]},
-        onboarding={"operation": "clarify_questions"},
-    )
-    name = payload.name.strip() or "there"
-    profession = payload.profession.strip() or "professional"
-    focus = payload.focus.strip()
-    if not focus:
-        raise HTTPException(status_code=400, detail="Focus is required")
-
-    questions = await generate_clarify_questions(name, profession, focus, user_id=user["user_id"])
-    return ClarifyQuestionsResponse(questions=questions)
 
 
 @router.post(
@@ -584,8 +517,13 @@ async def save_writing_style(
 
 @router.post(
     "/writing-style/regenerate-example",
-    responses={500: {"description": "Failed to regenerate writing style example"}},
+    responses={
+        402: {"description": "Subscription required"},
+        500: {"description": "Failed to regenerate writing style example"},
+    },
 )
+@require_subscription()
+@tiered_rate_limit("onboarding_generation")
 async def regenerate_writing_style_example(
     request: WritingStyleRegenerateRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],

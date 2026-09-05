@@ -937,6 +937,9 @@ importers:
       dexie:
         specifier: ^4.4.4
         version: 4.4.4
+      dodopayments-checkout:
+        specifier: ^1.9.9
+        version: 1.9.9
       dompurify:
         specifier: ^3.4.11
         version: 3.4.11
@@ -12452,6 +12455,10 @@ packages:
 
   doctypes@1.1.0:
     resolution: {integrity: sha512-LLBi6pEqS6Do3EKQ3J0NqHWV5hhb78Pi8vvESYwyOy2c31ZEZVdtitdzsQsKb7878PEERhzUk0ftqGhG6Mz+pQ==}
+
+  dodopayments-checkout@1.9.9:
+    resolution: {integrity: sha512-AgaAcer4x8gCWUK2waeTESIJc3/WiejogbCPbwkh5CIMWxLkAPIIAFy64q3qFYO/FNQ5xlM9uvLDNwJgXG/A4g==}
+    engines: {node: '>=18.0.0'}
 
   dom-accessibility-api@0.5.16:
     resolution: {integrity: sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg==}
@@ -33830,6 +33837,8 @@ snapshots:
   dnssd-advertise@1.1.6: {}
 
   doctypes@1.1.0: {}
+
+  dodopayments-checkout@1.9.9: {}
 
   dom-accessibility-api@0.5.16: {}
 

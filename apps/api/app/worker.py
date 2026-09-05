@@ -21,7 +21,6 @@ from app.workers.tasks import (
     generate_workflow_steps,
     process_gmail_emails_to_memory,
     process_onboarding_intelligence_task,
-    process_onboarding_workflows_task,
     process_reminder,
     process_workflow_generation_task,
     promote_usage_badges,
@@ -57,7 +56,6 @@ _regenerate_workflow_steps = arq_task(regenerate_workflow_steps)
 _generate_workflow_steps = arq_task(generate_workflow_steps)
 _process_gmail_emails_to_memory = arq_task(process_gmail_emails_to_memory)
 _process_onboarding_intelligence_task = arq_task(process_onboarding_intelligence_task)
-_process_onboarding_workflows_task = arq_task(process_onboarding_workflows_task)
 _cleanup_stuck_personalization = arq_task(cleanup_stuck_personalization)
 _backfill_active_users = arq_task(backfill_active_users)
 _backfill_user_memories = arq_task(backfill_user_memories)
@@ -87,7 +85,6 @@ WorkerSettings.functions = [
     _generate_workflow_steps,
     _process_gmail_emails_to_memory,
     _process_onboarding_intelligence_task,
-    _process_onboarding_workflows_task,
     _cleanup_stuck_personalization,
     _sweep_idle_sandboxes,
     _prune_inactive_sessions,

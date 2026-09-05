@@ -1,6 +1,7 @@
 import type React from "react";
 
 import Composer from "@/features/chat/components/composer/Composer";
+import { PaywallNotice } from "@/features/chat/components/composer/PaywallNotice";
 import StarterText from "@/features/chat/components/interface/StarterText";
 
 import { ChatSuggestions } from "./ChatSuggestions";
@@ -12,7 +13,6 @@ interface NewChatSectionProps {
     fileUploadRef: React.RefObject<{
       attachFiles: (files: File[]) => Promise<void>;
     } | null>;
-    appendToInputRef: React.RefObject<((text: string) => void) | null>;
     hasMessages: boolean;
     voiceModeActive: () => void;
   };
@@ -26,6 +26,7 @@ export const NewChatSection: React.FC<NewChatSectionProps> = ({
   return (
     <div className="relative flex w-full snap-start items-center justify-center px-4 pt-[25vh] scrollbar-default">
       <div className="flex w-full max-w-7xl flex-col items-center justify-center">
+        <PaywallNotice className="mb-8" />
         <div className="flex flex-col items-center gap-2">
           <StarterText />
         </div>

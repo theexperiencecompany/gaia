@@ -10,8 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.workflow_models import DeactivationReason
+from app.models.workflow_models import DeactivationReason, IntegrationRef
 from app.services.workflow.integration_pause import (
+    pause_workflow_for_missing_integrations,
     pause_workflows_for_expired_integration,
     resume_workflows_for_reconnected_integration,
 )
@@ -385,3 +386,167 @@ class TestSubscriptions:
             await pause_workflows_for_expired_integration(USER_ID, "nope")
 
         subscription_side.pause.assert_awaited_once_with(USER_ID, set())
+
+
+class TestPauseAtFireTime:
+    """The fire-time counterpart, which runs with no webhook to prompt it.
+
+    A grant revoked upstream produces no connection-lifecycle event, so the
+    workflow stays activated and every occurrence mints another "X isn't
+    connected" message. These tests pin what the pause actually does — which
+    workflow it deactivates, under which reason, and what it hands back to the
+    caller for the notice — rather than that it ran.
+    """
+
+    @staticmethod
+    def _workflow_needing(
+        integrations: set[str], *, workflow_id: str = "wf-1", user_id: str = USER_ID
+    ) -> MagicMock:
+        w = MagicMock()
+        w.id = workflow_id
+        w.user_id = user_id
+        w.title = "Morning digest"
+        w.needs = integrations
+        return w
+
+    @staticmethod
+    def _required_of(*owners: MagicMock):
+        """``compute_required_integrations`` answering from BOTH arguments.
+
+        A requirement lookup handed the wrong workflow's steps (or a nulled
+        argument) resolves nothing, so the pause silently stops happening.
+        """
+
+        def _required(steps: object, trigger_config: object) -> set[str]:
+            for owner in owners:
+                if steps is owner.steps and trigger_config is owner.trigger_config:
+                    return owner.needs
+            return set()
+
+        return _required
+
+    @staticmethod
+    def _missing_of(connected_for: str, connected: set[str]):
+        """``compute_missing_integrations`` answering from BOTH arguments.
+
+        Keyed on the user id as well as the requirement set: asking on behalf of
+        the wrong user would read a stranger's connections and let a workflow
+        fire on an account it cannot use.
+        """
+
+        async def _missing(required: set[str], user_id: str) -> list[IntegrationRef]:
+            if user_id != connected_for:
+                return []
+            return [
+                IntegrationRef(id=i, name=i.title()) for i in sorted(required) if i not in connected
+            ]
+
+        return _missing
+
+    async def test_it_returns_the_missing_integrations_it_paused_the_workflow_for(self) -> None:
+        """The return value IS the notice's content — the caller names these
+        integrations and links to the first one, so a truncated or reordered
+        list is a wrong message, not a cosmetic difference."""
+        workflow = self._workflow_needing({"gmail", "notion"})
+
+        with (
+            patch(f"{MODULE}.compute_required_integrations", self._required_of(workflow)),
+            patch(
+                f"{MODULE}.compute_missing_integrations",
+                side_effect=self._missing_of(USER_ID, {"notion"}),
+            ),
+            patch(f"{MODULE}.WorkflowService") as service,
+        ):
+            service.deactivate_workflow = AsyncMock()
+
+            missing = await pause_workflow_for_missing_integrations(workflow)
+
+        assert missing == [IntegrationRef(id="gmail", name="Gmail")]
+
+    async def test_it_pauses_this_workflow_for_this_user_under_the_reconnect_reason(self) -> None:
+        """Only ``INTEGRATION_EXPIRED`` is resumed on reconnect, so any other
+        reason pauses the workflow permanently."""
+        workflow = self._workflow_needing({"gmail"}, workflow_id="wf-7", user_id="user-42")
+
+        with (
+            patch(f"{MODULE}.compute_required_integrations", self._required_of(workflow)),
+            patch(
+                f"{MODULE}.compute_missing_integrations",
+                side_effect=self._missing_of("user-42", set()),
+            ),
+            patch(f"{MODULE}.WorkflowService") as service,
+        ):
+            service.deactivate_workflow = AsyncMock()
+
+            await pause_workflow_for_missing_integrations(workflow)
+
+        service.deactivate_workflow.assert_awaited_once_with(
+            "wf-7", "user-42", reason=DeactivationReason.INTEGRATION_EXPIRED
+        )
+
+    async def test_a_workflow_with_everything_connected_fires_untouched(self) -> None:
+        workflow = self._workflow_needing({"gmail"})
+
+        with (
+            patch(f"{MODULE}.compute_required_integrations", self._required_of(workflow)),
+            patch(
+                f"{MODULE}.compute_missing_integrations",
+                side_effect=self._missing_of(USER_ID, {"gmail"}),
+            ),
+            patch(f"{MODULE}.WorkflowService") as service,
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            service.deactivate_workflow = AsyncMock()
+
+            assert await pause_workflow_for_missing_integrations(workflow) == []
+
+        service.deactivate_workflow.assert_not_awaited()
+        mock_log.warning.assert_not_called()
+
+    async def test_an_unsaved_workflow_is_not_paused_by_id(self) -> None:
+        """``deactivate_workflow`` keys on the id; passing an empty one would
+        match no document (or, worse, be treated as a wildcard downstream), and
+        the caller would still send a notice for a pause that never happened."""
+        workflow = self._workflow_needing({"gmail"}, workflow_id="")
+
+        with (
+            patch(f"{MODULE}.compute_required_integrations", self._required_of(workflow)),
+            patch(
+                f"{MODULE}.compute_missing_integrations",
+                side_effect=self._missing_of(USER_ID, set()),
+            ),
+            patch(f"{MODULE}.WorkflowService") as service,
+        ):
+            service.deactivate_workflow = AsyncMock()
+
+            assert await pause_workflow_for_missing_integrations(workflow) == []
+
+        service.deactivate_workflow.assert_not_awaited()
+
+    async def test_the_pause_is_recorded_with_the_workflow_user_and_what_was_missing(self) -> None:
+        """This warning is the only record that a scheduled workflow stopped
+        firing on its own; without the ids it cannot be traced back to a user."""
+        workflow = self._workflow_needing({"gmail", "notion"})
+
+        with (
+            patch(f"{MODULE}.compute_required_integrations", self._required_of(workflow)),
+            patch(
+                f"{MODULE}.compute_missing_integrations",
+                side_effect=self._missing_of(USER_ID, set()),
+            ),
+            patch(f"{MODULE}.WorkflowService") as service,
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            service.deactivate_workflow = AsyncMock()
+
+            await pause_workflow_for_missing_integrations(workflow)
+
+        mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.args == (
+            "[WORKFLOW] Workflow paused at fire time — required integration not connected",
+        )
+        assert mock_log.warning.call_args.kwargs == {
+            "workflow_id": "wf-1",
+            "user_id": USER_ID,
+            "missing_integrations": ["gmail", "notion"],
+        }

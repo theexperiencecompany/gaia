@@ -3,11 +3,20 @@
 import { Skeleton } from "@heroui/skeleton";
 import { useUser } from "@/features/auth/hooks/useUser";
 
-import type { Plan } from "../api/pricingApi";
+import type { CheckoutSource, Plan } from "../api/pricingApi";
 import { ANNUAL_PRICE_RETENTION } from "../constants";
-import { usePricing } from "../hooks/usePricing";
+import {
+  useIsSubscriptionStatusUnknown,
+  usePricing,
+} from "../hooks/usePricing";
+import { getPlanViewerState } from "../types";
 import { convertToUSDCents } from "../utils/currencyConverter";
-import { EnterpriseBar } from "./EnterpriseBar";
+import {
+  displayPlanName,
+  isEnterprisePlan,
+  isProPlan,
+} from "../utils/planPredicates";
+import { EnterpriseCard } from "./EnterpriseCard";
 import { PricingCard } from "./PricingCard";
 
 const ENTERPRISE_CONTACT_TEMPLATE = `Hey GAIA team,
@@ -35,26 +44,34 @@ const ENTERPRISE_CONTACT_HREF =
   "&description=" +
   encodeURIComponent(ENTERPRISE_CONTACT_TEMPLATE);
 
-// Enterprise is shown as a full-width bar below the grid, never as a priced card.
-const isEnterprise = (plan: Plan) =>
-  plan.name.toLowerCase().includes("enterprise");
-
 interface PricingCardsProps {
   durationIsMonth?: boolean;
   initialPlans?: Plan[];
-  /** Hide the Enterprise bar: the landing section and the upgrade modal both
-   * sell the priced tiers, and Enterprise lives on the pricing page. */
+  /** Hide the Enterprise card: the upgrade modal and the onboarding payment
+   * stage sell the one plan the viewer can buy right now, with nothing else
+   * competing for the decision. */
   hideEnterprise?: boolean;
+  /** Forwarded to every priced card's checkout. */
+  checkoutSource?: CheckoutSource;
+  /** Forwarded to every priced card; see PricingCard. */
+  hideHeader?: boolean;
 }
 
 export function PricingCards({
   durationIsMonth = false,
   initialPlans = [],
   hideEnterprise = false,
+  checkoutSource,
+  hideHeader = false,
 }: PricingCardsProps) {
   const { plans, isLoading, error, subscriptionStatus } =
     usePricing(initialPlans);
   const user = useUser();
+  // Whether the signed-in user's plan status is genuinely not yet known
+  // (cold cache / user store still rehydrating). While true, `isCurrentPlan`
+  // / `hasActiveSubscription` below are unresolvable — never infer "on free
+  // plan" from that and let a paying user click into a duplicate checkout.
+  const isSubscriptionStatusUnknown = useIsSubscriptionStatusUnknown();
 
   // Only show loading if we're actually loading AND don't have any plans yet
   if (isLoading && (!plans || plans.length === 0)) {
@@ -100,29 +117,31 @@ export function PricingCards({
     );
   }
 
-  // Enterprise is shown as a full-width bar below the grid, not as a card.
-  const enterprisePlan = hideEnterprise ? undefined : plans.find(isEnterprise);
+  // Enterprise sits in the grid as a card of its own, beside the priced tiers.
+  const enterprisePlan = hideEnterprise
+    ? undefined
+    : plans.find(isEnterprisePlan);
 
-  // Priced tiers in the grid (Free + the paid plans for the chosen billing period).
+  // Priced tiers in the grid for the chosen billing period. GAIA is paid-only,
+  // so any $0 row is filtered out client-side as a safety net even if one
+  // slips through from the backend.
   const cardPlans = plans.filter((plan: Plan) => {
-    if (isEnterprise(plan)) return false;
-    if (plan.amount === 0) return true;
+    if (isEnterprisePlan(plan)) return false;
+    if (plan.amount === 0) return false;
     if (durationIsMonth) return plan.duration === "monthly";
     return plan.duration === "yearly";
   });
 
-  // Sort: Free first, then paid plans by amount.
-  const sortedPlans = cardPlans.toSorted((a: Plan, b: Plan) => {
-    if (a.amount === 0) return -1;
-    if (b.amount === 0) return 1;
-    return a.amount - b.amount;
-  });
+  // Sort paid plans by amount.
+  const sortedPlans = cardPlans.toSorted(
+    (a: Plan, b: Plan) => a.amount - b.amount,
+  );
 
-  // Size the whole block (cards + Enterprise bar) so each tier keeps the width
-  // it would have in a 3-column layout: a 2-tier lineup uses a 2-column grid in
-  // a ~2xl block, a 3-tier lineup the full 5xl. The Enterprise bar is w-full, so
-  // it always spans the exact width of the cards above it.
-  const tierCount = sortedPlans.length;
+  // Size the block so each tier keeps the width it would have in a 3-column
+  // layout: a 2-tier lineup uses a 2-column grid in a ~2xl block, a 3-tier
+  // lineup the full 5xl. Enterprise is a tier in that count — it is a card in
+  // the same grid, equal height, stacking under Pro on mobile.
+  const tierCount = sortedPlans.length + (enterprisePlan ? 1 : 0);
   let blockWidthClass = "max-w-sm";
   let gridColsClass = "sm:grid-cols-1";
   if (tierCount >= 3) {
@@ -134,12 +153,12 @@ export function PricingCards({
   }
 
   return (
-    <div className={`mx-auto flex w-full flex-col gap-3 ${blockWidthClass}`}>
+    <div className={`mx-auto w-full ${blockWidthClass}`}>
       <div className={`grid grid-cols-1 items-stretch gap-3 ${gridColsClass}`}>
         {sortedPlans.map((plan: Plan, index: number) => {
-          const isPro = plan.name.toLowerCase().includes("pro");
-          // Free leads its list with "Includes:"; each paid tier builds on the
-          // one before it ("Everything in Free, plus").
+          const isPro = isProPlan(plan);
+          // The first (cheapest) plan leads its list with "Includes:"; each
+          // subsequent tier builds on the one before it ("Everything in X, plus").
           const featuresHeading =
             index === 0
               ? "Includes:"
@@ -169,9 +188,18 @@ export function PricingCards({
 
           // Only consider truly active subscriptions when user is logged in
           const hasActiveSubscription = user
-            ? subscriptionStatus?.is_subscribed &&
-              subscriptionStatus?.subscription?.status === "active"
+            ? !!(
+                subscriptionStatus?.is_subscribed &&
+                subscriptionStatus?.subscription?.status === "active"
+              )
             : false;
+
+          const planViewerState = getPlanViewerState({
+            isSubscriptionStatusUnknown:
+              !!user.userId && isSubscriptionStatusUnknown,
+            isCurrentPlan: !!isCurrentPlan,
+            hasActiveSubscription,
+          });
 
           return (
             <PricingCard
@@ -186,21 +214,22 @@ export function PricingCards({
               description={plan.description} // Pass the description from backend
               price={priceInUSDCents} // Always in USD cents
               originalPrice={originalPriceInUSDCents}
-              title={plan.name}
-              isCurrentPlan={isCurrentPlan}
-              hasActiveSubscription={hasActiveSubscription}
+              title={displayPlanName(plan)}
               isPro={isPro}
+              planViewerState={planViewerState}
+              checkoutSource={checkoutSource}
+              hideHeader={hideHeader}
             />
           );
         })}
-      </div>
 
-      {enterprisePlan && !hideEnterprise && (
-        <EnterpriseBar
-          plan={enterprisePlan}
-          ctaHref={ENTERPRISE_CONTACT_HREF}
-        />
-      )}
+        {enterprisePlan && (
+          <EnterpriseCard
+            plan={enterprisePlan}
+            ctaHref={ENTERPRISE_CONTACT_HREF}
+          />
+        )}
+      </div>
     </div>
   );
 }

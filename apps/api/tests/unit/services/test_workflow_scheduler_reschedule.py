@@ -33,6 +33,17 @@ def _no_real_analytics():
 
 
 @pytest.fixture(autouse=True)
+def _subscription_active_by_default():
+    """These tests are about the stale-fire gate, not the paid-only gate —
+    default the owner to an active subscription so it stays out of the way."""
+    with patch(
+        "app.workers.tasks.workflow_tasks.is_subscription_active",
+        AsyncMock(return_value=True),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _onboarded_user():
     """Default every test's user to a finished-onboarding one so the
     system-initiated-run gate stays out of the way."""
