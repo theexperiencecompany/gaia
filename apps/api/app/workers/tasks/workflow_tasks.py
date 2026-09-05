@@ -514,7 +514,16 @@ async def _record_execution_failure(
                 trace=record.trace if record else None,
             )
         except Exception as e2:
-            log.debug(f"{LogTag.WORKER} Failed to complete execution record: %s" % e2)
+            # Visible, not debug: a record left "running" makes every later
+            # fire read as overlapping. Seen live after a job timeout, with
+            # nothing in the log to say why the write never landed.
+            log.warning(
+                f"{LogTag.WORKER} Failed to complete execution record; it stays 'running'",
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                error=str(e2)[:300],
+                error_type=type(e2).__name__,
+            )
 
     if workflow is None:
         return
