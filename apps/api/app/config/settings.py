@@ -316,10 +316,13 @@ class CommonSettings(BaseAppSettings):
     # Per-renderer V8 heap ceiling. One runaway page must not be able to eat the
     # whole host's budget and OOM every other user's session with it.
     BROWSER_HOST_JS_HEAP_MB: int = 512
-    # Which engine the host launches. Chromium (headless-shell) is the default;
-    # Obscura runs beside it as a drop-in over the same CDP plane.
-    BROWSER_ENGINE: BrowserEngine = BrowserEngine.CHROMIUM
-    # Path to the Obscura binary; required only when BROWSER_ENGINE=obscura.
+    # Which engine the host launches. Obscura (a low-RAM Rust CDP server) is the
+    # default; Chromium (headless-shell) stays as the flag-selectable break-glass
+    # engine over the same CDP plane. Obscura is baked into the gaia image with
+    # OBSCURA_BIN pointing at it; set BROWSER_ENGINE=chromium to fall back.
+    BROWSER_ENGINE: BrowserEngine = BrowserEngine.OBSCURA
+    # Path to the Obscura binary; required when BROWSER_ENGINE=obscura (the gaia
+    # image sets it via ENV). Missing it fails the host launch loud, no fallback.
     OBSCURA_BIN: str | None = None
     # Port Obscura's CDP server binds. Fixed (not ephemeral) because Obscura only
     # publishes its /json/version — and thus its ws endpoint — at a port we name.

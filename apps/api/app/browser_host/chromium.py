@@ -238,35 +238,39 @@ class ChromiumHost:
         # once; recovery re-checks liveness under it, so the second caller no-ops.
         self._recover_lock = asyncio.Lock()
         # Set on ``stop()`` so the watcher treats the deliberate terminate as a
-        # shutdown, not a crash to recover from.
-        self._stopping = False
+        # shutdown, not a crash to recover from. An Event, not a bool: the watcher
+        # reads it after ``await proc.wait()``, and a plain-bool read there is
+        # narrowed to a constant by the type checker (it can't see stop() mutate
+        # it across the await); ``.is_set()`` is honest across the suspension.
+        self._stopping = asyncio.Event()
 
     # --- lifecycle ---
 
     async def start(self) -> None:
-        """Resolve the binary, launch the engine, connect CDP, start the reaper."""
+        """Resolve the binary, launch the engine, connect CDP, start the watcher + reaper."""
         if settings.BROWSER_ENGINE is not BrowserEngine.OBSCURA:
             self._chromium_path = await asyncio.to_thread(_resolve_chromium_path)
         await self._launch()
+        self._watcher_task = asyncio.create_task(self._watch_loop())
         self._reaper_task = asyncio.create_task(self._reaper_loop())
         log.info(f"{LogTag.BROWSER} browser host started")
 
     async def stop(self) -> None:
         """Tear everything down: reaper, process watcher, CDP client, engine process."""
-        self._stopping = True
+        self._stopping.set()
         if self._reaper_task is not None:
             self._reaper_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._reaper_task
             self._reaper_task = None
         # Take the recovery lock so a crash recovery already in flight finishes
-        # (or is waited out) before we tear down, instead of racing it.
+        # (or is waited out) before we tear down, instead of racing it. Once we
+        # hold it, ``_stopping`` blocks any new recovery, so cancelling the
+        # watcher next cannot interrupt a relaunch mid-flight.
         async with self._recover_lock:
             await self._shutdown_chromium()
-        # The watcher wakes when the process it awaits exits; with ``_stopping``
-        # set it returns without recovering. Terminating the process above is
-        # what unblocks it, so this await always completes.
         if self._watcher_task is not None:
+            self._watcher_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._watcher_task
             self._watcher_task = None
@@ -644,21 +648,28 @@ class ChromiumHost:
         cdp = CDPClient(self._root_ws_url)
         await cdp.start()
         self._cdp = cdp
-        # One watcher per launch, bound to the process it launched: it relaunches
-        # the engine the instant that process exits. A relaunch starts a fresh
-        # watcher for the new process; the old one has already returned.
-        self._watcher_task = asyncio.create_task(self._watch_process(self._proc))
 
-    async def _watch_process(self, proc: asyncio.subprocess.Process) -> None:
-        """Relaunch the engine the moment its process exits, not on the reaper's sweep."""
-        await proc.wait()
-        if self._stopping:
-            return
-        log.error(
-            f"{LogTag.BROWSER} browser engine process exited",
-            browser={"operation": "crash_detect", "returncode": proc.returncode},
-        )
-        await self._recover_crash()
+    async def _watch_loop(self) -> None:
+        """Relaunch the engine the moment its process exits, not on the reaper's sweep.
+
+        One supervisor for the host's lifetime: it awaits the current process,
+        and after a recovery relaunches a new one it loops round and watches that
+        one too. Recovery is idempotent with the reaper's own backstop.
+        """
+        while True:
+            if self._stopping.is_set():
+                return
+            proc = self._proc
+            if proc is None:
+                return
+            await proc.wait()
+            if self._stopping.is_set():
+                return
+            log.error(
+                f"{LogTag.BROWSER} browser engine process exited",
+                browser={"operation": "crash_detect", "returncode": proc.returncode},
+            )
+            await self._recover_crash()
 
     def _chromium_command(self) -> list[str]:
         """The full headless-shell argv, incl. the fresh user-data-dir it needs."""
@@ -804,7 +815,7 @@ class ChromiumHost:
         async with self._recover_lock:
             # The watcher and the reaper both route here; whichever loses the race
             # finds the engine already back up (or a stop in progress) and does nothing.
-            if self._stopping or self.chromium_up:
+            if self._stopping.is_set() or self.chromium_up:
                 return
             dead_count = len(self._sessions)
             for session in self._sessions.values():

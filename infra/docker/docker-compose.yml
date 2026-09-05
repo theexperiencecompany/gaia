@@ -732,8 +732,11 @@ services:
     cpus: "1.0"
 
   # ---------------------------------------------------------------------------
-  # gaia-browser-host — our own low-RAM Chromium host for browser automation.
-  # One long-lived Chromium, one isolated context per session, a per-session
+  # gaia-browser-host — our own low-RAM browser host for browser automation.
+  # Runs Obscura (a self-contained Rust CDP server, baked into the gaia image)
+  # by default; Chromium stays in the image as the break-glass engine, selected
+  # by BROWSER_ENGINE=chromium. One long-lived engine, one isolated context per
+  # session, a per-session
   # CDP-filtering proxy, and an authenticated screencast live view. The API +
   # worker reach it over the internal network at http://browser-host:8930; its
   # port is never published to the host.
@@ -761,7 +764,10 @@ services:
       UV_NO_SYNC: "1"
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
-      # Chromium is installed in the gaia image at this path (see apps/api/Dockerfile).
+      # Engine: Obscura by default (baked into the gaia image, OBSCURA_BIN set via
+      # ENV there). Set BROWSER_ENGINE=chromium to fall back to the headless-shell
+      # under /opt/browsers, which is also installed in the image.
+      BROWSER_ENGINE: ${BROWSER_ENGINE:-obscura}
       PLAYWRIGHT_BROWSERS_PATH: /opt/browsers
       BROWSER_HOST_PORT: "8930"
       # Shared secret the API/worker must present to every host endpoint — the

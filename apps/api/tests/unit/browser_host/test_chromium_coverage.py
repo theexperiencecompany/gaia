@@ -31,8 +31,25 @@ from app.browser_host.chromium import (
     cdp_call,
 )
 from app.config.settings import settings
-from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
+from app.constants.browser import (
+    BROWSER_VIEWPORT_HEIGHT,
+    BROWSER_VIEWPORT_WIDTH,
+    BrowserEngine,
+)
 from app.constants.log_tags import LogTag
+
+
+@pytest.fixture(autouse=True)
+def _pin_chromium_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """This file covers the Chromium launch/readiness branch.
+
+    The host default is now Obscura, so the launch/`_await_cdp_ready` tests here
+    must select Chromium explicitly (the Obscura tests do the same in reverse).
+    Engine-agnostic tests in this file mock ``_cdp`` and never launch, so pinning
+    the engine is a no-op for them.
+    """
+    monkeypatch.setattr(settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
+
 
 # ---------------------------------------------------------------------------
 # _headless_shell_beside

@@ -351,10 +351,15 @@ class _FakeProc:
 async def test_process_watcher_relaunches_engine_the_instant_it_dies() -> None:
     """A segfault must trigger recovery immediately, not wait for the 15s reaper."""
     host = _make_host(_FakeCDP())
-    host._recover_crash = AsyncMock()
     proc = _FakeProc()
+    host._proc = proc  # type: ignore[assignment]
 
-    task = asyncio.create_task(host._watch_process(proc))  # type: ignore[arg-type]
+    async def recover() -> None:
+        host._stopping.set()  # one recovery, then the loop exits
+
+    host._recover_crash = AsyncMock(side_effect=recover)
+
+    task = asyncio.create_task(host._watch_loop())
     await asyncio.sleep(0)  # let the watcher reach proc.wait()
     proc.die(-11)
     await task
@@ -367,10 +372,12 @@ async def test_process_watcher_treats_deliberate_stop_as_shutdown_not_crash() ->
     """A process that exits because ``stop()`` terminated it must not be relaunched."""
     host = _make_host(_FakeCDP())
     host._recover_crash = AsyncMock()
-    host._stopping = True
     proc = _FakeProc()
+    host._proc = proc  # type: ignore[assignment]
 
-    task = asyncio.create_task(host._watch_process(proc))  # type: ignore[arg-type]
+    task = asyncio.create_task(host._watch_loop())
+    await asyncio.sleep(0)  # park the watcher on proc.wait()
+    host._stopping.set()  # stop() flips this, then terminates the process
     proc.die(0)
     await task
 

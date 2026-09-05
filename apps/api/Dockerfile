@@ -61,6 +61,20 @@ RUN curl -fsSL "https://github.com/juicedata/juicefs/releases/download/v${JUICEF
     && install -m 0755 /tmp/juicefs /usr/local/bin/juicefs \
     && rm -rf /tmp/juicefs /tmp/LICENSE /tmp/README.md
 
+# Obscura — the default browser-host engine (BROWSER_ENGINE=obscura). A single
+# self-contained Rust CDP server + its render worker; installed beside Chromium
+# (which stays as the flag-selectable break-glass engine). The `stealth` build
+# is the one we launch with `--stealth`; it also carries the renderer the live
+# view screencasts. Same arch caveat as JuiceFS: pick the native build, never
+# emulate. Obscura's release asset names use uname arches (x86_64/aarch64), so
+# map BuildKit's amd64/arm64 across.
+ARG OBSCURA_VERSION=0.2.2
+RUN OBSCURA_ARCH="$(case "${TARGETARCH:-amd64}" in arm64) echo aarch64;; *) echo x86_64;; esac)" \
+    && mkdir -p /opt/obscura \
+    && curl -fsSL "https://github.com/h4ckf0r0day/obscura/releases/download/v${OBSCURA_VERSION}/obscura-${OBSCURA_ARCH}-linux-stealth.tar.gz" \
+    | tar -xz -C /opt/obscura \
+    && chmod 0755 /opt/obscura/obscura /opt/obscura/obscura-worker
+
 # Copy uv binary (pinned version)
 COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
 
@@ -94,6 +108,7 @@ ENV ENV=production \
     UV_PROJECT_ENVIRONMENT=/usr/local \
     PYTHONPATH=/app/apps/api \
     PLAYWRIGHT_BROWSERS_PATH=/opt/browsers \
+    OBSCURA_BIN=/opt/obscura/obscura \
     GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
 # Copy workspace pyproject files (needed for uv run --group)
