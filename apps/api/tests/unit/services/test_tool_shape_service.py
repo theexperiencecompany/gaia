@@ -83,7 +83,11 @@ class TestRecordObservedShape:
             await record_observed_shape("T", {"per_key": wide}, scope=SCOPE)
         (_, _, schema), _ = repo.record.await_args
         assert "k0" not in str(schema)
-        assert schema["properties"]["per_key"] == {"type": "object"}
+        per_key = schema["properties"]["per_key"]
+        # The keys are data and never stored — but the value shape is: a map is
+        # modeled as additionalProperties, not as an opaque object.
+        assert "properties" not in per_key
+        assert per_key["additionalProperties"]["properties"]["count"] == {"type": "integer"}
 
     @pytest.mark.parametrize(
         "leaky_key",
@@ -111,7 +115,69 @@ class TestRecordObservedShape:
             await record_observed_shape("T", {"per_user": {leaky_key: {"n": 1}}}, scope=SCOPE)
         (_, _, schema), _ = repo.record.await_args
         assert leaky_key not in str(schema)
-        assert schema["properties"]["per_user"] == {"type": "object"}
+        per_user = schema["properties"]["per_user"]
+        assert "properties" not in per_user
+        assert per_user["additionalProperties"]["properties"]["n"] == {"type": "integer"}
+
+    async def test_a_record_whose_fields_share_a_shape_keeps_its_field_names(self) -> None:
+        """Value homogeneity is NOT a map signal: {sender, recipient} and
+        {billing_address, shipping_address} are records whose fields share a
+        shape, and collapsing them would discard real field names permanently.
+        A small dict of identifier-shaped keys is read as a record."""
+        repo = _repo()
+        response = {
+            "sender": {"name": "a", "email": "a@x.com"},
+            "recipient": {"name": "b", "email": "b@x.com"},
+        }
+        with patch(REPO, repo):
+            await record_observed_shape("T", response, scope=SCOPE)
+        (_, _, schema), _ = repo.record.await_args
+        assert set(schema["properties"]) == {"sender", "recipient"}
+        assert "additionalProperties" not in schema
+
+    async def test_map_values_across_entries_union_optional_fields(self) -> None:
+        """A map's value shape is sampled across entries, not read off the first:
+        an optional field or a differing type in a later entry must survive."""
+        repo = _repo()
+        per_user = {
+            "alice@example.com": {"name": "A"},
+            "bob@example.com": {"name": "B", "email": "b@example.com"},
+        }
+        with patch(REPO, repo):
+            await record_observed_shape("T", {"per_user": per_user}, scope=SCOPE)
+        (_, _, schema), _ = repo.record.await_args
+        value_shape = schema["properties"]["per_user"]["additionalProperties"]
+        assert set(value_shape["properties"]) == {"name", "email"}
+        # name is in both entries (required); email only in one (optional).
+        assert value_shape.get("required", []) == ["name"]
+
+    async def test_a_stored_map_shape_round_trips_through_the_next_merge(self) -> None:
+        """additionalProperties must survive re-merging: the stored form re-enters
+        genson's dialect, unions with the new observation's value shape, and
+        comes back out as additionalProperties — never as literal properties."""
+        stored = {
+            "type": "object",
+            "properties": {
+                "per_user": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {"n": {"type": "integer"}},
+                        "required": ["n"],
+                    },
+                }
+            },
+        }
+        repo = _repo(existing_schema=stored)
+        with patch(REPO, repo):
+            await record_observed_shape(
+                "T", {"per_user": {"bob@x.com": {"n": 2, "flag": True}}}, scope=SCOPE
+            )
+        (_, _, schema), _ = repo.record.await_args
+        assert "bob@x.com" not in str(schema)
+        per_user = schema["properties"]["per_user"]
+        assert "properties" not in per_user
+        assert set(per_user["additionalProperties"]["properties"]) == {"n", "flag"}
 
     @pytest.mark.parametrize(
         "field_name",
@@ -130,7 +196,9 @@ class TestRecordObservedShape:
 
     async def test_an_oversized_schema_keeps_the_stored_one(self) -> None:
         repo = _repo()
-        wide = {f"section_{n}": {f"field_{m}": "x" for m in range(20)} for n in range(400)}
+        # Per-section field names differ so this stays a (huge) record — a
+        # repeated shape would rightly collapse to a small map schema instead.
+        wide = {f"section_{n}": {f"field_{n}_{m}": "x" for m in range(20)} for n in range(400)}
         with (
             patch(REPO, repo),
             patch.object(tool_shape_service, "TOOL_SHAPE_MAX_KEYS_PER_OBJECT", 10_000),

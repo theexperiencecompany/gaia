@@ -114,6 +114,25 @@ class TestRenderToolDoc:
             '{id:str, count:int, tags?:str[], status?:"open"|"closed", parent?:null|str, meta?:obj}'
         )
 
+    def test_compact_type_renders_a_map_as_an_index_signature(self) -> None:
+        """Observed shapes store data-keyed maps as additionalProperties; the
+        notation must show the value shape, not degrade the map to bare obj."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "per_user": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {"n": {"type": "integer"}},
+                        "required": ["n"],
+                    },
+                }
+            },
+            "required": ["per_user"],
+        }
+        assert render_compact_type(schema) == "{per_user:{[key]:{n:int}}}"
+
     def test_compact_type_union_array_items_are_grouped(self) -> None:
         schema = {
             "type": "array",
