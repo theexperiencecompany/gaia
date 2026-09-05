@@ -460,6 +460,7 @@ unfixable = [
 # regardless of body usage (verified against starlette/_exception_handler.py).
 # ARG001: ARQ's mandated first positional param on every registered task
 # (app/worker.py's WorkerSettings.functions/cron_jobs).
+"apps/api/app/utils/notification/channels/email.py" = ["ARG002"]  # ChannelAdapter protocol requires `notification`; this adapter always claims delivery
 # ARG001: ARQ injects the job context (`ctx`) into every task function; the
 # nurture task doesn't use it.
 # ANN401: ARQ's job API is dynamically typed — enqueue_worker_job forwards an

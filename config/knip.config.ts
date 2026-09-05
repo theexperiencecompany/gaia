@@ -117,6 +117,11 @@ const config: KnipConfig = {
     // unused files.
     "apps/api/app/agents/skills/builtin/**",
 
+    // Vendored edition-explorer templates: read by Python as text and inlined
+    // into the headless-Chromium render document (editions/explorer_render.py),
+    // never imported as JS modules — knip cannot see that consumption.
+    "apps/api/app/services/briefing/editions/explorer/js/**",
+
     // SEO content source-of-truth: human-edited `entries/*.ts` are read by the
     // static-data codegen (scripts/extract-static-data*, which knip ignores) and
     // emitted to public/data/{feature}/*.json — the runtime fetches the JSON via

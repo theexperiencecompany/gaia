@@ -1,6 +1,6 @@
 """Signed, stateless unsubscribe tokens for notification emails.
 
-A lifecycle email's unsubscribe link must work with no login, from any mail
+An email's unsubscribe link must work with no login, from any mail
 client, so the token itself carries and authenticates the user id (HMAC-signed
 via itsdangerous) instead of relying on a session.
 """

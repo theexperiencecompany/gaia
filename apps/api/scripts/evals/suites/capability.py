@@ -964,9 +964,12 @@ async def _project_notifications(user_id: str, want: list[object]) -> list[dict[
     """Notifications the agent actually created for this user. ``channel`` asks
     whether any notification targeted that channel at all — delivery can be
     skipped for an unconnected channel, and the agent is not accountable for that."""
+    from app.models.notification.request_models import NotificationQuery
     from app.services.notification_service import notification_service
 
-    items = await notification_service.get_user_notifications(user_id, status=None, limit=100)
+    items = await notification_service.get_user_notifications(
+        user_id, NotificationQuery(status=None, limit=100)
+    )
     entries: list[dict[str, object]] = []
     for item in want:
         if not isinstance(item, dict):
