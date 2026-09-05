@@ -53,7 +53,10 @@ def _download_headers(filename: str) -> dict[str, str]:
 # Location header) — include_router drops a router-level redirect_slashes flag.
 @router.get("/files/s/{filename}", include_in_schema=False)
 @router.get("/files/s/{filename}/", include_in_schema=False)
-async def download_shared_file(token: str = "") -> Response:
+async def download_shared_file(
+    filename: str,  # noqa: ARG001 -- FastAPI binds the {filename} route segment; the served name comes from the signed grant, not this value
+    token: str = "",
+) -> Response:
     """Serve one granted file's bytes. The ``{filename}`` URL segment is cosmetic
     (Composio's fetcher derives the attachment name from the URL basename) and is
     not read here — resolution uses only the token, so a swapped segment cannot

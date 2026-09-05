@@ -118,7 +118,7 @@ async def test_a_served_download_is_recorded_on_the_wide_event() -> None:
         return_value=(b"%PDF-1.4 xx", "report.pdf", "application/pdf"),
     ):
         async with captured_wide_event() as event:
-            await download_shared_file(token="t")
+            await download_shared_file(filename="report.pdf", token="t")
 
     assert event["share"] == {"operation": "redeem", "redeemed": True, "byte_count": 11}
 
@@ -127,7 +127,7 @@ async def test_a_rejected_grant_is_recorded_as_not_redeemed() -> None:
     with patch(f"{ENDPOINT}.redeem_share_grant", return_value=None):
         async with captured_wide_event() as event:
             with pytest.raises(HTTPException) as exc:
-                await download_shared_file(token="t")
+                await download_shared_file(filename="report.pdf", token="t")
 
     assert exc.value.status_code == 404
     assert event["share"] == {"operation": "redeem", "redeemed": False}
