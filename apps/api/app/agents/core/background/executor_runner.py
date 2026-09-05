@@ -316,7 +316,11 @@ async def _finalize_executor_run(
 
     # Signal SSE consumer that tool events are done so it can drain the session
     # into the comms ack and publish [DONE]. Comms re-narration runs in parallel.
-    signal_executor_done(run.stream_id, failed=result_type == "error")
+    signal_executor_done(
+        run.stream_id,
+        failed=result_type == "error",
+        reason=result_text if result_type == "error" else None,
+    )
 
     # Delivery is best-effort: a failure here must NOT skip the lock release and
     # queue handoff below, or queued tasks strand and the busy lock leaks until

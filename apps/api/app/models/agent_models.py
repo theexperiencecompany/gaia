@@ -278,5 +278,7 @@ class SilentRunResult:
     tool_data: dict[str, Any]
     queued_task_id: str | None = None
     #: The executor this turn delegated to ended in an error. ``message`` is
-    #: then comms' account of that error, not a result.
+    #: then comms' account of that error, not a result; ``executor_failure``
+    #: is the error itself, or why the wait for it gave up.
     executor_failed: bool = False
+    executor_failure: str | None = None

@@ -7,6 +7,7 @@ Pins the contracts terminal handlers depend on:
 - the redis stream writer appends every event to the session collector.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -338,3 +339,46 @@ class TestRedisStreamWriter:
             writer = make_redis_stream_writer("unregistered")
             writer({"tool_data": {"x": 1}})  # publish still happens, no collector
         assert get_session("unregistered") is None
+
+
+@pytest.mark.unit
+class TestAnExecutorThatNeverFinishes:
+    """Seen live: an executor stopped mid-run and never signalled done. The
+    silent path waited the whole EXECUTOR_WAIT_TIMEOUT, which equals the
+    worker's job timeout, so the job was cut first, the fire was never closed
+    out, and the record stayed 'running'. The wait now ends before the job
+    does, counts as the executor failing, and says what was still running."""
+
+    async def test_a_timed_out_wait_marks_the_executor_failed_with_a_reason(self) -> None:
+        register_executor_capture("s1")
+        sess.mark_executor_spawned("s1")
+
+        finished = await await_executor_done("s1", timeout=0.01)
+
+        assert finished is False
+        assert sess.executor_failed("s1") is True
+        assert "did not finish within" in (sess.executor_failure("s1") or "")
+
+    async def test_a_timed_out_wait_names_the_tasks_still_running(self) -> None:
+        register_executor_capture("s1")
+        sess.mark_executor_spawned("s1")
+
+        async def run_executor_background() -> None:
+            await asyncio.sleep(10)
+
+        stuck = asyncio.create_task(run_executor_background())
+        try:
+            with patch("app.agents.core.background.executor_capture.log") as log:
+                await await_executor_done("s1", timeout=0.01)
+        finally:
+            stuck.cancel()
+
+        kwargs = log.error.call_args.kwargs
+        assert kwargs["stream_id"] == "s1"
+        assert any("run_executor_background" in line for line in kwargs["stuck_tasks"])
+
+    def test_the_background_wait_ends_before_the_job_that_awaits_it(self) -> None:
+        from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
+        from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
+
+        assert BACKGROUND_EXECUTOR_WAIT_TIMEOUT < WORKER_JOB_TIMEOUT_SECONDS

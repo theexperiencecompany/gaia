@@ -61,6 +61,8 @@ class StreamSession:
     #: than a result. The silent path reads it so a fire whose executor died is
     #: recorded as failed instead of as the apology comms wrote about it.
     executor_failed: bool = False
+    #: Why, when it failed: the executor's own error text, or the wait's.
+    executor_failure: str | None = None
     tool_events: list[dict[str, Any]] = field(default_factory=list)
     pending_subagents: int = 0
     # Integrations with a background handoff in flight this run. Guards against a
@@ -299,18 +301,35 @@ def queued_without_run(stream_id: str) -> str | None:
     return session.executor_queued_task_id
 
 
-def signal_executor_done(stream_id: str, *, failed: bool = False) -> None:
+def signal_executor_done(
+    stream_id: str, *, failed: bool = False, reason: str | None = None
+) -> None:
     """Wake any waiter blocked on the executor finishing for this stream."""
     session = _sessions.get(stream_id)
     if session is not None:
         session.executor_failed = failed
+        session.executor_failure = reason if failed else None
         session.done_event.set()
+
+
+def mark_executor_failed(stream_id: str, reason: str) -> None:
+    """Record that the executor failed without finishing (the waiter gave up)."""
+    session = _sessions.get(stream_id)
+    if session is not None:
+        session.executor_failed = True
+        session.executor_failure = reason
 
 
 def executor_failed(stream_id: str) -> bool:
     """Whether the executor this stream spawned ended in an error."""
     session = _sessions.get(stream_id)
     return bool(session and session.executor_failed)
+
+
+def executor_failure(stream_id: str) -> str | None:
+    """Why the executor failed, when it did."""
+    session = _sessions.get(stream_id)
+    return session.executor_failure if session is not None else None
 
 
 # ── Background subagent coordination ─────────────────────────────────

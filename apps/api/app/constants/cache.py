@@ -174,6 +174,11 @@ EXECUTOR_QUEUE_TTL = ONE_HOUR_TTL  # Tasks expire if not picked up within 1 hour
 # whatever tool events were collected. Matches the busy lock TTL — the executor
 # cannot outlive its lock, so waiting longer would be pointless.
 EXECUTOR_WAIT_TIMEOUT = THIRTY_MINUTES_TTL
+#: How long a background (workflow) turn waits for the executor it dispatched.
+#: Shorter than the worker's job timeout on purpose: a wait as long as the job
+#: means the job is cut first, mid-bookkeeping, and the fire is never closed
+#: out. Seen live: an executor that stopped mid-run left a record 'running'.
+BACKGROUND_EXECUTOR_WAIT_TIMEOUT = 25 * 60
 # ElevenLabs voice lists (account + shared library) cached for the voice picker.
 ELEVENLABS_VOICES_CACHE_KEY = "voice:elevenlabs_voices"
 ELEVENLABS_SHARED_VOICES_CACHE_KEY = "voice:elevenlabs_shared_voices"

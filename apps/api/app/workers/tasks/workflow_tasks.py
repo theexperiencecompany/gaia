@@ -1704,7 +1704,9 @@ async def execute_workflow_as_chat(
             )
         if result.executor_failed:
             raise WorkflowExecutorFailed(
-                result.message, conversation_id=conversation_id, trace=trace
+                result.executor_failure or result.message,
+                conversation_id=conversation_id,
+                trace=trace,
             )
 
         return conversation_id, trace

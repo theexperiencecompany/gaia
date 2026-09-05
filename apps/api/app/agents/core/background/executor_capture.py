@@ -11,12 +11,15 @@ implementation so chat and workflow runs render identically.
 """
 
 import asyncio
+import inspect
+from pathlib import Path
 from typing import Any
 
 from app.agents.core.background.session import (
     RunKind,
     create_session,
     get_session,
+    mark_executor_failed,
     teardown_session,
     was_executor_spawned,
 )
@@ -51,25 +54,64 @@ def register_executor_capture(stream_id: str, voice_mode: bool = False) -> async
 async def await_executor_done(
     stream_id: str,
     timeout: float = EXECUTOR_WAIT_TIMEOUT,  # NOSONAR python:S7483
-) -> None:
+) -> bool:
     """Block until the background executor for this stream signals completion.
 
-    No-op when no executor was spawned for the stream. On timeout, logs and
-    returns so the caller can still drain whatever events were collected.
+    ``True`` when it finished (or none was spawned). On timeout the executor is
+    recorded as failed with the reason, the tasks still running are logged so
+    the stall can be read, and ``False`` comes back so the caller can still
+    drain whatever events were collected.
     """
     if not was_executor_spawned(stream_id):
-        return
+        return True
     session = get_session(stream_id)
     if session is None:
-        return
+        return True
     log.info(f"{LogTag.AGENT} Waiting for executor completion", stream_id=stream_id)
     try:
         async with asyncio.timeout(timeout):
             await session.done_event.wait()
     except TimeoutError:
-        log.warning(
-            f"{LogTag.AGENT} Timed out waiting for executor — draining anyway", stream_id=stream_id
+        reason = f"the executor did not finish within {int(timeout)}s"
+        mark_executor_failed(stream_id, reason)
+        log.error(
+            f"{LogTag.AGENT} Timed out waiting for executor; draining what it produced",
+            stream_id=stream_id,
+            timeout_seconds=int(timeout),
+            stuck_tasks=_running_task_stacks(),
         )
+        return False
+    return True
+
+
+#: Tasks worth naming when the executor stalls: the executor's own run and
+#: the subagent runs it dispatched. Everything else is the loop's plumbing.
+_AGENT_TASK_MARKERS = ("run_executor", "run_subagent")
+_STACK_FRAMES = 6
+
+
+def _running_task_stacks() -> list[str]:
+    """One line per agent task still running, with its innermost frames.
+
+    A thread dump shows only the idle event loop; the stall is in a coroutine,
+    and this is the only view of where it sits.
+    """
+    lines: list[str] = []
+    current = asyncio.current_task()
+    for task in asyncio.all_tasks():
+        if task is current or task.done():
+            continue
+        coro = task.get_coro()
+        name = coro.__qualname__ if inspect.iscoroutine(coro) else type(coro).__name__
+        if not any(marker in name for marker in _AGENT_TASK_MARKERS):
+            continue
+        frames = task.get_stack(limit=_STACK_FRAMES)
+        where = " <- ".join(
+            f"{frame.f_code.co_name}({Path(frame.f_code.co_filename).name}:{frame.f_lineno})"
+            for frame in reversed(frames)
+        )
+        lines.append(f"{name}: {where}")
+    return lines
 
 
 def drain_executor_tool_data(stream_id: str) -> list[ToolDataEntry]:
