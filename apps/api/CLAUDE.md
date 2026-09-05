@@ -79,6 +79,34 @@ Pre-model hooks in `app/agents/core/nodes/`:
 
 `app/agents/tools/core/registry.py` — central tool registry backed by ChromaDB for semantic retrieval. Tools that the executor agent may need are retrieved at inference time, not statically bound.
 
+## Briefing, Todos & Retention Subsystems
+
+Thin connective tissue over existing rails (silent agent runs, system workflows, notification orchestrator, memory) — no new scheduler, execution engine, or notification pipeline.
+
+### Unified todo model & GAIA-todo lifecycle
+
+- One `todos` collection, both assignees. `assignee: "user" | "gaia"` is the discriminator (replaces the legacy `gaia-tracked` label; `gaia_assigned_filter()` in `app/constants/todos.py` dual-reads during the migration window). GAIA todos carry an `execution_status` state machine: `proposed → queued → running → done | failed | needs_you | expired | dismissed`.
+- **`app/services/todos/gaia_todo_lifecycle.py` owns every transition and its gate.** Never flip `execution_status` by hand — call `approve` / `dismiss` / `handoff` / `block` / `answer` / `mark_execution_status` / `expire_stale_proposals`. `block` (agent tool `block_todo`) is the only guarded path into `needs_you` mid-run and stores the `blocker_question`; `answer` (endpoint `POST /todos/{id}/answer` or agent tool `answer_todo`) is the only path out — it appends the Q&A to the notes facet and re-enqueues. Every transition broadcasts `todo.execution_status` over the user websocket so any live surface can refresh.
+- **Approval rule**: outward-visible work (sends, posts, purchases) enters `proposed` and needs an Approve tap; user+GAIA-only work (research, drafts) enters `queued` and runs. The `create_tracked_todo` tool takes required `serves` (traceability — untraceable todos are the junk) and `requires_approval` (the rule) args.
+- **Budgets** (hard caps in `constants/todos.py`): `MAX_GAIA_TODOS_IN_FLIGHT=5`, `MAX_PENDING_PROPOSALS=3`, `PROPOSAL_TTL_HOURS=72`. Creation past a cap is rejected; every dismiss/expiry writes a `proposal_rejected` memory signal and the 3-strike rule stops re-proposing a kind.
+- **Metering**: GAIA todo *executions* meter through `gaia_todo_executions` in `app/config/rate_limits.py` (free 5/month, pro 100/day). At-quota `approve` raises `ExecutionQuotaError` carrying the upgrade pitch instead of silently failing.
+
+### Briefing engine (`app/services/briefing/`)
+
+- Two per-user system workflows (`daily_briefing` cron `0 8 * * *`, `weekly_digest` `0 17 * * 0`, user-local) provisioned at onboarding completion and by `scripts/provision_daily_briefings.py`. Keys/crons/budgets/badges live in `app/constants/briefing.py`.
+- The workflow ARQ path (`execute_workflow_by_id`) special-cases `system_workflow_key in {daily_briefing, weekly_digest}` and calls `run_daily_briefing` / `run_weekly_digest` instead of the generic chat turn — so briefings skip the workflow-execution rate limit and own their delivery.
+- **Pipeline**: deterministic curation (`expire_stale_proposals`) → context gathering (`context.py`: look-back, budgets, strikes, goal, winback state) → `call_agent_silent` with the `briefing_prompts.py` contract → parse+validate one `BriefingPayload` (fail loud, store nothing on invalid) → persist BEFORE delivery → notification fan-out → analytics. Badges (`badges.py`, `awards` collection, each once) and streaks come from `app/services/todos/activity.py` — the single `completed_at`-derived source; nothing pads a streak.
+- **Payload contract** (`app/models/briefing_models.py`): `BriefingPayload` is structured data, never markup — one stored payload feeds every renderer (the OpenUI card in chat, email, Telegram). `hue` is set deterministically in code post-run; `mood` is a closed Literal keying the hero treatment.
+
+### Delivery, email channel & unsubscribe
+
+- Briefings deliver through `notification_service.create_notification` (in-app + linked platforms automatically). The **delivery contract** the email adapter keys off: `metadata["kind"] = NOTIFICATION_KIND_BRIEFING_DAILY | _WEEKLY` (from `app/constants/notifications.py`) selects the template, and `content.rich_content = payload.model_dump()` is what it renders — without both it falls back to the plain template.
+- `app/utils/notification/channels/email.py` sends via the Resend HTTP API; missing `RESEND_API_KEY` / `EMAIL_UNSUBSCRIBE_SECRET` is an ops precondition (skips with a log), not a feature flag. Email is default-on for briefings until the user disables it or clicks the one-click unsubscribe — a stateless HMAC-signed token (`app/utils/notification/unsubscribe.py`) mapping to the same channel preference. **Do not touch `app/utils/notification/**` or the notification endpoint — they're owned.**
+
+### First-steps activation
+
+`app/services/first_steps_service.py` tracks an ordered activation checklist on the user doc (`first_steps.{step}`), updated by real signals (`mark_step`) — integration connect, platform link, route visit, first approve. `first_steps.first_approve` is the honest "user has approved once" signal (the `first_approve` badge keys off it).
+
 ## Code Style
 
 - All functions and methods require full type annotations (enforced by mypy).

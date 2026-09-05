@@ -19,6 +19,7 @@ from app.api.v1.endpoints import (
     device_ws,
     feedback,
     file,
+    first_steps,
     image,
     mail,
     mcp,
@@ -79,6 +80,7 @@ router.include_router(notification.router, tags=["Notification"])
 router.include_router(websocket.router, tags=["WebSocket"])
 router.include_router(webhook_composio.router, tags=["Composio Webhook"])
 router.include_router(briefings.router, tags=["Briefings"])
+router.include_router(first_steps.router, tags=["First Steps"])
 router.include_router(todos.router, tags=["Todos"])
 router.include_router(workflows.router, tags=["Workflows"])
 router.include_router(triggers.router, tags=["Triggers"])

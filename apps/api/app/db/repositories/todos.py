@@ -476,10 +476,27 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             {"user_id": user_id, "completed_at": {"$ne": None}, **gaia_assigned_filter()}
         )
 
+    async def has_goal_todo(self, user_id: str) -> bool:
+        """Whether the user has any goal-lane todo."""
+        return await self._count({"user_id": user_id, "kind": "goal"}) > 0
+
     async def has_goal_created_since(self, user_id: str, *, since: datetime) -> bool:
         """Whether a goal lane was created at or after ``since`` (dormancy signal)."""
         return (
             await self._count({"user_id": user_id, "kind": "goal", "created_at": {"$gte": since}})
+            > 0
+        )
+
+    async def has_gaia_execution_history(self, user_id: str, *, statuses: list[str]) -> bool:
+        """Whether any GAIA-assigned todo has reached one of ``statuses``."""
+        return (
+            await self._count(
+                {
+                    "user_id": user_id,
+                    **gaia_assigned_filter(),
+                    "execution_status": {"$in": statuses},
+                }
+            )
             > 0
         )
 

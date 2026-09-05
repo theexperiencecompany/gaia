@@ -88,6 +88,19 @@ class UserIntegrationsRepository(
         )
         return doc is not None
 
+    async def find_connected_excluding(
+        self, user_id: str, exclude_integration_id: str
+    ) -> UserIntegrationDocument | None:
+        """A connected integration other than ``exclude_integration_id`` — the
+        first-steps checklist's retroactive "connected something real" probe."""
+        return await self._find_one(
+            {
+                "user_id": user_id,
+                "status": "connected",
+                "integration_id": {"$ne": exclude_integration_id},
+            }
+        )
+
     async def user_ids_with_integration(self, integration_id: str) -> list[str]:
         """Every user_id that has added ``integration_id`` (cross-user — for the
         cache-bust / link-cleanup fan-out when a shared integration changes)."""

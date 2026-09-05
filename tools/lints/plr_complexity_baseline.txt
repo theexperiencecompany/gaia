@@ -1,12 +1,12 @@
+#
+#   python3 tools/lints/check_plr_complexity.py --update
+# One line per (file, rule), tab-separated, sorted. Regenerate with:
 # PLR0911/0912/0913/0915 complexity grandfather baseline.
 # See tools/lints/check_plr_complexity.py -- this is a TOUCH-TO-FIX ratchet,
-# not a static exemption: a file listed here only stays quiet while untouched.
 # The moment a PR modifies a listed file, its violations here must be fixed in
-# that same PR, and this line deleted. New violations (new file, or a rule a
 # file didn't already have) are never grandfathered by this list.
-#
-# One line per (file, rule), tab-separated, sorted. Regenerate with:
-#   python3 tools/lints/check_plr_complexity.py --update
+# not a static exemption: a file listed here only stays quiet while untouched.
+# that same PR, and this line deleted. New violations (new file, or a rule a
 apps/api/app/agents/core/messages.py	PLR0913
 apps/api/app/agents/middleware/compaction.py	PLR0913
 apps/api/app/agents/middleware/runtime_adapter.py	PLR0913
