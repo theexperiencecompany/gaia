@@ -113,6 +113,12 @@ def _advance(
     )
 
 
+#: A body that has never earned trust: freshly written, nothing recorded against it.
+UNTRUSTED = PlaybookLifecycle(
+    status=PlaybookRunStatus.NOT_RUN, reason=None, suspect_streak=0, heal_attempts=0, revision=0
+)
+
+
 def transition(state: PlaybookLifecycle, event: PlaybookEvent) -> PlaybookLifecycle:
     """The lifecycle after ``event``. Total over every (status, event) pair."""
     match event:
@@ -182,10 +188,7 @@ def grows_from_untrusted(outcome: PlaybookRunOutcome) -> bool:
     write is even attempted. Defined through :func:`transition` so it cannot
     drift from the table.
     """
-    untrusted = PlaybookLifecycle(
-        status=PlaybookRunStatus.NOT_RUN, reason=None, suspect_streak=0, heal_attempts=0, revision=0
-    )
-    return streak_grows(untrusted, outcome)
+    return streak_grows(UNTRUSTED, outcome)
 
 
 def needs_heal(state: PlaybookLifecycle) -> bool:
