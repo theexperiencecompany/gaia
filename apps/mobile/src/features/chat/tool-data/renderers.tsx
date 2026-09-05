@@ -30,8 +30,6 @@ import {
   type CalendarEditOption,
   CalendarFetchCard,
   type CalendarFetchItem,
-  CalendarListFetchCard,
-  type CalendarListFetchItem,
   type CalendarOption,
   CalendarOptionsCard,
   CodeExecutionCard,
@@ -183,15 +181,8 @@ const TOOL_RENDERERS: Record<
     );
   },
 
-  calendar_list_fetch_data: (data, baseKey) => {
-    const calendars = Array.isArray(data) ? data : [data];
-    return (
-      <CalendarListFetchCard
-        key={baseKey}
-        data={calendars as CalendarListFetchItem[]}
-      />
-    );
-  },
+  // calendar_list_fetch_data: intentionally hidden — no card, not "unsupported".
+  calendar_list_fetch_data: () => null,
 
   weather_data: (data, baseKey) => (
     <WeatherCard key={baseKey} data={data as WeatherData} />

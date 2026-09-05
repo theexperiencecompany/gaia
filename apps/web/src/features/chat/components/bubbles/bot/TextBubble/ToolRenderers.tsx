@@ -7,7 +7,6 @@ import type {
   ToolName,
 } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
-import CalendarListFetchCard from "@/features/calendar/components/CalendarListFetchCard";
 import DeepResearchResultsTabs from "@/features/chat/components/bubbles/bot/DeepResearchResultsTabs";
 import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadCard";
 import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/IntegrationConnectionPrompt";
@@ -172,9 +171,6 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   ),
   calendar_fetch_data: (data) => (
     <CalendarListCard events={Array.isArray(data) ? data : [data]} />
-  ),
-  calendar_list_fetch_data: (data) => (
-    <CalendarListFetchCard calendars={Array.isArray(data) ? data : [data]} />
   ),
 
   // Support ticket

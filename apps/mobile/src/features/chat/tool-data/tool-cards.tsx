@@ -5,8 +5,6 @@ export type { CalendarEditOption } from "./cards/calendar-edit-card";
 export { CalendarEditCard } from "./cards/calendar-edit-card";
 export type { CalendarFetchItem } from "./cards/calendar-fetch-card";
 export { CalendarFetchCard } from "./cards/calendar-fetch-card";
-export type { CalendarListFetchItem } from "./cards/calendar-list-fetch-card";
-export { CalendarListFetchCard } from "./cards/calendar-list-fetch-card";
 export type {
   CalendarOption,
   CalendarOptionAttendee,
