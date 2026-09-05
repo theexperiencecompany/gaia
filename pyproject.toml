@@ -92,6 +92,7 @@ ignore_names = [
   "reclassify_all", # rescore CLI surface consumed only by unit tests (vulture excludes tests)
   "render_by_suite",  # rescore report helper consumed only by unit tests (vulture excludes tests)
   "contract_failures",  # prompt-contract API consumed only by test_prompt_contracts.py (vulture excludes tests)
+  "reset_captured_loop",  # server-loop test cleanup consumed only by unit tests (vulture excludes tests)
 ]
 
 # ---------------------------------------------------------------------------
@@ -349,6 +350,7 @@ unfixable = [
 "apps/api/app/config/rate_limits.py" = ["PLR0912"]  # derive_pro_benefits predates this change; the triggers feature only adds a rate-limit feature key to this file
 "apps/api/app/db/repositories/todos.py" = ["PLR0912"]  # _list_filter predates this change; the triggers feature only adds subscription finders to this file
 "apps/api/app/services/analytics_service.py" = ["PLR0913"]  # track_subscription_event predates this change; the triggers feature only adds event enum members to this file
+"apps/api/app/agents/tools/integrations/calendar_tool.py" = ["PLR0912", "PLR0915"]  # register_calendar_custom_tools is a registration factory whose PLR0915 statement count is just its ~10 nested @custom_tool bodies (inherent to the pattern). The individual tool bodies (CUSTOM_GET_DAY_SUMMARY / CUSTOM_CREATE_EVENT) are branch-heavy Google-payload builders; extracting their loops adds indirection the mutation gate can't test (debug-log calls, tz-sensitive ids). The loop-dispatch fix only touches _run_sync, so this predates it.
 "apps/api/app/services/oauth/oauth_service.py" = ["PLR0912", "PLR0915"]  # handle_oauth_connection and get_all_integrations_status predate this change; the triggers feature only adds a reconnect resync hook here
 "apps/api/app/services/outbound_delivery.py" = ["PLR0913"]  # publish_outbound_file predates this change; the reminder/proactive-delivery feature only adds channel-targeted delivery to publish_outbound_message here
 "apps/api/app/services/todos/todo_service.py" = ["PLR0912", "PLR0913"]  # update_todo and get_all_todos predate this change; the triggers feature only adds subscription teardown-on-delete here

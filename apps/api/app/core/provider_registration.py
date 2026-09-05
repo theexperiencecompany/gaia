@@ -75,6 +75,7 @@ from app.services.startup_validation import validate_startup_requirements
 from app.services.storage.bootstrap import init_juicefs_mount
 from app.services.tools.tools_warmup import warmup_tools_cache
 from app.services.workspace_sync import init_system_subtree, resync_stale_user_workspaces
+from app.utils.concurrency import capture_running_loop
 from shared.py.wide_events import log, spawn_logged_task
 
 
@@ -218,6 +219,11 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # derived from the declared startup context so it can't drift from reality:
     # docker sets it via env, but native dev does not — leaving it "unknown".
     settings.WORKER_TYPE = context
+
+    # Record this loop before any async client is built on it, so worker threads
+    # (sync Composio custom tools) can dispatch coroutines back onto the loop the
+    # Motor/Redis clients are bound to instead of spinning a fresh one.
+    capture_running_loop()
 
     log.info(f"{LogTag.STARTUP} Starting with unified provider system...", context=context)
 

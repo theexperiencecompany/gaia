@@ -17,6 +17,8 @@ from app.db.repositories.base import MongoDocument
 
 
 class CalendarPreferencesUpdateRequest(BaseModel):
+    """Request to replace the user's selected-calendar preference set."""
+
     selected_calendars: list[str]
 
 
@@ -168,10 +170,14 @@ class CalendarSearchResult(BaseModel):
 
 
 class GoogleConferenceSolutionKey(BaseModel):
+    """The conference type (e.g. ``hangoutsMeet``) in a Google conference request."""
+
     type: str
 
 
 class GoogleConferenceCreateRequest(BaseModel):
+    """Google ``conferenceData.createRequest`` — asks Google to mint a Meet link."""
+
     requestId: str
     conferenceSolutionKey: GoogleConferenceSolutionKey
 
@@ -183,6 +189,8 @@ class GoogleConferenceData(BaseModel):
 
 
 class GoogleCalendarAttendee(BaseModel):
+    """A single attendee on a Google Calendar event write."""
+
     email: str
 
 
@@ -299,20 +307,28 @@ class CalendarEventsQueryRequest(BaseModel):
 
 
 class EventDeleteRequest(BaseModel):
+    """Request to delete one event, identified by id and calendar."""
+
     event_id: str = Field(..., title="Event ID to delete")
     calendar_id: str = Field("primary", title="Calendar ID containing the event")
     summary: str | None = Field(None, title="Event summary for confirmation")
 
 
 class BatchEventCreateRequest(BaseModel):
+    """A batch of events to create in one call."""
+
     events: list["EventCreateRequest"] = Field(..., title="List of events to create")
 
 
 class BatchEventUpdateRequest(BaseModel):
+    """A batch of events to update in one call."""
+
     events: list["EventUpdateRequest"] = Field(..., title="List of events to update")
 
 
 class BatchEventDeleteRequest(BaseModel):
+    """A batch of events to delete in one call."""
+
     events: list[EventDeleteRequest] = Field(..., title="List of events to delete")
 
 
@@ -480,6 +496,8 @@ class RecurrenceData(BaseModel):
 
 
 class EventUpdateRequest(BaseModel):
+    """Request to update one event's fields, identified by id and calendar."""
+
     event_id: str = Field(..., title="Event ID to update")
     calendar_id: str = Field("primary", title="Calendar ID containing the event")
     summary: str | None = Field(None, title="Updated event summary")
@@ -799,6 +817,8 @@ class CreateEventInput(BaseModel):
 
 
 class ListCalendarsInput(BaseModel):
+    """Input for the list-calendars tool."""
+
     short: bool = Field(
         default=True,
         description="Return only essential fields (id, summary, description, backgroundColor)",
@@ -808,9 +828,9 @@ class ListCalendarsInput(BaseModel):
 class FetchEventsInput(BaseModel):
     """Input for fetching events from one or more calendars."""
 
-    calendar_ids: list[str] = Field(
-        default_factory=list,
-        description="Calendar IDs to fetch from. If empty, fetches from all user's selected calendars. Use ['primary'] for just the primary calendar.",
+    calendar_ids: list[str] | None = Field(
+        default=None,
+        description="Calendar IDs to fetch from. None or an empty list fetches from all the user's selected calendars. Use ['primary'] for just the primary calendar.",
     )
     time_min: str | None = Field(
         default=None,
@@ -832,6 +852,8 @@ class GetDaySummaryInput(BaseModel):
 
 
 class FindEventInput(BaseModel):
+    """Input for the find-event text-search tool."""
+
     query: str = Field(..., description="Search query text")
     calendar_id: str = Field(default="primary", description="Calendar ID to search")
     time_min: str | None = Field(default=None, description="Start time filter (ISO format)")
@@ -868,6 +890,8 @@ class DeleteEventInput(BaseModel):
 
 
 class PatchEventInput(BaseModel):
+    """Input for the patch-event tool."""
+
     event_id: str = Field(..., description="Event ID to update")
     calendar_id: str = Field(default="primary", description="Calendar ID")
     summary: str | None = Field(default=None, description="New title")
@@ -880,6 +904,8 @@ class PatchEventInput(BaseModel):
 
 
 class AddRecurrenceInput(BaseModel):
+    """Input for the add-recurrence tool."""
+
     event_id: str = Field(..., description="Event ID to add recurrence to")
     calendar_id: str = Field(default="primary", description="Calendar ID")
     frequency: Literal["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] = Field(

@@ -677,7 +677,10 @@ class TestListCalendarsInput:
 class TestFetchEventsInput:
     def test_defaults(self):
         m = FetchEventsInput()
-        assert m.calendar_ids == []
+        # Defaults to None ("all selected calendars"); the field also accepts an
+        # explicit None, which the tool contract tells the model to send.
+        assert m.calendar_ids is None
+        assert FetchEventsInput(calendar_ids=None).calendar_ids is None
         assert m.time_min is None
         assert m.time_max is None
         assert m.max_results == 30
