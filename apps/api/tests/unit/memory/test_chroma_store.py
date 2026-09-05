@@ -98,3 +98,38 @@ class TestGetCollectionConcurrentCreate:
             collection = await chroma_store._get_collection(name)
 
         assert collection is existing
+
+
+class _ConflictingChromaServer:
+    """A server whose get-or-create rejects a differing persisted embedding
+    function, exercising ``_get_collection``'s plain-get fallback.
+
+    ``get_collection`` is keyed by name, so a fallback that drops the name (or
+    returns nothing) fails to resolve the right collection.
+    """
+
+    def __init__(self, by_name: dict[str, AsyncMock]) -> None:
+        self._by_name = by_name
+
+    async def get_or_create_collection(self, name: str, **_: object) -> AsyncMock:
+        raise ValueError(
+            f"An embedding function already exists in the collection configuration: {name}"
+        )
+
+    async def get_collection(self, name: str, **_: object) -> AsyncMock:
+        return self._by_name[name]
+
+
+@pytest.mark.unit
+class TestGetCollectionEmbeddingConflictFallback:
+    async def test_falls_back_to_plain_get_for_the_same_collection(self) -> None:
+        name = CHROMA_CONVERSATION_CHUNKS_COLLECTION
+        existing = AsyncMock()
+        server = _ConflictingChromaServer({name: existing})
+        chroma_store._loop_collections.clear()
+        chroma_store._loop_locks.clear()
+
+        with patch.object(ChromaClient, "get_client", AsyncMock(return_value=server)):
+            collection = await chroma_store._get_collection(name)
+
+        assert collection is existing
