@@ -31,6 +31,7 @@ from tests.helpers import BindableToolsFakeModel
 
 _ACTIVATION_MOD = "app.agents.core.subagents.integration_activation"
 _BUILD_MOD = "app.agents.core.graph_builder.build_graph"
+_HANDOFF_MOD = "app.agents.core.subagents.handoff_tools"
 
 
 def _stub_tool(name: str):
@@ -191,3 +192,69 @@ class TestActivationThroughRealExecutorGraph:
         activation = _tool_message_for(result, "a1")
         assert activation and "handoff(" in activation.text
         activate_tools.assert_not_awaited()
+
+    async def test_handoff_runs_when_the_agent_follows_the_redirect(self, monkeypatch) -> None:
+        """The other half of the redirect: handoff must actually work under the flag.
+
+        Activation tells the model to use handoff for a per-user integration; if
+        handoff were unbound (it is dropped under the old exclusive-swap wiring)
+        that instruction would dead-end. This walks the whole chain — activate,
+        get redirected, call handoff — and asserts handoff's own body ran.
+        """
+        monkeypatch.setattr(settings, "ENABLE_INTEGRATION_ACTIVATION", True)
+
+        model = BindableToolsFakeModel(
+            responses=[
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "activate_integration",
+                            "args": {"integration_id": "abc123"},
+                            "id": "a1",
+                        }
+                    ],
+                ),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "handoff",
+                            "args": {"subagent_id": "abc123", "task": "do the thing"},
+                            "id": "h1",
+                        }
+                    ],
+                ),
+                AIMessage(content="done"),
+            ]
+        )
+        registry = _stub_registry()
+        custom = {"id": "abc123", "name": "My MCP", "managed_by": "mcp", "mcp_config": {}}
+
+        # Short-circuit handoff at its resolution seam: a returned error string is
+        # proof its body executed, without building a real per-user graph here.
+        resolved = AsyncMock(return_value=(None, None, "SUBAGENT_RAN::abc123"))
+
+        p1, p2, p3, p4 = _run_executor(model, registry)
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            patch(f"{_ACTIVATION_MOD}._get_subagent_by_id", new=AsyncMock(return_value=custom)),
+            patch(f"{_HANDOFF_MOD}.prepare_subagent_execution", new=resolved),
+        ):
+            async with build_executor_graph(chat_llm=model, in_memory_checkpointer=True) as graph:
+                result = await graph.ainvoke(
+                    {"messages": [HumanMessage(content="use my mcp")]},
+                    config={"configurable": {"thread_id": str(uuid4()), "user_id": str(uuid4())}},
+                )
+
+        activation = _tool_message_for(result, "a1")
+        assert activation and "handoff(" in activation.text
+
+        handed_off = _tool_message_for(result, "h1")
+        assert handed_off, "handoff never ran — the redirect points at an unreachable tool"
+        assert "is not bound" not in handed_off.text, handed_off.text
+        assert "SUBAGENT_RAN::abc123" in handed_off.text
+        resolved.assert_awaited_once()
