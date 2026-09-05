@@ -89,6 +89,8 @@ repos:
         entry: bash -c 'uv run --project . --frozen --group backend --group dev mypy --config-file ../../pyproject.toml --ignore-missing-imports "$@"' --
         # apps/api-relative: this nested config runs with cwd=apps/api, so
         # ^apps/api/app/ can never match and the hook would always skip.
-        files: ^app/
+        # Python only: app/ also holds vendored .js/.json assets, and handing
+        # those to mypy makes it fail on their syntax instead of skipping them.
+        files: ^app/.*\.py$
         pass_filenames: true
         priority: 0
