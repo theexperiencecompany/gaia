@@ -25,14 +25,18 @@ from typing import Any
 
 from app.models.playbook_models import (
     ASK_KEY,
+    TIME_KEY,
     AskKind,
     LocatedAsk,
     PlaybookAskFill,
+    TimeSlot,
     ask_slot_key,
     is_ask_slot,
+    is_time_slot,
 )
 from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall, parse_result
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
+from app.services.workflow.playbook.time_layouts import render_iso
 from app.utils.errors import AppError
 
 #: Offset suffixes ``$now``/``$today`` accept, as ``timedelta`` keywords.
@@ -301,6 +305,16 @@ def resolve_value(value: object, context: RunContext) -> object:
             why="the run resolved this step's arguments without first filling its ask slots",
             fix="fill the step's ask slots before resolving its arguments",
         )
+    if is_time_slot(value):
+        slot = TimeSlot.model_validate(value)
+        match = PLACEHOLDER_TOKEN.fullmatch(slot.placeholder)
+        if match is None:  # the model validator refuses anything else
+            raise PlaceholderError(
+                message=f"{slot.placeholder} is not a time placeholder",
+                why=f"{TIME_KEY} takes $now or $today with an optional offset and clock",
+                fix="write the time as $today + 1d 09:00 or similar",
+            )
+        return _resolve_moment(match, context.now).strftime(slot.format)
     if isinstance(value, Mapping):
         return {str(key): resolve_value(item, context) for key, item in value.items()}
     if isinstance(value, list):
@@ -327,7 +341,7 @@ def _resolve_token(match: re.Match[str], context: RunContext) -> object:
                 why=f"${root} resolves to a time, so it has nothing to address under it",
                 fix=f"write ${root} on its own, optionally with an offset like ${root} + 1d",
             )
-        return _resolve_time(root, sign, match.group("amount"), match.group("unit"), context.now)
+        return _resolve_time(match, context.now)
 
     if sign is not None:
         raise PlaceholderError(
@@ -347,15 +361,26 @@ def _resolve_token(match: re.Match[str], context: RunContext) -> object:
     return _resolve_last_run(token, path, context.last_run)
 
 
-def _resolve_time(
-    root: str, sign: str | None, amount: str | None, unit: str | None, now: datetime
-) -> str:
+def _resolve_moment(match: re.Match[str], now: datetime) -> datetime:
+    """The instant a time token names: the root, moved by its offset, at its clock."""
     moment = now
+    unit, amount = match.group("unit"), match.group("amount")
     if unit is not None and amount is not None:
         offset = timedelta(**{_OFFSET_UNITS[unit]: int(amount)})
-        moment = now - offset if sign == "-" else now + offset
+        moment = now - offset if match.group("sign") == "-" else now + offset
+    clock = match.group("clock")
+    if clock is not None:
+        hour, minute = clock.split(":")
+        moment = moment.replace(hour=int(hour), minute=int(minute), second=0, microsecond=0)
+    return moment
+
+
+def _resolve_time(match: re.Match[str], now: datetime) -> str:
     # Seconds, not microseconds: some APIs reject the longer form as not RFC 3339.
-    return moment.date().isoformat() if root == "today" else moment.isoformat(timespec="seconds")
+    # A clock makes a date a datetime: "tomorrow at nine" is an instant.
+    moment = _resolve_moment(match, now)
+    date_only = match.group("root") == "today" and match.group("clock") is None
+    return render_iso(moment, date_only=date_only)
 
 
 def _resolve_user(token: str, path: str, user: PlaybookUser) -> str:

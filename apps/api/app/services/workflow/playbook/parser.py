@@ -31,13 +31,16 @@ import yaml
 from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER, is_error_envelope
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.models.playbook_models import (
+    TIME_KEY,
     AskSlot,
     ForEachStep,
     HandoffStep,
     PlaybookBody,
     PlaybookStep,
+    TimeSlot,
     ToolStep,
     is_ask_slot,
+    is_time_slot,
     walk_ask_slots,
 )
 from app.models.workflow_execution_models import carries_no_data
@@ -50,6 +53,11 @@ from app.services.workflow.playbook.evaluator import (
     resolve_step,
 )
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN, placeholder_tokens
+from app.services.workflow.playbook.time_layouts import (
+    ISO_DATE_LAYOUT,
+    ISO_DATETIME_LAYOUT,
+    detect_layout,
+)
 from app.services.workflow.playbook.tool_space import (
     ToolSpace,
     handoff_tool_space,
@@ -258,8 +266,9 @@ def _check_tool_step(
     # own calls, a handoff's child against that subagent's. Seen live before
     # children were checked at all: $item.todo_id inside a todos handoff over
     # elements carrying id, accepted, and stopped on the first replay.
-    if walk.results is not None:
-        _check_recorded_call(step, tool_name, path, walk)
+    recorded = (
+        _check_recorded_call(step, tool_name, path, walk) if walk.results is not None else None
+    )
 
     sample = _check_for_each_source(step, path, walk) if isinstance(step, ForEachStep) else NO_ITEM
     schema: dict[str, Any] = space.tools[tool_name].args
@@ -294,11 +303,16 @@ def _check_tool_step(
             continue
         # The evaluator's own scanner, so a placeholder embedded in text
         # ("Email $steps.mail.to") is checked exactly as a whole-value one is.
+        if is_time_slot(value):
+            _check_time_slot(value, key, where, recorded, walk)
+            continue
         arg_tokens = list(placeholder_tokens(value))
         for token in arg_tokens:
             _check_placeholder(
                 token, where, walk, in_for_each=isinstance(step, ForEachStep), sample=sample
             )
+        if isinstance(value, str) and any(t.group("root") in _TIME_ROOTS for t in arg_tokens):
+            _check_time_layout(value, arg_tokens, key, where, recorded, walk)
         slots = [slot for _, slot in walk_ask_slots(value)]
         if slots and not step.id:
             # A slot is addressed by its step's id; without one it falls back to
@@ -322,7 +336,7 @@ def _check_tool_step(
 
 def _check_recorded_call(
     step: ToolStep | ForEachStep, tool_name: str, path: str, walk: _Walk
-) -> None:
+) -> RecordedResult | None:
     """Check one tool step against the call it froze in the run writing it.
 
     Matching the step back to a recorded call is also what makes the ``$steps``
@@ -331,7 +345,7 @@ def _check_recorded_call(
     matched = _matched_call(step, walk)
     if matched is None:
         walk.issues.append(PlaybookIssue(where=path, problem=_unmatched_problem(tool_name, walk)))
-        return
+        return None
     index, call = matched
     walk.consumed.add(index)
     if step.id:
@@ -339,6 +353,7 @@ def _check_recorded_call(
     refusal = _result_refusal(tool_name, call)
     if refusal is not None:
         walk.issues.append(PlaybookIssue(where=path, problem=refusal))
+    return call
 
 
 def _unmatched_problem(tool_name: str, walk: _Walk) -> str:
@@ -413,7 +428,7 @@ def _agrees(step_value: object, recorded_value: object) -> bool:
     step omitted are fine — the model may have left a default unwritten), and a
     list agrees elementwise at the same length. Everything else is equality.
     """
-    if is_ask_slot(step_value):
+    if is_ask_slot(step_value) or is_time_slot(step_value):
         return True
     if isinstance(step_value, str):
         if PLACEHOLDER_TOKEN.fullmatch(step_value):
@@ -686,6 +701,84 @@ def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> object:
         )
     )
     return NO_ITEM
+
+
+_TIME_ROOTS = frozenset({"now", "today"})
+
+
+def _time_slot_hint(placeholder: str, layout: str) -> str:
+    return json.dumps({TIME_KEY: placeholder, "format": layout})
+
+
+def _check_time_slot(
+    value: Mapping[str, Any], key: str, where: str, recorded: RecordedResult | None, walk: _Walk
+) -> None:
+    """A ``$time`` slot is well-formed, and its layout is the one the tool took."""
+    try:
+        slot = TimeSlot.model_validate(value)
+    except ValidationError as error:
+        walk.issues.append(PlaybookIssue(where=where, problem=_first_validation_message(error)))
+        return
+    layout = detect_layout(recorded.args.get(key)) if recorded is not None else None
+    if layout is not None and layout != slot.format:
+        walk.issues.append(
+            PlaybookIssue(
+                where=where,
+                problem=(
+                    f"{key!r} was {recorded.args.get(key)!r} in this run, whose layout is "
+                    f"{layout!r}, not {slot.format!r}; write "
+                    f"{_time_slot_hint(slot.placeholder, layout)}"
+                ),
+            )
+        )
+
+
+def _check_time_layout(
+    value: str,
+    tokens: Sequence[re.Match[str]],
+    key: str,
+    where: str,
+    recorded: RecordedResult | None,
+    walk: _Walk,
+) -> None:
+    """A time placeholder renders in the tool's layout, or is refused with it.
+
+    Seen live: ``"$today + 1d at 09:00"`` for an argument the run had sent as
+    ``2026-09-06 09:00:00``. Prose around the placeholder renders to a sentence
+    no tool parses, and a bare placeholder renders to ISO 8601, which is not
+    every tool's layout either. The recorded argument is the example: when it
+    has a known layout and the step would render differently, the refusal
+    carries the exact slot to write.
+    """
+    if recorded is None:
+        return
+    example = recorded.args.get(key)
+    layout = detect_layout(example)
+    if layout is None:
+        return
+    whole = PLACEHOLDER_TOKEN.fullmatch(value)
+    placeholder = whole.group(0) if whole is not None else tokens[0].group(0)
+    if whole is not None:
+        date_only = whole.group("root") == "today" and whole.group("clock") is None
+        if layout == (ISO_DATE_LAYOUT if date_only else ISO_DATETIME_LAYOUT):
+            return
+        problem = (
+            f"{key!r} was {example!r} in this run, whose layout is {layout!r}; {value} "
+            f"renders as ISO 8601, so write {_time_slot_hint(placeholder, layout)}"
+        )
+    else:
+        problem = (
+            f"{key!r} was {example!r} in this run, one bare time; {value!r} renders to a "
+            f"sentence around a time, which no tool parses. Write the whole value as "
+            f"{_time_slot_hint(placeholder, layout)}, with the clock inside the placeholder"
+        )
+    walk.issues.append(PlaybookIssue(where=where, problem=problem))
+
+
+def _first_validation_message(error: ValidationError) -> str:
+    first = error.errors()[0]
+    message = str(first.get("msg", ""))
+    return message.removeprefix("Value error, ")
 
 
 def _check_value_type(

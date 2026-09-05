@@ -8,6 +8,7 @@ path the tool's recorded result lacks, an unresolvable ``$steps`` / ``$trigger``
 """
 
 from datetime import datetime
+import re
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -34,6 +35,7 @@ from app.services.workflow.playbook.evaluator import (
     resolve_args,
     resolve_value,
 )
+from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
 
 NOW = datetime(2026, 3, 14, 9, 30, tzinfo=ZoneInfo("Europe/Berlin"))
 
@@ -105,17 +107,35 @@ def test_time_offsets_move_forward_and_back() -> None:
     assert resolve_value("$now - 2h", context) == "2026-03-14T07:30:00+01:00"
 
 
+def _time(token: str) -> re.Match[str]:
+    match = PLACEHOLDER_TOKEN.fullmatch(token)
+    assert match is not None, token
+    return match
+
+
 def test_a_time_offset_is_applied_only_when_both_halves_are_present() -> None:
-    """Called directly, because the grammar can only ever hand this function an
-    amount and a unit together — the offset group in the token regex is all or
-    nothing. The guard is what keeps that a grammar detail: with half an offset
-    it resolves to the plain moment, where reading either half alone would index
-    the unit table with ``None`` or call ``int(None)`` and stop the run partway
-    through building a tool argument.
-    """
-    assert _resolve_time("today", "+", None, "d", NOW) == "2026-03-14"
-    assert _resolve_time("today", "+", "1", None, NOW) == "2026-03-14"
-    assert _resolve_time("today", "+", "1", "d", NOW) == "2026-03-15"
+    """The offset group in the token regex is all or nothing, so half an offset
+    never reaches the resolver; the guard keeps that a grammar detail."""
+    assert _resolve_time(_time("$today"), NOW) == "2026-03-14"
+    assert _resolve_time(_time("$today + 1d"), NOW) == "2026-03-15"
+
+
+def test_a_clock_makes_a_date_an_instant() -> None:
+    """Seen live: "tomorrow at nine" had no spelling, so the model wrote prose
+    around $today + 1d and the tool refused the sentence."""
+    context = _context()
+    assert resolve_value("$today + 1d 09:00", context) == "2026-03-15T09:00:00+01:00"
+    assert resolve_value("$now 18:30", context) == "2026-03-14T18:30:00+01:00"
+    assert resolve_value("$today - 1d 00:05", context) == "2026-03-13T00:05:00+01:00"
+
+
+def test_a_time_slot_renders_in_the_layout_the_tool_took() -> None:
+    """The reminder tool takes YYYY-MM-DD HH:MM:SS; the authoring run sent it
+    that, so the replay renders the same moment the same way."""
+    context = _context()
+    slot = {"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}
+    assert resolve_value(slot, context) == "2026-03-15 09:00:00"
+    assert resolve_value({"scheduled_at": slot}, context) == {"scheduled_at": "2026-03-15 09:00:00"}
 
 
 def test_user_fields_resolve_from_the_profile() -> None:

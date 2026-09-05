@@ -28,7 +28,7 @@ read by exactly the step it sits in, so a dead one cannot be written.
 
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Annotated, Any, Self, TypeGuard
 import uuid
@@ -212,6 +212,53 @@ class AskSlot(BaseModel):
 
     prompt: str = Field(alias="$ask", min_length=1, description="What to write for this value")
     max_tokens: int = Field(default=DEFAULT_ASK_MAX_TOKENS, ge=1, le=8192)
+
+
+TIME_KEY = "$time"
+
+
+class TimeSlot(BaseModel):
+    """A time argument written as a placeholder plus the layout the tool takes.
+
+    ``{"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}`` stands in
+    the argument's place. The placeholder is one of the time roots with its
+    optional offset and clock; ``format`` is the strftime layout the tool
+    accepted in the authoring run, so the replay renders the moment exactly the
+    way the tool has already taken it once.
+    """
+
+    model_config = ConfigDict(extra="forbid", serialize_by_alias=True)
+
+    # A literal alias: the mypy plugin reads it as one, and TIME_KEY is its twin.
+    placeholder: str = Field(alias="$time", min_length=1)
+    format: str = Field(min_length=1, description="strftime layout the tool takes")
+
+    @field_validator("placeholder")
+    @classmethod
+    def _a_whole_time_placeholder(cls, value: str) -> str:
+        match = PLACEHOLDER_TOKEN.fullmatch(value.strip())
+        if match is None or match.group("root") not in ("now", "today") or match.group("path"):
+            raise ValueError(
+                f"{TIME_KEY} takes one time placeholder ($now or $today, with an optional "
+                f"offset and clock such as $today + 1d 09:00), not {value!r}"
+            )
+        return value.strip()
+
+    @field_validator("format")
+    @classmethod
+    def _a_layout_that_renders(cls, value: str) -> str:
+        try:
+            datetime.now(UTC).strftime(value)
+        except ValueError as error:
+            raise ValueError(f"format {value!r} is not a strftime layout: {error}") from error
+        if "%" not in value:
+            raise ValueError(f"format {value!r} carries no strftime field")
+        return value
+
+
+def is_time_slot(value: object) -> TypeGuard[Mapping[str, Any]]:
+    """Whether a value is a time placeholder with its layout."""
+    return isinstance(value, Mapping) and TIME_KEY in value
 
 
 def is_ask_slot(value: object) -> TypeGuard[Mapping[str, Any]]:
@@ -532,6 +579,8 @@ def walk_ask_slots(
     if is_ask_slot(value):
         yield path, value
         return
+    if is_time_slot(value):
+        return
     if isinstance(value, Mapping):
         for key, item in value.items():
             yield from walk_ask_slots(item, (*path, str(key)))
@@ -559,8 +608,11 @@ _ARGS_DESCRIPTION = (
     "The call's arguments, exactly as the tool takes them. A value may be a "
     "placeholder resolved at replay: $now, $today, $now + 1d; $user.email, "
     "$user.name, $user.timezone; $trigger.<path>; $steps.<step_id>.<path>; "
-    "$last_run.<TOOL_NAME>.<path>. $ask is not a placeholder; if a value "
-    "genuinely cannot be frozen or built from $now/$today/$user/$trigger/"
+    "$last_run.<TOOL_NAME>.<path>. A time may carry a clock: $today + 1d 09:00. "
+    "A time argument the tool takes in its own layout is written as "
+    '{"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}, the format '
+    "being the layout of the value you actually sent. $ask is not a placeholder; "
+    "if a value genuinely cannot be frozen or built from $now/$today/$user/$trigger/"
     '$steps/$last_run, write {"$ask": "what to write"} as that value and a '
     "model fills it at replay."
 )

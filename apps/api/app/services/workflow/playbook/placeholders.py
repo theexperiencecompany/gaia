@@ -35,12 +35,14 @@ _ROOT_ALTERNATION = "|".join(sorted(PLACEHOLDER_ROOTS, key=len, reverse=True))
 
 #: One token: ``$``, a KNOWN root (ended by a non-identifier character, so
 #: ``$nowhere`` is text rather than ``$now`` + ``here``), an optional dotted path,
-#: and (meaningful only for the two time roots) an optional signed offset. Used
-#: to match, never to build code — the match groups are read as data.
+#: and (meaningful only for the two time roots) an optional signed offset and an
+#: optional clock time (``$today + 1d 09:00``: tomorrow at nine). Used to match,
+#: never to build code — the match groups are read as data.
 PLACEHOLDER_TOKEN = re.compile(
     rf"\$(?P<root>{_ROOT_ALTERNATION})(?![A-Za-z0-9_])"
     r"(?P<path>(?:\.[A-Za-z0-9_-]+)*)"
     r"(?:\s*(?P<sign>[+-])\s*(?P<amount>\d+)(?P<unit>[wdhms])\b)?"
+    r"(?:\s+(?P<clock>[01]\d:[0-5]\d|2[0-3]:[0-5]\d)\b)?"
 )
 
 

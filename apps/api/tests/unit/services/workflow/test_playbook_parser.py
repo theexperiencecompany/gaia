@@ -29,6 +29,7 @@ from app.models.playbook_models import (
 )
 from app.models.subagent_models import Subagent
 from app.services.workflow.playbook.parser import (
+    PlaybookValidation,
     RecordedResult,
     dump_playbook,
     validate_playbook,
@@ -2957,3 +2958,112 @@ result_brief: x
                 "cannot be one of its own elements",
             )
         ]
+
+
+@pytest.mark.unit
+class TestTimeArgumentsRenderByExample:
+    """Seen live (D6): the run sent the reminder tool ``2026-09-06 09:00:00``;
+    the model froze it as ``"$today + 1d at 09:00"``, which renders to a
+    sentence, and a bare ``$today + 1d`` would render to ISO 8601, which is not
+    this tool's layout either. The recorded argument is the example."""
+
+    def _body(self, scheduled_at: str) -> PlaybookBody:
+        return _body(
+            f"""
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {scheduled_at}
+result_brief: x
+"""
+        )
+
+    async def _validate(self, body: PlaybookBody, recorded_subject: str) -> PlaybookValidation:
+        results = [
+            _call("send_email", {"to": "a@b.com", "subject": recorded_subject}, "sent"),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            return await validate_playbook(body, USER_ID, results)
+
+    async def test_prose_around_a_time_placeholder_is_refused_with_the_slot_to_write(
+        self,
+    ) -> None:
+        result = await self._validate(self._body('"$today + 1d at 09:00"'), "2026-09-06 09:00:00")
+
+        assert [issue.where for issue in result.issues] == ["steps[0].args.subject"]
+        problem = result.issues[0].problem
+        assert "'2026-09-06 09:00:00'" in problem
+        assert '{"$time": "$today + 1d", "format": "%Y-%m-%d %H:%M:%S"}' in problem
+
+    async def test_a_bare_placeholder_whose_iso_rendering_is_not_the_tools_layout_is_refused(
+        self,
+    ) -> None:
+        result = await self._validate(self._body('"$today + 1d 09:00"'), "2026-09-06 09:00:00")
+
+        assert len(result.issues) == 1
+        assert (
+            '{"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}'
+            in result.issues[0].problem
+        )
+
+    async def test_a_bare_placeholder_matching_the_tools_layout_is_accepted(self) -> None:
+        dated = await self._validate(self._body('"$today + 1d"'), "2026-09-06")
+        timed = await self._validate(self._body('"$now + 1h"'), "2026-09-06T10:00:00+00:00")
+
+        assert dated.issues == []
+        assert timed.issues == []
+
+    async def test_a_time_slot_in_the_tools_layout_is_accepted_and_a_wrong_one_refused(
+        self,
+    ) -> None:
+        good = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}
+result_brief: x
+"""
+        )
+        bad = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {"$time": "$today + 1d 09:00", "format": "%d/%m/%Y"}
+result_brief: x
+"""
+        )
+        accepted = await self._validate(good, "2026-09-06 09:00:00")
+        refused = await self._validate(bad, "2026-09-06 09:00:00")
+
+        assert accepted.issues == []
+        assert len(refused.issues) == 1
+        assert "'%Y-%m-%d %H:%M:%S', not '%d/%m/%Y'" in refused.issues[0].problem
+
+    async def test_a_malformed_time_slot_is_refused_by_its_own_rule(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {"$time": "$steps.x.when", "format": "%Y"}
+result_brief: x
+"""
+        )
+        result = await self._validate(body, "2026-09-06 09:00:00")
+
+        assert len(result.issues) == 1
+        assert "$time takes one time placeholder" in result.issues[0].problem
