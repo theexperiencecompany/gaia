@@ -25,6 +25,7 @@ from app.config.rate_limits import (
     get_time_window_key,
 )
 from app.config.settings import settings
+from app.constants.cache import RATE_LIMIT_KEY_PREFIX
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
@@ -119,7 +120,7 @@ class TieredRateLimiter:
 
     def _get_redis_key(self, user_id: str, feature: str, period: RateLimitPeriod) -> str:
         time_window = get_time_window_key(period)
-        return f"rate_limit:{user_id}:{feature}:{period}:{time_window}"
+        return f"{RATE_LIMIT_KEY_PREFIX}:{user_id}:{feature}:{period}:{time_window}"
 
     def _get_ttl(self, period: RateLimitPeriod) -> int:
         reset_time = get_reset_time(period)
