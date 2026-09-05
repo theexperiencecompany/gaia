@@ -21,6 +21,7 @@ from app.api.v1.middleware.auth import (
     get_current_user,
 )
 from app.models.user_models import UserDocument
+from tests.helpers import captured_wide_event
 
 
 @pytest.fixture(autouse=True)
@@ -289,6 +290,231 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         assert resp.status_code == 200
         # Invalid ObjectId format should not crash
         assert resp.json()["authenticated"] is False
+
+
+def _bare_request(
+    path: str = "/api/v1/protected",
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+):
+    """A Request with just the pieces the middleware touches, no ASGI stack.
+
+    The two authenticate helpers are called directly here rather than through
+    TestClient: WorkOSAuthMiddleware runs outside LoggingMiddleware's context,
+    so a wide event captured around a full request would not receive its
+    ``log.error`` at all.
+    """
+    raw = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
+    request = Request(
+        {
+            "type": "http",
+            "method": method,
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": b"",
+            "headers": raw,
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "state": {},
+        }
+    )
+    # Seeded the way dispatch() seeds it before delegating, so "left alone"
+    # means the same thing here as it does in production.
+    request.state.user = None
+    request.state.authenticated = False
+    request.state.new_session = None
+    return request
+
+
+def _middleware() -> WorkOSAuthMiddleware:
+    return WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
+
+
+class TestExcludedShareDownloads:
+    def test_share_downloads_never_reach_session_authentication(self) -> None:
+        # Composio fetches these server-side with no session at all; the token in
+        # the query string is the credential. A wrong entry here would put every
+        # fetch through WorkOS session handling it can never satisfy.
+        app = _build_test_app()
+
+        @app.get("/api/v1/files/s/{filename}")
+        async def shared(filename: str):
+            return {"ok": True}
+
+        with patch.object(
+            WorkOSAuthMiddleware, "_authenticate_wos_session", new_callable=AsyncMock
+        ) as authenticate:
+            client = TestClient(app)
+            client.cookies.set("wos_session", "tok")
+            resp = client.get("/api/v1/files/s/report.pdf?token=t")
+
+        assert resp.status_code == 200
+        assert authenticate.called is False
+
+
+class TestAuthenticateWosSessionDirectly:
+    async def test_the_session_from_the_request_is_what_gets_verified(self) -> None:
+        request = _bare_request()
+        with patch.object(
+            _middleware().__class__,
+            "_authenticate_session",
+            new_callable=AsyncMock,
+            return_value=({"user_id": "u1"}, None),
+        ) as verify:
+            await _middleware()._authenticate_wos_session(request, "session-token")
+
+        assert verify.call_args.args == ("session-token",)
+        assert request.state.authenticated is True
+
+    def test_the_dispatch_hands_the_cookie_through_untouched(self) -> None:
+        app = _build_test_app()
+        with patch.object(
+            WorkOSAuthMiddleware, "_authenticate_wos_session", new_callable=AsyncMock
+        ) as authenticate:
+            client = TestClient(app)
+            client.cookies.set("wos_session", "cookie-token")
+            client.get("/api/v1/protected")
+
+        assert authenticate.call_args.args[1] == "cookie-token"
+
+    async def test_a_rejected_session_is_flagged_for_the_route_layer(self) -> None:
+        # The middleware cannot log here (wrong context), so this exact value on
+        # request.state is the only handoff — the route matches on it.
+        request = _bare_request()
+        with patch.object(
+            WorkOSAuthMiddleware,
+            "_authenticate_session",
+            new_callable=AsyncMock,
+            return_value=(None, None),
+        ):
+            await _middleware()._authenticate_wos_session(request, "bad")
+
+        assert request.state.auth_failure == "invalid_or_expired_session"
+        assert request.state.authenticated is False
+
+    async def test_a_broken_verifier_is_recorded_with_the_request_it_broke_on(
+        self,
+    ) -> None:
+        # The request continues unauthenticated by design, so the event is the
+        # only evidence WorkOS failed rather than the user being logged out.
+        request = _bare_request(path="/api/v1/protected", method="POST")
+        with patch.object(
+            WorkOSAuthMiddleware,
+            "_authenticate_session",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("WorkOS down"),
+        ):
+            async with captured_wide_event() as event:
+                await _middleware()._authenticate_wos_session(request, "tok")
+
+        (error,) = event["errors"]
+        assert "auth_middleware_error" in error["msg"]
+        assert error["auth_failure"] == "RuntimeError"
+        assert error["error"] == "WorkOS down"
+        assert error["path"] == "/api/v1/protected"
+        assert error["method"] == "POST"
+        assert error["session_present"] is True
+        assert request.state.authenticated is False
+
+
+class TestAuthenticateAgentTokenDirectly:
+    async def test_a_request_without_an_authorization_header_is_a_noop(self) -> None:
+        request = _bare_request()
+        with patch("app.api.v1.middleware.auth.verify_agent_token") as verify:
+            await _middleware()._authenticate_agent_token(request)
+
+        assert verify.called is False
+        assert request.state.authenticated is False
+
+    async def test_a_non_bearer_authorization_header_is_a_noop(self) -> None:
+        request = _bare_request(headers={"Authorization": "Basic dXNlcjpwYXNz"})
+        with patch("app.api.v1.middleware.auth.verify_agent_token") as verify:
+            await _middleware()._authenticate_agent_token(request)
+
+        assert verify.called is False
+
+    async def test_only_the_credential_is_verified_not_the_scheme(self) -> None:
+        # Everything after the first space is the token; splitting anywhere else
+        # hands the verifier a fragment and every agent request stops working.
+        request = _bare_request(headers={"Authorization": "Bearer aaa bbb"})
+        with patch("app.api.v1.middleware.auth.verify_agent_token", return_value=None) as verify:
+            await _middleware()._authenticate_agent_token(request)
+
+        assert verify.call_args.args == ("aaa bbb",)
+
+    async def test_the_credential_is_taken_verbatim_after_the_first_space(self) -> None:
+        # Split on a literal single space, not on whitespace runs: a second
+        # space belongs to the credential, so "Bearer  jwt" verifies " jwt" and
+        # fails. Loosening this to a whitespace split would silently start
+        # accepting headers we reject today.
+        request = _bare_request(headers={"Authorization": "Bearer  jwt"})
+        with patch("app.api.v1.middleware.auth.verify_agent_token", return_value=None) as verify:
+            await _middleware()._authenticate_agent_token(request)
+
+        assert verify.call_args.args == (" jwt",)
+
+    async def test_the_user_named_in_the_token_is_the_one_looked_up(self) -> None:
+        request = _bare_request(headers={"Authorization": "Bearer jwt"})
+        with (
+            patch(
+                "app.api.v1.middleware.auth.verify_agent_token",
+                return_value={"user_id": "507f1f77bcf86cd799439011"},
+            ),
+            patch(
+                "app.api.v1.middleware.auth.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=None,
+            ) as get_user,
+        ):
+            await _middleware()._authenticate_agent_token(request)
+
+        assert get_user.call_args.args == ("507f1f77bcf86cd799439011",)
+
+    async def test_a_failed_user_lookup_is_recorded_on_the_wide_event(self) -> None:
+        request = _bare_request(headers={"Authorization": "Bearer jwt"})
+        with (
+            patch(
+                "app.api.v1.middleware.auth.verify_agent_token",
+                return_value={"user_id": "not-an-objectid"},
+            ),
+            patch(
+                "app.api.v1.middleware.auth.user_repository.get",
+                new_callable=AsyncMock,
+                side_effect=ValueError("bad ObjectId"),
+            ),
+        ):
+            async with captured_wide_event() as event:
+                await _middleware()._authenticate_agent_token(request)
+
+        (error,) = event["errors"]
+        assert "Invalid user_id in agent token" in error["msg"]
+        assert error["error_type"] == "ValueError"
+        assert error["error"] == "bad ObjectId"
+        assert request.state.authenticated is False
+
+    async def test_the_agent_context_is_marked_workos_and_impersonated(self) -> None:
+        # Downstream reads auth_provider to decide which identity it is holding;
+        # impersonated=True is what tells it this is an agent acting as the user.
+        request = _bare_request(headers={"Authorization": "Bearer jwt"})
+        user_doc = UserDocument.model_validate(
+            {"id": "507f1f77bcf86cd799439011", "email": "agent@test.com", "name": "Agent"}
+        )
+        with (
+            patch(
+                "app.api.v1.middleware.auth.verify_agent_token",
+                return_value={"user_id": "507f1f77bcf86cd799439011"},
+            ),
+            patch(
+                "app.api.v1.middleware.auth.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=user_doc,
+            ),
+        ):
+            await _middleware()._authenticate_agent_token(request)
+
+        assert request.state.authenticated is True
+        assert request.state.user["auth_provider"] == "workos"
+        assert request.state.user["impersonated"] is True
 
 
 class TestAuthenticateSession:

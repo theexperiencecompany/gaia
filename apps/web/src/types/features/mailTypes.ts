@@ -50,6 +50,13 @@ export interface EmailBody {
   attachmentId?: string;
 }
 
+// Attachment metadata shown on the compose/sent card (display-only — the
+// backend streams just the filename and mimetype, never an s3key).
+export type EmailAttachmentMeta = {
+  name: string;
+  mimetype: string;
+};
+
 // Email compose data structure for email intent
 export type EmailComposeData = {
   to: string[];
@@ -57,6 +64,7 @@ export type EmailComposeData = {
   body: string;
   draft_id?: string;
   thread_id?: string;
+  attachments?: EmailAttachmentMeta[];
 };
 
 // AI Email Analysis Types

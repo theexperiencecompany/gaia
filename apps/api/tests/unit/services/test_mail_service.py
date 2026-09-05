@@ -1,8 +1,11 @@
 """Unit tests for the mail service (app/services/mail/mail_service.py)."""
 
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from composio.utils.shared import json_schema_to_model
+from langchain_core.tools import StructuredTool
 import pytest
 
 from app.constants.log_tags import LogTag
@@ -49,6 +52,7 @@ from app.services.mail.mail_service import (
     update_draft,
     update_label,
 )
+from app.utils.composio_hooks.registry import master_schema_modifier
 from shared.py.wide_events import MailContext
 
 # ---------------------------------------------------------------------------
@@ -101,8 +105,14 @@ class TestGetGmailTool:
             "GMAIL_SEND_EMAIL",
             use_before_hook=False,
             use_after_hook=False,
+            use_schema_modifier=True,
             user_id=USER_ID,
         )
+
+    def test_native_schema_is_requested_when_asked(self, mock_composio_service):
+        get_gmail_tool("GMAIL_SEND_EMAIL", USER_ID, use_schema_modifier=False)
+
+        assert mock_composio_service.get_tool.call_args.kwargs["use_schema_modifier"] is False
 
     def test_returns_none_on_exception(self, mock_composio_service):
         mock_composio_service.get_tool.side_effect = RuntimeError("service down")
@@ -127,6 +137,27 @@ class TestInvokeGmailTool:
 
         assert result.as_payload() == {"successful": True, "id": "msg1"}
         fake_tool.ainvoke.assert_awaited_once_with({"subject": "Hi"})
+        # The tool is fetched for this user, by name, with the agent-facing
+        # schema — a wrong value here silently sends the call to another
+        # mailbox or strips arguments off it.
+        assert mock_composio_service.get_tool.call_args.args == ("GMAIL_SEND_EMAIL",)
+        assert mock_composio_service.get_tool.call_args.kwargs == {
+            "use_before_hook": False,
+            "use_after_hook": False,
+            "use_schema_modifier": True,
+            "user_id": USER_ID,
+        }
+
+    async def test_native_schema_request_reaches_the_tool_fetch(self, mock_composio_service):
+        fake_tool = AsyncMock()
+        fake_tool.ainvoke = AsyncMock(return_value={"successful": True})
+        mock_composio_service.get_tool.return_value = fake_tool
+
+        await invoke_gmail_tool(
+            USER_ID, "GMAIL_SEND_EMAIL", {"subject": "Hi"}, use_schema_modifier=False
+        )
+
+        assert mock_composio_service.get_tool.call_args.kwargs["use_schema_modifier"] is False
 
     async def test_returns_error_dict_when_tool_not_found(self, mock_composio_service):
         mock_composio_service.get_tool.return_value = None
@@ -155,7 +186,7 @@ class TestInvokeGmailTool:
 
 
 class TestProcessAttachments:
-    def test_converts_upload_files_to_dicts(self):
+    def test_uploads_upload_files_to_composio(self):
         import io
 
         upload = MagicMock()
@@ -163,12 +194,38 @@ class TestProcessAttachments:
         upload.content_type = "application/pdf"
         upload.file = io.BytesIO(b"PDF content")
 
-        result = _process_attachments([upload])
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={"name": "report.pdf", "mimetype": "application/pdf", "s3key": "k/1"},
+        ) as mock_upload:
+            result = _process_attachments([upload], "GMAIL_SEND_EMAIL")
 
-        assert len(result) == 1
-        assert result[0]["filename"] == "report.pdf"
-        assert result[0]["content"] == b"PDF content"
-        assert result[0]["content_type"] == "application/pdf"
+        # Raw bytes + filename + content-type are handed to the Composio uploader,
+        # scoped to the invoking tool/toolkit.
+        assert mock_upload.call_args.args == (b"PDF content", "report.pdf", "application/pdf")
+        assert mock_upload.call_args.kwargs == {"tool": "GMAIL_SEND_EMAIL", "toolkit": "gmail"}
+        assert result == [{"name": "report.pdf", "mimetype": "application/pdf", "s3key": "k/1"}]
+
+    def test_falls_back_to_generic_name_when_filename_missing(self):
+        import io
+
+        upload = MagicMock()
+        upload.filename = None
+        upload.content_type = "application/octet-stream"
+        upload.file = io.BytesIO(b"x")
+
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={
+                "name": "attachment",
+                "mimetype": "application/octet-stream",
+                "s3key": "k",
+            },
+        ) as mock_upload:
+            _process_attachments([upload], "GMAIL_SEND_EMAIL")
+
+        # A missing filename becomes the literal "attachment".
+        assert mock_upload.call_args.args[1] == "attachment"
 
     def test_resets_file_pointer_after_read(self):
         upload = MagicMock()
@@ -177,13 +234,17 @@ class TestProcessAttachments:
         upload.file = MagicMock()
         upload.file.read.return_value = b"hello"
 
-        _process_attachments([upload])
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={"name": "file.txt", "mimetype": "text/plain", "s3key": "k/2"},
+        ):
+            _process_attachments([upload], "GMAIL_SEND_EMAIL")
 
         # seek(0) should have been called on the mock's file attribute
         upload.file.seek.assert_called_once_with(0)
 
     def test_handles_empty_list(self):
-        result = _process_attachments([])
+        result = _process_attachments([], "GMAIL_SEND_EMAIL")
         assert result == []
 
 
@@ -279,16 +340,166 @@ class TestSendEmail:
         upload.content_type = "application/pdf"
         upload.file = io.BytesIO(b"data")
 
+        # Mock the Composio upload one layer down so the REAL shaping runs: the
+        # bug this guards is the parameter Composio actually receives. Composio's
+        # Gmail tools take a singular ``attachment`` of ``{name, mimetype, s3key}``
+        # (a pre-uploaded file), NOT a plural ``attachments`` of raw bytes.
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={"name": "doc.pdf", "mimetype": "application/pdf", "s3key": "k/1"},
+        ) as mock_upload:
+            await send_email(
+                user_id=USER_ID,
+                to="bob@example.com",
+                content=EmailContent(subject="Hi", body="Body"),
+                attachments=[upload],
+            )
+
+        # The bytes read off the UploadFile are handed to the Composio uploader,
+        # scoped to the send tool so the upload lands in the right toolkit namespace.
+        assert mock_upload.call_args.args[0] == b"data"
+        assert mock_upload.call_args.kwargs["tool"] == "GMAIL_SEND_EMAIL"
+        params = mock_invoke_gmail_tool.call_args[0][2]
+        assert "attachments" not in params
+        # One file -> a single FileUploadable object (the pinned Gmail toolkit
+        # version rejects a list), not a one-element list.
+        assert params["attachment"] == {
+            "name": "doc.pdf",
+            "mimetype": "application/pdf",
+            "s3key": "k/1",
+        }
+
+    async def test_rejects_multiple_attachments_without_uploading(self, mock_invoke_gmail_tool):
+        import io
+
+        uploads = []
+        for name in ("a.pdf", "b.pdf"):
+            up = MagicMock()
+            up.filename, up.content_type, up.file = name, "application/pdf", io.BytesIO(b"x")
+            uploads.append(up)
+
+        with patch("app.services.mail.mail_service.upload_bytes_sync") as mock_upload:
+            result = await send_email(
+                user_id=USER_ID,
+                to="bob@example.com",
+                content=EmailContent(subject="Hi", body="Body"),
+                attachments=uploads,
+            )
+
+        # Composio types Gmail's `attachment` as a single object, so a second file
+        # is rejected up front — nothing is uploaded and no send is attempted.
+        assert result.successful is False
+        assert "one attachment" in (result.error or "")
+        mock_upload.assert_not_called()
+        mock_invoke_gmail_tool.assert_not_called()
+
+
+class TestAttachmentsSurviveArgumentValidation:
+    """``attachment`` is Gmail's own param, and only the tool's own schema has it.
+
+    Shaping the parameter correctly is not enough: LangChain validates the call
+    against the schema the tool was bound with and silently drops anything that
+    schema does not declare. Under the agent-facing schema — where the modifier
+    has replaced ``attachment`` with the reference-based ``attachments`` — the
+    file is dropped between here and Composio and the mail sends without it.
+    """
+
+    def _gmail_send_schema(self) -> SimpleNamespace:
+        # The native shape: FileUploadable emits `file_uploadable` onto its own
+        # schema node, alongside the s3key object it stands for.
+        return SimpleNamespace(
+            description="Send an email",
+            input_parameters={
+                "title": "GmailSendEmail",
+                "properties": {
+                    "recipient_email": {"type": "string"},
+                    "subject": {"type": "string"},
+                    "body": {"type": "string"},
+                    "attachment": {
+                        "type": "object",
+                        "file_uploadable": True,
+                        "properties": {
+                            "name": {"type": "string"},
+                            "mimetype": {"type": "string"},
+                            "s3key": {"type": "string"},
+                        },
+                    },
+                },
+                "required": [],
+            },
+        )
+
+    def _args_reaching_the_tool(self, schema: SimpleNamespace, call: dict) -> dict:
+        """What Composio's executor receives, through the real LangChain plumbing."""
+        received: dict = {}
+
+        def _execute(**kwargs: object) -> str:
+            received.update(kwargs)
+            return "ok"
+
+        tool = StructuredTool.from_function(
+            name="GMAIL_SEND_EMAIL",
+            description="Send an email",
+            args_schema=json_schema_to_model(schema.input_parameters),
+            func=_execute,
+        )
+        tool.invoke(call)
+        return received
+
+    def test_agent_facing_schema_drops_the_attachment_argument(self):
+        call = {
+            "recipient_email": "bob@example.com",
+            "subject": "Hi",
+            "body": "Body",
+            "attachment": {"name": "doc.pdf", "mimetype": "application/pdf", "s3key": "k/1"},
+        }
+        native = self._gmail_send_schema()
+        # Composio coerces the object into its generated model; the s3key — the
+        # only part that identifies the uploaded file — arrives intact.
+        delivered = self._args_reaching_the_tool(native, call)["attachment"]
+        assert delivered.s3key == "k/1"
+
+        agent_facing = master_schema_modifier(
+            "GMAIL_SEND_EMAIL", "gmail", self._gmail_send_schema()
+        )
+        assert "attachment" not in self._args_reaching_the_tool(agent_facing, call)
+
+    async def test_send_with_attachments_asks_for_the_native_schema(self, mock_invoke_gmail_tool):
+        import io
+
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+        upload = MagicMock()
+        upload.filename, upload.content_type, upload.file = (
+            "d.pdf",
+            "application/pdf",
+            io.BytesIO(b"x"),
+        )
+
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={"name": "d.pdf", "mimetype": "application/pdf", "s3key": "k/1"},
+        ):
+            await send_email(
+                user_id=USER_ID,
+                to="bob@example.com",
+                content=EmailContent(subject="Hi", body="Body"),
+                attachments=[upload],
+            )
+
+        assert mock_invoke_gmail_tool.call_args.kwargs["use_schema_modifier"] is False
+
+    async def test_send_without_attachments_keeps_the_agent_facing_schema(
+        self, mock_invoke_gmail_tool
+    ):
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+
         await send_email(
             user_id=USER_ID,
             to="bob@example.com",
             content=EmailContent(subject="Hi", body="Body"),
-            attachments=[upload],
         )
 
-        params = mock_invoke_gmail_tool.call_args[0][2]
-        assert "attachments" in params
-        assert len(params["attachments"]) == 1
+        assert mock_invoke_gmail_tool.call_args.kwargs["use_schema_modifier"] is True
 
 
 # ---------------------------------------------------------------------------

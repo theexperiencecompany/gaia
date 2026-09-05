@@ -17,43 +17,28 @@ Add env vars
 2) Add a `SettingsGroup` in `_register_predefined_groups()` with matching key names.
 """
 
+from dataclasses import dataclass
+
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
+@dataclass(frozen=True, slots=True)
 class SettingsGroup:
-    def __init__(
-        self,
-        name: str,
-        keys: list[str],
-        description: str,
-        affected_features: str,
-        required_in_prod: bool = True,
-        all_required: bool = True,
-        docs_url: str | None = None,
-        alternative_group: str | None = None,
-    ) -> None:
-        """
-        Initialize a settings group.
+    """One group of related config keys, and what breaks without them.
 
-        Args:
-            name: The name of the settings group
-            keys: List of configuration keys in this group
-            description: Description of what this group of settings enables
-            affected_features: Description of features affected if these settings are missing
-            required_in_prod: Whether this group is required in production
-            all_required: Whether all keys in the group are required (True) or any one is sufficient (False)
-            docs_url: Optional URL to documentation for setting up this group
-            alternative_group: Name of another group that can be used instead of this one (mutually exclusive)
-        """
-        self.name = name
-        self.keys = keys
-        self.description = description
-        self.affected_features = affected_features
-        self.required_in_prod = required_in_prod
-        self.all_required = all_required
-        self.docs_url = docs_url
-        self.alternative_group = alternative_group
+    ``all_required`` False means any one key in the group suffices;
+    ``alternative_group`` names a mutually exclusive group that can stand in.
+    """
+
+    name: str
+    keys: list[str]
+    description: str
+    affected_features: str
+    required_in_prod: bool = True
+    all_required: bool = True
+    docs_url: str | None = None
+    alternative_group: str | None = None
 
 
 class SettingsValidator:
@@ -142,6 +127,15 @@ class SettingsValidator:
                 affected_features="File uploads, image storage, and support ticket attachments",
                 all_required=True,
                 docs_url="https://cloudinary.com/documentation/cloudinary_credentials",
+            )
+        )
+
+        self.register_group(
+            SettingsGroup(
+                name="File Sharing",
+                keys=["SHARE_GRANT_SECRET"],
+                description="HMAC signing secret for single-purpose file-share grants",
+                affected_features="File attachments fetched by Composio during tool execution",
             )
         )
 

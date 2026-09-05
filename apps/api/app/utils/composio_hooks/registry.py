@@ -26,6 +26,22 @@ AfterHookFn = Callable[[str, str, ToolExecutionResponse], AfterHookResponse]
 SchemaModifierFn = Callable[[str, str, Tool], Tool]
 
 
+class HookAbortError(Exception):
+    """A before-hook signal that the tool call MUST NOT proceed.
+
+    Ordinary before-hook exceptions are swallowed (a hook is enrichment: a bug in
+    one must not fail the tool). This one is different — it means the hook found a
+    condition that makes executing the tool wrong (e.g. a requested attachment
+    could not be resolved), so letting the call run would produce a silently
+    incorrect result. ``execute_before_hooks`` re-raises it so it propagates
+    through Composio's executor and fails the tool loudly.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class ComposioHookRegistry:
     """
     Enhanced registry for managing before_execute, after_execute hooks,
@@ -68,6 +84,11 @@ class ComposioHookRegistry:
         for hook_func in self._before_hooks:
             try:
                 modified_params = hook_func(tool, toolkit, modified_params)
+            except HookAbortError:
+                # An explicit "do not run this tool" signal — propagate so the
+                # executor fails the call instead of running it with a wrong /
+                # missing argument (see HookAbortError).
+                raise
             except Exception as e:
                 log.error(
                     f"{LogTag.COMPOSIO} Error executing before_execute hook for",
@@ -134,6 +155,47 @@ class ComposioHookRegistry:
 hook_registry = ComposioHookRegistry()
 
 
+def _resolve_call_identity(tool: str, toolkit: str, params: ToolExecuteParams) -> None:
+    """Establish the calling user from RunnableConfig metadata, ahead of every hook.
+
+    The agent flow binds its tools once with ``user_id=""`` and names the real
+    user per invocation through runnable metadata, so this is where identity
+    becomes known. It runs before the hook chain because hooks act on it (file
+    uploads, share grants) and must never see a stale or model-supplied one:
+    ``params["user_id"]`` comes from the Composio executor, so the id our own
+    server injected wins on conflict (logged). Trigger flows carry no metadata
+    and keep whatever the SDK bound at ``tools.get(user_id=...)`` time.
+
+    ``__runnable_config__`` is popped rather than read: it is our transport, not
+    a tool argument, and must not travel on to Composio. ``entity_id`` is set
+    alongside ``user_id`` for Composio's legacy connected-account auth.
+    """
+    # Typed as object (not the declared arguments shape): real params arrive as
+    # plain dicts that may omit keys or carry non-dict values, and each guard
+    # below must stay reachable.
+    arguments: object = params.get("arguments")
+    if not isinstance(arguments, dict):
+        return
+    config = arguments.pop("__runnable_config__", None)
+    if not isinstance(config, dict):
+        return
+    metadata = config.get("metadata")
+    if not isinstance(metadata, dict):
+        return
+    user_id = metadata.get("user_id")
+    if not user_id or not isinstance(user_id, str):
+        return
+    current = params.get("user_id")
+    if current and current != user_id:
+        log.warning(
+            f"{LogTag.COMPOSIO} Hook user_id overwritten from RunnableConfig",
+            tool=tool,
+            toolkit=toolkit,
+        )
+    params["user_id"] = user_id
+    params["entity_id"] = user_id
+
+
 def master_before_execute_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
@@ -145,6 +207,8 @@ def master_before_execute_hook(
     2. Frontend streaming setup
     3. All registered tool-specific hooks
     """
+    log.set(composio_tool=tool, composio_toolkit=toolkit)
+    _resolve_call_identity(tool, toolkit, params)
     return hook_registry.execute_before_hooks(tool, toolkit, params)
 
 

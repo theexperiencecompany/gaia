@@ -12,11 +12,12 @@ from app.utils.composio_hooks.registry import hook_registry
 # Mirrors all_hooks.py's side-effect import list: when a hook module is added
 # there, add it here too or these tests stop proving anything.
 _HOOK_MODULES = (
+    "file_upload_hooks",
     "gmail_hooks",
+    "outlook_hooks",
     "reddit_hooks",
     "slack_hooks",
     "twitter_hooks",
-    "user_id_hooks",
 )
 
 

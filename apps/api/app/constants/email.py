@@ -6,6 +6,8 @@ Constants for email processing and display.
 
 from typing import Literal
 
+from app.constants.log_tags import LogTag
+
 # Per-message fields the Gmail summary tool can project to.
 MessageFieldLiteral = Literal[
     "id",
@@ -43,6 +45,42 @@ DEFAULT_SUMMARY_FIELDS: list[MessageFieldLiteral] = [
 # Default display values
 UNKNOWN_SENDER = "[Unknown]"
 NO_SUBJECT = "[No Subject]"
+
+# Email attachment resolution (app/services/composio/attachments.py): observability
+# and user-facing error prose. Kept as single-line constants so mutation testing
+# can suppress them (it cannot suppress interior lines of a multi-line
+# log/error call); the tests assert behaviour, not this wording.
+EMAIL_ATTACHMENT_FAIL_LOG = "File attachment could not be resolved"  # pragma: no mutate
+EMAIL_ATTACHMENT_FAIL_WHY = "The file could not be read or uploaded."  # pragma: no mutate
+EMAIL_ATTACHMENT_FAIL_FIX = (
+    "Check the workspace path or URL is correct, then retry."  # pragma: no mutate
+)
+
+# Gmail compose hooks (app/utils/composio_hooks/gmail_hooks.py) — same single-line
+# rule as above. Import LogTag so the f-string prefix stays identical.
+GMAIL_TO_MAPPED_LOG = f"{LogTag.COMPOSIO} Mapped 'to' to 'recipient_email' for"  # pragma: no mutate
+GMAIL_SKIP_STREAM_LOG = f"{LogTag.COMPOSIO} Skipping streaming: missing fields"  # pragma: no mutate
+GMAIL_DRAFT_ID_MISSING_LOG = f"{LogTag.COMPOSIO} Draft response carried no id; compose card with attachments suppressed"  # pragma: no mutate
+ATTACHMENTS_NOT_LIST_ERROR = "`attachments` must be a list of file references."  # pragma: no mutate
+ATTACHMENTS_NO_USER_ERROR = (
+    "Cannot resolve file attachments without a user context."  # pragma: no mutate
+)
+# The pinned Composio Gmail toolkit types `attachment` as a single FileUploadable
+# object, not an array, so a second file would upload and then fail the send.
+GMAIL_MULTIPLE_ATTACHMENTS_ERROR = (
+    "Gmail accepts only one attachment per message."  # pragma: no mutate
+)
+
+# Agent-facing description for the friendly ``attachments`` array param (the schema
+# itself is derived from AttachmentReference in mail_models, so field changes land
+# in one place; only this prose lives here).
+EMAIL_ATTACHMENTS_PARAM_DESCRIPTION = (
+    "Files to attach. Each item references ONE file by EITHER "
+    "'workspace_path' (a file in the current session workspace, e.g. one the user "
+    "uploaded or an agent saved there) OR 'url' (a fetchable link). To attach a "
+    "Google Drive file, first call GOOGLEDRIVE_DOWNLOAD_FILE and pass the download "
+    "URL it returns as 'url'. Total message size must stay under 25 MB."
+)
 
 # Email processing limits
 EMAIL_QUERY = "in:inbox"

@@ -59,6 +59,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#e4e4e7",
     isImage: true,
   },
+  googledrive: {
+    icon: "googledrive",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    bgColorRaw: "#3f3f46",
+    iconColorRaw: "#e4e4e7",
+    isImage: true,
+  },
   googlesheets: {
     icon: "googlesheets",
     bgColor: "bg-zinc-700",

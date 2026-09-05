@@ -7,7 +7,9 @@ addresses.
 - ``assert_public_http_url`` is the full guard: it resolves DNS off the event
   loop and rejects any non-public address. Call it immediately before every
   outbound request (probe/connect/fetch) so DNS-rebinding can't slip an internal
-  address past an earlier check.
+  address past an earlier check. ``assert_public_http_url_sync`` is the same
+  policy for call sites that already run off the loop and cannot await
+  (Composio's synchronous hook chain).
 - ``assert_safe_url_shape`` is a cheap synchronous pre-check for contexts that
   cannot await (pydantic validators). It rejects bad schemes, missing hosts, and
   literal private-IP hosts without a DNS lookup — the resolving check runs later
@@ -84,18 +86,28 @@ def assert_safe_url_shape(url: str) -> None:
     _assert_ip_public(ip)
 
 
+def assert_public_http_url_sync(url: str) -> None:
+    """Raise ``ValueError`` unless ``url`` is HTTP(S) and resolves only to public IPs.
+
+    Blocking: the DNS lookup runs on the calling thread. Use this only from code
+    that is already off the event loop; async callers want
+    ``assert_public_http_url``.
+    """
+    host, port = _parse_http_host_port(url)
+    try:
+        addresses = _resolve(host, port)
+    except OSError as e:
+        raise ValueError(f"DNS resolution failed: {e}") from e
+    for address in addresses:
+        _assert_ip_public(ipaddress.ip_address(address))
+
+
 async def assert_public_http_url(url: str) -> None:
     """Raise ``ValueError`` unless ``url`` is HTTP(S) and resolves only to public IPs.
 
     Resolves DNS off the event loop via ``asyncio.to_thread``.
     """
-    host, port = _parse_http_host_port(url)
-    try:
-        addresses = await asyncio.to_thread(_resolve, host, port)
-    except OSError as e:
-        raise ValueError(f"DNS resolution failed: {e}") from e
-    for address in addresses:
-        _assert_ip_public(ipaddress.ip_address(address))
+    await asyncio.to_thread(assert_public_http_url_sync, url)
 
 
 @asynccontextmanager

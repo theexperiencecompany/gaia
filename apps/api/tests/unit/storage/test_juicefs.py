@@ -36,6 +36,7 @@ from app.services.storage.juicefs import (
     resolve_user_file,
     sandbox_session_path,
     session_root,
+    to_workspace_relative_path,
     user_owns_regular_file,
     user_skills_path,
     user_workspace_path,
@@ -243,6 +244,22 @@ def test_the_sandbox_session_path_is_workspace_relative_not_host_absolute() -> N
     # This string is handed to the model and to the sandbox; leaking the host
     # mount root would make every tool call reference an unreachable path.
     assert sandbox_session_path(CONV) == f"/workspace/sessions/{CONV}"
+
+
+@pytest.mark.parametrize(
+    ("given", "want"),
+    [
+        ("/workspace/sessions/c/x.pdf", "sessions/c/x.pdf"),
+        ("/uploads/deck.pdf", "uploads/deck.pdf"),
+        ("sessions/c/x.pdf", "sessions/c/x.pdf"),
+        ("  /workspace/a.txt  ", "a.txt"),
+    ],
+)
+def test_to_workspace_relative_path_strips_sandbox_prefix(given: str, want: str) -> None:
+    # Agents hand us sandbox-visible paths; resolvers take workspace-relative ones.
+    # A surviving leading "/" would discard the base in `base / rel` and escape
+    # containment, so stripping it is load-bearing, not cosmetic.
+    assert to_workspace_relative_path(given) == want
 
 
 # ── mount gating ─────────────────────────────────────────────────────

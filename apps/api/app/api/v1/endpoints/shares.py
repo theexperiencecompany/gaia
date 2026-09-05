@@ -1,0 +1,76 @@
+"""Single-purpose file-share downloads (token-gated, no session).
+
+Composio fetches these URLs server-side during tool execution, so the route
+carries no auth dependency — the unguessable token IS the credential (the path
+is in the auth middleware's exclude list for the same reason as the HMAC-signed
+unsubscribe link). All failures read as one uniform 404: tampered, expired,
+missing, oversize, and unknown tokens are indistinguishable on the wire.
+
+The token rides in the query string while the filename stays in the path: our
+request logger records paths (never query), and Composio's own error sanitizer
+redacts query strings — so neither side's logs retain the bearer. Composio's
+fetcher derives the attachment name from the path basename, which keeps working.
+"""
+
+import re
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
+
+from app.services.share_service import redeem_share_grant
+from shared.py.wide_events import log
+
+router = APIRouter()
+
+# HTTP headers are latin-1; the name resolves case-insensitively through
+# codecs.lookup, so its spelling is not observable behaviour.
+_HEADER_CHARSET = "latin-1"  # pragma: no mutate -- codec lookup is case-insensitive
+
+
+def _download_headers(filename: str) -> dict[str, str]:
+    """Force download semantics: a token link must never render as a page.
+
+    An attacker-minted HTML/SVG/JS file opened in a browser would otherwise
+    execute in the API origin (stored XSS with ambient session authority), so
+    the response is download-only, unsniffable, and uncacheable. The filename
+    is server-side (never the URL segment) and stripped to header-safe chars.
+    """
+    safe = (
+        re.sub(r'["\r\n]', "", filename).encode(_HEADER_CHARSET, "ignore").decode(_HEADER_CHARSET)
+    )
+    # Header names are case-insensitive and Starlette lowercases them on the
+    # wire, so the casing below is unobservable — the values are what the tests
+    # (and browsers) act on.
+    return {
+        "Content-Disposition": f'attachment; filename="{safe or "download"}"',  # pragma: no mutate -- header-name casing is not on the wire
+        "X-Content-Type-Options": "nosniff",  # pragma: no mutate -- header-name casing is not on the wire
+        "Cache-Control": "private, no-store, max-age=0",  # pragma: no mutate -- header-name casing is not on the wire
+    }
+
+
+# Both spellings route to the same handler: the trailing-slash variant exists
+# so Starlette never 307-redirects (which would echo the bearer token into a
+# Location header) — include_router drops a router-level redirect_slashes flag.
+@router.get("/files/s/{filename}", include_in_schema=False)
+@router.get("/files/s/{filename}/", include_in_schema=False)
+async def download_shared_file(
+    filename: str,  # noqa: ARG001 -- FastAPI binds the {filename} route segment; the served name comes from the signed grant, not this value
+    token: str = "",  # pragma: no mutate -- an absent token and any invalid token both redeem to None, so the default's value is unobservable (both give the uniform 404)
+) -> Response:
+    """Serve one granted file's bytes. The ``{filename}`` URL segment is cosmetic
+    (Composio's fetcher derives the attachment name from the URL basename) and is
+    not read here — resolution uses only the token, so a swapped segment cannot
+    reach another file. The served filename — and the download header — always
+    come from the signed grant, not the URL. ``token`` defaults to "" (instead of
+    required) so a missing key reads as the same uniform 404 rather than a
+    distinguishing 422."""
+    log.set(share={"operation": "redeem"})
+    result = await redeem_share_grant(token)
+    if result is None:
+        log.set_ns("share", redeemed=False)
+        raise HTTPException(status_code=404, detail="Not found")
+    content, served_filename, mimetype = result
+    log.set_ns("share", redeemed=True, byte_count=len(content))
+    return Response(
+        content=content, media_type=mimetype, headers=_download_headers(served_filename)
+    )

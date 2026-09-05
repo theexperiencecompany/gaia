@@ -99,6 +99,48 @@ GOOGLEDOCS_CONTENT = IntegrationContent(
     ],
 )
 
+GOOGLEDRIVE_CONTENT = IntegrationContent(
+    use_cases=[
+        "Find any file by name, type, or content without digging through folders",
+        "Ask GAIA to organize files: create folders, move files, and tidy up your Drive",
+        "Share a file or folder with someone at the right permission level in one instruction",
+        "Pull a file from Drive straight into an email as an attachment",
+        "Save notes, summaries, or generated content to Drive as a new file",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Connect Google Drive to GAIA",
+            body='Open the GAIA Marketplace, find Google Drive, and click "Add to your GAIA". Authorise access via Google OAuth in under two minutes.',
+        ),
+        IntegrationHowItWorksStep(
+            title="Tell GAIA what you need from your files",
+            body='Say "find the signed lease PDF" or "share the Q4 folder with priya@company.com as a viewer". GAIA searches, organizes, shares, and retrieves for you.',
+        ),
+        IntegrationHowItWorksStep(
+            title="Use your files anywhere in GAIA",
+            body="A file in Drive can flow into the rest of GAIA. Attach it to a Gmail draft, summarize it, or reference it in a task, all from chat.",
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Can GAIA find a file when I only remember roughly what it is?",
+            answer="Yes. Describe the file by name, type, or what's in it and GAIA searches your Drive, then returns the matches with links.",
+        ),
+        IntegrationFAQ(
+            question="Can GAIA attach a Drive file to an email?",
+            answer="Yes. GAIA can pull a file from Drive and attach it to a Gmail draft, so you can review and send it without downloading anything yourself.",
+        ),
+        IntegrationFAQ(
+            question="Will GAIA delete my files?",
+            answer="Only if you ask, and permanent deletes always require your explicit confirmation first. GAIA prefers moving files to trash, which is recoverable.",
+        ),
+        IntegrationFAQ(
+            question="Who can see files GAIA shares on my behalf?",
+            answer="Only the people you name, at the permission level you specify. GAIA does not change sharing settings unless you ask it to.",
+        ),
+    ],
+)
+
 GMAIL_CONTENT = IntegrationContent(
     use_cases=[
         "Send emails by describing who you're writing to and what you want to say — GAIA drafts and sends it",

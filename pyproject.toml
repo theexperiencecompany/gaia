@@ -395,6 +395,8 @@ unfixable = [
 # must keep that exact 3-arg shape regardless of whether a given hook branches on
 # tool/toolkit, so unused params here are a framework contract, not dead code.
 "apps/api/app/utils/composio_hooks/gmail_hooks.py" = ["ARG001"]
+"apps/api/app/utils/composio_hooks/file_upload_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
+"apps/api/app/utils/composio_hooks/outlook_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
 "apps/api/app/utils/composio_hooks/reddit_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
 "apps/api/app/utils/composio_hooks/slack_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
 "apps/api/app/utils/composio_hooks/twitter_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
