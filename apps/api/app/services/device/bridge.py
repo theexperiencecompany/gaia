@@ -15,6 +15,7 @@ from typing import Any, Final
 import uuid
 
 from app.constants.device_bridge import (
+    DEVICE_DISCONNECT_CHANNEL,
     DEVICE_DOWN_CHANNEL_PREFIX,
     DEVICE_PRESENCE_PREFIX,
     DEVICE_PRESENCE_TTL_SECONDS,
@@ -100,6 +101,20 @@ async def publish_up_to_pod(pod_id: str, raw_frame: str) -> None:
     if not redis_cache.redis:
         return
     await redis_cache.redis.publish(up_pod_channel(pod_id), raw_frame)
+
+
+async def publish_disconnect(device_id: str) -> None:
+    """Fan out a socket teardown so every pod fails its in-flight sessions on the device.
+
+    The daemon drops all its local MCP sessions when the socket closes, so a
+    call still parked on a reply would otherwise hang until the tunnel's call
+    timeout. Consumers usually run on other pods, and no device-to-session
+    registry spans pods, so this broadcasts the device_id; each pod's up-listener
+    fails the sessions it holds for that device.
+    """
+    if not redis_cache.redis:
+        return
+    await redis_cache.redis.publish(DEVICE_DISCONNECT_CHANNEL, device_id)
 
 
 async def request_revoke(device_id: str) -> None:

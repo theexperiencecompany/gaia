@@ -33,6 +33,7 @@ from app.services.device.bridge import (
     down_channel,
     mark_offline,
     mark_online,
+    publish_disconnect,
     publish_up_to_pod,
 )
 from app.services.device.connection_manager import device_connection_manager
@@ -112,6 +113,11 @@ async def device_ws(websocket: WebSocket) -> None:
         with contextlib.suppress(Exception):
             await asyncio.gather(*tasks, return_exceptions=True)
         device_connection_manager.remove(device_id, websocket)
+        # Fail any in-flight MCP session tunneling through this device. The daemon
+        # drops its side of every session when the socket closes, so a parked
+        # call would otherwise hang until the tunnel's call timeout. Fans out
+        # cross-pod; the up-listener on each consumer pod injects the mcp.error.
+        await publish_disconnect(device_id)
         # Only clear presence if this pod no longer holds any socket for the
         # device. Without this, an old socket's teardown would wipe the presence
         # key a newer same-pod socket just re-claimed (the compare-and-delete in
