@@ -14,7 +14,7 @@ import asyncio
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorCollection
-from pymongo.errors import OperationFailure
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import get_async_collection
@@ -56,8 +56,11 @@ async def create_all_indexes() -> None:
             create_device_token_indexes(),
             create_installed_skills_indexes(),
             create_workflow_execution_indexes(),
+            create_briefing_indexes(),
+            create_award_indexes(),
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
+            create_short_link_indexes(),
             create_hil_approvals_indexes(),
             create_pending_platform_registration_indexes(),
             create_llm_call_indexes(),
@@ -89,8 +92,11 @@ async def create_all_indexes() -> None:
             "device_tokens",
             "skills",
             "workflow_executions",
+            "briefings",
+            "awards",
             "bot_sessions",
             "e2b_sandboxes",
+            "short_links",
             "hil_approvals",
             "pending_platform_registrations",
             "llm_calls",
@@ -246,10 +252,22 @@ async def create_todo_indexes() -> None:
                 [("user_id", 1), ("project_id", 1), ("due_date", 1)],
                 name="user_project_due",
             ),
-            # For tracked-todo cron sweeps (safety-net + maintenance). Both
-            # scan by gaia-tracked label + completion, then range on
-            # scheduled_at / gaia_retry_count. ESR ordering: equality fields
-            # first (labels, completed), then range fields.
+            # For tracked-todo cron sweeps (safety-net + maintenance). Both now
+            # scan by assignee + completion, then range on scheduled_at /
+            # gaia_retry_count. ESR ordering: equality fields first (assignee,
+            # completed), then range fields.
+            todos_collection.create_index(
+                [
+                    ("assignee", 1),
+                    ("completed", 1),
+                    ("scheduled_at", 1),
+                    ("gaia_retry_count", 1),
+                ],
+                name="tracked_sweep_assignee",
+            ),
+            # Legacy label-based sweep index. Superseded by tracked_sweep_assignee
+            # once the assignee backfill (scripts/migrate_todo_assignee.py) has run
+            # everywhere — safe to drop then.
             todos_collection.create_index(
                 [
                     ("labels", 1),
@@ -588,6 +606,45 @@ async def create_workflow_execution_indexes() -> None:
             f"{LogTag.MONGO} Error creating workflow execution indexes",
             error=str(e),
             error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_briefing_indexes() -> None:
+    """Create indexes for briefings collection (one payload per user/date/kind)."""
+    briefings_collection = get_async_collection("briefings")
+    try:
+        await asyncio.gather(
+            briefings_collection.create_index(
+                [("user_id", 1), ("date", 1), ("kind", 1)],
+                unique=True,
+                name="user_date_kind_unique",
+            ),
+            briefings_collection.create_index([("user_id", 1), ("created_at", -1)]),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating briefing indexes",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise
+
+
+async def create_award_indexes() -> None:
+    """Create indexes for awards collection (each badge earnable once per user)."""
+    awards_collection = get_async_collection("awards")
+    try:
+        await awards_collection.create_index(
+            [("user_id", 1), ("key", 1)],
+            unique=True,
+            name="user_key_unique",
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating award indexes",
+            error_type=type(e).__name__,
+            error=str(e),
         )
         raise
 
@@ -1132,6 +1189,51 @@ async def create_e2b_sandbox_indexes() -> None:
             f"{LogTag.MONGO} Error creating e2b sandbox indexes",
             error=str(e),
             error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_short_link_indexes() -> None:
+    """Create indexes for the short_links collection.
+
+    Slugs are capability URLs: globally unique, so one index enforces the whole
+    namespace and the mint retry loop races against it.
+
+    Pre-capability rows were per-user and 3 chars, so two users could hold the
+    same slug and the unique index cannot build over them. Removing them is a
+    destructive migration and lives in ``scripts/migrate_short_link_slugs.py``,
+    not here — a process should not delete rows because it started, and this
+    runs on every deploy and every dev restart. If those rows are still present
+    the index build fails, and this says so rather than quietly fixing it.
+    """
+    short_links_collection = get_async_collection("short_links")
+    try:
+        await short_links_collection.create_index(
+            [("slug", 1)],
+            unique=True,
+            name="slug_unique",
+        )
+        # Mint-idempotency lookup: one link per (user, target).
+        await short_links_collection.create_index(
+            [("user_id", 1), ("target_type", 1), ("target_id", 1)],
+            name="user_target",
+        )
+    except DuplicateKeyError as e:
+        log.error(
+            f"{LogTag.MONGO} slug_unique cannot be built over duplicate slugs — "
+            "pre-capability per-user links are still present. Run "
+            "`uv run python -m scripts.migrate_short_link_slugs --dry-run`, "
+            "review, then re-run without the flag",
+            collection_name="short_links",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating short link indexes",
+            error_type=type(e).__name__,
+            error=str(e),
         )
         raise
 

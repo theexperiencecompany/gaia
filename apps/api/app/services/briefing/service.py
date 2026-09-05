@@ -15,6 +15,8 @@ import re
 from typing import cast
 from uuid import uuid4
 
+from pymongo.errors import PyMongoError
+
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.agents.prompts.briefing_prompts import (
     VoicePromptBlocks,
@@ -59,6 +61,10 @@ from app.services.briefing.context import UserClock
 from app.services.briefing.edition_rotation import choose_edition_family
 from app.services.briefing.editions import rotation_families
 from app.services.notification_service import notification_service
+from app.services.short_link_service import (
+    ShortLinkExhaustedError,
+    get_or_create_short_link,
+)
 from app.services.todos import activity
 from app.services.todos.gaia_todo_lifecycle import (
     expire_stale_proposals,
@@ -256,7 +262,30 @@ def _deliverable_size(canvas: str) -> int:
     return len(" ".join(kept))
 
 
-async def _gather_artifacts(lanes: list[context.GoalLane]) -> dict[str, _ArtifactFact]:
+async def _artifact_link(user_id: str, todo_id: str) -> str:
+    """The item's heygaia.link, or ``""`` when minting fails.
+
+    The link is an optional adornment on an item the briefing can describe
+    perfectly well without it, so a Mongo hiccup or an exhausted slug namespace
+    must cost that one item its link — not cost the user the whole briefing.
+    The failure is still surfaced loudly in the run's events.
+    """
+    try:
+        return await get_or_create_short_link(user_id, "todo_canvas", todo_id)
+    except (PyMongoError, ShortLinkExhaustedError) as exc:
+        log.warning(
+            "briefing.short_link_mint_failed",
+            user_id=user_id,
+            todo_id=todo_id,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return ""
+
+
+async def _gather_artifacts(
+    user_id: str, lanes: list[context.GoalLane]
+) -> dict[str, _ArtifactFact]:
     """Per lane item: a concrete summary, a minted heygaia.link, and the two
     signals the voice pass balances on — is the deliverable big, does it need
     action. The pass always summarises; it appends the link only for big or
@@ -286,7 +315,7 @@ async def _gather_artifacts(lanes: list[context.GoalLane]) -> dict[str, _Artifac
             )
             out[todo_id] = _ArtifactFact(
                 snippet=_canvas_snippet(deliverable),
-                link="",
+                link=await _artifact_link(user_id, todo_id),
                 chars=_deliverable_size(deliverable),
                 action=todo_id in action_ids,
             )
@@ -677,7 +706,7 @@ async def run_daily_briefing(user_id: str) -> None:
 
     # Facts are assembled by code from lane state; the model only voices them.
     lanes = await context.gather_goal_lanes(user_id, since)
-    artifacts = await _gather_artifacts(lanes)
+    artifacts = await _gather_artifacts(user_id, lanes)
     open_count, open_titles = await context.user_open_todo_summary(user_id)
     sections, stats, facts_block = _build_facts(
         lanes, _format_curation(expired), artifacts, _user_todos_note(open_count, open_titles)

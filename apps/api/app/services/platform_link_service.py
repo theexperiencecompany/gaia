@@ -31,6 +31,7 @@ from app.models.platform_models import (
     PlatformLinkResult,
 )
 from app.models.user_models import PlatformLinkRecord, user_to_legacy_dict
+from app.services import first_steps_service
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.payments.payment_service import payment_service
@@ -40,7 +41,36 @@ from app.services.photon.photon_client import (
     unregister_shared_user,
 )
 from app.utils.errors import AppError, create_error
+from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
+
+
+async def _enqueue_day_zero_hello(user_id: str, platform: str) -> None:
+    """Best-effort: enqueue GAIA's first-hello job for a freshly linked chat
+    platform. The task guards itself to fire once per user, so a duplicate enqueue
+    is harmless; a Redis hiccup must not fail the link."""
+    try:
+        pool = await RedisPoolManager.get_pool()
+        await pool.enqueue_job("send_day_zero_hello", user_id, platform)
+    except Exception as e:
+        log.warning(
+            "platform_link.day_zero_enqueue_failed",
+            user_id=user_id,
+            platform=platform,
+            error=str(e),
+        )
+
+
+async def _after_link(user_id: str, platform: str, previously_linked_same: bool) -> None:
+    """Run the activation side effects that follow a successful chat platform link."""
+    # Any chat platform link satisfies the "link a platform" activation step.
+    await first_steps_service.mark_step(user_id, first_steps_service.STEP_LINK_PLATFORM)
+
+    # A brand-new chat link is the day-zero moment: greet the user once. The
+    # task guards itself (once ever, young account, still linked), so a
+    # same-id relink never re-greets.
+    if not previously_linked_same:
+        await _enqueue_day_zero_hello(user_id, platform)
 
 
 class Platform(str, Enum):
@@ -451,6 +481,8 @@ class PlatformLinkService:
         previously_linked_same = (
             isinstance(prior_link, dict) and prior_link.get("id") == platform_user_id
         )
+
+        await _after_link(user_id, platform, previously_linked_same)
 
         return PlatformLinkResult(
             status="linked",
