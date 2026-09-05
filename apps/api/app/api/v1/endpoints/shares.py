@@ -53,18 +53,21 @@ def _download_headers(filename: str) -> dict[str, str]:
 # Location header) — include_router drops a router-level redirect_slashes flag.
 @router.get("/files/s/{filename}", include_in_schema=False)
 @router.get("/files/s/{filename}/", include_in_schema=False)
-async def download_shared_file(filename: str, token: str = "") -> Response:
-    """Serve one granted file's bytes. ``filename`` is cosmetic (Composio's
-    fetcher derives the attachment name from the URL basename); resolution uses
-    only the token, so a swapped segment cannot reach another file. The served
-    filename — and the download header — always come from the signed grant, not
-    the URL. ``token`` defaults to "" (instead of required) so a missing key
-    reads as the same uniform 404 rather than a distinguishing 422."""
+async def download_shared_file(token: str = "") -> Response:
+    """Serve one granted file's bytes. The ``{filename}`` URL segment is cosmetic
+    (Composio's fetcher derives the attachment name from the URL basename) and is
+    not read here — resolution uses only the token, so a swapped segment cannot
+    reach another file. The served filename — and the download header — always
+    come from the signed grant, not the URL. ``token`` defaults to "" (instead of
+    required) so a missing key reads as the same uniform 404 rather than a
+    distinguishing 422."""
     log.set(share={"operation": "redeem"})
     result = await redeem_share_grant(token)
     if result is None:
         log.set_ns("share", redeemed=False)
         raise HTTPException(status_code=404, detail="Not found")
-    content, filename, mimetype = result
+    content, served_filename, mimetype = result
     log.set_ns("share", redeemed=True, byte_count=len(content))
-    return Response(content=content, media_type=mimetype, headers=_download_headers(filename))
+    return Response(
+        content=content, media_type=mimetype, headers=_download_headers(served_filename)
+    )
