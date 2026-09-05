@@ -450,7 +450,8 @@ export class TelegramAdapter extends BaseBotAdapter {
     // chat_id is polymorphic — a group/supergroup id routes to the group with no
     // special handling, so _isChannel needs no branch here.
     await this.sendHtml(
-      (t, opts) => this.bot.api.sendMessage(destinationId, t, opts),
+      (t, opts) =>
+        this.bot.api.sendMessage(destinationId, t, { ...(opts ?? {}) }),
       text,
     );
   }

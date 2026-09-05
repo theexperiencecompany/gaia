@@ -57,6 +57,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
 from app.services.hil.approvals_store import get_approval
 from app.services.platform_message_service import deliver_message_to_platform, is_bot_platform
+from app.services.todos.completion_nudge import maybe_build_completion_nudge
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import get_trace_id, log, log_context
 
@@ -273,6 +274,17 @@ async def _narrate_and_deliver(
 
     notification_text = await _narrate_result(run, result_text, result_type, returned_note)
 
+    # Retention-loop completion nudge: only for a run bound to a tracked todo,
+    # delivered live (never the separate workflow completion notification, and
+    # never a suppressed night-shift run the user never sees at send time).
+    if run.active_todo_id and not run.workflow_id and not run.suppress_platform_delivery:
+        notification_text = await _safe_completion_nudge(
+            user_id=user_id,
+            active_todo_id=run.active_todo_id,
+            user_timezone=run.user.get("timezone"),
+            notification_text=notification_text,
+        )
+
     # A HIL-resumed run reconciles onto the ORIGINAL live turn's message
     # (``run.bot_message_id``, see ``_record_pause``) instead of minting a
     # rival one. Otherwise queued runs share an id with the live placeholder
@@ -350,6 +362,12 @@ async def _narrate_and_deliver(
         )
         return notification_text, bot_message.message_id
 
+    # Night-shift prep runs are silent: the result is saved to its conversation
+    # (available in the app) but not pushed to the user's chat — the morning
+    # briefing is the single voice, so overnight work never pings per-todo.
+    if run.suppress_platform_delivery:
+        return notification_text, bot_message.message_id
+
     # Deliver over exactly one transport, decided by the conversation's source.
     # Bot conversations go to their platform's API; web/mobile/system go to the
     # WebSocket push. (The web conversation list excludes bot sources, so a
@@ -390,6 +408,30 @@ async def _narrate_and_deliver(
         delivered=delivered,
     )
     return notification_text, bot_message.message_id
+
+
+async def _safe_completion_nudge(
+    *,
+    user_id: str,
+    active_todo_id: str,
+    user_timezone: str | None,
+    notification_text: str,
+) -> str:
+    """Append the retention-loop next-step nudge, swallowing failures.
+
+    Best-effort like the follow-up actions below: a failure here must not
+    abort delivery of the already-composed completion message.
+    """
+    try:
+        nudge = await maybe_build_completion_nudge(
+            user_id=user_id,
+            completed_todo_id=active_todo_id,
+            user_timezone=user_timezone,
+        )
+    except Exception as e:  # nudge is best-effort
+        log.error(f"{LogTag.AGENT} deliver_result: completion nudge failed", error=str(e))
+        return notification_text
+    return f"{notification_text}\n\n{nudge}" if nudge else notification_text
 
 
 async def _narrate_result(

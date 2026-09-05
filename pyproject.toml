@@ -346,12 +346,9 @@ unfixable = [
 [tool.ruff.lint.per-file-ignores]
 "apps/api/app/agents/tools/todo_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity (same as tracked_todo_tools.py below)
 "apps/api/app/agents/tools/tracked_todo_tools.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity; PLR0911/0912 stay enforced (update_tracked_todo was refactored to satisfy them)
-"apps/api/app/config/rate_limits.py" = ["PLR0912"]  # derive_pro_benefits predates this change; the triggers feature only adds a rate-limit feature key to this file
-"apps/api/app/db/repositories/todos.py" = ["PLR0912"]  # _list_filter predates this change; the triggers feature only adds subscription finders to this file
 "apps/api/app/services/analytics_service.py" = ["PLR0913"]  # track_subscription_event predates this change; the triggers feature only adds event enum members to this file
 "apps/api/app/services/oauth/oauth_service.py" = ["PLR0912", "PLR0915"]  # handle_oauth_connection and get_all_integrations_status predate this change; the triggers feature only adds a reconnect resync hook here
 "apps/api/app/services/todos/todo_service.py" = ["PLR0912", "PLR0913"]  # update_todo and get_all_todos predate this change; the triggers feature only adds subscription teardown-on-delete here
-"apps/api/app/services/tracked_todo_service.py" = ["PLR0913"]  # the flagged function predates this change; the triggers feature adds subscription teardown to this file
 "apps/api/app/services/triggers/handlers/calendar.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/handlers/github.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/handlers/google_sheets.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
@@ -388,7 +385,6 @@ unfixable = [
 "apps/api/app/services/workflow/workflow_subagent.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/utils/agent_utils.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/utils/workflow_utils.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
-"apps/api/app/workers/tasks/maintenance_sweep_tasks.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 # ARG001: Composio's Modifier.apply() always calls before/after/schema hooks
 # positionally as modifier(tool, toolkit, data) — every @register_*_hook function
 # must keep that exact 3-arg shape regardless of whether a given hook branches on
@@ -460,6 +456,7 @@ unfixable = [
 # regardless of body usage (verified against starlette/_exception_handler.py).
 # ARG001: ARQ's mandated first positional param on every registered task
 # (app/worker.py's WorkerSettings.functions/cron_jobs).
+"apps/api/app/workers/tasks/day_zero_hello_tasks.py" = ["ARG001"]  # ARQ injects the job ctx into every registered cron task; this one never reads it
 "apps/api/app/utils/notification/channels/email.py" = ["ARG002"]  # ChannelAdapter protocol requires `notification`; this adapter always claims delivery
 # ARG001: ARQ injects the job context (`ctx`) into every task function; the
 # nurture task doesn't use it.
@@ -626,6 +623,7 @@ module = [
   "app.models.sandbox_models",
   "app.models.support_models",
   "app.models.notification.notification_models",
+  "app.models.briefing_models",
   "app.models.platform_models",
 ]
 disallow_untyped_defs = true

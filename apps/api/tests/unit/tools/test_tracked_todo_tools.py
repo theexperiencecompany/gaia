@@ -10,6 +10,9 @@ validation error) on a timezone-naive ISO datetime. Both are fixed at the root
 in tracked_todo_tools.py; the tests here pin the fix down.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -35,6 +38,7 @@ from app.agents.tools.tracked_todo_tools import (
     _resolve_cron_first_fire,
     _resolve_first_fire,
     _schedule_execution_after_create,
+    _strip_redundant_heading,
     _validate_recurrence_format,
     complete_tracked_todo,
     create_tracked_todo,
@@ -43,17 +47,53 @@ from app.agents.tools.tracked_todo_tools import (
     update_tracked_todo,
     update_tracked_todo_canvas,
 )
-from app.constants.todos import GAIA_TRACKED_LABEL
-from app.models.todo_models import Priority, TodoDocument, TodoResponse
+from app.models.todo_models import (
+    Priority,
+    TodoDocument,
+    TodoResponse,
+    TodoUpdate,
+    TrackedTodoDraft,
+)
 from shared.py.wide_events import spawn_logged_task
 
 _FUTURE = (datetime.now(UTC) + timedelta(days=7)).replace(microsecond=0)
 _FUTURE_ISO = _FUTURE.isoformat()
 _PAST_ISO = (datetime.now(UTC) - timedelta(days=1)).isoformat()
 
+_TOOLS = "app.agents.tools.tracked_todo_tools"
+
 
 def _config(user_id: str | None = "user-1") -> dict:
     return {"metadata": {"user_id": user_id}} if user_id else {"metadata": {}}
+
+
+@dataclass(frozen=True)
+class _CanvasSeams:
+    """The facet-storage mocks one update_tracked_todo_canvas call talks to."""
+
+    read: AsyncMock
+    write: AsyncMock
+    append: AsyncMock
+
+
+@contextmanager
+def _canvas_seams(
+    *, existing_doc: TodoDocument | None, stored_facet: str | None = None
+) -> Iterator[_CanvasSeams]:
+    """Patch every seam update_tracked_todo_canvas reaches out to.
+
+    ``stored_facet`` is what ``read_facet`` returns for the todo — None models a
+    facet that has never been written.
+    """
+    with (
+        patch(f"{_TOOLS}.todo_repository.get", new_callable=AsyncMock, return_value=existing_doc),
+        patch(f"{_TOOLS}.read_facet", new_callable=AsyncMock, return_value=stored_facet) as read,
+        patch(f"{_TOOLS}.write_facet", new_callable=AsyncMock) as write,
+        patch(f"{_TOOLS}.append_facet", new_callable=AsyncMock) as append,
+        patch(f"{_TOOLS}.tracked_todo_service.reindex_canvas", new_callable=AsyncMock),
+        patch(f"{_TOOLS}.tracked_todo_service.system_log", new_callable=AsyncMock),
+    ):
+        yield _CanvasSeams(read=read, write=write, append=append)
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +148,60 @@ class TestPatchCanvasSection:
         # instead of appending a genuinely new "## Current" section.
         assert "## Current State\nDetail here." in result
         assert "## Current\nNew content" in result
+
+    def test_a_heading_repeated_inside_the_section_body_is_not_doubled(self):
+        """The patch re-emits the heading, so a copy the model put at the top of
+        its body must be dropped rather than rendered twice."""
+        result = _patch_canvas_section(
+            "## Current State\nOld info.", "Current State", "## Current State\nNew info."
+        )
+
+        assert result == "## Current State\nNew info."
+
+
+# ---------------------------------------------------------------------------
+# _strip_redundant_heading
+# ---------------------------------------------------------------------------
+
+
+class TestStripRedundantHeading:
+    def test_a_repeated_heading_on_the_first_line_is_dropped(self):
+        assert _strip_redundant_heading("## Key Details\nBody", "Key Details") == "Body"
+
+    def test_the_match_ignores_case_and_padding_on_both_sides(self):
+        assert _strip_redundant_heading("  ## KEY DETAILS  \nBody", "key details  ") == "Body"
+
+    def test_blank_lines_before_the_repeated_heading_are_skipped(self):
+        assert _strip_redundant_heading("\n\n## Key Details\nBody", "Key Details") == "Body"
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            ("Body", "Body"),
+            # The whole body is kept, not just its first line.
+            ("First\nSecond", "First\nSecond"),
+            # Blank lines under the heading go; the body's own indentation stays.
+            ("\n\n  - indented point", "  - indented point"),
+            # Nothing but newlines is trimmed off the front of the body.
+            ("XML export done", "XML export done"),
+        ],
+    )
+    def test_the_body_under_the_heading_is_kept_verbatim_after_blank_lines(self, body, expected):
+        assert _strip_redundant_heading(f"## Key Details\n{body}", "Key Details") == expected
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            # A whitespace-only first line is a real first line, not padding.
+            "  \n## Key Details\nBody",
+            # Only newlines are skipped, never any other character.
+            "X\n## Key Details\nBody",
+            # A heading further down the body is the body's own, not a repeat.
+            "Intro line\n## Key Details\nBody",
+        ],
+    )
+    def test_content_whose_first_line_is_not_the_heading_is_returned_verbatim(self, content):
+        assert _strip_redundant_heading(content, "Key Details") == content
 
 
 # ---------------------------------------------------------------------------
@@ -234,21 +328,22 @@ class TestBuildLabelsUpdate:
         assert _build_labels_update(None, fields) is None
         assert fields == {}
 
-    def test_gaia_tracked_label_is_added_if_missing(self):
+    def test_labels_are_set_exactly_as_passed(self):
         fields: dict[str, object] = {}
         _build_labels_update(["work"], fields)
-        assert GAIA_TRACKED_LABEL in fields["labels"]
-        assert "work" in fields["labels"]
+        assert fields["labels"] == ["work"]
 
-    def test_gaia_tracked_label_is_not_duplicated_if_already_present(self):
+    def test_labels_are_not_deduplicated(self):
         fields: dict[str, object] = {}
-        _build_labels_update(["work", GAIA_TRACKED_LABEL], fields)
-        assert fields["labels"].count(GAIA_TRACKED_LABEL) == 1
+        _build_labels_update(["work", "work"], fields)
+        assert fields["labels"] == ["work", "work"]
 
-    def test_empty_list_still_gets_the_tracked_label(self):
+    def test_empty_list_sets_labels_to_empty(self):
+        # The unified todo model uses `assignee` as the GAIA discriminator, so
+        # labels are the caller's own and set exactly as passed.
         fields: dict[str, object] = {}
         _build_labels_update([], fields)
-        assert fields["labels"] == [GAIA_TRACKED_LABEL]
+        assert fields["labels"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -388,11 +483,17 @@ class TestBuildListDetailParts:
         assert not any("OVERDUE" in p for p in parts)
         assert any("Due: 3d" in p for p in parts)
 
-    def test_expired_is_flagged(self):
+    def test_expired_is_flagged_with_the_days_elapsed_as_a_positive_count(self):
         now = datetime.now(UTC)
         doc = self._doc(expires_at=now - timedelta(days=2))
-        parts = _build_list_detail_parts(doc, now)
-        assert any("EXPIRED" in p for p in parts)
+        assert _build_list_detail_parts(doc, now) == ["Expires: EXPIRED 2d ago"]
+
+    def test_an_expiry_still_in_the_future_counts_down_instead_of_reading_expired(self):
+        """Today's expiry rounds to 0 days out. It has not passed yet, so it must
+        read as remaining time, not as already expired."""
+        now = datetime.now(UTC)
+        doc = self._doc(expires_at=now + timedelta(hours=1))
+        assert _build_list_detail_parts(doc, now) == ["Expires: in 0d"]
 
     def test_retry_count_shown_only_when_positive(self):
         now = datetime.now(UTC)
@@ -418,13 +519,25 @@ class TestUpdateTrackedTodoCanvasValidation:
         result = await update_tracked_todo_canvas.coroutine(
             config=_config(), todo_id="t1", content="x", mode="overwrite"
         )
-        assert "invalid mode" in result
+        assert result == "Error: invalid mode 'overwrite'. Use 'replace', 'append', or 'section'."
+
+    async def test_missing_metadata_key_returns_error_not_a_crash(self):
+        result = await update_tracked_todo_canvas.coroutine(config={}, todo_id="t1", content="x")
+        assert result == "Error: user_id not found in config"
+
+    async def test_invalid_facet_is_rejected_and_names_every_valid_facet(self):
+        """The model only recovers from this if the rejection lists what it may
+        write to, so the message carries the facets in a stable sorted order."""
+        result = await update_tracked_todo_canvas.coroutine(
+            config=_config(), todo_id="t1", content="x", facet="scratch"
+        )
+        assert result == "Error: invalid facet 'scratch'. Use one of: deliverable, log, notes."
 
     async def test_section_mode_without_section_name_rejected(self):
         result = await update_tracked_todo_canvas.coroutine(
             config=_config(), todo_id="t1", content="x", mode="section", section=None
         )
-        assert "requires a section name" in result
+        assert result == "Error: 'section' mode requires a section name."
 
     async def test_todo_not_found_returns_error(self):
         with patch(
@@ -450,14 +563,19 @@ class TestUpdateTrackedTodoValidation:
 
     async def test_no_fields_provided_returns_error(self):
         result = await update_tracked_todo.coroutine(config=_config(), todo_id="t1")
-        assert "No fields to update" in result
+        assert result == "No fields to update. Provide at least one field to change."
 
     async def test_clearing_scheduled_at_while_recurrence_remains_set_is_rejected(self):
         """The in-call guards alone can't see this: clearing scheduled_at while
         an existing recurrence stays set would leave a broken recurring todo
         with nothing to anchor it."""
         existing = TodoDocument(
-            id="t1", user_id="u1", title="t", recurrence="daily", scheduled_at=_FUTURE
+            id="t1",
+            user_id="u1",
+            title="t",
+            assignee="gaia",
+            recurrence="daily",
+            scheduled_at=_FUTURE,
         )
         with patch(
             "app.agents.tools.tracked_todo_tools.todo_repository.get",
@@ -467,7 +585,10 @@ class TestUpdateTrackedTodoValidation:
             result = await update_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", scheduled_at=""
             )
-        assert "cannot have recurrence without scheduled_at" in result
+        assert result == (
+            "Error: cannot have recurrence without scheduled_at. "
+            "Either clear recurrence or provide a scheduled_at value."
+        )
 
     async def test_todo_not_found_returns_error(self):
         with patch(
@@ -531,13 +652,17 @@ class TestUpdateTrackedTodoValidation:
 
 class TestCreateTrackedTodoValidation:
     async def test_missing_user_id_returns_error(self):
-        result = await create_tracked_todo.coroutine(config=_config(None), title="t")
+        result = await create_tracked_todo.coroutine(
+            config=_config(None), title="t", serves="s", requires_approval=False
+        )
         assert "user_id not found" in result
 
     async def test_missing_metadata_key_returns_error_not_a_crash(self):
         # config with no "metadata" at all: the {} default keeps .get("user_id")
         # returning None -> clean error. A None default would crash on None.get().
-        result = await create_tracked_todo.coroutine(config={}, title="t")
+        result = await create_tracked_todo.coroutine(
+            config={}, title="t", serves="s", requires_approval=False
+        )
         assert "user_id not found" in result
 
     @pytest.mark.regression
@@ -547,14 +672,21 @@ class TestCreateTrackedTodoValidation:
 
     @pytest.mark.regression
     async def test_unknown_priority_is_refused_before_the_tool_runs(self):
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError) as exc_info:
             await create_tracked_todo.ainvoke(
-                {"title": "t", "priority": "urgent"}, config=_config()
+                {
+                    "title": "t",
+                    "serves": "s",
+                    "requires_approval": False,
+                    "priority": "urgent",
+                },
+                config=_config(),
             )
+        assert [e["loc"] for e in exc_info.value.errors()] == [("priority",)]
 
     async def test_shortcut_recurrence_without_scheduled_at_returns_error(self):
         result = await create_tracked_todo.coroutine(
-            config=_config(), title="t", recurrence="daily"
+            config=_config(), title="t", serves="s", requires_approval=False, recurrence="daily"
         )
         assert "requires scheduled_at" in result
 
@@ -705,10 +837,31 @@ class TestPersistSchedulingFields:
         ) as mock_update:
             error = await _persist_scheduling_fields("t1", "u1", _FUTURE, "daily", None)
         assert error is None
-        mock_update.assert_awaited_once()
-        update_arg = mock_update.await_args.kwargs["update"]
-        assert update_arg.scheduled_at == _FUTURE
-        assert update_arg.recurrence == "daily"
+        mock_update.assert_awaited_once_with(
+            "t1", user_id="u1", update=TodoUpdate(scheduled_at=_FUTURE, recurrence="daily")
+        )
+
+    async def test_a_z_suffixed_expires_at_is_persisted_as_a_utc_datetime(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.todo_repository.update",
+            new_callable=AsyncMock,
+        ) as mock_update:
+            error = await _persist_scheduling_fields("t1", "u1", None, None, "2030-01-02T03:04:05Z")
+        assert error is None
+        mock_update.assert_awaited_once_with(
+            "t1",
+            user_id="u1",
+            update=TodoUpdate(expires_at=datetime(2030, 1, 2, 3, 4, 5, tzinfo=UTC)),
+        )
+
+    async def test_a_lowercase_z_suffix_is_rejected_as_a_bad_format(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.todo_repository.update",
+            new_callable=AsyncMock,
+        ) as mock_update:
+            error = await _persist_scheduling_fields("t1", "u1", None, None, "2030-01-02T03:04:05z")
+        assert error == "Error: invalid expires_at format '2030-01-02T03:04:05z'."
+        mock_update.assert_not_awaited()
 
     async def test_invalid_expires_at_format_returns_error_without_persisting(self):
         with patch(
@@ -716,8 +869,7 @@ class TestPersistSchedulingFields:
             new_callable=AsyncMock,
         ) as mock_update:
             error = await _persist_scheduling_fields("t1", "u1", None, None, "garbage")
-        assert error is not None
-        assert "invalid expires_at format" in error
+        assert error == "Error: invalid expires_at format 'garbage'."
         mock_update.assert_not_awaited()
 
 
@@ -763,8 +915,8 @@ class TestScheduleExecutionAfterCreate:
 
 
 class TestFormatCreateOutput:
-    def test_the_summary_routes_canvas_edits_away_from_filesystem_tools(self) -> None:
-        """The canvas lives on the todo, not on disk. Without this line the model
+    def test_the_summary_routes_facet_edits_away_from_filesystem_tools(self) -> None:
+        """The facets live on the todo, not on disk. Without this line the model
         reaches for the file tools, edits nothing the todo can see, and reports
         success — so the sentence is the guardrail, pinned verbatim."""
         now = datetime.now(UTC)
@@ -773,9 +925,22 @@ class TestFormatCreateOutput:
         out = _format_create_output(result, None, None, [])
 
         assert (
-            "Canvas + activity log are stored on this todo. Edit them ONLY via "
-            "update_tracked_todo_canvas(todo_id='t1', ...), never with filesystem tools."
+            "Its facets (deliverable / notes / log) are stored on this todo. Edit them "
+            "ONLY via update_tracked_todo_canvas(todo_id='t1', facet=..., ...), "
+            "never with filesystem tools."
         ) in out
+
+    def test_the_first_fire_note_is_appended_to_the_summary_in_the_users_timezone(self) -> None:
+        """The note is an addition to the confirmation, not a replacement for it,
+        and it is rendered in the timezone the caller resolved."""
+        now = datetime.now(UTC)
+        result = TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now)
+
+        out = _format_create_output(result, _FUTURE, "Asia/Kolkata", [])
+
+        assert out.startswith("Tracked todo created: t1\nTitle: t\n")
+        assert out.endswith(_format_first_fire_note(_FUTURE, "Asia/Kolkata"))
+        assert "your timezone (Asia/Kolkata)" in out
 
 
 class TestFormatFirstFireNote:
@@ -884,18 +1049,23 @@ class TestFormatTrackedTodoFull:
             id="t1",
             user_id="u1",
             title="My todo",
-            labels=["work", GAIA_TRACKED_LABEL],
+            labels=["work", "urgent"],
             priority=Priority.HIGH,
-            created_at=now,
-            updated_at=now,
+            created_at=now - timedelta(days=3),
+            updated_at=now - timedelta(days=1),
         )
         result = _format_tracked_todo_full(doc, now)
-        assert '"My todo"' in result
-        assert "[work]" in result
-        # The internal tracking label must never leak into the display text.
-        assert GAIA_TRACKED_LABEL not in result.split("\n")[0]
-        assert "Priority: high" in result
-        assert "(ID: t1)" in result
+        assert result == (
+            '- "My todo" [work, urgent] (ID: t1)\n  Priority: high | Age: 3d | Last updated: 1d ago'
+        )
+
+    def test_a_todo_with_no_title_is_labelled_untitled_and_carries_no_label_brackets(self):
+        now = datetime.now(UTC)
+        doc = TodoDocument(id="t1", user_id="u1", title="", created_at=now, updated_at=now)
+        result = _format_tracked_todo_full(doc, now)
+        assert result == (
+            '- "Untitled" (ID: t1)\n  Priority: none | Age: 0d | Last updated: 0d ago'
+        )
 
     def test_includes_detail_line_when_scheduling_fields_present(self):
         now = datetime.now(UTC)
@@ -904,11 +1074,16 @@ class TestFormatTrackedTodoFull:
             user_id="u1",
             title="Scheduled todo",
             recurrence="daily",
+            due_date=now + timedelta(days=4),
             created_at=now,
             updated_at=now,
         )
         result = _format_tracked_todo_full(doc, now)
-        assert "Recurrence: daily" in result
+        assert result == (
+            '- "Scheduled todo" (ID: t1)\n'
+            "  Priority: none | Age: 0d | Last updated: 0d ago\n"
+            "  Due: 4d | Recurrence: daily"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -979,80 +1154,28 @@ class TestUpdateTrackedTodoCanvasSuccess:
     def _existing_doc(self) -> TodoDocument:
         return TodoDocument(id="t1", user_id="user-1", title="t")
 
-    async def test_append_mode_calls_append_canvas(self):
-        with (
-            patch(
-                "app.agents.tools.tracked_todo_tools.todo_repository.get",
-                new_callable=AsyncMock,
-                return_value=self._existing_doc(),
-            ),
-            patch(
-                "app.agents.tools.tracked_todo_tools.append_canvas", new_callable=AsyncMock
-            ) as mock_append,
-            patch(
-                "app.agents.tools.tracked_todo_tools.tracked_todo_service.reindex_canvas",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "app.agents.tools.tracked_todo_tools.tracked_todo_service.system_log",
-                new_callable=AsyncMock,
-            ),
-        ):
+    async def test_append_mode_calls_append_facet(self):
+        with _canvas_seams(existing_doc=self._existing_doc()) as seams:
             result = await update_tracked_todo_canvas.coroutine(
                 config=_config(), todo_id="t1", content="new note", mode="append"
             )
-        mock_append.assert_awaited_once_with("t1", "user-1", "new note")
-        assert "Canvas updated (mode=append)" in result
+        seams.append.assert_awaited_once_with("t1", "user-1", "notes", "new note")
+        seams.write.assert_not_awaited()
+        assert result == "Updated notes (mode=append)."
 
-    async def test_replace_mode_calls_write_canvas(self):
-        with (
-            patch(
-                "app.agents.tools.tracked_todo_tools.todo_repository.get",
-                new_callable=AsyncMock,
-                return_value=self._existing_doc(),
-            ),
-            patch(
-                "app.agents.tools.tracked_todo_tools.write_canvas", new_callable=AsyncMock
-            ) as mock_write,
-            patch(
-                "app.agents.tools.tracked_todo_tools.tracked_todo_service.reindex_canvas",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "app.agents.tools.tracked_todo_tools.tracked_todo_service.system_log",
-                new_callable=AsyncMock,
-            ),
-        ):
+    async def test_replace_mode_calls_write_facet(self):
+        with _canvas_seams(existing_doc=self._existing_doc()) as seams:
             result = await update_tracked_todo_canvas.coroutine(
                 config=_config(), todo_id="t1", content="full rewrite", mode="replace"
             )
-        mock_write.assert_awaited_once_with("t1", "user-1", "full rewrite")
-        assert "Canvas updated (mode=replace)" in result
+        seams.write.assert_awaited_once_with("t1", "user-1", "notes", "full rewrite")
+        seams.append.assert_not_awaited()
+        assert result == "Updated notes (mode=replace)."
 
-    async def test_section_mode_reads_current_canvas_and_patches_it(self):
-        with (
-            patch(
-                "app.agents.tools.tracked_todo_tools.todo_repository.get",
-                new_callable=AsyncMock,
-                return_value=self._existing_doc(),
-            ),
-            patch(
-                "app.agents.tools.tracked_todo_tools.read_canvas",
-                new_callable=AsyncMock,
-                return_value="## Notes\nold",
-            ),
-            patch(
-                "app.agents.tools.tracked_todo_tools.write_canvas", new_callable=AsyncMock
-            ) as mock_write,
-            patch(
-                "app.agents.tools.tracked_todo_tools.tracked_todo_service.reindex_canvas",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "app.agents.tools.tracked_todo_tools.tracked_todo_service.system_log",
-                new_callable=AsyncMock,
-            ),
-        ):
+    async def test_section_mode_reads_current_facet_and_patches_it(self):
+        with _canvas_seams(
+            existing_doc=self._existing_doc(), stored_facet="## Notes\nold\n\n## Log\nentry"
+        ) as seams:
             result = await update_tracked_todo_canvas.coroutine(
                 config=_config(),
                 todo_id="t1",
@@ -1060,10 +1183,40 @@ class TestUpdateTrackedTodoCanvasSuccess:
                 mode="section",
                 section="Notes",
             )
-        written_canvas = mock_write.await_args.args[2]
-        assert "new" in written_canvas
-        assert "old" not in written_canvas
-        assert "section=Notes" in result
+        seams.read.assert_awaited_once_with("t1", "user-1", "notes")
+        seams.write.assert_awaited_once_with(
+            "t1", "user-1", "notes", "## Notes\nnew\n\n## Log\nentry"
+        )
+        assert result == "Updated notes (mode=section, section=Notes)."
+
+    async def test_section_mode_on_a_facet_that_was_never_written_creates_the_section(self):
+        """read_facet returns None for an unwritten facet; the patch must start
+        from an empty canvas, not from a stand-in string."""
+        with _canvas_seams(existing_doc=self._existing_doc(), stored_facet=None) as seams:
+            await update_tracked_todo_canvas.coroutine(
+                config=_config(),
+                todo_id="t1",
+                content="new",
+                mode="section",
+                section="Notes",
+            )
+        seams.write.assert_awaited_once_with("t1", "user-1", "notes", "\n\n## Notes\nnew")
+
+    async def test_a_non_notes_facet_is_read_and_written_on_its_own(self):
+        with _canvas_seams(
+            existing_doc=self._existing_doc(), stored_facet="## Draft\nold"
+        ) as seams:
+            result = await update_tracked_todo_canvas.coroutine(
+                config=_config(),
+                todo_id="t1",
+                content="polished",
+                mode="section",
+                section="Draft",
+                facet="deliverable",
+            )
+        seams.read.assert_awaited_once_with("t1", "user-1", "deliverable")
+        seams.write.assert_awaited_once_with("t1", "user-1", "deliverable", "## Draft\npolished")
+        assert result == "Updated deliverable (mode=section, section=Draft)."
 
 
 # ---------------------------------------------------------------------------
@@ -1073,7 +1226,7 @@ class TestUpdateTrackedTodoCanvasSuccess:
 
 class TestUpdateTrackedTodoSuccess:
     def _existing_doc(self, **overrides) -> TodoDocument:
-        base = {"id": "t1", "user_id": "user-1", "title": "t"}
+        base = {"id": "t1", "user_id": "user-1", "title": "t", "assignee": "gaia"}
         base.update(overrides)
         return TodoDocument(**base)
 
@@ -1088,12 +1241,15 @@ class TestUpdateTrackedTodoSuccess:
                 "app.agents.tools.tracked_todo_tools.todo_repository.update",
                 new_callable=AsyncMock,
                 return_value=self._existing_doc(priority=Priority.HIGH),
-            ),
+            ) as mock_update,
         ):
             result = await update_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", priority=Priority.HIGH
             )
-        assert "Updated tracked todo t1: priority" in result
+        mock_update.assert_awaited_once_with(
+            "t1", user_id="user-1", update=TodoUpdate(priority=Priority.HIGH)
+        )
+        assert result == "Updated tracked todo t1: priority"
 
     async def test_scheduled_at_update_reschedules_execution(self):
         with (
@@ -1275,10 +1431,58 @@ class TestCreateTrackedTodoSuccess:
             "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
             new_callable=AsyncMock,
             return_value=self._response(),
-        ):
-            result = await create_tracked_todo.coroutine(config=_config(), title="t")
+        ) as create:
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", serves="s", requires_approval=False
+            )
+        # Unsupplied arguments must reach the service as the draft's own
+        # defaults — in particular kind='task' and auto_execute=True, which
+        # decide whether the todo is a goal lane and whether it runs now.
+        create.assert_awaited_once_with(
+            "user-1", TrackedTodoDraft(title="t", serves="s", requires_approval=False)
+        )
         assert "Tracked todo created: t1" in result
         assert "update_tracked_todo_canvas(todo_id='t1'" in result
+
+    async def test_every_supplied_property_reaches_the_draft_the_service_receives(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+            new_callable=AsyncMock,
+            return_value=self._response(),
+        ) as create:
+            await create_tracked_todo.coroutine(
+                config={
+                    "configurable": {"conversation_id": "conv-9"},
+                    "metadata": {"user_id": "user-1"},
+                },
+                title="Ship the deck",
+                serves="raising a pre-seed round",
+                requires_approval=True,
+                kind="goal",
+                goal_id="goal-1",
+                description="the description",
+                initial_deliverable="the deliverable",
+                initial_notes="the notes",
+                labels=["work", "urgent"],
+                priority="high",
+            )
+        create.assert_awaited_once_with(
+            "user-1",
+            TrackedTodoDraft(
+                title="Ship the deck",
+                serves="raising a pre-seed round",
+                requires_approval=True,
+                kind="goal",
+                goal_id="goal-1",
+                description="the description",
+                initial_deliverable="the deliverable",
+                initial_notes="the notes",
+                labels=["work", "urgent"],
+                priority=Priority.HIGH,
+                source_conversation_id="conv-9",
+                auto_execute=True,
+            ),
+        )
 
     async def test_source_conversation_id_is_read_from_configurable_and_passed_through(self):
         # The chat the todo was created in is captured and handed to the service so
@@ -1297,8 +1501,11 @@ class TestCreateTrackedTodoSuccess:
                     "metadata": {"user_id": "user-1"},
                 },
                 title="t",
+                serves="s",
+                requires_approval=False,
             )
-        assert create.await_args.kwargs["source_conversation_id"] == "conv-9"
+        draft = create.await_args.args[1]
+        assert draft.source_conversation_id == "conv-9"
 
     async def test_create_with_scheduled_at_persists_and_schedules(self):
         with (
@@ -1306,11 +1513,11 @@ class TestCreateTrackedTodoSuccess:
                 "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
                 new_callable=AsyncMock,
                 return_value=self._response(),
-            ),
+            ) as create,
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.update",
                 new_callable=AsyncMock,
-            ),
+            ) as mock_update,
             patch(
                 "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
                 new_callable=AsyncMock,
@@ -1318,9 +1525,20 @@ class TestCreateTrackedTodoSuccess:
             ) as mock_schedule,
         ):
             result = await create_tracked_todo.coroutine(
-                config=_config(), title="t", scheduled_at=_FUTURE_ISO
+                config=_config(),
+                title="t",
+                serves="s",
+                requires_approval=False,
+                scheduled_at=_FUTURE_ISO,
             )
-        mock_schedule.assert_awaited_once()
+        # The scheduling fields land on the row the service just created, for
+        # the same user — a wrong id here writes to somebody else's todo.
+        mock_update.assert_awaited_once_with(
+            "t1", user_id="user-1", update=TodoUpdate(scheduled_at=_FUTURE)
+        )
+        # A todo that arms its own schedule must NOT also run on creation.
+        assert create.await_args.args[1].auto_execute is False
+        mock_schedule.assert_awaited_once_with("t1", _FUTURE)
         assert "First fire" in result or "first fire" in result
 
     async def test_schedule_failure_surfaces_warning_but_todo_still_created(self):
@@ -1341,7 +1559,11 @@ class TestCreateTrackedTodoSuccess:
             ),
         ):
             result = await create_tracked_todo.coroutine(
-                config=_config(), title="t", scheduled_at=_FUTURE_ISO
+                config=_config(),
+                title="t",
+                serves="s",
+                requires_approval=False,
+                scheduled_at=_FUTURE_ISO,
             )
         assert "scheduling failed" in result
 
@@ -1358,6 +1580,10 @@ class TestCreateTrackedTodoSuccess:
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.update",
                 new_callable=AsyncMock,
+            ) as mock_update,
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_next_run_time",
+                return_value=_FUTURE,
             ),
             patch(
                 "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
@@ -1368,9 +1594,18 @@ class TestCreateTrackedTodoSuccess:
             result = await create_tracked_todo.coroutine(
                 config=_config(),
                 title="t",
+                serves="s",
+                requires_approval=False,
                 recurrence="0 9 * * *",
                 scheduled_at=_FUTURE_ISO,
             )
+        # The cron itself is persisted alongside its computed first fire —
+        # without the recurrence the todo would fire once and never repeat.
+        mock_update.assert_awaited_once_with(
+            "t1",
+            user_id="user-1",
+            update=TodoUpdate(scheduled_at=_FUTURE, recurrence="0 9 * * *"),
+        )
         assert "Details:" in result
         assert "ignored" in result
 
@@ -1390,7 +1625,11 @@ class TestCreateTrackedTodoSuccess:
             ),
         ):
             result = await create_tracked_todo.coroutine(
-                config=_config(), title="t", expires_at="garbage"
+                config=_config(),
+                title="t",
+                serves="s",
+                requires_approval=False,
+                expires_at="garbage",
             )
         assert "invalid expires_at format" in result
 
@@ -1415,9 +1654,16 @@ class TestListTrackedTodos:
         assert result == "No active tracked todos."
 
     async def test_active_todos_are_listed_with_count(self):
+        """The listing is what the model reads to pick a todo, so the blank line
+        between entries and the timezone-aware ages are part of the contract."""
+        created = datetime.now(UTC) - timedelta(days=2)
         docs = [
-            TodoDocument(id="t1", user_id="user-1", title="First"),
-            TodoDocument(id="t2", user_id="user-1", title="Second"),
+            TodoDocument(
+                id="t1", user_id="user-1", title="First", created_at=created, updated_at=created
+            ),
+            TodoDocument(
+                id="t2", user_id="user-1", title="Second", created_at=created, updated_at=created
+            ),
         ]
         with patch(
             "app.agents.tools.tracked_todo_tools.todo_repository.list_active_tracked",
@@ -1425,6 +1671,12 @@ class TestListTrackedTodos:
             return_value=docs,
         ):
             result = await list_tracked_todos.coroutine(config=_config())
-        assert "Active tracked todos (2):" in result
-        assert "First" in result
-        assert "Second" in result
+        assert result == (
+            "Active tracked todos (2):\n"
+            "\n"
+            '- "First" (ID: t1)\n'
+            "  Priority: none | Age: 2d | Last updated: 2d ago\n"
+            "\n"
+            '- "Second" (ID: t2)\n'
+            "  Priority: none | Age: 2d | Last updated: 2d ago"
+        )

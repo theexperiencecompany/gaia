@@ -1,17 +1,25 @@
 import asyncio
-from datetime import UTC, datetime, timedelta
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
+from fastapi.responses import JSONResponse
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_id,
     get_user_timezone_from_preferences,
 )
-from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.log_tags import LogTag
+from app.constants.todos import FACET_FIELDS, FACET_NOTES
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
@@ -20,20 +28,19 @@ from app.models.todo_models import (
     BulkMoveRequest,
     BulkOperationResponse,
     BulkUpdateRequest,
-    Priority,
     ProjectCreate,
     ProjectResponse,
-    SearchMode,
     SubTask,
     SubtaskCreateRequest,
     SubtaskUpdateRequest,
     TodoCanvasResponse,
     TodoCounts,
     TodoLabelCount,
+    TodoListQuery,
     TodoListResponse,
     TodoModel,
     TodoResponse,
-    TodoSearchParams,
+    TodoUpdate,
     TodoUpdateRequest,
     TodoWorkflowGenerationResponse,
     TodoWorkflowGenerationStatus,
@@ -43,7 +50,14 @@ from app.models.todo_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
-from app.services.todo_canvas_storage import read_canvas
+from app.services.payments.payment_service import payment_service
+from app.services.todo_canvas_storage import read_artifacts, read_facet
+from app.services.todos import gaia_todo_lifecycle as lifecycle
+from app.services.todos.gaia_todo_lifecycle import (
+    ExecutionQuotaError,
+    InvalidTransitionError,
+)
+from app.services.todos.todo_classification import schedule_classification
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
@@ -94,33 +108,8 @@ async def get_todo_labels(
 # Main Todo CRUD Endpoints
 @router.get("/todos", response_model=TodoListResponse)
 async def list_todos(
-    # Keyword-only: FastAPI binds query parameters by NAME, so the star costs
-    # nothing at the wire and keeps the signature honest about how it is called.
-    *,
-    # Search parameters
-    q: str | None = Query(None, description="Search query"),
-    mode: SearchMode = Query(
-        SearchMode.HYBRID, description="Search mode: text, semantic, or hybrid"
-    ),
-    # Filter parameters
-    project_id: str | None = Query(None),
-    completed: bool | None = Query(None),
-    priority: Priority | None = Query(None),
-    has_due_date: bool | None = Query(None),
-    overdue: bool | None = Query(None),
-    labels: list[str] | None = Query(None),
-    # Date range filters
-    due_after: datetime | None = Query(None, description="Due date after this date"),
-    due_before: datetime | None = Query(None, description="Due date before this date"),
-    # Special date filters
-    due_today: bool = Query(False, description="Only todos due today"),
-    due_this_week: bool = Query(False, description="Only todos due this week"),
-    # Pagination
-    page: int = Query(1, ge=1, le=MAX_PAGE_NUMBER),
-    per_page: int = Query(50, ge=1, le=100),
-    # Options
-    include_stats: bool = Query(False, description="Include statistics in response"),
-    user: AuthenticatedUser = Depends(get_current_user),
+    query: Annotated[TodoListQuery, Query()],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> TodoListResponse:
     """
     List todos with comprehensive filtering and search options.
@@ -132,62 +121,20 @@ async def list_todos(
     - Pagination with metadata
     - Optional statistics
     """
-    filters_applied = []
-    if q:
-        filters_applied.append("query")
-    if project_id:
-        filters_applied.append("project")
-    if completed is not None:
-        filters_applied.append("completed")
-    if priority:
-        filters_applied.append("priority")
-    if labels:
-        filters_applied.append("labels")
-    if due_today:
-        filters_applied.append("due_today")
-    if due_this_week:
-        filters_applied.append("due_this_week")
-    if due_after or due_before:
-        filters_applied.append("date_range")
-
     log.set(
         user={"id": user["user_id"]},
         todo={
             "operation": "list",
-            "search_mode": mode.value,
-            "query": q,
-            "page": page,
-            "per_page": per_page,
-            "filters_applied": filters_applied,
-            "project_id": project_id,
+            "search_mode": query.mode.value,
+            "query": query.q,
+            "page": query.page,
+            "per_page": query.per_page,
+            "filters_applied": query.applied_filters(),
+            "project_id": query.project_id,
         },
     )
 
-    # Handle special date filters
-    if due_today:
-        today = datetime.now(UTC).date()
-        due_after = datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
-        due_before = datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
-    elif due_this_week:
-        today = datetime.now(UTC)
-        due_after = today
-        due_before = today + timedelta(days=7)
-
-    params = TodoSearchParams(
-        q=q,
-        mode=mode,
-        project_id=project_id,
-        completed=completed,
-        priority=priority,
-        has_due_date=has_due_date,
-        overdue=overdue,
-        due_date_start=due_after,
-        due_date_end=due_before,
-        labels=labels,
-        page=page,
-        per_page=per_page,
-        include_stats=include_stats,
-    )
+    params = query.to_search_params()
 
     try:
         result = await TodoService.list_todos(user["user_id"], params)
@@ -219,7 +166,11 @@ async def create_todo(
         },
     )
     try:
-        return await TodoService.create_todo(todo, user["user_id"])
+        created = await TodoService.create_todo(todo, user["user_id"])
+        # Capture stays instant: GAIA quietly classifies the new todo in the
+        # background (offer / prep / silent) without blocking the response.
+        schedule_classification(created.id, user["user_id"], created.title, created.description)
+        return created
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except Exception as e:
@@ -360,12 +311,45 @@ async def get_todo(
 async def get_todo_canvas(
     todo_id: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> TodoCanvasResponse:
-    """Return the canvas markdown for a tracked todo."""
+    """Return a tracked todo's notes facet.
+
+    Migration alias for the pre-facet frontend: ``canvas`` mapped to what is now
+    the notes facet. Kept until the frontend is facet-aware, then removed.
+    """
     log.set(user={"id": user["user_id"]}, todo={"operation": "get_canvas", "id": todo_id})
-    content = await read_canvas(todo_id, user["user_id"])
+    content = await read_facet(todo_id, user["user_id"], FACET_NOTES)
     if content is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo not found")
     return TodoCanvasResponse(content=content)
+
+
+@router.get("/todos/{todo_id}/facets/{facet}")
+async def get_todo_facet(
+    todo_id: str, facet: str, user: Annotated[dict, Depends(get_current_user)]
+) -> JSONResponse:
+    """Return a single facet (deliverable | notes | log) of a tracked todo."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "get_facet", "id": todo_id})
+    if facet not in FACET_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown facet '{facet}'. Expected one of: {', '.join(sorted(FACET_FIELDS))}.",
+        )
+    content = await read_facet(todo_id, user["user_id"], facet)
+    if content is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo not found")
+    return JSONResponse(content={"facet": facet, "content": content})
+
+
+@router.get("/todos/{todo_id}/artifacts")
+async def get_todo_artifacts(
+    todo_id: str, user: Annotated[dict, Depends(get_current_user)]
+) -> JSONResponse:
+    """Return the artifacts (discrete rich outputs) attached to a tracked todo."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "get_artifacts", "id": todo_id})
+    artifacts = await read_artifacts(todo_id, user["user_id"])
+    if artifacts is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo not found")
+    return JSONResponse(content={"artifacts": artifacts})
 
 
 @router.put("/todos/{todo_id}", response_model=TodoResponse)
@@ -677,9 +661,12 @@ async def create_subtask(
     )
     try:
         new_subtask = SubTask(id=str(uuid.uuid4()), title=subtask.title, completed=False)
+
+        # Atomic operation: verify ownership and add subtask in one query
         updated_todo = await todo_repository.add_subtask(
             todo_id, user_id=user["user_id"], subtask=new_subtask
         )
+
         if not updated_todo:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
@@ -708,6 +695,7 @@ async def update_subtask(
         todo={"operation": "update_subtask", "id": todo_id},
     )
     try:
+        # Atomic operation: verify ownership, find subtask, and update in one query
         updated_todo = await todo_repository.set_subtask_fields(
             todo_id,
             user_id=user["user_id"],
@@ -715,13 +703,15 @@ async def update_subtask(
             title=updates.title,
             completed=updates.completed,
         )
+
         if not updated_todo:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
             )
 
-        # Verify subtask exists (a non-matching id updates nothing but still succeeds)
-        if not any(s.id == subtask_id for s in updated_todo.subtasks):
+        # Verify subtask exists (if no match, the update still succeeds but doesn't modify)
+        subtask_found = any(s.id == subtask_id for s in updated_todo.subtasks)
+        if not subtask_found:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
         return TodoResponse.from_document(updated_todo)
@@ -745,16 +735,19 @@ async def delete_subtask(
         todo={"operation": "delete_subtask", "id": todo_id},
     )
     try:
+        # Atomic operation: verify ownership and remove subtask in one query
         updated_todo = await todo_repository.remove_subtask(
             todo_id, user_id=user["user_id"], subtask_id=subtask_id
         )
+
         if not updated_todo:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
             )
 
-        # If the subtask is still present, nothing was removed → it did not exist.
-        if any(s.id == subtask_id for s in updated_todo.subtasks):
+        # Verify subtask was actually removed by checking if it still exists in the result
+        subtask_still_exists = any(s.id == subtask_id for s in updated_todo.subtasks)
+        if subtask_still_exists:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
         return TodoResponse.from_document(updated_todo)
@@ -778,23 +771,29 @@ async def toggle_subtask_completion(
         todo={"operation": "toggle_subtask", "id": todo_id},
     )
     try:
-        # First, read the current completion status to toggle.
+        # First, get current completion status to toggle
         todo = await todo_repository.get(todo_id, user_id=user["user_id"])
+
         if not todo:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
             )
 
+        # Find the subtask to get current completion status
         subtask = next((s for s in todo.subtasks if s.id == subtask_id), None)
         if not subtask:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
+        new_completed = not subtask.completed
+
+        # Atomic operation: toggle completion using array filter
         updated_todo = await todo_repository.set_subtask_fields(
             todo_id,
             user_id=user["user_id"],
             subtask_id=subtask_id,
-            completed=not subtask.completed,
+            completed=new_completed,
         )
+
         if not updated_todo:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
@@ -812,3 +811,124 @@ async def toggle_subtask_completion(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to toggle subtask",
         ) from e
+
+
+# --- GAIA todo lifecycle (assignee model) -----------------------------------
+# Approve is the ONLY proposed→queued path and the free→pro conversion surface:
+# at quota it returns 402 with the staged work as the pitch instead of a
+# silent failure. Dismiss/handoff complete the user-facing lifecycle.
+
+
+@router.post("/todos/{todo_id}/approve", status_code=status.HTTP_200_OK)
+async def approve_gaia_todo(
+    todo_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    channel: str = Body(default="web", embed=True),
+    instruction: str | None = Body(default=None, embed=True),
+) -> JSONResponse:
+    """Approve a proposed GAIA todo: meter quota, queue it, enqueue execution."""
+    user_id = user["user_id"]
+    log.set(user={"id": user_id}, todo={"operation": "approve", "id": todo_id})
+    user_plan = await payment_service.get_cached_plan_type(user_id)
+    try:
+        await lifecycle.approve(
+            todo_id, user_id, user_plan, channel=channel, instruction=instruction
+        )
+    except ExecutionQuotaError as e:
+        return JSONResponse(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            content={
+                "error": "gaia_execution_quota",
+                "todo_id": e.todo_id,
+                "pitch": e.pitch,
+                "plan_required": e.plan_required,
+                "reset_time": e.reset_time,
+            },
+        )
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    return JSONResponse(content={"success": True, "todo_id": todo_id, "execution_status": "queued"})
+
+
+@router.post("/todos/{todo_id}/dismiss", status_code=status.HTTP_200_OK)
+async def dismiss_gaia_todo(
+    todo_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    reason: str | None = Body(default=None, embed=True),
+    channel: str = Body(default="web", embed=True),
+) -> JSONResponse:
+    """Dismiss a proposed GAIA todo; the rejection teaches memory (3-strike rule)."""
+    user_id = user["user_id"]
+    log.set(user={"id": user_id}, todo={"operation": "dismiss", "id": todo_id})
+    try:
+        await lifecycle.dismiss(todo_id, user_id, reason=reason, channel=channel)
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    return JSONResponse(
+        content={"success": True, "todo_id": todo_id, "execution_status": "dismissed"}
+    )
+
+
+@router.post("/todos/{todo_id}/answer", status_code=status.HTTP_200_OK)
+async def answer_gaia_todo(
+    todo_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    answer: str = Body(embed=True, min_length=1),
+    channel: str = Body(default="web", embed=True),
+) -> JSONResponse:
+    """Answer a blocked (needs_you) GAIA todo: record the reply and re-queue the run."""
+    user_id = user["user_id"]
+    log.set(user={"id": user_id}, todo={"operation": "answer", "id": todo_id})
+    try:
+        await lifecycle.answer(todo_id, user_id, answer, channel=channel)
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    return JSONResponse(content={"success": True, "todo_id": todo_id, "execution_status": "queued"})
+
+
+@router.post("/todos/{todo_id}/handoff", status_code=status.HTTP_200_OK)
+async def handoff_todo_to_gaia(
+    todo_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> JSONResponse:
+    """Hand a user todo to GAIA (entry state queued; outward steps escalate mid-run)."""
+    user_id = user["user_id"]
+    log.set(user={"id": user_id}, todo={"operation": "handoff", "id": todo_id})
+    try:
+        await lifecycle.handoff(todo_id, user_id)
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    return JSONResponse(content={"success": True, "todo_id": todo_id, "execution_status": "queued"})
+
+
+@router.post("/todos/{todo_id}/retry", status_code=status.HTTP_200_OK)
+async def retry_gaia_todo(
+    todo_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    channel: str = Body(default="web", embed=True),
+) -> JSONResponse:
+    """Re-run a failed GAIA todo: clear the failure state and re-queue execution."""
+    user_id = user["user_id"]
+    log.set(user={"id": user_id}, todo={"operation": "retry", "id": todo_id})
+    try:
+        await lifecycle.retry(todo_id, user_id, channel=channel)
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    log.set(todo={"execution_status": "queued"})
+    return JSONResponse(content={"success": True, "todo_id": todo_id, "execution_status": "queued"})
+
+
+@router.post("/todos/{todo_id}/dismiss_offer", status_code=status.HTTP_200_OK)
+async def dismiss_gaia_offer(
+    todo_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> JSONResponse:
+    """Dismiss the GAIA-takeover offer on a user todo, suppressing it everywhere."""
+    user_id = user["user_id"]
+    log.set(user={"id": user_id}, todo={"operation": "dismiss_offer", "id": todo_id})
+    updated = await todo_repository.update(
+        todo_id, user_id=user_id, update=TodoUpdate(gaia_offer_dismissed=True)
+    )
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo not found")
+    return JSONResponse(content={"success": True, "todo_id": todo_id, "gaia_offer_dismissed": True})

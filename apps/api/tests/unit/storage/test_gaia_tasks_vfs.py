@@ -13,6 +13,7 @@ failure injection; these functions take a ``Path`` and touch no network or DB.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -46,11 +47,20 @@ def task(
     doc_id: str,
     title: str | None = "Ship the release",
     *,
-    canvas: str = "# canvas\n",
+    deliverable: str = "# deliverable\n",
+    notes: str = "# notes\n",
     log: str = "- did a thing\n",
+    artifacts: list[dict[str, Any]] | None = None,
     **meta: Any,
 ) -> GaiaTaskProjection:
-    return {"id": doc_id, "canvas": canvas, "log": log, "meta": {"title": title, **meta}}
+    return {
+        "id": doc_id,
+        "deliverable": deliverable,
+        "notes": notes,
+        "log": log,
+        "artifacts": artifacts or [],
+        "meta": {"title": title, **meta},
+    }
 
 
 def folders(root: Path) -> set[str]:
@@ -137,16 +147,94 @@ def test_syncing_gaia_tasks_does_not_delete_the_users_live_todos_projection(
 # ── materialize: layout and content ──────────────────────────────────
 
 
-def test_a_task_is_projected_as_canvas_log_and_meta_in_a_slug_shortid_folder(
+def test_a_task_is_projected_as_facet_bodies_and_meta_in_a_slug_shortid_folder(
     tmp_path: Path,
 ) -> None:
-    materialize_gaia_tasks(tmp_path, [task(ID_A, "Ship the release", canvas="C", log="L")], GUIDE)
+    materialize_gaia_tasks(
+        tmp_path,
+        [task(ID_A, "Ship the release", deliverable="D", notes="N", log="L")],
+        GUIDE,
+    )
 
     folder = tmp_path / gtv.GAIA_TASKS_DIRNAME / "ship-the-release-00000001"
     assert folder.is_dir()
-    assert folder.joinpath("canvas.md").read_text() == "C"
+    assert folder.joinpath("deliverable.md").read_text() == "D"
+    assert folder.joinpath("notes.md").read_text() == "N"
     assert folder.joinpath("log.md").read_text() == "L"
     assert '"title": "Ship the release"' in folder.joinpath("meta.json").read_text()
+
+
+def test_a_task_with_artifacts_projects_one_readonly_file_per_artifact(
+    tmp_path: Path,
+) -> None:
+    # Artifacts are part of the facet model: each lands as its own 0444 body so
+    # the agent can read them directly from the tree.
+    docs = [
+        task(
+            ID_A,
+            "Research",
+            artifacts=[
+                {"name": "notes summary", "content": "found nothing"},
+                {"name": "raw dump", "content": "…"},
+            ],
+        )
+    ]
+
+    materialize_gaia_tasks(tmp_path, docs, GUIDE)
+
+    folder = tmp_path / gtv.GAIA_TASKS_DIRNAME / "research-00000001"
+    assert folder.joinpath("artifacts", "notes-summary.md").read_text() == "found nothing"
+    assert folder.joinpath("artifacts", "raw-dump.md").read_text() == "…"
+    assert folder.joinpath("artifacts", "notes-summary.md").stat().st_mode & 0o777 == 0o444
+
+
+def test_a_removed_artifact_never_lingers_in_its_folder(tmp_path: Path) -> None:
+    # The artifacts subtree is rebuilt from scratch on every folder rewrite, so
+    # a renamed or removed artifact cannot stay behind and mislead the agent.
+    docs = [task(ID_A, "Research", artifacts=[{"name": "temp", "content": "x"}])]
+    materialize_gaia_tasks(tmp_path, docs, GUIDE)
+
+    docs = [task(ID_A, "Research", artifacts=[])]
+    materialize_gaia_tasks(tmp_path, docs, GUIDE)
+
+    folder = tmp_path / gtv.GAIA_TASKS_DIRNAME / "research-00000001"
+    assert not (folder / "artifacts").exists()
+
+
+def test_an_artifact_with_empty_content_projects_an_empty_file_not_a_placeholder(
+    tmp_path: Path,
+) -> None:
+    # An artifact gets named before it is filled, so an empty body is a normal
+    # state. Anything substituted for it is text the agent reads back as the
+    # artifact's real content.
+    docs = [task(ID_A, "Research", artifacts=[{"name": "draft", "content": ""}])]
+
+    materialize_gaia_tasks(tmp_path, docs, GUIDE)
+
+    assert (
+        tmp_path / gtv.GAIA_TASKS_DIRNAME / "research-00000001" / "artifacts" / "draft.md"
+    ).read_text() == ""
+
+
+def test_an_artifacts_dir_that_could_not_be_removed_does_not_abort_the_sync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `_force_remove` swallows OSError, so a failed rmtree on the network mount
+    # leaves the artifacts dir standing. Rebuilding the subtree has to survive
+    # that: the alternative is a task whose whole folder stops syncing because
+    # one directory refused to go.
+    materialize_gaia_tasks(
+        tmp_path, [task(ID_A, "Research", artifacts=[{"name": "first", "content": "v1"}])], GUIDE
+    )
+    monkeypatch.setattr(gtv, "remove_tree", lambda path: None)
+
+    materialize_gaia_tasks(
+        tmp_path, [task(ID_A, "Research", artifacts=[{"name": "second", "content": "v2"}])], GUIDE
+    )
+
+    assert (
+        tmp_path / gtv.GAIA_TASKS_DIRNAME / "research-00000001" / "artifacts" / "second.md"
+    ).read_text() == "v2"
 
 
 def test_projected_bodies_are_read_only_so_a_raw_edit_cannot_silently_desync_them(
@@ -155,7 +243,7 @@ def test_projected_bodies_are_read_only_so_a_raw_edit_cannot_silently_desync_the
     materialize_gaia_tasks(tmp_path, [task(ID_A)], GUIDE)
 
     folder = tmp_path / gtv.GAIA_TASKS_DIRNAME / "ship-the-release-00000001"
-    for name in ("canvas.md", "log.md", "meta.json"):
+    for name in ("deliverable.md", "notes.md", "log.md", "meta.json"):
         assert folder.joinpath(name).stat().st_mode & 0o777 == 0o444, name
 
 
@@ -234,7 +322,7 @@ def test_a_stale_folder_is_removed_even_though_its_bodies_are_read_only(
     # leaves the deleted task's folder behind forever.
     materialize_gaia_tasks(tmp_path, [task(ID_A, "Alpha")], GUIDE)
     assert (
-        tmp_path / gtv.GAIA_TASKS_DIRNAME / "alpha-00000001" / "canvas.md"
+        tmp_path / gtv.GAIA_TASKS_DIRNAME / "alpha-00000001" / "deliverable.md"
     ).stat().st_mode & 0o777 == 0o444
 
     materialize_gaia_tasks(tmp_path, [], GUIDE)
@@ -304,9 +392,13 @@ def test_re_running_a_sync_with_unchanged_tasks_rewrites_nothing(tmp_path: Path)
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("canvas", "# rewritten\n"), ("log", "- newer entry\n")],
+    [
+        ("deliverable", "# rewritten\n"),
+        ("notes", "# rewritten\n"),
+        ("log", "- newer entry\n"),
+    ],
 )
-def test_editing_only_the_canvas_or_only_the_log_still_rewrites_the_body(
+def test_editing_only_one_facet_still_rewrites_the_body(
     tmp_path: Path, field: str, value: str
 ) -> None:
     # The folder name is unchanged by a body edit, so the hash gate is the only
@@ -317,8 +409,23 @@ def test_editing_only_the_canvas_or_only_the_log_still_rewrites_the_body(
     written = materialize_gaia_tasks(tmp_path, [task(ID_A, "Alpha", **{field: value})], GUIDE)
 
     assert written == 1
-    filename = "canvas.md" if field == "canvas" else "log.md"
+    filename = f"{field}.md"
     assert (tmp_path / gtv.GAIA_TASKS_DIRNAME / "alpha-00000001" / filename).read_text() == value
+
+
+def test_changing_only_the_artifacts_still_rewrites_the_body(tmp_path: Path) -> None:
+    # Artifacts are part of the per-doc signature; a content change in one must
+    # not be hidden by the hash gate.
+    docs = [task(ID_A, "Alpha", artifacts=[{"name": "a", "content": "v1"}])]
+    materialize_gaia_tasks(tmp_path, docs, GUIDE)
+
+    docs = [task(ID_A, "Alpha", artifacts=[{"name": "a", "content": "v2"}])]
+    written = materialize_gaia_tasks(tmp_path, docs, GUIDE)
+
+    assert written == 1
+    assert (
+        tmp_path / gtv.GAIA_TASKS_DIRNAME / "alpha-00000001" / "artifacts" / "a.md"
+    ).read_text() == "v2"
 
 
 def test_completing_a_task_rewrites_its_meta_even_though_nothing_else_changed(
@@ -344,15 +451,15 @@ def test_a_folder_deleted_off_disk_is_rebuilt_even_though_its_marker_still_match
     written = materialize_gaia_tasks(tmp_path, [task(ID_A, "Alpha")], GUIDE)
 
     assert written == 1
-    assert (tmp_path / gtv.GAIA_TASKS_DIRNAME / "alpha-00000001" / "canvas.md").exists()
+    assert (tmp_path / gtv.GAIA_TASKS_DIRNAME / "alpha-00000001" / "deliverable.md").exists()
 
 
 def test_a_task_that_fails_mid_write_is_not_stamped_as_synced(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # log.md fails after canvas.md landed. Stamping the marker before the body
-    # is fully on disk would freeze a half-written task in place — the gate
-    # would report it clean on every subsequent sync.
+    # log.md fails after the earlier facets landed. Stamping the marker before
+    # the body is fully on disk would freeze a half-written task in place — the
+    # gate would report it clean on every subsequent sync.
     real_write = gtv.write_readonly_body
 
     def flaky(target: Path, content: str) -> None:
@@ -370,16 +477,59 @@ def test_a_task_that_fails_mid_write_is_not_stamped_as_synced(
     assert (tmp_path / gtv.GAIA_TASKS_DIRNAME / "alpha-00000001" / "log.md").exists()
 
 
-def test_the_signature_reflects_the_log_and_the_meta_and_not_just_the_canvas(
+def test_the_signature_reflects_every_facet_and_the_meta(tmp_path: Path) -> None:
+    base = task(ID_A, "Alpha", deliverable="D", notes="N", log="L")
+
+    assert per_doc_signature(base) != per_doc_signature(
+        task(ID_A, "Alpha", deliverable="D2", notes="N", log="L")
+    )
+    assert per_doc_signature(base) != per_doc_signature(
+        task(ID_A, "Alpha", deliverable="D", notes="N2", log="L")
+    )
+    assert per_doc_signature(base) != per_doc_signature(
+        task(ID_A, "Alpha", deliverable="D", notes="N", log="L2")
+    )
+    assert per_doc_signature(base) != per_doc_signature(
+        task(ID_A, "Alpha", deliverable="D", notes="N", log="L", completed=True)
+    )
+    assert per_doc_signature(base) == per_doc_signature(
+        task(ID_A, "Alpha", deliverable="D", notes="N", log="L")
+    )
+
+
+def test_reordering_an_artifacts_keys_is_not_a_change_worth_rewriting_the_folder_for(
     tmp_path: Path,
 ) -> None:
-    base = task(ID_A, "Alpha", canvas="C", log="L")
+    # The signature is what keeps a steady-state sync at zero I/O. Hashing the
+    # artifacts as written rather than canonically makes a document whose fields
+    # come back in another order look edited, and every folder is rewritten on
+    # the network mount on every turn.
+    ordered = task(ID_A, "Alpha", artifacts=[{"name": "a", "content": "v1", "kind": "markdown"}])
+    reordered = task(ID_A, "Alpha", artifacts=[{"kind": "markdown", "content": "v1", "name": "a"}])
+    assert materialize_gaia_tasks(tmp_path, [ordered], GUIDE) == 1
 
-    assert per_doc_signature(base) != per_doc_signature(task(ID_A, "Alpha", canvas="C", log="L2"))
-    assert per_doc_signature(base) != per_doc_signature(
-        task(ID_A, "Alpha", canvas="C", log="L", completed=True)
-    )
-    assert per_doc_signature(base) == per_doc_signature(task(ID_A, "Alpha", canvas="C", log="L"))
+    assert materialize_gaia_tasks(tmp_path, [reordered], GUIDE) == 0
+    assert per_doc_signature(ordered) == per_doc_signature(reordered)
+
+
+def test_an_artifact_value_json_cannot_encode_natively_is_hashed_not_raised_on(
+    tmp_path: Path,
+) -> None:
+    # ``artifacts`` is ``list[dict[str, Any]]`` and the sibling meta payload
+    # already carries datetimes. The hash gate has to be total: raising here
+    # fails the user's whole projection, not one artifact.
+    docs = [
+        task(
+            ID_A,
+            "Alpha",
+            artifacts=[{"name": "a", "content": "v", "generated_at": datetime(2026, 1, 1)}],
+        )
+    ]
+
+    assert materialize_gaia_tasks(tmp_path, docs, GUIDE) == 1
+    assert (
+        tmp_path / gtv.GAIA_TASKS_DIRNAME / "alpha-00000001" / "artifacts" / "a.md"
+    ).read_text() == "v"
 
 
 # ── hostile titles: user-supplied, straight into a path ──────────────

@@ -27,14 +27,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.outputs import LLMResult
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import register_llm_providers
 from app.constants.memory import MemorySourceType
 from app.db.chroma.chromadb import init_chroma
 from app.db.postgresql import init_postgresql_engine
+from app.memory import extraction
 from app.memory.engine import memory_engine
 from app.memory.extraction import _invoke_structured
+from app.memory.ingestion import MemorySource
 from app.memory.mappers import entry_to_note
 
 _DATE_FORMAT = "%Y/%m/%d %H:%M"
@@ -128,7 +131,7 @@ def _parse_date(raw: str) -> datetime:
     return datetime.strptime(cleaned, _DATE_FORMAT).replace(tzinfo=UTC)
 
 
-async def _answer(question: str, question_date: str, memories: list[str]) -> str:
+async def _answer(user_id: str, question: str, question_date: str, memories: list[str]) -> str:
     context = "\n".join(f"- {m}" for m in memories) or "(no memories found)"
     result = await _invoke_structured(
         _Answer,
@@ -171,11 +174,12 @@ async def _answer(question: str, question_date: str, memories: list[str]) -> str
             ),
         ],
         operation="lme_answer",
+        user_id=user_id,
     )
     return result.answer if result else "I don't know"
 
 
-async def _judge(question: str, gold: str, model_answer: str) -> bool:
+async def _judge(user_id: str, question: str, gold: str, model_answer: str) -> bool:
     result = await _invoke_structured(
         _Verdict,
         [
@@ -212,6 +216,7 @@ async def _judge(question: str, gold: str, model_answer: str) -> bool:
             ),
         ],
         operation="lme_judge",
+        user_id=user_id,
     )
     return bool(result and result.correct)
 
@@ -233,7 +238,7 @@ async def _run_question(
             await memory_engine.retain(
                 user_id,
                 messages,
-                source_type=MemorySourceType.CONVERSATION,
+                source=MemorySource(MemorySourceType.CONVERSATION),
                 now=_parse_date(date_raw),
             )
 
@@ -248,8 +253,8 @@ async def _run_question(
             + [f"(journal {hit.date.isoformat()}) {hit.text}" for hit in episode_hits[:12]]
             + [f"(conversation on {date})\n{text}" for date, text, _ in transcript_hits]
         )
-        model_answer = await _answer(item["question"], item["question_date"], notes)
-        correct = await _judge(item["question"], str(item["answer"]), model_answer)
+        model_answer = await _answer(user_id, item["question"], item["question_date"], notes)
+        correct = await _judge(user_id, item["question"], str(item["answer"]), model_answer)
         print(
             f"[{index + 1}/{total}] {'OK ' if correct else 'MISS'} {qtype:26} "
             f"q={item['question'][:48]!r} -> {model_answer[:60]!r} (gold {str(item['answer'])[:40]!r})",
@@ -284,7 +289,7 @@ async def _print_diagnosis(item_user: str, item: dict, notes: list[str]) -> None
     print(f"    total stored: {stored.total_count} | notes: {len(notes)}", flush=True)
 
 
-async def main() -> None:
+def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run LongMemEval against the memory engine.")
     parser.add_argument("--dataset", required=True, help="Path to longmemeval_*.json")
     parser.add_argument("--num", type=int, default=50, help="Stratified sample size")
@@ -320,24 +325,27 @@ async def main() -> None:
         default=60,
         help="Questions to grade before the --min-accuracy breaker can trip.",
     )
-    args = parser.parse_args()
+    return parser
 
-    init_postgresql_engine()
-    init_chroma()
-    register_llm_providers()
 
-    # Hard budget guard: attach a cost meter to the memory module's silent
-    # config so every extraction/reconcile/answer/judge call counts. The run
-    # loop stops the moment projected spend reaches --max-usd.
-    import app.memory.extraction as extraction_mod
+def _attach_cost_meter(meter: CostMeter) -> None:
+    """Hard budget guard: count every memory LLM call against the run's ceiling.
 
-    meter = CostMeter(args.max_usd)
-    extraction_mod._SILENT_CONFIG = {
-        **extraction_mod._SILENT_CONFIG,
-        "callbacks": [meter],
-    }
+    ``_silent_config`` is the one place all four call types (extraction,
+    reconcile, answer, judge) build their config, so wrapping it is what makes
+    the meter unmissable. The run loop stops the moment projected spend
+    reaches --max-usd.
+    """
+    build_config = extraction._silent_config
 
-    data = json.loads(Path(args.dataset).read_text())
+    def metered_config(user_id: str) -> RunnableConfig:
+        return {**build_config(user_id), "callbacks": [meter]}
+
+    extraction._silent_config = metered_config
+
+
+def _sample_questions(data: list[dict], args: argparse.Namespace) -> tuple[list[dict], int]:
+    """Stratified, seeded sample of the dataset, plus how many types it spans."""
     by_type: dict[str, list[dict]] = defaultdict(list)
     for item in data:
         if str(item["question_id"]).endswith("_abs"):
@@ -358,23 +366,35 @@ async def main() -> None:
         rng.shuffle(items)  # NOSONAR python:S2245
         sample.extend(items[:per_type])
     rng.shuffle(sample)  # NOSONAR python:S2245
-    print(f"Running {len(sample)} questions across {len(by_type)} types...\n", flush=True)
+    return sample, len(by_type)
 
+
+async def _grade_sample(
+    sample: list[dict], args: argparse.Namespace, meter: CostMeter
+) -> tuple[dict[str, list[bool]], dict[str, bool]]:
+    """Grade every question under the concurrency, budget and accuracy gates.
+
+    Returns the per-type results and which ceiling (if any) stopped the run.
+    """
     scores: dict[str, list[bool]] = defaultdict(list)
     semaphore = asyncio.Semaphore(args.concurrency)
     tally = {"done": 0, "correct": 0}
     aborted = {"budget": False, "accuracy": False}
 
+    def _halted() -> bool:
+        # Read fresh each time: another task may trip a ceiling while this one
+        # waits on the semaphore.
+        return meter.exceeded or aborted["budget"] or aborted["accuracy"]
+
     async def _bounded(index: int, item: dict) -> tuple[str, bool, str] | None:
         # Gate at acquire time so once a ceiling is hit no NEW question starts;
         # in-flight ones finish (a few cents / a few questions of overshoot).
-        if meter.exceeded or aborted["accuracy"]:
+        if _halted():
             return None
         async with semaphore:
             if meter.exceeded:
                 aborted["budget"] = True
-                return None
-            if aborted["accuracy"]:
+            if _halted():
                 return None
             outcome = await _run_question(item, index, len(sample), diagnose=args.diagnose)
             tally["done"] += 1
@@ -397,14 +417,23 @@ async def main() -> None:
         if outcome is not None:
             qtype, correct, _ = outcome
             scores[qtype].append(correct)
+    return scores, aborted
 
+
+def _print_results(
+    scores: dict[str, list[bool]],
+    sample_size: int,
+    aborted: dict[str, bool],
+    meter: CostMeter,
+    max_usd: float,
+) -> None:
     graded = sum(len(v) for v in scores.values())
     if aborted["accuracy"]:
         print("=== LONGMEMEVAL (ABORTED — accuracy breaker) RESULTS ===")
-    elif aborted["budget"] or graded < len(sample):
+    elif aborted["budget"] or graded < sample_size:
         print(
-            f"\n!! Budget ceiling ${args.max_usd:.2f} reached "
-            f"(spent ~${meter.cost_usd:.2f}); graded {graded}/{len(sample)}.\n"
+            f"\n!! Budget ceiling ${max_usd:.2f} reached "
+            f"(spent ~${meter.cost_usd:.2f}); graded {graded}/{sample_size}.\n"
         )
         print("=== LONGMEMEVAL (PARTIAL — budget-limited) RESULTS ===")
     else:
@@ -421,8 +450,26 @@ async def main() -> None:
     print(
         f"\n  Spend: ~${meter.cost_usd:.2f} "
         f"({meter.input_tokens:,} in / {meter.output_tokens:,} out tokens, "
-        f"cap ${args.max_usd:.2f})"
+        f"cap ${max_usd:.2f})"
     )
+
+
+async def main() -> None:
+    args = _build_arg_parser().parse_args()
+
+    init_postgresql_engine()
+    init_chroma()
+    register_llm_providers()
+
+    meter = CostMeter(args.max_usd)
+    _attach_cost_meter(meter)
+
+    data = json.loads(await asyncio.to_thread(Path(args.dataset).read_text))
+    sample, type_count = _sample_questions(data, args)
+    print(f"Running {len(sample)} questions across {type_count} types...\n", flush=True)
+
+    scores, aborted = await _grade_sample(sample, args, meter)
+    _print_results(scores, len(sample), aborted, meter, args.max_usd)
 
 
 if __name__ == "__main__":

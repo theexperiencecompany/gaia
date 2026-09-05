@@ -56,6 +56,7 @@ from app.helpers.email_helpers import (
     store_single_profile,
 )
 from app.memory.engine import memory_engine
+from app.memory.ingestion import MemorySource
 from app.models.user_models import UserDocument
 from app.services.mail.mail_service import MessageFetchOptions, search_messages
 from shared.py.wide_events import log
@@ -1030,7 +1031,7 @@ async def _crawl_and_store_discovered(
     retain_result = await memory_engine.retain(
         user_id,
         profile_messages,
-        source_type=MemorySourceType.EMAIL,
+        source=MemorySource(MemorySourceType.EMAIL),
         extraction_hints=(
             f"These are the user's own social profiles, discovered from their "
             f"{source_platform} emails. Extract durable facts about the user: "

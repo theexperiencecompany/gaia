@@ -8,14 +8,11 @@
 # One line per (file, rule), tab-separated, sorted. Regenerate with:
 #   python3 tools/lints/check_plr_complexity.py --update
 apps/api/app/agents/core/messages.py	PLR0913
-apps/api/app/agents/core/nodes/memory_node.py	PLR0912
-apps/api/app/agents/core/nodes/memory_node.py	PLR0913
 apps/api/app/agents/middleware/compaction.py	PLR0913
 apps/api/app/agents/middleware/runtime_adapter.py	PLR0913
 apps/api/app/agents/skills/parser.py	PLR0912
 apps/api/app/agents/tools/coding/_artifacts.py	PLR0913
 apps/api/app/agents/tools/coding/_filter.py	PLR0913
-apps/api/app/agents/tools/coding/edit_tool.py	PLR0913
 apps/api/app/agents/tools/coding/query_json_tool.py	PLR0911
 apps/api/app/agents/tools/coding/query_json_tool.py	PLR0913
 apps/api/app/agents/tools/coding/read_tool.py	PLR0911
@@ -48,8 +45,6 @@ apps/api/app/api/v1/endpoints/oauth.py	PLR0911
 apps/api/app/api/v1/endpoints/platform_auth.py	PLR0911
 apps/api/app/api/v1/endpoints/platform_auth.py	PLR0912
 apps/api/app/api/v1/endpoints/platform_auth.py	PLR0913
-apps/api/app/api/v1/endpoints/todos.py	PLR0912
-apps/api/app/api/v1/endpoints/todos.py	PLR0913
 apps/api/app/api/v1/middleware/auth.py	PLR0912
 apps/api/app/config/settings_validator.py	PLR0913
 apps/api/app/core/lazy_loader.py	PLR0912
@@ -57,11 +52,6 @@ apps/api/app/core/lazy_loader.py	PLR0913
 apps/api/app/db/chroma/chroma_store.py	PLR0912
 apps/api/app/db/repositories/base.py	PLR0913
 apps/api/app/db/repositories/e2b_sandboxes.py	PLR0913
-apps/api/app/db/repositories/notifications.py	PLR0913
-apps/api/app/db/repositories/users.py	PLR0913
-apps/api/app/memory/extraction.py	PLR0913
-apps/api/app/memory/ingestion.py	PLR0913
-apps/api/app/memory/ingestion.py	PLR0915
 apps/api/app/memory/pg_store/graph.py	PLR0912
 apps/api/app/memory/reconciliation.py	PLR0912
 apps/api/app/patches/langchain_merge_dicts_model_name_patch.py	PLR0912
@@ -78,9 +68,7 @@ apps/api/app/services/mcp/langchain_adapter.py	PLR0912
 apps/api/app/services/mcp/resilient_adapter.py	PLR0912
 apps/api/app/services/mcp/resilient_adapter.py	PLR0915
 apps/api/app/services/mcp/token_management.py	PLR0912
-apps/api/app/services/notification_service.py	PLR0913
 apps/api/app/services/onboarding/first_message_service.py	PLR0913
-apps/api/app/services/onboarding/post_onboarding_service.py	PLR0913
 apps/api/app/services/onboarding/social_profile_service.py	PLR0912
 apps/api/app/services/onboarding/social_profile_service.py	PLR0915
 apps/api/app/services/tools/tools_service.py	PLR0912
@@ -95,8 +83,6 @@ apps/api/app/utils/composio_hooks/reddit_hooks.py	PLR0912
 apps/api/app/utils/crawl4ai_utils.py	PLR0912
 apps/api/app/utils/crawl4ai_utils.py	PLR0913
 apps/api/app/utils/linkedin_utils.py	PLR0913
-apps/api/app/utils/notification/orchestrator.py	PLR0913
-apps/api/app/utils/notification/storage.py	PLR0913
 apps/api/app/utils/notion_md.py	PLR0911
 apps/api/app/utils/notion_md.py	PLR0912
 apps/api/app/utils/notion_md.py	PLR0915
@@ -119,15 +105,12 @@ apps/api/scripts/evals/suites/quality.py	PLR0912
 apps/api/scripts/evals/suites/quality.py	PLR0915
 apps/api/scripts/fetch_composio_triggers.py	PLR0915
 apps/api/scripts/fix_subscription_data.py	PLR0912
-apps/api/scripts/memory_benchmark/longmemeval.py	PLR0915
 apps/api/scripts/seed_explore_workflows.py	PLR0912
 apps/api/scripts/sync_composio_tools.py	PLR0912
 apps/api/scripts/sync_composio_tools.py	PLR0913
 apps/api/scripts/sync_composio_tools.py	PLR0915
 apps/api/scripts/test_tracked_todos.py	PLR0912
 apps/api/scripts/verify_sandbox_mounts.py	PLR0915
-apps/api/tests/e2e/test_onboarding.py	PLR0913
-apps/api/tests/e2e/test_onboarding.py	PLR0915
 apps/api/tests/integration/mcp/test_mcp_oauth_flow.py	PLR0913
 apps/api/tests/integration/mcp/test_mcp_oauth_flow.py	PLR0915
 apps/api/tests/integration/real/memory/llm.py	PLR0913
@@ -137,7 +120,6 @@ apps/api/tests/unit/agents/test_mail_templates.py	PLR0913
 apps/api/tests/unit/agents/test_messages.py	PLR0913
 apps/api/tests/unit/api/test_integrations_config_endpoint.py	PLR0913
 apps/api/tests/unit/memory/pg_store/test_memories.py	PLR0913
-apps/api/tests/unit/memory/test_ingestion.py	PLR0913
 apps/api/tests/unit/memory/test_management.py	PLR0913
 apps/api/tests/unit/memory/test_retrieval.py	PLR0913
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	PLR0913

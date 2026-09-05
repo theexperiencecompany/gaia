@@ -13,6 +13,7 @@ import pytest
 
 from app.constants.memory import MemoryRelationType, MemorySourceType, ReconcileOutcome
 from app.memory.engine import memory_engine
+from app.memory.ingestion import MemorySource
 from app.memory.schemas import (
     ExtractedMemoryBatch,
     ReconcileBatchResult,
@@ -35,7 +36,7 @@ async def _retain(user_id: str, fake_llm: FakeMemoryLLM, batch: ExtractedMemoryB
     return await memory_engine.retain(
         user_id,
         [{"role": "user", "content": "transcript"}],
-        source_type=MemorySourceType.CONVERSATION,
+        source=MemorySource(MemorySourceType.CONVERSATION),
     )
 
 

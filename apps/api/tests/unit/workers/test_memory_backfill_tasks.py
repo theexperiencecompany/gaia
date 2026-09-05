@@ -21,6 +21,7 @@ from app.constants.memory import (
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
+from app.memory.ingestion import MemorySource
 from app.models.chat_models import MessageModel
 from app.models.conversation_models import ConversationDocument
 from app.models.user_models import UserDocument
@@ -280,8 +281,7 @@ class TestBackfillUserMemories:
             {"role": "assistant", "content": "Got it."},
         ]
         retain_kwargs = mocks["retain"].await_args.kwargs
-        assert retain_kwargs["source_type"] == MemorySourceType.CONVERSATION
-        assert retain_kwargs["source_id"] == "conv-1"
+        assert retain_kwargs["source"] == MemorySource(MemorySourceType.CONVERSATION, "conv-1")
         assert retain_kwargs["user_name"] == "Alice"
         assert retain_kwargs["now"].tzinfo is not None
         # The debounced consolidation is cancelled and run inline once.

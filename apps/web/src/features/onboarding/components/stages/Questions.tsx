@@ -11,6 +11,8 @@ import { useCallback, useEffect, useRef } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { FIELD_NAMES, questions } from "../../constants";
 import type { Action, OnboardingState } from "../../state/types";
+import { ComposerCTA } from "../ComposerCTA";
+import { OnboardingCTAButton } from "../OnboardingCTAButton";
 import { OnboardingInput } from "../OnboardingInput";
 
 interface QuestionsProps {
@@ -85,18 +87,31 @@ export function QuestionsComposer({ state, dispatch }: QuestionsProps) {
     dispatch({ type: "answer", field: FIELD_NAMES.GMAIL, value: "skipped" });
   }, [dispatch]);
 
+  const handleWorkingOnSkip = useCallback(() => {
+    dispatch({ type: "answer", field: FIELD_NAMES.WORKING_ON, value: "" });
+  }, [dispatch]);
+
   return (
-    <OnboardingInput
-      mode="qa"
-      questionIndex={state.questionIndex}
-      draftText={state.draftText}
-      draftProfession={state.draftProfession}
-      inputRef={inputRef}
-      onSubmit={handleSubmit}
-      onInputChange={handleInputChange}
-      onProfessionSelect={handleProfessionSelect}
-      onProfessionInputChange={handleProfessionInputChange}
-      onGmailSkip={handleGmailSkip}
-    />
+    <>
+      <OnboardingInput
+        mode="qa"
+        questionIndex={state.questionIndex}
+        draftText={state.draftText}
+        draftProfession={state.draftProfession}
+        inputRef={inputRef}
+        onSubmit={handleSubmit}
+        onInputChange={handleInputChange}
+        onProfessionSelect={handleProfessionSelect}
+        onProfessionInputChange={handleProfessionInputChange}
+        onGmailSkip={handleGmailSkip}
+      />
+      {currentQuestion?.fieldName === FIELD_NAMES.WORKING_ON && (
+        <ComposerCTA>
+          <OnboardingCTAButton onClick={handleWorkingOnSkip} hideEndIcon>
+            Skip for now
+          </OnboardingCTAButton>
+        </ComposerCTA>
+      )}
+    </>
   );
 }

@@ -38,6 +38,7 @@ from app.constants.memory import (
 from app.db.redis import redis_cache
 from app.db.repositories.conversations import conversation_repository
 from app.memory.engine import memory_engine
+from app.memory.ingestion import MemorySource
 from app.models.agent_models import agent_configurable
 from app.override.langgraph_bigtool.utils import State
 from app.utils.background_tasks import spawn_background_task
@@ -122,38 +123,37 @@ def _format_messages_for_user_memory(
     for index, msg in enumerate(messages):
         if context_count and index == context_count:
             formatted.append({"role": _ROLE_MARKER, "content": _DELTA_MARKER})
-
-        if isinstance(msg, HumanMessage):
-            # Non-conversation slots (the re-stamped current-time message) are
-            # graph plumbing: rendered as `user: ...` they polluted every
-            # transcript, and the extractor gets the date in its volatile
-            # context already.
-            if slot_of(msg) is not PromptSlot.CONVERSATION:
-                continue
-            content = extract_text_content(msg.content)
-            if content:
-                formatted.append({"role": _ROLE_USER, "content": content})
-
-        elif isinstance(msg, AIMessage):
-            if msg.tool_calls:
-                for call in msg.tool_calls:
-                    formatted.append(
-                        {
-                            "role": _ROLE_GAIA,
-                            "content": f"[CALLED TOOL: {call['name']}({call['args']})]",
-                        }
-                    )
-            elif msg.content:
-                formatted.append({"role": _ROLE_GAIA, "content": extract_text_content(msg.content)})
-
-        elif isinstance(msg, ToolMessage):
-            # Text-extract first so inline media blocks never leak base64 here.
-            content = extract_text_content(msg.content)
-            if len(content) > MAX_TOOL_OUTPUT_SIZE:
-                content = content[:MAX_TOOL_OUTPUT_SIZE] + "... [truncated]"
-            formatted.append({"role": _ROLE_TOOL, "content": content})
+        formatted.extend(_transcript_lines(msg))
 
     return formatted
+
+
+def _transcript_lines(msg: AnyMessage) -> list[dict[str, str]]:
+    if isinstance(msg, HumanMessage):
+        # Non-conversation slots (the re-stamped current-time message) are
+        # graph plumbing: rendered as `user: ...` they polluted every
+        # transcript, and the extractor gets the date in its volatile
+        # context already.
+        if slot_of(msg) is not PromptSlot.CONVERSATION:
+            return []
+        content = extract_text_content(msg.content)
+        return [{"role": _ROLE_USER, "content": content}] if content else []
+    if isinstance(msg, AIMessage):
+        if msg.tool_calls:
+            return [
+                {"role": _ROLE_GAIA, "content": f"[CALLED TOOL: {call['name']}({call['args']})]"}
+                for call in msg.tool_calls
+            ]
+        if msg.content:
+            return [{"role": _ROLE_GAIA, "content": extract_text_content(msg.content)}]
+        return []
+    if isinstance(msg, ToolMessage):
+        # Text-extract first so inline media blocks never leak base64 here.
+        content = extract_text_content(msg.content)
+        if len(content) > MAX_TOOL_OUTPUT_SIZE:
+            content = content[:MAX_TOOL_OUTPUT_SIZE] + "... [truncated]"
+        return [{"role": _ROLE_TOOL, "content": content}]
+    return []
 
 
 async def _messages_to_ingest(
@@ -206,7 +206,6 @@ async def _store_user_memory_background(
     messages: list[AnyMessage],
     user_id: str,
     session_id: str | None,
-    extraction_prompt: str | None,
     subagent_id: str | None,
     user_name: str | None,
     conversation_id: str | None = None,
@@ -224,6 +223,7 @@ async def _store_user_memory_background(
     # wide_task records any failure (error_type + outcome=failed) as an emitted
     # wide event and a real-time error line; suppress the re-raised exception so
     # this fire-and-forget task doesn't surface an un-retrieved-exception warning.
+    extraction_prompt = get_memory_extraction_prompt(subagent_id) if subagent_id else None
     with contextlib.suppress(Exception):
         async with wide_task("memory_retain", user=UserContext(id=user_id)):
             log.set(subagent_id=subagent_id or "agent", session_id=session_id)
@@ -263,8 +263,7 @@ async def _store_user_memory_background(
             await memory_engine.retain(
                 user_id,
                 formatted,
-                source_type=MemorySourceType.CONVERSATION,
-                source_id=session_id,
+                source=MemorySource(MemorySourceType.CONVERSATION, session_id),
                 extraction_hints=extraction_prompt,
                 user_name=user_name,
             )
@@ -291,8 +290,6 @@ async def memory_node(
     conversation_id = configurable.get("conversation_id")
     user_name = configurable.get("user_name")
 
-    extraction_prompt = get_memory_extraction_prompt(subagent_id) if subagent_id else None
-
     should_learn, reason = _check_worth_learning(messages)
     if not should_learn:
         log.debug(f"{LogTag.AGENT} Memory learning skipped", reason=reason)
@@ -306,7 +303,6 @@ async def memory_node(
             messages=messages,
             user_id=user_id,
             session_id=session_id,
-            extraction_prompt=extraction_prompt,
             subagent_id=subagent_id,
             user_name=user_name,
             conversation_id=conversation_id,

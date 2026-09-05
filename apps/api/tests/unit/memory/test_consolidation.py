@@ -42,7 +42,11 @@ def make_row(content: str = "sam is vegetarian", importance: float = 0.5) -> Mem
         importance=importance,
     )
     row.id = uuid.uuid4()
+    row.version = 1
+    row.is_latest = True
+    row.is_forgotten = False
     row.created_at = datetime.now(UTC)
+    row.mentioned_at = row.created_at
     return row
 
 
@@ -643,14 +647,27 @@ class TestConsolidationInputs:
         )
 
     async def test_the_facts_corpus_reaches_the_prompt(self, boundaries: MagicMock) -> None:
-        row = make_row("sam is vegetarian")
-        boundaries.get_facts.return_value = [row]
+        """Every fact on its own line, rendered by the one canonical renderer.
+
+        Two rows, not one: with a single fact the line separator is never
+        exercised, and a corpus that arrives as one run-on line is a corpus the
+        model reads as a single fact. The second row carries an occurrence date
+        so the ``[occurred]``/``[mentioned]`` annotations — the whole reason
+        this routes through ``entry_to_note`` rather than printing the stored
+        date — are pinned too.
+        """
+        vegetarian = make_row("sam is vegetarian")
+        moved = make_row("sam moved to Berlin")
+        moved.occurred_start = datetime(2026, 3, 14, tzinfo=UTC)
+        boundaries.get_facts.return_value = [vegetarian, moved]
 
         await consolidate(USER, [MemoryDocType.USER_MD])
 
         assert boundaries.rewrite.await_args.args[1].endswith(
             "## Every fact this document is written from\n"
-            f"- sam is vegetarian (stored {row.created_at:%Y-%m-%d})"
+            f"- sam is vegetarian [mentioned {vegetarian.mentioned_at:%Y-%m-%d}]\n"
+            "- sam moved to Berlin [occurred 2026-03-14] "
+            f"[mentioned {moved.mentioned_at:%Y-%m-%d}]"
         )
 
     async def test_the_owner_is_named_in_the_prompt_the_model_receives(

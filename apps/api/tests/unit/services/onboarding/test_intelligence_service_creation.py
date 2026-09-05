@@ -26,7 +26,7 @@ from app.models.onboarding_models import (
     WritingStyleExampleBlocks,
     WritingStyleProfile,
 )
-from app.models.user_models import UserDocument
+from app.models.user_models import BioStatus, UserDocument
 from app.models.workflow_models import (
     IntegrationRef,
     SuggestedTrigger,
@@ -741,7 +741,7 @@ def holo_stack() -> Any:
         ),
         patch(
             f"{MODULE}.generate_holo_card_content",
-            AsyncMock(return_value=("a phrase", "a bio", "ok")),
+            AsyncMock(return_value=("a phrase", "a bio", BioStatus.COMPLETED)),
         ) as content,
         patch(f"{MODULE}.save_personalization_data", AsyncMock()) as save,
         patch(f"{MODULE}._emit_stage", AsyncMock()) as emit,
@@ -759,10 +759,9 @@ class TestRunHoloCard:
         ) as metadata:
             await _run_holo_card(_ctx(focus="focus"), user)
 
-        args = save.await_args.args
-        assert args[0] == USER
-        assert args[1] == "mistgrove"
-        assert args[2] == "a phrase"
+        assert save.await_args.args[0] == USER
+        assert save.await_args.args[1].house == "mistgrove"
+        assert save.await_args.args[1].personality_phrase == "a phrase"
         # Both the id and the already-loaded document: without the document the
         # lookup re-reads Mongo, without the id it reads the wrong person.
         metadata.assert_awaited_once_with(USER, user=user)

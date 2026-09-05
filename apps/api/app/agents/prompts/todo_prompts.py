@@ -30,9 +30,21 @@ so it fires on the real event and little else. If it later proves noisy, tighten
 Only the executor creates these; subagents NEVER create tracked todos.
 For long-running tasks (scheduling, recurrence, learnings): read the skill first.
 
-QUICK DECISION:
-- "I need to organize my current steps" → plan_tasks
-- "GAIA is doing something the user might ask about later" → create_tracked_todo"""
+THE APPROVAL RULE (outward visibility):
+Work only the user and GAIA can see (research, drafts, triage, prep) runs without
+permission: requires_approval=False, enters 'queued'. Anything the outside world can see
+(sending email or DMs, posting, inviting others, spending money) needs the user's Approve
+tap first: requires_approval=True, enters 'proposed'. Never take an outward action from a
+todo that did not enter through Approve. If an approved run grows a NEW outward action, or
+hits any choice only the user can make (which recipient, which figure, spend or not), call
+block_todo with one clear question and wait; never guess. A missing integration is not a
+blocker: produce the deliverable as content and finish with a connect-or-take-content
+handoff.
+
+Lifecycle tools act ONLY on the user's explicit word in this conversation: approve_todo on
+their go-ahead (pass any qualification, like "only the Sequoia one", as verbatim
+`instruction` so the release run obeys it), dismiss_todo on their decline, answer_todo when
+they answer a blocked todo's question."""
 
 # Tool description for plan_tasks
 PLAN_TASKS_DESCRIPTION = """Create an execution plan for your current multi-step work.

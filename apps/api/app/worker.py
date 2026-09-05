@@ -33,6 +33,7 @@ from app.workers.tasks import (
     sweep_expired_memories,
     sweep_idle_sandboxes,
 )
+from app.workers.tasks.day_zero_hello_tasks import send_day_zero_hello
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
@@ -74,6 +75,7 @@ _promote_usage_badges = arq_task(promote_usage_badges)
 _sweep_dormant_user_workflows = arq_task(sweep_dormant_user_workflows)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 _sweep_expired_memories = arq_task(sweep_expired_memories)
+_send_day_zero_hello = arq_task(send_day_zero_hello)
 
 WorkerSettings.functions = [
     _sweep_hil_approvals,
@@ -96,6 +98,7 @@ WorkerSettings.functions = [
     _dispatch_todo_subscriptions,
     _backfill_active_users,
     _backfill_user_memories,
+    _send_day_zero_hello,
     _promote_usage_badges,
     _sweep_dormant_user_workflows,
     _sweep_abandoned_imessage_registrations,

@@ -1,8 +1,9 @@
+from datetime import datetime
 from typing import Any, ClassVar, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
-from app.models.user_models import OnboardingPhase
+from app.models.user_models import BioStatus, OnboardingPhase, OnboardingPreferences
 from app.models.workflow_models import IntegrationRef, TriggerType, WorkflowStep
 
 # The four holo-card houses. The frontend types the same closed set.
@@ -202,6 +203,39 @@ class ClarifyAnswerRecord(TypedDict, total=False):
     kind: str
     question: str
     value: str | None
+
+
+class OnboardingCompletion(BaseModel):
+    """Everything ``users.onboarding`` is created from, in one shape.
+
+    The optional fields are written only when set — an unset one leaves that
+    path absent rather than nulled.
+    """
+
+    phase: OnboardingPhase
+    bio_status: BioStatus
+    pipeline_mode: Literal["split", "full"]
+    preferences: OnboardingPreferences
+    name: str | None = None
+    timezone: str | None = None
+    completed_at: datetime | None = None
+    focus: str | None = None
+    clarify_answers: list[ClarifyAnswerRecord] | None = None
+    selected_integrations: list[str] | None = None
+
+
+class PersonalizationBundle(BaseModel):
+    """The generated holo-card personalization written to ``users.onboarding``."""
+
+    house: str
+    personality_phrase: str
+    user_bio: str
+    bio_status: BioStatus
+    account_number: int
+    member_since: str
+    overlay_color: str
+    overlay_opacity: int
+    workflow_ids: list[str]
 
 
 # ------------------------------------------------------- pipeline output shapes

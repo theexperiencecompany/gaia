@@ -14,6 +14,7 @@ import pytest
 from app.constants.memory import CHROMA_MEMORY_EPISODES_COLLECTION, MemorySourceType
 from app.memory import pg_store
 from app.memory.engine import memory_engine
+from app.memory.ingestion import MemorySource
 from app.memory.schemas import EpisodeSummary, ExtractedMemoryBatch
 from tests.integration.real.memory.llm import FakeMemoryLLM, make_batch
 from tests.integration.real.memory.store import chroma_user_vector_ids, fetch_episode_rows
@@ -26,7 +27,7 @@ async def _retain_entries(user_id: str, fake_llm: FakeMemoryLLM, entries: list[s
     await memory_engine.retain(
         user_id,
         [{"role": "user", "content": "transcript"}],
-        source_type=MemorySourceType.CONVERSATION,
+        source=MemorySource(MemorySourceType.CONVERSATION),
     )
 
 

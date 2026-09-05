@@ -1,15 +1,29 @@
 """Unit tests for app.agents.tools.notification_tool."""
 
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from app.constants.log_tags import LogTag
 from app.models.notification.notification_models import (
+    ChannelConfig,
+    NotificationContent,
     NotificationContentView,
+    NotificationRecord,
+    NotificationRequest,
     NotificationSourceEnum,
     NotificationStatus,
     NotificationType,
     NotificationView,
 )
+from app.models.notification.request_models import NotificationQuery
+from app.models.user_models import UserDocument
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,6 +46,11 @@ def _make_config_no_user() -> dict[str, Any]:
 
 def _writer_mock() -> MagicMock:
     return MagicMock()
+
+
+def _payload(result: dict[str, Any]) -> dict[str, Any]:
+    """The tool's own return value, minus the rate limiter's injected usage block."""
+    return {key: value for key, value in result.items() if key != "_rate_limit_info"}
 
 
 def _make_notification(
@@ -80,7 +99,51 @@ class TestGetNotifications:
 
         assert result["notifications"] == [n.model_dump(mode="json") for n in notifications]
         assert "error" not in result
-        mock_service.get_user_notifications.assert_awaited_once()
+        mock_service.get_user_notifications.assert_awaited_once_with(
+            FAKE_USER_ID,
+            NotificationQuery(
+                status=NotificationStatus.DELIVERED,
+                notification_type=None,
+                source=None,
+                limit=50,
+                offset=0,
+            ),
+        )
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
+    async def test_every_filter_and_page_bound_reaches_the_query(
+        self,
+        mock_get_user: MagicMock,
+        mock_service: MagicMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        """Each argument lands on the NotificationQuery handed to the service."""
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.get_user_notifications = AsyncMock(return_value=[])
+
+        from app.agents.tools.notification_tool import get_notifications
+
+        await get_notifications.coroutine(
+            config=_make_config(),
+            status=NotificationStatus.ARCHIVED,
+            notification_type=NotificationType.ERROR,
+            source=NotificationSourceEnum.WORKFLOW_FAILED,
+            limit=7,
+            offset=13,
+        )
+
+        mock_service.get_user_notifications.assert_awaited_once_with(
+            FAKE_USER_ID,
+            NotificationQuery(
+                status=NotificationStatus.ARCHIVED,
+                notification_type=NotificationType.ERROR,
+                source=NotificationSourceEnum.WORKFLOW_FAILED,
+                limit=7,
+                offset=13,
+            ),
+        )
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_user_id_from_config", return_value="")
@@ -181,6 +244,32 @@ class TestSearchNotifications:
 
         assert len(result["notifications"]) == 1
         assert result["notifications"][0]["content"]["title"] == "Meeting reminder"
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
+    async def test_scans_the_first_hundred_under_the_status_filter(
+        self,
+        mock_get_user: MagicMock,
+        mock_service: MagicMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        """The search reads one fixed window and filters it in process."""
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.get_user_notifications = AsyncMock(return_value=[])
+
+        from app.agents.tools.notification_tool import search_notifications
+
+        await search_notifications.coroutine(
+            config=_make_config(),
+            query="deploy",
+            status=NotificationStatus.ARCHIVED,
+        )
+
+        mock_service.get_user_notifications.assert_awaited_once_with(
+            FAKE_USER_ID,
+            NotificationQuery(status=NotificationStatus.ARCHIVED, limit=100, offset=0),
+        )
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.notification_service")
@@ -433,3 +522,211 @@ class TestMarkNotificationsRead:
 
         assert result["success"] is False
         assert "service down" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# Tests: send_urgent_alert
+# ---------------------------------------------------------------------------
+
+URGENT_TITLE = "Standup moved to 11am"
+URGENT_MESSAGE = "Your 2pm standup is now at 11am. Move the client call."
+SIGNAL_KIND = "meeting_moved"
+BRIEFING_CHANNELS = ["inapp", "telegram"]
+ALERT_NOTIFICATION_ID = "urgent-1"
+
+#: A user whose ``created_at`` is a datetime, so a json-mode dump (an ISO
+#: string) is distinguishable from a python-mode one (the datetime itself).
+ALERT_USER = UserDocument(
+    id=FAKE_USER_ID,
+    email="user@example.com",
+    created_at=datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC),
+)
+
+
+@dataclass
+class _AlertSeams:
+    """Every collaborator ``send_urgent_alert`` reaches through."""
+
+    service: MagicMock
+    user_repository: MagicMock
+    resolve_channels: AsyncMock
+    track: MagicMock
+
+
+@contextmanager
+def _alert_seams(
+    *,
+    user: UserDocument | None = ALERT_USER,
+    channels: list[str] | None = None,
+    create_notification: AsyncMock | None = None,
+) -> Iterator[_AlertSeams]:
+    """Patch the tool's seams; ``get_user_id_from_config`` stays real."""
+    record = NotificationRecord(
+        id=ALERT_NOTIFICATION_ID,
+        user_id=FAKE_USER_ID,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        original_request=NotificationRequest(
+            user_id=FAKE_USER_ID,
+            source=NotificationSourceEnum.AI_AGENT,
+            content=NotificationContent(title=URGENT_TITLE, body=URGENT_MESSAGE),
+        ),
+    )
+    seams = _AlertSeams(
+        service=MagicMock(
+            create_notification=create_notification or AsyncMock(return_value=record)
+        ),
+        user_repository=MagicMock(get=AsyncMock(return_value=user)),
+        resolve_channels=AsyncMock(
+            return_value=list(BRIEFING_CHANNELS if channels is None else channels)
+        ),
+        track=MagicMock(),
+    )
+    with ExitStack() as stack:
+        stack.enter_context(patch(f"{MODULE}.notification_service", seams.service))
+        stack.enter_context(patch(f"{MODULE}.user_repository", seams.user_repository))
+        stack.enter_context(patch(f"{MODULE}.resolve_briefing_channels", seams.resolve_channels))
+        stack.enter_context(patch(f"{MODULE}.track", seams.track))
+        yield seams
+
+
+class TestSendUrgentAlert:
+    """Tests for the send_urgent_alert tool."""
+
+    async def test_sends_a_warning_on_every_briefing_channel(self) -> None:
+        """The alert is a WARNING notification on the user's briefing channels."""
+        from app.agents.tools.notification_tool import send_urgent_alert
+
+        async with captured_wide_event() as event:
+            with _alert_seams() as seams:
+                result = await send_urgent_alert.coroutine(
+                    config=_make_config(),
+                    title=f"  {URGENT_TITLE}  ",
+                    message=f"\t{URGENT_MESSAGE}\n",
+                    signal_kind=SIGNAL_KIND,
+                )
+
+        assert _payload(result) == {
+            "success": True,
+            "notification_id": ALERT_NOTIFICATION_ID,
+            "title": URGENT_TITLE,
+            "message": URGENT_MESSAGE,
+            "notification_type": "warning",
+            "status": "sent",
+            "delivered_channels": BRIEFING_CHANNELS,
+        }
+        seams.user_repository.get.assert_awaited_once_with(FAKE_USER_ID)
+        seams.resolve_channels.assert_awaited_once_with(
+            FAKE_USER_ID, ALERT_USER.model_dump(mode="json")
+        )
+        seams.track.assert_called_once_with(
+            FAKE_USER_ID,
+            "urgent_alert_sent",
+            {"signal_kind": SIGNAL_KIND, "channels": BRIEFING_CHANNELS},
+        )
+        assert event["tool"] == {"name": "send_urgent_alert", "signal_kind": SIGNAL_KIND}
+        assert event["notification"] == {
+            "id": ALERT_NOTIFICATION_ID,
+            "channels": BRIEFING_CHANNELS,
+        }
+
+    async def test_builds_the_notification_request_the_orchestrator_needs(self) -> None:
+        """Source, type, channels, content and metadata are all pinned."""
+        from app.agents.tools.notification_tool import send_urgent_alert
+
+        with _alert_seams() as seams:
+            await send_urgent_alert.coroutine(
+                config=_make_config(),
+                title=f"  {URGENT_TITLE}  ",
+                message=f"\t{URGENT_MESSAGE}\n",
+                signal_kind=SIGNAL_KIND,
+            )
+
+        (request,) = seams.service.create_notification.await_args.args
+        assert request.user_id == FAKE_USER_ID
+        assert request.source == NotificationSourceEnum.AI_AGENT
+        assert request.type == NotificationType.WARNING
+        assert request.channels == [ChannelConfig(channel_type=ch) for ch in BRIEFING_CHANNELS]
+        assert request.content == NotificationContent(title=URGENT_TITLE, body=URGENT_MESSAGE)
+        assert request.metadata == {
+            "kind": "urgent_signal",
+            "signal_kind": SIGNAL_KIND,
+        }
+
+    async def test_user_without_a_document_resolves_channels_from_no_profile(self) -> None:
+        """A missing user document sends an empty profile, not a crash."""
+        from app.agents.tools.notification_tool import send_urgent_alert
+
+        with _alert_seams(user=None, channels=["inapp"]) as seams:
+            result = await send_urgent_alert.coroutine(
+                config=_make_config(),
+                title=URGENT_TITLE,
+                message=URGENT_MESSAGE,
+                signal_kind=SIGNAL_KIND,
+            )
+
+        seams.resolve_channels.assert_awaited_once_with(FAKE_USER_ID, {})
+        assert result["delivered_channels"] == ["inapp"]
+
+    async def test_no_user_returns_auth_error(self) -> None:
+        """Missing user_id refuses before any delivery work."""
+        from app.agents.tools.notification_tool import send_urgent_alert
+
+        with _alert_seams() as seams:
+            result = await send_urgent_alert.coroutine(
+                config=_make_config_no_user(),
+                title=URGENT_TITLE,
+                message=URGENT_MESSAGE,
+                signal_kind=SIGNAL_KIND,
+            )
+
+        assert _payload(result) == {"error": "User authentication required", "success": False}
+        seams.service.create_notification.assert_not_awaited()
+        seams.user_repository.get.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("title", "message"),
+        [
+            ("   ", URGENT_MESSAGE),
+            (URGENT_TITLE, "\n"),
+            ("", ""),
+        ],
+        ids=["blank-title", "blank-message", "both-blank"],
+    )
+    async def test_blank_title_or_message_is_refused(self, title: str, message: str) -> None:
+        """Either half missing refuses the alert; both halves are required."""
+        from app.agents.tools.notification_tool import send_urgent_alert
+
+        with _alert_seams() as seams:
+            result = await send_urgent_alert.coroutine(
+                config=_make_config(),
+                title=title,
+                message=message,
+                signal_kind=SIGNAL_KIND,
+            )
+
+        assert _payload(result) == {
+            "error": "Urgent alerts need a title and a message",
+            "success": False,
+        }
+        seams.service.create_notification.assert_not_awaited()
+
+    async def test_delivery_failure_returns_the_error_and_records_it(self) -> None:
+        """A failed create surfaces the message and lands on the wide event."""
+        from app.agents.tools.notification_tool import send_urgent_alert
+
+        failing = AsyncMock(side_effect=RuntimeError("channel down"))
+        async with captured_wide_event() as event:
+            with _alert_seams(create_notification=failing):
+                result = await send_urgent_alert.coroutine(
+                    config=_make_config(),
+                    title=URGENT_TITLE,
+                    message=URGENT_MESSAGE,
+                    signal_kind=SIGNAL_KIND,
+                )
+
+        assert _payload(result) == {"error": "channel down", "success": False}
+        assert event["errors"][-1] == {
+            "msg": f"{LogTag.TOOL} Error sending urgent alert",
+            "error_type": "RuntimeError",
+            "error": "channel down",
+        }

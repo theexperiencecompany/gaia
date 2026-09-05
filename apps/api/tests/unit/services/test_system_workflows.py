@@ -13,6 +13,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from shared.py.wide_events import log
+from tests.helpers import captured_wide_event
+
 MODULE = "app.services.system_workflows.provisioner"
 
 
@@ -53,7 +56,14 @@ def _existing_wf(
 
 @pytest.fixture(autouse=True)
 def _patch_log():
-    with patch(f"{MODULE}.log") as mock_log:
+    """Spy on the module's logger instead of silencing it.
+
+    ``wraps`` keeps every call reaching the real wide-event logger, so the
+    fields ``log.set`` stamps still land on the event a test can read back
+    through ``captured_wide_event``. A plain stub makes the whole wide event
+    unobservable while still satisfying ``assert_called_once_with``.
+    """
+    with patch(f"{MODULE}.log", wraps=log) as mock_log:
         yield mock_log
 
 
@@ -117,6 +127,74 @@ class TestProvisionSystemWorkflows:
 
         mock_workflow_svc.create_workflow.assert_awaited_once_with(req, "user-1")
         mock_notify.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.workflow_repository")
+    async def test_the_run_is_attributed_on_the_wide_event(
+        self,
+        mock_repo: MagicMock,
+        mock_workflow_svc: MagicMock,
+        mock_notify: AsyncMock,
+    ) -> None:
+        """Provisioning stamps who it ran for and which integration triggered it.
+
+        This runs as a detached background task off the OAuth callback, so the
+        wide event is the only place a failed or duplicated provisioning can be
+        traced back to a user and an integration.
+        """
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
+        mock_workflow_svc.create_workflow = AsyncMock()
+
+        with patch.dict(
+            f"{MODULE}.SYSTEM_WORKFLOWS_BY_INTEGRATION",
+            {"gmail": [("gmail_digest", _make_factory())]},
+        ):
+            from app.services.system_workflows.provisioner import (
+                provision_system_workflows,
+            )
+
+            async with captured_wide_event() as event:
+                await provision_system_workflows("user-1", "gmail", "Gmail")
+
+        assert event["component"] == "system_workflow_provisioner"
+        assert event["operation"] == "provision_system_workflows"
+        assert event["user_id"] == "user-1"
+        assert event["integration_id"] == "gmail"
+        assert event["integration_display_name"] == "Gmail"
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.workflow_repository")
+    async def test_a_failed_workflow_is_recorded_with_its_integration(
+        self,
+        mock_repo: MagicMock,
+        mock_workflow_svc: MagicMock,
+        mock_notify: AsyncMock,
+    ) -> None:
+        # The failure is swallowed so the remaining entries still provision, so
+        # the errors[] entry is the only record of it -- and it has to say which
+        # integration and which key failed to be worth anything.
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
+        mock_workflow_svc.create_workflow = AsyncMock(side_effect=RuntimeError("unexpected"))
+
+        with patch.dict(
+            f"{MODULE}.SYSTEM_WORKFLOWS_BY_INTEGRATION",
+            {"gmail": [("gmail_digest", _make_factory())]},
+        ):
+            from app.services.system_workflows.provisioner import (
+                provision_system_workflows,
+            )
+
+            async with captured_wide_event() as event:
+                await provision_system_workflows("user-1", "gmail", "Gmail")
+
+        (error,) = event["errors"]
+        assert error["integration_display_name"] == "Gmail"
+        assert error["system_workflow_key"] == "gmail_digest"
+        assert error["error_type"] == "RuntimeError"
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)

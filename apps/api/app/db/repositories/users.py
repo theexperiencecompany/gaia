@@ -35,13 +35,15 @@ from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.onboarding_models import (
-    ClarifyAnswerRecord,
+    OnboardingCompletion,
     PersistedTriageSummary,
+    PersonalizationBundle,
     SocialProfile,
     WritingStyleExampleBlocks,
 )
 from app.models.user_models import (
     BioStatus,
+    EditionRotation,
     OnboardingPhase,
     OnboardingPreferences,
     PlatformLinkRecord,
@@ -223,19 +225,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     # ------------------------------------------------------- onboarding writes
 
     async def complete_onboarding(
-        self,
-        user_id: str,
-        *,
-        phase: OnboardingPhase,
-        bio_status: BioStatus,
-        pipeline_mode: str,
-        preferences: OnboardingPreferences,
-        name: str | None = None,
-        timezone: str | None = None,
-        completed_at: datetime | None = None,
-        focus: str | None = None,
-        clarify_answers: list[ClarifyAnswerRecord] | None = None,
-        selected_integrations: list[str] | None = None,
+        self, user_id: str, completion: OnboardingCompletion
     ) -> UserDocument | None:
         """Atomically create the ``onboarding`` subdocument (gated on its absence).
 
@@ -243,25 +233,22 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         (idempotent replay) or the user is gone; the caller distinguishes via
         ``get``.
         """
-        now = datetime.now(UTC)
         set_fields: dict[str, object] = {
             "onboarding.completed": True,
-            "onboarding.completed_at": completed_at or now,
-            "onboarding.phase": phase,
-            "onboarding.bio_status": bio_status,
-            "onboarding.preferences": preferences.model_dump(),
-            "onboarding.pipeline_mode": pipeline_mode,
+            "onboarding.completed_at": completion.completed_at or datetime.now(UTC),
+            "onboarding.phase": completion.phase,
+            "onboarding.bio_status": completion.bio_status,
+            "onboarding.preferences": completion.preferences.model_dump(),
+            "onboarding.pipeline_mode": completion.pipeline_mode,
         }
-        if name is not None:
-            set_fields["name"] = name
-        if timezone is not None:
-            set_fields["timezone"] = timezone
-        if focus is not None:
-            set_fields["onboarding.focus"] = focus
-        if clarify_answers is not None:
-            set_fields["onboarding.clarify_answers"] = clarify_answers
-        if selected_integrations is not None:
-            set_fields["onboarding.selected_integrations"] = selected_integrations
+        optional_paths = {
+            "name": completion.name,
+            "timezone": completion.timezone,
+            "onboarding.focus": completion.focus,
+            "onboarding.clarify_answers": completion.clarify_answers,
+            "onboarding.selected_integrations": completion.selected_integrations,
+        }
+        set_fields.update({path: v for path, v in optional_paths.items() if v is not None})
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
@@ -492,35 +479,22 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def save_personalization(
-        self,
-        user_id: str,
-        *,
-        house: str,
-        personality_phrase: str,
-        user_bio: str,
-        bio_status: BioStatus,
-        account_number: int,
-        member_since: str,
-        overlay_color: str,
-        overlay_opacity: int,
-        workflow_ids: list[str],
-    ) -> None:
+    async def save_personalization(self, user_id: str, bundle: PersonalizationBundle) -> None:
         """Persist the generated personalization bundle and advance the phase to
         personalization-complete."""
         set_fields: dict[str, object] = {
-            "onboarding.house": house,
-            "onboarding.personality_phrase": personality_phrase,
-            "onboarding.user_bio": user_bio,
-            "onboarding.bio_status": bio_status,
+            "onboarding.house": bundle.house,
+            "onboarding.personality_phrase": bundle.personality_phrase,
+            "onboarding.user_bio": bundle.user_bio,
+            "onboarding.bio_status": bundle.bio_status,
             "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE.value,
-            "onboarding.account_number": account_number,
-            "onboarding.member_since": member_since,
-            "onboarding.overlay_color": overlay_color,
-            "onboarding.overlay_opacity": overlay_opacity,
+            "onboarding.account_number": bundle.account_number,
+            "onboarding.member_since": bundle.member_since,
+            "onboarding.overlay_color": bundle.overlay_color,
+            "onboarding.overlay_opacity": bundle.overlay_opacity,
         }
-        if workflow_ids:
-            set_fields["onboarding.suggested_workflows"] = workflow_ids
+        if bundle.workflow_ids:
+            set_fields["onboarding.suggested_workflows"] = bundle.workflow_ids
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
@@ -817,6 +791,110 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                 }
             },
             scope=REPO_GLOBAL_SCOPE,
+        )
+
+    # ------------------------------------------------------------ briefing engine
+
+    async def get_last_active_at(self, user_id: str) -> datetime | None:
+        user = await self.get(user_id)
+        return user.last_active_at if user else None
+
+    async def clear_briefing_bootstrap(self, user_id: str) -> None:
+        """Clear the pending-bootstrap marker once a real briefing goes out."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$unset": {"briefing_bootstrap": ""}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def get_edition_rotation(self, user_id: str, kind: str) -> EditionRotation | None:
+        """The user's persisted edition rotation state for ``kind``, if any."""
+        user = await self.get(user_id)
+        return (user.edition_rotations or {}).get(kind) if user else None
+
+    async def set_edition_rotation(self, user_id: str, kind: str, state: EditionRotation) -> None:
+        """Persist the advanced rotation state for ``kind`` (see edition_rotation)."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {f"edition_rotations.{kind}": state.model_dump()}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def set_briefing_bootstrap_pending(self, user_id: str) -> None:
+        """Hold briefings for a sparse existing-user rollout until a goal arrives
+        or the grace window elapses."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"briefing_bootstrap": {"pending": True, "since": datetime.now(UTC)}}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def set_dormancy_day(self, user_id: str, *, idle_days: int, date_str: str) -> None:
+        """Persist today's idle/active outcome on the dormancy ladder."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {
+                "$set": {
+                    "briefing_dormancy.idle_days": idle_days,
+                    "briefing_dormancy.date": date_str,
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def enter_briefing_dormancy(self, user_id: str) -> None:
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"briefing_dormancy.dormant_since": datetime.now(UTC)}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def clear_briefing_dormancy(self, user_id: str) -> None:
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$unset": {"briefing_dormancy": ""}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def get_briefing_channel_priority(self, user_id: str) -> list[str] | None:
+        user = await self.get(user_id)
+        return user.briefing_channel_priority if user else None
+
+    async def set_briefing_channel_priority(self, user_id: str, priority: list[str]) -> None:
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"briefing_channel_priority": priority}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def has_first_approve(self, user_id: str) -> bool:
+        user = await self.get(user_id)
+        return bool((user.first_steps or {}).get("first_approve")) if user else False
+
+    async def set_first_step(self, user_id: str, step: str) -> bool:
+        """Idempotently mark ``first_steps.<step>`` done. Returns whether this call
+        was the one that set it (False on a repeat)."""
+        matched = await self._apply_raw_update_unfetched(
+            {"_id": self._id_value(user_id), f"first_steps.{step}": {"$exists": False}},
+            {"$set": {f"first_steps.{step}": datetime.now(UTC)}},
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=user_id,
+        )
+        return matched > 0
+
+    async def mark_day_zero_hello_sent(self, user_id: str, platform: str) -> None:
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"day_zero_hello": {"sent_at": datetime.now(UTC), "platform": platform}}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
         )
 
 

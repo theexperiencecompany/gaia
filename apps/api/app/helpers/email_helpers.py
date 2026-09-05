@@ -11,6 +11,7 @@ from app.constants.email import NO_SUBJECT, UNKNOWN_SENDER
 from app.constants.memory import MemorySourceType
 from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
+from app.memory.ingestion import MemorySource
 from shared.py.wide_events import log
 
 # HTML to text converter
@@ -151,7 +152,7 @@ Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
         result = await memory_engine.retain(
             user_id,
             messages,
-            source_type=MemorySourceType.EMAIL,
+            source=MemorySource(MemorySourceType.EMAIL),
             extraction_hints=f"{user_context}\n\n{EMAIL_MEMORY_EXTRACTION_PROMPT}",
             user_name=user_name,
         )
@@ -208,8 +209,7 @@ async def store_single_profile(
         await memory_engine.retain(
             user_id,
             [{"role": "user", "content": memory_content}],
-            source_type=MemorySourceType.EMAIL,
-            source_id=profile_url,
+            source=MemorySource(MemorySourceType.EMAIL, profile_url),
             extraction_hints=(
                 f"This is the user's own {platform} profile, discovered during email "
                 "onboarding. Extract durable facts about the user: their handle, bio, "

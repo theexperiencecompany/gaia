@@ -32,6 +32,7 @@ from app.models.notification.notification_models import (
 from app.models.notification.request_models import (
     BulkActionRequest,
     BulkActionSummary,
+    NotificationQuery,
     NotificationResponse,
     PaginatedNotificationsResponse,
 )
@@ -118,7 +119,10 @@ async def get_notifications(
     try:
         notifications, notification_count = await asyncio.gather(
             notification_service.get_user_notifications(
-                user_id, status, limit, offset, channel_type
+                user_id,
+                NotificationQuery(
+                    status=status, limit=limit, offset=offset, channel_type=channel_type
+                ),
             ),
             notification_service.get_user_notifications_count(user_id, status, channel_type),
         )
@@ -156,12 +160,7 @@ async def get_channel_preferences(
     try:
         prefs = await fetch_channel_preferences(user_id)
         log.set(operation="get_channel_preferences", outcome="success")
-        return ChannelPreferences(
-            telegram=prefs["telegram"],
-            discord=prefs["discord"],
-            whatsapp=prefs["whatsapp"],
-            slack=prefs["slack"],
-        )
+        return ChannelPreferences.model_validate(prefs)
     except Exception as e:
         log.error(
             f"{LogTag.NOTIFICATION} Failed to get channel preferences",
@@ -194,6 +193,7 @@ async def update_channel_preferences(
             discord=preferences.discord,
             whatsapp=preferences.whatsapp,
             slack=preferences.slack,
+            email=preferences.email,
         )
         schedule_account_sync(user_id)
 
@@ -208,12 +208,7 @@ async def update_channel_preferences(
             },
         )
         log.set(operation="update_channel_preferences", outcome="success")
-        return ChannelPreferences(
-            telegram=prefs["telegram"],
-            discord=prefs["discord"],
-            whatsapp=prefs["whatsapp"],
-            slack=prefs["slack"],
-        )
+        return ChannelPreferences.model_validate(prefs)
     except Exception as e:
         log.error(
             f"{LogTag.NOTIFICATION} Failed to update channel preferences",

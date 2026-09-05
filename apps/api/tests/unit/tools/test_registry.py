@@ -474,6 +474,7 @@ class TestCoreInitializationContract:
             "get_notification_count",
             "mark_notifications_read",
             "send_notification",
+            "send_urgent_alert",
             "get_notification_preferences",
         ]
 

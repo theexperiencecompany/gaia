@@ -93,5 +93,12 @@ class WorkflowExecutionsRepository(
         executions = await self._find(filter_, sort=[("started_at", -1)], limit=limit, skip=offset)
         return executions, total
 
+    async def list_since(
+        self, user_id: str, since: datetime, *, limit: int
+    ) -> list[WorkflowExecutionDocument]:
+        """A user's executions started at/after ``since`` — the briefing engine's
+        look-back read."""
+        return await self._find({"user_id": user_id, "started_at": {"$gte": since}}, limit=limit)
+
 
 workflow_executions_repository = WorkflowExecutionsRepository()

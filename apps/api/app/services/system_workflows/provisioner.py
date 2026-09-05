@@ -28,6 +28,7 @@ from app.models.notification.notification_models import (
 )
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
 from app.services.notification_service import NotificationService
+from app.services.system_workflows.definitions.briefing import BRIEFING_SYSTEM_WORKFLOWS
 from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
 from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLOWS
 from app.services.user_service import get_user_by_id
@@ -37,18 +38,81 @@ from app.services.workflow.trigger_service import TriggerService
 from app.utils.workflow_utils import ensure_trigger_config_object
 from shared.py.wide_events import log
 
+WorkflowEntries = list[tuple[str, Callable[[], CreateWorkflowRequest]]]
+
 # Maps integration_id -> list of (system_workflow_key, factory)
-SYSTEM_WORKFLOWS_BY_INTEGRATION: dict[
-    str, list[tuple[str, Callable[[], CreateWorkflowRequest]]]
-] = {
+SYSTEM_WORKFLOWS_BY_INTEGRATION: dict[str, WorkflowEntries] = {
     "gmail": GMAIL_SYSTEM_WORKFLOWS,
     "googlecalendar": CALENDAR_SYSTEM_WORKFLOWS,
 }
 
-# Flat registry: system_workflow_key -> factory (for reset-to-default)
+# Flat registry: system_workflow_key -> factory (for reset-to-default). Includes
+# the integration-triggered workflows plus the always-provisioned briefings.
 SYSTEM_WORKFLOW_REGISTRY: dict[str, Callable[[], CreateWorkflowRequest]] = {
-    key: factory for entries in SYSTEM_WORKFLOWS_BY_INTEGRATION.values() for key, factory in entries
+    key: factory
+    for entries in (*SYSTEM_WORKFLOWS_BY_INTEGRATION.values(), BRIEFING_SYSTEM_WORKFLOWS)
+    for key, factory in entries
 }
+
+
+async def _provision_entries(
+    user_id: str,
+    entries: WorkflowEntries,
+    integration_display_name: str | None = None,
+) -> list[CreateWorkflowRequest]:
+    """Create each (key, factory) workflow for the user, idempotent by key.
+
+    Stamps the user's timezone onto scheduled definitions (factories can't know
+    it) and skips keys that already exist. Returns the requests actually created.
+    """
+    created: list[CreateWorkflowRequest] = []
+    user_timezone: str | None = None
+
+    for key, factory in entries:
+        existing = await workflow_repository.find_system_workflow(user_id, key)
+        if existing:
+            log.info(
+                f"{LogTag.WORKFLOW} System workflow already exists, skipping",
+                system_workflow_key=key,
+                user_id=user_id,
+            )
+            continue
+
+        try:
+            request = factory()
+            trigger_config = ensure_trigger_config_object(request.trigger_config)
+            if trigger_config.type == TriggerType.SCHEDULE and not trigger_config.timezone:
+                if user_timezone is None:
+                    user = await get_user_by_id(user_id) or {}
+                    user_timezone = (user.get("timezone") or "").strip() or "UTC"
+                trigger_config.timezone = user_timezone
+                request.trigger_config = trigger_config
+            await WorkflowService.create_workflow(request, user_id)
+            created.append(request)
+            log.info(
+                f"{LogTag.WORKFLOW} Provisioned system workflow",
+                system_workflow_key=key,
+                user_id=user_id,
+            )
+        except DuplicateKeyError:
+            log.info(
+                f"{LogTag.WORKFLOW} System workflow already exists (concurrent creation), skipping",
+                system_workflow_key=key,
+                user_id=user_id,
+            )
+        except Exception as e:
+            log.error(
+                "system_workflow_provision_failed",
+                system_workflow_key=key,
+                user_id=user_id,
+                integration_display_name=integration_display_name,
+                error_type=type(e).__name__,
+                error=str(e)[:500],
+                outcome="failed",
+                exc_info=True,
+            )
+
+    return created
 
 
 async def provision_system_workflows(
@@ -86,57 +150,27 @@ async def provision_system_workflows(
         integration_id=integration_id,
     )
 
-    created: list[CreateWorkflowRequest] = []
-    user_timezone: str | None = None
-
-    for key, factory in entries:
-        # Idempotency: skip if this key already exists for this user
-        existing = await workflow_repository.find_system_workflow(user_id, key)
-        if existing:
-            log.info(
-                f"{LogTag.WORKFLOW} System workflow already exists, skipping",
-                key=key,
-                user_id=user_id,
-            )
-            continue
-
-        try:
-            request = factory()
-            trigger_config = ensure_trigger_config_object(request.trigger_config)
-            # Factories can't know the user, so scheduled definitions carry no
-            # timezone — stamp the profile timezone here so the cron fires at
-            # the user's local time instead of UTC.
-            if trigger_config.type == TriggerType.SCHEDULE and not trigger_config.timezone:
-                if user_timezone is None:
-                    user = await get_user_by_id(user_id) or {}
-                    user_timezone = (user.get("timezone") or "").strip() or "UTC"
-                trigger_config.timezone = user_timezone
-                request.trigger_config = trigger_config
-            await WorkflowService.create_workflow(request, user_id)
-            created.append(request)
-            log.info(
-                f"{LogTag.WORKFLOW} Provisioned system workflow for user", key=key, user_id=user_id
-            )
-        except DuplicateKeyError:
-            log.info(
-                f"{LogTag.WORKFLOW} System workflow already exists for user (concurrent creation), skipping",
-                key=key,
-                user_id=user_id,
-            )
-        except Exception as e:
-            log.error(
-                "system_workflow_provision_failed",
-                system_workflow_key=key,
-                user_id=user_id,
-                integration_display_name=integration_display_name,
-                error_type=type(e).__name__,
-                error=str(e)[:500],
-                outcome="failed",
-                exc_info=True,
-            )
+    created = await _provision_entries(user_id, entries, integration_display_name)
 
     if created and notify:
         await _notify_workflows_provisioned(user_id, integration_display_name, created)
+
+
+async def provision_briefing_workflows(user_id: str) -> list[CreateWorkflowRequest]:
+    """Provision the daily-briefing and weekly-digest system workflows for a user.
+
+    Called at onboarding completion and by the existing-user backfill. Idempotent
+    by ``system_workflow_key`` — safe to re-run. Returns the requests created (empty
+    when both already exist). The announcement / bootstrap interview is the caller's
+    responsibility (see ``app/services/briefing/rollout.py``); this only wires the
+    schedules.
+    """
+    log.set(
+        component="system_workflow_provisioner",
+        operation="provision_briefing_workflows",
+        user_id=user_id,
+    )
+    return await _provision_entries(user_id, BRIEFING_SYSTEM_WORKFLOWS)
 
 
 async def _notify_workflows_provisioned(

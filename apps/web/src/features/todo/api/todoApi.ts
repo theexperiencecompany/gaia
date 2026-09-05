@@ -12,9 +12,24 @@ const httpAdapter: HttpAdapter = {
 
 export const todoApi = createTodoApi(httpAdapter);
 
+export type TodoFacet = "deliverable" | "notes" | "log";
+
 export const getTodoCanvas = async (
   todoId: string,
 ): Promise<{ content: string }> =>
   apiService.get<{ content: string }>(TODO_ENDPOINTS.canvas(todoId), {
+    silent: true,
+  });
+
+/**
+ * Reads one facet of a tracked todo. Approval previews MUST read
+ * `deliverable` — that is the exact content Approve releases, not GAIA's
+ * working memory.
+ */
+export const getTodoFacet = async (
+  todoId: string,
+  facet: TodoFacet,
+): Promise<{ content: string }> =>
+  apiService.get<{ content: string }>(TODO_ENDPOINTS.facet(todoId, facet), {
     silent: true,
   });

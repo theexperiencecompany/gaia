@@ -20,6 +20,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
+from app.models.notification.request_models import NotificationQuery
 from app.services.analytics_service import AnalyticsEvents
 
 NOTIF_BASE = "/api/v1/notifications"
@@ -134,6 +135,41 @@ class TestGetNotifications:
         "app.api.v1.endpoints.notification.notification_service.get_user_notifications",
         new_callable=AsyncMock,
     )
+    async def test_get_notifications_forwards_every_query_param(
+        self,
+        mock_get: AsyncMock,
+        mock_count: AsyncMock,
+        client: AsyncClient,
+    ):
+        """Every filter/paging param reaches the service as one NotificationQuery.
+
+        A param dropped or nulled on the way down is invisible in the response
+        body -- the caller just silently gets an unfiltered or mis-paged page.
+        """
+        mock_get.return_value = []
+        mock_count.return_value = 0
+        response = await client.get(
+            f"{NOTIF_BASE}?status=read&limit=25&offset=10&channel_type=email"
+        )
+        assert response.status_code == 200
+        mock_get.assert_awaited_once_with(
+            FAKE_USER_ID,
+            NotificationQuery(
+                status=NotificationStatus.READ,
+                limit=25,
+                offset=10,
+                channel_type="email",
+            ),
+        )
+
+    @patch(
+        "app.api.v1.endpoints.notification.notification_service.get_user_notifications_count",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.notification.notification_service.get_user_notifications",
+        new_callable=AsyncMock,
+    )
     async def test_get_notifications_service_error(
         self,
         mock_get: AsyncMock,
@@ -173,6 +209,7 @@ class TestGetChannelPreferences:
             "discord": False,
             "whatsapp": False,
             "slack": False,
+            "email": False,
         }
         response = await client.get(f"{NOTIF_BASE}/preferences/channels")
         assert response.status_code == 200
@@ -217,6 +254,7 @@ class TestUpdateChannelPreferences:
             "discord": True,
             "whatsapp": False,
             "slack": False,
+            "email": False,
         }
         with patch("app.api.v1.endpoints.notification.schedule_account_sync") as mock_schedule_sync:
             response = await client.put(

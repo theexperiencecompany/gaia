@@ -64,11 +64,14 @@ async def test_update_canvas_embedding_reindexes() -> None:
             return_value=True,
         ) as store,
     ):
-        ok = await update_canvas_embedding("todo-1", "new text", "user-1")
+        ok = await update_canvas_embedding("todo-1", "new text", "user-1", title="T", labels=["a"])
 
     assert ok is True
     delete.assert_awaited_once_with("todo-1")
-    store.assert_awaited_once()
+    # Every argument, not just the call: a re-index that drops the title, the
+    # labels or the owning user re-indexes the todo under a different identity,
+    # and the todo silently stops coming back from canvas search.
+    store.assert_awaited_once_with("todo-1", "new text", "user-1", "T", ["a"])
 
 
 async def test_delete_canvas_embedding() -> None:

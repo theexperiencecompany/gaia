@@ -29,6 +29,7 @@ export const professionOptions: ProfessionOption[] = [
 export const FIELD_NAMES = {
   NAME: "name",
   PROFESSION: "profession",
+  WORKING_ON: "working_on",
   GMAIL: "gmail",
   FOCUS: "focus",
 } as const;
@@ -49,6 +50,12 @@ export const questions: Question[] = [
   },
   {
     id: "3",
+    question: "What are you working on right now?",
+    placeholder: "e.g., raising a pre-seed, shipping v2, growing on Twitter...",
+    fieldName: FIELD_NAMES.WORKING_ON,
+  },
+  {
+    id: "4",
     question:
       "Last thing. Connect your Gmail and I'll go through your inbox, find what matters, and set up your first action items.",
     placeholder: "",

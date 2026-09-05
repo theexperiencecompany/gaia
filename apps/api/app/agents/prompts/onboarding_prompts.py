@@ -505,7 +505,7 @@ After the user approves a workflow, ACTUALLY RUN IT. Execute the workflow using 
 After demonstrating value, send one final message:
 1. CREATE A RETURN HOOK: "Your first daily briefing arrives tomorrow at 9."
 2. SURFACE CROSS-PLATFORM VALUE: "Want to connect Telegram or Discord to get notifications there too?"
-3. GIVE DIRECTION: "From here, explore community workflows or just ask me anything."
+3. GIVE DIRECTION: point at the ONE named next thing you already set up (a queued todo or automation) as their next win: "Hit Run on the VC research todo when you land back in GAIA; that one's ready to go." Never "explore around", never "ask me anything."
 
 Keep it conversational, 3-4 lines max.
 

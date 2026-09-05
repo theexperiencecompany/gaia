@@ -36,6 +36,7 @@ from app.db.repositories.users import user_repository
 from app.memory import pg_store
 from app.memory.extraction import rewrite_core_document, verify_core_document
 from app.memory.management import update_document
+from app.memory.mappers import entry_to_note, row_to_entry
 from app.memory.prompts import (
     MEMORY_DOC_CONSOLIDATION_PROMPT,
     PEOPLE_DOC_CONSOLIDATION_PROMPT,
@@ -448,10 +449,15 @@ async def _gather_inputs(
 
 
 def _facts_section(facts: list[MemoryRecord]) -> list[str]:
-    """Render fact rows as one input section (empty list when there are none)."""
+    """Render fact rows as one input section (empty list when there are none).
+
+    Routes each row through the canonical ``entry_to_note`` renderer so
+    consolidation inputs carry the same [occurred]/[mentioned] annotations
+    every other memory consumer sees, instead of a bare stored date.
+    """
     if not facts:
         return []
-    lines = "\n".join(f"- {fact.content} (stored {fact.created_at:%Y-%m-%d})" for fact in facts)
+    lines = "\n".join(f"- {entry_to_note(row_to_entry(fact, []))}" for fact in facts)
     return [f"## Every fact this document is written from\n{lines}"]
 
 

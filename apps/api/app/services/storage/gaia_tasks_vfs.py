@@ -10,8 +10,10 @@ Layout under ``<user_root>/gaia-tasks/``::
     GUIDE.md                          hand-authored, mode 0644
     index.md                          generated summary, mode 0644
     <slug>-<shortid>/
-        canvas.md                     mode 0444
+        deliverable.md                mode 0444
+        notes.md                      mode 0444
         log.md                        mode 0444
+        artifacts/                    mode 0444 bodies (optional)
         meta.json                     mode 0444
 
 Folder names are ``<slug>-<shortid>``: kebab-case title (≤ 40 chars) +
@@ -30,6 +32,7 @@ the legacy constants below.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -38,12 +41,13 @@ from app.services.storage._vfs_common import (
     INDEX_FILENAME,
     META_FILENAME,
     folder_name as common_folder_name,
-    hash_body_with_meta,
+    hash_bodies_with_meta,
     meta_body,
     per_doc_marker_path,
     prune_per_doc_markers,
     read_marker,
     remove_tree,
+    slugify,
     updated_at_key,
     write_marker,
     write_readonly_body,
@@ -60,8 +64,10 @@ from app.services.storage.user_todos_vfs import (
 GAIA_TASKS_DIRNAME = "gaia-tasks"
 GAIA_TASKS_MARKER = ".gaia/gaia-tasks.v"
 GAIA_TASKS_PER_DOC_MARKER_DIR = ".gaia/gaia-tasks"
-CANVAS_FILENAME = "canvas.md"
+DELIVERABLE_FILENAME = "deliverable.md"
+NOTES_FILENAME = "notes.md"
 LOG_FILENAME = "log.md"
+ARTIFACTS_DIRNAME = "artifacts"
 
 # --- Legacy paths (one-shot migration from the prior release) ---------------
 
@@ -74,19 +80,29 @@ class GaiaTaskProjection(TypedDict):
     """In-memory shape passed from the Mongo glue to the materializer."""
 
     id: str
-    canvas: str
+    deliverable: str
+    notes: str
     log: str
+    artifacts: list[dict[str, Any]]
     meta: dict[str, Any]
 
 
 # ====================================================================
-# signatures (per-doc body shape is canvas + log + meta)
+# signatures (per-doc body = deliverable + notes + log + artifacts + meta)
 # ====================================================================
 
 
 def per_doc_signature(doc: GaiaTaskProjection) -> str:
-    """sha256 of canvas + log + serialized meta — gates per-folder rewrite."""
-    return hash_body_with_meta(doc["canvas"], doc["log"], doc["meta"])
+    """sha256 of every facet body + serialized meta — gates per-folder rewrite."""
+    return hash_bodies_with_meta(
+        [
+            doc["deliverable"],
+            doc["notes"],
+            doc["log"],
+            json.dumps(doc["artifacts"], sort_keys=True, default=str),
+        ],
+        doc["meta"],
+    )
 
 
 # ====================================================================
@@ -223,12 +239,31 @@ def _write_changed_docs(
             continue
 
         folder.mkdir(parents=True, exist_ok=True)
-        write_readonly_body(folder / CANVAS_FILENAME, doc["canvas"])
+        write_readonly_body(folder / DELIVERABLE_FILENAME, doc["deliverable"])
+        write_readonly_body(folder / NOTES_FILENAME, doc["notes"])
         write_readonly_body(folder / LOG_FILENAME, doc["log"])
         write_readonly_body(folder / META_FILENAME, meta_body(doc["meta"]))
+        _write_artifacts(folder, doc["artifacts"])
         write_marker(marker_path, sig)
         written += 1
     return written, expected
+
+
+def _write_artifacts(folder: Path, artifacts: list[dict[str, Any]]) -> None:
+    """Project a doc's artifacts into ``<folder>/artifacts/`` (one file each).
+
+    The subtree is rewritten from scratch on every folder rewrite so renamed or
+    removed artifacts never linger; the per-doc signature already gates whether
+    a rewrite happens at all.
+    """
+    artifacts_dir = folder / ARTIFACTS_DIRNAME
+    remove_tree(artifacts_dir)
+    if not artifacts:
+        return
+    artifacts_dir.mkdir(exist_ok=True)
+    for index, artifact in enumerate(artifacts):
+        stem = slugify(artifact.get("name")) or f"artifact-{index}"
+        write_readonly_body(artifacts_dir / f"{stem}.md", artifact.get("content") or "")
 
 
 def _remove_stale_folders(tasks_root: Path, expected: set[str]) -> None:

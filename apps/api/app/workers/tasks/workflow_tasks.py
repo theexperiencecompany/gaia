@@ -38,6 +38,11 @@ from app.constants.agents import (
     AgentTag,
     wrap_agent_payload,
 )
+from app.constants.briefing import (
+    DAILY_BRIEFING_WORKFLOW_KEY,
+    OVERNIGHT_WORK_WORKFLOW_KEY,
+    WEEKLY_DIGEST_WORKFLOW_KEY,
+)
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import get_websocket_manager
@@ -1060,6 +1065,36 @@ async def _drain_trigger_events(
     return merged, None
 
 
+_BRIEFING_WORKFLOW_KEYS = {
+    DAILY_BRIEFING_WORKFLOW_KEY,
+    OVERNIGHT_WORK_WORKFLOW_KEY,
+    WEEKLY_DIGEST_WORKFLOW_KEY,
+}
+
+
+async def _run_briefing_workflow(workflow: Workflow) -> str:
+    """Run the dedicated deterministic-curation + structured-payload briefing
+    pipeline instead of the generic chat turn.
+
+    Briefing workflows own their own delivery (notification orchestrator), so
+    there is no conversation to thread through. Imported inline to avoid the
+    agent import cycle (same reason as execute_workflow_as_chat).
+    """
+    from app.services.briefing.service import (  # noqa: PLC0415 -- agent cycle
+        run_daily_briefing,
+        run_overnight_work,
+        run_weekly_digest,
+    )
+
+    if workflow.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY:
+        await run_daily_briefing(workflow.user_id)
+    elif workflow.system_workflow_key == OVERNIGHT_WORK_WORKFLOW_KEY:
+        await run_overnight_work(workflow.user_id)
+    else:
+        await run_weekly_digest(workflow.user_id)
+    return "Briefing delivered"
+
+
 async def _run_and_record_success(
     workflow: Workflow,
     workflow_id: str,
@@ -1067,6 +1102,8 @@ async def _run_and_record_success(
     context: dict[str, Any] | None,
     execution_id: str,
 ) -> str:
+    conversation_id: str | None
+    trace: list[RecordedCall]
     # Stamp the run's identity onto the task's wide event BEFORE any model call.
     # It is what the ``llm_calls`` ledger reads to attribute each call to this
     # execution (``llm_metering._ambient_worker_context``): the execution id
@@ -1076,13 +1113,16 @@ async def _run_and_record_success(
     # path too — a playbook replay that falls back to the agent still spends.
     log.set(workflow=WorkflowContext(id=workflow_id, execution_id=execution_id))
 
-    # Replay the workflow's playbook when it still describes this workflow,
-    # otherwise run the agent. A replay that stops partway hands the rest of
-    # the run to the agent, carrying what it already did so the agent does
-    # not repeat a side effect. The agent path delivers its own result from
-    # the background delivery path (gated by workflow_id); a trusted replay
-    # delivers inside _finish_after_replay.
-    conversation_id, trace, summary = await _run_workflow(workflow, workflow_id, context or {})
+    if workflow.system_workflow_key in _BRIEFING_WORKFLOW_KEYS:
+        conversation_id, trace, summary = None, [], await _run_briefing_workflow(workflow)
+    else:
+        # Replay the workflow's playbook when it still describes this workflow,
+        # otherwise run the agent. A replay that stops partway hands the rest of
+        # the run to the agent, carrying what it already did so the agent does
+        # not repeat a side effect. The agent path delivers its own result from
+        # the background delivery path (gated by workflow_id); a trusted replay
+        # delivers inside _finish_after_replay.
+        conversation_id, trace, summary = await _run_workflow(workflow, workflow_id, context or {})
 
     # Track successful execution
     await WorkflowService.increment_execution_count(

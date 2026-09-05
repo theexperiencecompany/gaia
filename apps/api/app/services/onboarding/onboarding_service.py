@@ -4,6 +4,7 @@ from typing import Any
 from fastapi import BackgroundTasks, HTTPException
 
 from app.constants.log_tags import LogTag
+from app.constants.memory import MemorySourceType
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.user_integrations import user_integration_repository
@@ -11,6 +12,7 @@ from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
 from app.models.onboarding_models import (
     ClarifyAnswerRecord,
+    OnboardingCompletion,
     OnboardingResetCounts,
 )
 from app.models.user_models import (
@@ -34,6 +36,7 @@ from app.services.onboarding.intelligence_job import (
     is_workflows_job_live,
 )
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
+from app.services.system_workflows.provisioner import provision_briefing_workflows
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
@@ -52,6 +55,25 @@ def _serialize_user(user: UserDocument) -> dict[str, Any]:
     data["_id"] = user.id
     data["user_id"] = user.id
     return data
+
+
+async def _seed_goal_memory(user_id: str, goal: str) -> None:
+    """Persist the user's stated onboarding goal to the memory system so every
+    future agent run can retrieve it. Best-effort background work: a memory
+    failure must not fail an already-completed onboarding."""
+    try:
+        await memory_engine.retain_single(
+            user_id,
+            f"The user is currently working on: {goal}",
+            source_type=MemorySourceType.MANUAL,
+        )
+    except Exception as e:
+        log.warning(
+            f"{LogTag.ONBOARDING} Failed to seed goal memory",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
 
 
 async def complete_onboarding(
@@ -84,9 +106,16 @@ async def complete_onboarding(
             ]
             clarify_answers = kept or None
 
-        focus = None
-        if onboarding_data.focus and onboarding_data.focus.strip():
-            focus = onboarding_data.focus.strip()
+        # Goal seed: the universal "what are you working on right now?" answer
+        # and the no-Gmail "focus" question capture the same intent. Unify them
+        # into the single canonical onboarding.focus field (reviving it on the
+        # Gmail path, which never set it) rather than duplicating a field. focus
+        # wins when present since it is the more specific this-week goal.
+        focus = (
+            (onboarding_data.focus or "").strip()
+            or (onboarding_data.working_on or "").strip()
+            or None
+        )
 
         # Atomic gate inside the repository: only the request that creates the
         # `onboarding` subdoc wins; concurrent POSTs and replays get None.
@@ -94,18 +123,20 @@ async def complete_onboarding(
         # IntegrationSlug type on OnboardingRequest — store as-is.
         updated_user = await user_repository.complete_onboarding(
             user_id,
-            name=onboarding_data.name.strip(),
-            timezone=onboarding_data.timezone.strip() if onboarding_data.timezone else None,
-            phase=OnboardingPhase.PERSONALIZATION_PENDING,
-            bio_status=BioStatus.PENDING,
-            pipeline_mode="split" if onboarding_data.defer_workflows else "full",
-            preferences=preferences,
-            focus=focus,
-            clarify_answers=clarify_answers,
-            selected_integrations=(
-                list(onboarding_data.selected_integrations)
-                if onboarding_data.selected_integrations
-                else None
+            OnboardingCompletion(
+                name=onboarding_data.name.strip(),
+                timezone=onboarding_data.timezone.strip() if onboarding_data.timezone else None,
+                phase=OnboardingPhase.PERSONALIZATION_PENDING,
+                bio_status=BioStatus.PENDING,
+                pipeline_mode="split" if onboarding_data.defer_workflows else "full",
+                preferences=preferences,
+                focus=focus,
+                clarify_answers=clarify_answers,
+                selected_integrations=(
+                    list(onboarding_data.selected_integrations)
+                    if onboarding_data.selected_integrations
+                    else None
+                ),
             ),
         )
 
@@ -148,6 +179,16 @@ async def complete_onboarding(
             ) from e
 
         background_tasks.add_task(seed_initial_user_data, user_id)
+
+        # Mirror the stated goal into the memory system so every future agent
+        # run sees it. Deferred so a memory failure can't fail onboarding.
+        if focus:
+            background_tasks.add_task(_seed_goal_memory, user_id, focus)
+
+        # Provision the daily-briefing + weekly-digest system workflows so the
+        # first briefing fires the next morning. Deferred so a provisioning
+        # failure can't fail onboarding; idempotent by system_workflow_key.
+        background_tasks.add_task(provision_briefing_workflows, user_id)
 
         log.info(f"{LogTag.ONBOARDING} Onboarding completed successfully for user", user_id=user_id)
         return _serialize_user(updated_user)
