@@ -35,6 +35,7 @@ from cdp_use.client import CDPClient
 import httpx
 from playwright.sync_api import StorageState, StorageStateCookie, sync_playwright
 
+from app.browser_host.memory import memory_usage_mb
 from app.browser_host.metrics import ProcessSampler, SessionMetrics
 from app.config.settings import settings
 from app.constants.browser import (
@@ -83,6 +84,12 @@ _CDP_CALL_TIMEOUT_SECONDS = 20.0
 _CDP_HEALTH_TIMEOUT_SECONDS = 5.0
 # How often the idle reaper wakes to sweep for dead/idle contexts.
 _REAPER_INTERVAL_SECONDS = 15.0
+# How often a create rechecks memory while backing off under pressure.
+_ADMISSION_POLL_SECONDS = 0.25
+# Above the soft watermark the reaper shortens the idle TTL by this factor (down to
+# the floor) so idle sessions are reclaimed faster to make room for new ones.
+_PRESSURE_IDLE_TTL_DIVISOR = 4
+_MIN_PRESSURE_IDLE_TTL_SECONDS = 30.0
 
 
 @dataclass(slots=True)
@@ -237,6 +244,10 @@ class ChromiumHost:
         # Serializes recovery so the watcher and the reaper can never relaunch at
         # once; recovery re-checks liveness under it, so the second caller no-ops.
         self._recover_lock = asyncio.Lock()
+        # Memory used at startup (0 sessions): the baseline the per-session cost
+        # estimate subtracts so it measures session-attributable growth, not the
+        # engine+host floor. Captured in start() once the engine is up.
+        self._base_memory_mb = 0.0
         # Set on ``stop()`` so the watcher treats the deliberate terminate as a
         # shutdown, not a crash to recover from. An Event, not a bool: the watcher
         # reads it after ``await proc.wait()``, and a plain-bool read there is
@@ -251,6 +262,7 @@ class ChromiumHost:
         if settings.BROWSER_ENGINE is not BrowserEngine.OBSCURA:
             self._chromium_path = await asyncio.to_thread(_resolve_chromium_path)
         await self._launch()
+        self._base_memory_mb = memory_usage_mb()[0]
         self._watcher_task = asyncio.create_task(self._watch_loop())
         self._reaper_task = asyncio.create_task(self._reaper_loop())
         log.info(f"{LogTag.BROWSER} browser host started")
@@ -513,16 +525,45 @@ class ChromiumHost:
             self._require_cdp(), method, params, session_id=session_id, timeout=timeout
         )
 
-    async def _reserve_slot(self) -> None:
-        """Claim one of ``BROWSER_HOST_MAX_SESSIONS`` slots before any CDP work.
+    def _estimate_session_cost_mb(self) -> float:
+        """Adaptive MB to reserve for the next session: measured average, floored.
 
-        The lock guards the registry only — never the CDP round-trips — so one
-        slow or wedged create cannot block every other user's.
+        ``(current_used - startup_baseline) / live_sessions`` learns the real
+        per-session cost as sessions run; the floor keeps a burst of concurrent
+        creates from collectively overshooting before their memory materializes.
         """
-        async with self._lock:
-            if len(self._sessions) + self._pending_slots >= settings.BROWSER_HOST_MAX_SESSIONS:
+        floor = float(settings.BROWSER_HOST_SESSION_COST_FLOOR_MB)
+        sessions = len(self._sessions)
+        if sessions == 0:
+            return floor
+        overhead = memory_usage_mb()[0] - self._base_memory_mb
+        return max(floor, overhead / sessions)
+
+    async def _reserve_slot(self) -> None:
+        """Admit one session when memory allows, else back off then 429.
+
+        The gate is memory, not a session count: admit while the projected usage
+        (current + a reservation for every in-flight and the new create) stays
+        under the high watermark. Over it, wait for the reaper/disposals to free
+        room — a graceful slowdown — and only raise :class:`AtCapacityError` once
+        the wait budget is spent. ``BROWSER_HOST_MAX_SESSIONS`` is only a runaway
+        backstop. The lock guards the registry, never the CDP round-trips.
+        """
+        deadline = time.monotonic() + settings.BROWSER_HOST_ADMISSION_WAIT_SECONDS
+        ceiling = settings.BROWSER_HOST_MAX_SESSIONS
+        while True:
+            used, limit = memory_usage_mb()
+            estimate = self._estimate_session_cost_mb()
+            hard_mb = limit * settings.BROWSER_HOST_MEMORY_HIGH_WATERMARK
+            async with self._lock:
+                over_ceiling = ceiling > 0 and len(self._sessions) + self._pending_slots >= ceiling
+                projected = used + (self._pending_slots + 1) * estimate
+                if not over_ceiling and projected <= hard_mb:
+                    self._pending_slots += 1
+                    return
+            if time.monotonic() >= deadline:
                 raise AtCapacityError
-            self._pending_slots += 1
+            await asyncio.sleep(_ADMISSION_POLL_SECONDS)
 
     async def _dispose_context_id(self, context_id: str) -> None:
         """Best-effort Chromium-side teardown; never raises into a caller's ``finally``."""
@@ -794,7 +835,12 @@ class ChromiumHost:
                 )
 
     async def _reap_idle(self) -> None:
-        ttl = settings.BROWSER_HOST_IDLE_TTL_SECONDS
+        ttl = float(settings.BROWSER_HOST_IDLE_TTL_SECONDS)
+        used, limit = memory_usage_mb()
+        # Under memory pressure, reclaim idle sessions sooner to free room for new
+        # ones instead of waiting out the full idle TTL.
+        if limit > 0 and used > limit * settings.BROWSER_HOST_MEMORY_SOFT_WATERMARK:
+            ttl = max(_MIN_PRESSURE_IDLE_TTL_SECONDS, ttl / _PRESSURE_IDLE_TTL_DIVISOR)
         now = time.monotonic()
         stale = [
             s.session_id

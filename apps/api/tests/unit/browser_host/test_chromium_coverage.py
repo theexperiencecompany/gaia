@@ -536,6 +536,106 @@ async def test_reserve_slot_counts_existing_sessions(monkeypatch: pytest.MonkeyP
         await host._reserve_slot()
 
 
+# --- memory-based admission (the real gate; the count is only a backstop) ---
+
+
+@pytest.mark.unit
+async def test_reserve_slot_admits_past_the_old_static_cap_when_memory_is_ample(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With headroom (and the count backstop disabled), admission isn't capped at a small count."""
+    monkeypatch.setattr(chromium, "memory_usage_mb", lambda: (100.0, 100_000.0))
+    monkeypatch.setattr(settings, "BROWSER_HOST_MAX_SESSIONS", 0)  # 0 = no count backstop
+    host = ChromiumHost()
+    for _ in range(50):
+        await host._reserve_slot()
+    assert host._pending_slots == 50  # far past the old static cap of 6
+
+
+@pytest.mark.unit
+async def test_reserve_slot_refuses_when_projected_usage_exceeds_high_watermark(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Near the memory limit a new session is refused rather than risking an OOM."""
+    monkeypatch.setattr(chromium, "memory_usage_mb", lambda: (980.0, 1000.0))  # 98% used
+    monkeypatch.setattr(settings, "BROWSER_HOST_MEMORY_HIGH_WATERMARK", 0.85)
+    host = ChromiumHost()
+    from app.browser_host.chromium import AtCapacityError
+
+    with pytest.raises(AtCapacityError):
+        await host._reserve_slot()
+
+
+@pytest.mark.unit
+async def test_reserve_slot_reserves_for_pending_creates_so_a_burst_cannot_overshoot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each in-flight create is charged an estimate, so a burst can't all pass at once."""
+    monkeypatch.setattr(chromium, "memory_usage_mb", lambda: (700.0, 1000.0))
+    monkeypatch.setattr(settings, "BROWSER_HOST_MEMORY_HIGH_WATERMARK", 0.85)  # hard = 850
+    monkeypatch.setattr(settings, "BROWSER_HOST_SESSION_COST_FLOOR_MB", 50)
+    host = ChromiumHost()
+    from app.browser_host.chromium import AtCapacityError
+
+    # 700 + n*50 must stay <= 850: three admit (750/800/850), the fourth (900) is refused.
+    await host._reserve_slot()
+    await host._reserve_slot()
+    await host._reserve_slot()
+    assert host._pending_slots == 3
+    with pytest.raises(AtCapacityError):
+        await host._reserve_slot()
+
+
+@pytest.mark.unit
+async def test_estimate_session_cost_is_measured_average_floored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "BROWSER_HOST_SESSION_COST_FLOOR_MB", 50)
+    host = ChromiumHost()
+    host._base_memory_mb = 100.0
+    host._sessions = {
+        f"s{i}": HostSession(
+            session_id=f"s{i}", context_id="c", target_id="t", created_at=0, last_activity_at=0
+        )
+        for i in range(3)
+    }
+    # overhead 300 / 3 sessions = 100/session, above the floor
+    monkeypatch.setattr(chromium, "memory_usage_mb", lambda: (400.0, 1000.0))
+    assert host._estimate_session_cost_mb() == 100.0
+    # overhead 60 / 3 = 20/session, below the floor -> floored
+    monkeypatch.setattr(chromium, "memory_usage_mb", lambda: (160.0, 1000.0))
+    assert host._estimate_session_cost_mb() == 50.0
+
+
+@pytest.mark.unit
+async def test_reap_idle_shortens_ttl_under_memory_pressure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Above the soft watermark an idle session past the shortened TTL is reaped early."""
+    monkeypatch.setattr(settings, "BROWSER_HOST_IDLE_TTL_SECONDS", 300)
+    monkeypatch.setattr(settings, "BROWSER_HOST_MEMORY_SOFT_WATERMARK", 0.75)
+    host = ChromiumHost()
+    host._proc = MagicMock(returncode=None)
+    host._dispose_context_id = AsyncMock()
+    # 100s idle: within the full 300s TTL, but past the pressure TTL (300/4 = 75s).
+    idle = HostSession(
+        session_id="s1",
+        context_id="c1",
+        target_id="t1",
+        created_at=0.0,
+        last_activity_at=time.monotonic() - 100,
+    )
+    host._sessions = {"s1": idle}
+
+    monkeypatch.setattr(chromium, "memory_usage_mb", lambda: (100.0, 1000.0))  # 10% — no pressure
+    await host._reap_idle()
+    assert "s1" in host._sessions
+
+    monkeypatch.setattr(chromium, "memory_usage_mb", lambda: (800.0, 1000.0))  # 80% — pressure
+    await host._reap_idle()
+    assert "s1" not in host._sessions
+
+
 # ---------------------------------------------------------------------------
 # _dispose_context_id
 # ---------------------------------------------------------------------------

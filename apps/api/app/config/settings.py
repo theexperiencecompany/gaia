@@ -305,8 +305,27 @@ class CommonSettings(BaseAppSettings):
     # fetch() the control plane on localhost (a cross-tenant DoS / control surface);
     # the key must never be reachable by page JS. Generate with: openssl rand -hex 32
     BROWSER_HOST_KEY: str | None = None
-    # Hard cap on concurrent browser contexts the single Chromium will hold.
-    BROWSER_HOST_MAX_SESSIONS: int = 6
+    # Absolute anti-runaway backstop on concurrent contexts, NOT the real gate:
+    # admission is memory-based (see the watermarks below), so this only guards
+    # against a pathological leak spawning unbounded contexts. 0 disables it.
+    BROWSER_HOST_MAX_SESSIONS: int = 200
+    # Memory-based admission. The single engine holds every session, so the real
+    # limit is the container's memory, not a session count. Admission reads the
+    # cgroup's used/limit (docker `mem_limit`) and admits while a new session's
+    # projected cost keeps usage under HIGH_WATERMARK; between SOFT and HIGH the
+    # reaper sheds idle sessions faster and creates back off before refusing.
+    # LIMIT_MB pins the budget when the cgroup is unreadable (dev/mac) or to cap
+    # below the container limit; None autodetects.
+    BROWSER_HOST_MEMORY_LIMIT_MB: int | None = None
+    BROWSER_HOST_MEMORY_HIGH_WATERMARK: float = 0.85
+    BROWSER_HOST_MEMORY_SOFT_WATERMARK: float = 0.75
+    # Conservative floor reserved for each in-flight/next session so a burst of
+    # concurrent creates cannot collectively overshoot the watermark before their
+    # memory materializes; the live estimate rises above this as real cost shows.
+    BROWSER_HOST_SESSION_COST_FLOOR_MB: int = 50
+    # Under pressure a create waits up to this long for memory to free (idle reap,
+    # other disposals) before returning 429 — graceful slowdown, not instant refusal.
+    BROWSER_HOST_ADMISSION_WAIT_SECONDS: float = 5.0
     # Dispose a context after this many seconds with no activity and no live viewer.
     BROWSER_HOST_IDLE_TTL_SECONDS: int = 300
     # Run Chromium headed (under Xvfb) instead of --headless=new, for anti-bot.

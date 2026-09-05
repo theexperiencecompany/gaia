@@ -1273,11 +1273,11 @@ services:
         delay: 5s
       resources:
         limits:
-          # Sized from measurement, not guesswork: an idle Chromium holds a few
-          # hundred MB and each concurrent session adds several hundred more on a
-          # real page, so BROWSER_HOST_MAX_SESSIONS sessions do not fit in 2G.
-          # Chromium is also capped per renderer (see BROWSER_HOST_JS_HEAP_MB) so
-          # one heavy page cannot eat the whole budget.
+          # This limit is the browser host's real admission gate: the host reads
+          # it from the cgroup and admits sessions by projected memory (see the
+          # BROWSER_HOST_MEMORY_* watermarks), not a fixed session count. Obscura
+          # is light (~tens of MB per context), so this holds a lot of concurrent
+          # sessions; heavy pages just fill it sooner and admission slows/refuses.
           memory: 6G
           cpus: "2.0"
       placement:
