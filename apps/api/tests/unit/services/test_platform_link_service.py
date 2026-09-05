@@ -21,6 +21,7 @@ from app.models.platform_models import (
     PendingPlatformRegistrationDocument,
 )
 from app.models.user_models import UserDocument
+from app.services import first_steps_service
 from app.services.analytics_service import AnalyticsEvents
 from app.services.platform_link_service import (
     Platform,
@@ -31,6 +32,7 @@ from app.services.platform_link_service import (
     start_platform_connect,
 )
 from app.utils.errors import AppError, create_error
+from shared.py.wide_events import log, log_context
 
 
 def _user(**fields) -> UserDocument:
@@ -45,12 +47,34 @@ def mock_repo():
         repo.link_platform = AsyncMock()
         repo.unlink_platform = AsyncMock()
         repo.list_platform_user_ids = AsyncMock(return_value=[])
-        yield repo
+        with patch("app.services.first_steps_service.user_repository") as first_steps_repo:
+            first_steps_repo.set_first_step = AsyncMock(return_value=False)
+            yield repo
 
 
 @pytest.fixture
 def sample_user_id():
     return str(ObjectId())
+
+
+class _FakeArqPool:
+    """ARQ pool stand-in that records ``enqueue_job`` exactly as it was called."""
+
+    def __init__(self):
+        self.jobs: list[tuple] = []
+
+    async def enqueue_job(self, *args):
+        self.jobs.append(args)
+
+
+@pytest.fixture
+def day_zero_pool():
+    pool = _FakeArqPool()
+    with patch(
+        "app.services.platform_link_service.RedisPoolManager.get_pool",
+        AsyncMock(return_value=pool),
+    ):
+        yield pool
 
 
 NOW = datetime(2026, 8, 15, 12, 0, tzinfo=UTC)
@@ -253,6 +277,67 @@ class TestLinkAccount:
         await PlatformLinkService.link_account(sample_user_id, "discord", "discord456")
 
         mock_pending_repo.delete_for_user.assert_not_awaited()
+
+
+class TestLinkSideEffects:
+    """The activation step and the day-zero hello a successful link fires."""
+
+    async def test_a_brand_new_link_enqueues_the_hello_for_that_user_and_platform(
+        self, mock_repo, sample_user_id, day_zero_pool
+    ):
+        mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
+        mock_repo.link_platform.return_value = _user(id=sample_user_id)
+
+        await PlatformLinkService.link_account(sample_user_id, "discord", "discord456")
+
+        assert day_zero_pool.jobs == [("send_day_zero_hello", sample_user_id, "discord")]
+
+    async def test_a_same_id_relink_never_re_greets(self, mock_repo, sample_user_id, day_zero_pool):
+        mock_repo.get.return_value = _user(
+            id=sample_user_id, platform_links={"discord": {"id": "discord123"}}
+        )
+        mock_repo.link_platform.return_value = _user(id=sample_user_id)
+
+        await PlatformLinkService.link_account(sample_user_id, "discord", "discord123")
+
+        assert day_zero_pool.jobs == []
+
+    async def test_any_chat_link_marks_the_platform_activation_step(
+        self, mock_repo, sample_user_id, day_zero_pool
+    ):
+        mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
+        mock_repo.link_platform.return_value = _user(id=sample_user_id)
+
+        with patch("app.services.first_steps_service.user_repository") as first_steps_repo:
+            first_steps_repo.set_first_step = AsyncMock(return_value=True)
+            await PlatformLinkService.link_account(sample_user_id, "telegram", "tg-1")
+
+        first_steps_repo.set_first_step.assert_awaited_once_with(
+            sample_user_id, first_steps_service.STEP_LINK_PLATFORM
+        )
+
+    async def test_a_redis_outage_still_links_and_names_the_cause(self, mock_repo, sample_user_id):
+        mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
+        mock_repo.link_platform.return_value = _user(id=sample_user_id)
+
+        with patch(
+            "app.services.platform_link_service.RedisPoolManager.get_pool",
+            AsyncMock(side_effect=RuntimeError("redis is down")),
+        ):
+            async with log_context("platform_link_test"):
+                result = await PlatformLinkService.link_account(sample_user_id, "slack", "slack-1")
+                event = dict(log.get())
+
+        assert result.status == "linked"
+        assert result.is_new_link is True
+        assert event["warnings"] == [
+            {
+                "msg": "platform_link.day_zero_enqueue_failed",
+                "user_id": sample_user_id,
+                "platform": "slack",
+                "error": "redis is down",
+            }
+        ]
 
 
 class TestUnlinkAccount:

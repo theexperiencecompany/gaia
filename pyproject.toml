@@ -457,6 +457,7 @@ unfixable = [
 # ARG001: ARQ's mandated first positional param on every registered task
 # (app/worker.py's WorkerSettings.functions/cron_jobs).
 "apps/api/app/workers/tasks/day_zero_hello_tasks.py" = ["ARG001"]  # ARQ injects the job ctx into every registered cron task; this one never reads it
+"apps/api/app/api/v1/endpoints/short_links.py" = ["ARG001"]  # FastAPI injects `request: Request`; the public slug resolver reads no headers
 "apps/api/app/utils/notification/channels/email.py" = ["ARG002"]  # ChannelAdapter protocol requires `notification`; this adapter always claims delivery
 # ARG001: ARQ injects the job context (`ctx`) into every task function; the
 # nurture task doesn't use it.
@@ -625,6 +626,7 @@ module = [
   "app.models.notification.notification_models",
   "app.models.briefing_models",
   "app.models.platform_models",
+  "app.models.short_link_models",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
