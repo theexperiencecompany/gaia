@@ -31,8 +31,10 @@ from app.models.calendar_models import (
     FindEventInput,
     GetDaySummaryInput,
     GetEventInput,
+    GoogleCalendarEventResource,
     ListCalendarsInput,
     PatchEventInput,
+    SingleEventInput,
 )
 from app.models.common_models import GatherContextInput
 from app.services import calendar_service, user_service
@@ -148,6 +150,124 @@ def _get_user_timezone() -> tzinfo | None:
     return None
 
 
+def _sum_busy_minutes(events: list[GoogleCalendarEventResource]) -> float:
+    """Total minutes across timed events, skipping all-day and unparseable ones."""
+    busy = 0.0
+    for event in events:
+        start_time = event.start.dateTime if event.start else None
+        end_time = event.end.dateTime if event.end else None
+        if not (start_time and end_time):
+            continue
+        try:
+            start_dt = datetime.fromisoformat(start_time)
+            end_dt = datetime.fromisoformat(end_time)
+        except (ValueError, TypeError) as e:
+            log.debug(
+                f"{LogTag.TOOL} Excluding event from busy-hours total, unparseable times",
+                start_time=start_time,
+                end_time=end_time,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            continue
+        busy += (end_dt - start_dt).total_seconds() / 60
+    return busy
+
+
+def _find_next_event(
+    events: list[GoogleCalendarEventResource], now: datetime, day_start: datetime
+) -> dict[str, Any] | None:
+    """The first event that starts after ``now``, only when ``day_start`` is today."""
+    if day_start.date() != now.date():
+        return None
+    for event in events:
+        start_time = event.start.dateTime if event.start else None
+        if not start_time:
+            continue
+        try:
+            event_start = datetime.fromisoformat(start_time)
+        except (ValueError, TypeError) as e:
+            log.debug(
+                f"{LogTag.TOOL} Skipping event when resolving next_event, unparseable start time",
+                start_time=start_time,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            continue
+        if event_start > now:
+            return event.model_dump()
+    return None
+
+
+def _build_event_body(event: SingleEventInput, index: int) -> dict[str, Any]:
+    """Google ``events.insert`` body for one requested event.
+
+    Raises ``ValueError`` if ``start_datetime`` is not ISO format — the caller
+    records that as a per-event error and moves on.
+    """
+    start_dt = datetime.fromisoformat(event.start_datetime)
+    end_dt = start_dt + timedelta(hours=event.duration_hours, minutes=event.duration_minutes)
+
+    body: dict[str, Any] = {"summary": event.summary}
+    if event.is_all_day:
+        # Google treats an all-day `end.date` as exclusive and rejects an empty
+        # range, so a one-day event ends on the following date. Same convention as
+        # calendar_service.create_calendar_event.
+        body["start"] = {"date": start_dt.strftime("%Y-%m-%d")}
+        body["end"] = {"date": (start_dt + timedelta(days=1)).strftime("%Y-%m-%d")}
+    else:
+        if start_dt.tzinfo is None:
+            user_tz = _get_user_timezone()
+            if user_tz is not None:
+                start_dt = start_dt.replace(tzinfo=user_tz)
+                end_dt = end_dt.replace(tzinfo=user_tz)
+        body["start"] = {"dateTime": start_dt.isoformat()}
+        body["end"] = {"dateTime": end_dt.isoformat()}
+
+    if event.description:
+        body["description"] = event.description
+    if event.location:
+        body["location"] = event.location
+    if event.attendees:
+        body["attendees"] = [{"email": email} for email in event.attendees]
+    if event.create_meeting_room:
+        body["conferenceData"] = {
+            "createRequest": {
+                "requestId": f"meet_{index}_{int(datetime.now(UTC).timestamp())}",
+                "conferenceSolutionKey": {"type": "hangoutsMeet"},
+            }
+        }
+    return body
+
+
+def _build_calendar_option(
+    event: SingleEventInput,
+    index: int,
+    body: dict[str, Any],
+    color_map: dict[str, str],
+    name_map: dict[str, str],
+) -> dict[str, Any]:
+    """A draft option for the confirmation card — no Google write happens for it."""
+    option: dict[str, Any] = {
+        "index": index,
+        "summary": event.summary,
+        "description": event.description or "",
+        "is_all_day": event.is_all_day,
+        "start": body["start"],
+        "end": body["end"],
+        "calendar_id": event.calendar_id,
+        "color": color_map.get(event.calendar_id, DEFAULT_CALENDAR_COLOR),
+        "calendar_name": name_map.get(event.calendar_id, "Calendar"),
+    }
+    if event.location:
+        option["location"] = event.location
+    if event.attendees:
+        option["attendees"] = event.attendees
+    if event.create_meeting_room:
+        option["create_meeting_room"] = True
+    return option
+
+
 def register_calendar_custom_tools(composio: Composio) -> list[str]:
     """Register calendar tools as Composio custom tools."""
 
@@ -237,43 +357,8 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         except Exception:
             formatted_events = [event.model_dump() for event in events]
 
-        busy_minutes: float = 0.0
-        for event in events:
-            start_time = event.start.dateTime if event.start else None
-            end_time = event.end.dateTime if event.end else None
-            if start_time and end_time:
-                try:
-                    start_dt = datetime.fromisoformat(start_time)
-                    end_dt = datetime.fromisoformat(end_time)
-                    duration = (end_dt - start_dt).total_seconds() / 60
-                    busy_minutes += duration
-                except (ValueError, TypeError) as e:
-                    log.debug(
-                        f"{LogTag.TOOL} Excluding event from busy-hours total, unparseable times",
-                        start_time=start_time,
-                        end_time=end_time,
-                        error=str(e),
-                        error_type=type(e).__name__,
-                    )
-
-        next_event: dict[str, Any] | None = None
-        if day_start.date() == now.date():
-            for event in events:
-                start_time = event.start.dateTime if event.start else None
-                if start_time:
-                    try:
-                        event_start = datetime.fromisoformat(start_time)
-                        if event_start > now:
-                            next_event = event.model_dump()
-                            break
-                    except (ValueError, TypeError) as e:
-                        log.debug(
-                            f"{LogTag.TOOL} Skipping event when resolving next_event, "
-                            "unparseable start time",
-                            start_time=start_time,
-                            error=str(e),
-                            error_type=type(e).__name__,
-                        )
+        busy_minutes = _sum_busy_minutes(events)
+        next_event = _find_next_event(events, now, day_start)
 
         result_data = {
             "date": day_start.strftime("%Y-%m-%d"),
@@ -574,7 +659,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         for index, event in enumerate(request.events):
             try:
-                start_dt = datetime.fromisoformat(event.start_datetime)
+                body = _build_event_body(event, index)
             except ValueError as e:
                 errors.append(
                     {
@@ -584,41 +669,6 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     }
                 )
                 continue
-
-            duration = timedelta(hours=event.duration_hours, minutes=event.duration_minutes)
-            end_dt = start_dt + duration
-
-            body: dict[str, Any] = {"summary": event.summary}
-
-            if event.is_all_day:
-                # Google treats an all-day `end.date` as exclusive and rejects an
-                # empty range, so a one-day event ends on the following date.
-                # Same convention as calendar_service.create_calendar_event.
-                body["start"] = {"date": start_dt.strftime("%Y-%m-%d")}
-                body["end"] = {"date": (start_dt + timedelta(days=1)).strftime("%Y-%m-%d")}
-            elif start_dt.tzinfo is not None:
-                body["start"] = {"dateTime": start_dt.isoformat()}
-                body["end"] = {"dateTime": end_dt.isoformat()}
-            else:
-                user_tz = _get_user_timezone()
-                if user_tz is not None:
-                    start_dt = start_dt.replace(tzinfo=user_tz)
-                    end_dt = end_dt.replace(tzinfo=user_tz)
-                body["start"] = {"dateTime": start_dt.isoformat()}
-                body["end"] = {"dateTime": end_dt.isoformat()}
-            if event.description:
-                body["description"] = event.description
-            if event.location:
-                body["location"] = event.location
-            if event.attendees:
-                body["attendees"] = [{"email": email} for email in event.attendees]
-            if event.create_meeting_room:
-                body["conferenceData"] = {
-                    "createRequest": {
-                        "requestId": f"meet_{index}_{int(datetime.now(UTC).timestamp())}",
-                        "conferenceSolutionKey": {"type": "hangoutsMeet"},
-                    }
-                }
 
             if request.confirm_immediately:
                 query: dict[str, Any] = {"sendUpdates": "all"}
@@ -645,24 +695,9 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     }
                 )
             else:
-                calendar_option = {
-                    "index": index,
-                    "summary": event.summary,
-                    "description": event.description or "",
-                    "is_all_day": event.is_all_day,
-                    "start": body["start"],
-                    "end": body["end"],
-                    "calendar_id": event.calendar_id,
-                    "color": color_map.get(event.calendar_id, DEFAULT_CALENDAR_COLOR),
-                    "calendar_name": name_map.get(event.calendar_id, "Calendar"),
-                }
-                if event.location:
-                    calendar_option["location"] = event.location
-                if event.attendees:
-                    calendar_option["attendees"] = event.attendees
-                if event.create_meeting_room:
-                    calendar_option["create_meeting_room"] = True
-                calendar_options.append(calendar_option)
+                calendar_options.append(
+                    _build_calendar_option(event, index, body, color_map, name_map)
+                )
 
         if errors and not created_events and not calendar_options:
             raise ValueError(f"All events failed validation: {errors}")

@@ -24,8 +24,6 @@ apps/api/app/agents/tools/core/retrieval.py	PLR0912
 apps/api/app/agents/tools/core/retrieval.py	PLR0913
 apps/api/app/agents/tools/core/retrieval.py	PLR0915
 apps/api/app/agents/tools/integration_tool.py	PLR0912
-apps/api/app/agents/tools/integrations/calendar_tool.py	PLR0912
-apps/api/app/agents/tools/integrations/calendar_tool.py	PLR0915
 apps/api/app/agents/tools/integrations/google_sheets_tool.py	PLR0912
 apps/api/app/agents/tools/integrations/google_sheets_tool.py	PLR0915
 apps/api/app/agents/tools/integrations/linear_tool.py	PLR0912

@@ -350,6 +350,7 @@ unfixable = [
 "apps/api/app/config/rate_limits.py" = ["PLR0912"]  # derive_pro_benefits predates this change; the triggers feature only adds a rate-limit feature key to this file
 "apps/api/app/db/repositories/todos.py" = ["PLR0912"]  # _list_filter predates this change; the triggers feature only adds subscription finders to this file
 "apps/api/app/services/analytics_service.py" = ["PLR0913"]  # track_subscription_event predates this change; the triggers feature only adds event enum members to this file
+"apps/api/app/agents/tools/integrations/calendar_tool.py" = ["PLR0915"]  # register_calendar_custom_tools is a registration factory: ruff counts all ~10 nested @custom_tool bodies as the factory's statements, which is inherent to the pattern, not reducible complexity. The tool bodies themselves were refactored to satisfy PLR0912/0915.
 "apps/api/app/services/oauth/oauth_service.py" = ["PLR0912", "PLR0915"]  # handle_oauth_connection and get_all_integrations_status predate this change; the triggers feature only adds a reconnect resync hook here
 "apps/api/app/services/outbound_delivery.py" = ["PLR0913"]  # publish_outbound_file predates this change; the reminder/proactive-delivery feature only adds channel-targeted delivery to publish_outbound_message here
 "apps/api/app/services/todos/todo_service.py" = ["PLR0912", "PLR0913"]  # update_todo and get_all_todos predate this change; the triggers feature only adds subscription teardown-on-delete here
