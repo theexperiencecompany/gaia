@@ -375,7 +375,7 @@ class TestComposeFirstQuestionBudget:
         assert options.max_attempts == expected_attempts
         assert options.timeout == timeout_seconds
 
-    async def test_the_default_ceiling_is_the_prewarms_eight_seconds(self) -> None:
+    async def test_the_default_ceiling_is_the_prewarms_twenty_seconds(self) -> None:
         runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
@@ -383,9 +383,9 @@ class TestComposeFirstQuestionBudget:
         ):
             await compose_first_question(_prefs(), None)
 
-        assert QUESTION_TIMEOUT_SECONDS == 8.0
+        assert QUESTION_TIMEOUT_SECONDS == 20.0
         assert LIVE_QUESTION_TIMEOUT_SECONDS == 2.0
-        assert invoke.await_args.kwargs["options"].timeout == 8.0
+        assert invoke.await_args.kwargs["options"].timeout == 20.0
 
 
 @pytest.mark.unit

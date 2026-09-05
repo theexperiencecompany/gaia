@@ -58,7 +58,7 @@ from app.agents.llm.client import (
 )
 from app.agents.prompts.new_user_prompts import TARGET_REPLY_EXAMPLE
 from app.models.user_models import OnboardingNeed, OnboardingPreferences
-from app.services.onboarding.first_conversation import HANDOVER_LINE
+from app.services.onboarding.first_conversation import HANDOVER_WITHOUT_JOB
 from app.services.onboarding.first_question import (
     QUESTION_TIMEOUT_SECONDS,
     compose_first_question,
@@ -475,7 +475,7 @@ async def run_follow(rows: list[tuple[str, object]], api_url: str, turns: int) -
                             persona=label,
                             chip=chip,
                             turn_number=turn_number,
-                            question=HANDOVER_LINE,
+                            question=HANDOVER_WITHOUT_JOB,
                             turn=turn,
                         )
                     )

@@ -36,7 +36,7 @@ from shared.py.wide_events import log
 
 #: The ceiling for the call made AHEAD of time, while the user is still clicking
 #: through the wizard. Nobody is waiting on it, so it gets room to succeed.
-QUESTION_TIMEOUT_SECONDS = 8.0
+QUESTION_TIMEOUT_SECONDS = 20.0
 
 #: The ceiling for the call made at completion, when the prewarm missed. The
 #: user is watching a spinner here, so this is a last chance rather than a real
@@ -109,9 +109,16 @@ real outcome in their world.
 - If they typed a need in their own words and it is a real job, it is chip one, \
 in their words, trimmed to a verb phrase. If it is not a real job, ignore it.
 - Four different jobs, no two about the same thing.
+- A job is something they would hand to a capable person to DO: it starts with \
+a verb that produces a thing (find, write, plan, build, chase, research, \
+model, prep). Never a complaint or a wish ("Never miss follow-ups", "Stop \
+re-explaining myself"), never a feeling, never "Do my research" or "Write my \
+drafts" style filler that names no outcome.
+- Write THIS person's four. The examples below show the standard, not the \
+words: copying an example's chips for a similar job is a failure.
 
 Examples of the standard. They are about OTHER people: never reuse their \
-details unless THIS person said so.
+details or their chips unless THIS person said so.
 founder, drowning in email: ["Find investors", "Fix my marketing", "Hire someone", "Write my pitch"]
 sales, follow-ups slip: ["Find leads", "Write outreach", "Prep a demo", "Build my pipeline"]
 engineer, same chores daily: ["Design my system", "Plan my sprint", "Write docs", "Ship my side project"]
