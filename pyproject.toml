@@ -92,6 +92,7 @@ ignore_names = [
   "reclassify_all", # rescore CLI surface consumed only by unit tests (vulture excludes tests)
   "render_by_suite",  # rescore report helper consumed only by unit tests (vulture excludes tests)
   "contract_failures",  # prompt-contract API consumed only by test_prompt_contracts.py (vulture excludes tests)
+  "reset_captured_loop",  # server-loop test cleanup consumed only by unit tests (vulture excludes tests)
 ]
 
 # ---------------------------------------------------------------------------

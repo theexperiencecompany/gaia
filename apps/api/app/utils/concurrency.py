@@ -42,20 +42,23 @@ def reset_captured_loop() -> None:
 
 
 def run_on_captured_loop(coro: Coroutine[Any, Any, _T], *, timeout: float | None = None) -> _T:
-    """Run ``coro`` to completion on the captured server loop, from a worker thread.
+    """Run ``coro`` to completion from a worker thread that has no running loop.
 
-    Dispatches onto the loop the async clients were built on via
-    ``run_coroutine_threadsafe`` and blocks for the result. ``asyncio.run`` here
-    would spin a fresh loop, so any loop-bound client the coroutine awaits (Motor)
-    raises "attached to a different loop" — the exact failure this exists to avoid.
+    When a server loop was captured (production: the loop the Motor/Redis clients
+    are bound to), dispatch onto it via ``run_coroutine_threadsafe`` so a
+    loop-bound client stays on its own loop — ``asyncio.run`` here would spin a
+    fresh loop and make Motor raise "attached to a different loop".
+
+    Without a captured loop — a loop-less context such as a synchronous
+    ``graph.stream`` in tests or a standalone script, where the services are
+    loop-agnostic — a fresh loop is the right thing. This is not a bug-hiding
+    fallback: a genuinely loop-bound client reached with no capture still fails
+    loud with the same cross-loop error, so the case this exists to prevent can
+    never pass silently.
     """
     loop = _captured_loop
     if loop is None:
-        coro.close()
-        raise RuntimeError(
-            "No server loop captured; call capture_running_loop() at startup before "
-            "dispatching a coroutine onto it from a worker thread."
-        )
+        return asyncio.run(coro)
     try:
         current: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
     except RuntimeError:

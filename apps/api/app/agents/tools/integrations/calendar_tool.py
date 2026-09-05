@@ -8,7 +8,9 @@ Note: Errors raised here propagate as exceptions; Composio wraps responses
 in {successful, data, error} format automatically.
 """
 
+import asyncio
 from collections.abc import Coroutine
+import concurrent.futures
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Any, TypeVar
 
@@ -61,13 +63,25 @@ _T = TypeVar("_T")
 def _run_sync(coro: Coroutine[Any, Any, _T], *, timeout: float | None = None) -> _T:
     """Run an async service call from a synchronous Composio custom-tool body.
 
-    The custom tools are registered as sync callables and executed on a worker
-    thread, but the services they call (calendar_service, user_service) drive the
-    loop-bound Motor client. Dispatch onto the server's own event loop — the one
-    the client was built on — rather than spinning a fresh loop with
-    ``asyncio.run``, which makes Motor raise "attached to a different loop".
+    The custom tools call async services (calendar_service, user_service) that
+    drive the loop-bound Motor client. In production the tool runs on a worker
+    thread with no running loop of its own, so the coroutine is dispatched onto
+    the server loop the client was built on — ``asyncio.run`` there would spin a
+    fresh loop and make Motor raise "attached to a different loop". When the tool
+    is already inside a running loop (nested-loop test harnesses), that loop
+    can't be blocked, so the coroutine is offloaded to a fresh thread + loop.
     """
-    return run_on_captured_loop(coro, timeout=timeout)
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return run_on_captured_loop(coro, timeout=timeout)
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        return pool.submit(lambda: asyncio.run(coro)).result(timeout=timeout)
+    finally:
+        # wait=False so shutdown doesn't join the worker, which would make the
+        # timeout a no-op (the caller would still block for the full coroutine).
+        pool.shutdown(wait=False)
 
 
 def _extract_datetime(dt: dict[str, Any] | str | None) -> str:

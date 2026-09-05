@@ -10,10 +10,8 @@ in `calendar_tool.py` / `calendar_models.py`; the tests that pin them down are
 marked with a "BUG:" comment.
 """
 
-import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta, tzinfo
-import threading
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
@@ -49,7 +47,7 @@ from app.models.calendar_models import (
 )
 from app.models.common_models import GatherContextInput
 from app.utils.calendar_utils import CALENDAR_API_BASE
-from app.utils.concurrency import capture_running_loop, reset_captured_loop
+from app.utils.concurrency import reset_captured_loop
 from app.utils.errors import AppError
 
 MODULE = "app.agents.tools.integrations.calendar_tool"
@@ -80,37 +78,17 @@ def tools() -> dict[str, Any]:
 
 
 @pytest.fixture(autouse=True)
-def _server_loop() -> Iterator[None]:
-    """Run a captured event loop on a background thread for every test.
+def _no_captured_server_loop() -> Iterator[None]:
+    """Run the tool bodies in a loop-less sync context, like the e2e graph harness.
 
-    Mirrors production: the sync Composio tool body runs on the caller's thread
-    and `_run_sync` dispatches the async services onto the server loop via
-    `run_coroutine_threadsafe`. Without a running captured loop the bridge fails
-    loud, so the tool-body tests need one just like the real worker does.
+    With no captured server loop, `_run_sync` runs the (mocked, loop-agnostic)
+    services on a fresh loop. Clearing the global guards against a captured loop
+    leaking in from another test, which would make `_run_sync` dispatch onto a
+    closed loop.
     """
-    loop = asyncio.new_event_loop()
-    ready = threading.Event()
-
-    def _run() -> None:
-        asyncio.set_event_loop(loop)
-        loop.call_soon(ready.set)
-        loop.run_forever()
-
-    thread = threading.Thread(target=_run, daemon=True)
-    thread.start()
-    ready.wait()
-
-    async def _capture() -> None:
-        capture_running_loop()
-
-    asyncio.run_coroutine_threadsafe(_capture(), loop).result()
-    try:
-        yield
-    finally:
-        reset_captured_loop()
-        loop.call_soon_threadsafe(loop.stop)
-        thread.join()
-        loop.close()
+    reset_captured_loop()
+    yield
+    reset_captured_loop()
 
 
 @pytest.fixture

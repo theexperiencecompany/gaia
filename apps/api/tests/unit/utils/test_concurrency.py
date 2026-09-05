@@ -38,9 +38,12 @@ async def _boom() -> None:
 
 @pytest.mark.unit
 class TestRunOnCapturedLoop:
-    async def test_requires_a_captured_loop(self) -> None:
-        with pytest.raises(RuntimeError, match="No server loop captured"):
-            run_on_captured_loop(_echo("x"))
+    async def test_without_capture_runs_on_a_fresh_loop(self) -> None:
+        # No server loop captured (a loop-less script or sync-graph test context):
+        # the coroutine runs on a fresh loop rather than failing. The autouse
+        # fixture already cleared any captured loop.
+        result = await asyncio.to_thread(lambda: run_on_captured_loop(_echo("x")))
+        assert result == "x"
 
     async def test_dispatches_onto_the_captured_loop_from_a_worker_thread(self) -> None:
         capture_running_loop()
