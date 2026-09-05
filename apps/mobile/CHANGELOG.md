@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.8.0...mobile-v0.8.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **web:** point Tailwind [@source](https://github.com/source) globs at the app's node_modules, not the root ([#1162](https://github.com/theexperiencecompany/gaia/issues/1162)) ([f1e7282](https://github.com/theexperiencecompany/gaia/commit/f1e72823b1139189c20278c902affee31f278b4f))
+
 ## [0.8.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.7.0...mobile-v0.8.0) (2026-08-25)
 
 
