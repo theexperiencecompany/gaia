@@ -46,7 +46,7 @@ def llm(monkeypatch):
         client.with_structured_output = with_structured_output
         return client
 
-    async def fake_ainvoke_llm(structured_llm, messages, label=None):
+    async def fake_ainvoke_llm(structured_llm, messages, label=None, feature=None):
         stub.called = True
         stub.prompt = messages[0].content
         stub.label = label

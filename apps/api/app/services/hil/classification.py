@@ -27,6 +27,7 @@ from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.repositories.hil import hil_tool_risk_repository
 from app.models.hil_models import HILToolRiskRecord
+from app.services.analytics_service import AIFeature
 from app.services.hil.prompts import TOOL_CLASSIFY_PROMPT
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from shared.py.wide_events import log
@@ -120,6 +121,7 @@ async def _classify_with_llm(tool_name: str, description: str) -> _ClassifyResul
         _ClassifyResult,
         TOOL_CLASSIFY_PROMPT.format(name=tool_name, description=description or "(none provided)"),
         label="hil_tool_classification",
+        feature=AIFeature.HIL,
         config=SILENT_LLM_CONFIG,
         options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS),
     )

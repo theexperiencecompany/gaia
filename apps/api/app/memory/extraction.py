@@ -40,6 +40,7 @@ from app.memory.schemas import (
     ReconcileDecision,
     VerifiedDocument,
 )
+from app.services.analytics_service import AIFeature
 from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
@@ -138,7 +139,11 @@ async def _invoke_structured(
     losing the cache isolation, not the memory."""
     try:
         return await ainvoke_structured_gemini(
-            output_model, messages, label=f"memory:{operation}", config=_silent_config(user_id)
+            output_model,
+            messages,
+            label=f"memory:{operation}",
+            feature=AIFeature.MEMORY,
+            config=_silent_config(user_id),
         )
     except LLMNotConfiguredError as e:
         log.error(

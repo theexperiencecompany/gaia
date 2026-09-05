@@ -47,6 +47,7 @@ from app.models.stream_events import (
     ModelFallbackFrame,
     ToolOutputPayload,
 )
+from app.services.llm_usage_analytics import graph_call_properties
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
     format_sse_data,
@@ -179,6 +180,8 @@ def _build_agent_callbacks(
     conversation_id: str,
     user: AgentUserContext,
     agent_name: str,
+    source: str | None,
+    workflow_id: str | None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None,
 ) -> list[BaseCallbackHandler]:
     """Assemble the LangChain callback list for an agent run (PostHog, usage)."""
@@ -193,6 +196,9 @@ def _build_agent_callbacks(
                 properties={
                     "conversation_id": conversation_id,
                     "agent_name": agent_name,
+                    # Without these, $ai_generation cannot say what the spend was
+                    # for, where it came from, or which workflow asked for it.
+                    **graph_call_properties(agent_name, source, workflow_id),
                 },
                 privacy_mode=False,
             ),
@@ -500,7 +506,12 @@ async def build_agent_config(
     )
 
     callbacks = _build_agent_callbacks(
-        conversation_id, user, agent_name, tracing.usage_metadata_callback
+        conversation_id,
+        user,
+        agent_name,
+        source,
+        (base_configurable or {}).get("workflow_id"),
+        tracing.usage_metadata_callback,
     )
 
     # The one seam every execution path crosses. A run with a parent inherits its

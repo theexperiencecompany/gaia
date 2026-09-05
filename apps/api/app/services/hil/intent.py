@@ -42,6 +42,7 @@ from pydantic import BaseModel, Field
 from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, silent_metered_config
 from app.constants.hil import HIL_JUDGE_MIN_QUOTE_WORDS, HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
+from app.services.analytics_service import AIFeature
 from app.services.hil.prompts import INTENT_JUDGE_PROMPT
 from app.services.hil.utils import (
     PriorCall,
@@ -199,6 +200,7 @@ async def _ask_judge(
             args=args_preview(call.args),
         ),
         label="hil_intent_judge",
+        feature=AIFeature.HIL,
         config=silent_metered_config(user_id),
         options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS),
     )

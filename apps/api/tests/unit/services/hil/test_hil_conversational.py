@@ -436,6 +436,7 @@ class TestTheClassifierCall:
             prompt: Any,
             *,
             label: str,
+            feature: Any = None,
             config: Any = None,
             options: StructuredCallOptions | None = None,
         ) -> DecisionResult:
@@ -460,6 +461,7 @@ class TestTheClassifierCall:
             prompt: Any,
             *,
             label: str,
+            feature: Any = None,
             config: Any = None,
             options: StructuredCallOptions | None = None,
         ) -> BatchDecisionResult:

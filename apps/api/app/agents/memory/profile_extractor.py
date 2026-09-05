@@ -27,6 +27,7 @@ from app.constants.general import (
     DEDUPLICATION_SIMILARITY_THRESHOLD,
 )
 from app.constants.log_tags import LogTag
+from app.services.analytics_service import AIFeature
 from shared.py.wide_events import log
 
 
@@ -465,6 +466,7 @@ async def extract_username_with_llm(
             UsernameExtraction,
             prompt,
             label="profile_extraction",
+            feature=AIFeature.MEMORY,
             config=metered_config(user_id),
         )
 

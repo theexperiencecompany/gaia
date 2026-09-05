@@ -11,6 +11,7 @@ from app.agents.llm.client import ainvoke_llm, get_helper_llm
 from app.constants.cache import SIX_HOUR_TTL
 from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
+from app.services.analytics_service import AIFeature
 from shared.py.wide_events import log
 
 
@@ -54,7 +55,10 @@ async def decompose_research_queries(
 
     try:
         response = await ainvoke_llm(
-            get_helper_llm(), [HumanMessage(content=prompt)], label="research_queries"
+            get_helper_llm(),
+            [HumanMessage(content=prompt)],
+            label="research_queries",
+            feature=AIFeature.RESEARCH,
         )
         # ``.text`` flattens the message's content blocks to a string; ``.content``
         # may be a list (Gemini), whose repr would never parse as JSON.

@@ -20,6 +20,7 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
 from app.models.stream_events import MainResponseCompleteFrame
 from app.override.langgraph_bigtool.utils import State
+from app.services.analytics_service import AIFeature
 from app.templates.docstrings.follow_up_actions_tool_docs import (
     SUGGEST_FOLLOW_UP_ACTIONS,
 )
@@ -75,6 +76,7 @@ async def generate_follow_up_actions(
                 # pure duplicate (~350 tokens of per-turn uncached weight).
             ],
             label="follow_up_actions",
+            feature=AIFeature.FOLLOW_UPS,
             config=cast(
                 RunnableConfig,
                 {

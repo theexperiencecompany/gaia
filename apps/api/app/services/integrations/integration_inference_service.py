@@ -31,6 +31,7 @@ from app.constants.integrations import (
 )
 from app.constants.log_tags import LogTag
 from app.models.oauth_models import IntegrationContent
+from app.services.analytics_service import AIFeature
 from shared.py.wide_events import log
 
 _FALLBACK_CATEGORY = "other"
@@ -74,7 +75,10 @@ async def infer_integration_category(
     try:
         async with asyncio.timeout(_CATEGORY_INFERENCE_TIMEOUT_SECONDS):
             response = await ainvoke_llm(
-                get_helper_llm(), [HumanMessage(content=prompt)], label="integration_category"
+                get_helper_llm(),
+                [HumanMessage(content=prompt)],
+                label="integration_category",
+                feature=AIFeature.INTEGRATION_INFERENCE,
             )
     except Exception as e:
         log.error(
@@ -140,6 +144,7 @@ async def infer_integration_content(
                 IntegrationContent,
                 prompt,
                 label="integration_content",
+                feature=AIFeature.INTEGRATION_INFERENCE,
                 config=metered_config(user_id),
             )
     except Exception as e:

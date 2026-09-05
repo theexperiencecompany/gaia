@@ -49,6 +49,7 @@ from app.constants.hil import (
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HILApprovalRecord
 from app.models.message_models import MessageDict
+from app.services.analytics_service import AIFeature
 from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.hil.bridge import build_action_detail
 from app.services.hil.resolution import (
@@ -193,6 +194,7 @@ async def interpret_batch_decision_message(
             BatchDecisionResult,
             _batch_prompt(message, action_details, history),
             label="hil_conversational_resolve_batch",
+            feature=AIFeature.HIL,
             config=silent_metered_config(user_id),
             options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS),
         )
@@ -222,6 +224,7 @@ async def interpret_decision_message(
             DecisionResult,
             _prompt(message, action_details, history),
             label="hil_conversational_resolve",
+            feature=AIFeature.HIL,
             config=silent_metered_config(user_id),
             options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS),
         )
