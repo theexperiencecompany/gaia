@@ -2793,6 +2793,49 @@ result_brief: x
             )
         ]
 
+    async def test_an_item_field_the_elements_do_not_have_is_refused_at_the_write(self) -> None:
+        """Seen on the real model: ``$item.todo_id`` over a list whose elements
+        carry ``id``. The replay stopped on the first element and a heal was
+        spent, when the authoring run's own result already showed the keys."""
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.items
+    max_items: 5
+    args:
+      to: $item.email
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"items": [{"id": 1, "title": "standup"}, {"id": 2, "title": "1:1"}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].args.to",
+                "$item.email is not in the current for_each element; its result has keys: id, title",
+            )
+        ]
+
     async def test_a_for_each_source_must_be_a_step_that_ran_not_the_element(self) -> None:
         body = _body(
             """

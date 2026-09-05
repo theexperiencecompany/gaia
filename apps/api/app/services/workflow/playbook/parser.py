@@ -42,9 +42,11 @@ from app.models.playbook_models import (
 )
 from app.models.workflow_execution_models import carries_no_data
 from app.services.workflow.playbook.evaluator import (
+    NO_ITEM,
     STEP_FILE_FIELD,
     PlaceholderError,
     StepResult,
+    resolve_item,
     resolve_step,
 )
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN, placeholder_tokens
@@ -255,8 +257,7 @@ def _check_tool_step(
     if walk.results is not None and not in_handoff:
         _check_recorded_call(step, tool_name, path, walk)
 
-    if isinstance(step, ForEachStep):
-        _check_for_each_source(step, path, walk)
+    sample = _check_for_each_source(step, path, walk) if isinstance(step, ForEachStep) else NO_ITEM
     schema: dict[str, Any] = space.tools[tool_name].args
     _check_required_args(step, tool_name, path, space, walk)
     for key, value in step.args.items():
@@ -291,7 +292,9 @@ def _check_tool_step(
         # ("Email $steps.mail.to") is checked exactly as a whole-value one is.
         arg_tokens = list(placeholder_tokens(value))
         for token in arg_tokens:
-            _check_placeholder(token, where, walk, in_for_each=isinstance(step, ForEachStep))
+            _check_placeholder(
+                token, where, walk, in_for_each=isinstance(step, ForEachStep), sample=sample
+            )
         slots = [slot for _, slot in walk_ask_slots(value)]
         if slots and not step.id:
             # A slot is addressed by its step's id; without one it falls back to
@@ -571,19 +574,36 @@ def _check_ask_slot(slot: Mapping[str, Any], where: str, walk: _Walk) -> None:
         )
 
 
-def _check_placeholder(match: re.Match[str], where: str, walk: _Walk, *, in_for_each: bool) -> None:
+def _check_placeholder(
+    match: re.Match[str],
+    where: str,
+    walk: _Walk,
+    *,
+    in_for_each: bool,
+    sample: object = NO_ITEM,
+) -> None:
     # The tokenizer only matches known roots; any other ``$word`` is literal text.
     token = match.group(0)
     root = match.group("root")
     path = match.group("path").lstrip(".")
     name = path.partition(".")[0]
-    if root == "item" and not in_for_each:
-        walk.issues.append(
-            PlaybookIssue(
-                where=where,
-                problem=f"{token} addresses the element of a for_each, and this step is not one",
+    if root == "item":
+        if not in_for_each:
+            walk.issues.append(
+                PlaybookIssue(
+                    where=where,
+                    problem=f"{token} addresses the element of a for_each, and this step is not one",
+                )
             )
-        )
+        elif sample is not NO_ITEM:
+            # Checked against a real element of the source, the way the replay
+            # will read it. Seen live: $item.todo_id over elements carrying id.
+            try:
+                resolve_item(token, path, sample)
+            except PlaceholderError as error:
+                walk.issues.append(
+                    PlaybookIssue(where=where, problem=error.message + _shape_hint(sample))
+                )
         return
     if root != "steps":
         return
@@ -611,8 +631,12 @@ def _check_placeholder(match: re.Match[str], where: str, walk: _Walk, *, in_for_
         _check_step_reference(token, path, where, walk)
 
 
-def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> None:
+def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> object:
     """The list a ``for_each`` repeats over has to be one this run can name.
+
+    Hands back one element of that list when the run's results show it, so
+    ``$item.<field>`` in the step's args is checked against a real element
+    instead of stopping the replay on the first one. ``NO_ITEM`` otherwise.
 
     An ``$ask`` source is a model's pick at replay and has nothing to check
     here. A ``$steps`` source is checked like any reference, and then for what
@@ -621,11 +645,11 @@ def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> None:
     """
     source = step.for_each
     if isinstance(source, AskSlot):
-        return
+        return NO_ITEM
     where = f"{path}.for_each"
     match = PLACEHOLDER_TOKEN.fullmatch(source)
     if match is None:  # the model validator already refused anything else
-        return
+        return NO_ITEM
     if match.group("root") == "item":
         walk.issues.append(
             PlaybookIssue(
@@ -636,14 +660,16 @@ def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> None:
                 ),
             )
         )
-        return
+        return NO_ITEM
     _check_placeholder(match, where, walk, in_for_each=False)
     if walk.results is None or match.group("root") != "steps":
-        return
+        return NO_ITEM
     reference = match.group("path").lstrip(".")
     resolved = _check_step_reference(source, reference, where, walk)
-    if resolved is _UNRESOLVED or isinstance(resolved, list):
-        return
+    if resolved is _UNRESOLVED:
+        return NO_ITEM
+    if isinstance(resolved, list):
+        return resolved[0] if resolved else NO_ITEM
     result = walk.step_results[reference.partition(".")[0]]
     walk.issues.append(
         PlaybookIssue(
@@ -654,6 +680,7 @@ def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> None:
             ),
         )
     )
+    return NO_ITEM
 
 
 def _check_value_type(

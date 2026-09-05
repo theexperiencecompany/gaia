@@ -343,7 +343,7 @@ def _resolve_token(match: re.Match[str], context: RunContext) -> object:
     if root == "steps":
         return resolve_step(token, path, context.steps)
     if root == "item":
-        return _resolve_item(token, path, context.item)
+        return resolve_item(token, path, context.item)
     return _resolve_last_run(token, path, context.last_run)
 
 
@@ -401,7 +401,7 @@ def resolve_step(token: str, path: str, steps: Mapping[str, StepResult]) -> obje
     return _resolve_required(token, result.value, rest, f"step {step_id!r}'s result")
 
 
-def _resolve_item(token: str, path: str, item: object) -> object:
+def resolve_item(token: str, path: str, item: object) -> object:
     """The element a for_each step is on, or the field of it the token names."""
     if item is NO_ITEM:
         raise PlaceholderError(

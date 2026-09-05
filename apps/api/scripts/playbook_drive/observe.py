@@ -21,12 +21,14 @@ from pymongo.database import Database
 import redis
 
 from app.config.settings import settings
-from app.constants.cache import RATE_LIMIT_KEY_PREFIX
+from app.constants.cache import EXECUTOR_BUSY_PREFIX, RATE_LIMIT_KEY_PREFIX
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
 
 from .client import EXECUTION_WAIT_SECONDS, SETTLE_SECONDS, Execution, GaiaClient
 
-FINISHED = frozenset({"success", "failed"})
+FINISHED = frozenset({"success", "failed", "skipped"})
+#: How long to wait for the previous fire's executor to let go of the conversation.
+LOCK_WAIT_SECONDS = 180
 
 
 class PlaybookState(BaseModel):
@@ -102,6 +104,24 @@ class Store:
         client: MongoClient[dict[str, Any]] = MongoClient(settings.MONGO_DB)
         self.db: Database[dict[str, Any]] = client[MONGO_DATABASE_NAME]
         self.redis = redis.Redis.from_url(settings.REDIS_URL)
+
+    def wait_for_executor_lock(self, workflow_id: str, limit: int = LOCK_WAIT_SECONDS) -> None:
+        """Wait until no executor holds the workflow's conversation.
+
+        A fire that arrives while the previous fire's executor is still
+        finishing is recorded as skipped or queued, by design; the drive fires
+        as a scheduler would, one run at a time, so it waits for the lock.
+        """
+        latest = self.db["workflow_executions"].find_one(
+            {"workflow_id": workflow_id}, sort=[("started_at", -1)]
+        )
+        conversation_id = (latest or {}).get("conversation_id")
+        if not conversation_id:
+            return
+        key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
+        deadline = time.monotonic() + limit
+        while time.monotonic() < deadline and self.redis.exists(key):
+            time.sleep(3)
 
     def reset_rate_limits(self, user_id: str) -> int:
         """Clear the dev user's tiered rate-limit counters.
@@ -181,6 +201,7 @@ def fire_and_observe(
 ) -> Observation:
     """Execute once, wait for the record to finish, let bookkeeping land, read everything."""
     before = len(store.executions(workflow_id))
+    store.wait_for_executor_lock(workflow_id)
     position = log.position()
     store.reset_rate_limits(user_id)
     client.execute(workflow_id)
