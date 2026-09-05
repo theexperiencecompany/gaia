@@ -435,12 +435,10 @@ class TestBuildExecutorGraph:
         assert "handoff" in registry
         assert "activate_integration" not in kwargs["tools_config"].initial_tool_ids
 
-    async def test_activation_flag_replaces_handoff_with_activate_integration(self, monkeypatch):
-        """Under the experiment there are no per-integration graphs to hand off to.
-
-        Leaving ``handoff`` bound would let the executor route work to a subagent
-        graph the experiment is meant to remove — the swap has to be exclusive,
-        in both the bound set and the registry it binds from.
+    async def test_activation_flag_adds_activate_integration_and_keeps_handoff(self, monkeypatch):
+        """Activation leads with activate_integration but keeps handoff bound: it
+        is the only path for per-user MCP integrations, which cannot be activated
+        in-context, so both live in the bound set and the registry.
         """
         from app.config.settings import settings
 
@@ -458,15 +456,12 @@ class TestBuildExecutorGraph:
 
         assert "activate_integration" in kwargs["tools_config"].initial_tool_ids
         assert "activate_integration" in registry
-        assert "handoff" not in kwargs["tools_config"].initial_tool_ids
-        assert "handoff" not in registry
+        assert "handoff" in kwargs["tools_config"].initial_tool_ids
+        assert "handoff" in registry
 
     async def test_activation_flag_keeps_the_rest_of_the_initial_tool_set(self, monkeypatch):
-        """Only the delegation slot changes — the tools around it must survive."""
-        from app.agents.core.graph_builder.build_graph import (
-            EXECUTOR_INITIAL_TOOL_IDS,
-            HANDOFF_ONLY_TOOL_IDS,
-        )
+        """activate_integration leads; the full initial set (handoff included) follows."""
+        from app.agents.core.graph_builder.build_graph import EXECUTOR_INITIAL_TOOL_IDS
         from app.config.settings import settings
 
         monkeypatch.setattr(settings, "ENABLE_INTEGRATION_ACTIVATION", True)
@@ -480,18 +475,12 @@ class TestBuildExecutorGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
 
-        expected = [
-            "activate_integration",
-            *(n for n in EXECUTOR_INITIAL_TOOL_IDS if n not in HANDOFF_ONLY_TOOL_IDS),
-        ]
+        expected = ["activate_integration", *EXECUTOR_INITIAL_TOOL_IDS]
         assert kwargs["tools_config"].initial_tool_ids == expected
 
-    async def test_activation_flag_also_drops_wait_for_subagents(self, monkeypatch):
-        """wait_for_subagents exists only to collect handoff(background=True).
-
-        A spawn returns its result inline, so under activation this tool can only
-        block on an empty set and report that nothing ran — which reads to the model
-        like the work failed.
+    async def test_activation_flag_keeps_wait_for_subagents(self, monkeypatch):
+        """wait_for_subagents is handoff's pair, and handoff stays bound under
+        activation for per-user MCP, so its collector stays too.
         """
         from app.config.settings import settings
         from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
@@ -508,8 +497,8 @@ class TestBuildExecutorGraph:
             call = deps["mocks"][f"{_MOD}.create_agent"].call_args
             kwargs, registry = call.kwargs, call.args[1]
 
-        assert WAIT_FOR_SUBAGENTS_NAME not in kwargs["tools_config"].initial_tool_ids
-        assert WAIT_FOR_SUBAGENTS_NAME not in registry
+        assert WAIT_FOR_SUBAGENTS_NAME in kwargs["tools_config"].initial_tool_ids
+        assert WAIT_FOR_SUBAGENTS_NAME in registry
 
     async def test_yields_compiled_graph_postgres(self):
         fake_cp = MagicMock(name="postgres_checkpointer")

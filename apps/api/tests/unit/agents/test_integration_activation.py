@@ -183,7 +183,7 @@ class TestActivateIntegrationTool:
     async def test_unknown_integration_fails_loud(self) -> None:
         from app.agents.core.subagents.integration_activation import activate_integration
 
-        with patch(f"{_MOD}.get_subagent_by_id", return_value=None):
+        with patch(f"{_MOD}._get_subagent_by_id", new=AsyncMock(return_value=None)):
             call, run_cfg = self._invoke({}, integration_id="nope")
             result = await activate_integration.ainvoke(call, run_cfg)
         assert "Unknown integration" in self._text(result)
@@ -192,7 +192,7 @@ class TestActivateIntegrationTool:
         from app.agents.core.subagents.integration_activation import activate_integration
 
         with (
-            patch(f"{_MOD}.get_subagent_by_id", return_value=_subagent()),
+            patch(f"{_MOD}._get_subagent_by_id", new=AsyncMock(return_value=_subagent())),
             patch(f"{_MOD}.check_integration_connection", new=AsyncMock(return_value=None)),
             patch(f"{_MOD}._activate_tools", new=AsyncMock(return_value=(7, []))) as activate_tools,
             patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="PROMPT + SKILLS")),
@@ -215,7 +215,7 @@ class TestActivateIntegrationTool:
 
         connect = AsyncMock(return_value="Connect your Gmail account to continue.")
         with (
-            patch(f"{_MOD}.get_subagent_by_id", return_value=_subagent()),
+            patch(f"{_MOD}._get_subagent_by_id", new=AsyncMock(return_value=_subagent())),
             patch(f"{_MOD}.check_integration_connection", new=connect),
             patch(f"{_MOD}._activate_tools", new=AsyncMock()) as activate_tools,
         ):
@@ -232,7 +232,10 @@ class TestActivateIntegrationTool:
 
         connect = AsyncMock()
         with (
-            patch(f"{_MOD}.get_subagent_by_id", return_value=_subagent(managed_by="internal")),
+            patch(
+                f"{_MOD}._get_subagent_by_id",
+                new=AsyncMock(return_value=_subagent(managed_by="internal")),
+            ),
             patch(f"{_MOD}.check_integration_connection", new=connect),
             patch(f"{_MOD}._activate_tools", new=AsyncMock(return_value=(0, []))),
             patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="")),
@@ -243,18 +246,17 @@ class TestActivateIntegrationTool:
         connect.assert_not_awaited()
         assert "is now active" in self._text(result)
 
-    async def test_per_user_mcp_integration_is_refused_without_registering(self) -> None:
-        """Its tools live only in the caller's MCP session, so activation cannot bind them.
-
-        Returning context anyway would hand the executor instructions with no
-        tools to run them — say so instead.
+    async def test_per_user_mcp_integration_routes_to_handoff(self) -> None:
+        """Its tools live only in the caller's MCP session, so activation cannot bind
+        them. Instead of dead-ending, it points the model at handoff, which runs the
+        integration in its own per-user graph.
         """
         from app.agents.core.subagents.integration_activation import activate_integration
 
         with (
             patch(
-                f"{_MOD}.get_subagent_by_id",
-                return_value=_subagent(managed_by="mcp", requires_auth=True),
+                f"{_MOD}._get_subagent_by_id",
+                new=AsyncMock(return_value=_subagent(managed_by="mcp", requires_auth=True)),
             ),
             patch(f"{_MOD}._activate_tools", new=AsyncMock()) as activate_tools,
         ):
@@ -262,15 +264,33 @@ class TestActivateIntegrationTool:
             result = await activate_integration.ainvoke(call, run_cfg)
 
         activate_tools.assert_not_awaited()
-        assert "cannot be activated" in self._text(result)
+        text = self._text(result)
+        assert "handoff(" in text and "per-user" in text
+
+    async def test_custom_mcp_dict_routes_to_handoff(self) -> None:
+        """A custom MCP integration resolves as a dict (from the repository), not a
+        registry Subagent. It is per-user, so it routes to handoff too."""
+        from app.agents.core.subagents.integration_activation import activate_integration
+
+        custom = {"id": "abc123", "name": "My MCP", "managed_by": "mcp", "mcp_config": {}}
+        with (
+            patch(f"{_MOD}._get_subagent_by_id", new=AsyncMock(return_value=custom)),
+            patch(f"{_MOD}._activate_tools", new=AsyncMock()) as activate_tools,
+        ):
+            call, run_cfg = self._invoke({"user_id": "u1"}, integration_id="abc123")
+            result = await activate_integration.ainvoke(call, run_cfg)
+
+        activate_tools.assert_not_awaited()
+        text = self._text(result)
+        assert "handoff(" in text and "per-user" in text
 
     async def test_non_auth_mcp_integration_activates(self) -> None:
         from app.agents.core.subagents.integration_activation import activate_integration
 
         with (
             patch(
-                f"{_MOD}.get_subagent_by_id",
-                return_value=_subagent(managed_by="mcp", requires_auth=False),
+                f"{_MOD}._get_subagent_by_id",
+                new=AsyncMock(return_value=_subagent(managed_by="mcp", requires_auth=False)),
             ),
             patch(f"{_MOD}._activate_tools", new=AsyncMock(return_value=(3, []))),
             patch(f"{_MOD}._activation_context", new=AsyncMock(return_value="")),

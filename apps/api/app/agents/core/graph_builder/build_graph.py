@@ -46,14 +46,10 @@ from app.override.langgraph_bigtool.agent_config import (
 from app.override.langgraph_bigtool.create_agent import create_agent
 from shared.py.wide_events import log
 
-#: The handoff delegation pair. `wait_for_subagents` belongs to `handoff`, not to
-#: delegation in general: it collects `handoff(background=True)` dispatches, and a
-#: spawn returns inline, so under activation it could only block on an empty set.
-HANDOFF_ONLY_TOOL_IDS = frozenset({"handoff", WAIT_FOR_SUBAGENTS_NAME})
-
 #: Tools the executor binds before its first turn, ahead of any retrieve_tools call.
-#: Under ENABLE_INTEGRATION_ACTIVATION the HANDOFF_ONLY_TOOL_IDS drop out and
-#: "activate_integration" leads instead — see build_executor_graph.
+#: Under ENABLE_INTEGRATION_ACTIVATION "activate_integration" leads the set;
+#: `handoff` stays for per-user MCP integrations that cannot be activated
+#: in-context — see build_executor_graph.
 EXECUTOR_INITIAL_TOOL_IDS = [
     "handoff",
     "execute",
@@ -106,28 +102,23 @@ async def build_executor_graph(
     tool_dict = tool_registry.get_tool_dict()
     tool_dict.update({t.name: t for t in todo_tools})
 
-    # Under the experiment there are no per-integration graphs to hand off to:
-    # activate_integration loads an integration's tools into the executor's own
-    # space, and spawn_subagent (already bound by SubagentMiddleware) is the
-    # generic worker that inherits them. wait_for_subagents goes with handoff —
-    # it exists solely to collect handoff(background=True) dispatches, and a
-    # spawn returns its result inline, so under activation it can only ever
-    # block on an empty set.
+    # handoff stays bound in both modes. Under activation it loads most
+    # integrations in-context via activate_integration, but per-user MCP
+    # integrations (auth-required or custom) issue their tools per user, so they
+    # never enter the global registry and can only run through their own per-user
+    # graph — which is exactly what handoff builds. activate_integration routes
+    # those to handoff rather than dead-ending them.
     activation_mode = settings.ENABLE_INTEGRATION_ACTIVATION
+    tool_dict.update({"handoff": handoff_tool, WAIT_FOR_SUBAGENTS_NAME: wait_for_subagents_tool})
     if activation_mode:
         tool_dict.update({"activate_integration": activate_integration})
-    else:
-        tool_dict.update(
-            {"handoff": handoff_tool, WAIT_FOR_SUBAGENTS_NAME: wait_for_subagents_tool}
-        )
 
     todo_hook = create_todo_pre_model_hook(source="executor")
 
     # Spawned subagents must not see executor-only orchestration tools.
-    excluded_subagent_tools = {
-        "activate_integration" if activation_mode else "handoff",
-        WAIT_FOR_SUBAGENTS_NAME,
-    }
+    excluded_subagent_tools = {"handoff", WAIT_FOR_SUBAGENTS_NAME}
+    if activation_mode:
+        excluded_subagent_tools.add("activate_integration")
 
     middleware = create_executor_middleware(
         chat_llm=chat_llm,
@@ -156,10 +147,9 @@ async def build_executor_graph(
     pre_model_hooks = worker_pre_model_hooks(todo_hook, drains_inbox=True)
 
     if activation_mode:
-        initial_tools = [
-            "activate_integration",
-            *(n for n in EXECUTOR_INITIAL_TOOL_IDS if n not in HANDOFF_ONLY_TOOL_IDS),
-        ]
+        # activate_integration leads; handoff and its pair stay for the per-user
+        # MCP integrations activation cannot bind in-context (routed there).
+        initial_tools = ["activate_integration", *EXECUTOR_INITIAL_TOOL_IDS]
     else:
         initial_tools = list(EXECUTOR_INITIAL_TOOL_IDS)
 

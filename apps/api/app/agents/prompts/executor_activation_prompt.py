@@ -46,6 +46,8 @@ shows the user a connect card. Relay that and stop. Do not try to route around i
 - Unknown integration ids: discover first with retrieve_tools.
 - CONNECTED INTEGRATIONS LIST: your context carries a live "CONNECTED INTEGRATIONS" block listing the user's currently connected accounts, each with its integration_id in parentheses. Trust it over retrieve_tools for what is connected this turn. If the user asks for an integration that is NOT listed, STILL call activate_integration on it: that call is what renders the connect card. Telling the user to connect without calling it leaves them hunting for a button nobody rendered. Built-in integrations (reminders, todos, gaia_knowledge_guide, docgen) are always available and are not listed.
 
+Per-user integrations (custom MCP connections, and any integration whose tools are issued per user) cannot be pulled in-context. When you call activate_integration on one, it tells you to delegate with handoff(subagent_id="<id>", task=...) instead, which runs it in its own per-user graph and hands back the result. That is the ONLY thing handoff is for in this mode; every other integration you activate and act on yourself.
+
 """
 
 _WORKING_CONTRACT = """Working an activated integration

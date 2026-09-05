@@ -20,7 +20,10 @@ from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.types import Command
 
 from app.agents.context.fetchers import build_provider_metadata_block
-from app.agents.core.subagents.handoff_tools import check_integration_connection
+from app.agents.core.subagents.handoff_tools import (
+    _get_subagent_by_id,
+    check_integration_connection,
+)
 from app.agents.core.subagents.provider_subagents import register_integration_tools
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import build_subagent_system_prompt
@@ -114,6 +117,20 @@ async def _activation_context(integration_id: str, user_id: str | None) -> str:
     return "\n\n".join(sections)
 
 
+def _handoff_redirect(integration_id: str) -> str:
+    """Tell the model to run a per-user integration through handoff instead.
+
+    Per-user MCP integrations (auth-required or custom) cannot be activated
+    in-context; handoff runs them in their own per-user graph and returns the
+    result. handoff stays bound under the flag for exactly this case.
+    """
+    return (
+        f"'{integration_id}' is a per-user integration, so its tools cannot be activated "
+        f"in-context. Delegate it with handoff(subagent_id='{integration_id}', task=...): that "
+        "runs it in its own per-user graph and returns the result."
+    )
+
+
 def _reply(tool_call_id: str, text: str, bind: list[str] | None = None) -> Command[Any]:
     """The tool's result, plus any tools it bound in the same turn.
 
@@ -141,8 +158,11 @@ async def activate_integration(
     if not settings.ENABLE_INTEGRATION_ACTIVATION:
         return _reply(tool_call_id, "activate_integration is disabled.")
 
-    subagent = get_subagent_by_id(integration_id)
-    if subagent is None:
+    # Repository-aware resolution: covers the static OAuth/builtin registry AND
+    # user-created custom MCP integrations (a dict), which the manifest lists but
+    # the registry alone does not know — same resolver handoff uses.
+    resolved = await _get_subagent_by_id(integration_id)
+    if resolved is None:
         log.set(activation={"integration": integration_id})
         log.warning(f"{LogTag.AGENT} Activation requested for unknown integration")
         return _reply(tool_call_id, f"Unknown integration '{integration_id}'.")
@@ -150,16 +170,15 @@ async def activate_integration(
     configurable = cast(AgentConfigurable, config.get("configurable", {}))
     user_id = configurable.get("user_id")
 
-    if _requires_per_user_tokens(subagent):
-        log.set(activation={"integration": integration_id, "per_user_tokens": True})
-        log.warning(f"{LogTag.AGENT} Activation cannot expose per-user MCP tools")
-        return _reply(
-            tool_call_id,
-            f"'{integration_id}' cannot be activated: its tools are issued per user by its "
-            "MCP server and are never bindable outside a per-user subagent, so activating it "
-            "would hand you instructions with no tools to run them. Tell the user this "
-            "integration is unavailable rather than attempting the task another way.",
-        )
+    # Custom MCP (a dict, not a registry Subagent) and auth-required MCP both
+    # issue their tools per user, so they never enter the global registry and
+    # cannot be bound in-context. handoff builds their per-user graph — route
+    # there instead of dead-ending.
+    if isinstance(resolved, dict) or _requires_per_user_tokens(resolved):
+        log.set(activation={"integration": integration_id, "routed_to_handoff": True})
+        return _reply(tool_call_id, _handoff_redirect(integration_id))
+
+    subagent = resolved
 
     # Registering an unconnected integration's tools would bind tools that fail at
     # call time with an auth error. `handoff` gates on this too — and the check is

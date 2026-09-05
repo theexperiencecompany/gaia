@@ -1,17 +1,16 @@
-"""The activation executor prompt must not teach tools the executor cannot call.
+"""The activation executor prompt must only teach tools the executor can call.
 
-Under ENABLE_INTEGRATION_ACTIVATION the executor has no `handoff` and no
-`wait_for_subagents`. A prompt that still names them produces calls that
-`reject_unbound_tools` refuses, which is invisible until someone reads a
-transcript — so it is pinned here instead.
+Under ENABLE_INTEGRATION_ACTIVATION the executor leads with `activate_integration`
+and keeps `handoff` bound solely for per-user MCP integrations that cannot be
+activated in-context. So the prompt teaches handoff only as that fallback, and
+never teaches `wait_for_subagents` (bound but not model-facing here). Anything
+else would produce calls that mislead the model, invisible until someone reads a
+transcript, so it is pinned here instead.
 """
 
 import pytest
 
-from app.agents.core.graph_builder.build_graph import (
-    EXECUTOR_INITIAL_TOOL_IDS,
-    HANDOFF_ONLY_TOOL_IDS,
-)
+from app.agents.core.graph_builder.build_graph import EXECUTOR_INITIAL_TOOL_IDS
 from app.agents.prompts.comms_prompts import EXECUTOR_AGENT_PROMPT
 from app.agents.prompts.executor_activation_prompt import (
     _PHRASE_REWRITES,
@@ -28,15 +27,26 @@ def activation_prompt() -> str:
 
 
 class TestNoUnboundToolsTaught:
-    @pytest.mark.parametrize("tool_name", sorted(HANDOFF_ONLY_TOOL_IDS))
-    def test_handoff_only_tools_are_never_named(self, activation_prompt, tool_name) -> None:
-        offending = [
-            line.strip() for line in activation_prompt.splitlines() if tool_name in line.lower()
+    def test_handoff_is_taught_only_as_the_per_user_fallback(self, activation_prompt) -> None:
+        """handoff is bound under the flag for per-user MCP, so the prompt may name
+        it — but only as that fallback, never as the generic delegation path the
+        rewrites replaced with activation."""
+        handoff_lines = [
+            line.strip() for line in activation_prompt.splitlines() if "handoff(" in line
         ]
-        assert offending == [], f"activation prompt still names {tool_name}: {offending}"
+        assert handoff_lines, "activation prompt must teach the handoff fallback for per-user MCP"
+        assert all("per-user" in line for line in handoff_lines), handoff_lines
+
+    def test_wait_for_subagents_is_not_taught(self, activation_prompt) -> None:
+        offending = [
+            line.strip()
+            for line in activation_prompt.splitlines()
+            if "wait_for_subagents" in line.lower()
+        ]
+        assert offending == [], f"activation prompt still names wait_for_subagents: {offending}"
 
     def test_the_baseline_prompt_does_name_them(self) -> None:
-        """Guards the test above from passing vacuously if the source prompt drops
+        """Guards the rewrites from passing vacuously if the source prompt drops
         handoff on its own — then these rewrites are dead code, not protection."""
         assert "handoff" in EXECUTOR_AGENT_PROMPT.lower()
         assert "wait_for_subagents" in EXECUTOR_AGENT_PROMPT.lower()
@@ -46,12 +56,12 @@ class TestNoUnboundToolsTaught:
         assert "spawn_subagent" in activation_prompt
 
     def test_every_tool_it_names_is_one_the_executor_binds(self, activation_prompt) -> None:
-        bound = set(EXECUTOR_INITIAL_TOOL_IDS) - HANDOFF_ONLY_TOOL_IDS | {
+        bound = set(EXECUTOR_INITIAL_TOOL_IDS) | {
             "activate_integration",
             "spawn_subagent",
             "retrieve_tools",
         }
-        for name in ("activate_integration", "spawn_subagent", "retrieve_tools"):
+        for name in ("activate_integration", "spawn_subagent", "retrieve_tools", "handoff"):
             assert name in bound and name in activation_prompt
 
 
