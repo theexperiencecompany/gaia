@@ -9,7 +9,6 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from datetime import UTC, datetime
 import json
-import time
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
@@ -147,6 +146,28 @@ def fast_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(executor_tool, "REDIRECT_CANCEL_DETECT_S", 0.1)
     monkeypatch.setattr(executor_tool, "REDIRECT_CANCEL_WAIT_S", 0.5)
     monkeypatch.setattr(executor_tool, "REDIRECT_CANCEL_POLL_S", 0.01)
+
+
+@pytest.fixture
+def redirect_budget(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """The budget the redirect loop spends, recorded instead of actually slept.
+
+    Which window the loop stopped at is a deterministic fact: its clock is an
+    accumulator of ``REDIRECT_CANCEL_POLL_S``, not a reading of the wall. Timing
+    the call instead measures how loaded the runner is, which is why the DETECT
+    assertion here flaked at 0.92s against a 0.4s bound while the code was
+    correct. Summing the requested delays proves the same claim and cannot
+    flake; skipping the real wait also takes ~0.6s off the file.
+    """
+    slept: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def record(delay: float) -> None:
+        slept.append(delay)
+        await real_sleep(0)  # still yield, so the loop interleaves as it would
+
+    monkeypatch.setattr(asyncio, "sleep", record)
+    return slept
 
 
 @pytest.fixture
@@ -369,16 +390,18 @@ class TestCallExecutorLockContention:
         assert queued_without_run("stream-1") is None
 
     async def test_holder_without_a_stream_id_is_never_waited_on(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        spawned_runs: list[dict[str, Any]],
+        redirect_budget: list[float],
     ) -> None:
         """No stream id means no cancel can be observed — queue immediately."""
         await fake_redis.set(LOCK_KEY, ":held-task", ex=EXECUTOR_BUSY_TTL)
 
-        started = time.monotonic()
         response = await call_executor_with(config=config_for("stream-2"), task="b")
 
         assert response.startswith("I'm already working on a task")
-        assert time.monotonic() - started < 0.1
+        assert redirect_budget == []  # queued immediately: the loop never polled
         assert await fake_redis.llen(QUEUE_KEY) == 1
 
 
@@ -434,16 +457,16 @@ class TestRedirectAcquire:
         fake_redis: fakeredis.aioredis.FakeRedis,
         spawned_runs: list[dict[str, Any]],
         fast_redirect: None,
+        redirect_budget: list[float],
     ) -> None:
         """A genuinely busy other turn must be queued fast, not waited on for WAIT_S."""
         await fake_redis.set(LOCK_KEY, "old-stream:old-task", ex=EXECUTOR_BUSY_TTL)
 
-        started = time.monotonic()
         response = await call_executor_with(config=config_for("new-stream"), task="do Y")
-        elapsed = time.monotonic() - started
 
         assert response.startswith("I'm already working on a task")
-        assert 0.1 <= elapsed < 0.4  # DETECT (0.1) reached, WAIT (0.5) not
+        # DETECT (0.1) reached, WAIT (0.5) not.
+        assert 0.1 <= sum(redirect_budget) < 0.4
         assert await fake_redis.llen(QUEUE_KEY) == 1
 
     async def test_queues_after_the_full_wait_when_the_cancel_never_lands(
@@ -451,16 +474,15 @@ class TestRedirectAcquire:
         fake_redis: fakeredis.aioredis.FakeRedis,
         spawned_runs: list[dict[str, Any]],
         fast_redirect: None,
+        redirect_budget: list[float],
     ) -> None:
         await fake_redis.set(LOCK_KEY, "old-stream:old-task", ex=EXECUTOR_BUSY_TTL)
         await StreamManager.cancel_stream("old-stream")
 
-        started = time.monotonic()
         response = await call_executor_with(config=config_for("new-stream"), task="do Y")
-        elapsed = time.monotonic() - started
 
         assert response.startswith("I'm already working on a task")
-        assert elapsed >= 0.5  # waited the full budget because a cancel was seen
+        assert sum(redirect_budget) >= 0.5  # the full budget, because a cancel was seen
         assert await fake_redis.llen(QUEUE_KEY) == 1
         assert spawned_runs == []
 

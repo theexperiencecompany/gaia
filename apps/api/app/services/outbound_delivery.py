@@ -20,6 +20,10 @@ from app.utils.message_breaks import split_message_bubbles
 from shared.py.wide_events import log
 
 
+def _serialize(envelope: OutboundMessageEnvelope) -> bytes:
+    return envelope.model_dump_json().encode()
+
+
 class OutboundResult(StrEnum):
     """Outcome of an outbound publish.
 
@@ -139,7 +143,7 @@ async def publish_outbound_message(
         )
 
     try:
-        await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
+        await publisher.publish_outbound(queue_name, _serialize(envelope))
     except Exception as e:
         log.error(
             "publish_outbound_message: publish failed",
@@ -192,11 +196,7 @@ async def notify_account_linked(platform: str, user_id: str) -> OutboundResult:
 async def publish_outbound_file(
     platform: ConversationSource,
     user_id: str,
-    conversation_id: str,
-    path: str,
-    filename: str,
-    content_type: str | None = None,
-    caption: str | None = None,
+    attachment: OutboundAttachment,
 ) -> bool:
     """Enqueue a file (artifact) for the bot to deliver to ``user_id``.
 
@@ -213,16 +213,10 @@ async def publish_outbound_file(
     envelope = OutboundMessageEnvelope(
         platform=platform.value,
         destination_id=destination_id,
-        attachment=OutboundAttachment(
-            conversation_id=conversation_id,
-            path=path,
-            filename=filename,
-            content_type=content_type,
-            caption=caption,
-        ),
+        attachment=attachment,
     )
     try:
-        await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
+        await publisher.publish_outbound(queue_name, _serialize(envelope))
     except Exception as e:
         log.error("publish_outbound_file: publish failed", platform=platform.value, error=str(e))
         return False
@@ -231,6 +225,6 @@ async def publish_outbound_file(
         "outbound_file_published",
         platform=platform.value,
         queue=queue_name,
-        filename=filename,
+        filename=attachment.filename,
     )
     return True

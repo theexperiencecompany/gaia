@@ -13,24 +13,18 @@ rebuilds the core documents from the corrected folders.
 import argparse
 import asyncio
 from datetime import UTC, datetime
-from pathlib import Path
-import sys
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import update
 
 from app.agents.llm.client import register_llm_providers
 from app.db.chroma.chromadb import init_chroma
-from app.db.mongodb.collections import get_async_collection
 from app.db.postgresql import init_postgresql_engine
+from app.db.repositories.users import user_repository
 from app.memory import pg_store
 from app.memory.engine import memory_engine
 from app.memory.extraction import categorize_fact
 from app.memory.pg_store._session import memory_session
 from app.models.memory_db_models import MemoryRecord
-
-users_collection = get_async_collection("users")
 
 # Re-file against the canonical taxonomy, not the user's existing folders, so a
 # fact wrongly sitting in (say) work/gaia is judged afresh.
@@ -81,7 +75,7 @@ async def main() -> None:
     if args.user_id:
         user_ids = [args.user_id]
     else:
-        user_ids = [str(doc["_id"]) async for doc in users_collection.find({}, {"_id": 1})]
+        user_ids = await user_repository.list_all_ids()
 
     total = 0
     for user_id in user_ids:

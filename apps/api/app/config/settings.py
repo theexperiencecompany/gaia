@@ -120,11 +120,14 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
     HOST: str = "https://api.heygaia.io"
     FRONTEND_URL: str = "https://heygaia.io"
+    # Short-link display domain (heygaia.link/<slug>). The dedicated domain
+    # rewrites to the app's /l route, which resolves the slug. No trailing slash.
+    SHORTLINK_BASE_URL: str = "https://heygaia.link"
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
 
-    @field_validator("HOST", "FRONTEND_URL", mode="after")
+    @field_validator("HOST", "FRONTEND_URL", "SHORTLINK_BASE_URL", mode="after")
     @classmethod
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/") if isinstance(v, str) else v
@@ -327,6 +330,9 @@ class ProductionSettings(CommonSettings):
     # Email & Communication
     RESEND_API_KEY: str
     RESEND_AUDIENCE_ID: str
+    EMAIL_FROM: str = "brief@heygaia.io"
+    # Signs stateless one-click unsubscribe tokens (itsdangerous). Generate with:
+    # openssl rand -hex 32
     EMAIL_UNSUBSCRIBE_SECRET: str
 
     # Media Storage
@@ -548,6 +554,7 @@ class DevelopmentSettings(CommonSettings):
     # Email & Communication
     RESEND_API_KEY: str | None = None
     RESEND_AUDIENCE_ID: str | None = None
+    EMAIL_FROM: str = "brief@heygaia.io"
     EMAIL_UNSUBSCRIBE_SECRET: str | None = None
 
     # Media Storage

@@ -24,7 +24,8 @@ const NON_DISMISSABLE_ROUTE_PREFIXES = [
   "/redirect",
   "/notifications",
   "/calendar",
-  "/dashboard",
+  "/l",
+  "/a",
 ];
 
 const isNonDismissableRoute = (pathname: string): boolean => {
