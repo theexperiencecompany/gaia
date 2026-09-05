@@ -34,7 +34,7 @@ from app.models.playbook_models import (
     playbook_body_from_input,
 )
 from app.models.workflow_execution_models import RecordedCall, parse_result
-from app.models.workflow_models import WorkflowUpdate
+from app.models.workflow_models import WorkflowDocument, WorkflowUpdate
 from app.services.workflow.playbook.check import declined_for_good
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.parser import (
@@ -455,6 +455,43 @@ async def decline_playbook(
     log.set(tool={"name": "decline_playbook", "action": "decline"}, workflow_id=workflow_id)
     log.set_ns("playbook", declined=True, decline_kind=kind.value, decline_reason=reason)
 
+    refused = _decline_request_problem(kind, integrations, branch_on)
+    if refused is not None:
+        return refused
+
+    try:
+        user_id = get_user_id(config)
+        workflow = await workflow_repository.get_for_user(workflow_id, user_id)
+        if workflow is None:
+            return error_response("workflow_not_found", f"No workflow {workflow_id} for this user.")
+        # Past the limit the check is no longer asked; a decline now answers a
+        # question nobody put, and counting it would let a copied "step" grow
+        # the tally forever.
+        if declined_for_good(workflow):
+            return error_response(
+                "not_asked",
+                "This workflow is no longer asked about a playbook; nothing to decline.",
+            )
+        return await _record_decline(
+            workflow,
+            kind=kind,
+            reason=reason,
+            integrations=integrations,
+            state=state,
+            config=config,
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.TOOL} decline_playbook: exception", error_type=type(e).__name__, exc_info=True
+        )
+        return error_response("decline_failed", str(e))
+
+
+def _decline_request_problem(
+    kind: DeclineKind, integrations: list[str] | None, branch_on: str | None
+) -> dict[str, Any] | None:
+    """The refusal for a decline whose kind needs a detail the call did not give."""
+
     if kind in INTEGRATION_DECLINE_KINDS and not integrations:
         return error_response(
             "integrations_required",
@@ -470,90 +507,87 @@ async def decline_playbook(
             "only the NUMBER of times a call repeats differs, that is a for_each step, not a "
             "decline.",
         )
+    return None
 
-    try:
-        user_id = get_user_id(config)
-        workflow = await workflow_repository.get_for_user(workflow_id, user_id)
-        if workflow is None:
-            return error_response("workflow_not_found", f"No workflow {workflow_id} for this user.")
-        # Past the limit the check is no longer asked; a decline now answers a
-        # question nobody put, and counting it would let a copied "step" grow
-        # the tally forever.
-        if declined_for_good(workflow):
+
+async def _record_decline(
+    workflow: WorkflowDocument,
+    *,
+    kind: DeclineKind,
+    reason: str,
+    integrations: list[str] | None,
+    state: Mapping[str, Any] | None,
+    config: RunnableConfig,
+) -> dict[str, Any]:
+    """What one decline means for the workflow, by its kind, once it is known
+    to be asked and well-formed: a blocked run pauses, a quiet day is free, a
+    decline after this run's own write is the same decision, and the rest
+    count once per run."""
+    workflow_id, user_id = workflow.id, workflow.user_id
+    if kind in BLOCKED_DECLINE_KINDS:
+        return await _record_blocked_run(workflow_id, user_id, kind, integrations or [])
+    if kind is DeclineKind.NO_WORK_TODAY:
+        # The claim is checked against the run's own record, not taken on
+        # trust: a run that made a doing-call had work to freeze.
+        worked = [name for name, _args, _answer in _answered_calls(state) if is_work_call(name)]
+        if worked:
             return error_response(
-                "not_asked",
-                "This workflow is no longer asked about a playbook; nothing to decline.",
+                "work_happened",
+                f"This run called {', '.join(sorted(set(worked)))}, so the work happened "
+                "today. Freeze it with write_playbook, or decline with the kind that "
+                "says why the sequence cannot hold.",
             )
-        if kind in BLOCKED_DECLINE_KINDS:
-            return await _record_blocked_run(workflow_id, user_id, kind, integrations or [])
-        if kind is DeclineKind.NO_WORK_TODAY:
-            # The claim is checked against the run's own record, not taken on
-            # trust: a run that made a doing-call had work to freeze.
-            worked = [name for name, _args, _answer in _answered_calls(state) if is_work_call(name)]
-            if worked:
-                return error_response(
-                    "work_happened",
-                    f"This run called {', '.join(sorted(set(worked)))}, so the work happened "
-                    "today. Freeze it with write_playbook, or decline with the kind that "
-                    "says why the sequence cannot hold.",
-                )
-            # Not a verdict on the sequence: the work never happened, so there
-            # was nothing to freeze. Asked again on a day it does.
-            log.set_ns("playbook", quiet_day=True)
-            return success_response(
-                {"declined": True, "counted": False},
-                "Noted: nothing to freeze on a day the work did not happen. This does not "
-                "count against the workflow.",
-            )
-
-        run_id = get_stream_id(config)
-        written = await playbook_repository.get_for_workflow(workflow_id, user_id)
-        if written is not None and written.authored_run == run_id:
-            # Seen on the real model: a valid write, then a decline in the same
-            # turn. The write was checked against the run and stored; the
-            # decline is a second voice of a decision already made.
-            return success_response(
-                {"declined": True, "counted": False},
-                "This run already wrote a playbook, and that is its decision; nothing to record.",
-            )
-
-        # Counted once per run, however many times this run voices it: the
-        # calls a model issues in one turn run in parallel on one state, so no
-        # call can see another's answer. The repository matches on the run.
-        declines = await workflow_repository.count_playbook_decline(
-            workflow_id,
-            user_id,
-            run_id=run_id,
-            workflow_hash=workflow_hash(workflow.prompt, workflow.steps),
-        )
-        if declines is None:
-            return success_response(
-                {"declined": True, "counted": False},
-                "Already noted for this run. A run is one decision; nothing more to record.",
-            )
-        log.set_ns("playbook", declines=declines)
-
-        # A decline inside a heal run is the agent saying the stored sequence
-        # cannot hold. Leaving it FAILED/SUSPECT would brief every later fire
-        # to heal it again.
-        playbook = await playbook_repository.get_for_workflow(workflow_id, user_id)
-        if playbook is not None and playbook.last_run_status in HEAL_STATUSES:
-            await playbook_repository.delete_for_workflow(workflow_id, user_id)
-            log.set_ns("playbook", disabled=True, reason=reason)
-            return success_response(
-                {"declined": True, "counted": True, "declines": declines, "disabled": True},
-                "Noted. The stored playbook was removed; this workflow reasons out every run "
-                "again.",
-            )
+        # Not a verdict on the sequence: the work never happened, so there
+        # was nothing to freeze. Asked again on a day it does.
+        log.set_ns("playbook", quiet_day=True)
         return success_response(
-            {"declined": True, "counted": True, "declines": declines},
-            "Noted. This workflow keeps reasoning out every run for now.",
+            {"declined": True, "counted": False},
+            "Noted: nothing to freeze on a day the work did not happen. This does not "
+            "count against the workflow.",
         )
-    except Exception as e:
-        log.error(
-            f"{LogTag.TOOL} decline_playbook: exception", error_type=type(e).__name__, exc_info=True
+
+    run_id = get_stream_id(config)
+    written = await playbook_repository.get_for_workflow(workflow_id, user_id)
+    if written is not None and written.authored_run == run_id:
+        # Seen on the real model: a valid write, then a decline in the same
+        # turn. The write was checked against the run and stored; the
+        # decline is a second voice of a decision already made.
+        return success_response(
+            {"declined": True, "counted": False},
+            "This run already wrote a playbook, and that is its decision; nothing to record.",
         )
-        return error_response("decline_failed", str(e))
+
+    # Counted once per run, however many times this run voices it: the
+    # calls a model issues in one turn run in parallel on one state, so no
+    # call can see another's answer. The repository matches on the run.
+    declines = await workflow_repository.count_playbook_decline(
+        workflow_id,
+        user_id,
+        run_id=run_id,
+        workflow_hash=workflow_hash(workflow.prompt, workflow.steps),
+    )
+    if declines is None:
+        return success_response(
+            {"declined": True, "counted": False},
+            "Already noted for this run. A run is one decision; nothing more to record.",
+        )
+    log.set_ns("playbook", declines=declines)
+
+    # A decline inside a heal run is the agent saying the stored sequence
+    # cannot hold. Leaving it FAILED/SUSPECT would brief every later fire
+    # to heal it again.
+    playbook = await playbook_repository.get_for_workflow(workflow_id, user_id)
+    if playbook is not None and playbook.last_run_status in HEAL_STATUSES:
+        await playbook_repository.delete_for_workflow(workflow_id, user_id)
+        log.set_ns("playbook", disabled=True, reason=reason)
+        return success_response(
+            {"declined": True, "counted": True, "declines": declines, "disabled": True},
+            "Noted. The stored playbook was removed; this workflow reasons out every run again.",
+        )
+    return success_response(
+        {"declined": True, "counted": True, "declines": declines},
+        "Noted. This workflow keeps reasoning out every run for now.",
+    )
 
 
 @tool
