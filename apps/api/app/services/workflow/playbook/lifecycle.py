@@ -96,14 +96,15 @@ PlaybookEvent = Replayed | HealCompleted | Rewritten
 def _advance(
     state: PlaybookLifecycle,
     *,
+    reason: str | None,
     status: PlaybookRunStatus | None = None,
-    reason: str | None = None,
     suspect_streak: int | None = None,
     heal_attempts: int | None = None,
     revision: int | None = None,
 ) -> PlaybookLifecycle:
     """The state with the given fields changed; ``dataclasses.replace`` with the
-    state's own type kept rather than the generic one."""
+    state's own type kept rather than the generic one. ``reason`` is always
+    stated: a transition either carries one or clears it, never inherits it."""
     return PlaybookLifecycle(
         status=state.status if status is None else status,
         reason=reason,

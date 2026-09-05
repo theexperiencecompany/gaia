@@ -467,8 +467,8 @@ async def _run_for_each(
 
 def _items_not_in_results(items: Sequence[str], run: _Run) -> list[str]:
     """The picked items that appear nowhere in what the run's steps returned."""
-    haystack = "\n".join(json.dumps(result.value, default=str) for result in run.steps.values())
-    return [item for item in items if item not in haystack]
+    texts = [json.dumps(result.value, default=str) for result in run.steps.values()]
+    return [item for item in items if not any(item in text for text in texts)]
 
 
 @dataclass(frozen=True, slots=True)

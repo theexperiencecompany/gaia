@@ -2108,10 +2108,15 @@ class TestAnUntrustedReplayHandsOverWithItsRecord:
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
         _, result = _stopped_replay()
+        # A datetime in the args: the note is prompt material, so the calls
+        # travel as JSON values, not as Python objects that render as repr.
+        result.trace[0].args = {"since": datetime(2026, 9, 5, tzinfo=UTC)}
         harness.playbook_run = AsyncMock(return_value=("conv_1", result))
 
         await _fire(harness)
 
+        context = harness.chat.await_args.args[2]
+        assert context[PLAYBOOK_REPLAYED_CALLS_KEY][0]["args"] == {"since": "2026-09-05T00:00:00Z"}
         assert harness.chat.await_args_list == [
             call(
                 workflow,

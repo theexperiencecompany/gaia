@@ -72,6 +72,7 @@ from app.services.workflow.playbook.evaluator import (
 from app.services.workflow.playbook.runner import (
     PlaybookNarration,
     PlaybookRunResult,
+    _empty_where_previous_had_items,
     _fill_asks,
     _items_not_in_results,
     _narrate,
@@ -2113,6 +2114,22 @@ class TestSuspectVerdict:
         assert result.text == ""
         assert llm.await_count == 0
 
+    async def test_a_result_with_items_is_not_measured_against_the_previous_replay(
+        self,
+    ) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": [{"id": 9}]}'))
+
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS),
+            registry,
+            seams=_Seams(find_previous=_previous_run(self.PREVIOUS_HAD_THREE)),
+        )
+
+        assert result.ok is True, result.failure
+        assert result.suspect is None
+        assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
+
     async def test_a_run_stopped_on_the_records_word_still_reports_what_it_did(self) -> None:
         """That early return is a full result, not a stub.
 
@@ -3125,7 +3142,10 @@ class TestForEach:
         assert result.ok is False
         assert [name for name, _ in recorder.calls if name == "send_email"] == []
         assert result.failure is not None
-        assert "picked 'c3d5', which appears in no result this run produced" in result.failure
+        assert result.failure.startswith(
+            "Playbook stopped at step 2 (send_email): mails.$for_each picked 'c3d5', "
+            "which appears in no result this run produced"
+        )
 
     async def test_a_pick_copied_from_the_results_runs(self) -> None:
         recorder = _Recorder()
@@ -3181,8 +3201,79 @@ class TestForEach:
 
         assert result.ok is False
         assert result.failure is not None
-        assert "for_each needs a list" in result.failure
-        assert "str" in result.failure
+        assert result.failure.startswith(
+            "Playbook stopped at step 2 (send_email): for_each needs a list to repeat over, "
+            "but '$steps.events.ids' resolved to str"
+        )
+
+    async def test_a_source_that_does_not_resolve_stops_at_the_step_with_the_reason(
+        self,
+    ) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+
+        result, _ = await _run(_playbook(_fan_out(source="$steps.nothing.ids")), registry)
+
+        assert result.ok is False
+        assert result.failure is not None
+        assert result.failure.startswith("Playbook stopped at step 2 (send_email): ")
+        assert "nothing" in result.failure
+        assert [name for name, _ in recorder.calls] == ["list_events"]
+
+    async def test_a_step_without_an_id_runs_every_element_and_keeps_no_result(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
+        steps = [
+            ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            ForEachStep(
+                tool="send_email", args={"to": "$item"}, for_each="$steps.events.ids", max_items=5
+            ),
+        ]
+
+        result, _ = await _run(_playbook(steps), registry)
+
+        assert result.ok is True, result.failure
+        assert [args["to"] for name, args in recorder.calls if name == "send_email"] == ["a", "b"]
+
+    async def test_an_element_whose_tool_raises_stops_the_loop_as_a_report(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, failing="send_email", events_result='{"ids": ["a", "b"]}')
+        )
+
+        result, _ = await _run(_playbook(_fan_out()), registry)
+
+        assert result.ok is False
+        assert result.failure is not None
+        assert result.failure.startswith(
+            "Playbook stopped at step 2 (send_email): Error: ValueError: rejected argument 'body'"
+        )
+        assert [args["to"] for name, args in recorder.calls if name == "send_email"] == ["a"]
+
+    async def test_an_element_whose_replay_raises_is_logged_against_the_playbook(self) -> None:
+        """A raise out of the graph mid-loop is the same report as on a plain
+        step, attributed to the playbook it broke."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
+        playbook = _playbook(_fan_out())
+        graphs = iter([real_create_agent])
+
+        def then_explode(*args: Any, **kwargs: Any) -> Any:
+            build = next(graphs, None)
+            if build is None:
+                raise RuntimeError("graph exploded")
+            return build(*args, **kwargs)
+
+        with patch(f"{MODULE}.create_agent", then_explode), patch(f"{MODULE}.log") as log:
+            result, _ = await _run(playbook, registry)
+
+        assert result.ok is False
+        assert result.failure is not None
+        assert result.failure.startswith(
+            "Playbook stopped at step 2 (send_email): raised RuntimeError: graph exploded"
+        )
+        assert log.exception.call_args.kwargs["playbook_id"] == playbook.playbook_id
+        assert [name for name, _ in recorder.calls] == ["list_events"]
 
     async def test_one_element_failing_stops_the_run(self) -> None:
         """The steps after a fan-out read its results; running them on a partial
@@ -3498,8 +3589,10 @@ class TestForEachRecord:
         later = [args["calendar_id"] for name, args in recorder.calls if name == "list_events"][1]
         assert later.startswith("after ") and later.count("sent") == 3
         assert [
-            c.kwargs["for_each"] for c in log.set_ns.call_args_list if "for_each" in c.kwargs
-        ] == [{"step": "mails", "items": 3, "ran": 3}]
+            (c.args, c.kwargs["for_each"])
+            for c in log.set_ns.call_args_list
+            if "for_each" in c.kwargs
+        ] == [(("playbook",), {"step": "mails", "items": 3, "ran": 3})]
 
     async def test_a_suspect_element_stops_the_loop_after_that_element(self) -> None:
         recorder = _Recorder()
@@ -3575,9 +3668,9 @@ class TestForEachRecord:
 
         assert result.ok is False
         assert result.failure is not None
-        assert (
-            "for_each needs a list to repeat over, but '$steps.events.ids' resolved to dict"
-            in result.failure
+        assert result.failure.startswith(
+            "Playbook stopped at step 2 (send_email): for_each needs a list to repeat over, "
+            "but '$steps.events.ids' resolved to dict"
         )
 
     async def test_each_element_gets_its_own_ask_call_and_the_element_in_it(self) -> None:
@@ -3621,6 +3714,12 @@ class TestRenderElement:
         assert _render_element("a@b.com") == PLAYBOOK_ASK_ELEMENT.format(element="a@b.com")
         assert _render_element({"id": 1}) == PLAYBOOK_ASK_ELEMENT.format(element='{"id": 1}')
 
+    def test_a_structure_holding_a_datetime_still_renders(self) -> None:
+        rendered = _render_element({"when": datetime(2026, 9, 5, tzinfo=UTC)})
+        assert rendered == PLAYBOOK_ASK_ELEMENT.format(
+            element='{"when": "2026-09-05 00:00:00+00:00"}'
+        )
+
     def test_a_long_element_is_cut_to_one_line(self) -> None:
         rendered = _render_element("x" * 5000)
         assert len(rendered) < 5000
@@ -3637,3 +3736,46 @@ class TestItemsNotInResults:
 
     def test_with_no_results_every_item_is_absent(self) -> None:
         assert _items_not_in_results(["a1"], _bare_run()) == ["a1"]
+
+    def test_a_result_holding_a_datetime_is_still_searched(self) -> None:
+        run = _bare_run()
+        run.steps["events"] = StepResult(
+            value={"when": datetime(2026, 9, 5, tzinfo=UTC), "ids": ["a1"]}
+        )
+
+        assert _items_not_in_results(["a1", "2026-09-05"], run) == []
+
+
+class TestEmptyWherePreviousHadItems:
+    HAD_ONE = RecordedCall(
+        replayed=True, tool_name="list_events", result_digest='{"items": [{"id": 1}]}'
+    )
+    ANOTHER_TOOL = RecordedCall(replayed=True, tool_name="send_email", result_digest="sent")
+
+    def test_a_result_with_items_is_never_suspect(self) -> None:
+        assert (
+            _empty_where_previous_had_items("list_events", {"items": [{"id": 7}]}, [[self.HAD_ONE]])
+            is None
+        )
+
+    def test_the_baseline_is_found_past_other_tools_later_in_that_run(self) -> None:
+        assert (
+            _empty_where_previous_had_items(
+                "list_events", {"items": []}, [[self.HAD_ONE, self.ANOTHER_TOOL]]
+            )
+            == "list_events returned no items where the last replay with results returned 1"
+        )
+
+
+class TestItemOutsideForEach:
+    async def test_item_in_a_plain_step_is_refused_before_the_call(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        steps = [ToolStep(id="mail", tool="send_email", args={"to": "$item"})]
+
+        result, _ = await _run(_playbook(steps), registry)
+
+        assert result.ok is False
+        assert result.failure is not None
+        assert "$item is only meaningful inside a for_each step" in result.failure
+        assert recorder.calls == []

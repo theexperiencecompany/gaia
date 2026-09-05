@@ -557,6 +557,43 @@ def _unobservable_ensure_ascii(
     return False
 
 
+def _unreachable_match_arm(path: str, line_no: int) -> bool:
+    """True when line_no sits in a ``case _: assert_never(...)`` arm.
+
+    That arm exists for mypy, which uses it to prove the match exhaustive over
+    the enum or union it switches on; at runtime no input reaches it. Deleting
+    the arm, or its argument, changes no execution, so no test can kill the
+    mutant — and the arm must stay, since it is what turns a new enum member
+    into a type error instead of a silent fall-through. Seven of these survived
+    as "real" on the playbook lifecycle's three match statements.
+    """
+    try:
+        tree = ast.parse(Path(path).read_text())
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Match):
+            continue
+        for case in node.cases:
+            wildcard = (
+                isinstance(case.pattern, ast.MatchAs)
+                and case.pattern.pattern is None
+                and case.pattern.name is None
+            )
+            if not wildcard or len(case.body) != 1 or not isinstance(case.body[0], ast.Expr):
+                continue
+            call = case.body[0].value
+            if not (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Name)
+                and call.func.id == "assert_never"
+            ):
+                continue
+            if case.pattern.lineno <= line_no <= (case.body[0].end_lineno or line_no):
+                return True
+    return False
+
+
 def _within(span, line_no: int, col: int) -> bool:
     start_line, start_col, end_line, end_col = span
     if line_no < start_line or line_no > end_line:
@@ -594,6 +631,7 @@ for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
             _unobservable_get_default(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_ensure_ascii(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_header_case(real_path, line_no, col, orig_raw[i], mut_raw[i])
+            or _unreachable_match_arm(real_path, line_no)
         ):
             print("EQUIV")
             sys.exit(0)

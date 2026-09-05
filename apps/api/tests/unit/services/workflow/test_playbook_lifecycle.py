@@ -139,7 +139,7 @@ class TestTransitionTable:
         )
 
     def test_a_replay_cannot_leave_the_playbook_not_run(self) -> None:
-        with pytest.raises(ValueError, match="cannot end with the playbook not run"):
+        with pytest.raises(ValueError, match="^a replay cannot end with the playbook not run$"):
             transition(
                 _state(PlaybookRunStatus.SUCCESS),
                 Replayed(PlaybookRunOutcome(PlaybookRunStatus.NOT_RUN)),

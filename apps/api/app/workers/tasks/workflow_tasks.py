@@ -124,6 +124,8 @@ from shared.py.wide_events import WorkflowContext, log
 
 # How far a fire may drift from its scheduled time before it is worth a warning.
 _DRIFT_WARN_SECONDS = 300
+#: How much of an exception's text a warning carries into the wide event.
+_ERROR_EXCERPT_CHARS = 500
 
 
 async def process_workflow_generation_task(
@@ -521,7 +523,7 @@ async def _record_execution_failure(
                 f"{LogTag.WORKER} Failed to complete execution record; it stays 'running'",
                 workflow_id=workflow_id,
                 execution_id=execution_id,
-                error=str(e2)[:300],
+                error=str(e2)[:_ERROR_EXCERPT_CHARS],
                 error_type=type(e2).__name__,
             )
 
@@ -701,7 +703,7 @@ async def _run_workflow(
             f"{LogTag.WORKFLOW} playbook lookup failed; running the workflow agentically",
             workflow_id=workflow_id,
             error_type=type(e).__name__,
-            error=str(e)[:500],
+            error=str(e)[:_ERROR_EXCERPT_CHARS],
         )
         log.set_ns("playbook", mode="agent", reason="lookup_failed", llm_calls=0)
         return *await execute_workflow_as_chat(workflow, user, context), AGENT_RUN_SUMMARY
@@ -1723,7 +1725,7 @@ async def execute_workflow_as_chat(
             workflow_title=getattr(workflow, "title", None),
             user_id=user.get("user_id") if isinstance(user, dict) else None,
             error_type=type(e).__name__,
-            error=str(e)[:500],
+            error=str(e)[:_ERROR_EXCERPT_CHARS],
             outcome="agent_error",
             exc_info=True,
         )

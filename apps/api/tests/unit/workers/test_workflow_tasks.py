@@ -2475,7 +2475,9 @@ class TestAnExecutorThatDiedIsNotASuccessfulRun:
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
                 return_value=SilentRunResult(
-                    message="Sorry, something went wrong.", tool_data={}, executor_failed=True
+                    message="Sorry, something went wrong.",
+                    tool_data=_FETCH_TOOL_DATA,
+                    executor_failed=True,
                 ),
             ),
             pytest.raises(WorkflowExecutorFailed) as raised,
@@ -2484,6 +2486,65 @@ class TestAnExecutorThatDiedIsNotASuccessfulRun:
 
         assert raised.value.conversation_id == "conv_1"
         assert "Sorry, something went wrong." in str(raised.value)
+        assert [c.tool_name for c in raised.value.trace] == ["GMAIL_FETCH"]
+
+    async def test_a_fire_queued_behind_the_previous_one_raises_with_its_trace(self) -> None:
+        """Comms' acknowledgement of queued work is not a result; the raise
+        carries what did run so the record can keep it."""
+        workflow = MagicMock(
+            id="wf_1",
+            user_id="u_1",
+            title="Digest",
+            description="Daily digest",
+            prompt="Summarise my day",
+            notify_on_completion=True,
+        )
+        workflow.steps = []
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"user_id": "u_1", "timezone": "UTC"},
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value="conv_1",
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=SilentRunResult(
+                    message="On it.", tool_data=_FETCH_TOOL_DATA, queued_task_id="job_9"
+                ),
+            ),
+            pytest.raises(WorkflowFireQueued) as queued,
+        ):
+            await execute_workflow_as_chat(workflow, {"user_id": "u_1"}, {})
+
+        assert queued.value.task_id == "job_9"
+        assert queued.value.conversation_id == "conv_1"
+        assert [c.tool_name for c in queued.value.trace] == ["GMAIL_FETCH"]
+
+
+#: One recorded executor call, in the shape the silent run hands back.
+_FETCH_TOOL_DATA = {
+    "tool_data": [
+        {
+            "tool_name": "tool_calls_data",
+            "data": {
+                "tool_name": "GMAIL_FETCH",
+                "inputs": {"query": "is:unread"},
+                "output": "12 messages",
+            },
+        }
+    ]
+}
 
 
 @pytest.mark.unit
