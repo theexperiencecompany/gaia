@@ -3,17 +3,23 @@
 import { Badge } from "@heroui/badge";
 import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
+import { Spinner } from "@heroui/spinner";
 import { Tab, Tabs } from "@heroui/tabs";
 import { NotificationIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { NotificationStatus } from "../../../types/features/notificationTypes";
+import {
+  type ModalConfig,
+  NotificationStatus,
+} from "../../../types/features/notificationTypes";
+import { NotificationCard } from "./NotificationCard";
 import { NotificationConnectBanner } from "./NotificationConnectBanner";
-import { NotificationItem } from "./NotificationItem";
+import { NotificationsEmptyState } from "./NotificationsEmptyState";
+import { UnreadCountChip } from "./UnreadCountChip";
 
 interface NotificationCenterProps {
   className?: string;
@@ -24,6 +30,7 @@ export function NotificationCenter({
 }: NotificationCenterProps) {
   const [activeTab, setActiveTab] = useState<"unread" | "all">("unread");
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
+  const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
   const router = useRouter();
 
   const notificationOptions = useMemo(
@@ -34,8 +41,14 @@ export function NotificationCenter({
     [activeTab],
   );
 
-  const { notifications, unreadCount, loading, markAsRead, bulkMarkAsRead } =
-    useNotifications(notificationOptions);
+  const {
+    notifications,
+    unreadCount,
+    loading,
+    markAsRead,
+    bulkMarkAsRead,
+    refetch,
+  } = useNotifications(notificationOptions);
 
   const handleMarkAsRead = async (notificationId: string) => {
     trackEvent(ANALYTICS_EVENTS.NOTIFICATION_VIEWED, {
@@ -88,86 +101,85 @@ export function NotificationCenter({
           </div>
         </PopoverTrigger>
 
-        <PopoverContent className="mr-4 w-96 rounded-2xl border-1 border-zinc-700 bg-zinc-800 p-0 shadow-xl">
-          <Tabs
-            selectedKey={activeTab}
-            onSelectionChange={(key) => setActiveTab(key as "unread" | "all")}
-            variant="underlined"
-            fullWidth
-          >
-            <Tab
-              key="unread"
-              title={
-                <Badge
-                  color="primary"
-                  size="sm"
-                  placement="top-right"
-                  content={unreadCount > 99 ? "99+" : unreadCount}
-                  isInvisible={unreadCount === 0}
-                  classNames={{ badge: "select-none border-0" }}
-                >
-                  {/* right padding gives the corner-anchored count room so it
-                      sits after the label instead of overlapping it */}
-                  <span className="pr-5">Unread</span>
-                </Badge>
-              }
-            />
-            <Tab key="all" title="All" />
-          </Tabs>
+        <PopoverContent className="mr-4 w-96 rounded-2xl bg-zinc-900 p-0 shadow-xl">
+          {/* Header: tabs + mark all as read */}
+          <div className="flex w-full items-center justify-between px-3 pt-3">
+            <Tabs
+              aria-label="Notifications"
+              size="sm"
+              selectedKey={activeTab}
+              onSelectionChange={(key) => setActiveTab(key as "unread" | "all")}
+            >
+              <Tab
+                key="unread"
+                title={
+                  <div className="flex items-center gap-1.5">
+                    <span>Unread</span>
+                    <UnreadCountChip count={unreadCount} />
+                  </div>
+                }
+              />
+              <Tab key="all" title="All" />
+            </Tabs>
 
-          {/* Notifications list */}
-          <ScrollArea className="w-full" viewportClassName="max-h-[70vh]">
-            {loading ? (
-              <div className="flex items-center justify-center p-8">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-50" />
-              </div>
-            ) : filteredNotifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-8 text-center">
-                <NotificationIcon className="mb-4 h-10 w-10 text-zinc-600" />
-                <p className="font-medium text-zinc-300">
-                  {activeTab === "unread"
-                    ? "No unread notifications"
-                    : "No notifications yet"}
-                </p>
-                <p className="mt-1 text-sm text-zinc-400">
-                  {activeTab === "unread"
-                    ? "All caught up!"
-                    : "Notifications will appear here when you receive them"}
-                </p>
-              </div>
-            ) : (
-              <div className="w-full space-y-2 p-3">
-                {filteredNotifications.map((notification) => (
-                  <NotificationItem
-                    key={notification.id}
-                    notification={notification}
-                    onMarkAsRead={handleMarkAsRead}
-                  />
-                ))}
-              </div>
-            )}
-          </ScrollArea>
-
-          <NotificationConnectBanner variant="compact" />
-
-          {/* Footer */}
-          <div className="flex w-full items-center justify-evenly gap-3 p-3">
             {unreadCount > 0 && (
               <Button
                 size="sm"
-                fullWidth
+                variant="light"
+                className="text-xs text-zinc-400"
                 onPress={handleMarkAllAsRead}
                 isLoading={isMarkingAllRead}
-                isDisabled={isMarkingAllRead}
               >
                 Mark all as read
               </Button>
             )}
+          </div>
 
+          {/* Notifications list */}
+          <div className="max-h-[60vh] w-full overflow-y-auto">
+            {loading ? (
+              <div className="flex items-center justify-center p-10">
+                <Spinner size="sm" color="primary" />
+              </div>
+            ) : filteredNotifications.length === 0 ? (
+              <div className="flex items-center justify-center p-10">
+                <NotificationsEmptyState
+                  title={
+                    activeTab === "unread"
+                      ? "No unread notifications"
+                      : "No notifications yet"
+                  }
+                  description={
+                    activeTab === "unread"
+                      ? "All caught up!"
+                      : "Notifications will appear here when you receive them."
+                  }
+                />
+              </div>
+            ) : (
+              <div className="w-full space-y-2 p-3">
+                {filteredNotifications.map((notification) => (
+                  <NotificationCard
+                    key={notification.id}
+                    notification={notification}
+                    clampBody
+                    onMarkAsRead={handleMarkAsRead}
+                    onModalOpen={setModalConfig}
+                    onRefresh={refetch}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <NotificationConnectBanner variant="compact" />
+
+          {/* Footer */}
+          <div className="w-full p-3">
             <Button
               fullWidth
               size="sm"
-              variant={unreadCount > 0 ? "bordered" : "solid"}
+              variant="flat"
               onPress={() => {
                 router.push("/notifications");
               }}
@@ -177,6 +189,20 @@ export function NotificationCenter({
           </div>
         </PopoverContent>
       </Popover>
+
+      {modalConfig?.component === "EmailPreviewModal" && modalConfig.props && (
+        <EmailPreviewModal
+          isOpen={true}
+          onClose={() => setModalConfig(null)}
+          subject={modalConfig.props.subject || ""}
+          body={modalConfig.props.body || ""}
+          recipients={modalConfig.props.recipients || []}
+          mode={modalConfig.props.mode === "view" ? "view" : "edit"}
+          onEmailSent={refetch}
+          notificationId={modalConfig.props.notificationId}
+          actionId={modalConfig.props.actionId}
+        />
+      )}
     </div>
   );
 }

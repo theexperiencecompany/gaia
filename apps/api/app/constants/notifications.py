@@ -29,7 +29,9 @@ EXTERNAL_NOTIFICATION_CHANNELS = (
 )
 
 # All channel types that are auto-injected when no channels are explicitly specified.
-# inapp is always available; the external platforms respect user preferences.
+# inapp is always available; telegram/discord/whatsapp/slack/imessage respect user
+# preferences; email is auto-injected for every user with a known email address
+# (also pref-gated).
 ALL_AUTO_INJECTED_CHANNELS = (
     CHANNEL_TYPE_INAPP,
     CHANNEL_TYPE_TELEGRAM,
@@ -37,9 +39,11 @@ ALL_AUTO_INJECTED_CHANNELS = (
     CHANNEL_TYPE_WHATSAPP,
     CHANNEL_TYPE_SLACK,
     CHANNEL_TYPE_IMESSAGE,
+    CHANNEL_TYPE_EMAIL,
 )
 
-# Default enabled state for external channels
+# Default enabled state for external channels. Email defaults on so daily
+# briefings/weekly digests reach a user's inbox until they opt out.
 DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     CHANNEL_TYPE_TELEGRAM: True,
     CHANNEL_TYPE_DISCORD: True,
@@ -48,6 +52,36 @@ DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     CHANNEL_TYPE_IMESSAGE: True,
     CHANNEL_TYPE_EMAIL: True,
 }
+
+# Default order in which a briefing picks its ONE chat platform. The daily brief
+# lands on the first platform in this list that the user has linked and enabled,
+# not on every linked platform (users.briefing_channel_priority overrides it).
+DEFAULT_CHAT_CHANNEL_PRIORITY: tuple[str, ...] = (
+    CHANNEL_TYPE_TELEGRAM,
+    CHANNEL_TYPE_WHATSAPP,
+    CHANNEL_TYPE_SLACK,
+    CHANNEL_TYPE_DISCORD,
+)
+
+# Notification metadata "kind" values that select an email template. Anything
+# else (including unset) falls back to the plain-notification template.
+NOTIFICATION_KIND_BRIEFING_DAILY = "briefing_daily"
+NOTIFICATION_KIND_BRIEFING_WEEKLY = "briefing_weekly"
+
+# Todo-lifecycle notification kinds (plain template; used for filtering/analytics).
+NOTIFICATION_KIND_TODO_NEEDS_YOU = "todo_needs_you"
+# A genuinely time-critical signal alert (see the daily-briefing-run spec's
+# urgent-signal requirement): gated by urgency, not by count.
+NOTIFICATION_KIND_URGENT_SIGNAL = "urgent_signal"
+
+# An urgent alert unread this long is treated as ignored: the maintenance sweep
+# writes a rejection-strike memory signal for its signal_kind so the model
+# learns the user's urgency bar.
+URGENT_ALERT_IGNORE_HOURS = 48
+
+# Per-sweep cap on ignore-strike processing (cheap Mongo scan, bounded anyway).
+URGENT_STRIKE_SWEEP_LIMIT = 200
+NOTIFICATION_KIND_TODO_DONE = "todo_done"
 
 # Workflow-completion notification copy. GAIA texts like a friend (first person,
 # casual), not a status bar. Each entry is (title, body); {title} is the workflow

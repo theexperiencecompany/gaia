@@ -4,7 +4,7 @@ import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { NotificationIcon } from "@icons";
 import { useMemo, useState } from "react";
-import { NotificationItem } from "@/features/notification/components/NotificationItem";
+import { NotificationCard } from "@/features/notification/components/NotificationCard";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
@@ -175,9 +175,11 @@ export default function NotificationListSection({
             <ScrollShadow className="max-h-[60vh]">
               <div className="space-y-2">
                 {localNotifications.map((notification) => (
-                  <NotificationItem
+                  <NotificationCard
                     key={notification.id}
                     notification={notification}
+                    tone="inset"
+                    clampBody
                     onMarkAsRead={handleMarkAsRead}
                   />
                 ))}

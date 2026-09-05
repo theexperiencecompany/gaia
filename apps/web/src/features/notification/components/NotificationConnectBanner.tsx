@@ -16,6 +16,23 @@ interface NotificationConnectBannerProps {
   variant?: "compact" | "full";
 }
 
+function platformIconStack(size: number) {
+  return (
+    <div className="flex shrink-0 -space-x-2">
+      {NOTIFICATION_PLATFORMS.map((p, index) => (
+        <Image
+          key={p}
+          src={NOTIFICATION_PLATFORM_ICONS[p]}
+          alt={NOTIFICATION_PLATFORM_LABELS[p]}
+          width={size}
+          height={size}
+          className={`${index % 2 === 0 ? "-rotate-12" : "rotate-12"} rounded-md`}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function NotificationConnectBanner({
   variant = "compact",
 }: NotificationConnectBannerProps) {
@@ -53,21 +70,10 @@ export function NotificationConnectBanner({
   if (variant === "compact") {
     return (
       <div className="w-full px-3">
-        <div className="flex items-center justify-between gap-2 rounded-xl bg-zinc-900/80 px-3 py-2 text-xs w-full">
-          <div className="flex items-center gap-6">
-            <div className="-space-x-2 flex">
-              {unconnectedPlatforms.map((p, index) => (
-                <Image
-                  key={p}
-                  src={NOTIFICATION_PLATFORM_ICONS[p]}
-                  alt={NOTIFICATION_PLATFORM_LABELS[p]}
-                  width={30}
-                  height={30}
-                  className={` ${index % 2 === 0 ? "-rotate-12" : "rotate-12"} rounded-md`}
-                />
-              ))}
-            </div>
-            <span className="text-zinc-400">
+        <div className="flex w-full items-center justify-between gap-3 rounded-xl bg-zinc-800/60 px-3 py-2">
+          <div className="flex items-center gap-3">
+            {platformIconStack(26)}
+            <span className="text-xs text-zinc-400">
               Get notified in the apps you already use
             </span>
           </div>
@@ -75,7 +81,7 @@ export function NotificationConnectBanner({
             size="sm"
             variant="flat"
             color="primary"
-            className="shrink-0 text-xs"
+            className="shrink-0 rounded-xl text-xs"
             onPress={() => router.push("/settings/linked-accounts")}
           >
             Connect
@@ -86,22 +92,27 @@ export function NotificationConnectBanner({
   }
 
   return (
-    <div className="rounded-xl border border-zinc-700 bg-zinc-800/60 p-4">
-      <p className="text-sm font-medium text-zinc-200">
-        Stay notified on your devices
-      </p>
-      <p className="mt-1 text-xs text-zinc-400">
-        Connect your platform bots to receive GAIA notifications outside the web
-        app.
-      </p>
+    <div className="flex items-center justify-between gap-4 rounded-2xl bg-zinc-800/60 p-4">
+      <div className="flex items-center gap-4">
+        {platformIconStack(32)}
+        <div>
+          <p className="text-sm font-medium text-zinc-100">
+            Stay notified on your devices
+          </p>
+          <p className="mt-0.5 text-xs text-zinc-400">
+            Connect Telegram, Discord, WhatsApp, or Slack to get GAIA
+            notifications anywhere.
+          </p>
+        </div>
+      </div>
       <Button
         size="sm"
         variant="flat"
         color="primary"
-        className="mt-3 text-xs"
+        className="shrink-0 rounded-xl text-xs"
         onPress={() => router.push("/settings/linked-accounts")}
       >
-        Connect platforms
+        Connect
       </Button>
     </div>
   );

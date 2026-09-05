@@ -237,47 +237,9 @@ export function useNotificationActions(
     }
   };
 
-  const getActionButtonProps = (action: NotificationAction) => {
-    const isExecuted = action.executed || false;
-    const isLoading = loading === action.id;
-
-    const baseProps = {
-      disabled: action.disabled || isLoading || isExecuted,
-      loading: isLoading,
-      executed: isExecuted,
-    };
-
-    switch (action.style) {
-      case "primary":
-        return {
-          ...baseProps,
-          variant: "default" as const,
-          className: "bg-blue-600 hover:bg-blue-700 text-white",
-        };
-      case "secondary":
-        return {
-          ...baseProps,
-          variant: "secondary" as const,
-          className: "bg-zinc-700 hover:bg-zinc-600 text-white",
-        };
-      case "danger":
-        return {
-          ...baseProps,
-          variant: "destructive" as const,
-          className: "bg-red-600 hover:bg-red-700 text-white",
-        };
-      default:
-        return {
-          ...baseProps,
-          variant: "outline" as const,
-        };
-    }
-  };
-
   return {
     executeAction,
     loading,
-    getActionButtonProps,
     confirmationProps,
   };
 }
