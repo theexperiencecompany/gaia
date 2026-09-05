@@ -889,6 +889,15 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
         return matched > 0
 
+    async def add_hidden_first_step(self, user_id: str, step: str) -> None:
+        """Hide a single checklist row server-side ($addToSet, so repeats no-op)."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$addToSet": {"first_steps.hidden_steps": step}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
     async def mark_day_zero_hello_sent(self, user_id: str, platform: str) -> None:
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
