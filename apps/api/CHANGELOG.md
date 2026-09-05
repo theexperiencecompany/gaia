@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.23.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.22.0...api-v0.23.0) (2026-09-05)
+
+
+### Features
+
+* **api,web:** Google Drive connector + attach files to Gmail drafts ([#1185](https://github.com/theexperiencecompany/gaia/issues/1185)) ([cdd1bde](https://github.com/theexperiencecompany/gaia/commit/cdd1bdeeff098850e8e1807432d8a73428bc7ddc))
+* **api:** add updatedAt index on conversations collection ([#1138](https://github.com/theexperiencecompany/gaia/issues/1138)) ([fdf432d](https://github.com/theexperiencecompany/gaia/commit/fdf432d5a9a5f231029e957acedadf02d84886fa))
+* **api:** expose reminder tools directly, deliver reminders/todos back into their chat ([#1177](https://github.com/theexperiencecompany/gaia/issues/1177)) ([168d3e5](https://github.com/theexperiencecompany/gaia/commit/168d3e572e4619d6abad886d46d1b96fddbb972f))
+* **api:** llm_calls ledger — one queryable document per model call ([#1157](https://github.com/theexperiencecompany/gaia/issues/1157)) ([792bbb2](https://github.com/theexperiencecompany/gaia/commit/792bbb298cd1fa92e310e35ca47e6b847eb646eb))
+* **ci:** run CI on the home server with GitHub fallback; move sensitive infra to a private repo ([#1131](https://github.com/theexperiencecompany/gaia/issues/1131)) ([f38a9e6](https://github.com/theexperiencecompany/gaia/commit/f38a9e6c06b3f5e1cd6555c4bea82531f5d2ddca))
+* **triggers:** tracked todos that watch external events and wake themselves ([#1176](https://github.com/theexperiencecompany/gaia/issues/1176)) ([28ca57b](https://github.com/theexperiencecompany/gaia/commit/28ca57bbf416ec05be6ad857b8ea9142f59b6950))
+* **workflows:** author playbooks as inline $ask slots, checked against the run that writes them ([#1187](https://github.com/theexperiencecompany/gaia/issues/1187)) ([21720c7](https://github.com/theexperiencecompany/gaia/commit/21720c72a07b89d595e7e5928a0e01814ab32370))
+* **workflows:** replay a workflow settled tool calls from a playbook ([#1129](https://github.com/theexperiencecompany/gaia/issues/1129)) ([ec8fc69](https://github.com/theexperiencecompany/gaia/commit/ec8fc6914728448f89e538a52590b585721a08a0))
+
+
+### Bug Fixes
+
+* **api,infra:** make the backend correct and safe under multiple replicas ([#1141](https://github.com/theexperiencecompany/gaia/issues/1141)) ([5e5961b](https://github.com/theexperiencecompany/gaia/commit/5e5961b6b1993328d3eaecc5718dbdc5b7916a25))
+* **api:** attribute every OpenRouter client, with a distinct dev identity ([#1120](https://github.com/theexperiencecompany/gaia/issues/1120)) ([e10b4c6](https://github.com/theexperiencecompany/gaia/commit/e10b4c6804a6331aeca23c2b83bd11c073b90633))
+* **api:** book what OpenRouter charged, not what the price table guesses ([#1137](https://github.com/theexperiencecompany/gaia/issues/1137)) ([a9a5f7a](https://github.com/theexperiencecompany/gaia/commit/a9a5f7a92c2cedbdcc0425340b1243bb073b90f7))
+* **api:** carry the workflow execution id into the executor's boundary ([#1180](https://github.com/theexperiencecompany/gaia/issues/1180)) ([dab3fa4](https://github.com/theexperiencecompany/gaia/commit/dab3fa4b5c066e208808b549b6f56169eadfc68c))
+* **api:** keep OpenRouter's real provider name on the response ([#1159](https://github.com/theexperiencecompany/gaia/issues/1159)) ([291e7d9](https://github.com/theexperiencecompany/gaia/commit/291e7d916381420d116385087614e5a8d29c49fc))
+* **api:** record fired reminders in the conversation's langgraph thread ([#1172](https://github.com/theexperiencecompany/gaia/issues/1172)) ([d25ad05](https://github.com/theexperiencecompany/gaia/commit/d25ad0580cbb461ca4bbcc979e523d1571f479a4))
+* **api:** repair Google Calendar fetch — server-loop dispatch and null calendar_ids ([#1200](https://github.com/theexperiencecompany/gaia/issues/1200)) ([76c1af3](https://github.com/theexperiencecompany/gaia/commit/76c1af30a2f85efee6736ff2852e03d40cd9d988))
+* **api:** serialize pg checkpointer migration across xdist workers ([#1173](https://github.com/theexperiencecompany/gaia/issues/1173)) ([96ef0a2](https://github.com/theexperiencecompany/gaia/commit/96ef0a219490e970f4096f6a2cc8956b33415781))
+* **api:** stop charging users' budgets for the sticky-flip answer we discard ([#1145](https://github.com/theexperiencecompany/gaia/issues/1145)) ([2f6e0f4](https://github.com/theexperiencecompany/gaia/commit/2f6e0f41e3afedf875fee38d21a6cf7d3c1bc668))
+* **api:** type todo priority as the Priority enum so the tool schema closes the set ([#1190](https://github.com/theexperiencecompany/gaia/issues/1190)) ([7182bba](https://github.com/theexperiencecompany/gaia/commit/7182bba9a9aa3ec7c53290d202a9e0dd8691506b))
+* **api:** workflow instructions carry the task, not the workflow's own config ([#1178](https://github.com/theexperiencecompany/gaia/issues/1178)) ([22b5134](https://github.com/theexperiencecompany/gaia/commit/22b5134636678ebebe9b1374d9d484da6dedc6c2))
+* **bots:** one DM, one session, on every platform ([#1128](https://github.com/theexperiencecompany/gaia/issues/1128)) ([9ff3b3d](https://github.com/theexperiencecompany/gaia/commit/9ff3b3dc80b20676c184b68cb63ffbf4167a7541))
+* **llm:** pin provider routing and delete the sticky-flip replay ([#1155](https://github.com/theexperiencecompany/gaia/issues/1155)) ([0494de6](https://github.com/theexperiencecompany/gaia/commit/0494de6410b3ca2c8ee4adbee2f041365036bcfb))
+* **memory:** refuse a verified document that shrank more than it struck ([#1121](https://github.com/theexperiencecompany/gaia/issues/1121)) ([79f5fa1](https://github.com/theexperiencecompany/gaia/commit/79f5fa1c4afe65f386bbc9d2a73c1b451a5b6ffc))
+* **worker:** bound the health-check canvas and contain per-todo failures in the maintenance sweep ([#1191](https://github.com/theexperiencecompany/gaia/issues/1191)) ([e97e39b](https://github.com/theexperiencecompany/gaia/commit/e97e39be83267b33dfc18546aa3b09a42482abd6))
+* **workflows:** escape the literal example in the signal-matching prompt ([#1189](https://github.com/theexperiencecompany/gaia/issues/1189)) ([c14ea4f](https://github.com/theexperiencecompany/gaia/commit/c14ea4f72be6207596ec5309386f3c46aa345564))
+
+
+### Performance Improvements
+
+* **memory:** skip empty-turn extraction, dedupe the journal, expire legacy agenda rows ([#1126](https://github.com/theexperiencecompany/gaia/issues/1126)) ([9328653](https://github.com/theexperiencecompany/gaia/commit/93286536ecaf07dfce73418727a44c3face0c76f))
+
 ## [0.22.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.21.0...api-v0.22.0) (2026-08-25)
 
 
