@@ -449,7 +449,7 @@ async def _run_for_each(
         if step_failure is not None:
             return step_failure
         ran += 1
-        if step.id and step.id in run.steps:
+        if step.id:
             results.append(run.steps[step.id].value)
         if run.suspect is not None:
             break
