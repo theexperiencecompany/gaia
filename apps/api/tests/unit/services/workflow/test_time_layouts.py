@@ -60,6 +60,7 @@ class TestDetectLayoutInProse:
             ("Plan for September 5, 2026", "Plan for %B %d, %Y"),
             ("Due 2026-09-06 09:00:00 sharp", "Due %Y-%m-%d %H:%M:%S sharp"),
             ("100% by 2026-09-06", "100%% by %Y-%m-%d"),
+            ("2026-09-06 at 100%", "%Y-%m-%d at 100%%"),
             ("6 September 2026", "%d %B %Y"),
         ],
     )
