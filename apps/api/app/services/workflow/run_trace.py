@@ -124,11 +124,12 @@ def _group_calls(group: object) -> list[RecordedCall]:
     if not isinstance(group, dict):
         return []
     subagent_id = group.get("subagent_id")
+    subagent = group.get("subagent")
     calls: list[RecordedCall] = []
     tool_calls = group.get("tool_calls")
     if isinstance(tool_calls, list):
         for data in tool_calls:
-            call = _recorded_call(data, subagent_id)
+            call = _recorded_call(data, subagent_id, subagent)
             if call is not None:
                 calls.append(call)
     nested = group.get("nested_subagents")
@@ -138,7 +139,9 @@ def _group_calls(group: object) -> list[RecordedCall]:
     return calls
 
 
-def _recorded_call(data: object, subagent_id: object) -> RecordedCall | None:
+def _recorded_call(
+    data: object, subagent_id: object, subagent: object = None
+) -> RecordedCall | None:
     """One ``tool_calls_data`` payload as a recorded call, or ``None`` if it isn't one.
 
     ``data`` is deliberately open on ``ToolDataEntry`` (each tool owns its shape),
@@ -155,6 +158,7 @@ def _recorded_call(data: object, subagent_id: object) -> RecordedCall | None:
         tool_name=str(tool_name),
         tool_category=str(data.get("tool_category") or ""),
         subagent_id=str(subagent_id) if subagent_id else None,
+        subagent=str(subagent) if subagent else None,
         args=dict(inputs) if isinstance(inputs, dict) else {},
         result_digest=build_result_digest(output),
     )

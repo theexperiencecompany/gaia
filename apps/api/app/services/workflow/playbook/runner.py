@@ -723,7 +723,7 @@ def _record(
         RecordedCall(
             tool_name=tool_name,
             tool_category=run.registry.get_category_of_tool(tool_name),
-            subagent_id=subagent_id,
+            subagent=subagent_id,
             args=args,
             result_digest=build_result_digest(text),
             replayed=True,

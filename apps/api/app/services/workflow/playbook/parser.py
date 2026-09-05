@@ -90,10 +90,11 @@ class RecordedResult:
     tool_name: str
     args: Mapping[str, Any]
     result: object
-    #: The subagent that made the call, or ``None`` for the executor's own.
-    #: A step inside a handoff is matched only against that subagent's calls,
-    #: so a child can never consume a top-level call of the same tool.
-    subagent_id: str | None = None
+    #: The stable id of the subagent that made the call (``todos``), or
+    #: ``None`` for the executor's own. A step inside ``handoff: todos`` is
+    #: matched only against that subagent's calls, so a child can never consume
+    #: a top-level call of the same tool.
+    subagent: str | None = None
 
 
 #: The authoring run's calls, in call order. The order IS part of the matching
@@ -346,7 +347,7 @@ def _unmatched_problem(tool_name: str, walk: _Walk) -> str:
     same_tool = [
         (index, call)
         for index, call in enumerate(walk.results or ())
-        if call.tool_name == tool_name and call.subagent_id == walk.scope
+        if call.tool_name == tool_name and call.subagent == walk.scope
     ]
     if not same_tool:
         return (
@@ -390,7 +391,7 @@ def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, Recor
         (index, call)
         for index, call in enumerate(walk.results or ())
         if call.tool_name == step.tool
-        and call.subagent_id == walk.scope
+        and call.subagent == walk.scope
         and index not in walk.consumed
         and all(
             key in call.args and _agrees(value, call.args[key]) for key, value in step.args.items()

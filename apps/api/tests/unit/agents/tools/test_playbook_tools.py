@@ -1591,7 +1591,11 @@ class TestTheRunTheWriteIsCheckedAgainst:
                 {**NEW_ARGS, "steps": [FETCH_STEP], "state": state}, config=_config()
             )
 
-        assert log.set_ns.call_args_list[0] == call("playbook", checked_against_calls=2)
+        # The capture telemetry (what the write could see in each scope) comes
+        # first; the count the validator was handed is its own line.
+        assert call("playbook", checked_against_calls=2) in log.set_ns.call_args_list
+        captured = next(c.kwargs for c in log.set_ns.call_args_list if "subagent_calls" in c.kwargs)
+        assert captured["subagent_calls"] == 0
 
 
 PAUSE_TARGET = "app.services.workflow.integration_pause.pause_workflow_for_missing_integrations"
@@ -1990,13 +1994,13 @@ class TestASubagentsCallsReachTheValidator:
                 tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result_digest='{"owner": "a@b.com", "events": [{"id": 0}]}',
-                subagent_id="gmail",
+                subagent="gmail",
             ),
             RecordedCall(
                 tool_name="list_events",
                 args={"calendar_id": "a@b.com"},
                 result_digest='{"owner": "a@b.com", "events": [{"id": 1}]}',
-                subagent_id="gmail",
+                subagent="gmail",
             ),
         ]
 

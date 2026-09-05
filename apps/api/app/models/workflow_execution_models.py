@@ -267,6 +267,10 @@ class RecordedCall(BaseModel):
     #: Which subagent ran it, so a recorded handoff keeps its children — a trace
     #: flattened to the executor level is just one ``handoff`` call and useless.
     subagent_id: str | None = None
+    #: The stable id of the subagent that made the call (``todos``), or
+    #: ``None`` for the executor's own. What a playbook step inside
+    #: ``handoff: todos`` is matched against; ``subagent_id`` is the dispatch.
+    subagent: str | None = None
     args: dict[str, Any] = Field(default_factory=dict)
     result_digest: str = Field(
         default="", max_length=RESULT_DIGEST_MAX_CHARS, description="Bounded result summary"

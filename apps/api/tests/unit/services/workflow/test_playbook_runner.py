@@ -600,7 +600,7 @@ async def test_a_handoff_child_runs_in_the_subagents_scoped_tool_space() -> None
     assert result.ok is True, result.failure
     assert [name for name, _ in recorder.calls] == ["list_events"]
     assert [call.tool_name for call in result.trace] == ["handoff", "list_events"]
-    assert result.trace[1].subagent_id == "calendar_agent"
+    assert result.trace[1].subagent == "calendar_agent"
 
 
 async def test_a_handoff_child_calling_a_tool_outside_that_scope_fails_the_step() -> None:
@@ -1709,7 +1709,7 @@ class TestTrace:
 
         assert result.ok is False
         assert result.trace[1].tool_name == "list_events"
-        assert result.trace[1].subagent_id == "calendar_agent"
+        assert result.trace[1].subagent == "calendar_agent"
         assert "calendar unavailable" in result.trace[1].result_digest
 
     async def test_a_result_that_cannot_be_recorded_stops_the_run_with_the_steps_before_it(

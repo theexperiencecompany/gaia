@@ -131,16 +131,29 @@ def _subagent_results(config: RunnableConfig) -> list[RecordedResult]:
     try:
         stream_id = get_stream_id(config)
     except WorkflowConfigError:
+        log.set_ns("playbook", subagent_calls=None)
         return []
+    entries = drain_executor_tool_data(stream_id)
+    trace = build_trace(entries)
+    children = [call for call in trace if call.subagent is not None]
+    # On the wide event: how many calls the write could see in each scope. A
+    # child refused as "did not run" with zero here is a capture gap, not the
+    # model's fault.
+    log.set_ns(
+        "playbook",
+        capture_stream=stream_id,
+        captured_entries=len(entries),
+        traced_calls=len(trace),
+        subagent_calls=len(children),
+    )
     return [
         RecordedResult(
             tool_name=call.tool_name,
             args=call.args,
             result=parse_result(call.result_digest),
-            subagent_id=call.subagent_id,
+            subagent=call.subagent,
         )
-        for call in build_trace(drain_executor_tool_data(stream_id))
-        if call.subagent_id is not None
+        for call in children
     ]
 
 
@@ -158,7 +171,7 @@ def _replayed_results(config: RunnableConfig) -> list[RecordedResult]:
             tool_name=call.tool_name,
             args=call.args,
             result=parse_result(call.result_digest),
-            subagent_id=call.subagent_id,
+            subagent=call.subagent,
         )
         for call in replayed
     ]

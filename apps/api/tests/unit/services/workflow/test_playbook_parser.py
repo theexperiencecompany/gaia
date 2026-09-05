@@ -1426,10 +1426,10 @@ result_brief: x
 
 
 def _call(
-    tool_name: str, args: dict[str, Any], result: object, subagent_id: str | None = None
+    tool_name: str, args: dict[str, Any], result: object, subagent: str | None = None
 ) -> RecordedResult:
     """One call as the authoring run made it, with what came back."""
-    return RecordedResult(tool_name=tool_name, args=args, result=result, subagent_id=subagent_id)
+    return RecordedResult(tool_name=tool_name, args=args, result=result, subagent=subagent)
 
 
 @pytest.mark.unit
@@ -2132,7 +2132,7 @@ result_brief: x
                 "list_events",
                 {"calendar_id": "primary"},
                 {"events": [{"id": "e1"}]},
-                subagent_id="calendar_agent",
+                subagent="calendar_agent",
             ),
             _call("list_events", {"calendar_id": "primary"}, {"events": [{"id": "e2"}]}),
         ]
@@ -2204,13 +2204,13 @@ result_brief: x
                 "list_events",
                 {"calendar_id": "primary"},
                 {"events": [{"id": "e1", "title": "standup"}]},
-                subagent_id="calendar_agent",
+                subagent="calendar_agent",
             ),
             _call(
                 "send_email",
                 {"to": "a@b.com", "subject": "hi"},
                 "sent",
-                subagent_id="calendar_agent",
+                subagent="calendar_agent",
             ),
         ]
 

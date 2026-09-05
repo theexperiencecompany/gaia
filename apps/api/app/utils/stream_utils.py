@@ -29,6 +29,9 @@ class SubagentGroup(TypedDict):
     :func:`reconstruct_subagent_groups` from the turn's start/end events."""
 
     subagent_id: str
+    #: The subagent's stable id, from the start event; ``None`` for a spawned
+    #: subagent that has none.
+    subagent: str | None
     subagent_name: str
     agent_type: str
     tool_calls: list[Any]
@@ -220,6 +223,7 @@ def reconstruct_subagent_groups(accumulated: dict[str, Any]) -> None:
         end = subagent_ends.get(subagent_id, {})
         groups[subagent_id] = SubagentGroup(
             subagent_id=subagent_id,
+            subagent=start.get("subagent"),
             subagent_name=start.get("subagent_name", ""),
             agent_type=start.get("agent_type", "spawned"),
             tool_calls=[],
