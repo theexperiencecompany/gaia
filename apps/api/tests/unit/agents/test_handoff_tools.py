@@ -1714,3 +1714,88 @@ class TestHandoffPassesTheRunModeToTheRejectionCheck:
             )
 
         assert result == "started"
+
+
+class TestActivationForcesBackgroundHandoff:
+    """Under ENABLE_INTEGRATION_ACTIVATION the executor only reaches handoff for
+    per-user MCP subagents; those run in the background by default so the executor
+    stays alive to steer/cancel them. The switch is the dispatch path taken."""
+
+    @staticmethod
+    def _patches(bg: AsyncMock, blocking: AsyncMock):
+        ctx = SimpleNamespace(agent_name="custommcp_agent", integration_id="custommcp")
+        return (
+            patch(
+                "app.agents.core.subagents.handoff_tools.prepare_subagent_execution",
+                AsyncMock(return_value=(ctx, None, None)),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools._handoff_rejection",
+                AsyncMock(return_value=None),
+            ),
+            patch("app.agents.core.subagents.handoff_tools._dispatch_background_handoff", bg),
+            patch("app.agents.core.subagents.handoff_tools._run_blocking_handoff", blocking),
+        )
+
+    async def test_flag_on_with_stream_id_forces_background(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.agents.core.subagents.handoff_tools.settings.ENABLE_INTEGRATION_ACTIVATION",
+            True,
+        )
+        bg, blocking = AsyncMock(return_value="[bg]"), AsyncMock(return_value="[blocking]")
+        p1, p2, p3, p4 = self._patches(bg, blocking)
+        with p1, p2, p3, p4:
+            result = await handoff.ainvoke(
+                {
+                    "args": {"subagent_id": "custommcp", "task": "do it"},
+                    "name": "handoff",
+                    "type": "tool_call",
+                    "id": "tc-1",
+                },
+                config={"configurable": {"user_id": "u1", "stream_id": "s-1"}},
+            )
+        assert result.content == "[bg]"
+        bg.assert_awaited_once()
+        blocking.assert_not_awaited()
+
+    async def test_flag_on_without_stream_id_stays_blocking(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.agents.core.subagents.handoff_tools.settings.ENABLE_INTEGRATION_ACTIVATION",
+            True,
+        )
+        bg, blocking = AsyncMock(return_value="[bg]"), AsyncMock(return_value="[blocking]")
+        p1, p2, p3, p4 = self._patches(bg, blocking)
+        with p1, p2, p3, p4:
+            result = await handoff.ainvoke(
+                {
+                    "args": {"subagent_id": "custommcp", "task": "do it"},
+                    "name": "handoff",
+                    "type": "tool_call",
+                    "id": "tc-1",
+                },
+                config={"configurable": {"user_id": "u1"}},
+            )
+        assert result.content == "[blocking]"
+        blocking.assert_awaited_once()
+        bg.assert_not_awaited()
+
+    async def test_flag_off_stays_blocking(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.agents.core.subagents.handoff_tools.settings.ENABLE_INTEGRATION_ACTIVATION",
+            False,
+        )
+        bg, blocking = AsyncMock(return_value="[bg]"), AsyncMock(return_value="[blocking]")
+        p1, p2, p3, p4 = self._patches(bg, blocking)
+        with p1, p2, p3, p4:
+            result = await handoff.ainvoke(
+                {
+                    "args": {"subagent_id": "custommcp", "task": "do it"},
+                    "name": "handoff",
+                    "type": "tool_call",
+                    "id": "tc-1",
+                },
+                config={"configurable": {"user_id": "u1", "stream_id": "s-1"}},
+            )
+        assert result.content == "[blocking]"
+        blocking.assert_awaited_once()
+        bg.assert_not_awaited()

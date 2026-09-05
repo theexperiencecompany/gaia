@@ -57,6 +57,7 @@ from app.agents.core.subagents.subagent_runner import (
     resume_for_gate,
     subagent_row_id,
 )
+from app.config.settings import settings
 from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
@@ -956,6 +957,15 @@ async def handoff(
 
         agent_name: str = ctx.agent_name
         integration_id: str = ctx.integration_id
+
+        # Activation mode: the executor loads provider integrations in-context and
+        # only reaches handoff for per-user MCP subagents. Run those in the
+        # background by default so the executor stays alive to steer or cancel
+        # them mid-run (it collects via wait_for_subagents). An explicit
+        # background caller is unaffected; without a stream_id results can't be
+        # routed back, so that case stays blocking.
+        if settings.ENABLE_INTEGRATION_ACTIVATION and stream_id and not background:
+            background = True
 
         rejection = await _handoff_rejection(ctx, task, background, stream_id)
         if rejection is not None:
