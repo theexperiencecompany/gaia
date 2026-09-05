@@ -40,9 +40,11 @@ ROUTINES_LINE = (
     "Two things worth switching on now: connect Gmail and every morning your mail "
     "comes back sorted, replies drafted. Add Calendar and I brief you before every meeting."
 )
+# Space-separated on purpose: the links render as pills, and a "·" between
+# them wraps onto its own line on a phone.
 LINKS_LINE = (
-    f"[Connect Gmail]({connect_link(GMAIL_INTEGRATION_ID)}) · "
-    f"[Connect Calendar]({connect_link(CALENDAR_INTEGRATION_ID)}) · "
+    f"[Connect Gmail]({connect_link(GMAIL_INTEGRATION_ID)}) "
+    f"[Connect Calendar]({connect_link(CALENDAR_INTEGRATION_ID)}) "
     f"[All integrations]({INTEGRATIONS_PATH})"
 )
 HANDOVER_TEMPLATE = "Since you're {job}, what are we starting with?"

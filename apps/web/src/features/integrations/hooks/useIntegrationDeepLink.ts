@@ -48,6 +48,10 @@ export function useIntegrationDeepLink(
   const router = useRouter();
   // Read handlers via a ref so the effect doesn't re-run when they're recreated.
   const handlersRef = useRef(handlers);
+  // The connect param is consumed once. Stripping it is async (router.replace),
+  // so without this the effect can fire the connect twice on the same URL and
+  // open two OAuth requests for one tap.
+  const consumedConnectRef = useRef<string | null>(null);
   useEffect(() => {
     handlersRef.current = handlers;
   });
@@ -106,7 +110,8 @@ export function useIntegrationDeepLink(
 
     // A connect request from a chat link. Consumed once: the param is stripped
     // before the OAuth redirect so coming back never re-triggers it.
-    if (connect) {
+    if (connect && consumedConnectRef.current !== connect) {
+      consumedConnectRef.current = connect;
       const url = new URL(window.location.href);
       url.searchParams.delete("connect");
       router.replace(url.pathname + url.search, { scroll: false });

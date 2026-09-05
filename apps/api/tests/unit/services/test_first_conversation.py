@@ -50,8 +50,8 @@ class TestOpeningBubble:
 
     def test_the_links_open_each_app_and_the_full_page(self) -> None:
         assert (
-            f"[Connect Gmail]({connect_link(GMAIL_INTEGRATION_ID)}) · "
-            f"[Connect Calendar]({connect_link(CALENDAR_INTEGRATION_ID)}) · "
+            f"[Connect Gmail]({connect_link(GMAIL_INTEGRATION_ID)}) "
+            f"[Connect Calendar]({connect_link(CALENDAR_INTEGRATION_ID)}) "
             f"[All integrations]({INTEGRATIONS_PATH})"
         ) == LINKS_LINE
         assert connect_link("gmail") == "/integrations?connect=gmail"
