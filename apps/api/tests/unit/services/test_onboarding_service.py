@@ -284,9 +284,8 @@ class TestCompleteOnboarding:
 
         assert seed.await_args.args[0] == sample_user_id
         composed = seed.await_args.args[1]
-        assert composed.lines[0] == (
-            "So: engineer and drowning in email. That's most of a day. I can take a lot of it."
-        )
+        assert composed.opener == "I'm an engineer. Email is out of control."
+        assert composed.lines[0] == "Email first. It's the one that eats everything else."
         mock_repo.set_first_conversation_id.assert_awaited_once_with(sample_user_id, "conv-1")
         assert result["onboarding"][GETTING_STARTED_CONVERSATION_ID_FIELD] == "conv-1"
         # The legacy holo-card field is a different conversation; the seed must

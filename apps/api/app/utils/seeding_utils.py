@@ -68,9 +68,10 @@ async def seed_holo_card_conversation(user_id: str, message: str) -> str | None:
 async def seed_first_conversation(user_id: str, composed: FirstConversation) -> str | None:
     """Seed the "Getting started" conversation GAIA opens with after onboarding.
 
-    One unread conversation, one bot message per composed line (so the web
-    renders them as grouped bubbles), the Gmail connect card on the first-move
-    line and the follow-up chips on the last. Returns the conversation id, or
+    One unread conversation that opens with the user's own seeded message, then
+    one bot message per composed line (so the web renders them as grouped
+    bubbles), the Gmail connect card on the first-move line and the follow-up
+    chips on the last. Returns the conversation id, or
     None if seeding failed — a missing welcome must never fail completion.
     """
     log.set(operation="seed_first_conversation", user_id=user_id)
@@ -87,7 +88,7 @@ async def seed_first_conversation(user_id: str, composed: FirstConversation) -> 
         await create_conversation_service(conversation, user_dict)
 
         last_index = len(composed.lines) - 1
-        messages = [
+        messages = [MessageModel(type="user", response=composed.opener)] + [
             MessageModel(
                 type="bot",
                 response=line,

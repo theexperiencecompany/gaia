@@ -37,18 +37,28 @@ PROFESSION_WORDS: dict[str, str] = {
 
 #: ``NEED_PHRASES`` (the user's first person) turned around into GAIA's voice, so
 #: line 1 reads as one list of things GAIA already knows about their week.
-NEED_CLAUSES: dict[OnboardingNeed, str] = {
-    OnboardingNeed.INBOX: "drowning in email",
-    OnboardingNeed.CALENDAR: "back-to-back meetings",
-    OnboardingNeed.BRIEFINGS: "mornings that start behind",
-    OnboardingNeed.TODOS: "follow-ups slipping through",
-    OnboardingNeed.MEMORY: "re-explaining yourself",
-    OnboardingNeed.RESEARCH: "research eating your evenings",
-    OnboardingNeed.AUTOMATION: "the same chores every single day",
-    OnboardingNeed.REACH: "wanting me wherever you are",
+USER_NEED_CLAUSES: dict[OnboardingNeed, str] = {
+    OnboardingNeed.INBOX: "email is out of control",
+    OnboardingNeed.CALENDAR: "my calendar is back-to-back",
+    OnboardingNeed.BRIEFINGS: "I wake up already behind",
+    OnboardingNeed.TODOS: "follow-ups slip through",
+    OnboardingNeed.MEMORY: "I keep re-explaining myself",
+    OnboardingNeed.RESEARCH: "research eats my evenings",
+    OnboardingNeed.AUTOMATION: "I do the same chores every single day",
+    OnboardingNeed.REACH: "I want you wherever I am",
 }
-
-#: One chip per need, in the order the user picked them.
+#: GAIA's first line answers the need the user listed first, instead of reading
+#: their own answers back to them.
+REACTIONS: dict[OnboardingNeed, str] = {
+    OnboardingNeed.INBOX: "Email first. It's the one that eats everything else.",
+    OnboardingNeed.CALENDAR: "Calendar first. If the day is wall to wall, nothing else gets fixed.",
+    OnboardingNeed.BRIEFINGS: "Mornings first. You should wake up already caught up, not behind.",
+    OnboardingNeed.TODOS: "Follow-ups first. Those are the ones that quietly cost you.",
+    OnboardingNeed.MEMORY: "You'll never explain yourself twice here. I keep everything you tell me.",
+    OnboardingNeed.RESEARCH: "Research is mine now. Hand it over at night, it's back by morning.",
+    OnboardingNeed.AUTOMATION: "Anything you do every day, I can do instead.",
+    OnboardingNeed.REACH: "Wherever you are, I'm there. Let's get you set up.",
+}
 NEED_FOLLOW_UPS: dict[OnboardingNeed, str] = {
     OnboardingNeed.INBOX: "Sort my inbox",
     OnboardingNeed.CALENDAR: "What's on my calendar this week?",
@@ -58,14 +68,10 @@ NEED_FOLLOW_UPS: dict[OnboardingNeed, str] = {
     OnboardingNeed.RESEARCH: "Research something for me",
     OnboardingNeed.AUTOMATION: "Automate a chore for me",
 }
-
-# --- copy: one constant per line ------------------------------------------
-
-LINE_1_PREFIX = "So: "
-LINE_1_TAIL_WITH_NEEDS = ". That's most of a day. I can take a lot of it."
-LINE_1_TAIL_WITHOUT_NEEDS = ". I can take a lot off your plate."
-LINE_1_NO_ANSWERS = "So: you're here. I can take a lot off your plate."
-
+REACTION_WITHOUT_NEEDS = "Good to know. Let's find out what I can take off you."
+REACTION_WITHOUT_ANSWERS = "Hey. Let's find out what I can take off you."
+OPENER_WITHOUT_ANSWERS = "Hey."
+OTHER_NEED_OPENER_TEMPLATE = "Also, {other_need}."
 LINE_2 = (
     "Start with Gmail. Connect it and I'll get into your inbox tonight, "
     "sort what needs you from what doesn't, and have drafts waiting by morning."
@@ -96,11 +102,14 @@ GMAIL_CARD_LINE = 1
 class FirstConversation(BaseModel):
     """The statically composed opening conversation.
 
-    ``lines`` are separate bot messages so the web renders them as grouped
-    bubbles; ``gmail_card_line`` indexes the one that carries the Gmail connect
-    card, and ``follow_ups`` ride the last message.
+    ``opener`` is the user's own first message, written from their onboarding
+    picks so the thread starts with them, not with GAIA reciting their answers.
+    ``lines`` are GAIA's reply, separate bot messages so the web renders them as
+    grouped bubbles; ``gmail_card_line`` indexes the one that carries the Gmail
+    connect card, and ``follow_ups`` ride the last message.
     """
 
+    opener: str
     lines: list[str]
     follow_ups: list[str]
     gmail_card_line: int
@@ -150,15 +159,44 @@ def _profession_fragment(profession: str | None) -> str | None:
     return f"{title[0].lower()}{title[1:]}"
 
 
-def _acknowledgement(preferences: OnboardingPreferences) -> str:
-    fragment = _profession_fragment(preferences.profession)
-    clauses = [NEED_CLAUSES[need] for need in preferences.needs or []]
-    parts = ([fragment] if fragment else []) + clauses
+def _profession_sentence(fragment: str) -> str:
+    """The job as the user would say it: "I'm a founder", "I'm in sales", or a
+    typed sentence kept whole."""
+    if fragment.lower().startswith(_SENTENCE_OPENERS):
+        return f"{fragment}."
+    if fragment.startswith("in "):
+        return f"I'm {fragment}."
+    article = "an" if fragment[0].lower() in "aeiou" else "a"
+    return f"I'm {article} {fragment}."
 
-    if not parts:
-        return LINE_1_NO_ANSWERS
-    tail = LINE_1_TAIL_WITH_NEEDS if clauses else LINE_1_TAIL_WITHOUT_NEEDS
-    return f"{LINE_1_PREFIX}{_join(parts)}{tail}"
+
+def _opener(preferences: OnboardingPreferences) -> str:
+    """The user's seeded first message, built only from what they picked or typed."""
+    sentences: list[str] = []
+    fragment = _profession_fragment(preferences.profession)
+    if fragment:
+        sentences.append(_profession_sentence(fragment))
+    clauses = [USER_NEED_CLAUSES[need] for need in preferences.needs or []]
+    if clauses:
+        joined = _join(clauses)
+        sentences.append(f"{joined[0].upper()}{joined[1:]}.")
+    if preferences.other_need:
+        sentences.append(
+            OTHER_NEED_OPENER_TEMPLATE.format(
+                other_need=preferences.other_need.strip().rstrip(".!")
+            )
+        )
+    return " ".join(sentences) or OPENER_WITHOUT_ANSWERS
+
+
+def _reaction(preferences: OnboardingPreferences) -> str:
+    """GAIA's first line: an answer to the first need, never a recap."""
+    needs = preferences.needs or []
+    if needs:
+        return REACTIONS[needs[0]]
+    if _profession_fragment(preferences.profession):
+        return REACTION_WITHOUT_NEEDS
+    return REACTION_WITHOUT_ANSWERS
 
 
 def _platform_label(connected_platform: str) -> str:
@@ -183,7 +221,7 @@ def compose_first_conversation(
     preferences: OnboardingPreferences, connected_platform: str | None
 ) -> FirstConversation:
     """GAIA's opening turn, built from the onboarding answers and any linked bot."""
-    lines = [_acknowledgement(preferences), LINE_2]
+    lines = [_reaction(preferences), LINE_2]
 
     if connected_platform:
         lines.append(LINE_3_TEMPLATE.format(platform=_platform_label(connected_platform)))
@@ -191,6 +229,7 @@ def compose_first_conversation(
         lines.append(LINE_4_TEMPLATE.format(other_need=preferences.other_need))
 
     return FirstConversation(
+        opener=_opener(preferences),
         lines=lines,
         follow_ups=_follow_ups(preferences),
         gmail_card_line=GMAIL_CARD_LINE,
@@ -216,6 +255,7 @@ def with_closing_question(
     else:
         lines.append(question)
     return FirstConversation(
+        opener=composed.opener,
         lines=lines,
         follow_ups=chips,
         gmail_card_line=composed.gmail_card_line,

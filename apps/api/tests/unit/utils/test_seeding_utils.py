@@ -53,11 +53,13 @@ class TestSeedFirstConversation:
         assert conversation.conversation_id == conversation_id
 
         messages = append.await_args.kwargs["messages"]
-        assert [m.response for m in messages] == composed.lines
-        assert all(m.type == "bot" for m in messages)
+        assert [m.response for m in messages[1:]] == composed.lines
+        assert messages[0].type == "user"
+        assert messages[0].response == composed.opener
+        assert all(m.type == "bot" for m in messages[1:])
 
         # The connect card rides the Gmail line, and only that line.
-        assert messages[composed.gmail_card_line].tool_data == [
+        assert messages[composed.gmail_card_line + 1].tool_data == [
             {
                 "tool_name": "integration_connection_required",
                 "data": {
@@ -67,7 +69,7 @@ class TestSeedFirstConversation:
                 },
             }
         ]
-        assert [i for i, m in enumerate(messages) if m.tool_data] == [composed.gmail_card_line]
+        assert [i for i, m in enumerate(messages) if m.tool_data] == [composed.gmail_card_line + 1]
 
         # The chips hang off the last message only, so they render once.
         assert messages[-1].follow_up_actions == composed.follow_ups
