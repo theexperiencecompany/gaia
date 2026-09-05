@@ -3483,7 +3483,7 @@ class TestForEachRecord:
                 for_each="$steps.events.ids",
                 max_items=25,
             ),
-            ToolStep(id="again", tool="list_events", args={"calendar_id": "$steps.mails"}),
+            ToolStep(id="again", tool="list_events", args={"calendar_id": "after $steps.mails"}),
         ]
 
         with patch(f"{MODULE}.log") as log:
