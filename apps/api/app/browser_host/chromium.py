@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -34,7 +35,7 @@ from app.browser_host.metrics import ProcessSampler, SessionMetrics
 from app.config.settings import settings
 from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
 from app.constants.log_tags import LogTag
-from app.services.browser.storage_state_types import OriginState
+from app.services.browser.storage_state_types import LocalStorageEntry, OriginState
 from shared.py.wide_events import log
 
 # Extra flags on top of browser-use's CHROME_DEFAULT_ARGS: never phone home for
@@ -280,6 +281,7 @@ class ChromiumHost:
 
             if storage_state:
                 await self._seed_cookies(context_id, storage_state)
+                await self._seed_local_storage(target_id, storage_state)
 
             now = time.monotonic()
             session_id = uuid.uuid4().hex
@@ -509,6 +511,46 @@ class ChromiumHost:
             },
         )
 
+    async def _seed_local_storage(self, target_id: str, storage_state: StorageState) -> None:
+        """Restore saved per-origin localStorage — the symmetric partner of ``_dump_origins``.
+
+        The dump saves each origin's localStorage into ``storage_state``; without this,
+        that data was stored and never re-injected, so session reuse was cookie-only.
+        For every origin that carried localStorage, this registers an
+        ``addScriptToEvaluateOnNewDocument`` restore script (via a flat page session)
+        so it runs before page scripts on every navigation of the target. Each script
+        is guarded to its own origin and seeds a key only when the page has not already
+        set it, so it never clobbers a value the live page updated and is safe to re-run.
+
+        Coverage boundary: this registers on the context's INITIAL page target only —
+        the single page browser-use drives for the overwhelming majority of tasks. A
+        tab opened LATER in the same context (``window.open`` / ``target=_blank``) is
+        not covered, exactly as the stealth init script documents: full new-target
+        coverage needs a root-client ``Target.setAutoAttach`` hook, which would collide
+        with browser-use's own auto-attach over the CDP proxy. Cookies (seeded per
+        context) already reach new tabs; this localStorage restore does not.
+        """
+        origins = [o for o in (storage_state.get("origins") or []) if o.get("localStorage")]
+        if not origins:
+            return
+        attached = await self._cdp_call(
+            "Target.attachToTarget", {"targetId": target_id, "flatten": True}
+        )
+        page_session = attached["sessionId"]
+        try:
+            for origin in origins:
+                await self._cdp_call(
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    {
+                        "source": _build_local_storage_restore_js(
+                            origin["origin"], origin["localStorage"]
+                        )
+                    },
+                    session_id=page_session,
+                )
+        finally:
+            await self._cdp_call("Target.detachFromTarget", {"sessionId": page_session})
+
     async def _dump_storage_state(self, session: HostSession) -> StorageState:
         """Cookies (whole context) + localStorage (per open page) as storage_state."""
         if not self.chromium_up:
@@ -690,3 +732,20 @@ _LOCAL_STORAGE_DUMP_JS = (
     "(() => ({ origin: location.origin, localStorage: Object.keys(localStorage)"
     ".map(k => ({ name: k, value: localStorage.getItem(k) })) }))()"
 )
+
+
+def _build_local_storage_restore_js(origin: str, entries: list[LocalStorageEntry]) -> str:
+    """The restore counterpart of ``_LOCAL_STORAGE_DUMP_JS`` for one origin.
+
+    Guards on ``location.origin`` so it only writes on the matching origin, and sets
+    each key IF-ABSENT so a value the page updated during the session is never
+    clobbered and the script is safe to re-run on every navigation. Origin and
+    entries go through ``json.dumps`` so they become well-formed JS literals.
+    """
+    return (
+        "(() => {"
+        f" if (location.origin !== {json.dumps(origin)}) return;"
+        f" const entries = {json.dumps(entries)};"
+        " for (const e of entries) {"
+        " if (localStorage.getItem(e.name) === null) localStorage.setItem(e.name, e.value); } })()"
+    )
