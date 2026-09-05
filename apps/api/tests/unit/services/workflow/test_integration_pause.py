@@ -417,7 +417,7 @@ class TestPauseForMissingIntegrations:
         with (
             patch(f"{MODULE}.workflow_repository") as repo,
             patch(f"{MODULE}.WorkflowService") as service,
-            patch(f"{MODULE}.confirm_disconnected", AsyncMock(return_value=["github"])),
+            patch(f"{MODULE}.confirm_disconnected", AsyncMock(return_value=["github"])) as confirm,
         ):
             repo.update_for_user = AsyncMock()
             service.deactivate_workflow = AsyncMock()
@@ -426,6 +426,8 @@ class TestPauseForMissingIntegrations:
                 "github"
             ]
 
+        # The claim is checked for THIS user: the run proposes, the status disposes.
+        confirm.assert_awaited_once_with(USER_ID, ["github"])
         service.deactivate_workflow.assert_awaited_once_with(
             "wf-1", USER_ID, reason=DeactivationReason.INTEGRATION_NEVER_CONNECTED
         )
@@ -475,7 +477,35 @@ class TestResumeAfterABlockedRun:
         service.activate_workflow.assert_awaited_once_with("wf-1", USER_ID)
         # A stale list would resume this workflow again on some later, unrelated
         # reconnect of the same integration.
+        repo.update_for_user.assert_awaited_once()
+        assert repo.update_for_user.await_args.args[:2] == ("wf-1", USER_ID)
         assert repo.update_for_user.await_args.args[2].blocked_on_integrations == []
+
+    async def test_one_workflow_that_cannot_resume_does_not_stop_the_rest(self) -> None:
+        first, second = _workflow("wf-1", "PR digest"), _workflow("wf-2", "Issue digest")
+        for workflow in (first, second):
+            workflow.blocked_on_integrations = ["github"]
+
+        async def _find(_user_id: str, reason: DeactivationReason) -> list[MagicMock]:
+            if reason is DeactivationReason.INTEGRATION_NEVER_CONNECTED:
+                return [first, second]
+            return []
+
+        with (
+            patch(f"{MODULE}.workflow_repository") as repo,
+            patch(f"{MODULE}.compute_required_integrations", return_value=set()),
+            patch(f"{MODULE}.WorkflowService") as service,
+        ):
+            repo.find_paused_for_reason = AsyncMock(side_effect=_find)
+            repo.update_for_user = AsyncMock()
+            service.activate_workflow = AsyncMock(
+                side_effect=[ValueError("Connect Notion to enable this workflow."), None]
+            )
+            assert await resume_workflows_for_reconnected_integration(USER_ID, "github") == 1
+        assert [c.args for c in service.activate_workflow.await_args_list] == [
+            ("wf-1", USER_ID),
+            ("wf-2", USER_ID),
+        ]
 
     async def test_it_leaves_alone_a_blocked_workflow_that_wanted_something_else(self) -> None:
         blocked = _workflow("wf-1", "PR digest")

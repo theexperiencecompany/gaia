@@ -306,15 +306,7 @@ def resolve_value(value: object, context: RunContext) -> object:
             fix="fill the step's ask slots before resolving its arguments",
         )
     if is_time_slot(value):
-        slot = TimeSlot.model_validate(value)
-        match = PLACEHOLDER_TOKEN.fullmatch(slot.placeholder)
-        if match is None:  # the model validator refuses anything else
-            raise PlaceholderError(
-                message=f"{slot.placeholder} is not a time placeholder",
-                why=f"{TIME_KEY} takes $now or $today with an optional offset and clock",
-                fix="write the time as $today + 1d 09:00 or similar",
-            )
-        return _resolve_moment(match, context.now).strftime(slot.format)
+        return _render_time_slot(TimeSlot.model_validate(value), context.now)
     if isinstance(value, Mapping):
         return {str(key): resolve_value(item, context) for key, item in value.items()}
     if isinstance(value, list):
@@ -326,6 +318,20 @@ def resolve_value(value: object, context: RunContext) -> object:
     if whole is not None:
         return _resolve_token(whole, context)
     return PLACEHOLDER_TOKEN.sub(lambda match: _render(_resolve_token(match, context)), value)
+
+
+def _render_time_slot(slot: TimeSlot, now: datetime) -> str:
+    """The slot's instant in its layout. The model validator refuses any
+    placeholder that is not a time, so the raise here is the validator's own
+    contract restated for a slot built around it."""
+    match = PLACEHOLDER_TOKEN.fullmatch(slot.placeholder)
+    if match is None:
+        raise PlaceholderError(
+            message=f"{slot.placeholder} is not a time placeholder",
+            why=f"{TIME_KEY} takes $now or $today with an optional offset and clock",
+            fix="write the time as $today + 1d 09:00 or similar",
+        )
+    return _resolve_moment(match, now).strftime(slot.format)
 
 
 def _resolve_token(match: re.Match[str], context: RunContext) -> object:

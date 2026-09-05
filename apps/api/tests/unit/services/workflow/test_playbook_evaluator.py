@@ -20,6 +20,7 @@ from app.models.playbook_models import (
     LocatedAsk,
     PlaybookAskAnswer,
     PlaybookAskFill,
+    TimeSlot,
     ask_slot_key,
 )
 from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall, parse_result
@@ -29,6 +30,7 @@ from app.services.workflow.playbook.evaluator import (
     PlaybookUser,
     RunContext,
     StepResult,
+    _render_time_slot,
     _resolve_time,
     fill_ask_slots,
     last_run_index,
@@ -118,6 +120,47 @@ def test_a_time_offset_is_applied_only_when_both_halves_are_present() -> None:
     never reaches the resolver; the guard keeps that a grammar detail."""
     assert _resolve_time(_time("$today"), NOW) == "2026-03-14"
     assert _resolve_time(_time("$today + 1d"), NOW) == "2026-03-15"
+
+
+def test_a_clock_is_exact_to_the_second_whatever_the_worker_clock_read() -> None:
+    context = _context(now=NOW.replace(second=41, microsecond=624690))
+    assert resolve_value("$today 09:00", context) == "2026-03-14T09:00:00+01:00"
+    assert resolve_value("$now + 1h 17:45", context) == "2026-03-14T17:45:00+01:00"
+
+
+def test_a_field_of_the_current_element_is_read_from_it() -> None:
+    context = RunContext(
+        user=PlaybookUser(email="ada@example.com", name="Ada", timezone="Europe/Berlin"),
+        now=NOW,
+        trigger={},
+        steps={},
+        last_run={},
+        asks={},
+        item={"id": "m1", "title": "Renew passport"},
+    )
+    assert resolve_value("$item.title", context) == "Renew passport"
+    assert resolve_value("$item", context) == {"id": "m1", "title": "Renew passport"}
+
+
+def test_item_outside_a_for_each_is_refused_with_the_fix() -> None:
+    with pytest.raises(PlaceholderError) as caught:
+        resolve_value("$item", _context())
+    assert caught.value.message == "$item is only meaningful inside a for_each step"
+    assert caught.value.why == (
+        "this step does not repeat, so there is no element for $item to address"
+    )
+    assert caught.value.fix == (
+        "give the step a for_each, or address the value through $steps.<id>.<field>"
+    )
+
+
+def test_a_time_slot_that_is_not_a_time_is_refused_with_the_grammar() -> None:
+    slot = TimeSlot.model_construct(placeholder="tomorrow", format="%Y-%m-%d")
+    with pytest.raises(PlaceholderError) as caught:
+        _render_time_slot(slot, NOW)
+    assert caught.value.message == "tomorrow is not a time placeholder"
+    assert caught.value.why == "$time takes $now or $today with an optional offset and clock"
+    assert caught.value.fix == "write the time as $today + 1d 09:00 or similar"
 
 
 def test_a_clock_makes_a_date_an_instant() -> None:
@@ -382,6 +425,61 @@ def test_unknown_user_field_is_rejected_and_names_the_real_ones() -> None:
     _assert_actionable(caught.value, "$user.phone")
     assert caught.value.why == "$user exposes email, name, timezone and nothing else"
     assert caught.value.fix == "address one of those fields"
+
+
+def _asked(key: str, kind: AskKind) -> LocatedAsk:
+    return LocatedAsk(key=key, slot=AskSlot.model_validate({"$ask": "x"}), kind=kind)
+
+
+def test_an_answer_to_a_slot_that_was_not_asked_is_refused() -> None:
+    with pytest.raises(PlaceholderError) as caught:
+        AskAnswers().record(
+            PlaybookAskFill(asks=[PlaybookAskAnswer(name="mail.cc", text="x")]),
+            [_asked("mail.body", AskKind.TEXT)],
+        )
+    assert caught.value.message == "mail.cc is not a slot this step asked for"
+    assert caught.value.why == "the ask call answered a slot that was not listed"
+    assert caught.value.fix == "answer exactly the slots listed, keyed as they are listed"
+
+
+def test_an_answer_of_the_wrong_kind_is_refused_naming_both_kinds() -> None:
+    with pytest.raises(PlaceholderError) as caught:
+        AskAnswers().record(
+            PlaybookAskFill(asks=[PlaybookAskAnswer(name="mails.$for_each", text="a, b")]),
+            [_asked("mails.$for_each", AskKind.ITEMS)],
+        )
+    assert caught.value.message == "mails.$for_each was answered with text, not items"
+    assert caught.value.why == "a for_each source takes items and an argument slot takes text"
+    assert caught.value.fix == "answer mails.$for_each with items"
+
+
+def test_unwritten_names_only_the_slots_neither_table_holds() -> None:
+    answers = AskAnswers()
+    answers.record(
+        PlaybookAskFill(
+            asks=[
+                PlaybookAskAnswer(name="mail.body", text="hi"),
+                PlaybookAskAnswer(name="mails.$for_each", items=["a"]),
+            ]
+        ),
+        [_asked("mail.body", AskKind.TEXT), _asked("mails.$for_each", AskKind.ITEMS)],
+    )
+    asked = [
+        _asked("mail.body", AskKind.TEXT),
+        _asked("mails.$for_each", AskKind.ITEMS),
+        _asked("mail.subject", AskKind.TEXT),
+    ]
+    assert answers.unwritten(asked) == ["mail.subject"]
+
+
+def test_items_of_a_for_each_slot_never_written_stop_the_run_by_its_key() -> None:
+    with pytest.raises(PlaceholderError) as caught:
+        AskAnswers().items("mails.$for_each")
+    assert caught.value.message == "mails.$for_each was never written"
+    assert caught.value.why == "the run's ask call produced no items for that for_each slot"
+    assert caught.value.fix == (
+        "answer the for_each slot with items, keyed exactly as the slot is listed"
+    )
 
 
 def test_a_slot_the_ask_call_never_wrote_stops_the_run_by_its_key() -> None:

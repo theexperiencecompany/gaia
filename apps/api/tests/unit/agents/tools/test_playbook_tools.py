@@ -22,6 +22,7 @@ from app.agents.tools.playbook_tools import (
     _explain_validation_error,
     _replayed_results,
     _run_results,
+    _subagent_results,
     decline_playbook,
     disable_playbook,
     read_playbook,
@@ -1630,9 +1631,18 @@ class TestBlockedDeclines:
             )
 
         pause.assert_awaited_once_with(WORKFLOW_ID, USER_ID, ["github"])
-        assert result["success"] is True
-        assert result["data"]["paused"] is True
-        assert result["data"]["counted"] is False
+        assert result == {
+            "success": True,
+            "data": {
+                "declined": True,
+                "blocked": True,
+                "counted": False,
+                "paused": True,
+                "integrations": ["github"],
+            },
+            "message": "Noted. This workflow is paused until github is connected, and resumes "
+            "by itself then.",
+        }
         assert workflows.workflow.playbook_declines == 0, (
             "a run that never reached the work must not spend one of the workflow's chances"
         )
@@ -1658,8 +1668,12 @@ class TestBlockedDeclines:
                 config=_config(),
             )
 
-        assert result["data"]["paused"] is False
-        assert result["data"]["counted"] is False
+        assert result == {
+            "success": True,
+            "data": {"declined": True, "blocked": True, "counted": False, "paused": False},
+            "message": "Noted, but those integrations look connected from here, so the "
+            "workflow is still active.",
+        }
         assert workflows.workflow.playbook_declines == 0
 
     async def test_a_blocked_run_mid_heal_keeps_the_stored_playbook(
@@ -1695,6 +1709,7 @@ class TestBlockedDeclines:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(PAUSE_TARGET, AsyncMock()) as pause,
+            patch(f"{TOOLS_MODULE}.log") as log,
         ):
             result = await decline_playbook.ainvoke(
                 {"kind": "blocked_no_budget", "reason": "daily allowance was spent"},
@@ -1702,7 +1717,13 @@ class TestBlockedDeclines:
             )
 
         pause.assert_not_awaited()
-        assert result["data"]["counted"] is False
+        assert result == {
+            "success": True,
+            "data": {"declined": True, "blocked": True, "counted": False},
+            "message": "Noted — this run never reached the work, so it does not count against "
+            "the workflow. It will be asked again on a run that gets further.",
+        }
+        assert call("playbook", blocked=True, blocked_integrations=[]) in log.set_ns.call_args_list
         assert workflows.workflow.playbook_declines == 0
 
 
@@ -1883,7 +1904,10 @@ class TestAStoppedReplaysCallsCountAsThisRuns:
 
     def test_replayed_calls_are_prepended_to_the_runs_results(self) -> None:
         replayed = RecordedCall(
-            tool_name="list_todos", args={"limit": 100}, result_digest='{"todos": [{"id": "a"}]}'
+            tool_name="list_todos",
+            args={"limit": 100},
+            result_digest='{"todos": [{"id": "a"}]}',
+            subagent="todos",
         )
         config = {
             "configurable": {
@@ -1894,8 +1918,55 @@ class TestAStoppedReplaysCallsCountAsThisRuns:
 
         results = _replayed_results(config)
 
-        assert [(r.tool_name, r.args, r.result) for r in results] == [
-            ("list_todos", {"limit": 100}, {"todos": [{"id": "a"}]})
+        assert [(r.tool_name, r.args, r.result, r.subagent) for r in results] == [
+            ("list_todos", {"limit": 100}, {"todos": [{"id": "a"}]}, "todos")
+        ]
+
+
+@pytest.mark.unit
+class TestSubagentResults:
+    """What the write reads for a handoff's children: the stream's captured
+    calls, scoped to the subagent, with the capture counts on the wide event."""
+
+    def test_a_run_without_a_stream_has_no_subagent_calls(self) -> None:
+        config: RunnableConfig = {"configurable": {"user_id": USER_ID, "workflow_id": WORKFLOW_ID}}
+        with (
+            patch(f"{TOOLS_MODULE}.drain_executor_tool_data") as drain,
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            assert _subagent_results(config) == []
+        drain.assert_not_called()
+        assert log.set_ns.call_args_list == [call("playbook", subagent_calls=None)]
+
+    def test_the_streams_children_come_back_in_their_scope_and_are_counted(self) -> None:
+        child = RecordedCall(
+            tool_name="list_events",
+            args={"calendar_id": "primary"},
+            result_digest='{"events": [{"id": 0}]}',
+            subagent="gmail",
+        )
+        own = RecordedCall(tool_name="handoff", args={"subagent_id": "gmail"})
+        entries = [{"tool_name": "tool_calls_data"}, {"tool_name": "tool_calls_data"}]
+        with (
+            patch(f"{TOOLS_MODULE}.drain_executor_tool_data", return_value=entries) as drain,
+            patch(f"{TOOLS_MODULE}.build_trace", return_value=[own, child]) as trace,
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            results = _subagent_results(_config())
+
+        drain.assert_called_once_with(RUN_ID)
+        trace.assert_called_once_with(entries)
+        assert [(r.tool_name, r.args, r.result, r.subagent) for r in results] == [
+            ("list_events", {"calendar_id": "primary"}, {"events": [{"id": 0}]}, "gmail")
+        ]
+        assert log.set_ns.call_args_list == [
+            call(
+                "playbook",
+                capture_stream=RUN_ID,
+                captured_entries=2,
+                traced_calls=2,
+                subagent_calls=1,
+            )
         ]
 
     def test_no_replay_means_no_extra_results(self) -> None:

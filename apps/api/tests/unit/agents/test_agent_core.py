@@ -19,6 +19,7 @@ from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import AgentRole
 from app.config.settings import settings
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY, PLAYBOOK_REPLAYED_CALLS_KEY
+from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.llm import DEV_MODEL_OPTIONS
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -702,6 +703,9 @@ class TestCallAgentSilent:
                 new_callable=AsyncMock,
                 return_value=("Hello!", {"tool": "data"}),
             ),
+            patch("app.agents.core.agent.await_executor_done", new_callable=AsyncMock) as waited,
+            patch("app.agents.core.agent.executor_failed", return_value=False) as failed,
+            patch("app.agents.core.agent.executor_failure", return_value=None) as failure,
         ):
             result = await call_agent_silent(
                 request=_make_request(),
@@ -712,6 +716,13 @@ class TestCallAgentSilent:
         assert result == SilentRunResult(
             message="Hello!", tool_data={"tool": "data"}, queued_task_id=None
         )
+        # The executor's outcome is read off THIS run's stream, after a wait
+        # bounded to end before the worker job that awaits it would.
+        stream_id = waited.await_args.args[0]
+        assert stream_id
+        waited.assert_awaited_once_with(stream_id, timeout=BACKGROUND_EXECUTOR_WAIT_TIMEOUT)
+        failed.assert_called_once_with(stream_id)
+        failure.assert_called_once_with(stream_id)
 
     @pytest.mark.asyncio
     async def test_a_graph_failure_propagates_instead_of_becoming_a_result_string(self):

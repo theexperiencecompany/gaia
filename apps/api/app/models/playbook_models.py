@@ -28,7 +28,7 @@ read by exactly the step it sits in, so a dead one cannot be written.
 
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Self, TypeGuard
 import uuid
@@ -251,10 +251,8 @@ class TimeSlot(BaseModel):
     @field_validator("format")
     @classmethod
     def _a_layout_that_renders(cls, value: str) -> str:
-        try:
-            datetime.now(UTC).strftime(value)
-        except ValueError as error:
-            raise ValueError(f"format {value!r} is not a strftime layout: {error}") from error
+        # strftime renders any text, so the one way a layout can be wrong is
+        # to hold no field at all: a constant renders the same on every fire.
         if "%" not in value:
             raise ValueError(f"format {value!r} carries no strftime field")
         return value

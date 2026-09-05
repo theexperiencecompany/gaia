@@ -1,5 +1,6 @@
 """The recorded result digest: bounded without lying about what came back."""
 
+from datetime import UTC, datetime
 import json
 
 import pytest
@@ -13,6 +14,7 @@ from app.models.workflow_execution_models import (
     build_result_digest,
     carries_no_data,
     largest_list_len,
+    parse_result,
 )
 
 pytestmark = pytest.mark.unit
@@ -140,3 +142,17 @@ class TestCarriesNoData:
     )
     def test_it_reads_every_real_result_shape(self, raw: str, empty: bool, why: str) -> None:
         assert carries_no_data(json.loads(raw)) is empty, why
+
+
+class TestParseResult:
+    def test_a_document_with_leading_whitespace_is_still_a_document(self) -> None:
+        assert parse_result('  \n {"count": 2}') == {"count": 2}
+
+    def test_prose_stays_text(self) -> None:
+        assert parse_result("3 items found") == "3 items found"
+
+
+class TestCarriesNoDataOnOtherObjects:
+    def test_anything_that_is_not_a_json_shape_is_data(self) -> None:
+        assert carries_no_data(object()) is False
+        assert carries_no_data(datetime(2026, 9, 5, tzinfo=UTC)) is False

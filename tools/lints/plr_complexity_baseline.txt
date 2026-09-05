@@ -156,7 +156,6 @@ scripts/dev/gaia_verify.py	PLR0915
 scripts/dev/pr_comments.py	PLR0912
 scripts/dev/pr_comments.py	PLR0915
 scripts/dev/tests/test_pr_comments.py	PLR0915
-scripts/test/mutation_classify.py	PLR0912
 scripts/test/mutmut_decorated_patch.py	PLR0911
 scripts/test/mutmut_decorated_patch.py	PLR0912
 tools/evlog_map/__main__.py	PLR0912

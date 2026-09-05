@@ -234,10 +234,11 @@ async def _check_steps(
                     )
                 )
             else:
-                outer = walk.scope
+                # Playbooks are one level deep, so the scope outside a handoff
+                # is always the executor's own.
                 walk.scope = step.handoff
                 await _check_steps(step.steps, f"{here}.steps", handoff_tool_space(subagent), walk)
-                walk.scope = outer
+                walk.scope = None
         if step.id:
             # The runner keys its record on the id, so a second step with the
             # same id would overwrite the first's result for every later $steps.
@@ -599,7 +600,7 @@ def _check_placeholder(
     where: str,
     walk: _Walk,
     *,
-    in_for_each: bool,
+    in_for_each: bool = False,
     sample: object = NO_ITEM,
 ) -> None:
     # The tokenizer only matches known roots; any other ``$word`` is literal text.
@@ -681,10 +682,10 @@ def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> object:
             )
         )
         return NO_ITEM
-    _check_placeholder(match, where, walk, in_for_each=False)
+    _check_placeholder(match, where, walk)
     if walk.results is None or match.group("root") != "steps":
         return NO_ITEM
-    reference = match.group("path").lstrip(".")
+    reference = match.group("path").removeprefix(".")
     resolved = _check_step_reference(source, reference, where, walk)
     if resolved is _UNRESOLVED:
         return NO_ITEM
@@ -776,9 +777,7 @@ def _check_time_layout(
 
 
 def _first_validation_message(error: ValidationError) -> str:
-    first = error.errors()[0]
-    message = str(first.get("msg", ""))
-    return message.removeprefix("Value error, ")
+    return error.errors()[0]["msg"].removeprefix("Value error, ")
 
 
 def _check_value_type(

@@ -1046,9 +1046,15 @@ class TestExecuteWorkflowAsChat:
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("Agent crashed"),
             ),
+            patch("app.workers.tasks.workflow_tasks.log") as log,
         ):
             with pytest.raises(RuntimeError, match="Agent crashed"):
                 await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
+
+        # The wide event names the error itself, not just its type: this line
+        # is what a reader of a failed fire searches for.
+        assert log.error.call_args.kwargs["error"] == "Agent crashed"
+        assert log.error.call_args.kwargs["error_type"] == "RuntimeError"
 
     async def test_get_user_by_id_failure_falls_back_to_utc(self):
         """When get_user_by_id raises, the function falls back gracefully and still

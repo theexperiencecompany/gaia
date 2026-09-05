@@ -8,7 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config.settings import settings
 from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
+from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
 from app.scripts import reset_playbook_declines as script
 
 MODULE = "app.scripts.reset_playbook_declines"
@@ -40,19 +42,27 @@ class TestResetPlaybookDeclines:
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         collection = _workflows(affected=4, at_limit=1)
-        with patch(f"{MODULE}.MongoDB", _database(collection)):
+        mongo = _database(collection)
+        with patch(f"{MODULE}.MongoDB", mongo):
             await script._run(_args())
 
+        mongo.assert_called_once_with(settings.MONGO_DB, MONGO_DATABASE_NAME)
+        mongo.return_value.database.__getitem__.assert_called_once_with("workflows")
         collection.update_many.assert_not_awaited()
-        assert collection.count_documents.await_args_list[0].args[0] == {
-            "playbook_declines": {"$gte": 1}
-        }
-        out = capsys.readouterr().out
-        assert "at least 1 decline(s): 4" in out
-        assert f"limit of {PLAYBOOK_DECLINE_LIMIT}: 1" in out
-        assert "dry run" in out
+        assert [c.args[0] for c in collection.count_documents.await_args_list] == [
+            {"playbook_declines": {"$gte": 1}},
+            {"playbook_declines": {"$gte": PLAYBOOK_DECLINE_LIMIT}},
+        ]
+        assert capsys.readouterr().out.splitlines() == [
+            "workflows with at least 1 decline(s): 4",
+            f"...of which locked out at the limit of {PLAYBOOK_DECLINE_LIMIT}: 1",
+            "",
+            "dry run: nothing written. Re-run with --apply to clear them.",
+        ]
 
-    async def test_apply_clears_the_tally_and_the_hash_together(self) -> None:
+    async def test_apply_clears_the_tally_and_the_hash_together(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """The hash goes with the count: left behind, the next decline would read
         as a continuation of a tally that no longer exists."""
         collection = _workflows(affected=4, at_limit=1)
@@ -63,6 +73,7 @@ class TestResetPlaybookDeclines:
             {"playbook_declines": {"$gte": 1}},
             {"$set": {"playbook_declines": 0, "playbook_declined_hash": None}},
         )
+        assert capsys.readouterr().out.splitlines()[-1] == "cleared the tally on 4 workflow(s)"
 
     async def test_at_limit_only_touches_the_locked_out_workflows(self) -> None:
         collection = _workflows(affected=1, at_limit=1)

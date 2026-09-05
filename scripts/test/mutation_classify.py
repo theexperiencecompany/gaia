@@ -90,6 +90,35 @@ def _body(name: str) -> list[str]:
     return []
 
 
+def _first_argument_end(text: str, i: int) -> int:
+    """Index just past the first call argument starting at ``i``: the comma
+    that ends it, or the closing bracket of a one-argument call.
+
+    Bracket/quote balanced: a type arg like ``dict[str, object] | None`` (or a
+    quoted forward ref) holds commas a regex stops at, and a half-blanked cast
+    then reads as a real change.
+    """
+    depth = 0
+    quote: str | None = None
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == quote and text[i - 1] != "\\":
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            if depth == 0:
+                break
+            depth -= 1
+        elif ch == "," and depth == 0:
+            break
+        i += 1
+    return i
+
+
 def _normalized(lines: list[str]) -> list[str]:
     """Blank the TYPE argument of every ``cast()``.
 
@@ -108,29 +137,7 @@ def _normalized(lines: list[str]) -> list[str]:
     out: list[str] = []
     pos = 0
     while (start := joined.find("cast(", pos)) != -1:
-        # Scan the FIRST argument with bracket/quote balancing: a type arg
-        # like ``dict[str, object] | None`` (or a quoted forward ref) holds
-        # commas a regex stops at, and a half-blanked cast then reads as a
-        # real change.
-        i = start + len("cast(")
-        depth = 0
-        quote: str | None = None
-        while i < len(joined):
-            ch = joined[i]
-            if quote:
-                if ch == quote and joined[i - 1] != "\\":
-                    quote = None
-            elif ch in "\"'":
-                quote = ch
-            elif ch in "([{":
-                depth += 1
-            elif ch in ")]}":
-                if depth == 0:
-                    break  # cast with one argument — not ours to touch
-                depth -= 1
-            elif ch == "," and depth == 0:
-                break
-            i += 1
+        i = _first_argument_end(joined, start + len("cast("))
         if i < len(joined) and joined[i] == ",":
             arg = joined[start + len("cast(") : i]
             out.append(joined[pos:start] + "cast(" + "\n" * arg.count("\n") + "_")

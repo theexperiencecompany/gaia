@@ -20,10 +20,14 @@ USER_ID = "507f1f77bcf86cd799439011"
 class TestConfirmDisconnected:
     async def test_it_keeps_only_the_integrations_that_are_really_missing(self) -> None:
         with (
-            patch(STATUS_TARGET, AsyncMock(return_value={"gmail": True, "github": False})),
-            patch(f"{MODULE}.get_integration_by_id", return_value=MagicMock()),
+            patch(
+                STATUS_TARGET, AsyncMock(return_value={"gmail": True, "github": False})
+            ) as status,
+            patch(f"{MODULE}.get_integration_by_id", return_value=MagicMock()) as by_id,
         ):
             assert await confirm_disconnected(USER_ID, ["gmail", "github"]) == ["github"]
+        status.assert_awaited_once_with(USER_ID)
+        assert [c.args for c in by_id.call_args_list] == [("gmail",), ("github",)]
 
     async def test_it_drops_an_integration_gaia_does_not_have(self) -> None:
         """A hallucinated id must not pause anything: there is nothing for the

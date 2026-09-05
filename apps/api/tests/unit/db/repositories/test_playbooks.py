@@ -573,6 +573,27 @@ class TestTheScopeAndShapeOfEveryRawWrite:
             (PlaybookRunStatus.SUSPECT, "empty again", {"grow_streak": False}),
         ]
 
+    async def test_an_outcome_that_cannot_grow_the_streak_is_one_plain_write(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        seen: list[tuple[PlaybookRunStatus, str | None, dict[str, Any]]] = []
+
+        def _outcome_update(
+            outcome: PlaybookRunOutcome, **kwargs: Any
+        ) -> dict[str, dict[str, object]]:
+            seen.append((outcome.status, outcome.reason, kwargs))
+            return {"$set": {"last_run_status": outcome.status, "last_run_reason": outcome.reason}}
+
+        collection.find_one_and_update = AsyncMock(return_value=_raw())
+
+        with patch.object(playbooks_module, "_outcome_update", _outcome_update):
+            await repo.record_run_outcome(
+                WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.SUCCESS)
+            )
+
+        assert seen == [(PlaybookRunStatus.SUCCESS, None, {"grow_streak": False})]
+        collection.find_one_and_update.assert_awaited_once()
+
 
 @pytest.mark.unit
 class TestTheWriteIsTheTransition:

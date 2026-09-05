@@ -11,8 +11,8 @@ implementation so chat and workflow runs render identically.
 """
 
 import asyncio
-import inspect
 from pathlib import Path
+from types import FrameType
 from typing import Any
 
 from app.agents.core.background.session import (
@@ -21,7 +21,6 @@ from app.agents.core.background.session import (
     get_session,
     mark_executor_failed,
     teardown_session,
-    was_executor_spawned,
 )
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
@@ -62,10 +61,8 @@ async def await_executor_done(
     the stall can be read, and ``False`` comes back so the caller can still
     drain whatever events were collected.
     """
-    if not was_executor_spawned(stream_id):
-        return True
     session = get_session(stream_id)
-    if session is None:
+    if session is None or not session.executor_spawned:
         return True
     log.info(f"{LogTag.AGENT} Waiting for executor completion", stream_id=stream_id)
     try:
@@ -96,22 +93,35 @@ def _running_task_stacks() -> list[str]:
     A thread dump shows only the idle event loop; the stall is in a coroutine,
     and this is the only view of where it sits.
     """
-    lines: list[str] = []
-    current = asyncio.current_task()
-    for task in asyncio.all_tasks():
-        if task is current or task.done():
-            continue
-        coro = task.get_coro()
-        name = coro.__qualname__ if inspect.iscoroutine(coro) else type(coro).__name__
-        if not any(marker in name for marker in _AGENT_TASK_MARKERS):
-            continue
-        frames = task.get_stack(limit=_STACK_FRAMES)
-        where = " <- ".join(
-            f"{frame.f_code.co_name}({Path(frame.f_code.co_filename).name}:{frame.f_lineno})"
-            for frame in reversed(frames)
-        )
-        lines.append(f"{name}: {where}")
-    return lines
+    return [
+        f"{name}: {_innermost_frames(task)}"
+        for task in asyncio.all_tasks()
+        if not task.done() and (name := _agent_task_name(task)) is not None
+    ]
+
+
+def _agent_task_name(task: asyncio.Task[object]) -> str | None:
+    """The task's coroutine name when it is an agent run, else ``None``."""
+    coro = task.get_coro()
+    name = getattr(coro, "__qualname__", type(coro).__name__)
+    return name if any(marker in name for marker in _AGENT_TASK_MARKERS) else None
+
+
+def _innermost_frames(task: asyncio.Task[object]) -> str:
+    """Where the task is suspended, innermost await first.
+
+    ``Task.get_stack`` stops at the task's own coroutine; the stall is down the
+    chain of awaits, so the chain is walked to its end and its tail kept.
+    """
+    frames: list[FrameType] = []
+    coro: object = task.get_coro()
+    while (frame := getattr(coro, "cr_frame", None)) is not None:
+        frames.append(frame)
+        coro = getattr(coro, "cr_await", None)
+    return " <- ".join(
+        f"{frame.f_code.co_name}({Path(frame.f_code.co_filename).name}:{frame.f_lineno})"
+        for frame in reversed(frames[-_STACK_FRAMES:])
+    )
 
 
 def drain_executor_tool_data(stream_id: str) -> list[ToolDataEntry]:
