@@ -165,7 +165,9 @@ class AskAnswers:
                     fix=f"answer {answer.name} with {kind.value}",
                 )
             if kind is AskKind.ITEMS:
-                self._items[answer.name] = answer.items
+                # ``kind`` is ITEMS only when items were given; an empty list is
+                # "nothing qualifies today", which the loop runs zero times over.
+                self._items[answer.name] = list(answer.items or [])
             else:
                 self._texts[answer.name] = answer.text
 

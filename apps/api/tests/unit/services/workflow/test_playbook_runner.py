@@ -3368,3 +3368,42 @@ async def test_the_baseline_lookup_asks_for_the_whole_window() -> None:
     await _run(_playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=find_previous))
 
     find_previous.assert_awaited_once_with("wf_1", "u_1", limit=PLAYBOOK_SUSPECT_BASELINE_WINDOW)
+
+
+class TestAnEmptySelectionIsAnAnswer:
+    """Seen on a scheduled fire with the real model: it answered the for_each
+    $ask with ``items: []`` because nothing qualified that day, and the answer
+    was refused as neither text nor items. A quiet day became a stopped replay
+    and spent a heal attempt on a body that was right."""
+
+    def test_the_answer_model_accepts_an_empty_selection(self) -> None:
+        answer = PlaybookAskAnswer(name="mails.$for_each", items=[])
+        assert answer.items == []
+        assert answer.text == ""
+
+    async def test_an_empty_pick_is_a_completed_run_with_zero_iterations(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
+        steps = [
+            ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            ForEachStep(
+                id="mails",
+                tool="send_email",
+                args={"to": "$item"},
+                for_each=_slot("the ones that want a reply"),
+                max_items=5,
+            ),
+        ]
+        fill = PlaybookAskFill(asks=[PlaybookAskAnswer(name="mails.$for_each", items=[])])
+
+        with patch(f"{MODULE}.log") as log:
+            result, _ = await _run(_playbook(steps), registry, ask_fill=fill)
+
+        assert result.ok is True, result.failure
+        assert [name for name, _ in recorder.calls if name == "send_email"] == []
+        reported = [
+            call.kwargs["for_each"]
+            for call in log.set_ns.call_args_list
+            if "for_each" in call.kwargs
+        ]
+        assert reported == [{"step": "mails", "items": 0, "ran": 0}]

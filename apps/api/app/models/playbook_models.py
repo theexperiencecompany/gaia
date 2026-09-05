@@ -233,14 +233,21 @@ class PlaybookAskAnswer(BaseModel):
 
     name: str = Field(description="The slot's key, exactly as listed in <asks>")
     text: str = Field(default="", description="What to write for that slot")
-    items: list[str] = Field(
-        default_factory=list,
-        description="For a for_each slot only: the elements the step repeats over",
+    items: list[str] | None = Field(
+        default=None,
+        description=(
+            "For a for_each slot only: the elements the step repeats over. An empty list "
+            "is the answer when nothing qualifies."
+        ),
     )
 
     @model_validator(mode="after")
     def _exactly_one_kind(self) -> Self:
-        has_text, has_items = bool(self.text.strip()), bool(self.items)
+        # ``items`` is judged by presence, not length: an empty list is the
+        # answer "nothing qualifies today", which a for_each slot must be able
+        # to receive. Seen on a scheduled fire: the model answered ``[]`` on a
+        # quiet day and the refusal turned a right body into a failed replay.
+        has_text, has_items = bool(self.text.strip()), self.items is not None
         if has_text == has_items:
             raise ValueError(
                 f"{self.name}: answer with text, or with items for a for_each slot, not both "
@@ -250,7 +257,7 @@ class PlaybookAskAnswer(BaseModel):
 
     @property
     def kind(self) -> AskKind:
-        return AskKind.ITEMS if self.items else AskKind.TEXT
+        return AskKind.ITEMS if self.items is not None else AskKind.TEXT
 
 
 class PlaybookAskFill(BaseModel):

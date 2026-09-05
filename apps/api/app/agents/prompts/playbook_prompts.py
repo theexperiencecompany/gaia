@@ -134,7 +134,7 @@ PLAYBOOK_ASK_PROMPT = (
 </asks>
 {element}
 
-Write one entry per slot above, keyed by the slot's key exactly as listed. Follow each slot's instruction and respect its length budget. Write nothing else: no result for the user and no judgement of the run. Both are written after the remaining steps have run, by a separate call that sees their results.
+Write one entry per slot above, keyed by the slot's key exactly as listed. Follow each slot's instruction and respect its length budget. A slot that is a step's for_each source is answered with items, the elements that step repeats over, one per element; on a day nothing qualifies, answer it with an empty list. That is a complete answer, not a missing one, and the step then runs zero times. Write nothing else: no result for the user and no judgement of the run. Both are written after the remaining steps have run, by a separate call that sees their results.
 
 Ground every word in what is listed above. Never invent a number, a name, a link, or an outcome that is not there.
 
