@@ -29,6 +29,10 @@
 #   local   MUTATION_JOBS, MUTATION_CPU_BUDGET, MUTMUT_MAX_CHILDREN.
 set -euo pipefail
 
+# How much of each survivor's diff the failing shard prints.
+MAX_SHOWN_SURVIVORS="${MAX_SHOWN_SURVIVORS:-40}"
+MAX_SHOWN_LINES="${MAX_SHOWN_LINES:-40}"
+
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
 # shellcheck source=scripts/ci/lib/cpu-slots.sh
@@ -1027,6 +1031,18 @@ sys.exit(proc.returncode)
   if [ -n "$REAL_SURVIVORS" ]; then
     echo "MUTATION FAILED — the suite would not notice if this code were wrong:" >&2
     echo "$REAL_SURVIVORS" >&2
+    # The diff of each survivor, so the log says which change went unnoticed
+    # rather than only a mutant id nobody can act on without rerunning the lane.
+    # Bounded: a shard with many survivors still prints a readable log.
+    SHOWN=0
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      [ "$SHOWN" -ge "$MAX_SHOWN_SURVIVORS" ] && { echo "  … $((SURVIVED - SHOWN)) more survivor(s) not shown" >&2; break; }
+      name="${line#"${line%%[![:space:]]*}"}"
+      name="${name%: survived}"
+      "$VENV_PY" -m mutmut show "$name" 2>&1 | head -n "$MAX_SHOWN_LINES" >&2 || echo "  (diff of $name unavailable)" >&2
+      SHOWN=$((SHOWN + 1))
+    done <<< "$REAL_SURVIVORS"
     exit 1
   fi
   echo "Mutation: OK — no survivors on changed lines in $MODULE"
