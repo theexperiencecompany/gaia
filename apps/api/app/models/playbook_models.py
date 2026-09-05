@@ -98,6 +98,10 @@ class DeclineKind(str, Enum):
     #: The run had to discover something mid-flight that a later run would have
     #: to discover differently — an inferred set, a schema probe, a recovery.
     UNSTABLE_DISCOVERY = "unstable_discovery"
+    #: The run found nothing to act on, so the calls that do the work never
+    #: happened and there is nothing to freeze yet. Not a verdict on the
+    #: sequence: the check is asked again on a day the work happens.
+    NO_WORK_TODAY = "no_work_today"
 
 
 #: Kinds that describe a run which never reached the work. They must not count
@@ -112,6 +116,12 @@ BLOCKED_DECLINE_KINDS = frozenset(
         DeclineKind.BLOCKED_NO_BUDGET,
     }
 )
+
+#: Kinds that do not count toward the limit: the blocked ones, and a quiet day.
+#: A fan-out over an empty list makes no calls, and a playbook freezes calls
+#: that ran, so a workflow whose work is seasonal would spend its chances on
+#: the days nothing happened and be locked out on the day something did.
+UNCOUNTED_DECLINE_KINDS = BLOCKED_DECLINE_KINDS | {DeclineKind.NO_WORK_TODAY}
 
 #: Blocked kinds that name integrations and can therefore pause the workflow.
 INTEGRATION_DECLINE_KINDS = frozenset(
@@ -159,7 +169,10 @@ class AskSlot(BaseModel):
     model call that fills it sees every step that ran before its own step.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    # Serialised by alias always: the stored form is the read form. Seen live:
+    # a body dumped by field name wrote ``prompt`` where the read wanted
+    # ``$ask``, and the playbook could never be read back.
+    model_config = ConfigDict(extra="forbid", serialize_by_alias=True)
 
     prompt: str = Field(alias="$ask", min_length=1, description="What to write for this value")
     max_tokens: int = Field(default=DEFAULT_ASK_MAX_TOKENS, ge=1, le=8192)
@@ -369,7 +382,7 @@ class ForEachStep(_CallStep):
     def to_document(self) -> dict[str, Any]:
         node = self._document_head()
         node["for_each"] = (
-            self.for_each.model_dump(by_alias=True, exclude_defaults=True)
+            self.for_each.model_dump(exclude_defaults=True)
             if isinstance(self.for_each, AskSlot)
             else self.for_each
         )
@@ -693,6 +706,9 @@ class PlaybookDocument(PlaybookBody, MongoDocument):
     #: the user edited the workflow, so the frozen sequence no longer matches
     #: what was asked and the playbook is skipped rather than replayed blind.
     workflow_hash: str
+    #: The run (its stream id) that wrote this body. A run is one decision: a
+    #: decline voiced after the write in the same run is not a second one.
+    authored_run: str | None = None
     last_run_status: PlaybookRunStatus = PlaybookRunStatus.NOT_RUN
     #: Why the last run failed or was not trusted; None after a success.
     last_run_reason: str | None = None
@@ -717,6 +733,7 @@ class PlaybookUpdate(BaseModel):
     steps: list[PlaybookStep] | None = None
     result_brief: str | None = None
     workflow_hash: str | None = None
+    authored_run: str | None = None
     last_run_status: PlaybookRunStatus | None = None
     last_run_reason: str | None = None
     suspect_streak: int | None = None

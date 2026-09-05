@@ -49,7 +49,7 @@ If the NUMBER of calls depended on what you found, that is a for_each step, not 
       thread_id: $item
       body: {"$ask": "a reply to this one email"}
 
-Zero elements is a normal run, not a failure: a day with nothing to act on simply makes no calls for that step.
+Zero elements is a normal run, not a failure: a day with nothing to act on simply makes no calls for that step. max_items is a cost ceiling, not today's count: set it to the most this workflow should ever act on in one run (up to 25), because a list longer than it is cut, and the user hears nothing about what was cut.
 
 If either 4 or 5 is no, call decline_playbook. It takes a kind, not just prose, and the kind has to match what actually happened:
 - blocked_missing_integration, with the integration ids: the work could not run because the user has not connected something. The workflow is paused until they do, and this does not count against it.
@@ -57,6 +57,7 @@ If either 4 or 5 is no, call decline_playbook. It takes a kind, not just prose, 
 - blocked_no_budget: the allowance was spent before any call ran.
 - order_branches, with branch_on naming the ONE call that runs on some days and not others. Before you pick this, check it is not a fan-out: a call that runs once per thing you found, including zero times on a day when you found nothing, is a for_each step and NOT a branch. "It made three create calls today and none yesterday" is a for_each over an empty list, not a changing order. Pick order_branches only when a DIFFERENT call, not just a different count of the same call, happens on another day. If you cannot name that call, the order does not branch and you should be writing a playbook instead.
 - unstable_discovery: you had to work something out mid-run that a later run would have to work out differently.
+- no_work_today: the run found nothing to act on (no overdue items, no mail that needs a reply), so the calls that do the work never happened and there is nothing to freeze yet. A playbook freezes calls that ran, so a for_each whose element step made zero calls today cannot be written today. This does not count against the workflow; you are asked again on a day the work happens.
 There is no kind for "the arguments were different", because question 2 already handled that.
 
 You MUST end this run by calling exactly one of write_playbook or decline_playbook: staying silent is not a decision, and a run that was asked and called neither is a lapse, not a no.

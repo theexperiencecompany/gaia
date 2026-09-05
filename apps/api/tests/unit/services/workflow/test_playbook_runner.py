@@ -3072,6 +3072,30 @@ class TestForEach:
         ]
         assert reported == [{"step": "mails", "items": 5, "ran": 2}]
 
+    async def test_an_id_less_step_still_reports_how_many_times_it_ran(self) -> None:
+        """Seen on the real model: it writes for_each steps without ids, and
+        ``ran`` was counted off the id-keyed results, so a loop that ran once
+        logged ``ran: 0`` and read as a quiet day."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
+        steps = [
+            ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            ForEachStep(
+                tool="send_email", args={"to": "$item"}, for_each="$steps.events.ids", max_items=5
+            ),
+        ]
+
+        with patch(f"{MODULE}.log") as log:
+            result, _ = await _run(_playbook(steps), registry)
+
+        assert result.ok is True, result.failure
+        reported = [
+            call.kwargs["for_each"]
+            for call in log.set_ns.call_args_list
+            if "for_each" in call.kwargs
+        ]
+        assert reported == [{"step": "send_email", "items": 2, "ran": 2}]
+
     async def test_no_elements_is_a_completed_run_not_a_failure(self) -> None:
         """An inbox with nothing that wants a reply is a quiet Tuesday. Treating
         it as a failure would re-author the playbook away from the right shape."""

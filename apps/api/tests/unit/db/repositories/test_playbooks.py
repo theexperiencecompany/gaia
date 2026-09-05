@@ -23,7 +23,13 @@ import pytest
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories import playbooks as playbooks_module
 from app.db.repositories.playbooks import PlaybooksRepository, _outcome_update
-from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
+from app.models.playbook_models import (
+    AskSlot,
+    ForEachStep,
+    PlaybookDocument,
+    PlaybookRunOutcome,
+    PlaybookRunStatus,
+)
 from app.services.workflow.playbook.lifecycle import (
     PlaybookLifecycle,
     Replayed,
@@ -186,6 +192,7 @@ class TestUpsertForWorkflow:
             "description": "first",
             "result_brief": "s",
             "workflow_hash": "hash-1",
+            "authored_run": None,
             "last_run_status": PlaybookRunStatus.NOT_RUN,
             "last_run_reason": None,
             "heal_attempts": 0,
@@ -613,3 +620,27 @@ class TestTheWriteIsTheTransition:
             "last_run_reason": expected.reason,
             "suspect_streak": expected.suspect_streak,
         }
+
+
+@pytest.mark.unit
+async def test_an_ask_slot_source_is_written_by_its_alias(
+    repo: PlaybooksRepository, collection: MagicMock
+) -> None:
+    """The document model reads ``$ask``; a write that spells the field name
+    stores a body the read refuses. The stored form is the read form."""
+    await repo.upsert_for_workflow(
+        _doc(
+            steps=[
+                ForEachStep(
+                    id="mark",
+                    tool="update_todo",
+                    args={"todo_id": "$item.id"},
+                    for_each=AskSlot.model_validate({"$ask": "the overdue ones"}),
+                    max_items=5,
+                )
+            ]
+        )
+    )
+
+    _filter, update = collection.find_one_and_update.await_args.args
+    assert update["$set"]["steps"][0]["for_each"] == {"$ask": "the overdue ones"}

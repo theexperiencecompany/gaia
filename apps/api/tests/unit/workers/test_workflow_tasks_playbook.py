@@ -1820,6 +1820,7 @@ class TestEveryFireIsChargedAndLookedUpForItsOwnOwner:
             f"{LogTag.WORKFLOW} playbook lookup failed; running the workflow agentically",
             workflow_id="wf_1",
             error_type="ConnectionError",
+            error="mongo away",
         )
         assert harness.chat.await_args_list == [call(workflow, AGENT_USER, {})]
         assert harness.summary() == AGENT_RUN_SUMMARY

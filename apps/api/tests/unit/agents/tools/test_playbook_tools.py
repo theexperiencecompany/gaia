@@ -96,9 +96,19 @@ class _FakePlaybookStore:
         return self.documents.pop((workflow_id, user_id), None) is not None
 
 
+RUN_ID = "stream_run_1"
+
+
 def _config() -> RunnableConfig:
     return {
-        "configurable": {"user_id": USER_ID, "workflow_id": WORKFLOW_ID},
+        "configurable": {"user_id": USER_ID, "workflow_id": WORKFLOW_ID, "stream_id": RUN_ID},
+        "metadata": {"user_id": USER_ID},
+    }
+
+
+def _config_for_run(run_id: str) -> RunnableConfig:
+    return {
+        "configurable": {"user_id": USER_ID, "workflow_id": WORKFLOW_ID, "stream_id": run_id},
         "metadata": {"user_id": USER_ID},
     }
 
@@ -146,6 +156,28 @@ class _FakeWorkflowStore:
             return None
         self.workflow = self.workflow.model_copy(update=update.model_dump(exclude_unset=True))
         return self.workflow
+
+    async def count_playbook_decline(
+        self, workflow_id: str, user_id: str, *, run_id: str, workflow_hash: str
+    ) -> int | None:
+        """The repository's rule, in memory: once per run, a fresh tally per hash."""
+        if (workflow_id, user_id) != (WORKFLOW_ID, USER_ID):
+            return None
+        current = self.workflow
+        if current.playbook_declined_hash == workflow_hash:
+            if current.playbook_declined_run == run_id:
+                return None
+            declines = current.playbook_declines + 1
+        else:
+            declines = 1
+        self.workflow = current.model_copy(
+            update={
+                "playbook_declines": declines,
+                "playbook_declined_hash": workflow_hash,
+                "playbook_declined_run": run_id,
+            }
+        )
+        return declines
 
 
 def _existing(store: _FakePlaybookStore) -> PlaybookDocument:
@@ -210,6 +242,7 @@ def workflows() -> MagicMock:
     repo = MagicMock()
     repo.get_for_user = AsyncMock(return_value=_workflow())
     repo.update_for_user = AsyncMock(return_value=_workflow())
+    repo.count_playbook_decline = AsyncMock(return_value=1)
     return repo
 
 
@@ -440,7 +473,7 @@ class TestDeclinePlaybook:
 
         assert result == {
             "success": True,
-            "data": {"declined": True},
+            "data": {"declined": True, "counted": True, "declines": 1},
             "message": "Noted. This workflow keeps reasoning out every run for now.",
         }
         assert store.documents == {}, "a decline must never write a playbook"
@@ -500,7 +533,7 @@ class TestDeclinePlaybook:
             )
             await decline_playbook.ainvoke(
                 {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
-                config=_config(),
+                config=_config_for_run("a later fire"),
             )
 
         assert workflows.workflow.playbook_declines == 2
@@ -550,7 +583,7 @@ class TestDeclinePlaybook:
 
         assert result == {
             "success": True,
-            "data": {"declined": True, "disabled": True},
+            "data": {"declined": True, "counted": True, "declines": 1, "disabled": True},
             "message": "Noted. The stored playbook was removed; this workflow reasons out every "
             "run again.",
         }
@@ -572,7 +605,7 @@ class TestDeclinePlaybook:
 
         assert result == {
             "success": True,
-            "data": {"declined": True},
+            "data": {"declined": True, "counted": True, "declines": 1},
             "message": "Noted. This workflow keeps reasoning out every run for now.",
         }
         assert store.documents[(WORKFLOW_ID, USER_ID)] == before
@@ -1729,32 +1762,81 @@ class TestOneDecisionPerRun:
     async def test_a_second_decline_in_the_same_run_is_not_counted(
         self, store: _FakePlaybookStore
     ) -> None:
+        """Seen live again on the real model: it voiced the decision five times in
+        ONE turn. Those calls run in parallel on one state, so none can see
+        another's answer; the tally is scoped to the run in the repository."""
         workflows = _FakeWorkflowStore()
-        first = AIMessage(
-            content="",
-            tool_calls=[
-                {"id": "d1", "name": "decline_playbook", "args": {"kind": "unstable_discovery"}}
-            ],
-        )
-        answered = ToolMessage(
-            content=json.dumps({"success": True, "data": {"declined": True}}), tool_call_id="d1"
-        )
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            first = await decline_playbook.ainvoke(
+                {"kind": "unstable_discovery", "reason": "once"}, config=_config()
+            )
+            second = await decline_playbook.ainvoke(
+                {"kind": "unstable_discovery", "reason": "again"}, config=_config()
+            )
+
+        assert first["data"]["counted"] is True
+        assert second["data"]["counted"] is False
+        assert workflows.workflow.playbook_declines == 1, "the second voice of one decision is free"
+        assert workflows.workflow.playbook_declined_run == RUN_ID
+
+    async def test_a_decline_after_a_write_in_the_same_run_is_not_a_second_decision(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """Seen on the real model: a valid write_playbook, then decline_playbook
+        in the same turn. The write is the decision; the decline must neither
+        count nor remove what the run just wrote."""
+        tally = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", tally),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            written = await write_playbook.ainvoke(NEW_ARGS, config=_config())
+            declined = await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "list_events", "reason": "r"},
+                config=_config(),
+            )
+
+        assert written["success"] is True
+        assert declined["data"]["counted"] is False
+        assert store.documents[(WORKFLOW_ID, USER_ID)].authored_run == RUN_ID
+        assert tally.workflow.playbook_declines == 0
+
+    async def test_the_next_run_counts_again(self, store: _FakePlaybookStore) -> None:
+        workflows = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            await decline_playbook.ainvoke(
+                {"kind": "unstable_discovery", "reason": "r"}, config=_config()
+            )
+            result = await decline_playbook.ainvoke(
+                {"kind": "unstable_discovery", "reason": "r"}, config=_config_for_run("run_2")
+            )
+
+        assert result["data"]["counted"] is True
+        assert workflows.workflow.playbook_declines == 2
+
+    async def test_a_quiet_day_is_not_a_verdict(self, store: _FakePlaybookStore) -> None:
+        """Nothing to act on means the calls that do the work never happened;
+        counting that would spend a seasonal workflow's chances on empty days."""
+        workflows = _FakeWorkflowStore()
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
         ):
             result = await decline_playbook.ainvoke(
-                {
-                    "kind": "unstable_discovery",
-                    "reason": "again",
-                    "state": {"messages": [first, answered]},
-                },
-                config=_config(),
+                {"kind": "no_work_today", "reason": "no overdue todos"}, config=_config()
             )
 
         assert result["success"] is True
         assert result["data"]["counted"] is False
-        assert workflows.workflow.playbook_declines == 0, "the second voice of one decision is free"
+        assert workflows.workflow.playbook_declines == 0
+        assert workflows.workflow.activated is True
 
 
 @pytest.mark.unit

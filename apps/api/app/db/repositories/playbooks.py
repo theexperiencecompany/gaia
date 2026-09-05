@@ -54,6 +54,7 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
             steps=playbook.steps,
             result_brief=playbook.result_brief,
             workflow_hash=playbook.workflow_hash,
+            authored_run=playbook.authored_run,
             last_run_status=PlaybookRunStatus.NOT_RUN,
             last_run_reason=None,
         ).model_dump(exclude_unset=True)

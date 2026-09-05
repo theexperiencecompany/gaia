@@ -769,6 +769,10 @@ class WorkflowDocument(Workflow, MongoDocument):
     #: an edit to the workflow changes the hash and asks again.
     playbook_declines: int = 0
     playbook_declined_hash: str | None = None
+    #: The run (its stream id) that last counted a decline. A run is one
+    #: decision however many times it is voiced, and a model voices it several
+    #: times in one turn: the tally grows once per run, matched on this.
+    playbook_declined_run: str | None = None
     #: The integrations a blocked run named when it paused this workflow. The
     #: resume side needs them because it cannot re-derive them: a workflow is
     #: paused on what a run actually found missing, which is not always what
@@ -838,5 +842,6 @@ class WorkflowUpdate(BaseModel):
     created_by: str | None = None
     playbook_declines: int | None = None
     playbook_declined_hash: str | None = None
+    playbook_declined_run: str | None = None
     blocked_on_integrations: list[str] | None = None
     last_playbook_discard: PlaybookDiscard | None = None

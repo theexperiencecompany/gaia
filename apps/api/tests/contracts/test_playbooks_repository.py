@@ -14,10 +14,13 @@ import pytest
 
 from app.db.repositories.playbooks import PlaybooksRepository
 from app.models.playbook_models import (
+    AskSlot,
+    ForEachStep,
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
     PlaybookUpdate,
+    ToolStep,
 )
 from app.utils.errors import EmptyUpdateError
 
@@ -342,3 +345,34 @@ class TestPlaybooksUniqueIndexSurface:
         second = await repo.upsert_for_workflow(make_doc(description="second"))
         assert second.playbook_id == first.playbook_id
         assert await raw_collection.count_documents({"workflow_id": WORKFLOW_ID}) == 1
+
+
+class TestTheStoredFormReadsBack:
+    async def test_a_for_each_over_an_ask_slot_survives_the_write_and_the_read(self, repo) -> None:
+        """Seen on the real model: it wrote exactly the shape the brief asks for,
+        a for_each whose source is an $ask. The repository stored the slot under
+        its field name (``prompt``) instead of its alias (``$ask``), the read
+        refused the document it had just written, and every later fire fell to
+        the agent with a warning nobody watches."""
+        stored = await repo.upsert_for_workflow(
+            make_doc(
+                steps=[
+                    ToolStep(id="ls", tool="list_todos", args={}),
+                    ForEachStep(
+                        id="mark",
+                        tool="update_todo",
+                        args={"todo_id": "$item.id"},
+                        for_each=AskSlot.model_validate({"$ask": "the overdue ones"}),
+                        max_items=5,
+                    ),
+                ]
+            )
+        )
+        read = await repo.get_for_workflow(WORKFLOW_ID, USER_ID)
+
+        assert read is not None
+        assert read.steps == stored.steps
+        loop = read.steps[1]
+        assert isinstance(loop, ForEachStep)
+        assert isinstance(loop.for_each, AskSlot)
+        assert loop.for_each.prompt == "the overdue ones"

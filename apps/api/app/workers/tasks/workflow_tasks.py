@@ -692,6 +692,7 @@ async def _run_workflow(
             f"{LogTag.WORKFLOW} playbook lookup failed; running the workflow agentically",
             workflow_id=workflow_id,
             error_type=type(e).__name__,
+            error=str(e)[:500],
         )
         log.set_ns("playbook", mode="agent", reason="lookup_failed", llm_calls=0)
         return *await execute_workflow_as_chat(workflow, user, context), AGENT_RUN_SUMMARY

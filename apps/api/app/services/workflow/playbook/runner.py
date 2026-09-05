@@ -436,6 +436,7 @@ async def _run_for_each(
         return failure
 
     results: list[object] = []
+    ran = 0
     for index, item in enumerate(found.elements):
         item_prefix = f"{step.label}[{index}]"
         if has_ask_slots(step.args):
@@ -447,6 +448,7 @@ async def _run_for_each(
         step_failure = await _replay_one(playbook, step, run, space, prefix=item_prefix, item=item)
         if step_failure is not None:
             return step_failure
+        ran += 1
         if step.id and step.id in run.steps:
             results.append(run.steps[step.id].value)
         if run.suspect is not None:
@@ -459,7 +461,7 @@ async def _run_for_each(
     # ``items`` is what the source held and ``ran`` what the loop did with it:
     # the gap is the cap or a suspect stop, visible only when the count is
     # taken before the cap.
-    log.set_ns("playbook", for_each={"step": step.label, "items": found.total, "ran": len(results)})
+    log.set_ns("playbook", for_each={"step": step.label, "items": found.total, "ran": ran})
     return None
 
 

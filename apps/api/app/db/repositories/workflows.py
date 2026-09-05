@@ -663,5 +663,42 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             {"_id": {"$in": workflow_ids}, "user_id": user_id}, scope=REPO_GLOBAL_SCOPE
         )
 
+    async def count_playbook_decline(
+        self, workflow_id: str, user_id: str, *, run_id: str, workflow_hash: str
+    ) -> int | None:
+        """Count one run's decision not to write a playbook, once per run.
+
+        A model voices the decision several times in one turn, and those calls
+        run in parallel on the same state, so no call can see another's answer:
+        the tally is grown here, matched on the run that last grew it. A tally
+        for a different workflow hash (the workflow was edited) starts over at
+        one. ``None`` when this run already counted, so the caller can say so
+        without counting again.
+        """
+        key = {**self._identity_filter(workflow_id), "user_id": user_id}
+        grown = await self._apply_raw_update(
+            {
+                **key,
+                "playbook_declined_hash": workflow_hash,
+                "playbook_declined_run": {"$ne": run_id},
+            },
+            {"$inc": {"playbook_declines": 1}, "$set": {"playbook_declined_run": run_id}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        if grown is not None:
+            return grown.playbook_declines
+        fresh = await self._apply_raw_update(
+            {**key, "playbook_declined_hash": {"$ne": workflow_hash}},
+            {
+                "$set": {
+                    "playbook_declines": 1,
+                    "playbook_declined_hash": workflow_hash,
+                    "playbook_declined_run": run_id,
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        return None if fresh is None else fresh.playbook_declines
+
 
 workflow_repository = WorkflowsRepository()
