@@ -7,7 +7,6 @@ from typing import Any, NotRequired, Protocol, TypedDict, cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
 from chromadb.api.types import Where
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.store.base import PutOp
 
 from app.agents.core.subagents.registry import all_subagents
@@ -40,6 +39,7 @@ def _tools_seed_lock(namespace: str) -> DistributedLock:
 
 
 from .chroma_store import ChromaStore
+from .resilient_embeddings import ResilientEmbeddings
 
 
 class IndexableTool(Protocol):
@@ -550,7 +550,7 @@ async def initialize_chroma_tools_store() -> ChromaStore:
         raise RuntimeError("Embeddings not available")
 
     # Registered by init_embeddings() in app/agents/tools/core/store.py.
-    embeddings = cast(GoogleGenerativeAIEmbeddings, raw_embeddings)
+    embeddings = cast(ResilientEmbeddings, raw_embeddings)
 
     store = ChromaStore(
         client=chroma_client,

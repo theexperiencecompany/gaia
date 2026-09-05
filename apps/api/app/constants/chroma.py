@@ -31,6 +31,16 @@ CHROMA_CANVAS_COLLECTION = "gaia_canvas" + CHROMA_COLLECTION_SUFFIX
 # fans out indexing across every provider toolkit concurrently.
 MAX_CONCURRENT_CHROMA_WRITES = 20
 
+# Bounded retry for the shared Gemini embeddings provider (see
+# app/db/chroma/resilient_embeddings.py). A transient Vertex 429 (per-minute
+# quota for gemini-embedding) or 5xx on an embed call is retried with exponential
+# backoff so a quota blip costs latency rather than failing tool discovery for
+# the whole turn. Kept small: three attempts over a few seconds is enough to ride
+# out a per-minute-quota blip without stalling a user-blocking tool call.
+EMBEDDING_RETRY_MAX_ATTEMPTS = 3
+EMBEDDING_RETRY_BASE_DELAY_SECONDS = 0.5
+EMBEDDING_RETRY_MAX_DELAY_SECONDS = 4.0
+
 # How long a namespace's indexed-signature marker survives in Redis. It is a
 # fast-path hint only (the ChromaDB hash diff is the source of truth), so a day
 # is plenty — a stale or missing marker just costs one extra diff read.
