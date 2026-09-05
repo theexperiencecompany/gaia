@@ -112,7 +112,15 @@ class TestHandoverBubble:
         assert compose_first_conversation(_prefs("Founder at SpaceX"), None).lines[1] == (
             "Since you're a founder at SpaceX, what are we starting with?"
         )
-        # An x is a consonant, whatever a sloppy vowel check might say.
+        # Every vowel earns "an"; anything else, including x, gets "a".
+        for typed, expected in {
+            "Illustrator": "an illustrator",
+            "Optometrist": "an optometrist",
+            "Urban planner": "an urban planner",
+        }.items():
+            assert compose_first_conversation(_prefs(typed), None).lines[1] == (
+                f"Since you're {expected}, what are we starting with?"
+            )
         assert compose_first_conversation(_prefs("X-ray technician"), None).lines[1] == (
             "Since you're a x-ray technician, what are we starting with?"
         )

@@ -49,6 +49,7 @@ HANDOVER_TEMPLATE = "Since you're {job}, what are we starting with?"
 HANDOVER_SENTENCE_TEMPLATE = "Since {sentence}, what are we starting with?"
 HANDOVER_WITHOUT_JOB = "So, what are we starting with?"
 SOMETHING_ELSE_CHIP = "Something else"
+_VOWELS = ("a", "e", "i", "o", "u")
 
 #: A typed sentence turned to the second person: "I run a bakery" reads
 #: "you run a bakery", "I'm a plumber" reads "you're a plumber".
@@ -101,7 +102,7 @@ def _handover(profession: str | None) -> str:
             )
     title = cleaned.split(maxsplit=1)[1] if key.startswith(_ARTICLES) else cleaned
     title = f"{title[0].lower()}{title[1:]}"
-    article = "an" if title[0] in "aeiou" else "a"
+    article = "an" if title.startswith(_VOWELS) else "a"
     return HANDOVER_TEMPLATE.format(job=f"{article} {title}")
 
 
