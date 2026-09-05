@@ -1783,3 +1783,35 @@ class TestAStoppedReplaysCallsCountAsThisRuns:
 
     def test_no_replay_means_no_extra_results(self) -> None:
         assert _replayed_results(_config()) == []
+
+
+@pytest.mark.unit
+async def test_a_shape_the_body_cannot_take_is_a_refusal_not_an_exception(
+    store: _FakePlaybookStore, workflows: MagicMock
+) -> None:
+    """``for_each`` without ``max_items`` is an authoring error like any other.
+    It used to escape ``playbook_body_from_input`` as a ValueError, land in the
+    catch-all, and be logged as a tool exception with a traceback."""
+    steps = [
+        {"id": "ls", "tool": "list_events", "args": {}},
+        {
+            "id": "m",
+            "tool": "send_email",
+            "for_each": "$steps.ls.items",
+            "args": {"to": "$item.email", "subject": "hi"},
+        },
+    ]
+    with (
+        patch(f"{TOOLS_MODULE}.playbook_repository", store),
+        patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        patch(f"{TOOLS_MODULE}.log") as log,
+    ):
+        result = await write_playbook.ainvoke({**NEW_ARGS, "steps": steps}, config=_config())
+
+    assert isinstance(result, dict), "refused inside the tool, not at the boundary"
+    assert result["success"] is False
+    assert result["error"] == "invalid_playbook"
+    assert "max_items" in result["message"]
+    assert store.documents == {}
+    log.error.assert_not_called()

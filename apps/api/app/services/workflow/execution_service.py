@@ -83,12 +83,24 @@ class WorkflowFireOverlapped(Exception):
         self.holder = holder
 
 
-class PlaybookFallbackFailed(Exception):
+class WorkflowRunFailed(Exception):
+    """A fire that failed after it had already done something on record.
+
+    The calls in ``trace`` are side effects that happened; if the record of
+    this fire does not carry them, the next fire reads an empty history and
+    repeats them.
+    """
+
+    def __init__(self, message: str, *, conversation_id: str, trace: list[RecordedCall]) -> None:
+        super().__init__(message)
+        self.conversation_id = conversation_id
+        self.trace = trace
+
+
+class PlaybookFallbackFailed(WorkflowRunFailed):
     """A fire that failed AFTER its playbook replay had already run some steps.
 
-    The replay's calls are side effects that happened; if the record of this
-    fire does not carry them, the next fire reads an empty history and repeats
-    them. Wraps the real failure rather than replacing it, so the caller's
+    Wraps the real failure rather than replacing it, so the caller's
     bookkeeping (rate-limit and budget classification, the user notification)
     still sees the error that actually occurred.
     """
@@ -96,10 +108,18 @@ class PlaybookFallbackFailed(Exception):
     def __init__(
         self, cause: Exception, *, conversation_id: str, trace: list[RecordedCall]
     ) -> None:
-        super().__init__(str(cause))
+        super().__init__(str(cause), conversation_id=conversation_id, trace=trace)
         self.cause = cause
-        self.conversation_id = conversation_id
-        self.trace = trace
+
+
+class WorkflowExecutorFailed(WorkflowRunFailed):
+    """The executor a fire delegated to ended in an error.
+
+    Comms answers such a run with an apology, and the delivery path has already
+    told the user the workflow failed. The message is that apology; recording
+    it as the run's successful result would say the workflow ran when it did
+    not, so the fire is closed out as a failure like any other raise.
+    """
 
 
 async def create_execution(

@@ -62,7 +62,17 @@ def _raw(**overrides: Any) -> dict[str, Any]:
 def collection() -> Iterator[MagicMock]:
     mock = MagicMock()
     mock.find_one = AsyncMock(return_value=None)
-    mock.find_one_and_update = AsyncMock(return_value=_raw())
+    # The write asks first whether the body is in a heal status (no upsert),
+    # then upserts the reset; the default collection holds no such body.
+    # The write tries the status-guarded phases first (a heal-born rewrite, then
+    # a never-replayed body) and upserts the reset only when neither matched;
+    # the default collection holds no such body. Outcome writes are also
+    # status-guarded but never bump the revision, and are left alone.
+    mock.find_one_and_update = AsyncMock(
+        side_effect=lambda filter_, update, **_kwargs: None
+        if "last_run_status" in filter_ and "revision" in update.get("$inc", {})
+        else _raw()
+    )
     with patch("app.db.repositories.base.get_async_collection", return_value=mock):
         yield mock
 
@@ -117,7 +127,8 @@ class TestUpsertForWorkflow:
 
         collection.find_one.assert_not_awaited()
         collection.insert_one.assert_not_called()
-        collection.find_one_and_update.assert_awaited_once()
+        # Two status-matched attempts to carry heal attempts, one upsert: no read.
+        assert collection.find_one_and_update.await_count == 3
         filter_, update = collection.find_one_and_update.await_args.args
         assert filter_ == {"workflow_id": WORKFLOW_ID, "user_id": USER_ID}
         assert collection.find_one_and_update.await_args.kwargs["upsert"] is True
@@ -148,7 +159,8 @@ class TestUpsertForWorkflow:
         assert set_fields["steps"][0]["tool"] == "list_events"
         # The identity is never part of the rewrite: a replay in flight keeps its id.
         assert "playbook_id" not in set_fields
-        # The heal attempts counted runs spent on the body just replaced.
+        # Not a heal-born rewrite (the status-matched write found nothing), so
+        # the attempts counted runs spent on a trusted body and go back to zero.
         assert set_fields["heal_attempts"] == 0
         # The id survives, so the revision is what tells a replay in flight
         # that the body it ran is no longer the body stored.
@@ -183,31 +195,66 @@ class TestUpsertForWorkflow:
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
         collection.find_one_and_update = AsyncMock(
-            side_effect=[DuplicateKeyError("E11000 duplicate key"), _raw(description="second")]
+            side_effect=[
+                None,
+                None,
+                DuplicateKeyError("E11000 duplicate key"),
+                _raw(description="second"),
+            ]
         )
 
         stored = await repo.upsert_for_workflow(_doc(description="second"))
 
-        assert collection.find_one_and_update.await_count == 2
+        assert collection.find_one_and_update.await_count == 4
         assert stored.description == "second"
         # The retry is the SAME write, not a plain update: the loser of the race
         # must still insert when the winner has since been deleted.
         assert [
             call.kwargs["upsert"] for call in collection.find_one_and_update.await_args_list
-        ] == [True, True]
+        ] == [False, False, True, True]
 
     async def test_both_attempts_are_written_in_the_global_scope(
         self, repo: PlaybooksRepository
     ) -> None:
         """``playbooks`` is a global collection, so both the first attempt and the
         duplicate-key retry name the global cache scope."""
-        spy, calls = _raw_update_spy(DuplicateKeyError("E11000 duplicate key"), _doc())
+        spy, calls = _raw_update_spy(None, None, DuplicateKeyError("E11000 duplicate key"), _doc())
 
         with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
             await repo.upsert_for_workflow(_doc())
 
-        assert [call["scope"] for call in calls] == [REPO_GLOBAL_SCOPE, REPO_GLOBAL_SCOPE]
-        assert [call["upsert"] for call in calls] == [True, True]
+        assert [call["scope"] for call in calls] == [REPO_GLOBAL_SCOPE] * 4
+        assert [call["upsert"] for call in calls] == [False, False, True, True]
+
+    async def test_a_rewrite_of_a_body_never_replayed_leaves_the_attempts_alone(
+        self, repo: PlaybooksRepository
+    ) -> None:
+        spy, calls = _raw_update_spy(None, _doc())
+
+        with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
+            await repo.upsert_for_workflow(_doc(description="second"))
+
+        assert calls[1]["filter"]["last_run_status"] == "not_run"
+        assert calls[1]["update"]["$inc"] == {"revision": 1}
+        assert "heal_attempts" not in calls[1]["update"]["$set"]
+        assert calls[1]["upsert"] is False
+
+    async def test_a_rewrite_out_of_a_heal_carries_the_attempts_it_spent(
+        self, repo: PlaybooksRepository
+    ) -> None:
+        """Matched on the stored status, never read-then-written: a body in a
+        heal status takes one status-guarded write that grows the count."""
+        spy, calls = _raw_update_spy(_doc())
+
+        with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
+            await repo.upsert_for_workflow(_doc(description="second"))
+
+        (call,) = calls
+        assert call["filter"]["last_run_status"] == {"$in": ["failed", "suspect"]}
+        assert call["update"]["$inc"] == {"revision": 1, "heal_attempts": 1}
+        assert "heal_attempts" not in call["update"]["$set"]
+        assert "$setOnInsert" not in call["update"]
+        assert call["upsert"] is False
 
     async def test_a_playbook_that_vanished_mid_upsert_names_its_workflow(
         self, repo: PlaybooksRepository
@@ -215,7 +262,7 @@ class TestUpsertForWorkflow:
         """An upsert that matches nothing and inserts nothing cannot be reported as
         a generic failure: the message is the only pointer to which workflow lost
         its write."""
-        spy, _calls = _raw_update_spy(None)
+        spy, _calls = _raw_update_spy(None, None, None)
 
         with (
             patch.object(PlaybooksRepository, "_apply_raw_update", spy),

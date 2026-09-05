@@ -74,17 +74,53 @@ class TestTransitionTable:
     def test_a_rewrite_starts_a_new_body_but_keeps_the_streak(
         self, status: PlaybookRunStatus
     ) -> None:
-        before = _state(status, streak=1, heals=2, revision=3)
+        before = _state(status, streak=1, heals=1, revision=3)
 
         after = transition(before, Rewritten())
 
+        # A rewrite out of a heal run spends one attempt on the body it replaces
+        # and carries the count forward; only a trusted replay clears it. Seen
+        # live: a body whose $ask no model could fill failed every replay, the
+        # agent finishing the fire rewrote it identically, and a reset count
+        # meant the cycle never reached the limit.
         assert after == PlaybookLifecycle(
             status=PlaybookRunStatus.NOT_RUN,
             reason=None,
             suspect_streak=1,
-            heal_attempts=0,
+            heal_attempts={
+                PlaybookRunStatus.SUCCESS: 0,
+                PlaybookRunStatus.NOT_RUN: 1,
+                PlaybookRunStatus.FAILED: 2,
+                PlaybookRunStatus.SUSPECT: 2,
+            }[status],
             revision=4,
         )
+
+    def test_a_second_write_in_the_same_heal_run_keeps_the_attempt_the_first_carried(
+        self,
+    ) -> None:
+        """Seen live: the executor was re-prompted to decide and wrote the body
+        twice; the second write found a NOT_RUN body and reset the count."""
+        state = _state(PlaybookRunStatus.FAILED, heals=1)
+        first = transition(state, Rewritten())
+        second = transition(first, Rewritten())
+
+        assert first.heal_attempts == 2
+        assert second.heal_attempts == 2
+
+    def test_a_body_that_is_rewritten_after_every_failed_replay_still_reaches_the_limit(
+        self,
+    ) -> None:
+        state = _state(PlaybookRunStatus.NOT_RUN, streak=0, heals=0, revision=1)
+        failed = PlaybookRunOutcome(status=PlaybookRunStatus.FAILED, reason="ask unanswered")
+        for spent in range(1, PLAYBOOK_HEAL_ATTEMPT_LIMIT + 1):
+            state = transition(state, Replayed(failed))
+            assert discard_reason(state) is None, spent
+            state = transition(state, Rewritten())
+            assert state.heal_attempts == spent
+        state = transition(state, Replayed(failed))
+
+        assert discard_reason(state) is DiscardReason.HEAL_ATTEMPTS_EXHAUSTED
 
     @pytest.mark.parametrize("status", STATUSES)
     def test_a_completed_heal_spends_one_attempt_and_nothing_else(

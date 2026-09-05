@@ -57,6 +57,10 @@ class StreamSession:
     #: work was deferred" without reading the tool's prose.
     executor_queued_task_id: str | None = None
     done_event: asyncio.Event = field(default_factory=asyncio.Event)
+    #: Set with ``done_event`` when the executor's run ended in an error rather
+    #: than a result. The silent path reads it so a fire whose executor died is
+    #: recorded as failed instead of as the apology comms wrote about it.
+    executor_failed: bool = False
     tool_events: list[dict[str, Any]] = field(default_factory=list)
     pending_subagents: int = 0
     # Integrations with a background handoff in flight this run. Guards against a
@@ -295,11 +299,18 @@ def queued_without_run(stream_id: str) -> str | None:
     return session.executor_queued_task_id
 
 
-def signal_executor_done(stream_id: str) -> None:
+def signal_executor_done(stream_id: str, *, failed: bool = False) -> None:
     """Wake any waiter blocked on the executor finishing for this stream."""
     session = _sessions.get(stream_id)
     if session is not None:
+        session.executor_failed = failed
         session.done_event.set()
+
+
+def executor_failed(stream_id: str) -> bool:
+    """Whether the executor this stream spawned ended in an error."""
+    session = _sessions.get(stream_id)
+    return bool(session and session.executor_failed)
 
 
 # ── Background subagent coordination ─────────────────────────────────

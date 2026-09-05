@@ -21,7 +21,7 @@ from app.models.playbook_models import (
     PlaybookRunStatus,
     PlaybookUpdate,
 )
-from app.services.workflow.playbook.lifecycle import grows_from_untrusted
+from app.services.workflow.playbook.lifecycle import HEAL_STATUSES, grows_from_untrusted
 
 
 class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
@@ -56,14 +56,35 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
             workflow_hash=playbook.workflow_hash,
             last_run_status=PlaybookRunStatus.NOT_RUN,
             last_run_reason=None,
-            heal_attempts=0,
         ).model_dump(exclude_unset=True)
+        key = {"workflow_id": playbook.workflow_id, "user_id": playbook.user_id}
+        # A rewrite out of a heal run spends one attempt and carries the count
+        # (``lifecycle.Rewritten``): matched on the stored status, the same way
+        # ``record_run_outcome`` grows the streak, so two writers cannot both
+        # read a count and both write it back. A body that is not in a heal
+        # status matches nothing here and takes the reset below.
+        healed = await self._apply_raw_update(
+            {**key, "last_run_status": {"$in": sorted(status.value for status in HEAL_STATUSES)}},
+            {"$set": body, "$inc": {"revision": 1, "heal_attempts": 1}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        if healed is not None:
+            return healed
+        # A body never replayed (a second write in the same run) carries the
+        # count unchanged: the body it replaces spent nothing, and the count is
+        # the heal run's, not the body's. Seen live: the second write reset it.
+        unreplayed = await self._apply_raw_update(
+            {**key, "last_run_status": PlaybookRunStatus.NOT_RUN.value},
+            {"$set": body, "$inc": {"revision": 1}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        if unreplayed is not None:
+            return unreplayed
         # The streak survives a rewrite on purpose: a rewrite is how a heal run
         # answers a suspect replay, and a playbook that keeps coming back suspect
-        # must still reach the limit. Only a trusted replay clears it. The heal
-        # attempts do NOT survive: they count runs spent on the body just replaced.
+        # must still reach the limit. Only a trusted replay clears it.
         update = {
-            "$set": body,
+            "$set": {**body, "heal_attempts": 0},
             "$inc": {"revision": 1},
             "$setOnInsert": {
                 "playbook_id": playbook.playbook_id,
@@ -71,7 +92,6 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
                 "suspect_streak": 0,
             },
         }
-        key = {"workflow_id": playbook.workflow_id, "user_id": playbook.user_id}
         try:
             stored = await self._apply_raw_update(key, update, scope=REPO_GLOBAL_SCOPE, upsert=True)
         except DuplicateKeyError:

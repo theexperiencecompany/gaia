@@ -92,6 +92,30 @@ class TestPlaybooksRepository:
         # The rewrite is the heal run's answer; only a trusted replay clears the streak.
         assert replaced.suspect_streak == 1
 
+    async def test_a_rewrite_out_of_a_heal_carries_the_attempts_and_a_trusted_one_resets(
+        self, repo
+    ) -> None:
+        await repo.upsert_for_workflow(make_doc())
+        await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.FAILED, reason="stopped")
+        )
+        healed = await repo.upsert_for_workflow(make_doc(description="second"))
+        assert healed.last_run_status is PlaybookRunStatus.NOT_RUN
+        assert healed.heal_attempts == 1
+        assert healed.revision == 2
+
+        # A second write before any replay carries the count, not resets it.
+        again = await repo.upsert_for_workflow(make_doc(description="second, fixed"))
+        assert again.heal_attempts == 1
+        assert again.revision == 3
+
+        await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.SUCCESS)
+        )
+        trusted = await repo.upsert_for_workflow(make_doc(description="third"))
+        assert trusted.heal_attempts == 0
+        assert trusted.revision == 4
+
     async def test_suspect_runs_grow_the_streak_until_a_success_resets_it(self, repo) -> None:
         """A suspect grows the streak once per verdict on a body: a second
         suspect with no heal between (two replays of one body racing) counts
@@ -126,7 +150,9 @@ class TestPlaybooksRepository:
         reread = await repo.get_for_workflow(WORKFLOW_ID, USER_ID)
         assert reread == cleared
 
-    async def test_every_write_bumps_the_revision_and_resets_the_heal_attempts(self, repo) -> None:
+    async def test_every_write_bumps_the_revision_and_a_write_before_any_replay_keeps_the_attempts(
+        self, repo
+    ) -> None:
         first = await repo.upsert_for_workflow(make_doc())
         counted = await repo.increment_heal_attempts(
             WORKFLOW_ID, USER_ID, playbook_id=first.playbook_id
@@ -136,7 +162,9 @@ class TestPlaybooksRepository:
         assert first.revision == 1
         assert counted.heal_attempts == 1
         assert second.revision == 2
-        assert second.heal_attempts == 0
+        # The count is the heal run's, not the body's: a body never replayed
+        # carries it, and only a trusted replay clears it.
+        assert second.heal_attempts == 1
         assert second.playbook_id == first.playbook_id
 
     async def test_a_heal_count_for_a_rewritten_body_lands_nowhere(self, repo) -> None:

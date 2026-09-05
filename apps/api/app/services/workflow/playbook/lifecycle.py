@@ -17,10 +17,14 @@ The rules, stated once:
 * A **heal run that completed** without rewriting spends one heal attempt on
   the body it was healing.
 * A **rewrite** starts a new body: status back to ``NOT_RUN``, reason cleared,
-  heal attempts back to zero, revision bumped. The suspect streak survives on
-  purpose — a rewrite is how a heal answers a suspect replay, and a playbook
-  that keeps coming back suspect must still reach the limit. Only a trusted
-  replay clears it.
+  revision bumped. The suspect streak survives on purpose — a rewrite is how a
+  heal answers a suspect replay, and a playbook that keeps coming back suspect
+  must still reach the limit. The heal attempts survive too: a rewrite out of
+  a heal run (the body was ``FAILED`` or ``SUSPECT``) spends one and carries
+  the count, and a rewrite of a body never replayed (``NOT_RUN``, a second
+  write in the same run) carries it unchanged, so a body rewritten after every
+  failed replay must still reach the limit. Only a trusted replay (the body
+  was ``SUCCESS``) clears either.
 * A playbook is **discarded** when its heal attempts or its suspect streak
   reach their limit, or when the workflow it was written for has changed
   underneath it.
@@ -97,7 +101,7 @@ def transition(state: PlaybookLifecycle, event: PlaybookEvent) -> PlaybookLifecy
                 state,
                 status=PlaybookRunStatus.NOT_RUN,
                 reason=None,
-                heal_attempts=0,
+                heal_attempts=_attempts_after_rewrite(state),
                 revision=state.revision + 1,
             )
         case HealCompleted():
@@ -106,6 +110,18 @@ def transition(state: PlaybookLifecycle, event: PlaybookEvent) -> PlaybookLifecy
             return _after_replay(state, outcome)
         case _:
             assert_never(event)
+
+
+def _attempts_after_rewrite(state: PlaybookLifecycle) -> int:
+    match state.status:
+        case PlaybookRunStatus.SUCCESS:
+            return 0
+        case PlaybookRunStatus.NOT_RUN:
+            return state.heal_attempts
+        case PlaybookRunStatus.FAILED | PlaybookRunStatus.SUSPECT:
+            return state.heal_attempts + 1
+        case _:
+            assert_never(state.status)
 
 
 def _after_replay(state: PlaybookLifecycle, outcome: PlaybookRunOutcome) -> PlaybookLifecycle:

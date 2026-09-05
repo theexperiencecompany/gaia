@@ -217,7 +217,12 @@ async def write_playbook(
         if workflow is None:
             return error_response("workflow_not_found", f"No workflow {workflow_id} for this user.")
 
-        body = playbook_body_from_input(description, steps, result_brief)
+        try:
+            body = playbook_body_from_input(description, steps, result_brief)
+        except ValueError as e:
+            # A shape the body cannot take (a for_each without its ceiling) is
+            # an authoring error like a bad reference: refused, not raised.
+            return error_response("invalid_playbook", f"The playbook was not written. {e}")
 
         results = _run_results(state)
         if results is not None:

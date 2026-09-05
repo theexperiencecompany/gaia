@@ -255,6 +255,8 @@ def _check_tool_step(
     if walk.results is not None and not in_handoff:
         _check_recorded_call(step, tool_name, path, walk)
 
+    if isinstance(step, ForEachStep):
+        _check_for_each_source(step, path, walk)
     schema: dict[str, Any] = space.tools[tool_name].args
     _check_required_args(step, tool_name, path, space, walk)
     for key, value in step.args.items():
@@ -289,7 +291,7 @@ def _check_tool_step(
         # ("Email $steps.mail.to") is checked exactly as a whole-value one is.
         arg_tokens = list(placeholder_tokens(value))
         for token in arg_tokens:
-            _check_placeholder(token, where, walk)
+            _check_placeholder(token, where, walk, in_for_each=isinstance(step, ForEachStep))
         slots = [slot for _, slot in walk_ask_slots(value)]
         if slots and not step.id:
             # A slot is addressed by its step's id; without one it falls back to
@@ -471,28 +473,35 @@ def _rendered_args(args: Mapping[str, Any]) -> str:
     return rendered[:_ARGS_IN_MESSAGE_MAX_CHARS] + "..."
 
 
-def _check_step_reference(token: str, path: str, where: str, walk: _Walk) -> None:
+#: What ``_check_step_reference`` hands back when there was nothing to resolve
+#: against, or the reference did not resolve; distinct from a resolved ``None``.
+_UNRESOLVED = object()
+
+
+def _check_step_reference(token: str, path: str, where: str, walk: _Walk) -> object:
     """Resolve one ``$steps`` reference against what that step returned in this run.
 
     Through the evaluator's own resolver, so an accepted reference is one the
     replay can actually resolve rather than one a second path-walker agreed
     with. ``.file`` is exempt: the offloaded file exists only at replay, and the
-    authoring run's result has no path to it.
+    authoring run's result has no path to it. Returns what the reference
+    resolved to, or ``_UNRESOLVED``.
     """
     step_id, _, rest = path.partition(".")
     if rest == STEP_FILE_FIELD:
-        return
+        return _UNRESOLVED
     result = walk.step_results.get(step_id)
     if result is None:
         # The step is declared but its own call was never matched (a handoff
         # child, or a tool this run did not call — both already reported).
-        return
+        return _UNRESOLVED
     try:
-        resolve_step(token, path, walk.step_results)
+        return resolve_step(token, path, walk.step_results)
     except PlaceholderError as error:
         walk.issues.append(
             PlaybookIssue(where=where, problem=error.message + _shape_hint(result.value))
         )
+        return _UNRESOLVED
 
 
 def _shape_hint(value: object) -> str:
@@ -562,12 +571,20 @@ def _check_ask_slot(slot: Mapping[str, Any], where: str, walk: _Walk) -> None:
         )
 
 
-def _check_placeholder(match: re.Match[str], where: str, walk: _Walk) -> None:
+def _check_placeholder(match: re.Match[str], where: str, walk: _Walk, *, in_for_each: bool) -> None:
     # The tokenizer only matches known roots; any other ``$word`` is literal text.
     token = match.group(0)
     root = match.group("root")
     path = match.group("path").lstrip(".")
     name = path.partition(".")[0]
+    if root == "item" and not in_for_each:
+        walk.issues.append(
+            PlaybookIssue(
+                where=where,
+                problem=f"{token} addresses the element of a for_each, and this step is not one",
+            )
+        )
+        return
     if root != "steps":
         return
     if name not in walk.declared_steps:
@@ -592,6 +609,51 @@ def _check_placeholder(match: re.Match[str], where: str, walk: _Walk) -> None:
         return
     if walk.results is not None:
         _check_step_reference(token, path, where, walk)
+
+
+def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> None:
+    """The list a ``for_each`` repeats over has to be one this run can name.
+
+    An ``$ask`` source is a model's pick at replay and has nothing to check
+    here. A ``$steps`` source is checked like any reference, and then for what
+    it resolved to: a count or a title is not a list, and the replay would
+    stop on the step a whole agentic run later.
+    """
+    source = step.for_each
+    if isinstance(source, AskSlot):
+        return
+    where = f"{path}.for_each"
+    match = PLACEHOLDER_TOKEN.fullmatch(source)
+    if match is None:  # the model validator already refused anything else
+        return
+    if match.group("root") == "item":
+        walk.issues.append(
+            PlaybookIssue(
+                where=where,
+                problem=(
+                    f"{source} addresses the element of a for_each, and the list itself "
+                    "cannot be one of its own elements"
+                ),
+            )
+        )
+        return
+    _check_placeholder(match, where, walk, in_for_each=False)
+    if walk.results is None or match.group("root") != "steps":
+        return
+    reference = match.group("path").lstrip(".")
+    resolved = _check_step_reference(source, reference, where, walk)
+    if resolved is _UNRESOLVED or isinstance(resolved, list):
+        return
+    result = walk.step_results[reference.partition(".")[0]]
+    walk.issues.append(
+        PlaybookIssue(
+            where=where,
+            problem=(
+                f"{source} resolved to {type(resolved).__name__}, and for_each needs a list "
+                "to repeat over" + _shape_hint(result.value)
+            ),
+        )
+    )
 
 
 def _check_value_type(

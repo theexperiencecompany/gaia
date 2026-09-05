@@ -6,6 +6,8 @@ subagent counter/result contract. These are the rules every terminal handler
 relies on — if any of them drifts, cards get duplicated or lost.
 """
 
+from uuid import uuid4
+
 import pytest
 
 from app.agents.core.background import session as sess
@@ -17,6 +19,7 @@ from app.agents.core.background.session import (
     claim_tool_output,
     create_session,
     decrement_pending_subagents,
+    executor_failed,
     get_or_create_session,
     get_pending_subagents,
     get_session,
@@ -322,3 +325,15 @@ class TestExecutorRunCarriesWorkflowExecution:
         )
 
         assert run.workflow_execution_id is None
+
+
+@pytest.mark.unit
+def test_the_done_signal_carries_whether_the_executor_failed() -> None:
+    stream_id = f"s_{uuid4().hex}"
+    session = get_or_create_session(stream_id)
+    session.executor_spawned = True
+
+    signal_executor_done(stream_id, failed=True)
+
+    assert session.done_event.is_set()
+    assert executor_failed(stream_id) is True

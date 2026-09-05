@@ -2718,3 +2718,104 @@ result_brief: Say what was sent.
             result = await validate_playbook(body, USER_ID)
 
         assert result.valid is True, result.issues
+
+
+@pytest.mark.unit
+class TestForEachSourcesAndItem:
+    """Seen live under the scripted model: ``$item`` in a plain step was
+    accepted and resolved to nothing at replay; a ``for_each`` naming a field
+    that is not a list was refused only by the replay, a whole run later."""
+
+    async def test_item_outside_a_for_each_is_refused(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: $item.email
+      subject: hi
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].args.to",
+                "$item.email addresses the element of a for_each, and this step is not one",
+            )
+        ]
+
+    async def test_a_for_each_over_a_field_that_is_not_a_list_is_refused_at_the_write(
+        self,
+    ) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.count
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"count": 2, "items": [{"id": 1}, {"id": 2}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].for_each",
+                "$steps.events.count resolved to int, and for_each needs a list to repeat over"
+                "; its result has keys: count, items",
+            )
+        ]
+
+    async def test_a_for_each_source_must_be_a_step_that_ran_not_the_element(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    for_each: $item.ids
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].for_each",
+                "$item.ids addresses the element of a for_each, and the list itself "
+                "cannot be one of its own elements",
+            )
+        ]

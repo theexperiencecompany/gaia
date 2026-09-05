@@ -19,7 +19,7 @@ from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import AnalyticsEvents
 from app.services.workflow.conversation_service import build_selected_workflow_data
-from app.services.workflow.execution_service import WorkflowFireQueued
+from app.services.workflow.execution_service import WorkflowExecutorFailed, WorkflowFireQueued
 from app.services.workflow.notifications import (
     send_workflow_completion_notification,
     send_workflow_failure_notification,
@@ -407,7 +407,9 @@ class TestExecuteWorkflowById:
             result = await execute_workflow_by_id(ctx, workflow.id, context=context)
 
         assert "Error executing workflow" in result
-        record_failure.assert_awaited_once_with(error, workflow, workflow.id, execution_id)
+        record_failure.assert_awaited_once_with(
+            error, workflow, workflow.id, execution_id, record=None
+        )
         rearm.assert_awaited_once_with(scheduler, workflow, context, workflow.id)
 
     async def test_scheduled_execution_captures_workflow_executed(self, ctx, _no_real_analytics):
@@ -2428,3 +2430,51 @@ class TestTheChatRunsTriggerTurnIsBuiltExactly:
             "workflow_notify_on_completion": True,
             "execution_mode": "background",
         }
+
+
+@pytest.mark.unit
+class TestAnExecutorThatDiedIsNotASuccessfulRun:
+    """Seen live: the executor's model call failed, comms apologised, and the
+    execution record said ``success`` / "Ran the full workflow" with the apology
+    as the result, while the delivery path had already sent the user a failure
+    notification. The executor's outcome rides the session, not the prose."""
+
+    async def test_an_executor_failure_raises_so_the_record_is_marked_failed(self) -> None:
+        workflow = MagicMock(
+            id="wf_1",
+            user_id="u_1",
+            title="Digest",
+            description="Daily digest",
+            prompt="Summarise my day",
+            notify_on_completion=True,
+        )
+        workflow.steps = []
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"user_id": "u_1", "timezone": "UTC"},
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value="conv_1",
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=SilentRunResult(
+                    message="Sorry, something went wrong.", tool_data={}, executor_failed=True
+                ),
+            ),
+            pytest.raises(WorkflowExecutorFailed) as raised,
+        ):
+            await execute_workflow_as_chat(workflow, {"user_id": "u_1"}, {})
+
+        assert raised.value.conversation_id == "conv_1"
+        assert "Sorry, something went wrong." in str(raised.value)
