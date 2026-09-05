@@ -68,6 +68,12 @@ def outlook_attachment_before_hook(
         return params
     raw = arguments.get("attachment")
     values = raw if isinstance(raw, list) else [raw]
+    # Composio's staging flow fetches http(s) attachment URLs as-is; an http://
+    # URL would be retrieved over cleartext (CWE-319). Reject it — https:// URLs
+    # and workspace paths (minted into a grant URL below) are fine.
+    for value in values:
+        if isinstance(value, str) and value.startswith("http://"):
+            raise HookAbortError(f"Refusing to attach a cleartext http:// URL: {value}")
     if not any(_needs_grant(value) for value in values):
         return params
 

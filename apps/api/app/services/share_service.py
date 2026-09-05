@@ -63,6 +63,22 @@ def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(_require_secret(), salt=_SALT)
 
 
+def _assert_secure_host() -> None:
+    """Refuse to mint a bearer URL over cleartext in production (CWE-319).
+
+    The grant token rides in the URL; over ``http://`` it would reach Composio in
+    cleartext. Enforced in production only — local dev serves the grant over
+    ``http://localhost``, where no secret leaves the machine.
+    """
+    if settings.ENV == "production" and not settings.HOST.startswith("https://"):
+        raise AppError(
+            message="File sharing requires an HTTPS host in production.",  # pragma: no mutate -- operator prose; the test asserts the raise, not the wording
+            why=f"HOST '{settings.HOST}' is not https; a share token must not travel in cleartext.",  # pragma: no mutate -- operator prose
+            fix="Set HOST to an https:// origin.",  # pragma: no mutate -- operator prose
+            status_code=503,
+        )
+
+
 def mint_share_url(
     *,
     user_id: str,
@@ -86,6 +102,7 @@ def mint_share_url(
             fix="Pass a positive ttl_seconds and retry.",
             status_code=400,
         )
+    _assert_secure_host()
     rel = to_workspace_relative_path(workspace_path)
     host_path = resolve_user_file_sync(user_id, rel)
     payload = ShareGrantPayload(

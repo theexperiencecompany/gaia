@@ -69,6 +69,47 @@ class TestMintShareUrl:
         ):
             mint_share_url(user_id="u1", workspace_path="/workspace/gone.pdf")
 
+    def test_http_host_refused_in_production(
+        self, _secret: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # In prod the token would reach Composio in cleartext over http (CWE-319).
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "HOST", "http://api.example.com")
+        host = tmp_path / "a.txt"
+        host.write_bytes(b"x")
+        with (
+            patch(f"{MODULE}.resolve_user_file_sync", return_value=host),
+            pytest.raises(AppError, match="HTTPS") as exc,
+        ):
+            mint_share_url(user_id="u1", workspace_path="a.txt")
+        assert exc.value.status_code == 503
+        # The error carries actionable operator guidance (why + fix), not a bare message.
+        assert exc.value.why
+        assert exc.value.fix
+
+    def test_https_host_allowed_in_production(
+        self, _secret: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "HOST", "https://api.example.com")
+        host = tmp_path / "a.txt"
+        host.write_bytes(b"x")
+        with patch(f"{MODULE}.resolve_user_file_sync", return_value=host):
+            url = mint_share_url(user_id="u1", workspace_path="a.txt")
+        assert url.startswith("https://api.example.com/api/v1/files/s/")
+
+    def test_http_localhost_allowed_in_development(
+        self, _secret: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # Local dev serves the grant over http://localhost; no secret leaves the box.
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "HOST", "http://localhost:8000")
+        host = tmp_path / "a.txt"
+        host.write_bytes(b"x")
+        with patch(f"{MODULE}.resolve_user_file_sync", return_value=host):
+            url = mint_share_url(user_id="u1", workspace_path="a.txt")
+        assert url.startswith("http://localhost:8000/api/v1/files/s/")
+
     def test_blank_secret_fails_loud(
         self, _secret: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
