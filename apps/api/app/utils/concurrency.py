@@ -67,7 +67,9 @@ def run_on_captured_loop(coro: Coroutine[Any, Any, _T], *, timeout: float | None
     try:
         on_server_loop = asyncio.get_running_loop() is loop
     except RuntimeError:
-        on_server_loop = False
+        # No running loop on this thread — so not on the server loop. Only ever
+        # read as a bool below, so None/"" would behave identically here.
+        on_server_loop = False  # pragma: no mutate
     if on_server_loop:
         coro.close()
         raise RuntimeError(_ON_SERVER_LOOP_ERROR)
