@@ -39,7 +39,6 @@ from app.agents.context.text import (
 )
 from app.agents.context.tiers import AgentTier
 from app.agents.prompts.new_user_prompts import (
-    FOCUS_PLAYBOOKS,
     MAX_PLAYBOOK_LINES,
     NEED_PLAYBOOKS,
     NEW_USER_GUIDANCE_TEMPLATE,
@@ -652,39 +651,15 @@ class TestNewUserGuidanceBlock:
         replace, so it must be empty string, not an empty shell."""
         assert build_new_user_guidance("Founder", []) == ""
 
-    async def test_a_business_shaped_chip_gets_its_own_playbook(self) -> None:
-        """ "Growth" maps to no need, so without the focus table the model met it
-        with nothing and answered by fetching an inbox."""
-        block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, ["Growth"])
-        assert FOCUS_PLAYBOOKS["growth"] in block
-
-    async def test_a_chip_is_matched_through_the_words_around_it(self) -> None:
-        """The written chips are "Late payers" and "The pipeline", never the bare
-        table key, so exact matching would render nothing at all."""
-        block = build_new_user_guidance(
-            "Founder", [OnboardingNeed.INBOX], None, ["Late payers", "The pipeline"]
-        )
-        assert FOCUS_PLAYBOOKS["late payers"] in block
-        assert FOCUS_PLAYBOOKS["pipeline"] in block
-
-    async def test_a_chip_matching_nothing_adds_no_playbook(self) -> None:
-        block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, ["Bananas"])
-        for playbook in FOCUS_PLAYBOOKS.values():
-            assert playbook not in block
-
-    async def test_the_same_playbook_is_never_rendered_twice(self) -> None:
-        block = build_new_user_guidance(
-            "Founder", [OnboardingNeed.INBOX], None, ["Growth", "growth plan"]
-        )
-        assert block.count(FOCUS_PLAYBOOKS["growth"]) == 1
-
     async def test_the_playbook_list_is_capped_in_pick_order(self) -> None:
         """Their own picks lead, so truncation drops the least-wanted lines."""
         block = build_new_user_guidance(
-            "Founder", list(OnboardingNeed), "chasing invoices", list(FOCUS_PLAYBOOKS)
+            "Founder",
+            list(OnboardingNeed),
+            "chasing invoices",
+            ["Find investors", "Fix my marketing", "Hire someone", "Write my pitch"],
         )
         rendered = [p for p in NEED_PLAYBOOKS.values() if p in block]
-        rendered += [p for p in FOCUS_PLAYBOOKS.values() if p in block]
         assert len(rendered) == MAX_PLAYBOOK_LINES
         assert NEED_PLAYBOOKS[OnboardingNeed.INBOX] in block
         assert NEED_PLAYBOOKS[OnboardingNeed.REACH] not in block
@@ -772,11 +747,7 @@ class TestNewUserGuidanceBlock:
 
         assert block == NEW_USER_GUIDANCE_TEMPLATE.format(
             profession="Founder",
-            playbooks=(
-                f"- {NEED_PLAYBOOKS[OnboardingNeed.INBOX]}\n"
-                f"- {FOCUS_PLAYBOOKS['mornings']}\n"
-                f"- {FOCUS_PLAYBOOKS['growth']}"
-            ),
+            playbooks=f"- {NEED_PLAYBOOKS[OnboardingNeed.INBOX]}",
             target=TARGET_REPLY_EXAMPLE,
             chips_rule=SEEDED_CHIPS_RULE.format(chips='"My mornings", "Growth"'),
         )
@@ -803,10 +774,13 @@ class TestNewUserGuidanceBlock:
         )
 
     async def test_the_worst_case_block_stays_within_budget(self) -> None:
-        """Every need at once, plus a seeded chip for every focus playbook and a
-        typed need, is the largest this can ever be."""
+        """Every need at once, plus four seeded chips and a typed need, is the
+        largest this can ever be."""
         block = build_new_user_guidance(
-            "Founder", list(OnboardingNeed), "chasing invoices", list(FOCUS_PLAYBOOKS)
+            "Founder",
+            list(OnboardingNeed),
+            "chasing invoices",
+            ["Find investors", "Fix my marketing", "Hire someone", "Write my pitch"],
         )
         assert len(block) <= self.MAX_BLOCK_CHARS, f"guidance block grew to {len(block)} chars"
 

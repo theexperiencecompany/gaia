@@ -1,8 +1,8 @@
 """Unit tests for the onboarding conversation seeder.
 
 The seeded turn is written once and never regenerated, so the shape it lands in
-Mongo with — one message per line, the connect card on the Gmail line, the chips
-on the last message — is the only chance to get it right.
+Mongo with, one bot message per line and the chips on the last, is the only
+chance to get it right.
 """
 
 from unittest.mock import AsyncMock, patch
@@ -10,10 +10,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.models.user_models import OnboardingNeed, OnboardingPreferences
 from app.services.onboarding.first_conversation import (
     FirstConversation,
     compose_first_conversation,
+    with_starting_jobs,
 )
 from app.utils.seeding_utils import seed_first_conversation
 
@@ -21,19 +21,15 @@ MODULE = "app.utils.seeding_utils"
 
 
 def _composed() -> FirstConversation:
-    return compose_first_conversation(
-        OnboardingPreferences(
-            profession="founder",
-            needs=[OnboardingNeed.INBOX, OnboardingNeed.CALENDAR],
-            other_need="chasing invoices",
-        ),
-        "telegram",
+    return with_starting_jobs(
+        compose_first_conversation(),
+        ["Find investors", "Fix my marketing", "Hire someone", "Write my pitch"],
     )
 
 
 @pytest.mark.unit
 class TestSeedFirstConversation:
-    async def test_seeds_one_message_per_line_with_card_and_chips(self) -> None:
+    async def test_seeds_one_message_per_line_with_chips_on_the_last(self) -> None:
         composed = _composed()
         create = AsyncMock()
         append = AsyncMock(return_value=["m1", "m2", "m3", "m4"])
@@ -53,23 +49,10 @@ class TestSeedFirstConversation:
         assert conversation.conversation_id == conversation_id
 
         messages = append.await_args.kwargs["messages"]
-        assert [m.response for m in messages[1:]] == composed.lines
-        assert messages[0].type == "user"
-        assert messages[0].response == composed.opener
-        assert all(m.type == "bot" for m in messages[1:])
+        assert [m.response for m in messages] == composed.lines
+        assert all(m.type == "bot" for m in messages)
 
-        # The connect card rides the Gmail line, and only that line.
-        assert messages[composed.gmail_card_line + 1].tool_data == [
-            {
-                "tool_name": "integration_connection_required",
-                "data": {
-                    "integration_id": "gmail",
-                    "expired": False,
-                    "message": "To use Gmail features, please connect your account first.",
-                },
-            }
-        ]
-        assert [i for i, m in enumerate(messages) if m.tool_data] == [composed.gmail_card_line + 1]
+        assert all(m.tool_data is None for m in messages)
 
         # The chips hang off the last message only, so they render once.
         assert messages[-1].follow_up_actions == composed.follow_ups

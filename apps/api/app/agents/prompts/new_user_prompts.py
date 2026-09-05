@@ -60,54 +60,6 @@ NEED_PLAYBOOKS: dict[OnboardingNeed, str] = {
     ),
 }
 
-#: Chips that name a piece of their WORK rather than a GAIA feature. These come
-#: back as the first message of the first real conversation (the seeded turn ends
-#: on a question and these are its answers), and nothing else in the prompt tells
-#: the model what "Growth" means, so it used to answer them by fetching an inbox
-#: or asking what they meant. Same contract as the need playbooks: two or three
-#: things that can be created now.
-FOCUS_PLAYBOOKS: dict[str, str] = {
-    "product": (
-        "product: shipping is the fight. Offer: a held list of what is actually blocking the "
-        "next release; a weekly workflow that reports what moved; a reminder on the decision "
-        "they keep deferring."
-    ),
-    "growth": (
-        "growth: they need the number to move. Offer: a recurring workflow that pulls the "
-        "growth number they name and reports it; a held list of the experiments they want to "
-        "run; a reminder to review it weekly."
-    ),
-    "hiring": (
-        "hiring: roles are open and the pipeline is manual. Offer: a held list per role with "
-        "the candidates in it; a workflow that surfaces candidate mail as it lands once Gmail "
-        "is connected; reminders on the follow-ups that go cold."
-    ),
-    "fundraising": (
-        "fundraising: a pipeline of investors, run out of an inbox. Offer: a held list of "
-        "investors and where each one stands; a workflow that chases the ones who went quiet; "
-        "a reminder before each call."
-    ),
-    "late payers": (
-        "late payers: money is out and not coming back. Offer: a held list of who owes what; "
-        "a recurring chase workflow that drafts the follow-up; a reminder the day each one "
-        "goes overdue."
-    ),
-    "content": (
-        "content: a calendar that only exists in their head. Offer: a held list of pieces and "
-        "their dates; a workflow that reminds them at each deadline; a research pass on the "
-        "next piece."
-    ),
-    "pipeline": (
-        "pipeline: deals in flight, follow-ups slipping. Offer: a held list of the deals and "
-        "their next step; a workflow that flags anything untouched for a week; reminders on "
-        "the ones with dates."
-    ),
-    "mornings": (
-        "mornings: they want to start the day ahead of it. Offer: a morning brief workflow at "
-        "an hour they pick; a connect link for whatever it should read; a standing reminder "
-        "for the one thing that must happen before noon."
-    ),
-}
 
 #: The one worked example of the whole move, in the register we want: a real
 #: sentence to open, two offers joined the way speech joins them, an easy yes to
@@ -204,29 +156,13 @@ OTHER_NEED_PLAYBOOK = (
 #: eight needs and got four chips would otherwise carry a 6.6k-character block.
 MAX_PLAYBOOK_LINES = 5
 
-#: Rendered only when the seeded conversation ended on a written question, so the
-#: model knows which words are choices rather than a message it has to parse.
+#: Rendered only when the seeded conversation offered chips, so the model knows
+#: which words are jobs it offered rather than a message it has to parse.
 SEEDED_CHIPS_RULE = """
-- You already asked them a question and offered these answers: {chips}. Their first message
-  is almost certainly one of them, or close to one. Treat it as the choice it is: never ask
-  what it meant, never treat it as a search term."""
-
-
-def _focus_playbooks(chips: list[str]) -> list[str]:
-    """The playbooks for the business-shaped chips we actually offered them.
-
-    Matched by containment, in both directions, because the chip the model wrote
-    is "Late payers" or "The pipeline" while the table is keyed on the bare word.
-    Only the offered chips are rendered: the whole table would be the feature
-    list the block exists to prevent.
-    """
-    matched: list[str] = []
-    for chip in chips:
-        lowered = chip.strip().lower()
-        for key, playbook in FOCUS_PLAYBOOKS.items():
-            if (key in lowered or lowered in key) and playbook not in matched:
-                matched.append(playbook)
-    return matched
+- You opened with "What are we starting with?" and offered these jobs as chips: {chips}.
+  Their first message is almost certainly one of them, or close to one. It is a handover,
+  not a question: treat it as the job it names, never ask what it meant, never treat it as
+  a search term."""
 
 
 def build_new_user_guidance(
@@ -246,7 +182,6 @@ def build_new_user_guidance(
     """
     chips = seeded_chips or []
     lines = [f"- {NEED_PLAYBOOKS[need]}" for need in needs if need in NEED_PLAYBOOKS]
-    lines.extend(f"- {playbook}" for playbook in _focus_playbooks(chips))
     if other_need:
         lines.append(f"- {OTHER_NEED_PLAYBOOK.format(other_need=other_need)}")
     if not lines:

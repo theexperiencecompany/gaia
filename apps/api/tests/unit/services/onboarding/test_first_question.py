@@ -15,6 +15,7 @@ called".
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.constants.cache import FIRST_QUESTION_CACHE_TTL
@@ -39,11 +40,7 @@ from app.services.onboarding.first_question import (
 
 MODULE = "app.services.onboarding.first_question"
 
-GOOD_QUESTION = (
-    "Founder with the inbox and the calendar on fire. What's actually the fight "
-    "this month, product, growth, hiring, or just getting your mornings back?"
-)
-GOOD_CHIPS = ["Product", "Growth", "Hiring", "My mornings"]
+GOOD_CHIPS = ["Find investors", "Fix my marketing", "Hire someone", "Write my pitch"]
 
 
 def _prefs(
@@ -281,7 +278,7 @@ class TestComposeFirstQuestionPrompt:
     ) -> None:
         """The two slots are not interchangeable: swapped, the model is told the
         user's answers are its voice rules."""
-        runnable, invoke = _llm_patches(_QuestionDraft(question=GOOD_QUESTION, chips=GOOD_CHIPS))
+        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
             patch(f"{MODULE}.ainvoke_llm", invoke),
@@ -293,7 +290,7 @@ class TestComposeFirstQuestionPrompt:
         )
 
     async def test_the_connected_platform_reaches_the_prompt(self) -> None:
-        runnable, invoke = _llm_patches(_QuestionDraft(question=GOOD_QUESTION, chips=GOOD_CHIPS))
+        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
             patch(f"{MODULE}.ainvoke_llm", invoke),
@@ -309,7 +306,7 @@ class TestComposeFirstQuestionPrompt:
         """The schema IS the validation, so the runnable must be built from
         ``_QuestionDraft`` — and it is that runnable, not another, that is
         invoked."""
-        runnable, invoke = _llm_patches(_QuestionDraft(question=GOOD_QUESTION, chips=GOOD_CHIPS))
+        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable) as build,
             patch(f"{MODULE}.ainvoke_llm", invoke),
@@ -324,7 +321,7 @@ class TestComposeFirstQuestionPrompt:
 
     async def test_a_user_id_attributes_the_spend_to_that_user(self) -> None:
         """The call is auxiliary COGS: unattributed, it lands on nobody."""
-        runnable, invoke = _llm_patches(_QuestionDraft(question=GOOD_QUESTION, chips=GOOD_CHIPS))
+        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable) as build,
             patch(f"{MODULE}.ainvoke_llm", invoke),
@@ -337,7 +334,7 @@ class TestComposeFirstQuestionPrompt:
 
     @pytest.mark.parametrize("user_id", [None, ""])
     async def test_without_a_user_id_no_config_is_invented(self, user_id: str | None) -> None:
-        runnable, invoke = _llm_patches(_QuestionDraft(question=GOOD_QUESTION, chips=GOOD_CHIPS))
+        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable) as build,
             patch(f"{MODULE}.ainvoke_llm", invoke),
@@ -367,7 +364,7 @@ class TestComposeFirstQuestionBudget:
         """At the prewarm's ceiling a second attempt fits; under it a retry plus
         backoff cannot, and a second timeout costs the user the same wait
         twice."""
-        runnable, invoke = _llm_patches(_QuestionDraft(question=GOOD_QUESTION, chips=GOOD_CHIPS))
+        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
             patch(f"{MODULE}.ainvoke_llm", invoke),
@@ -379,7 +376,7 @@ class TestComposeFirstQuestionBudget:
         assert options.timeout == timeout_seconds
 
     async def test_the_default_ceiling_is_the_prewarms_eight_seconds(self) -> None:
-        runnable, invoke = _llm_patches(_QuestionDraft(question=GOOD_QUESTION, chips=GOOD_CHIPS))
+        runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
             patch(f"{MODULE}.ainvoke_llm", invoke),
@@ -398,29 +395,21 @@ class TestComposeFirstQuestionDraft:
     async def test_the_drafts_words_are_returned_trimmed(self) -> None:
         """Model output routinely carries leading newlines; those render as blank
         lines in the chat bubble and as padded chip labels."""
-        runnable, invoke = _llm_patches(
-            _QuestionDraft(question=f"\n {GOOD_QUESTION}  ", chips=[f" {c} \n" for c in GOOD_CHIPS])
-        )
+        runnable, invoke = _llm_patches(_QuestionDraft(chips=[f" {c} \n" for c in GOOD_CHIPS]))
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
             patch(f"{MODULE}.ainvoke_llm", invoke),
         ):
             result = await compose_first_question(_prefs(), None)
 
-        assert result == FirstQuestion(question=GOOD_QUESTION, chips=GOOD_CHIPS)
+        assert result == FirstQuestion(chips=GOOD_CHIPS)
 
-    async def test_three_chips_are_as_valid_as_four(self) -> None:
-        runnable, invoke = _llm_patches(
-            _QuestionDraft(question=GOOD_QUESTION, chips=["The quiet deal", "The intro", "Both"])
-        )
-        with (
-            patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
-            patch(f"{MODULE}.ainvoke_llm", invoke),
-        ):
-            result = await compose_first_question(_prefs(), None)
-
-        assert result is not None
-        assert result.chips == ["The quiet deal", "The intro", "Both"]
+    def test_anything_but_four_chips_is_rejected_by_the_schema(self) -> None:
+        """Four jobs is the contract with the thread; the schema is the check."""
+        with pytest.raises(ValidationError):
+            _QuestionDraft(chips=["Find investors", "Fix my marketing", "Hire someone"])
+        with pytest.raises(ValidationError):
+            _QuestionDraft(chips=GOOD_CHIPS + ["Ship it"])
 
     @pytest.mark.parametrize(
         "error",
@@ -467,7 +456,7 @@ class TestPrewarmWrites:
     async def test_the_question_is_written_under_this_users_answers_with_a_ttl(self) -> None:
         """Two hours: long enough to survive a wizard someone walks away from,
         short enough that a stale question is never served after a re-answer."""
-        written = FirstQuestion(question=GOOD_QUESTION, chips=GOOD_CHIPS)
+        written = FirstQuestion(chips=GOOD_CHIPS)
         setter = AsyncMock()
         compose = AsyncMock(return_value=written)
         with (
@@ -487,7 +476,7 @@ class TestPrewarmWrites:
         """Nobody is waiting, so it takes the default 8s budget — and it passes
         the user id, or the prewarm's spend lands on nobody."""
         setter = AsyncMock()
-        compose = AsyncMock(return_value=FirstQuestion(question=GOOD_QUESTION, chips=GOOD_CHIPS))
+        compose = AsyncMock(return_value=FirstQuestion(chips=GOOD_CHIPS))
         with (
             patch(f"{MODULE}.compose_first_question", compose),
             patch(f"{MODULE}.redis_cache.set", setter),
@@ -534,7 +523,7 @@ class TestPrewarmWrites:
         with (
             patch(
                 f"{MODULE}.compose_first_question",
-                AsyncMock(return_value=FirstQuestion(question=GOOD_QUESTION, chips=GOOD_CHIPS)),
+                AsyncMock(return_value=FirstQuestion(chips=GOOD_CHIPS)),
             ),
             patch(f"{MODULE}.redis_cache.set", AsyncMock(side_effect=ConnectionError("down"))),
             patch(f"{MODULE}.log") as mock_log,
@@ -549,7 +538,7 @@ class TestResolveBranches:
     """Cached, else one short live attempt, else the static line."""
 
     async def test_a_hit_is_returned_as_is_and_costs_no_model_call(self) -> None:
-        cached = FirstQuestion(question=GOOD_QUESTION, chips=GOOD_CHIPS)
+        cached = FirstQuestion(chips=GOOD_CHIPS)
         compose = AsyncMock()
         getter = AsyncMock(return_value=cached)
         with (
@@ -566,7 +555,7 @@ class TestResolveBranches:
         """The user is watching a spinner: past two seconds the static line is
         the better product, so this is a last chance rather than a real
         attempt."""
-        written = FirstQuestion(question=GOOD_QUESTION, chips=GOOD_CHIPS)
+        written = FirstQuestion(chips=GOOD_CHIPS)
         compose = AsyncMock(return_value=written)
         with (
             patch(f"{MODULE}.redis_cache.get", AsyncMock(return_value=None)),
@@ -598,7 +587,7 @@ class TestSeededChips:
     from the same cache key the seed was built from. Nothing is guessed."""
 
     async def test_reads_the_seed_key_and_returns_its_chips_as_a_list(self) -> None:
-        cached = FirstQuestion(question=GOOD_QUESTION, chips=GOOD_CHIPS)
+        cached = FirstQuestion(chips=GOOD_CHIPS)
         getter = AsyncMock(return_value=cached)
         with patch(f"{MODULE}.redis_cache.get", getter):
             chips = await seeded_chips("u1", _prefs())

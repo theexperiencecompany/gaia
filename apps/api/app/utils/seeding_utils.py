@@ -5,10 +5,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import ConversationModel, MessageModel
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import create_conversation_service
-from app.services.onboarding.first_conversation import (
-    FirstConversation,
-    gmail_connect_tool_data,
-)
+from app.services.onboarding.first_conversation import FirstConversation
 from shared.py.wide_events import log
 
 _HOLO_CARD_CONVERSATION_DESCRIPTION = "Your holo card is ready"
@@ -68,10 +65,8 @@ async def seed_holo_card_conversation(user_id: str, message: str) -> str | None:
 async def seed_first_conversation(user_id: str, composed: FirstConversation) -> str | None:
     """Seed the "Getting started" conversation GAIA opens with after onboarding.
 
-    One unread conversation that opens with the user's own seeded message, then
-    one bot message per composed line (so the web renders them as grouped
-    bubbles), the Gmail connect card on the first-move line and the follow-up
-    chips on the last. Returns the conversation id, or
+    One unread conversation, one bot message per composed line (so the web
+    renders them as grouped bubbles), the starting-job chips on the last. Returns the conversation id, or
     None if seeding failed — a missing welcome must never fail completion.
     """
     log.set(operation="seed_first_conversation", user_id=user_id)
@@ -88,13 +83,10 @@ async def seed_first_conversation(user_id: str, composed: FirstConversation) -> 
         await create_conversation_service(conversation, user_dict)
 
         last_index = len(composed.lines) - 1
-        messages = [MessageModel(type="user", response=composed.opener)] + [
+        messages = [
             MessageModel(
                 type="bot",
                 response=line,
-                tool_data=(
-                    [gmail_connect_tool_data()] if index == composed.gmail_card_line else None
-                ),
                 follow_up_actions=composed.follow_ups if index == last_index else None,
             )
             for index, line in enumerate(composed.lines)

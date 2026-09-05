@@ -28,7 +28,7 @@ from app.services.integrations.integration_connection_service import (
 )
 from app.services.onboarding.first_conversation import (
     compose_first_conversation,
-    with_closing_question,
+    with_starting_jobs,
 )
 from app.services.onboarding.first_question import (
     prewarm_first_question,
@@ -152,15 +152,14 @@ async def _seed_first_conversation(
         # submitted, so the link is already on the document we just wrote. A user
         # who skipped that step simply gets no platform line.
         connected_platform = next(iter(linked_platforms_of(user)), None)
-        composed = compose_first_conversation(preferences, connected_platform)
+        composed = compose_first_conversation()
         # Almost always a Redis read: the answers PATCH that preceded this
         # fired the model call in the background, so the user pays for it while
-        # they are still clicking. A miss costs at most two seconds.
-        question = await resolve_first_question(user_id, preferences, connected_platform)
-        if question is not None:
-            composed = with_closing_question(
-                composed, preferences, question.question, question.chips
-            )
+        # they are still clicking. A miss costs at most two seconds, and a
+        # failed call means no chips rather than invented ones.
+        jobs = await resolve_first_question(user_id, preferences, connected_platform)
+        if jobs is not None:
+            composed = with_starting_jobs(composed, jobs.chips)
         conversation_id = await seed_first_conversation(user_id, composed)
         if conversation_id is None:
             return None

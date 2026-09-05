@@ -41,6 +41,7 @@ from app.models.user_models import (
     UserDocument,
 )
 from app.services.analytics_service import AnalyticsEvents
+from app.services.onboarding.first_conversation import HANDOVER_LINE, OPENING_LINE
 from app.services.onboarding.first_question import FirstQuestion
 from app.services.onboarding.intelligence_job import (
     abort_active_intelligence_job,
@@ -164,7 +165,7 @@ def no_llm_question() -> Iterator[MagicMock]:
 
 
 class TestCompleteOnboarding:
-    async def test_the_written_question_replaces_the_static_closing_line(
+    async def test_the_written_jobs_become_the_chips(
         self,
         mock_repo: MagicMock,
         sample_user_id: str,
@@ -177,20 +178,22 @@ class TestCompleteOnboarding:
         mock_repo.complete_onboarding.return_value = sample_user
         mock_repo.set_first_conversation_id = AsyncMock(return_value=None)
         no_llm_question.return_value = FirstQuestion(
-            question="Engineer drowning in email. What actually breaks first, reviews or releases?",
-            chips=["Reviews", "Releases", "Neither"],
+            chips=["Find investors", "Fix my marketing", "Hire someone", "Write my pitch"]
         )
 
         with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value="conv-1")) as seed:
             await complete_onboarding(sample_user_id, sample_onboarding_request)
 
         composed = seed.await_args.args[1]
-        assert composed.lines[-1] == (
-            "Engineer drowning in email. What actually breaks first, reviews or releases?"
-        )
-        assert composed.follow_ups == ["Reviews", "Releases", "Neither"]
+        assert composed.lines == [OPENING_LINE, HANDOVER_LINE]
+        assert composed.follow_ups == [
+            "Find investors",
+            "Fix my marketing",
+            "Hire someone",
+            "Write my pitch",
+        ]
 
-    async def test_no_written_question_leaves_the_static_conversation_alone(
+    async def test_no_written_jobs_means_no_chips_rather_than_invented_ones(
         self,
         mock_repo: MagicMock,
         sample_user_id: str,
@@ -204,11 +207,8 @@ class TestCompleteOnboarding:
             await complete_onboarding(sample_user_id, sample_onboarding_request)
 
         composed = seed.await_args.args[1]
-        assert composed.lines[-1] == (
-            "Start with Gmail. Connect it and I'll get into your inbox tonight, sort what "
-            "needs you from what doesn't, and have drafts waiting by morning."
-        )
-        assert composed.follow_ups == ["Sort my inbox"]
+        assert composed.lines == [OPENING_LINE, HANDOVER_LINE]
+        assert composed.follow_ups == []
 
     async def test_successful_onboarding(
         self,
@@ -284,8 +284,7 @@ class TestCompleteOnboarding:
 
         assert seed.await_args.args[0] == sample_user_id
         composed = seed.await_args.args[1]
-        assert composed.opener == "I'm an engineer. Email is out of control."
-        assert composed.lines[0] == "Email first. It's the one that eats everything else."
+        assert composed.lines == [OPENING_LINE, HANDOVER_LINE]
         mock_repo.set_first_conversation_id.assert_awaited_once_with(sample_user_id, "conv-1")
         assert result["onboarding"][GETTING_STARTED_CONVERSATION_ID_FIELD] == "conv-1"
         # The legacy holo-card field is a different conversation; the seed must
@@ -343,27 +342,25 @@ class TestCompleteOnboarding:
             error_type="RuntimeError",
         )
 
-    async def test_the_seeded_line_names_a_platform_linked_during_onboarding(
+    async def test_a_platform_linked_during_onboarding_reaches_the_jobs_prompt(
         self,
         mock_repo: MagicMock,
         sample_user_id: str,
         sample_onboarding_request: OnboardingRequest,
+        no_llm_question: MagicMock,
     ) -> None:
-        """The link lands on the user doc before the answers are submitted, so
-        the platform line is composed from the document completion just wrote —
-        no second read."""
+        """The link lands on the user doc before the answers are submitted, so the
+        platform is read from the document completion just wrote, no second read,
+        and handed to the model that writes the starting jobs."""
         user = _completed_user(sample_user_id)
         user.platform_links = {"telegram": {"id": "tg-1"}}
         mock_repo.complete_onboarding.return_value = user
         mock_repo.set_first_conversation_id = AsyncMock(return_value=None)
 
-        with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value="conv-1")) as seed:
+        with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value="conv-1")):
             await complete_onboarding(sample_user_id, sample_onboarding_request)
 
-        assert seed.await_args.args[1].lines[2] == (
-            "And I'm in your Telegram now. Text me from there whenever. If something "
-            "needs you, I'll text first."
-        )
+        assert no_llm_question.await_args.args[2] == "telegram"
 
     async def test_a_failed_seed_still_completes_onboarding(
         self,

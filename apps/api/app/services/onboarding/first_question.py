@@ -54,22 +54,17 @@ _VOICE_SECTION_END = "## Length Modes"
 
 
 class FirstQuestion(BaseModel):
-    """A validated question plus the chips that answer it."""
+    """The four starting jobs offered as chips under "What are we starting with?"."""
 
-    question: str
     chips: list[str]
 
 
 class _QuestionDraft(BaseModel):
     """The model's output. The schema IS the check: structured output cannot hand
-    back a missing question or the wrong number of chips, so nothing downstream
-    second-guesses the words."""
+    back the wrong number of chips, so nothing downstream second-guesses the words."""
 
-    question: str = Field(
-        min_length=1, description="One question, 25 words max, ending in a question mark."
-    )
     chips: list[str] = Field(
-        min_length=3, max_length=4, description="3 or 4 answers to it, 4 words max each."
+        min_length=4, max_length=4, description="Exactly 4 jobs, 2 to 4 words each."
     )
 
 
@@ -96,42 +91,33 @@ You are GAIA. You write in this voice:
 {voice}
 
 A person finished signing up seconds ago. This is everything you know about \
-them, in their words. All of it is about their WORK week (a "chore" is a \
-repeated work task, never housework):
+them, in their words. All of it is about their WORK (a "chore" is a repeated \
+work task, never housework):
 
 {answers}
 
-Write the LAST thing you say to them in your opening message: ONE question \
-asking what to take on first. Rules:
-- Name what they actually told you. A founder with the inbox and the calendar \
-gets a question about being a founder with the inbox and the calendar.
-- Be extremely specific. The question must be unanswerable by anyone else who \
-signed up today.
-- 25 words maximum. Ends with a question mark. No exclamation marks.
-- Never ask how you can help, never ask what you can do, never list features.
-- Do not default to "what do we take on first". Ask the question this \
-person's week actually raises: what the fight is this month, what they'd hand \
-off tonight, which of two named things is worse, what "done" would look like.
-- The chips are the answers a real person would tap for THIS question, in \
-the same words the question uses. If the question names three options, the \
-chips are those three (plus at most one "neither" style escape). Never invent \
-a chip the question did not set up. Avoid "Both" and "All of it" unless the \
-question is a genuine either-or.
-- Then 3 or 4 chips: the answers, each 4 words maximum, no ending punctuation.
+Your opening message ends with "What are we starting with?" and four chips \
+under it. Write the four chips: the four jobs THIS person most wants handed \
+off, ambitious ones, the things they lie awake over, not chores. You can start \
+every one of them today with research, writing, a list you hold, a plan, or a \
+job you run on a schedule. Rules:
+- 2 to 4 words each. Verb first. No "the". No ending punctuation. No emoji.
+- Never the inbox or the calendar routines (sorting mail, drafting replies, \
+meeting prep): those are already on offer above the chips.
+- Never generic ("Help me", "Get organised", "Plan my day"). Each chip names a \
+real outcome in their world.
+- If they typed a need in their own words and it is a real job, it is chip one, \
+in their words, trimmed to a verb phrase. If it is not a real job, ignore it.
+- Four different jobs, no two about the same thing.
 
-Shapes to aim for. They are about OTHER people: vary between them, never \
-reuse their details (no supplier thread, no product or hiring, unless THIS \
-person said so). 20 words reads better than 25.
-question: "Founder with the inbox and the calendar on fire. What's actually \
-the fight this month, product, growth, hiring, or just getting your mornings \
-back?"
-chips: ["Product", "Growth", "Hiring", "My mornings"]
-question: "Sales, and follow-ups slip. Which loss would you kill first: the \
-deal that went quiet, or the intro you never sent?"
-chips: ["The quiet deal", "The intro", "Both, honestly"]
-question: "Bakery owner buried in supplier email. If I handled one thread \
-tonight, which one?"
-chips: ["Orders", "Invoices", "Late deliveries", "Price quotes"]
+Examples of the standard. They are about OTHER people: never reuse their \
+details unless THIS person said so.
+founder, drowning in email: ["Find investors", "Fix my marketing", "Hire someone", "Write my pitch"]
+sales, follow-ups slip: ["Find leads", "Write outreach", "Prep a demo", "Build my pipeline"]
+engineer, same chores daily: ["Design my system", "Plan my sprint", "Write docs", "Ship my side project"]
+student, mornings start behind: ["Ace my exam", "Write my essay", "Land an internship", "Plan my semester"]
+marketing, typed "content calendar": ["Plan content calendar", "Grow my list", "Write a campaign", "Find influencers"]
+bakery owner, typed "chasing suppliers for invoices": ["Chase suppliers", "Find new suppliers", "Plan next month", "Write my newsletter"]
 """
 
 
@@ -157,7 +143,7 @@ async def compose_first_question(
     user_id: str | None = None,
     timeout_seconds: float = QUESTION_TIMEOUT_SECONDS,
 ) -> FirstQuestion | None:
-    """GAIA's closing question for a brand-new user, or ``None`` to use the static line.
+    """The four starting jobs for a brand-new user, or ``None`` for no chips.
 
     One structured call on the deployment's own cheap lane, capped at
     :data:`QUESTION_TIMEOUT_SECONDS` with no retry, because the caller is a user
@@ -212,7 +198,7 @@ async def compose_first_question(
         chip_count=len(chips),
         duration_s=round(time.monotonic() - started, 3),
     )
-    return FirstQuestion(question=draft.question.strip(), chips=chips)
+    return FirstQuestion(chips=chips)
 
 
 def answers_fingerprint(preferences: OnboardingPreferences) -> str:

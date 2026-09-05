@@ -11,10 +11,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.models.user_models import OnboardingNeed, OnboardingPreferences
-from app.services.onboarding.first_conversation import (
-    compose_first_conversation,
-    with_closing_question,
-)
 from app.services.onboarding.first_question import (
     LIVE_QUESTION_TIMEOUT_SECONDS,
     FirstQuestion,
@@ -29,11 +25,7 @@ from app.services.onboarding.first_question import (
 
 MODULE = "app.services.onboarding.first_question"
 
-GOOD_QUESTION = (
-    "Founder with the inbox and the calendar on fire. What's actually the fight "
-    "this month, product, growth, hiring, or just getting your mornings back?"
-)
-GOOD_CHIPS = ["Product", "Growth", "Hiring", "My mornings"]
+GOOD_CHIPS = ["Find investors", "Fix my marketing", "Hire someone", "Write my pitch"]
 
 
 def _prefs(
@@ -60,7 +52,7 @@ class TestVoiceRules:
 @pytest.mark.unit
 class TestComposeFirstQuestion:
     async def test_a_valid_draft_is_returned(self) -> None:
-        draft = _QuestionDraft(question=GOOD_QUESTION, chips=GOOD_CHIPS)
+        draft = _QuestionDraft(chips=GOOD_CHIPS)
         with (
             patch(f"{MODULE}.background_structured_runnable"),
             patch(f"{MODULE}.ainvoke_llm", AsyncMock(return_value=draft)),
@@ -68,7 +60,6 @@ class TestComposeFirstQuestion:
             result = await compose_first_question(_prefs(), None)
 
         assert result is not None
-        assert result.question == GOOD_QUESTION
         assert result.chips == GOOD_CHIPS
 
     @pytest.mark.parametrize(
@@ -81,33 +72,6 @@ class TestComposeFirstQuestion:
             patch(f"{MODULE}.ainvoke_llm", AsyncMock(side_effect=error)),
         ):
             assert await compose_first_question(_prefs(), None) is None
-
-
-@pytest.mark.unit
-class TestWithClosingQuestion:
-    def test_the_question_replaces_the_static_say_the_word_line(self) -> None:
-        preferences = _prefs(other_need="chasing invoices")
-        composed = compose_first_conversation(preferences, "telegram")
-        assert composed.lines[-1] == (
-            "And the chasing invoices part, say the word and I'll start on it."
-        )
-
-        updated = with_closing_question(composed, preferences, GOOD_QUESTION, GOOD_CHIPS)
-
-        assert len(updated.lines) == len(composed.lines)
-        assert updated.lines[-1] == GOOD_QUESTION
-        assert updated.lines[:-1] == composed.lines[:-1]
-        assert updated.follow_ups == GOOD_CHIPS
-        assert updated.gmail_card_line == composed.gmail_card_line
-
-    def test_without_a_typed_need_the_question_is_appended(self) -> None:
-        preferences = _prefs()
-        composed = compose_first_conversation(preferences, "telegram")
-
-        updated = with_closing_question(composed, preferences, GOOD_QUESTION, GOOD_CHIPS)
-
-        assert updated.lines == [*composed.lines, GOOD_QUESTION]
-        assert updated.follow_ups == GOOD_CHIPS
 
 
 @pytest.mark.unit
@@ -140,7 +104,7 @@ class TestAnswersFingerprint:
 @pytest.mark.unit
 class TestResolveFirstQuestion:
     async def test_a_cache_hit_makes_no_model_call(self) -> None:
-        cached = FirstQuestion(question=GOOD_QUESTION, chips=GOOD_CHIPS)
+        cached = FirstQuestion(chips=GOOD_CHIPS)
         compose = AsyncMock()
         with (
             patch(f"{MODULE}.redis_cache.get", AsyncMock(return_value=cached)) as get,
@@ -156,7 +120,7 @@ class TestResolveFirstQuestion:
         """The hash is the invalidation: the changed answers read a key nobody
         wrote, so the miss path runs rather than the old question being served."""
         store = {first_question_cache_key("u1", _prefs()): "stale"}
-        written = FirstQuestion(question=GOOD_QUESTION, chips=GOOD_CHIPS)
+        written = FirstQuestion(chips=GOOD_CHIPS)
 
         async def _get(key: str, model: object = None) -> object:
             return store.get(key)
@@ -170,7 +134,7 @@ class TestResolveFirstQuestion:
         assert result == written
 
     async def test_a_miss_falls_through_to_one_short_live_call(self) -> None:
-        written = FirstQuestion(question=GOOD_QUESTION, chips=GOOD_CHIPS)
+        written = FirstQuestion(chips=GOOD_CHIPS)
         compose = AsyncMock(return_value=written)
         with (
             patch(f"{MODULE}.redis_cache.get", AsyncMock(return_value=None)),
@@ -192,7 +156,7 @@ class TestResolveFirstQuestion:
 @pytest.mark.unit
 class TestPrewarmFirstQuestion:
     async def test_a_written_question_is_cached_under_its_answers(self) -> None:
-        written = FirstQuestion(question=GOOD_QUESTION, chips=GOOD_CHIPS)
+        written = FirstQuestion(chips=GOOD_CHIPS)
         setter = AsyncMock()
         with (
             patch(f"{MODULE}.compose_first_question", AsyncMock(return_value=written)),
