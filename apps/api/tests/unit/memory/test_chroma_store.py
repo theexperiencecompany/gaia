@@ -6,9 +6,11 @@ selection logic under test is real.
 
 from unittest.mock import AsyncMock, patch
 
+from chromadb.errors import ChromaError
 import pytest
 
 from app.constants.memory import CHROMA_CONVERSATION_CHUNKS_COLLECTION
+from app.db.chroma.chromadb import ChromaClient
 from app.memory import chroma_store
 
 USER = "user-1"
@@ -48,3 +50,51 @@ class TestDeleteConversationChunks:
             await chroma_store.delete_conversation_chunks(USER, "conv-1")
 
         collection.delete.assert_not_awaited()
+
+
+class _RacyChromaServer:
+    """A shared Chroma server where a concurrent creator won the race.
+
+    ``list_collections`` returns a stale (empty) snapshot while the collection
+    is in fact already registered, so the old check-then-create path calls
+    ``create_collection`` and the server rejects it as a duplicate — exactly
+    the ``Collection [...] already exists`` teardown failure seen under xdist.
+    ``get_or_create_collection`` reads the real state and returns it.
+    """
+
+    def __init__(self, existing: dict[str, AsyncMock]) -> None:
+        self._collections = existing
+
+    async def list_collections(self) -> list[AsyncMock]:
+        return []
+
+    async def create_collection(self, name: str, **_: object) -> AsyncMock:
+        if name in self._collections:
+            raise ChromaError(f"Collection [{name}] already exists")
+        self._collections[name] = AsyncMock()
+        return self._collections[name]
+
+    async def get_collection(self, name: str, **_: object) -> AsyncMock:
+        return self._collections[name]
+
+    async def get_or_create_collection(self, name: str, **_: object) -> AsyncMock:
+        if name not in self._collections:
+            self._collections[name] = AsyncMock()
+        return self._collections[name]
+
+
+@pytest.mark.unit
+@pytest.mark.regression
+class TestGetCollectionConcurrentCreate:
+    async def test_get_collection_survives_a_concurrent_creator(self) -> None:
+        name = CHROMA_CONVERSATION_CHUNKS_COLLECTION
+        existing = AsyncMock()
+        server = _RacyChromaServer({name: existing})
+        # Drop the per-loop cache so _get_collection actually queries the client.
+        chroma_store._loop_collections.clear()
+        chroma_store._loop_locks.clear()
+
+        with patch.object(ChromaClient, "get_client", AsyncMock(return_value=server)):
+            collection = await chroma_store._get_collection(name)
+
+        assert collection is existing

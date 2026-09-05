@@ -109,23 +109,21 @@ async def _get_collection(name: str) -> AsyncCollection:
             return _collections[name]
 
         client = await ChromaClient.get_client()
-        existing = [collection.name for collection in await client.list_collections()]
-        if name not in existing:
-            collection = await client.create_collection(
+        try:
+            # Atomic server-side get-or-create. A check-then-create (list then
+            # create) races when several processes share one Chroma server —
+            # the shared test collections under xdist, and cold-start
+            # concurrency in production — and the loser gets "already exists".
+            collection = await client.get_or_create_collection(
                 name=name,
                 metadata={"hnsw:space": "cosine"},
                 embedding_function=NoOpEmbeddingFunction(),
             )
-        else:
-            try:
-                collection = await client.get_collection(
-                    name=name, embedding_function=NoOpEmbeddingFunction()
-                )
-            except ValueError:
-                # ChromaDB 1.x rejects a new embedding function when one is
-                # already persisted in the collection config; embeddings are
-                # passed explicitly anyway, so plain get is safe.
-                collection = await client.get_collection(name=name)
+        except ValueError:
+            # ChromaDB 1.x rejects a new embedding function when a different one
+            # is already persisted in the collection config; embeddings are
+            # passed explicitly anyway, so plain get is safe.
+            collection = await client.get_collection(name=name)
 
         _collections[name] = collection
         return collection
