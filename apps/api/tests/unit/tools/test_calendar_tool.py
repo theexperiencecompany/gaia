@@ -24,6 +24,7 @@ from app.agents.tools.integrations.calendar_tool import (
     _format_calendar_option_for_stream,
     _get_user_id,
     _get_user_timezone,
+    _run_sync,
     register_calendar_custom_tools,
 )
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR
@@ -407,6 +408,23 @@ class _FrozenDatetime(datetime):
         # datetime would break that contract for every caller under patch.
         inst = cls._instant.astimezone(tz) if tz is not None else cls._instant.replace(tzinfo=None)
         return cls.fromisoformat(inst.isoformat())
+
+
+class TestRunSync:
+    async def _coro(self) -> str:
+        return "unused"
+
+    def test_forwards_the_timeout_to_the_captured_loop_dispatch(self) -> None:
+        # With no running loop on this thread, _run_sync dispatches onto the
+        # captured server loop and must forward the caller's timeout unchanged —
+        # that is the timeout=5 guard CUSTOM_GET_DAY_SUMMARY relies on.
+        sentinel = object()
+        coro = self._coro()
+        with patch(f"{MODULE}.run_on_captured_loop", return_value=sentinel) as dispatch:
+            assert _run_sync(coro, timeout=3.0) is sentinel
+        assert dispatch.call_args.args[0] is coro
+        assert dispatch.call_args.kwargs == {"timeout": 3.0}
+        coro.close()
 
 
 class TestGetDaySummary:
@@ -1400,7 +1418,19 @@ class TestCreateEvent:
                     ]
                 ),
             )
-        assert out["calendar_options"][0]["color"] == DEFAULT_CALENDAR_COLOR
+        # A minimal event drafts with defaults and no optional keys — pinned whole
+        # so the fallback color/name and the "omit when falsy" guards are all caught.
+        assert out["calendar_options"][0] == {
+            "index": 0,
+            "summary": "Draft",
+            "description": "",
+            "is_all_day": False,
+            "start": {"dateTime": "2026-01-15T10:00:00"},
+            "end": {"dateTime": "2026-01-15T10:30:00"},
+            "calendar_id": "unmapped",
+            "color": DEFAULT_CALENDAR_COLOR,
+            "calendar_name": "Calendar",
+        }
         assert writer.call_args[0][0]["calendar_options"][0]["background_color"] == (
             DEFAULT_CALENDAR_COLOR
         )
@@ -1441,12 +1471,21 @@ class TestCreateEvent:
                 ),
                 metadata=({"cal-1": "#abcdef"}, {"cal-1": "Team"}),
             )
-        option = out["calendar_options"][0]
-        assert option["color"] == "#abcdef"
-        assert option["calendar_name"] == "Team"
-        assert option["location"] == "Room 3"
-        assert option["attendees"] == ["a@b.com"]
-        assert option["create_meeting_room"] is True
+        # Pin the whole draft option so a wrong key, default, or dropped field is caught.
+        assert out["calendar_options"][0] == {
+            "index": 0,
+            "summary": "Draft",
+            "description": "",
+            "is_all_day": False,
+            "start": {"dateTime": "2026-01-15T10:00:00"},
+            "end": {"dateTime": "2026-01-15T10:30:00"},
+            "calendar_id": "cal-1",
+            "color": "#abcdef",
+            "calendar_name": "Team",
+            "location": "Room 3",
+            "attendees": ["a@b.com"],
+            "create_meeting_room": True,
+        }
 
     def test_metadata_failure_still_drafts(self, tools, writer) -> None:
         with patch(f"{MODULE}.get_config", return_value={"configurable": {}}):

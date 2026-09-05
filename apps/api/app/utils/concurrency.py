@@ -23,6 +23,11 @@ _loop_semaphores: dict[str, tuple[asyncio.Semaphore, asyncio.AbstractEventLoop]]
 # Worker threads dispatch coroutines back onto it (see run_on_captured_loop).
 _captured_loop: asyncio.AbstractEventLoop | None = None
 
+_ON_SERVER_LOOP_ERROR = (
+    "run_on_captured_loop called from the server loop itself; await the "
+    "coroutine directly instead of blocking the loop it runs on."
+)
+
 
 def capture_running_loop() -> None:
     """Record the running event loop as the process's server loop.
@@ -60,15 +65,12 @@ def run_on_captured_loop(coro: Coroutine[Any, Any, _T], *, timeout: float | None
     if loop is None:
         return asyncio.run(coro)
     try:
-        current: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+        on_server_loop = asyncio.get_running_loop() is loop
     except RuntimeError:
-        current = None
-    if current is loop:
+        on_server_loop = False
+    if on_server_loop:
         coro.close()
-        raise RuntimeError(
-            "run_on_captured_loop called from the server loop itself; await the "
-            "coroutine directly instead of blocking the loop it runs on."
-        )
+        raise RuntimeError(_ON_SERVER_LOOP_ERROR)
     return asyncio.run_coroutine_threadsafe(coro, loop).result(timeout)
 
 

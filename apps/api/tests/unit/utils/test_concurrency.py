@@ -83,7 +83,12 @@ class TestRunOnCapturedLoop:
 
     async def test_refuses_to_block_the_captured_loop_itself(self) -> None:
         # Called ON the captured loop's own thread: run_coroutine_threadsafe would
-        # deadlock, so it must refuse rather than hang.
+        # deadlock, so it must refuse rather than hang. The exact message is pinned
+        # (a hardcoded copy, not the module constant) so a reworded raise is caught.
         capture_running_loop()
-        with pytest.raises(RuntimeError, match="from the server loop itself"):
+        with pytest.raises(RuntimeError) as exc:
             run_on_captured_loop(_echo("x"))
+        assert str(exc.value) == (
+            "run_on_captured_loop called from the server loop itself; await the "
+            "coroutine directly instead of blocking the loop it runs on."
+        )
