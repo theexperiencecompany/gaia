@@ -128,6 +128,31 @@ def test_a_clock_is_exact_to_the_second_whatever_the_worker_clock_read() -> None
     assert resolve_value("$now + 1h 17:45", context) == "2026-03-14T17:45:00+01:00"
 
 
+def test_a_clock_in_a_time_slot_lands_on_the_exact_second() -> None:
+    context = _context(now=NOW.replace(second=41, microsecond=624690))
+    slot = {"$time": "$now 17:45", "format": "%H:%M:%S.%f"}
+    assert resolve_value(slot, context) == "17:45:00.000000"
+
+
+def test_a_field_the_current_element_lacks_is_refused_naming_the_element() -> None:
+    context = RunContext(
+        user=PlaybookUser(email="ada@example.com", name="Ada", timezone="Europe/Berlin"),
+        now=NOW,
+        trigger={},
+        steps={},
+        last_run={},
+        asks={},
+        item={"id": "m1"},
+    )
+    with pytest.raises(PlaceholderError) as caught:
+        resolve_value("$item.email", context)
+    assert caught.value.message == "$item.email is not in the current for_each element"
+    assert caught.value.why == (
+        "the value the playbook expects to read is absent from what actually came back"
+    )
+    assert caught.value.fix == "re-author the playbook against a run that produced this shape"
+
+
 def test_a_field_of_the_current_element_is_read_from_it() -> None:
     context = RunContext(
         user=PlaybookUser(email="ada@example.com", name="Ada", timezone="Europe/Berlin"),

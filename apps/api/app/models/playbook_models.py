@@ -30,7 +30,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Any, Self, TypeGuard
+from typing import Annotated, Any, Self, TypeGuard, cast
 import uuid
 
 from pydantic import (
@@ -771,7 +771,7 @@ class PlaybookStepInput(_CallInput):
                 id=self.id, handoff=self.handoff, steps=[child.to_step() for child in self.steps]
             )
         # exactly_one_shape guarantees a tool when there is no handoff.
-        return self._call(self.tool or "")
+        return self._call(cast(str, self.tool))
 
 
 def playbook_body_from_input(

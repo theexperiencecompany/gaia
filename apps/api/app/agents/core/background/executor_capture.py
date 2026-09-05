@@ -12,7 +12,7 @@ implementation so chat and workflow runs render identically.
 
 import asyncio
 from pathlib import Path
-from types import FrameType
+from types import CoroutineType, FrameType
 from typing import Any
 
 from app.agents.core.background.session import (
@@ -115,9 +115,9 @@ def _innermost_frames(task: asyncio.Task[object]) -> str:
     """
     frames: list[FrameType] = []
     coro: object = task.get_coro()
-    while (frame := getattr(coro, "cr_frame", None)) is not None:
-        frames.append(frame)
-        coro = getattr(coro, "cr_await", None)
+    while isinstance(coro, CoroutineType) and coro.cr_frame is not None:
+        frames.append(coro.cr_frame)
+        coro = coro.cr_await
     return " <- ".join(
         f"{frame.f_code.co_name}({Path(frame.f_code.co_filename).name}:{frame.f_lineno})"
         for frame in reversed(frames[-_STACK_FRAMES:])

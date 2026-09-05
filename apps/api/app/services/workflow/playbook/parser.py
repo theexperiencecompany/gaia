@@ -312,7 +312,7 @@ def _check_tool_step(
             _check_placeholder(
                 token, where, walk, in_for_each=isinstance(step, ForEachStep), sample=sample
             )
-        if isinstance(value, str) and any(t.group("root") in _TIME_ROOTS for t in arg_tokens):
+        if any(t.group("root") in _TIME_ROOTS for t in arg_tokens):
             _check_time_layout(value, arg_tokens, key, where, recorded, walk)
         slots = [slot for _, slot in walk_ask_slots(value)]
         if slots and not step.id:
@@ -600,34 +600,51 @@ def _check_placeholder(
     where: str,
     walk: _Walk,
     *,
-    in_for_each: bool = False,
+    in_for_each: bool,
     sample: object = NO_ITEM,
 ) -> None:
-    # The tokenizer only matches known roots; any other ``$word`` is literal text.
+    """One placeholder in a step's arguments: ``$item`` against the loop it is
+    in, and ``$steps`` against the steps declared before it."""
+    if match.group("root") == "item":
+        _check_item_placeholder(match, where, walk, in_for_each=in_for_each, sample=sample)
+    else:
+        _check_step_placeholder(match, where, walk)
+
+
+def _check_item_placeholder(
+    match: re.Match[str], where: str, walk: _Walk, *, in_for_each: bool, sample: object
+) -> None:
+    token = match.group(0)
+    path = match.group("path").lstrip(".")
+    if not in_for_each:
+        walk.issues.append(
+            PlaybookIssue(
+                where=where,
+                problem=f"{token} addresses the element of a for_each, and this step is not one",
+            )
+        )
+    elif sample is not NO_ITEM:
+        # Checked against a real element of the source, the way the replay
+        # will read it. Seen live: $item.todo_id over elements carrying id.
+        try:
+            resolve_item(token, path, sample)
+        except PlaceholderError as error:
+            walk.issues.append(
+                PlaybookIssue(where=where, problem=error.message + _shape_hint(sample))
+            )
+
+
+def _check_step_placeholder(match: re.Match[str], where: str, walk: _Walk) -> object:
+    """A ``$steps`` reference names a declared step, not a handoff, and (when
+    the run is in hand) a value that step returned: that value comes back, or
+    ``_UNRESOLVED``. Other roots are checked nowhere here: the tokenizer only
+    matches known roots."""
     token = match.group(0)
     root = match.group("root")
     path = match.group("path").lstrip(".")
     name = path.partition(".")[0]
-    if root == "item":
-        if not in_for_each:
-            walk.issues.append(
-                PlaybookIssue(
-                    where=where,
-                    problem=f"{token} addresses the element of a for_each, and this step is not one",
-                )
-            )
-        elif sample is not NO_ITEM:
-            # Checked against a real element of the source, the way the replay
-            # will read it. Seen live: $item.todo_id over elements carrying id.
-            try:
-                resolve_item(token, path, sample)
-            except PlaceholderError as error:
-                walk.issues.append(
-                    PlaybookIssue(where=where, problem=error.message + _shape_hint(sample))
-                )
-        return
     if root != "steps":
-        return
+        return _UNRESOLVED
     if name not in walk.declared_steps:
         walk.issues.append(
             PlaybookIssue(
@@ -635,7 +652,7 @@ def _check_placeholder(
                 problem=f"{token} points at a step that no earlier node declares",
             )
         )
-        return
+        return _UNRESOLVED
     if name in walk.handoff_ids:
         child = path.split(".")[1] if "." in path else "<child>"
         walk.issues.append(
@@ -647,9 +664,10 @@ def _check_placeholder(
                 ),
             )
         )
-        return
-    if walk.results is not None:
-        _check_step_reference(token, path, where, walk)
+        return _UNRESOLVED
+    if walk.results is None:
+        return _UNRESOLVED
+    return _check_step_reference(token, path, where, walk)
 
 
 def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> object:
@@ -682,16 +700,12 @@ def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> object:
             )
         )
         return NO_ITEM
-    _check_placeholder(match, where, walk)
-    if walk.results is None or match.group("root") != "steps":
-        return NO_ITEM
-    reference = match.group("path").removeprefix(".")
-    resolved = _check_step_reference(source, reference, where, walk)
+    resolved = _check_step_placeholder(match, where, walk)
     if resolved is _UNRESOLVED:
         return NO_ITEM
     if isinstance(resolved, list):
         return resolved[0] if resolved else NO_ITEM
-    result = walk.step_results[reference.partition(".")[0]]
+    result = walk.step_results[match.group("path").removeprefix(".").partition(".")[0]]
     walk.issues.append(
         PlaybookIssue(
             where=where,
@@ -735,7 +749,7 @@ def _check_time_slot(
 
 
 def _check_time_layout(
-    value: str,
+    value: object,
     tokens: Sequence[re.Match[str]],
     key: str,
     where: str,
@@ -751,6 +765,8 @@ def _check_time_layout(
     has a known layout and the step would render differently, the refusal
     carries the exact slot to write.
     """
+    if not isinstance(value, str):
+        return
     if recorded is None:
         return
     example = recorded.args.get(key)

@@ -1647,6 +1647,27 @@ class TestBlockedDeclines:
             "a run that never reached the work must not spend one of the workflow's chances"
         )
 
+    async def test_a_pause_on_several_integrations_names_them_all(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+            patch(PAUSE_TARGET, AsyncMock(return_value=["github", "gmail"])),
+        ):
+            result = await decline_playbook.ainvoke(
+                {
+                    "kind": "blocked_missing_integration",
+                    "integrations": ["github", "gmail"],
+                    "reason": "neither is connected",
+                },
+                config=_config(),
+            )
+        assert result["message"] == (
+            "Noted. This workflow is paused until github, gmail are connected, and resumes "
+            "by itself then."
+        )
+
     async def test_a_claim_that_does_not_check_out_pauses_nothing(
         self, store: _FakePlaybookStore
     ) -> None:
@@ -1745,8 +1766,12 @@ class TestDeclineKindArguments:
                 config=_config(),
             )
 
-        assert result["success"] is False
-        assert result["error"] == "integrations_required"
+        assert result == {
+            "success": False,
+            "error": "integrations_required",
+            "message": "blocked_missing_integration has to name the integrations the run "
+            "could not use. Call decline_playbook again with integrations=[...].",
+        }
 
     async def test_order_branches_must_name_the_branching_call(
         self, store: _FakePlaybookStore
@@ -1765,9 +1790,15 @@ class TestDeclineKindArguments:
                 config=_config(),
             )
 
-        assert result["success"] is False
-        assert result["error"] == "branch_on_required"
-        assert "for_each" in result["message"], "the redirect has to name the alternative"
+        assert result == {
+            "success": False,
+            "error": "branch_on_required",
+            "message": "order_branches has to name the one call that runs on some days and not "
+            "others, as branch_on. If every call you made happens every run and only their "
+            "arguments differ, the order does not branch — use placeholders and call "
+            "write_playbook. If only the NUMBER of times a call repeats differs, that is a "
+            "for_each step, not a decline.",
+        }
         assert workflows.workflow.playbook_declines == 0, "a refused decline is not a decline"
 
     async def test_there_is_no_kind_for_arguments_varying(self) -> None:
@@ -1826,7 +1857,12 @@ class TestOneDecisionPerRun:
             )
 
         assert written["success"] is True
-        assert declined["data"]["counted"] is False
+        assert declined == {
+            "success": True,
+            "data": {"declined": True, "counted": False},
+            "message": "This run already wrote a playbook, and that is its decision; nothing "
+            "to record.",
+        }
         assert store.documents[(WORKFLOW_ID, USER_ID)].authored_run == RUN_ID
         assert tally.workflow.playbook_declines == 0
 
@@ -1873,8 +1909,13 @@ class TestOneDecisionPerRun:
             )
 
         assert result["success"] is False
-        assert result["error"] == "work_happened"
-        assert "create_todo" in result["message"]
+        assert result == {
+            "success": False,
+            "error": "work_happened",
+            "message": "This run called create_todo, so the work happened today. Freeze it "
+            "with write_playbook, or decline with the kind that says why the sequence "
+            "cannot hold.",
+        }
         assert workflows.workflow.playbook_declines == 0
 
     async def test_a_quiet_day_is_not_a_verdict(self, store: _FakePlaybookStore) -> None:
@@ -1884,13 +1925,19 @@ class TestOneDecisionPerRun:
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{TOOLS_MODULE}.log") as log,
         ):
             result = await decline_playbook.ainvoke(
                 {"kind": "no_work_today", "reason": "no overdue todos"}, config=_config()
             )
 
-        assert result["success"] is True
-        assert result["data"]["counted"] is False
+        assert result == {
+            "success": True,
+            "data": {"declined": True, "counted": False},
+            "message": "Noted: nothing to freeze on a day the work did not happen. This does "
+            "not count against the workflow.",
+        }
+        assert call("playbook", quiet_day=True) in log.set_ns.call_args_list
         assert workflows.workflow.playbook_declines == 0
         assert workflows.workflow.activated is True
 

@@ -263,6 +263,18 @@ class TestStepInputBecomesAStep:
             max_items=5,
         )
 
+    def test_a_handoff_keeps_its_id_and_converts_every_child(self) -> None:
+        step = PlaybookStepInput(
+            id="sweep",
+            handoff="calendar",
+            steps=[PlaybookHandoffStepInput(id="agenda", tool="list_events")],
+        ).to_step()
+        assert step == HandoffStep(
+            id="sweep",
+            handoff="calendar",
+            steps=[ToolStep(id="agenda", tool="list_events", args={})],
+        )
+
     @pytest.mark.parametrize(("step_id", "named"), [("mails", "mails"), ("", "send_email")])
     def test_a_loop_without_a_ceiling_is_refused_naming_the_step(
         self, step_id: str, named: str

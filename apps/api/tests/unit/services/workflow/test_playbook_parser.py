@@ -3114,6 +3114,71 @@ result_brief: x
             )
         ]
 
+    async def test_a_for_each_over_a_field_the_step_did_not_return_names_the_source(
+        self,
+    ) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.nothing
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"items": [{"id": 1}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].for_each",
+                "$steps.events.nothing is not in step 'events''s result; its result has "
+                "keys: items",
+            )
+        ]
+
+    async def test_a_for_each_over_the_trigger_is_not_read_as_a_step(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    for_each: $trigger.recipients
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        assert result.issues == []
+
     async def test_a_for_each_source_must_be_a_step_that_ran_not_the_element(self) -> None:
         body = _body(
             """
