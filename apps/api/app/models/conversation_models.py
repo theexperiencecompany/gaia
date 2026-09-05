@@ -170,6 +170,15 @@ class _MessageProjectionRow(BaseModel):
     messages: list[MessageModel] = Field(default_factory=list)
 
 
+class _FollowUpActionsRow(BaseModel):
+    """A ``messages: {$slice: -N}`` projection — the trailing window read for
+    already-suggested follow-up action dedup."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    messages: list[MessageModel] = Field(default_factory=list)
+
+
 class _OnboardingProbeRow(BaseModel):
     """Projection for the onboarding-demo prompt gate: the flag plus message list."""
 

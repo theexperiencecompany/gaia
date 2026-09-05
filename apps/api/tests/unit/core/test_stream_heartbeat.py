@@ -10,6 +10,7 @@ guarantee that no silence longer than the interval can reach the socket.
 
 import asyncio
 from collections.abc import AsyncGenerator
+import contextlib
 
 import pytest
 
@@ -31,11 +32,28 @@ async def test_silent_producer_still_writes_to_the_socket() -> None:
     inner generator can be busy and silent at the same time.
     """
 
+    # The producer stays silent until three keepalives have actually reached the
+    # consumer, rather than for a fixed 3.5 intervals. Sleeping a wall-clock
+    # multiple assumes the loop fires each timer on schedule, which a loaded CI
+    # box does not: the keepalives simply came out short (2 for a `>= 3` bound)
+    # while the padding worked correctly. Waiting on the condition the test is
+    # about makes the count exact instead of hoped for.
+    speak = asyncio.Event()
+
     async def silent_then_speak() -> AsyncGenerator[str, None]:
-        await asyncio.sleep(INTERVAL * 3.5)
+        # The bound is an escape hatch, not a schedule: it is orders of
+        # magnitude above INTERVAL, so it cannot flake, and it exists only so a
+        # regression fails on the assertion below instead of hanging the loop
+        # until pytest's global timeout.
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(speak.wait(), timeout=INTERVAL * 100)
         yield "data: real\n\n"
 
-    frames = await _drain(with_heartbeat(silent_then_speak(), interval=INTERVAL))
+    frames: list[str] = []
+    async for frame in with_heartbeat(silent_then_speak(), interval=INTERVAL):
+        frames.append(frame)
+        if frames.count(SSE_KEEPALIVE_FRAME) >= 3:
+            speak.set()
 
     assert frames.count(SSE_KEEPALIVE_FRAME) >= 3, (
         f"expected the gap to be padded with keepalives, got {frames!r}"

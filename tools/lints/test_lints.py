@@ -13,13 +13,17 @@ and asserts on the returned violations.
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
+import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import check_plr_complexity
 import no_service_classes
 import pytest
 import repository_boundaries
@@ -458,3 +462,86 @@ def test_new_bare_dump_in_allowlisted_function_is_flagged(tmp_path: Path) -> Non
         violations = tool_dump_boundary.check([path])
     assert len(violations) == 1
     assert "beyond the 1 grandfathered" in violations[0].detail
+
+
+# --------------------------------------------------------------------------- #
+# plr-complexity-ratchet
+# --------------------------------------------------------------------------- #
+
+_EIGHT_ARGS = "a, b, c, d, e, f, g, h"
+
+
+def _ruff_reported(records: list[dict]) -> AbstractContextManager[MagicMock]:
+    """Stand in for the pinned ruff invocation with a canned JSON result."""
+    return patch(
+        "check_plr_complexity.subprocess.run",
+        return_value=SimpleNamespace(returncode=1, stdout=json.dumps(records), stderr=""),
+    )
+
+
+def _plr(path: Path, code: str, row: int) -> dict:
+    return {"filename": str(path), "code": code, "location": {"row": row, "column": 11}}
+
+
+def _scan(tmp_path: Path, records: list[dict]) -> dict[tuple[str, str], int]:
+    with (
+        patch.object(check_plr_complexity, "REPO_ROOT", tmp_path.resolve()),
+        _ruff_reported(records),
+    ):
+        return check_plr_complexity._current_violations()
+
+
+@pytest.mark.parametrize("decorator", ["@tool", "@tool(parse_docstring=True)", "@tools.tool"])
+def test_tool_decorated_function_is_exempt_from_the_argument_limit(
+    tmp_path: Path, decorator: str
+) -> None:
+    """A @tool's parameters are the schema the model sees, so the argument count
+    is the tool's contract rather than complexity — in every decorator form."""
+    src = f"{decorator}\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/agents/tools/thing_tool.py", src)
+
+    assert _scan(tmp_path, [_plr(path, "PLR0913", 2)]) == {}
+
+
+def test_tool_decorated_function_is_still_held_to_the_branch_limit(tmp_path: Path) -> None:
+    """Only the argument count is waived: branches inside the body are ordinary
+    complexity and must still fail, on the very same function."""
+    src = f"@tool\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/agents/tools/thing_tool.py", src)
+
+    violations = _scan(tmp_path, [_plr(path, "PLR0913", 2), _plr(path, "PLR0912", 2)])
+
+    assert violations == {("app/agents/tools/thing_tool.py", "PLR0912"): 2}
+
+
+def test_plain_function_with_too_many_arguments_is_still_reported(tmp_path: Path) -> None:
+    src = f"async def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/services/thing_service.py", src)
+
+    assert _scan(tmp_path, [_plr(path, "PLR0913", 1)]) == {
+        ("app/services/thing_service.py", "PLR0913"): 1
+    }
+
+
+def test_the_waiver_is_per_function_not_per_file(tmp_path: Path) -> None:
+    """An undecorated helper sharing a file with a @tool gets no cover from it."""
+    src = (
+        f"@tool\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+        f"\n\ndef _helper({_EIGHT_ARGS}):\n    return a\n"
+    )
+    path = _write(tmp_path, "app/agents/tools/thing_tool.py", src)
+
+    violations = _scan(tmp_path, [_plr(path, "PLR0913", 2), _plr(path, "PLR0913", 6)])
+
+    assert violations == {("app/agents/tools/thing_tool.py", "PLR0913"): 6}
+
+
+def test_a_differently_decorated_function_gets_no_waiver(tmp_path: Path) -> None:
+    """The waiver keys on the @tool decorator specifically — a route handler or
+    any other decorated function is held to the argument limit."""
+    src = f"@router.post('/x')\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/api/v1/endpoints/thing.py", src)
+
+    assert _scan(tmp_path, [_plr(path, "PLR0913", 2)]) == {
+        ("app/api/v1/endpoints/thing.py", "PLR0913"): 2
+    }
