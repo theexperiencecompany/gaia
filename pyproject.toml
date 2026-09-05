@@ -402,6 +402,7 @@ unfixable = [
 "apps/api/app/utils/composio_hooks/reddit_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
 "apps/api/app/utils/composio_hooks/slack_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
 "apps/api/app/utils/composio_hooks/twitter_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
+"apps/api/app/agents/core/background/subagent_channel.py" = ["ARG001"]  # drain_subagent_inbox_hook is a pre-model hook called positionally as (state, config, store); store is framework contract
 # ARG001: LangChain injects `config: RunnableConfig` / `store: BaseStore` into
 # @tool-decorated functions via the tool call signature regardless of whether a
 # given tool implementation reads them — framework contract, not dead code.

@@ -5,7 +5,7 @@ Lives here (rather than in handoff_tools.py) so those modules import from it,
 avoiding a cyclic dependency.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, cast
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
@@ -24,6 +24,7 @@ from app.agents.context.assemble import assemble_context
 from app.agents.context.section_context import SectionContext
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background.session import claim_tool_output, note_tool_output_owner
+from app.agents.core.background.subagent_channel import SubagentCancel
 from app.agents.core.graph_manager import (
     CompiledAgentGraph,
     GraphManager,
@@ -35,6 +36,7 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
 )
+from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.general import EXECUTOR_THREAD_PREFIX, FINISH_TASK_NAME
 from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import EXECUTOR_RECURSION_LIMIT
@@ -499,6 +501,10 @@ async def execute_subagent_stream(
             # finished task — an empty outcome says "nothing to deliver" outright.
             return SubagentOutcome(text="")
 
+    # The executor addresses a cancel to this subagent by its own thread_id.
+    subagent_thread_id = str(agent_configurable(ctx.config).get("thread_id", ""))
+    cancel = SubagentCancel(subagent_thread_id) if subagent_thread_id else None
+
     async for event in ctx.subagent_graph.astream(
         _with_current_time(resume, ctx.configurable) if resume is not None else ctx.initial_state,
         stream_mode=["messages", "custom", "updates"],
@@ -526,6 +532,23 @@ async def execute_subagent_stream(
         # A list `stream_mode` makes astream yield (mode, payload) tuples, which
         # langgraph's own overload return type does not express.
         stream_mode, payload = cast(tuple[str, Any], event)
+
+        # Targeted cancel from the executor, checked once per superstep (updates)
+        # rather than per token: one redis read per reasoning step, and cancel
+        # takes effect at the next step boundary. Returns a clean cancelled result
+        # so the executor learns it stopped; the executor and siblings keep running.
+        if stream_mode == "updates" and ctx.stream_id and cancel and await cancel.is_requested():
+            await cancel.clear()
+            log.info(f"{LogTag.AGENT} Subagent cancelled by executor", stream_id=ctx.stream_id)
+            outcome = _finalize_run(run)
+            return replace(
+                outcome,
+                text=wrap_agent_payload(
+                    AgentTag.SUBAGENT_CANCELLED,
+                    outcome.text or "Stopped by the executor before finishing.",
+                ),
+            )
+
         await _consume_stream_event(run, stream_mode, payload)
 
     return _finalize_run(run)

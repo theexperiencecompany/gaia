@@ -260,7 +260,7 @@ class SubAgentFactory:
             # and it is the tier whose transcripts are raw provider payloads
             # rather than anything the user said.
             "hooks_config": HookConfig(
-                pre_model_hooks=worker_pre_model_hooks(todo_hook),
+                pre_model_hooks=worker_pre_model_hooks(todo_hook, drains_subagent_inbox=True),
                 end_graph_hooks=[],
             ),
         }

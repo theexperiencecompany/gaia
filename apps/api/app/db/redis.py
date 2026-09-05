@@ -221,6 +221,10 @@ class AsyncRedisCommands(Protocol):
         """HGETALL — empty dict for a missing key."""
         ...
 
+    async def hdel(self, name: str, *keys: str) -> int:
+        """HDEL — returns how many named fields were removed."""
+        ...
+
     async def publish(self, channel: str, message: str) -> int:
         """PUBLISH — returns the number of subscribers that received it."""
         ...

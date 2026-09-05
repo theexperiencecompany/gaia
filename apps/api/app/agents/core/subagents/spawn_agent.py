@@ -118,7 +118,9 @@ async def _build_spawn_graph(
         # No todo hook and no memory end-hook: a spawn is a one-shot scratch
         # task, not an agent that owns a task list or learns per-integration
         # facts about the user.
-        "hooks_config": HookConfig(pre_model_hooks=worker_pre_model_hooks()),
+        "hooks_config": HookConfig(
+            pre_model_hooks=worker_pre_model_hooks(drains_subagent_inbox=True)
+        ),
     }
     kwargs.update(
         build_create_agent_tool_kwargs(

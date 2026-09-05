@@ -76,19 +76,24 @@ def as_interjection(entry: InboxEntry) -> HumanMessage:
     )
 
 
-class ExecutorInbox:
-    """Pending messages for one conversation's executor.
+class RedisInbox:
+    """A Redis-list mailbox: append, non-destructive read, targeted retire.
 
-    Not a queue: see the module docstring. Reads are non-destructive and
-    ``retire`` is the only removal, so the inbox is safe to read from a run that
-    may die at any point — and what has actually been delivered is read off the
-    executor's thread (:func:`decide_drain`), never off a marker here that could
-    disagree with it.
+    The shared mechanics behind both the conversation-level executor inbox and
+    the per-subagent mailbox — one canonical list channel so the two tiers can
+    never drift in how an entry is stored, framed, or retired. Reads never
+    remove; ``retire`` is the only removal, so the channel is safe to read from
+    a run that may die at any point. Subclasses only choose the Redis key, the
+    entry TTL, and the default tag; the drain *rule* stays in :func:`decide_drain`.
     """
 
-    def __init__(self, conversation_id: str) -> None:
-        self.conversation_id = conversation_id
-        self._key = f"{EXECUTOR_INBOX_PREFIX}{conversation_id}"
+    #: Entry expiry; a subclass overrides for its own channel.
+    ttl: int = EXECUTOR_INBOX_TTL
+    #: Tag applied to an ``append`` that names no tag of its own.
+    default_tag: AgentTag = AgentTag.USER_INTERJECTION
+
+    def __init__(self, key: str) -> None:
+        self._key = key
 
     @staticmethod
     def _encode(entry: InboxEntry) -> str:
@@ -97,14 +102,12 @@ class ExecutorInbox:
             {"id": entry.id, "text": entry.text, "tag": entry.tag.value}, sort_keys=True
         )
 
-    async def append(
-        self, entry_id: str, text: str, tag: AgentTag = AgentTag.USER_INTERJECTION
-    ) -> InboxEntry:
-        """Add pending work for whichever executor run reads next."""
-        entry = InboxEntry(id=entry_id, text=text, tag=tag)
+    async def append(self, entry_id: str, text: str, tag: AgentTag | None = None) -> InboxEntry:
+        """Add pending work for whichever run reads this channel next."""
+        entry = InboxEntry(id=entry_id, text=text, tag=tag or self.default_tag)
         if redis_cache.client:
             await redis_cache.client.rpush(self._key, self._encode(entry))
-            await redis_cache.client.expire(self._key, EXECUTOR_INBOX_TTL)
+            await redis_cache.client.expire(self._key, self.ttl)
         return entry
 
     async def read(self) -> list[InboxEntry]:
@@ -115,13 +118,31 @@ class ExecutorInbox:
         return [entry for raw in raw_entries if (entry := _decode(raw)) is not None]
 
     async def retire(self, entry: InboxEntry) -> None:
-        """Drop an entry that is now committed to the executor's thread."""
+        """Drop an entry that is now committed to the reading run's thread."""
         if redis_cache.client:
             await redis_cache.client.lrem(self._key, 1, self._encode(entry))
 
     async def count(self) -> int:
         """How much work is waiting. Cheap enough to ask before every decision."""
         return await redis_cache.client.llen(self._key) if redis_cache.client else 0
+
+
+class ExecutorInbox(RedisInbox):
+    """Pending messages for one conversation's executor.
+
+    Not a queue: see the module docstring. Reads are non-destructive and
+    ``retire`` is the only removal, so the inbox is safe to read from a run that
+    may die at any point — and what has actually been delivered is read off the
+    executor's thread (:func:`decide_drain`), never off a marker here that could
+    disagree with it.
+    """
+
+    ttl = EXECUTOR_INBOX_TTL
+    default_tag = AgentTag.USER_INTERJECTION
+
+    def __init__(self, conversation_id: str) -> None:
+        self.conversation_id = conversation_id
+        super().__init__(f"{EXECUTOR_INBOX_PREFIX}{conversation_id}")
 
     async def clear(self) -> int:
         """Drop everything pending. Returns how many entries went.
@@ -202,13 +223,39 @@ def _decode(raw: bytes | memoryview | str) -> InboxEntry | None:
         return None
 
 
+async def apply_drain(inbox: RedisInbox, state: State, *, log_key: str) -> State:
+    """Read a mailbox, retire what the thread already holds, inject the rest.
+
+    The one place the drain rule turns into a state change — shared by the
+    executor inbox and the per-subagent mailbox so both tiers inject and retire
+    identically. Staged under ``INJECTED_MESSAGES_KEY`` because a hook's own
+    return is discarded after the call; the model node commits it.
+    """
+    entries = await inbox.read()
+    if not entries:
+        return state
+
+    messages = state.get("messages", [])
+    drain = decide_drain(entries, messages)
+    for entry in drain.retire:
+        await inbox.retire(entry)
+
+    if not drain.inject:
+        return state
+
+    injected = [as_interjection(entry) for entry in drain.inject]
+    log.set(**{log_key: len(injected)})
+    return cast(
+        State,
+        {**state, "messages": [*messages, *injected], INJECTED_MESSAGES_KEY: injected},
+    )
+
+
 async def drain_inbox_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:  # noqa: ARG001 -- execute_hooks() passes state/config/store positionally
     """Pre-model hook: pull pending work into the run that is already going.
 
     Runs before every executor model call, so work handed over mid-run lands on
-    the next reasoning step rather than the next run. Staged under
-    ``INJECTED_MESSAGES_KEY`` because a hook's own return is discarded after the
-    call — the model node commits it.
+    the next reasoning step rather than the next run.
     """
     try:
         # ``conversation_id``, never ``thread_id``: the executor graph runs on the
@@ -219,25 +266,8 @@ async def drain_inbox_hook(state: State, config: RunnableConfig, store: BaseStor
         if not conversation_id:
             log.warning(f"{LogTag.AGENT} drain_inbox_hook: run carries no conversation_id")
             return state
-
-        inbox = ExecutorInbox(conversation_id)
-        entries = await inbox.read()
-        if not entries:
-            return state
-
-        messages = state.get("messages", [])
-        drain = decide_drain(entries, messages)
-        for entry in drain.retire:
-            await inbox.retire(entry)
-
-        if not drain.inject:
-            return state
-
-        injected = [as_interjection(entry) for entry in drain.inject]
-        log.set(executor_inbox_injected=len(injected))
-        return cast(
-            State,
-            {**state, "messages": [*messages, *injected], INJECTED_MESSAGES_KEY: injected},
+        return await apply_drain(
+            ExecutorInbox(conversation_id), state, log_key="executor_inbox_injected"
         )
     except Exception as e:  # reading the inbox must never break the turn
         log.error(f"{LogTag.AGENT} drain_inbox_hook failed", error_type=type(e).__name__)

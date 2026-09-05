@@ -465,9 +465,10 @@ async def test_spawn_graph_disables_retrieve_when_the_parent_did():
 async def test_spawn_graph_wires_identity_middleware_and_hooks_into_create_agent():
     """The spawn's identity and guardrails ride on these exact kwargs: the agent
     name keys threads/logs, the middleware list is what gives a spawn the HIL
-    gate, and the pre-model chain is the executor's minus the todo hook.
-    create_agent selects behavior purely by these kwarg names, so a renamed key
-    or dropped value silently falls back to its own default."""
+    gate, and the pre-model chain drains the spawn's own subagent mailbox (so the
+    executor can steer it) but carries no todo hook. create_agent selects behavior
+    purely by these kwarg names, so a renamed key or dropped value silently falls
+    back to its own default."""
     llm = _FakeLLM()
     captured = await _spawn_graph_agent_kwargs(
         registry={"vfs_read": vfs_read},
@@ -481,7 +482,9 @@ async def test_spawn_graph_wires_identity_middleware_and_hooks_into_create_agent
     assert captured["agent_config"].agent_name == SPAWN_AGENT_NAME
     # middleware_factory=list → the factory call must appear verbatim.
     assert captured["agent_config"].middleware == []
-    assert list(captured["hooks_config"].pre_model_hooks) == list(worker_pre_model_hooks())
+    assert list(captured["hooks_config"].pre_model_hooks) == list(
+        worker_pre_model_hooks(drains_subagent_inbox=True)
+    )
 
 
 @pytest.mark.asyncio

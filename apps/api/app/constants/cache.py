@@ -172,6 +172,20 @@ EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 # queue of runs: an entry is text some executor run will read into its history.
 EXECUTOR_INBOX_PREFIX = "executor:inbox:"
 EXECUTOR_INBOX_TTL = ONE_HOUR_TTL  # Unread work expires after an hour
+# Per-subagent mailbox (see subagent_channel). Keyed by the subagent's own
+# thread_id, written ONLY by the executor's message_subagent tool, drained by
+# that subagent's own pre-model hook — never a broadcast, never read by peers.
+SUBAGENT_INBOX_PREFIX = "subagent:inbox:"
+SUBAGENT_INBOX_TTL = ONE_HOUR_TTL
+# Targeted cancel flag for one running subagent, keyed by its thread_id, checked
+# in the subagent stream loop so a cancel stops that subagent alone.
+SUBAGENT_CANCEL_PREFIX = "subagent:cancel:"
+SUBAGENT_CANCEL_TTL = ONE_HOUR_TTL
+# Registry of a conversation's currently-running subagents (Redis hash keyed by
+# conversation_id, field = subagent_id) so the executor can enumerate and
+# address live subagents by a stable id.
+RUNNING_SUBAGENTS_PREFIX = "subagents:running:"
+RUNNING_SUBAGENTS_TTL = ONE_HOUR_TTL
 # Max time a caller waits for a detached executor to finish before draining
 # whatever tool events were collected. Matches the busy lock TTL — the executor
 # cannot outlive its lock, so waiting longer would be pointless.

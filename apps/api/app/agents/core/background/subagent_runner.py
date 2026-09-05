@@ -11,12 +11,14 @@ HIL approval — pause the executor once for the whole batch.
 """
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import time
 
 from app.agents.core.background.bg_results import append_bg_subagent_result
 from app.agents.core.background.executor_queue import claim_collection_wake, is_executor_busy
 from app.agents.core.background.executor_runner import deliver_to_executor
 from app.agents.core.background.redis_writer import make_redis_stream_writer
+from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import (
     decrement_pending_subagents,
     release_bg_integration,
@@ -28,7 +30,7 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.constants.executor import EXECUTOR_COLLECTION_TASK
 from app.constants.log_tags import LogTag
-from app.models.agent_models import AgentConfigurable
+from app.models.agent_models import AgentConfigurable, RunningSubagent
 from app.services.hil.approvals_store import stamp_subagent_resume
 from app.utils.agent_utils import (
     IntegrationMetadata,
@@ -124,6 +126,21 @@ async def run_subagent_background(
                     }
                 )
 
+            # Register the running subagent so the executor can steer or cancel
+            # THIS worker by id while it runs (message_subagent / cancel_subagent).
+            # Deregistered in `finally`, so a finished OR parked subagent leaves.
+            if subagent_id:
+                await RunningSubagents(conversation_id).register(
+                    RunningSubagent(
+                        subagent_id=subagent_id,
+                        subagent_thread_id=str(ctx.configurable.get("thread_id", "")),
+                        integration_id=integration_id or "",
+                        agent_name=ctx.agent_name,
+                        task_summary=str(ctx.initial_state.get("intent", ""))[:200],
+                        started_at=datetime.now(UTC).isoformat(),
+                    )
+                )
+
             start_time = time.monotonic()
             outcome = await execute_subagent_stream(
                 ctx=ctx,
@@ -165,6 +182,8 @@ async def run_subagent_background(
             )
             await _append_error_result(conversation_id, ctx.agent_name, e)
         finally:
+            if subagent_id:
+                await RunningSubagents(conversation_id).deregister(subagent_id)
             if integration_id:
                 release_bg_integration(stream_id, integration_id)
             # Decrement AFTER appending the result (or stamping the park) so any

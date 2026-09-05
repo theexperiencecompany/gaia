@@ -297,3 +297,21 @@ class InboxDrain:
 
     def __bool__(self) -> bool:
         return bool(self.inject or self.retire)
+
+
+@dataclass(frozen=True, slots=True)
+class RunningSubagent:
+    """One subagent currently executing for a conversation.
+
+    The stable, addressable handle the executor needs to steer or cancel a
+    specific worker: ``subagent_id`` is what the executor names in
+    ``message_subagent``/``cancel_subagent``; ``subagent_thread_id`` is the key
+    its mailbox and cancel flag live under.
+    """
+
+    subagent_id: str
+    subagent_thread_id: str
+    integration_id: str
+    agent_name: str
+    task_summary: str
+    started_at: str

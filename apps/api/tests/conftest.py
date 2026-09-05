@@ -68,6 +68,11 @@ os.environ["DEV_AUTH_BYPASS_EMAIL"] = ""
 # parseable — "" is a pydantic bool_parsing error, not an "off".
 os.environ["DEV_UNLIMITED_RATE_LIMITS"] = "false"
 os.environ["GAIA_SIM_MODE"] = "false"
+# Behavior flag a developer may enable in apps/api/.env for their running app;
+# pydantic settings read that same file, so pin it off at load time (env var
+# wins over .env) or its activation-variant executor prompt/context moves the
+# hermetic snapshots. Flag-on paths are exercised by tests that opt in explicitly.
+os.environ["ENABLE_INTEGRATION_ACTIVATION"] = "false"
 os.environ.setdefault(
     "MONGO_DB",
     "mongodb://localhost:27017/gaia_test?serverSelectionTimeoutMS=100&connectTimeoutMS=100",

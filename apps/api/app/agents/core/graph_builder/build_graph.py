@@ -32,6 +32,11 @@ from app.agents.tools.core.tool_runtime_config import (
     build_executor_child_tool_runtime_config,
 )
 from app.agents.tools.executor_tool import call_executor, cancel_executor
+from app.agents.tools.subagent_control_tool import (
+    cancel_subagent,
+    list_running_subagents,
+    message_subagent,
+)
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_for_subagents_tool
 from app.config.settings import settings
@@ -60,6 +65,9 @@ EXECUTOR_INITIAL_TOOL_IDS = [
     "bash",
     "deep_research",
     "wait_for_subagents",
+    "list_running_subagents",
+    "message_subagent",
+    "cancel_subagent",
     "read_manual",
     "create_tracked_todo",
     "update_tracked_todo",
@@ -110,13 +118,24 @@ async def build_executor_graph(
     # those to handoff rather than dead-ending them.
     activation_mode = settings.ENABLE_INTEGRATION_ACTIVATION
     tool_dict.update({"handoff": handoff_tool, WAIT_FOR_SUBAGENTS_NAME: wait_for_subagents_tool})
+    # Executor-only tools to steer or cancel a specific running subagent by id.
+    tool_dict.update(
+        {t.name: t for t in (list_running_subagents, message_subagent, cancel_subagent)}
+    )
     if activation_mode:
         tool_dict.update({"activate_integration": activate_integration})
 
     todo_hook = create_todo_pre_model_hook(source="executor")
 
-    # Spawned subagents must not see executor-only orchestration tools.
-    excluded_subagent_tools = {"handoff", WAIT_FOR_SUBAGENTS_NAME}
+    # Spawned subagents must not see executor-only orchestration tools —
+    # including the subagent-control tools (a subagent must not steer a peer).
+    excluded_subagent_tools = {
+        "handoff",
+        WAIT_FOR_SUBAGENTS_NAME,
+        "list_running_subagents",
+        "message_subagent",
+        "cancel_subagent",
+    }
     if activation_mode:
         excluded_subagent_tools.add("activate_integration")
 
