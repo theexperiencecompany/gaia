@@ -49,6 +49,7 @@ def _make_request(
     body: str = "Test body text",
     actions: list[NotificationAction] | None = None,
     rich_content: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> NotificationRequest:
     resolved_channels: list[ChannelConfig]
     if channels is _SENTINEL:
@@ -68,7 +69,7 @@ def _make_request(
             actions=actions,
             rich_content=rich_content,
         ),
-        metadata={"key": "value"},
+        metadata={"key": "value"} if metadata is None else metadata,
     )
 
 
@@ -172,12 +173,52 @@ class TestExternalPlatformTransform:
         assert content["parts"] == ["just body"]
 
     async def test_redirect_actions_appended_as_commonmark_link(self) -> None:
-        action = _make_redirect_action(label="View Task", url="/todos/1")
+        # Pins the whole string, not a substring: the blank line between body and
+        # links ("\n\n", not the "\n" default) and the " · " between two links are
+        # the parts a mutation can silently change while a substring check passes.
+        request = _make_request(
+            title="Task",
+            body="details",
+            actions=[
+                _make_redirect_action(label="View Task", url="/todos/1"),
+                _make_redirect_action(label="Snooze", url="/todos/1/snooze"),
+            ],
+        )
+        with patch("app.utils.notification.channels.external.settings") as s:
+            s.FRONTEND_URL = "https://app.example.com"
+            content = await DiscordChannelAdapter().transform(request)
+        assert content["parts"] == [
+            "**Task**\ndetails\n\n"
+            "[View Task](https://app.example.com/todos/1)"
+            " · "
+            "[Snooze](https://app.example.com/todos/1/snooze)"
+        ]
+
+    async def test_non_redirect_actions_add_no_link_block(self) -> None:
+        # An action list that yields no links must leave the text untouched — no
+        # trailing separator, no empty link block.
+        action = NotificationAction(
+            type=ActionType.API_CALL,
+            label="Approve",
+            style=ActionStyle.PRIMARY,
+            config=ActionConfig(),
+        )
         request = _make_request(title="Task", body="details", actions=[action])
         with patch("app.utils.notification.channels.external.settings") as s:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
-        assert "[View Task](https://app.example.com/todos/1)" in content["parts"][0]
+        assert content["parts"] == ["**Task**\ndetails"]
+
+    async def test_frontend_url_trailing_slash_is_not_doubled(self) -> None:
+        request = _make_request(
+            title="Task",
+            body="details",
+            actions=[_make_redirect_action(label="View", url="/todos/1")],
+        )
+        with patch("app.utils.notification.channels.external.settings") as s:
+            s.FRONTEND_URL = "https://app.example.com/"
+            content = await DiscordChannelAdapter().transform(request)
+        assert content["parts"] == ["**Task**\ndetails\n\n[View](https://app.example.com/todos/1)"]
 
     async def test_rich_content_is_ignored(self) -> None:
         # Workflow results now reach the user as real chat messages, not through
@@ -196,6 +237,80 @@ class TestExternalPlatformTransform:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
         assert content["parts"] == ["**Workflow Done**\nCompleted in 30s"]
+
+
+@pytest.mark.asyncio
+class TestExternalTransformPlatformParts:
+    """``metadata.platform_parts`` is the sender-rendered chat voice.
+
+    When present it replaces the title/body rendering entirely, in order, one
+    part per message bubble.
+    """
+
+    async def test_platform_parts_replace_title_body_rendering(self) -> None:
+        request = _make_request(
+            title="Your morning brief",
+            body="3 things need you",
+            actions=[_make_redirect_action(label="Open", url="/briefing")],
+            metadata={"platform_parts": ["morning!", "3 things need you today"]},
+        )
+        with patch("app.utils.notification.channels.external.settings") as s:
+            s.FRONTEND_URL = "https://app.example.com"
+            content = await DiscordChannelAdapter().transform(request)
+        # Exact list, in order: neither the title/body text nor the action link
+        # may leak in, and the bubbles must not be reordered or merged.
+        assert content["parts"] == ["morning!", "3 things need you today"]
+
+    async def test_platform_parts_are_stringified_and_emptied_out(self) -> None:
+        # Non-string parts are coerced (a sender may stage a number), and empty
+        # parts are dropped so no blank bubble is ever sent.
+        request = _make_request(
+            title="T",
+            body="B",
+            metadata={"platform_parts": ["first", "", 42, None, "last"]},
+        )
+        with patch("app.utils.notification.channels.external.settings") as s:
+            s.FRONTEND_URL = "https://app.example.com"
+            content = await DiscordChannelAdapter().transform(request)
+        assert content["parts"] == ["first", "42", "last"]
+
+    async def test_all_empty_platform_parts_fall_back_to_title_body(self) -> None:
+        request = _make_request(title="T", body="B", metadata={"platform_parts": ["", None]})
+        with patch("app.utils.notification.channels.external.settings") as s:
+            s.FRONTEND_URL = "https://app.example.com"
+            content = await DiscordChannelAdapter().transform(request)
+        assert content["parts"] == ["**T**\nB"]
+
+    @pytest.mark.parametrize("metadata", [{}, {"key": "value"}, {"platform_parts": None}])
+    async def test_missing_platform_parts_falls_back_to_title_body(
+        self, metadata: dict[str, Any]
+    ) -> None:
+        request = _make_request(title="T", body="B", metadata=metadata)
+        with patch("app.utils.notification.channels.external.settings") as s:
+            s.FRONTEND_URL = "https://app.example.com"
+            content = await DiscordChannelAdapter().transform(request)
+        assert content["parts"] == ["**T**\nB"]
+
+    @pytest.mark.parametrize(
+        "adapter_cls",
+        [
+            WhatsAppChannelAdapter,
+            SlackChannelAdapter,
+            TelegramChannelAdapter,
+            DiscordChannelAdapter,
+            ImessageChannelAdapter,
+        ],
+    )
+    async def test_platform_parts_pass_through_unformatted_on_every_platform(
+        self, adapter_cls: type
+    ) -> None:
+        request = _make_request(
+            title="T", body="B", metadata={"platform_parts": ["hey", "here's the thing"]}
+        )
+        with patch("app.utils.notification.channels.external.settings") as s:
+            s.FRONTEND_URL = "https://app.example.com"
+            content = await adapter_cls().transform(request)
+        assert content["parts"] == ["hey", "here's the thing"]
 
 
 # ========================================================================

@@ -68,20 +68,29 @@ class ExternalPlatformAdapter(ChannelAdapter[ExternalPayload]):
         """
         content = notification.content
         app_url = settings.FRONTEND_URL.rstrip("/")
-        title = content.title or ""
-        body = content.body or ""
-        text = _join_nonempty(f"**{title}**" if title else "", body)
+        metadata = notification.metadata or {}
+        # Chat platforms get GAIA's texting voice when the sender rendered it:
+        # metadata.platform_parts is an ordered list of message bubbles (e.g. the
+        # brief, then the staged content each Approve releases). title/body stay
+        # the in-app/email rendering.
+        platform_parts = [str(p) for p in (metadata.get("platform_parts") or []) if p]
+        if platform_parts:
+            parts = platform_parts
+        else:
+            title = content.title or ""
+            body = content.body or ""
+            text = _join_nonempty(f"**{title}**" if title else "", body)
+            if content.actions:
+                links = [
+                    f"[{action.label}]({app_url}{action.config.redirect.url})"
+                    for action in content.actions
+                    if action.type == ActionType.REDIRECT and action.config.redirect
+                ]
+                if links:
+                    text = _join_nonempty(text, " · ".join(links), sep="\n\n")
+            parts = [text]
 
-        if content.actions:
-            links = [
-                f"[{action.label}]({app_url}{action.config.redirect.url})"
-                for action in content.actions
-                if action.type == ActionType.REDIRECT and action.config.redirect
-            ]
-            if links:
-                text = _join_nonempty(text, " · ".join(links), sep="\n\n")
-
-        return ExternalPayload(parts=[text])
+        return ExternalPayload(parts=parts)
 
     async def deliver(self, content: ExternalPayload, user_id: str) -> ChannelDeliveryStatus:
         """Publish the rendered parts to the user's linked platform chat.

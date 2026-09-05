@@ -12,6 +12,7 @@ export const ANALYTICS_EVENTS = {
   // Desktop-only and deliberately its own name: Electron IPC (app icon, popup
   // shortcut) that never reaches the API, so no server event exists for it.
   SETTINGS_DESKTOP_PREFERENCE_CHANGED: "settings:desktop_preference_changed",
+  SETTINGS_NOTIFICATIONS_TOGGLED: "settings:notifications_toggled",
   // Auth events
   USER_SESSION_RESUMED: "user:session_resumed",
   USER_LOGGED_IN: "user:logged_in",
