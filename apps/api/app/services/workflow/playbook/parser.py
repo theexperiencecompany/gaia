@@ -615,7 +615,7 @@ def _check_item_placeholder(
     match: re.Match[str], where: str, walk: _Walk, *, in_for_each: bool, sample: object
 ) -> None:
     token = match.group(0)
-    path = match.group("path").lstrip(".")
+    path = match.group("path").removeprefix(".")
     if not in_for_each:
         walk.issues.append(
             PlaybookIssue(

@@ -1834,7 +1834,11 @@ class TestOneDecisionPerRun:
             )
 
         assert first["data"]["counted"] is True
-        assert second["data"]["counted"] is False
+        assert second == {
+            "success": True,
+            "data": {"declined": True, "counted": False},
+            "message": "Already noted for this run. A run is one decision; nothing more to record.",
+        }
         assert workflows.workflow.playbook_declines == 1, "the second voice of one decision is free"
         assert workflows.workflow.playbook_declined_run == RUN_ID
 
@@ -1891,10 +1895,14 @@ class TestOneDecisionPerRun:
         did_work = AIMessage(
             content="",
             tool_calls=[
-                {"id": "c1", "name": "create_todo", "args": {"title": "x"}, "type": "tool_call"}
+                {"id": "c1", "name": "create_todo", "args": {"title": "x"}, "type": "tool_call"},
+                {"id": "c2", "name": "send_email", "args": {"to": "a@b.com"}, "type": "tool_call"},
             ],
         )
-        answered = ToolMessage(content=json.dumps({"success": True}), tool_call_id="c1")
+        answered = [
+            ToolMessage(content=json.dumps({"success": True}), tool_call_id="c1"),
+            ToolMessage(content="sent", tool_call_id="c2"),
+        ]
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
@@ -1903,7 +1911,7 @@ class TestOneDecisionPerRun:
                 {
                     "kind": "no_work_today",
                     "reason": "nothing to do",
-                    "state": {"messages": [did_work, answered]},
+                    "state": {"messages": [did_work, *answered]},
                 },
                 config=_config(),
             )
@@ -1912,9 +1920,9 @@ class TestOneDecisionPerRun:
         assert result == {
             "success": False,
             "error": "work_happened",
-            "message": "This run called create_todo, so the work happened today. Freeze it "
-            "with write_playbook, or decline with the kind that says why the sequence "
-            "cannot hold.",
+            "message": "This run called create_todo, send_email, so the work happened today. "
+            "Freeze it with write_playbook, or decline with the kind that says why the "
+            "sequence cannot hold.",
         }
         assert workflows.workflow.playbook_declines == 0
 
