@@ -75,7 +75,7 @@ def _platform_label(connected_platform: str) -> str:
     source = ConversationSource.coerce(connected_platform)
     if source is None:
         return connected_platform.capitalize()
-    return PLATFORM_DISPLAY_NAMES.get(source, source.value.capitalize())
+    return PLATFORM_DISPLAY_NAMES.get(source) or source.value.capitalize()
 
 
 def _welcome(connected_platform: str | None) -> str:

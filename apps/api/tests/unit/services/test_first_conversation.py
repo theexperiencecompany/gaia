@@ -85,6 +85,38 @@ class TestHandoverBubble:
             "Since you're an architect, what are we starting with?"
         )
 
+    def test_every_first_person_opener_is_turned(self) -> None:
+        cases = {
+            "I am a nurse": "Since you are a nurse, what are we starting with?",
+            "We run a shop": "Since you run a shop, what are we starting with?",
+            "We're a two person studio": "Since you're a two person studio, what are we starting with?",
+        }
+        for typed, expected in cases.items():
+            assert compose_first_conversation(_prefs(typed), None).lines[1] == expected
+
+    def test_trailing_punctuation_and_articles_are_dropped_and_vowels_get_an(self) -> None:
+        assert compose_first_conversation(_prefs("Engineer!"), None).lines[1] == (
+            "Since you're an engineer, what are we starting with?"
+        )
+        assert compose_first_conversation(_prefs("The Baker."), None).lines[1] == (
+            "Since you're a baker, what are we starting with?"
+        )
+        assert compose_first_conversation(_prefs("a Barista"), None).lines[1] == (
+            "Since you're a barista, what are we starting with?"
+        )
+        # Only the article goes; a multi-word title keeps every other word.
+        assert compose_first_conversation(_prefs("The head baker"), None).lines[1] == (
+            "Since you're a head baker, what are we starting with?"
+        )
+        # Only end punctuation is dropped, never a trailing letter of the job.
+        assert compose_first_conversation(_prefs("Founder at SpaceX"), None).lines[1] == (
+            "Since you're a founder at SpaceX, what are we starting with?"
+        )
+        # An x is a consonant, whatever a sloppy vowel check might say.
+        assert compose_first_conversation(_prefs("X-ray technician"), None).lines[1] == (
+            "Since you're a x-ray technician, what are we starting with?"
+        )
+
     def test_other_or_skipped_gets_the_plain_question(self) -> None:
         for profession in ("other", "Other", None):
             assert compose_first_conversation(_prefs(profession), None).lines[1] == (

@@ -13,6 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.log_tags import LogTag
+
 MODULE = "app.services.system_workflows.provisioner"
 
 
@@ -1093,17 +1095,21 @@ class TestActivationForPayingUsers:
         from app.services.system_workflows.provisioner import _activate_for_paying_user
 
         is_active.return_value = True
-        mock_service.activate_workflow = AsyncMock(side_effect=RuntimeError("composio down"))
+        cause = "composio down " * 60  # 780 chars: the wide event keeps the first 500
+        mock_service.activate_workflow = AsyncMock(side_effect=RuntimeError(cause))
 
         with patch(f"{MODULE}.log") as mock_log:
             await _activate_for_paying_user("wf-9", "user-1", "gmail:email_intelligence")
 
         mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.args == (
+            f"{LogTag.WORKFLOW} Could not activate provisioned system workflow",
+        )
         assert mock_log.warning.call_args.kwargs == {
             "key": "gmail:email_intelligence",
             "workflow_id": "wf-9",
             "user_id": "user-1",
-            "error": "composio down",
+            "error": cause[:500],
             "error_type": "RuntimeError",
         }
 
