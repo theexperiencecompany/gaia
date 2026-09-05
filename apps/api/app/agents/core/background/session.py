@@ -275,12 +275,6 @@ def mark_executor_spawned(stream_id: str) -> None:
     get_or_create_session(stream_id).executor_spawned = True
 
 
-def was_executor_spawned(stream_id: str) -> bool:
-    """Return True if call_executor successfully spawned for this stream."""
-    session = _sessions.get(stream_id)
-    return bool(session and session.executor_spawned)
-
-
 def mark_executor_queued(stream_id: str, task_id: str) -> None:
     """Record that call_executor queued this task instead of running it."""
     get_or_create_session(stream_id).executor_queued_task_id = task_id

@@ -33,8 +33,12 @@ from app.agents.core.background.session import (
     release_bg_integration,
     signal_executor_done,
     teardown_session,
-    was_executor_spawned,
 )
+
+
+def _spawned(stream_id: str) -> bool:
+    session = get_session(stream_id)
+    return session is not None and session.executor_spawned
 
 
 @pytest.fixture(autouse=True)
@@ -70,7 +74,7 @@ class TestSessionRegistry:
         teardown_session("s1")
 
         assert get_session("s1") is None
-        assert was_executor_spawned("s1") is False
+        assert _spawned("s1") is False
         assert get_pending_subagents("s1") == 0
         assert has_bg_integration("s1", "gmail") is False
 
@@ -91,9 +95,9 @@ class TestSessionRegistry:
 class TestExecutorLifecycleFlags:
     def test_spawned_flag_lifecycle(self) -> None:
         create_session("s1", RunKind.LIVE)
-        assert was_executor_spawned("s1") is False
+        assert _spawned("s1") is False
         mark_executor_spawned("s1")
-        assert was_executor_spawned("s1") is True
+        assert _spawned("s1") is True
 
     def test_signal_executor_done_sets_event(self) -> None:
         session = create_session("s1", RunKind.LIVE)
