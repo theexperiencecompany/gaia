@@ -60,7 +60,12 @@ from app.services.hil.bridge import (
     remember_declined_call,
 )
 from app.services.hil.intent import IntentDecision, JudgedCall, judge_intent
-from app.services.hil.policy import GatingPolicy, has_pausing_sibling, resolve_policy
+from app.services.hil.policy import (
+    GatingPolicy,
+    gated_tool_object,
+    has_pausing_sibling,
+    resolve_policy,
+)
 from app.services.hil.preferences import set_tool_override
 from app.services.hil.prompts import (
     DENIED_TEMPLATE,
@@ -74,7 +79,6 @@ from app.services.hil.utils import (
     configurable_of,
     prior_tool_calls,
     tool_description,
-    tool_of,
     unpack_tool_call,
 )
 from shared.py.wide_events import log
@@ -334,7 +338,11 @@ async def _judge(
         user_messages=context.user_messages,
         call=JudgedCall(
             tool_name=call.name,
-            description=tool_description(tool_of(request)),
+            # The REAL tool's description — for an execute-proxied call the
+            # request carries the proxy's object, which would mislead the judge.
+            description=tool_description(
+                await gated_tool_object(request, context.user_id, call.name)
+            ),
             args=call.args,
             summary=summary,
         ),

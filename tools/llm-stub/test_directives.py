@@ -432,3 +432,140 @@ def test_stream_chunks_content_assembly():
     assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
     # Every non-final choice carries an explicit null finish_reason.
     assert all("finish_reason" in c["choices"][0] for c in chunks)
+
+
+# --------------------------------------------------------------------------- #
+# Multiple steers folded into one work run, and echoed-directive filtering.
+# These pin the fix for the burst + cancel gaps: a run keeps its plan while
+# folding every <user_interjection> steer, and never re-executes directives a
+# cancel record (or any other internal-tag payload) quotes verbatim.
+# --------------------------------------------------------------------------- #
+
+WORK_TOOLS = frozenset({"create_todo"})
+
+
+def _interjection(text: str) -> dict:
+    return {"role": "user", "content": f"<user_interjection>\n{text}\n</user_interjection>"}
+
+
+def _cancelled_record(quoted_task: str) -> dict:
+    return {
+        "role": "user",
+        "content": (
+            f"<executor_cancelled>\nThe background task 42 ('{quoted_task}') was "
+            f"cancelled by the user before it completed.\n</executor_cancelled>"
+        ),
+    }
+
+
+def test_steer_does_not_drop_the_original_plan():
+    task = (
+        "Plan: "
+        + _tool_directive("create_todo", {"title": "A"})
+        + " "
+        + _tool_directive("create_todo", {"title": "B"})
+        + " "
+        + _tool_directive("create_todo", {"title": "C"})
+        + " [[say:done]]"
+    )
+    messages = [
+        _user(task),
+        _assistant_tool_call("create_todo", {"title": "A"}),
+        _tool_result("create_todo"),
+        _interjection("also " + _tool_directive("create_todo", {"title": "STEER"})),
+    ]
+    # After A, with a steer folded in, the next step is the plan's B — not the steer.
+    assert resolve_response(messages, WORK_TOOLS) == ToolCallResponse(
+        name="create_todo", args={"title": "B"}
+    )
+
+
+def test_plan_and_all_steers_run_in_one_pass_then_say():
+    task = (
+        "Plan: "
+        + _tool_directive("create_todo", {"title": "A"})
+        + " "
+        + _tool_directive("create_todo", {"title": "B"})
+        + " [[say:done]]"
+    )
+    messages = [
+        _user(task),
+        _interjection(_tool_directive("create_todo", {"title": "X"})),
+        _interjection(_tool_directive("create_todo", {"title": "Y"})),
+    ]
+    order: list[tuple[str, str]] = []
+    for _ in range(10):
+        got = resolve_response(messages, WORK_TOOLS)
+        if isinstance(got, SayResponse):
+            order.append(("say", got.text))
+            break
+        order.append(("tool", got.args["title"]))
+        messages.append(_assistant_tool_call("create_todo", got.args))
+        messages.append(_tool_result("create_todo"))
+    assert order == [
+        ("tool", "A"),
+        ("tool", "B"),
+        ("tool", "X"),
+        ("tool", "Y"),
+        ("say", "done"),
+    ]
+
+
+def test_interjection_directive_is_executed_after_plan():
+    task = "task " + _tool_directive("create_todo", {"title": "A"}) + " [[say:done]]"
+    messages = [
+        _user(task),
+        _assistant_tool_call("create_todo", {"title": "A"}),
+        _tool_result("create_todo"),
+        _interjection(_tool_directive("create_todo", {"title": "REAL"})),
+    ]
+    assert resolve_response(messages, WORK_TOOLS) == ToolCallResponse(
+        name="create_todo", args={"title": "REAL"}
+    )
+
+
+def test_cancelled_record_not_re_executed_work_tier():
+    ghost = _tool_directive("create_todo", {"title": "GHOST"})
+    got = resolve_response([_cancelled_record(f"do {ghost}")], WORK_TOOLS)
+    assert isinstance(got, SayResponse)  # the quoted GHOST directive is not run
+
+
+def test_cancelled_record_not_forwarded_comms_tier():
+    ghost = _tool_directive("create_todo", {"title": "GHOST"})
+    got = resolve_response([_cancelled_record(f"do {ghost}")], COMMS_TOOLS)
+    assert isinstance(got, SayResponse)  # comms does not forward a quoted cancel record
+
+
+def test_interrupt_note_with_quoted_directive_is_ignored():
+    ghost = _tool_directive("create_todo", {"title": "GHOST"})
+    note = {
+        "role": "user",
+        "content": f"<executor_interrupted>\nStopped; it was doing {ghost}\n</executor_interrupted>",
+    }
+    assert isinstance(resolve_response([note], WORK_TOOLS), SayResponse)
+
+
+def test_unbound_tool_routes_through_execute_when_proxy_present():
+    """Execute cutover: integration tools never bind, so an unavailable scripted
+    tool routes through the execute proxy — binding it would loop forever
+    (observed live: retrieve_tools re-emitted to the recursion limit)."""
+    script = '[[tool:GMAIL_SEND_EMAIL {"recipient_email": "a@b.c"}]] [[say:Done]]'
+    executor = frozenset({"retrieve_tools", "execute"})
+
+    first = resolve_response([_user(script)], executor)
+    assert first == ToolCallResponse(
+        name="execute",
+        args={
+            "task_description": "Run GMAIL_SEND_EMAIL",
+            "tool_name": "GMAIL_SEND_EMAIL",
+            "data": {"recipient_email": "a@b.c"},
+        },
+    )
+
+    # The emitted execute turn advances the script — the run terminates.
+    after_execute = [
+        _user(script),
+        _assistant_tool_call("execute", first.args),
+        _tool_result("execute"),
+    ]
+    assert resolve_response(after_execute, executor) == SayResponse(text="Done")

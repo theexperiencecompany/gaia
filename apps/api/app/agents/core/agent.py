@@ -21,13 +21,12 @@ from app.agents.core.background.executor_capture import (
     register_executor_capture,
     teardown_executor_capture,
 )
-from app.agents.core.background.session import queued_without_run
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.messages import construct_langchain_messages
 from app.agents.llm.lane import AgentRole, dev_model_id, dev_option_for
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
-from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
+from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY, WORKFLOW_LOCK_CONTEXT_KEY
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -218,6 +217,7 @@ async def _core_agent_logic(
             "workflow_notify_on_completion", True
         )
         configurable["playbook_fallback"] = trigger_context.get(PLAYBOOK_FALLBACK_CONTEXT_KEY)
+        configurable["executor_lock_reservation"] = trigger_context.get(WORKFLOW_LOCK_CONTEXT_KEY)
 
     log.set(
         agent={
@@ -438,7 +438,6 @@ async def call_agent_silent(
         return SilentRunResult(
             message=complete_message,
             tool_data=tool_data,
-            queued_task_id=queued_without_run(stream_id),
         )
 
     except Exception as exc:

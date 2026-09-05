@@ -15,7 +15,7 @@ builds with none of its Gmail tools looks healthy and can do nothing.
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -24,6 +24,7 @@ from app.agents.core.subagents.base_subagent import (
     build_scoped_tool_dict,
     resolve_declared_tools,
 )
+from app.agents.tools.execute.dispatch import ToolExecutionResult
 
 pytestmark = pytest.mark.e2e
 
@@ -67,6 +68,28 @@ class TestScopedToolDict:
 
         assert "finish_task" in scoped
         assert "finish_task" in initial
+
+    async def test_the_execute_proxy_is_confined_to_this_subagent_s_tools(self, registry):
+        """`execute` resolves names globally, so the unscoped instance would let a
+        Gmail subagent run any registered tool — the guard retrieve_tools returns
+        ("They belong to the main executor") becomes advice it can route around.
+        The proxy in the dict must carry that dict as its scope, and see the todo
+        tools added to it after this call too."""
+        scoped, _ = build_scoped_tool_dict(registry, "gmail", None, True)
+        scoped["a_tool_added_later"] = object()
+
+        with patch(
+            "app.agents.tools.execute.execute_tool.dispatch_tool",
+            new=AsyncMock(return_value=ToolExecutionResult(ok=True, resolved_name="x")),
+        ) as dispatch:
+            await scoped["execute"].ainvoke(
+                {"task_description": "d", "tool_name": "SLACK_SEND_MESSAGE", "data": {}},
+                config={"configurable": {"user_id": "u1"}},
+            )
+
+        passed = dispatch.await_args.kwargs["scoped_tool_names"]
+        assert "SLACK_SEND_MESSAGE" not in passed
+        assert {"read", "bash", "a_tool_added_later"} <= passed
 
     async def test_finish_task_is_absent_when_not_asked_for(self, registry):
         """Subagents that terminate on a plain reply must not be handed a tool

@@ -35,6 +35,7 @@ Unit tests (parser + turn-counting + wire shapes), no repo project needed:
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 import sys
@@ -58,12 +59,33 @@ from wire import build_chat_completion, sse_lines
 
 DEFAULT_PORT = 9797
 
+# A per-response think-delay lets a sim test keep an agent genuinely busy across
+# its scripted steps — the wide, deterministic window the live-steer / inbox-drain
+# path needs to be exercised (a mid-run message must arrive while the executor is
+# still reasoning). Seeded from the environment, adjustable at runtime via /control
+# so a browser-driven campaign can widen or reset the window without a reboot.
+# Default 0 keeps every existing sim run instantaneous and unchanged.
+_state: dict[str, int] = {"response_delay_ms": int(os.getenv("LLM_STUB_DELAY_MS", "0"))}
+
 app = FastAPI(title="GAIA scripted LLM stub", docs_url=None, redoc_url=None)
 
 
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "llm-stub"}
+
+
+@app.get("/control")
+async def get_control() -> dict[str, int]:
+    return dict(_state)
+
+
+@app.post("/control")
+async def set_control(request: Request) -> dict[str, int]:
+    body = await request.json()
+    if "response_delay_ms" in body:
+        _state["response_delay_ms"] = max(0, int(body["response_delay_ms"]))
+    return dict(_state)
 
 
 def _log_request(parsed: ChatRequest) -> None:
@@ -90,6 +112,9 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
     body = await request.json()
     parsed = parse_request(body)
     _log_request(parsed)
+    delay_ms = _state["response_delay_ms"]
+    if delay_ms:
+        await asyncio.sleep(delay_ms / 1000)
     try:
         response = resolve_response(parsed.messages, parsed.available_tools)
     except DirectiveError as exc:

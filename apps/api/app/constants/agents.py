@@ -36,6 +36,10 @@ class AgentTag(StrEnum):
     STYLE_CORRECTION = "style_correction"
     LAST_RUN = "last_run"
     PLAYBOOK_FALLBACK = "playbook_fallback"
+    #: The user speaking to an executor run that is already in flight.
+    USER_INTERJECTION = "user_interjection"
+    #: A run the user force-stopped, told to the run that follows it.
+    EXECUTOR_INTERRUPTED = "executor_interrupted"
 
 
 def wrap_agent_payload(tag: AgentTag, body: str, agent: str | None = None) -> str:
@@ -66,6 +70,13 @@ INTERNAL_AGENT_TAG_PATTERN = re.compile(
 # ``format_workflow_execution_message`` — named once here because a drift
 # between those two sites is silent and the agent would re-run a side effect.
 PLAYBOOK_FALLBACK_CONTEXT_KEY = "playbook_fallback"
+
+# The trigger-context key carrying the busy-lock value a workflow fire reserved
+# its conversation with. Written by the workflow worker, read by ``call_executor``
+# so the executor the fire dispatches takes that reservation over instead of
+# queueing behind it — a drift between those two sites would send every workflow
+# run into the inbox of a lock nobody is holding.
+WORKFLOW_LOCK_CONTEXT_KEY = "executor_lock_reservation"
 
 # After this many consecutive suspect replays the worker disables the playbook.
 PLAYBOOK_SUSPECT_STREAK_LIMIT = 2

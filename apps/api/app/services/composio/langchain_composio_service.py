@@ -382,6 +382,18 @@ class LangchainProvider(
         # Replace reserved python keywords
         schema_params, keywords = _substitute_reserved_python_keywords(schema=tool.input_parameters)
 
+        # The provider's output schema feeds the Returns section of the execute
+        # schema docs (schema_docs.py). A shapeless schema (no properties)
+        # documents nothing, so it must not render a Returns section at all.
+        output_parameters = (
+            tool.output_parameters if isinstance(tool.output_parameters, dict) else None
+        )
+        metadata = (
+            {"output_parameters": output_parameters}
+            if output_parameters and output_parameters.get("properties")
+            else None
+        )
+
         return t.cast(
             StructuredTool,
             StructuredTool.from_function(
@@ -402,6 +414,7 @@ class LangchainProvider(
                 ),
                 handle_tool_error=True,
                 handle_validation_error=True,
+                metadata=metadata,
             ),
         )
 

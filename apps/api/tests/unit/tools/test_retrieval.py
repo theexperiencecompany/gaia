@@ -1,6 +1,7 @@
 """Tests for app/agents/tools/core/retrieval.py — tool retrieval functions."""
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -555,11 +556,18 @@ class TestRetrieveToolsBinding:
 
         mock_registry = MagicMock()
         mock_registry.get_tool_names.return_value = ["TOOL_A", "TOOL_B"]
+        mock_registry.get_category.return_value = SimpleNamespace(require_integration=False)
 
-        with patch(
-            "app.agents.tools.core.retrieval.get_tool_registry",
-            new_callable=AsyncMock,
-            return_value=mock_registry,
+        with (
+            patch(
+                "app.agents.tools.core.retrieval.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch(
+                "app.agents.tools.core.retrieval.resolve_tool",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             await fn(
                 store=store,
@@ -571,6 +579,7 @@ class TestRetrieveToolsBinding:
             "mode": "binding",
             "tools_requested": 2,
             "tools_bound": 1,
+            "tools_proxied": 0,
             "tools_filtered": 1,
         }
 
@@ -605,11 +614,18 @@ class TestRetrieveToolsBinding:
 
         mock_registry = MagicMock()
         mock_registry.get_tool_names.return_value = ["TOOL_A", "TOOL_B"]
+        mock_registry.get_category.return_value = SimpleNamespace(require_integration=False)
 
-        with patch(
-            "app.agents.tools.core.retrieval.get_tool_registry",
-            new_callable=AsyncMock,
-            return_value=mock_registry,
+        with (
+            patch(
+                "app.agents.tools.core.retrieval.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch(
+                "app.agents.tools.core.retrieval.resolve_tool",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             result = await fn(
                 store=store,
@@ -630,11 +646,18 @@ class TestRetrieveToolsBinding:
 
         mock_registry = MagicMock()
         mock_registry.get_tool_names.return_value = ["TOOL_A"]
+        mock_registry.get_category.return_value = SimpleNamespace(require_integration=False)
 
-        with patch(
-            "app.agents.tools.core.retrieval.get_tool_registry",
-            new_callable=AsyncMock,
-            return_value=mock_registry,
+        with (
+            patch(
+                "app.agents.tools.core.retrieval.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch(
+                "app.agents.tools.core.retrieval.resolve_tool",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             result = await fn(
                 store=store,
@@ -657,11 +680,18 @@ class TestRetrieveToolsBinding:
 
         mock_registry = MagicMock()
         mock_registry.get_tool_names.return_value = ["TOOL_A"]
+        mock_registry.get_category.return_value = SimpleNamespace(require_integration=False)
 
-        with patch(
-            "app.agents.tools.core.retrieval.get_tool_registry",
-            new_callable=AsyncMock,
-            return_value=mock_registry,
+        with (
+            patch(
+                "app.agents.tools.core.retrieval.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch(
+                "app.agents.tools.core.retrieval.resolve_tool",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             result = await fn(
                 store=store,

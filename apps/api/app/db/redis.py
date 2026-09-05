@@ -169,6 +169,10 @@ class AsyncRedisCommands(Protocol):
         """EXISTS — count of the named keys present."""
         ...
 
+    async def rename(self, src: str, dst: str) -> bool:
+        """RENAME — atomically move a key; raises ResponseError if src is absent."""
+        ...
+
     async def expire(self, name: str, time: int) -> bool:
         """Set a TTL in seconds on an existing key."""
         ...
@@ -199,6 +203,10 @@ class AsyncRedisCommands(Protocol):
 
     async def ltrim(self, name: str, start: int, end: int) -> bool:
         """LTRIM — keep only [start, end]; negative indexes count from the tail."""
+        ...
+
+    async def lrem(self, name: str, count: int, value: str) -> int:
+        """LREM — remove matching elements; ``count=0`` removes every copy."""
         ...
 
     async def rpush(self, name: str, *values: str) -> int:

@@ -129,8 +129,24 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
         "handoff",
         "wait_for_subagents",
         "deep_research",
+        # bash carries its own deadline all the way down: the e2b server-side
+        # command timeout (its `timeout` arg, capped at BASH_MAX_TIMEOUT_SECONDS)
+        # kills the REMOTE command, and every phase around it — lock acquire,
+        # connect, health probe — is separately bounded. Bounding it here as well
+        # capped every command at 120s while the tool advertised 300, and in code
+        # mode it killed the bash call before the host could answer an in-flight
+        # execute() with its structured "may or may not have completed" error.
+        "bash",
     }
 )
+# How much longer the tool node waits than the bound applied closer to the tool.
+# For an execute-proxied call, dispatch_tool bounds the real tool at
+# TOOL_EXECUTION_TIMEOUT_SECONDS and answers with a structured, actionable error;
+# the node stays the backstop for the rest of that call (resolution reaches
+# Composio/MCP over the network) and must therefore expire strictly after it —
+# two equal deadlines meant the outer one always won and the model only ever saw
+# the node's generic timeout text.
+TOOL_TIMEOUT_BACKSTOP_BUFFER_SECONDS = 15
 
 # Attempts for the model-level transient-error retry before the caller falls back
 # to the default model (see with_llm_retry in app/agents/llm/client.py).

@@ -13,6 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.core.background.executor_channel import drain_inbox_hook
+
 _MOD = "app.agents.core.graph_builder.build_graph"
 _CM_MOD = "app.agents.core.graph_builder.checkpointer_manager"
 
@@ -566,6 +568,8 @@ class TestBuildExecutorGraph:
             # typo through as long as one asserted name survives.
             assert kwargs["tools_config"].initial_tool_ids == [
                 "handoff",
+                "execute",
+                "get_tool_schema",
                 "plan_tasks",
                 "update_tasks",
                 "read",
@@ -600,7 +604,7 @@ class TestBuildExecutorGraph:
             call = deps["mocks"][f"{_MOD}.create_agent"].call_args
             assert "handoff" in call.args[1]
 
-    async def test_executor_pre_model_hooks_includes_todo_hook(self):
+    async def test_executor_pre_model_hooks_includes_todo_hook_and_the_inbox_drain(self):
         with ExitStack() as stack:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_executor_graph
@@ -610,9 +614,13 @@ class TestBuildExecutorGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
-            # executor: filter_messages_node, adapt_media_node,
-            # manage_system_prompts_node, todo_hook
-            assert len(pre_model_hooks) == 4
+            # executor: filter_messages_node, adapt_media_node, todo_hook,
+            # drain_inbox_hook, manage_system_prompts_node
+            assert len(pre_model_hooks) == 5
+            # Named rather than counted: the drain is what lets work handed over
+            # mid-run reach the executor at all, and a count alone would stay
+            # green if it were swapped for anything else.
+            assert drain_inbox_hook in pre_model_hooks
 
     async def test_a_supplied_model_is_the_one_the_graph_is_built_with(self):
         """A caller that hands in a model gets that model, not a freshly built one.

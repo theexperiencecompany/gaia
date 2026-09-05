@@ -566,6 +566,16 @@ def _snapshot_messages(snapshot: StateSnapshot) -> list[AnyMessage]:
     return messages if isinstance(messages, list) else []
 
 
+async def thread_messages(ctx: SubagentExecutionContext) -> list[AnyMessage]:
+    """What this run's thread holds right now, read back from its checkpoint.
+
+    The authoritative record of what actually reached the model: a run that died
+    mid-call committed nothing, and only the checkpoint can tell that apart from
+    a call that landed.
+    """
+    return _snapshot_messages(await ctx.subagent_graph.aget_state(cast(RunnableConfig, ctx.config)))
+
+
 def _final_text_from_snapshot(snapshot: StateSnapshot) -> str:
     messages = _snapshot_messages(snapshot)
     if not messages:

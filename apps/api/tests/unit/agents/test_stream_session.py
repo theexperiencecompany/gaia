@@ -22,10 +22,8 @@ from app.agents.core.background.session import (
     get_session,
     has_bg_integration,
     increment_pending_subagents,
-    mark_executor_queued,
     mark_executor_spawned,
     note_tool_output_owner,
-    queued_without_run,
     release_bg_integration,
     signal_executor_done,
     teardown_session,
@@ -45,7 +43,6 @@ class TestSessionRegistry:
     def test_create_then_get_returns_same_session(self) -> None:
         created = create_session("s1", RunKind.LIVE)
         assert get_session("s1") is created
-        assert created.kind is RunKind.LIVE
         assert created.executor_spawned is False
 
     def test_create_overwrites_existing_session(self) -> None:
@@ -81,7 +78,6 @@ class TestSessionRegistry:
         # unregistered stream must work (and not crash callers like handoff).
         session = get_or_create_session("ghost")
         assert get_session("ghost") is session
-        assert session.kind is RunKind.LIVE
 
 
 class TestExecutorLifecycleFlags:
@@ -99,33 +95,6 @@ class TestExecutorLifecycleFlags:
 
     def test_signal_without_session_is_safe(self) -> None:
         signal_executor_done("missing")  # must not raise
-
-
-class TestQueuedWithoutRun:
-    """``queued_without_run`` is the "nothing happened yet" signal the turn's
-    final message is built from, so each of its three answers is load-bearing."""
-
-    def test_a_stream_with_no_session_reports_nothing(self) -> None:
-        # A stream nobody registered has no queued dispatch to report, and the
-        # missing session must be answered rather than dereferenced.
-        assert queued_without_run("never-seen") is None
-
-    def test_a_queue_with_no_spawn_reports_the_task(self) -> None:
-        create_session("s1", RunKind.LIVE)
-        mark_executor_queued("s1", "task-1")
-        assert queued_without_run("s1") == "task-1"
-
-    def test_a_spawned_executor_hides_the_queued_task(self) -> None:
-        # The turn did real work, so the queued dispatch is extra work alongside
-        # it, not the substitute the caller would otherwise narrate.
-        create_session("s1", RunKind.LIVE)
-        mark_executor_queued("s1", "task-1")
-        mark_executor_spawned("s1")
-        assert queued_without_run("s1") is None
-
-    def test_a_session_that_never_queued_reports_nothing(self) -> None:
-        create_session("s1", RunKind.LIVE)
-        assert queued_without_run("s1") is None
 
 
 class TestOwnershipRule:

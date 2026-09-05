@@ -16,6 +16,7 @@ from typing import Any, cast
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
 
+from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.hil import (
     HIL_APPROVAL_TIMEOUT_SECONDS,
     HIL_JUDGE_MAX_ARGS_CHARS,
@@ -48,23 +49,21 @@ class PriorCall:
 
 
 def unpack_tool_call(request: ToolCallRequest) -> GatedCall:
-    """The pending call, whether the framework handed it over as a dict or an object."""
+    """The pending call, whether the framework handed it over as a dict or an object.
+
+    Execute-proxied calls are unwrapped to their real tool; ``id`` stays the
+    proxy call's id, since that is the tool_call a refusal must answer.
+    """
     # ToolCallRequest.tool_call is typed ToolCall (a dict), but dataclass fields
     # aren't runtime-validated — some framework versions/call paths have handed
     # this over as an object with .name/.id/.args instead. Widen to object so
     # that branch stays a real, reachable fallback rather than dead code.
     call = cast(object, request.tool_call)
     if isinstance(call, dict):
-        return GatedCall(
-            name=call.get("name", ""),
-            id=call.get("id", ""),
-            args=call.get("args", {}) or {},
-        )
-    return GatedCall(
-        name=getattr(call, "name", ""),
-        id=getattr(call, "id", ""),
-        args=getattr(call, "args", None) or {},
-    )
+        name, args = unwrap_execute_call(call.get("name", ""), call.get("args", {}) or {})
+        return GatedCall(name=name, id=call.get("id", ""), args=args)
+    name, args = unwrap_execute_call(getattr(call, "name", ""), getattr(call, "args", None) or {})
+    return GatedCall(name=name, id=getattr(call, "id", ""), args=args)
 
 
 def tool_of(request: ToolCallRequest) -> BaseTool | None:

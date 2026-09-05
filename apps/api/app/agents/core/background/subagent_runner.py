@@ -14,7 +14,8 @@ from dataclasses import dataclass
 import time
 
 from app.agents.core.background.bg_results import append_bg_subagent_result
-from app.agents.core.background.executor_queue import enqueue_collection_run, is_executor_busy
+from app.agents.core.background.executor_queue import claim_collection_wake, is_executor_busy
+from app.agents.core.background.executor_runner import deliver_to_executor
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import (
     decrement_pending_subagents,
@@ -25,6 +26,7 @@ from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     execute_subagent_stream,
 )
+from app.constants.executor import EXECUTOR_COLLECTION_TASK
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable
 from app.services.hil.approvals_store import stamp_subagent_resume
@@ -186,8 +188,11 @@ async def _wake_if_executor_rested(conversation_id: str, configurable: AgentConf
     if not conversation_id or str(configurable.get("execution_mode") or "") == "background":
         return
     try:
-        if not await is_executor_busy(conversation_id):
-            await enqueue_collection_run(conversation_id, configurable)
+        # Busy executor → it collects on its own; only a rested one needs waking.
+        if not await is_executor_busy(conversation_id) and await claim_collection_wake(
+            conversation_id
+        ):
+            await deliver_to_executor(conversation_id, configurable, EXECUTOR_COLLECTION_TASK)
     except Exception as e:  # create_task coroutine must not raise
         log.error(
             f"{LogTag.AGENT} Could not queue collection wake-up",

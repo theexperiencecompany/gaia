@@ -602,6 +602,11 @@ class TestWorkflowExecutionFailurePropagation:
             "get_or_create_workflow_conversation",
             AsyncMock(return_value="conv-workflow-1"),
         )
+        # The fire claims that conversation before it spends anything. Stubbed
+        # so the tier stays offline: the claim is Redis, and its own behaviour
+        # is proven in tests/unit/agents/test_executor_queue.py.
+        monkeypatch.setattr(workflow_tasks, "try_acquire_lock", AsyncMock(return_value=True))
+        monkeypatch.setattr(workflow_tasks, "release_lock_if_owned", AsyncMock())
         monkeypatch.setattr(
             workflow_tasks, "add_workflow_execution_messages", AsyncMock(return_value=None)
         )

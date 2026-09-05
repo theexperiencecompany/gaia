@@ -1766,7 +1766,7 @@ class TestAfterModelResultMerge:
             },
         )
 
-        result = _after_model_result([tombstone], response, dict(updated_state))
+        result = _after_model_result([tombstone], [], response, dict(updated_state))
 
         # Messages carry ONLY the tombstones + response (append reducer), and
         # selected_tool_ids is base state — everything else the hooks added
@@ -1776,6 +1776,17 @@ class TestAfterModelResultMerge:
             "todos": [{"id": "t1"}],
             "intent": "greet",
         }
+
+    def test_injected_messages_are_committed_ahead_of_the_response(self) -> None:
+        """A pre-model hook cannot commit; it stages, and this node commits.
+        The order matters: the thread has to read as the user speaking and the
+        model answering, not the reverse."""
+        interjection = HumanMessage("also check spam")
+        response = AIMessage("on it")
+
+        result = _after_model_result([], [interjection], response, {})
+
+        assert result["messages"] == [interjection, response]
 
 
 class TestModelNodeWiring:

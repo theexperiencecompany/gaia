@@ -56,6 +56,8 @@ HANDOFF_ONLY_TOOL_IDS = frozenset({"handoff", WAIT_FOR_SUBAGENTS_NAME})
 #: "activate_integration" leads instead — see build_executor_graph.
 EXECUTOR_INITIAL_TOOL_IDS = [
     "handoff",
+    "execute",
+    "get_tool_schema",
     "plan_tasks",
     "update_tasks",
     "read",
@@ -151,7 +153,7 @@ async def build_executor_graph(
         subagent_mw.set_store(store)
         subagent_mw.set_spawn_graph_provider(get_spawn_graph)
 
-    pre_model_hooks = worker_pre_model_hooks(todo_hook)
+    pre_model_hooks = worker_pre_model_hooks(todo_hook, drains_inbox=True)
 
     if activation_mode:
         initial_tools = [

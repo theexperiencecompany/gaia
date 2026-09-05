@@ -103,14 +103,26 @@ export class TurnSession {
     () => this.handleStall(),
   );
 
-  constructor(key: string, args: SendArgs, callbacks: TurnSessionCallbacks) {
+  constructor(
+    key: string,
+    args: SendArgs,
+    callbacks: TurnSessionCallbacks,
+    options?: { steering?: boolean },
+  ) {
     this.key = key;
     this.args = args;
     this.callbacks = callbacks;
     this.conversationId = args.options.conversationId;
     this.isNewConversation = args.options.conversationId == null;
     this.inputText = args.inputText;
+    this.steering = options?.steering ?? false;
   }
+
+  /** A mid-turn steer: sent while this conversation already streams, folded
+   *  into the live run server-side. It renders its own bubbles but owns none
+   *  of the conversation's shared session slot (spinner, loading text, phase)
+   *  — ending it must never tear down state the main turn still needs. */
+  private readonly steering: boolean;
 
   get isAborted(): boolean {
     return this.aborted;
@@ -119,6 +131,12 @@ export class TurnSession {
   /** The conversation this turn writes into (null until init for new convos). */
   get boundConversationId(): string | null {
     return this.conversationId;
+  }
+
+  /** True for a mid-turn steer, which shares the conversation but owns none of
+   *  its session slot. */
+  get isSteering(): boolean {
+    return this.steering;
   }
 
   /** The store key the live session lives under. `bindNewConversation()` rekeys
@@ -132,7 +150,15 @@ export class TurnSession {
 
   async start(): Promise<void> {
     const store = useStreamStore.getState();
-    store.startSession(this.key, this.inputText);
+    if (!this.steering) {
+      store.startSession(this.key, this.inputText);
+    } else {
+      streamLog("lifecycle", "turn:start-steering", {
+        turnKey: this.key,
+        conversationId: this.conversationId,
+        detail: { prompt: this.inputText },
+      });
+    }
     streamLog("lifecycle", "turn:start", {
       turnKey: this.key,
       conversationId: this.conversationId,
@@ -581,7 +607,7 @@ export class TurnSession {
   private handleMainResponseComplete(): void {
     this.sawMainResponseComplete = true;
     const store = useStreamStore.getState();
-    // The comms agent acked — unlock the composer so the user can queue.
+    // The comms agent acked — unlock the composer so the user can steer.
     store.updateSession(this.sessionKey, { composerLocked: false });
 
     // A delegated turn isn't done: the executor streams over this same SSE
@@ -589,12 +615,15 @@ export class TurnSession {
     // the first executor event re-arms it.
     if (hasExecutorDelegation(this.acc.toolData)) return;
 
-    this.setSpinner(false);
-    store.resetSessionLoadingText(this.sessionKey);
+    if (!this.steering) {
+      this.setSpinner(false);
+      store.resetSessionLoadingText(this.sessionKey);
+    }
     this.scheduleFlush();
   }
 
   private setSpinner(active: boolean): void {
+    if (this.steering) return;
     const store = useStreamStore.getState();
     const session = store.sessions[this.sessionKey];
     if (!session || session.spinnerActive === active) return;
@@ -605,6 +634,7 @@ export class TurnSession {
   }
 
   private setAwaitingApproval(active: boolean): void {
+    if (this.steering) return;
     const store = useStreamStore.getState();
     const session = store.sessions[this.sessionKey];
     if (!session || session.awaitingApproval === active) return;
@@ -639,6 +669,7 @@ export class TurnSession {
   /** Set the loading label if this event carries one. Shared with the executor
    *  stream so both paths label a run the same way. */
   private applyLoadingLabel(event: ChatStreamEvent): void {
+    if (this.steering) return;
     const label = loadingLabelForEvent(event);
     if (!label) return;
     useStreamStore
@@ -760,10 +791,13 @@ export class TurnSession {
       // The normal delegation flow acks (main_response_complete) long before the
       // executor streams, so a truncated turn here died before the hand-off was
       // confirmed — park it as failed and retryable rather than spinning on a
-      // result that may never come.
+      // result that may never come. A steering turn never parks: its executor
+      // tail arrives over the bg websocket as its own bot message, and the
+      // shared-slot phase/timeout below would clobber the main turn's UI.
       if (
         outcome.status === "sent" &&
-        hasExecutorDelegation(this.acc.toolData)
+        hasExecutorDelegation(this.acc.toolData) &&
+        !this.steering
       ) {
         this.enterAwaitingExecutor();
         return;
@@ -917,10 +951,12 @@ export class TurnSession {
   }
 
   private end(): void {
-    useStreamStore.getState().endSession(this.conversationId ?? this.key);
-    // Also clear under the original pending key if init never rekeyed it.
-    if (this.conversationId && this.conversationId !== this.key) {
-      useStreamStore.getState().endSession(this.key);
+    if (!this.steering) {
+      useStreamStore.getState().endSession(this.conversationId ?? this.key);
+      // Also clear under the original pending key if init never rekeyed it.
+      if (this.conversationId && this.conversationId !== this.key) {
+        useStreamStore.getState().endSession(this.key);
+      }
     }
     streamLog("lifecycle", "turn:end", {
       turnKey: this.key,
