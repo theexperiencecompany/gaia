@@ -5,7 +5,7 @@ Covers:
 - ComposioHookRegistry: register, execute, error handling
 - Decorator-based registration (register_before_hook, register_after_hook, register_schema_modifier)
 - Master hooks delegation
-- user_id_hooks: user_id/entity_id extraction from RunnableConfig metadata
+- registry identity: user_id/entity_id extraction from RunnableConfig metadata
 - gmail_hooks: schema modifiers, before hooks (validation, streaming), after hooks (response processing)
 - slack_hooks: search schema modifier
 - twitter_hooks: schema modifiers, before/after hooks for search/timeline/user lookup/followers/post
@@ -368,66 +368,187 @@ class TestMasterHooks:
             assert result is schema
 
 
-# ============================================================================
-# 4. User ID hooks
-# ============================================================================
+class TestCallIdentityResolution:
+    """master_before_execute_hook resolves the calling user from RunnableConfig
+    metadata — once, before any hook reads it."""
 
+    def _with_config(self, top_id: str | None, meta_id: str | None) -> Any:
+        params = _make_params({"subject": "s"})
+        if top_id is not None:
+            params["user_id"] = top_id
+        if meta_id is not None:
+            params["arguments"]["__runnable_config__"] = {"metadata": {"user_id": meta_id}}
+        return params
 
-class TestUserIdHooks:
-    """Tests for user_id extraction from RunnableConfig metadata."""
-
-    def test_extracts_user_id_and_entity_id(self) -> None:
-        from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
-
-        params = _make_params(
-            {
-                "__runnable_config__": {
-                    "metadata": {"user_id": "user_123"},
-                },
-                "query": "test",
-            }
+    def test_conflict_resolves_to_metadata_identity(self) -> None:
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
         )
-        result = extract_user_id_from_params("TOOL", "KIT", params)
+
+        params = self._with_config("attacker", "u1")
+        with patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p):
+            master_before_execute_hook("T", "K", params)
+        assert params["user_id"] == "u1"
+
+    def test_match_leaves_params_untouched(self) -> None:
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        params = self._with_config("u1", "u1")
+        with patch.object(
+            hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p
+        ) as mock:
+            master_before_execute_hook("T", "K", params)
+        assert params["user_id"] == "u1"
+        assert mock.call_args.args[2] is params
+
+    def test_absent_metadata_leaves_params_untouched(self) -> None:
+        # Trigger-option flow binds the user at get_tool time (no metadata):
+        # nothing to enforce against, Composio-set identity stands.
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        params = self._with_config("u1", None)
+        with patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p):
+            master_before_execute_hook("T", "K", params)
+        assert params["user_id"] == "u1"
+
+    def test_metadata_without_user_leaves_params_untouched(self) -> None:
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        params = _make_params({"subject": "s"})
+        params["user_id"] = "u1"
+        params["arguments"]["__runnable_config__"] = {"metadata": {}}
+        with patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p):
+            master_before_execute_hook("T", "K", params)
+        assert params["user_id"] == "u1"
+
+    def _run(self, params: Any) -> Any:
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        with patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p):
+            return master_before_execute_hook("T", "K", params)
+
+    def test_metadata_identity_sets_user_and_entity_id(self) -> None:
+        result = self._run(
+            _make_params(
+                {"__runnable_config__": {"metadata": {"user_id": "user_123"}}, "query": "test"}
+            )
+        )
         assert result["user_id"] == "user_123"
+        # Composio's connected-account auth still reads the legacy entity_id.
         assert result["entity_id"] == "user_123"
-        # __runnable_config__ should be popped from arguments
+
+    def test_runnable_config_never_reaches_the_hooks_or_the_tool(self) -> None:
+        # It is our transport for identity, not a tool argument.
+        result = self._run(
+            _make_params({"__runnable_config__": {"metadata": {"user_id": "u1"}}, "query": "q"})
+        )
         assert "__runnable_config__" not in result["arguments"]
 
-    def test_no_runnable_config_returns_params_unchanged(self) -> None:
-        from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
+    def test_identity_is_resolved_before_any_hook_runs(self) -> None:
+        # The attachment hooks abort without a user, so ordering is the contract:
+        # a hook must never observe the pre-metadata identity.
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
 
-        params = _make_params({"query": "test"})
-        result = extract_user_id_from_params("TOOL", "KIT", params)
+        seen: list[str | None] = []
+        params = _make_params({"__runnable_config__": {"metadata": {"user_id": "u1"}}})
+        params["user_id"] = ""
+        with patch.object(
+            hook_registry,
+            "execute_before_hooks",
+            side_effect=lambda t, k, p: (seen.append(p.get("user_id")), p)[1],
+        ):
+            master_before_execute_hook("T", "K", params)
+        assert seen == ["u1"]
+
+    def test_no_runnable_config_leaves_identity_unset(self) -> None:
+        result = self._run(_make_params({"query": "test"}))
         assert "user_id" not in result
         assert "entity_id" not in result
 
-    def test_empty_metadata_returns_params_unchanged(self) -> None:
-        from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
-
-        params = _make_params({"__runnable_config__": {"metadata": {}}})
-        result = extract_user_id_from_params("TOOL", "KIT", params)
+    def test_blank_metadata_user_id_leaves_identity_unset(self) -> None:
+        result = self._run(_make_params({"__runnable_config__": {"metadata": {"user_id": ""}}}))
         assert "user_id" not in result
 
-    def test_none_user_id_returns_params_unchanged(self) -> None:
-        from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
-
-        params = _make_params({"__runnable_config__": {"metadata": {"user_id": None}}})
-        result = extract_user_id_from_params("TOOL", "KIT", params)
+    def test_none_metadata_user_id_leaves_identity_unset(self) -> None:
+        result = self._run(_make_params({"__runnable_config__": {"metadata": {"user_id": None}}}))
         assert "user_id" not in result
 
-    def test_empty_arguments_returns_params_unchanged(self) -> None:
-        from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
-
-        params = _make_params()
-        result = extract_user_id_from_params("TOOL", "KIT", params)
+    def test_empty_arguments_leave_identity_unset(self) -> None:
+        result = self._run(_make_params())
         assert "user_id" not in result
 
-    def test_config_is_not_dict_returns_params_unchanged(self) -> None:
-        from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
-
-        params = _make_params({"__runnable_config__": "not_a_dict"})
-        result = extract_user_id_from_params("TOOL", "KIT", params)
+    def test_non_dict_runnable_config_leaves_identity_unset(self) -> None:
+        result = self._run(_make_params({"__runnable_config__": "not_a_dict"}))
         assert "user_id" not in result
+
+    def test_non_dict_metadata_leaves_identity_unset(self) -> None:
+        result = self._run(_make_params({"__runnable_config__": {"metadata": "nope"}}))
+        assert "user_id" not in result
+
+    def test_non_dict_arguments_leave_identity_unset(self) -> None:
+        params: Any = {"arguments": "not-a-dict"}
+        assert "user_id" not in self._run(params)
+
+    def _logged(self, params: Any) -> Any:
+        """The wide-event log calls the master hook made for one tool call."""
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        with (
+            patch("app.utils.composio_hooks.registry.log") as log,
+            patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p),
+        ):
+            master_before_execute_hook("GMAIL_SEND_EMAIL", "gmail", params)
+        return log
+
+    def _warnings(self, params: Any) -> list[Any]:
+        """Every warning the identity resolution emitted for this call."""
+        return self._logged(params).warning.call_args_list
+
+    def test_every_call_is_attributed_to_its_tool_on_the_wide_event(self) -> None:
+        # The only place a Composio call's tool/toolkit reach the event; without
+        # them a failing tool is unattributable in production.
+        log = self._logged(self._with_config("u1", "u1"))
+        assert log.set.call_args.kwargs == {
+            "composio_tool": "GMAIL_SEND_EMAIL",
+            "composio_toolkit": "gmail",
+        }
+
+    def test_an_overwritten_identity_is_reported_on_the_wide_event(self) -> None:
+        # The overwrite is a security-relevant event — a user_id reached the hook
+        # that was not the one our server injected — so it must leave a trace
+        # naming the tool it happened on, not be silently corrected.
+        calls = self._warnings(self._with_config("attacker", "u1"))
+        assert len(calls) == 1
+        message, kwargs = calls[0].args[0], calls[0].kwargs
+        assert "user_id" in message and "RunnableConfig" in message
+        assert kwargs == {"tool": "GMAIL_SEND_EMAIL", "toolkit": "gmail"}
+
+    def test_no_warning_when_the_identities_agree(self) -> None:
+        assert self._warnings(self._with_config("u1", "u1")) == []
+
+    def test_no_warning_when_nothing_was_bound_to_overwrite(self) -> None:
+        # The agent flow binds user_id="" and names the user per invocation;
+        # filling that in is the normal path, not a conflict.
+        assert self._warnings(self._with_config("", "u1")) == []
 
 
 # ============================================================================
@@ -555,7 +676,10 @@ class TestGmailBeforeHooks:
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_compose_before_hook_sends_draft_data(self, mock_writer: MagicMock) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_compose_before_hook,
+            gmail_create_draft_after_hook,
+        )
 
         writer = _noop_writer()
         mock_writer.return_value = writer
@@ -567,9 +691,15 @@ class TestGmailBeforeHooks:
             }
         )
         gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", params)
+        # The draft card is streamed by the after-hook, once the draft exists.
+        gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", {"data": {"id": "d1"}})
         writer.assert_called_once()
         payload = writer.call_args[0][0]
         assert "email_compose_data" in payload
+        assert payload["email_compose_data"][0]["subject"] == "Draft Test"
+        # No attachments to preserve, so the card stays an editable compose
+        # rather than a locked "send this draft verbatim" one.
+        assert "draft_id" not in payload["email_compose_data"][0]
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_compose_before_hook_sends_email_sent_data(self, mock_writer: MagicMock) -> None:

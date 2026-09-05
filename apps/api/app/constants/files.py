@@ -51,3 +51,9 @@ MAX_INDEXED_CHUNKS = 200
 
 # Concurrent LLM calls per document while summarizing chunks.
 SUMMARY_LLM_MAX_CONCURRENCY = 8
+
+# Single-purpose file-share grants (Composio fetches the bytes during tool
+# execution): lifetime of a minted grant URL and the default per-fetch byte cap.
+SHARE_GRANT_TTL_SECONDS = 300
+SHARE_GRANT_MAX_TTL_SECONDS = 3600
+SHARE_GRANT_MAX_BYTES = 25 * 1024 * 1024

@@ -6,7 +6,12 @@ import { Divider } from "@heroui/divider";
 import { Input, Textarea } from "@heroui/input";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { Cancel01Icon, PencilEdit01Icon, PlusSignIcon } from "@icons";
+import {
+  AttachmentIcon,
+  Cancel01Icon,
+  PencilEdit01Icon,
+  PlusSignIcon,
+} from "@icons";
 import DOMPurify from "dompurify";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -16,7 +21,14 @@ import { z } from "zod";
 import { ChevronRight, Gmail } from "@/components/shared/icons";
 import { Separator } from "@/components/ui/separator";
 import { mailApi } from "@/features/mail/api/mailApi";
+import {
+  RECIPIENT_FIELDS,
+  type RecipientField,
+  type RecipientMap,
+  useRecipientSelection,
+} from "@/features/mail/hooks/useRecipientSelection";
 import { toast } from "@/lib/toast";
+import type { EmailAttachmentMeta } from "@/types/features/mailTypes";
 
 // Email validation schema
 const emailComposeSchema = z.object({
@@ -32,22 +44,6 @@ const emailComposeSchema = z.object({
     .min(1, "Email body is required")
     .max(10000, "Email body must be under 10,000 characters"),
 });
-
-const emailValidationSchema = z.email("Invalid email address");
-
-type RecipientField = "to" | "cc" | "bcc";
-
-const RECIPIENT_FIELDS: {
-  field: RecipientField;
-  label: string;
-  addLabel: string;
-}[] = [
-  { field: "to", label: "To", addLabel: "Add Recipients" },
-  { field: "cc", label: "Cc", addLabel: "Add Cc" },
-  { field: "bcc", label: "Bcc", addLabel: "Add Bcc" },
-];
-
-type RecipientMap = Record<RecipientField, string[]>;
 
 function HtmlEmailBody({ html }: { html: string }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -77,20 +73,12 @@ interface EmailData {
   thread_id?: string;
   bcc?: string[];
   cc?: string[];
+  attachments?: EmailAttachmentMeta[];
 }
 
 interface EmailComposeCardProps {
   emailData: EmailData;
   onSent?: () => void;
-}
-
-function seedRecipients(data: EmailData): RecipientMap {
-  const to = data.to || [];
-  return {
-    to: to.length === 1 ? [to[0]] : [],
-    cc: data.cc || [],
-    bcc: data.bcc || [],
-  };
 }
 
 /**
@@ -139,20 +127,51 @@ function ComposeHeader({
 
 function EmailBodyPreview({
   html,
+  isLocked,
   onEdit,
 }: {
   html: string;
+  isLocked: boolean;
   onEdit: () => void;
 }) {
   return (
     <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed text-zinc-200">
-      <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
-        <Button variant="light" size="sm" isIconOnly onPress={onEdit}>
-          <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-        </Button>
-      </div>
+      {!isLocked && (
+        <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
+          <Button variant="light" size="sm" isIconOnly onPress={onEdit}>
+            <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
+          </Button>
+        </div>
+      )}
       <HtmlEmailBody html={html} />
     </ScrollShadow>
+  );
+}
+
+/**
+ * Read-only chips listing the email's attachments (filename + type icon).
+ */
+function AttachmentsRow({
+  attachments,
+}: {
+  attachments: EmailAttachmentMeta[];
+}) {
+  return (
+    <div className="flex flex-wrap gap-2 pt-1">
+      {attachments.map((attachment) => (
+        <Chip
+          key={`${attachment.name}-${attachment.mimetype}`}
+          size="sm"
+          variant="flat"
+          startContent={
+            <AttachmentIcon className="h-3.5 w-3.5 text-zinc-400" />
+          }
+          className="max-w-full text-xs text-zinc-200"
+        >
+          <span className="truncate">{attachment.name}</span>
+        </Chip>
+      ))}
+    </div>
   );
 }
 
@@ -164,12 +183,16 @@ function ComposeFields({
   onEditField,
   subject,
   body,
+  attachments,
+  isLocked,
   onEdit,
 }: {
   recipients: RecipientMap;
   onEditField: (field: RecipientField) => void;
   subject: string;
   body: string;
+  attachments?: EmailAttachmentMeta[];
+  isLocked: boolean;
   onEdit: () => void;
 }) {
   return (
@@ -180,6 +203,7 @@ function ComposeFields({
             label={label}
             addLabel={addLabel}
             emails={recipients[field]}
+            isLocked={isLocked}
             onEdit={() => onEditField(field)}
           />
           <Separator className="my-1.5 bg-zinc-700" />
@@ -191,13 +215,19 @@ function ComposeFields({
           <span className="font-medium text-gray-200">{subject}</span>
         </div>
 
-        <Button variant="light" size="sm" isIconOnly onPress={onEdit}>
-          <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-        </Button>
+        {!isLocked && (
+          <Button variant="light" size="sm" isIconOnly onPress={onEdit}>
+            <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
+          </Button>
+        )}
       </div>
       <Separator className="my-1.5 bg-zinc-700" />
 
-      <EmailBodyPreview html={body} onEdit={onEdit} />
+      <EmailBodyPreview html={body} isLocked={isLocked} onEdit={onEdit} />
+
+      {attachments && attachments.length > 0 && (
+        <AttachmentsRow attachments={attachments} />
+      )}
     </div>
   );
 }
@@ -206,11 +236,13 @@ function RecipientRow({
   label,
   addLabel,
   emails,
+  isLocked,
   onEdit,
 }: {
   label: string;
   addLabel: string;
   emails: string[];
+  isLocked: boolean;
   onEdit: () => void;
 }) {
   return (
@@ -218,21 +250,23 @@ function RecipientRow({
       <span>{label}:</span>
       <span className="flex w-full items-center justify-between font-medium text-zinc-200">
         {emails.join(", ") || ""}
-        <Button
-          size="sm"
-          onPress={onEdit}
-          variant={emails.length === 0 ? "flat" : "light"}
-          isIconOnly={emails.length !== 0}
-          endContent={
-            emails.length === 0 ? (
-              ""
-            ) : (
-              <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-            )
-          }
-        >
-          {emails.length === 0 ? addLabel : ``}
-        </Button>
+        {!isLocked && (
+          <Button
+            size="sm"
+            onPress={onEdit}
+            variant={emails.length === 0 ? "flat" : "light"}
+            isIconOnly={emails.length !== 0}
+            endContent={
+              emails.length === 0 ? (
+                ""
+              ) : (
+                <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
+              )
+            }
+          >
+            {emails.length === 0 ? addLabel : ``}
+          </Button>
+        )}
       </span>
     </div>
   );
@@ -444,8 +478,6 @@ export default function EmailComposeCard({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   // Card starts expanded; users can collapse it to a compact header.
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [activeRecipientField, setActiveRecipientField] =
-    useState<RecipientField | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   // Bumped every time the edit modal opens so it remounts with a fresh draft.
@@ -456,54 +488,24 @@ export default function EmailComposeCard({
     body: string;
   } | null>(null);
 
-  // Selected recipients per field, seeded from the agent-resolved emailData.
-  const [recipients, setRecipients] = useState<RecipientMap>(() =>
-    seedRecipients(emailData),
-  );
-
-  // Draft copy of the active field's selection, edited inside the recipient
-  // modal and committed to `recipients` only on confirm (Cancel discards it).
-  const [draftEmails, setDraftEmails] = useState<string[]>([]);
-
-  // Addresses added manually by the user, shown as suggestion chips alongside
-  // the agent-provided ones.
-  const [customSuggestions, setCustomSuggestions] = useState<RecipientMap>({
-    to: [],
-    cc: [],
-    bcc: [],
-  });
-
-  // Custom email input state
-  const [customEmailInput, setCustomEmailInput] = useState("");
-  const [customEmailError, setCustomEmailError] = useState("");
-
-  // Suggestion chips per field (agent-resolved addresses + any custom ones),
-  // derived instead of stored so they always follow emailData.
-  const recipientSuggestions: RecipientMap = {
-    to: [...(emailData.to || []), ...customSuggestions.to],
-    cc: [...(emailData.cc || []), ...customSuggestions.cc],
-    bcc: [...(emailData.bcc || []), ...customSuggestions.bcc],
-  };
-
   // Subject/body follow the agent-resolved data until the user saves an edit.
   const editData: EmailData = savedEdits
     ? { ...emailData, ...savedEdits }
     : emailData;
 
-  const activeSuggestions = activeRecipientField
-    ? recipientSuggestions[activeRecipientField]
-    : [];
+  // A card carrying a draft id is sent as that stored draft, verbatim — the only
+  // path that keeps its attachments, since an edited copy would have to be
+  // recomposed without them. Offering edits it cannot apply would be a lie, so
+  // the card renders read-only.
+  const isLocked = !!emailData.draft_id;
 
-  // Commit the modal's draft selection back to the active field, then close.
-  const commitRecipientDraft = () => {
-    if (activeRecipientField) {
-      setRecipients((prev) => ({
-        ...prev,
-        [activeRecipientField]: draftEmails,
-      }));
-    }
-    setActiveRecipientField(null);
-  };
+  const recipientSelection = useRecipientSelection({
+    to: emailData.to,
+    cc: emailData.cc,
+    bcc: emailData.bcc,
+    isSettled: isLocked,
+  });
+  const { recipients } = recipientSelection;
 
   const validateForm = (data: { subject: string; body: string }) => {
     try {
@@ -524,19 +526,6 @@ export default function EmailComposeCard({
           }
         });
         setErrors(newErrors);
-      }
-      return false;
-    }
-  };
-
-  const validateCustomEmail = (email: string): boolean => {
-    try {
-      emailValidationSchema.parse(email);
-      setCustomEmailError("");
-      return true;
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        setCustomEmailError(error.issues[0]?.message || "Invalid email");
       }
       return false;
     }
@@ -608,58 +597,12 @@ export default function EmailComposeCard({
     setIsEditModalOpen(true);
   };
 
-  const openRecipientModal = (field: RecipientField) => {
-    setCustomEmailInput("");
-    setCustomEmailError("");
-    setDraftEmails(recipients[field]);
-    setActiveRecipientField(field);
-  };
-
-  // Add a manually typed email to the active field's draft selection.
-  const handleAddCustomEmail = () => {
-    if (!activeRecipientField) return;
-
-    const trimmedEmail = customEmailInput.trim();
-
-    if (!trimmedEmail) {
-      setCustomEmailError("Please enter an email address");
-      return;
-    }
-
-    if (!validateCustomEmail(trimmedEmail)) {
-      return;
-    }
-
-    if (draftEmails.includes(trimmedEmail)) {
-      setCustomEmailError("Email already added");
-      return;
-    }
-
-    setDraftEmails((prev) => [...prev, trimmedEmail]);
-
-    if (!recipientSuggestions[activeRecipientField].includes(trimmedEmail)) {
-      const field = activeRecipientField;
-      setCustomSuggestions((prev) => ({
-        ...prev,
-        [field]: [...prev[field], trimmedEmail],
-      }));
-    }
-
-    setCustomEmailInput("");
-    setCustomEmailError("");
-    toast.success(`Added ${trimmedEmail}`);
-  };
-
-  const activeFieldConfig = RECIPIENT_FIELDS.find(
-    (f) => f.field === activeRecipientField,
-  );
-
   return (
     <>
       {/* Main Email Card */}
       <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-zinc-800">
         <ComposeHeader
-          isDraft={!!emailData.draft_id}
+          isDraft={isLocked}
           hasThread={!!emailData.thread_id}
           isCollapsed={isCollapsed}
           onToggle={() => setIsCollapsed((prev) => !prev)}
@@ -678,9 +621,11 @@ export default function EmailComposeCard({
             >
               <ComposeFields
                 recipients={recipients}
-                onEditField={openRecipientModal}
+                onEditField={recipientSelection.openField}
                 subject={editData.subject}
                 body={editData.body}
+                attachments={editData.attachments}
+                isLocked={isLocked}
                 onEdit={handleEditClick}
               />
               <div className="flex justify-end px-6 pb-5">
@@ -715,18 +660,22 @@ export default function EmailComposeCard({
       />
 
       <RecipientSelectionModal
-        isOpen={activeRecipientField !== null}
-        onClose={() => setActiveRecipientField(null)}
-        onConfirm={commitRecipientDraft}
-        title={activeFieldConfig ? `${activeFieldConfig.label} recipients` : ""}
-        suggestions={activeSuggestions}
-        selectedEmails={draftEmails}
-        setSelectedEmails={setDraftEmails}
-        customEmailInput={customEmailInput}
-        setCustomEmailInput={setCustomEmailInput}
-        customEmailError={customEmailError}
-        setCustomEmailError={setCustomEmailError}
-        handleAddCustomEmail={handleAddCustomEmail}
+        isOpen={recipientSelection.activeField !== null}
+        onClose={recipientSelection.closeField}
+        onConfirm={recipientSelection.commitDraft}
+        title={
+          recipientSelection.activeFieldConfig
+            ? `${recipientSelection.activeFieldConfig.label} recipients`
+            : ""
+        }
+        suggestions={recipientSelection.activeSuggestions}
+        selectedEmails={recipientSelection.draftEmails}
+        setSelectedEmails={recipientSelection.setDraftEmails}
+        customEmailInput={recipientSelection.customEmailInput}
+        setCustomEmailInput={recipientSelection.setCustomEmailInput}
+        customEmailError={recipientSelection.customEmailError}
+        setCustomEmailError={recipientSelection.setCustomEmailError}
+        handleAddCustomEmail={recipientSelection.addCustomEmail}
       />
     </>
   );

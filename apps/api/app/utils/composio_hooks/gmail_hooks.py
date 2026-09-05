@@ -7,6 +7,7 @@ for customizing tool descriptions and defaults.
 """
 
 from collections.abc import Sequence
+from contextvars import ContextVar
 from typing import Any, TypeVar
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
@@ -17,6 +18,11 @@ from app.agents.templates.mail_templates import (
     draft_template,
     process_get_thread_response,
     process_list_drafts_response,
+)
+from app.constants.email import (
+    GMAIL_DRAFT_ID_MISSING_LOG,
+    GMAIL_SKIP_STREAM_LOG,
+    GMAIL_TO_MAPPED_LOG,
 )
 from app.constants.log_tags import LogTag
 from app.models.composio_schemas.google_people import (
@@ -31,7 +37,13 @@ from app.models.composio_schemas.google_people import (
 from app.utils.markdown_utils import normalize_email_body_to_html
 from shared.py.wide_events import log
 
+from .file_upload_hooks import (
+    AttachmentDisplay,
+    resolve_tool_attachments,
+    swapped_upload_param,
+)
 from .registry import (
+    HookAbortError,
     register_after_hook,
     register_before_hook,
     register_schema_modifier,
@@ -45,6 +57,13 @@ _GMAIL_COMPOSE_TOOLS = (
 )
 # Gmail's ``body`` field is named differently across compose tools.
 _GMAIL_BODY_KEYS = ("body", "message_body", "message")
+
+# The draft compose card, built before the tool runs but streamed after it, once
+# Gmail has returned the draft id the card's Send button needs. Set and read
+# within one tool execution, so a ContextVar is the whole lifetime.
+_pending_draft_card: ContextVar[dict[str, Any] | None] = ContextVar(
+    "gmail_pending_draft_card", default=None
+)
 
 _PersonField = TypeVar("_PersonField", GooglePersonName, GooglePersonValue)
 
@@ -213,6 +232,89 @@ def gmail_hide_user_id_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
 # These hooks send progress/streaming data to frontend before tool execution
 
 
+def _normalize_compose_body(arguments: dict[str, Any]) -> None:
+    """Convert the Markdown body to HTML in place and flag it (idempotent).
+
+    The agent writes Markdown; Gmail renders Markdown literally as plain text.
+    """
+    for body_key in _GMAIL_BODY_KEYS:
+        raw_body = arguments.get(body_key)
+        # Defensive guard; and->or is equivalent for realistic (str) bodies.
+        if isinstance(raw_body, str) and raw_body:  # pragma: no mutate
+            arguments[body_key] = normalize_email_body_to_html(raw_body)
+    arguments["is_html"] = True
+
+
+def _compose_recipient_ready(tool: str, arguments: dict[str, Any]) -> bool:
+    """Map ``to`` -> ``recipient_email`` and confirm a SEND/DRAFT call is streamable.
+
+    Non-compose tools (reply/forward) are always ready. Returns False (and logs) when
+    a SEND/DRAFT call is missing a recipient or any content, so streaming is skipped.
+    """
+    if tool not in ("GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"):
+        return True
+    if "to" in arguments and "recipient_email" not in arguments:
+        arguments["recipient_email"] = arguments["to"]
+        log.info(GMAIL_TO_MAPPED_LOG, tool=tool)  # pragma: no mutate
+    has_recipient = bool(
+        arguments.get("recipient_email")
+        or arguments.get("to")
+        or arguments.get("cc")
+        or arguments.get("bcc")
+    )
+    has_content = bool(arguments.get("subject") or arguments.get("body"))
+    if not has_recipient or not has_content:
+        log.warning(GMAIL_SKIP_STREAM_LOG, tool=tool)  # pragma: no mutate
+        return False
+    return True
+
+
+def _compose_recipients(tool: str, arguments: dict[str, Any]) -> list[str]:
+    """Flatten the recipient set for the compose card, per tool."""
+    if tool == "GMAIL_FORWARD_MESSAGE":
+        recipients = arguments.get("to_recipients", [])
+        return [recipients] if isinstance(recipients, str) else recipients
+    # Default [] is neutralised by the isinstance guard below (equivalent).
+    extra_recipients = arguments.get("extra_recipients", [])  # pragma: no mutate
+    if not isinstance(extra_recipients, list):
+        extra_recipients = []
+    return [arguments.get("recipient_email", ""), *extra_recipients]
+
+
+def _compose_card(
+    tool: str, arguments: dict[str, Any], attachment_display: list[AttachmentDisplay]
+) -> dict[str, Any]:
+    """The compose/sent card payload for one Gmail compose call."""
+    return {
+        "to": _compose_recipients(tool, arguments),
+        "subject": arguments.get("subject", ""),
+        "body": arguments.get("body", ""),
+        "thread_id": arguments.get("thread_id", ""),
+        "bcc": arguments.get("bcc", []),
+        "cc": arguments.get("cc", []),
+        "is_html": arguments.get("is_html", False),
+        "attachments": attachment_display,
+    }
+
+
+def _stream_compose_preview(
+    tool: str, arguments: dict[str, Any], attachment_display: list[AttachmentDisplay]
+) -> None:
+    """Stream the sent card now; hold the draft card until its id exists.
+
+    A draft card's Send button sends the *draft* — attachments and all — which
+    needs the draft id Gmail only returns once the tool has run. Streaming the
+    card here would render one whose Send falls back to composing a fresh mail
+    from the card's fields, silently dropping every attachment, so the draft
+    card is handed to ``gmail_create_draft_after_hook`` instead.
+    """
+    card = _compose_card(tool, arguments, attachment_display)
+    if tool == "GMAIL_CREATE_EMAIL_DRAFT":
+        _pending_draft_card.set(card)
+        return
+    get_stream_writer()({"email_sent_data": [card]})
+
+
 @register_before_hook(
     tools=[
         "GMAIL_SEND_EMAIL",
@@ -224,103 +326,37 @@ def gmail_hide_user_id_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
 def gmail_compose_before_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
-    """Handle email composition response and streaming data."""
-
-    log.set(gmail_tool=tool, toolkit=toolkit)
+    """Resolve attachments, normalise the body, and stream the compose/sent card."""
+    log.set(gmail_tool=tool, toolkit=toolkit)  # pragma: no mutate -- observability
     try:
-        arguments = params.get("arguments", {})
-
-        # Always normalise the body to HTML before it reaches Gmail. The agent
-        # writes Markdown; Gmail renders Markdown literally as plain text. The
-        # normaliser is idempotent on already-HTML bodies so callers that hand
-        # us HTML are unaffected.
-        for body_key in _GMAIL_BODY_KEYS:
-            raw_body = arguments.get(body_key)
-            if isinstance(raw_body, str) and raw_body:
-                arguments[body_key] = normalize_email_body_to_html(raw_body)
-        arguments["is_html"] = True
-        params["arguments"] = arguments
-
-        if tool in ["GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"]:
-            # Auto-convert 'to' to 'recipient_email' if needed
-            if "to" in arguments and "recipient_email" not in arguments:
-                arguments["recipient_email"] = arguments["to"]
-                params["arguments"] = arguments
-                log.info(
-                    f"{LogTag.COMPOSIO} Mapped 'to' argument to 'recipient_email' for", tool=tool
-                )
-
-            # Check if at least one recipient type is provided
-            recipient = arguments.get("recipient_email") or arguments.get("to")
-            cc = arguments.get("cc", [])
-            bcc = arguments.get("bcc", [])
-
-            has_recipient = bool(recipient) or bool(cc) or bool(bcc)
-
-            # Check if at least one of subject or body is provided
-            subject = arguments.get("subject")
-            body = arguments.get("body")
-
-            has_content = bool(subject) or bool(body)
-
-            # If validation fails, return params immediately to skip streaming
-            if not has_recipient or not has_content:
-                log.warning(
-                    f"{LogTag.COMPOSIO} Skipping streaming: missing required fields",
-                    tool_name=tool,
-                    has_recipient=has_recipient,
-                    has_content=has_content,
-                )
-                return params
-
-        writer = get_stream_writer()
-
-        # Handle different recipient formats based on tool
-        if tool == "GMAIL_FORWARD_MESSAGE":
-            recipients = arguments.get("to_recipients", [])
-            if isinstance(recipients, str):
-                recipients = [recipients]
-        else:
-            extra_recipients = arguments.get("extra_recipients", [])
-            if not isinstance(extra_recipients, list):
-                extra_recipients = []
-            recipients = [
-                arguments.get("recipient_email", ""),
-                *extra_recipients,
-            ]
-
-        # Build the email compose data
-        emails_data = [
-            {
-                "to": recipients,
-                "subject": arguments.get("subject", ""),
-                "body": arguments.get("body", ""),
-                "thread_id": arguments.get("thread_id", ""),
-                "bcc": arguments.get("bcc", []),
-                "cc": arguments.get("cc", []),
-                "is_html": arguments.get("is_html", False),
-            }
-        ]
-
-        # Check if the operation was successful and send appropriate payload
-        if tool == "GMAIL_CREATE_EMAIL_DRAFT":
-            # Send compose data to frontend with draft_id
-            payload = {
-                "email_compose_data": emails_data,
-            }
-            writer(payload)
-
-        elif tool in [
-            "GMAIL_SEND_EMAIL",
-            "GMAIL_REPLY_TO_THREAD",
-            "GMAIL_FORWARD_MESSAGE",
-        ]:
-            # Send email sent data to frontend
-            payload = {"email_sent_data": emails_data}
-            writer(payload)
-
+        arguments = params.get("arguments", {})  # pragma: no mutate -- defensive default
+        # Shared file-upload resolution (strict: any garbage in ``attachments``
+        # aborts). Raises HookAbortError (propagated below) if a file can't be
+        # attached, so we never send mail missing a requested attachment. The
+        # native param name comes from the swap record rather than a constant of
+        # our own: Composio names it per tool, and a tool we never swapped has no
+        # ``attachments`` of ours to resolve.
+        native_param = swapped_upload_param(tool)
+        attachment_display = (
+            resolve_tool_attachments(tool, toolkit, params, native_param=native_param)
+            if native_param
+            else []
+        )
+        if attachment_display:
+            log.set(gmail_attachment_count=len(attachment_display))  # pragma: no mutate
+        _normalize_compose_body(arguments)
+        # Redundant: `arguments` is already `params["arguments"]` by reference.
+        params["arguments"] = arguments  # pragma: no mutate
+        # Drop any card a previous draft call in this context left held, so an
+        # aborted run can never have its card streamed by a later one.
+        _pending_draft_card.set(None)
+        if _compose_recipient_ready(tool, arguments):
+            _stream_compose_preview(tool, arguments, attachment_display)
         return params
-
+    except HookAbortError:
+        # Attachment resolution failed: propagate so the compose tool aborts
+        # instead of sending mail without the file the user asked to attach.
+        raise
     except Exception as e:
         log.error(
             f"{LogTag.COMPOSIO} Error in gmail_compose_before_hook",
@@ -332,6 +368,42 @@ def gmail_compose_before_hook(
 
 # ====================== AFTER EXECUTE HOOKS ======================
 # These hooks process responses and send data to frontend after tool execution
+
+
+@register_after_hook(tools=["GMAIL_CREATE_EMAIL_DRAFT"])
+def gmail_create_draft_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> ToolExecutionResponse:
+    """Stream the held compose card, now that the draft it describes exists.
+
+    A card with attachments gets the draft's id, which makes its Send button send
+    *this draft* rather than recompose it from the card's visible fields — the
+    only path that keeps the files. Without an id there is no such path, so the
+    card is dropped rather than shown with attachments it cannot deliver. A card
+    with no attachments stays editable and is sent as a fresh compose. The
+    response itself is passed through untouched.
+    """
+    card = _pending_draft_card.get()
+    _pending_draft_card.set(None)
+    if card is None:
+        return response
+    data: object = response["data"]
+    draft_id = data.get("id") if isinstance(data, dict) else None
+    if card["attachments"]:
+        if not draft_id:
+            # Every send path open to this card recomposes the mail from its
+            # visible fields, so it would go out without the files the card is
+            # showing. No card at all beats a card that silently drops them.
+            log.warning(GMAIL_DRAFT_ID_MISSING_LOG, tool=tool)  # pragma: no mutate
+            return response
+        # Only a card that MUST be sent as the stored draft carries the id: it is
+        # what makes Send send this draft, and it is why the card renders
+        # read-only (the draft's files cannot be re-attached to an edited copy).
+        card["draft_id"] = draft_id
+    writer = get_stream_writer()
+    if writer is not None:
+        writer({"email_compose_data": [card]})
+    return response
 
 
 @register_after_hook(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])

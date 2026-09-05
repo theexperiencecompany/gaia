@@ -10,6 +10,7 @@ in {successful, data, error} format automatically.
 
 import asyncio
 from collections.abc import Coroutine
+import concurrent.futures
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Any, TypeVar
 
@@ -48,7 +49,7 @@ from app.templates.docstrings.calendar_tool_docs import (
     CUSTOM_PATCH_EVENT as CUSTOM_PATCH_EVENT_DOC,
 )
 from app.utils.calendar_utils import calendar_events_endpoint
-from app.utils.concurrency import server_loop
+from app.utils.concurrency import run_on_captured_loop
 from app.utils.context_utils import execute_tool
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone, home_timezone_from_config
@@ -60,33 +61,28 @@ _T = TypeVar("_T")
 
 
 def _run_sync(coro: Coroutine[Any, Any, _T], *, timeout: float | None = None) -> _T:
-    """Run an async coroutine from a synchronous Composio custom-tool body.
+    """Run an async service call from a synchronous Composio custom-tool body.
 
-    The custom tools are registered as sync callables but the services they call
-    (calendar_service, user_service) are async. The coroutine runs on the server
-    loop — never a fresh one — because the app's shared singletons (Motor
-    clients, lazy-provider locks) are bound to it and a second loop makes them
-    raise "attached to a different event loop".
+    The custom tools call async services (calendar_service, user_service) that
+    drive the loop-bound Motor client. In production the tool runs on a worker
+    thread with no running loop of its own, so the coroutine is dispatched onto
+    the server loop the client was built on — ``asyncio.run`` there would spin a
+    fresh loop and make Motor raise "attached to a different loop". When the tool
+    is already inside a running loop (nested-loop test harnesses), that loop can't
+    be blocked, so the coroutine is offloaded to a fresh thread + loop.
     """
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        pass
-    else:
-        # get_running_loop() succeeds only ON the loop thread, so an async caller
-        # invoked this sync body inline. Blocking here would freeze the very loop
-        # the coroutine needs to run on; there is no correct answer, and every
-        # production path reaches these tools through a worker thread.
-        raise RuntimeError(
-            "_run_sync was called on the event loop thread; await the coroutine directly"
-        )
-
-    loop = server_loop()
-    if loop is None:
-        # No app running (a script, a direct test call): nothing is bound to a
-        # shared loop, so an isolated one is correct.
-        return asyncio.run(coro)
-    return asyncio.run_coroutine_threadsafe(coro, loop).result(timeout=timeout)
+        return run_on_captured_loop(coro, timeout=timeout)
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        return pool.submit(lambda: asyncio.run(coro)).result(timeout=timeout)
+    finally:
+        # wait=False, so no `with` block: shutting the pool down with wait=True
+        # joins the worker, which would make `timeout` a no-op — the caller would
+        # still block for however long the coroutine takes.
+        pool.shutdown(wait=False)
 
 
 def _extract_datetime(dt: dict[str, Any] | str | None) -> str:

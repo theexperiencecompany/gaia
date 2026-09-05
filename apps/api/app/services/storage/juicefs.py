@@ -109,6 +109,24 @@ def sandbox_session_path(conversation_id: str) -> str:
     return f"/workspace/sessions/{conversation_id}"
 
 
+WORKSPACE_PREFIX = "/workspace/"
+
+
+def to_workspace_relative_path(path: str) -> str:
+    """Strip a leading ``/workspace/`` (or ``/``) so the path is workspace-relative.
+
+    Canonical helper for every caller that accepts a sandbox-visible path (agents
+    hand us ``/workspace/sessions/...``) but resolves against the workspace root
+    (``resolve_user_file_sync`` and friends take paths relative to ``/workspace``).
+    A bare leading ``/`` must go too: ``base / "/abs"`` discards the base in
+    ``pathlib``, so it would escape containment in ``_contained``.
+    """
+    stripped = path.strip()  # pragma: no mutate -- defensive whitespace trim
+    if stripped.startswith(WORKSPACE_PREFIX):
+        return stripped[len(WORKSPACE_PREFIX) :]
+    return stripped.lstrip("/")  # pragma: no mutate -- "/"->"XX/XX" is an equivalent strip
+
+
 async def ensure_user_workspace(user_id: str) -> Path:
     """Idempotently create the user's workspace tree on JuiceFS."""
 
@@ -277,6 +295,17 @@ async def resolve_user_file(user_id: str, workspace_rel_path: str) -> Path:
     (e.g. to run ``grep`` over it) rather than paged lines.
     """
     return await asyncio.to_thread(_resolve_user_file_sync, user_id, workspace_rel_path)
+
+
+def resolve_user_file_sync(user_id: str, workspace_rel_path: str) -> Path:
+    """Sync form of ``resolve_user_file`` for synchronous callers (Composio hooks).
+
+    Same containment and errors as ``resolve_user_file``. Requires the host mount;
+    raises ``JuiceFSUnavailable`` if it is absent so the caller fails loudly rather
+    than resolving against a path that happens not to exist.
+    """
+    _require_mount()
+    return _resolve_user_file_sync(user_id, workspace_rel_path)
 
 
 async def read_user_file_bytes(

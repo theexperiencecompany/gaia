@@ -24,8 +24,6 @@ apps/api/app/agents/tools/core/retrieval.py	PLR0912
 apps/api/app/agents/tools/core/retrieval.py	PLR0913
 apps/api/app/agents/tools/core/retrieval.py	PLR0915
 apps/api/app/agents/tools/integration_tool.py	PLR0912
-apps/api/app/agents/tools/integrations/calendar_tool.py	PLR0912
-apps/api/app/agents/tools/integrations/calendar_tool.py	PLR0915
 apps/api/app/agents/tools/integrations/google_sheets_tool.py	PLR0912
 apps/api/app/agents/tools/integrations/google_sheets_tool.py	PLR0915
 apps/api/app/agents/tools/integrations/linear_tool.py	PLR0912
@@ -50,8 +48,6 @@ apps/api/app/api/v1/endpoints/platform_auth.py	PLR0912
 apps/api/app/api/v1/endpoints/platform_auth.py	PLR0913
 apps/api/app/api/v1/endpoints/todos.py	PLR0912
 apps/api/app/api/v1/endpoints/todos.py	PLR0913
-apps/api/app/api/v1/middleware/auth.py	PLR0912
-apps/api/app/config/settings_validator.py	PLR0913
 apps/api/app/core/lazy_loader.py	PLR0912
 apps/api/app/core/lazy_loader.py	PLR0913
 apps/api/app/db/chroma/chroma_store.py	PLR0912
@@ -90,7 +86,6 @@ apps/api/app/services/workflow/generation_service.py	PLR0915
 apps/api/app/utils/auth_utils.py	PLR0911
 apps/api/app/utils/auth_utils.py	PLR0912
 apps/api/app/utils/chat_utils.py	PLR0913
-apps/api/app/utils/composio_hooks/gmail_hooks.py	PLR0912
 apps/api/app/utils/composio_hooks/reddit_hooks.py	PLR0912
 apps/api/app/utils/crawl4ai_utils.py	PLR0912
 apps/api/app/utils/crawl4ai_utils.py	PLR0913

@@ -22,6 +22,7 @@ from app.services.composio.custom_tools.registry import CustomToolsRegistry
 from app.utils.composio_hooks.gmail_hooks import (
     gmail_attachment_after_hook,
     gmail_compose_before_hook,
+    gmail_create_draft_after_hook,
     gmail_drafts_after_hook,
     gmail_message_detail_after_hook,
     gmail_send_email_schema_modifier,
@@ -43,7 +44,6 @@ from app.utils.composio_hooks.twitter_hooks import (
     twitter_search_after_hook,
     twitter_search_schema_modifier,
 )
-from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -435,7 +435,7 @@ class TestGmailBeforeHooks:
         assert result is params
 
     def test_compose_hook_streams_email_compose_data_for_draft(self) -> None:
-        """Creating a draft sends email_compose_data to the stream writer."""
+        """The before/after pair sends one email_compose_data, after the tool runs."""
 
         writer_mock = MagicMock()
         params = _make_params(
@@ -451,11 +451,20 @@ class TestGmailBeforeHooks:
             return_value=writer_mock,
         ):
             gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", params)
+            # Nothing streams yet: a card with attachments needs the draft id its
+            # Send button uses, and that only exists once the tool has run.
+            writer_mock.assert_not_called()
+            gmail_create_draft_after_hook(
+                "GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {"id": "draft-77"}}
+            )
 
         writer_mock.assert_called_once()
         payload = writer_mock.call_args[0][0]
         assert "email_compose_data" in payload
         assert payload["email_compose_data"][0]["subject"] == "Draft subject"
+        # This draft has no attachments, so the card stays editable: carrying the
+        # id would make Send ignore the user's edits and post the stored draft.
+        assert "draft_id" not in payload["email_compose_data"][0]
 
 
 # ---------------------------------------------------------------------------
@@ -537,7 +546,12 @@ class TestGmailSchemaModifiers:
 
 @pytest.mark.integration
 class TestUserIdExtractionHook:
-    """Test user_id extraction from RunnableConfig metadata."""
+    """Test user_id extraction from RunnableConfig metadata.
+
+    Identity is resolved by the master before-hook, ahead of the hook chain, so
+    every registered hook sees the same user. These drive it through the real
+    chain rather than a helper, which is what the tools themselves do.
+    """
 
     def test_extracts_user_id_from_runnable_config(self) -> None:
         """User ID is extracted from __runnable_config__ metadata and set on params."""
@@ -551,7 +565,7 @@ class TestUserIdExtractionHook:
             }
         )
 
-        result = extract_user_id_from_params("GMAIL_FETCH_EMAILS", "gmail", params)
+        result = master_before_execute_hook("GMAIL_FETCH_EMAILS", "gmail", params)
 
         assert result["user_id"] == "user_abc123"
         assert result["entity_id"] == "user_abc123"
@@ -562,7 +576,7 @@ class TestUserIdExtractionHook:
         """Without __runnable_config__, params are returned unchanged."""
 
         params = _make_params(arguments={"query": "test"})
-        result = extract_user_id_from_params("GMAIL_FETCH_EMAILS", "gmail", params)
+        result = master_before_execute_hook("GMAIL_FETCH_EMAILS", "gmail", params)
 
         assert "user_id" not in result
         assert "entity_id" not in result
@@ -576,7 +590,7 @@ class TestUserIdExtractionHook:
             }
         )
 
-        result = extract_user_id_from_params("SLACK_SEND_MSG", "slack", params)
+        result = master_before_execute_hook("SLACK_SEND_MSG", "slack", params)
         assert "user_id" not in result
 
     def test_no_user_id_in_metadata_returns_params_unchanged(self) -> None:
@@ -588,14 +602,14 @@ class TestUserIdExtractionHook:
             }
         )
 
-        result = extract_user_id_from_params("TOOL", "tk", params)
+        result = master_before_execute_hook("TOOL", "tk", params)
         assert "user_id" not in result
 
     def test_empty_arguments_returns_params_unchanged(self) -> None:
         """If arguments dict is empty, hook returns params as-is."""
 
         params: ToolExecuteParams = {"arguments": {}}
-        result = extract_user_id_from_params("TOOL", "tk", params)
+        result = master_before_execute_hook("TOOL", "tk", params)
         assert result == params
 
 
