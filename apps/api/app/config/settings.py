@@ -24,6 +24,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
+from app.constants.browser import BrowserEngine
 from app.constants.log_tags import LogTag
 from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
@@ -315,6 +316,14 @@ class CommonSettings(BaseAppSettings):
     # Per-renderer V8 heap ceiling. One runaway page must not be able to eat the
     # whole host's budget and OOM every other user's session with it.
     BROWSER_HOST_JS_HEAP_MB: int = 512
+    # Which engine the host launches. Chromium (headless-shell) is the default;
+    # Obscura runs beside it as a drop-in over the same CDP plane.
+    BROWSER_ENGINE: BrowserEngine = BrowserEngine.CHROMIUM
+    # Path to the Obscura binary; required only when BROWSER_ENGINE=obscura.
+    OBSCURA_BIN: str | None = None
+    # Port Obscura's CDP server binds. Fixed (not ephemeral) because Obscura only
+    # publishes its /json/version — and thus its ws endpoint — at a port we name.
+    OBSCURA_PORT: int = 9222
 
     # Fernet key (32 url-safe base64 bytes) encrypting each user's saved browser
     # login (storage_state) at rest in Mongo. Infisical-provided in production;

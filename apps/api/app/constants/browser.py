@@ -21,6 +21,18 @@ from enum import Enum, StrEnum
 BROWSER_TOOL_NAME = "browser_task"
 BROWSER_TOOL_CATEGORY = "browser"
 
+
+class BrowserEngine(StrEnum):
+    """Which browser binary ``gaia-browser-host`` launches behind its CDP plane.
+
+    ``CHROMIUM`` is the default headless-shell path. ``OBSCURA`` runs the Obscura
+    CDP server beside it — a drop-in over the same CDP everything downstream
+    speaks, selected by the ``BROWSER_ENGINE`` setting."""
+
+    CHROMIUM = "chromium"
+    OBSCURA = "obscura"
+
+
 # ---------------------------------------------------------------------------
 # SSE card-event key (must match `tool_fields` in app/models/chat_models.py and
 # the frontend TOOL_RENDERERS / toolRegistry registration).

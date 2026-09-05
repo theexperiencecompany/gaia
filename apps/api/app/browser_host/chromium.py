@@ -33,7 +33,11 @@ from playwright.sync_api import StorageState, StorageStateCookie, sync_playwrigh
 
 from app.browser_host.metrics import ProcessSampler, SessionMetrics
 from app.config.settings import settings
-from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
+from app.constants.browser import (
+    BROWSER_VIEWPORT_HEIGHT,
+    BROWSER_VIEWPORT_WIDTH,
+    BrowserEngine,
+)
 from app.constants.log_tags import LogTag
 from app.services.browser.storage_state_types import LocalStorageEntry, OriginState
 from shared.py.wide_events import log
@@ -204,7 +208,12 @@ def _storage_state_cookie_to_cdp(cookie: StorageStateCookie) -> dict[str, Any]:
 
 
 class ChromiumHost:
-    """Owns the single Chromium process and every live browser context on it."""
+    """Owns the single browser process and every live context on it.
+
+    Named for its default engine, but fronts either Chromium (headless-shell) or
+    the Obscura CDP server, selected by ``settings.BROWSER_ENGINE``. Everything
+    past launch — contexts, the CDP client, proxy, screencast — speaks plain CDP
+    and is identical for both."""
 
     def __init__(self) -> None:
         self._proc: asyncio.subprocess.Process | None = None
@@ -223,8 +232,9 @@ class ChromiumHost:
     # --- lifecycle ---
 
     async def start(self) -> None:
-        """Resolve the binary, launch Chromium, connect CDP, start the reaper."""
-        self._chromium_path = await asyncio.to_thread(_resolve_chromium_path)
+        """Resolve the binary, launch the engine, connect CDP, start the reaper."""
+        if settings.BROWSER_ENGINE is not BrowserEngine.OBSCURA:
+            self._chromium_path = await asyncio.to_thread(_resolve_chromium_path)
         await self._launch()
         self._reaper_task = asyncio.create_task(self._reaper_loop())
         log.info(f"{LogTag.BROWSER} browser host started")
@@ -599,6 +609,21 @@ class ChromiumHost:
         return None, None
 
     async def _launch(self) -> None:
+        if settings.BROWSER_ENGINE is BrowserEngine.OBSCURA:
+            args = self._obscura_command()
+        else:
+            args = self._chromium_command()
+        self._proc = await asyncio.create_subprocess_exec(
+            *args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        self._sampler = ProcessSampler.for_pid(self._proc.pid)
+        self._root_ws_url = await self._await_cdp_ready()
+        cdp = CDPClient(self._root_ws_url)
+        await cdp.start()
+        self._cdp = cdp
+
+    def _chromium_command(self) -> list[str]:
+        """The full headless-shell argv, incl. the fresh user-data-dir it needs."""
         assert self._chromium_path is not None
         self._user_data_dir = tempfile.mkdtemp(prefix="gaia-browser-host-")
         args = [
@@ -620,17 +645,39 @@ class ChromiumHost:
             # bare flag; `--headless=new` selects a mode that binary does not have.
             is_shell = Path(self._chromium_path).name in _HEADLESS_SHELL_BINARIES
             args.append("--headless" if is_shell else "--headless=new")
-        self._proc = await asyncio.create_subprocess_exec(
-            *args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        self._sampler = ProcessSampler.for_pid(self._proc.pid)
-        self._root_ws_url = await self._await_cdp_ready()
-        cdp = CDPClient(self._root_ws_url)
-        await cdp.start()
-        self._cdp = cdp
+        return args
+
+    def _obscura_command(self) -> list[str]:
+        """Obscura's argv. It is a CDP *server* — ``serve``, not a chrome debug flag.
+
+        It publishes its DevTools endpoint at ``/json/version`` on the port we
+        name (never ephemeral, so we can poll for it), stealthed, and permitted
+        to reach the private network the host allowlist otherwise fronts.
+        """
+        obscura_bin = settings.OBSCURA_BIN
+        if not obscura_bin:
+            raise RuntimeError("BROWSER_ENGINE=obscura requires OBSCURA_BIN to be set")
+        return [
+            obscura_bin,
+            "serve",
+            "--port",
+            str(settings.OBSCURA_PORT),
+            "--stealth",
+            "--allow-private-network",
+        ]
 
     async def _await_cdp_ready(self) -> str:
+        if settings.BROWSER_ENGINE is BrowserEngine.OBSCURA:
+            return await self._poll_devtools_endpoint(settings.OBSCURA_PORT, "Obscura")
         port = await self._read_devtools_port()
+        return await self._poll_devtools_endpoint(port, "Chromium")
+
+    async def _poll_devtools_endpoint(self, port: int, engine: str) -> str:
+        """Poll ``/json/version`` until it yields the root ``webSocketDebuggerUrl``.
+
+        Shared by both engines: Chromium and Obscura alike publish their DevTools
+        websocket here, so once the port is known the discovery is identical.
+        """
         deadline = time.monotonic() + _CDP_READY_TIMEOUT_SECONDS
         async with httpx.AsyncClient() as client:
             while time.monotonic() < deadline:
@@ -640,7 +687,7 @@ class ChromiumHost:
                     return str(resp.json()["webSocketDebuggerUrl"])
                 except (httpx.HTTPError, KeyError):
                     await asyncio.sleep(_CDP_READY_POLL_SECONDS)
-        raise RuntimeError("Chromium did not expose its CDP endpoint in time")
+        raise RuntimeError(f"{engine} did not expose its CDP endpoint in time")
 
     async def _read_devtools_port(self) -> int:
         assert self._user_data_dir is not None
