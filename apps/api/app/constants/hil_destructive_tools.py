@@ -24,10 +24,13 @@ GOOGLEDOCS_DESTRUCTIVE_TOOLS: list[str] = [
     "GOOGLEDOCS_DELETE_TAB",
 ]
 
-# Only permanent, trash-bypassing deletes gate. TRASH_FILE / UNTRASH_FILE are
-# reversible (recoverable from Drive trash) and are NOT listed; permission
-# changes are reversible too. DELETE_REVISION permanently drops a file version.
+# Permanent, trash-bypassing deletes gate (DELETE_REVISION permanently drops a
+# file version). CREATE_PERMISSION gates too: sharing exposes the file's contents
+# to the grantee the instant it is granted, and revoking the grant later cannot
+# undo what they already read or copied (CWE-200). TRASH_FILE / UNTRASH_FILE stay
+# ungated — recoverable from Drive trash.
 GOOGLEDRIVE_DESTRUCTIVE_TOOLS: list[str] = [
+    "GOOGLEDRIVE_CREATE_PERMISSION",
     "GOOGLEDRIVE_DELETE_DRIVE",
     "GOOGLEDRIVE_DELETE_FILE",
     "GOOGLEDRIVE_DELETE_REVISION",
