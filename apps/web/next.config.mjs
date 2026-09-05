@@ -57,6 +57,10 @@ const nextConfig = {
   // the same directory. A dedicated dist dir (agents driving the app while a
   // human dev server runs) lifts that without touching the default build.
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
+  // Dev only: allow requests for dev assets from the loopback IP too, not just
+  // the default `localhost` host — agent browsers and sandboxes reach the dev
+  // server via 127.0.0.1, and Next blocks every chunk without this.
+  allowedDevOrigins: ["127.0.0.1"],
   productionBrowserSourceMaps: true,
   // OpenNext file-traces every `public/*.wasm` into the Worker as a wasm chunk
   // (it shows up even in unrelated routes' .nft.json), which collects the

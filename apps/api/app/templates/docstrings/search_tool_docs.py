@@ -14,6 +14,14 @@ from various web and news sources. It prioritizes speed and topical variety over
 - When presenting results, always attribute them as "found via search" and show only what the tool returned.
 - If you cannot find information, say "I couldn't find results for that"; never fill the gap with made-up links.
 
+📌 INLINE CITATIONS (when the reply is shown in the web/desktop chat UI):
+- Mark each source right where you use it with an inline number in brackets, e.g. "...attention is quadratic in
+  sequence length[2].", where n is the 1-based position of that result in the list this tool returned (1 = first result).
+- Cite only sources you actually used. Never invent a number, and never reuse the same number for a different source.
+- The chat UI turns these markers into clickable numbered source chips and lists the cited sources beneath the answer;
+  do not paste raw URLs into the prose as a substitute.
+- On plain-text platforms (message apps, email, voice), do not use markers; keep the source URLs in the text instead.
+
 ✅ USE THIS TOOL WHEN:
 - The user asks a general question requiring current or public knowledge.
 - You need a quick overview, definition, or summary from external sources.

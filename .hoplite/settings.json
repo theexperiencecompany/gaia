@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "ports": {"preview": 3000, "additional": {}},
+  "scripts": {
+    "setup": {
+      "enabled": true,
+      "command": "command -v git-lfs >/dev/null 2>&1 || { apt-get install -y git-lfs >/dev/null 2>&1 || true; }"
+    },
+    "run": {"enabled": true, "command": "cd apps/web && pnpm dev"},
+    "archive": {"enabled": true, "command": null},
+    "check": {"enabled": true, "command": null}
+  },
+  "mcpServers": []
+}

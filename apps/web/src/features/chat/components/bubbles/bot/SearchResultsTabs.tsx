@@ -289,7 +289,7 @@ interface WebResultsProps {
 function WebResults({ web }: WebResultsProps) {
   return (
     <div className="max-h-80 w-full max-w-lg overflow-y-auto rounded-2xl bg-zinc-800/70 backdrop-blur-2xl">
-      {web.map((result) => {
+      {web.map((result, index) => {
         const url = safeUrl(result.url);
         const host = url?.hostname;
         return (
@@ -302,31 +302,39 @@ function WebResults({ web }: WebResultsProps) {
                 href={result.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full space-y-1"
+                className="flex w-full items-start gap-2.5"
               >
-                <h2 className="truncate text-sm font-medium">{result.title}</h2>
-                <p className="line-clamp-2 text-xs text-foreground-500">
-                  {result.content}
-                </p>
-                <div className="flex flex-wrap items-center gap-x-4 text-sm">
-                  <span className="flex items-center gap-2">
-                    <Image
-                      src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
-                      alt={`${host} favicon`}
-                      width={16}
-                      height={16}
-                      className="rounded-full"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = "none";
-                      }}
-                    />
-                    <span className="max-w-xs truncate text-xs text-primary hover:underline">
-                      {host}
+                {/* Numbered to match the inline citation chips in the answer. */}
+                <span className="mt-0.5 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-md bg-zinc-700 px-1 text-[10px] font-semibold text-zinc-200">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1 space-y-1">
+                  <h2 className="truncate text-sm font-medium">
+                    {result.title}
+                  </h2>
+                  <p className="line-clamp-2 text-xs text-foreground-500">
+                    {result.content}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-4 text-sm">
+                    <span className="flex items-center gap-2">
+                      <Image
+                        src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
+                        alt={`${host} favicon`}
+                        width={16}
+                        height={16}
+                        className="rounded-full"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = "none";
+                        }}
+                      />
+                      <span className="max-w-xs truncate text-xs text-primary hover:underline">
+                        {host}
+                      </span>
                     </span>
-                  </span>
-                  {/* <span className="flex items-center">{timeAgo(result.date)}</span> */}
-                </div>
+                    {/* <span className="flex items-center">{timeAgo(result.date)}</span> */}
+                  </div>
+                </span>
               </a>
             ) : (
               <div className="w-full space-y-1">
