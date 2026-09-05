@@ -456,6 +456,24 @@ class TestResolveToolAttachments:
         with pytest.raises(HookAbortError, match="must be a list"):
             resolve_tool_attachments("GMAIL_SEND_EMAIL", "gmail", params, native_param="attachment")
 
+    def test_empty_string_attachments_aborts(self):
+        # Falsy but not a valid no-op: it must abort, not silently send unattached.
+        params = {"arguments": {"attachments": ""}, "user_id": "u1"}
+        with pytest.raises(HookAbortError, match="must be a list"):
+            resolve_tool_attachments("GMAIL_SEND_EMAIL", "gmail", params, native_param="attachment")
+
+    def test_empty_dict_attachments_aborts(self):
+        params = {"arguments": {"attachments": {}}, "user_id": "u1"}
+        with pytest.raises(HookAbortError, match="Invalid attachment reference"):
+            resolve_tool_attachments("GMAIL_SEND_EMAIL", "gmail", params, native_param="attachment")
+
+    def test_empty_list_attachments_is_a_noop(self):
+        # An explicit empty list is the one supported falsy value: attach nothing,
+        # and never write the native param or touch the friendly one.
+        params = {"arguments": {"attachments": []}, "user_id": "u1"}
+        assert resolve_tool_attachments("T", "tk", params, native_param="attachment") == []
+        assert params["arguments"] == {"attachments": []}
+
     def test_reference_without_a_source_aborts(self):
         params = {"arguments": {"attachments": [{"name": "no-source"}]}, "user_id": "u1"}
         with pytest.raises(HookAbortError, match="Invalid attachment reference"):

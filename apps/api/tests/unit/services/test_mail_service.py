@@ -369,36 +369,29 @@ class TestSendEmail:
             "s3key": "k/1",
         }
 
-    async def test_sends_multiple_attachments_as_a_list(self, mock_invoke_gmail_tool):
+    async def test_rejects_multiple_attachments_without_uploading(self, mock_invoke_gmail_tool):
         import io
 
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
         uploads = []
         for name in ("a.pdf", "b.pdf"):
             up = MagicMock()
             up.filename, up.content_type, up.file = name, "application/pdf", io.BytesIO(b"x")
             uploads.append(up)
 
-        with patch(
-            "app.services.mail.mail_service.upload_bytes_sync",
-            side_effect=[
-                {"name": "a.pdf", "mimetype": "application/pdf", "s3key": "k/a"},
-                {"name": "b.pdf", "mimetype": "application/pdf", "s3key": "k/b"},
-            ],
-        ):
-            await send_email(
+        with patch("app.services.mail.mail_service.upload_bytes_sync") as mock_upload:
+            result = await send_email(
                 user_id=USER_ID,
                 to="bob@example.com",
                 content=EmailContent(subject="Hi", body="Body"),
                 attachments=uploads,
             )
 
-        # More than one file -> the list form.
-        params = mock_invoke_gmail_tool.call_args[0][2]
-        assert params["attachment"] == [
-            {"name": "a.pdf", "mimetype": "application/pdf", "s3key": "k/a"},
-            {"name": "b.pdf", "mimetype": "application/pdf", "s3key": "k/b"},
-        ]
+        # Composio types Gmail's `attachment` as a single object, so a second file
+        # is rejected up front — nothing is uploaded and no send is attempted.
+        assert result.successful is False
+        assert "one attachment" in (result.error or "")
+        mock_upload.assert_not_called()
+        mock_invoke_gmail_tool.assert_not_called()
 
 
 class TestAttachmentsSurviveArgumentValidation:

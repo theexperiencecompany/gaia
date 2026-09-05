@@ -188,7 +188,10 @@ def resolve_tool_attachments(
     """
     arguments = params.get("arguments", {})
     raw = arguments.get(FRIENDLY_UPLOAD_PARAM)
-    if not raw:
+    # A missing key, an explicit None, or an empty list is a genuine no-op. A
+    # *present* but malformed value ("" / {} / a bare string) must abort — a
+    # truthiness check here would swallow it and send the mail attachment-less.
+    if raw is None or raw == []:
         return _display_from_native(arguments.get(native_param))
     if isinstance(raw, dict):
         raw = [raw]

@@ -65,6 +65,11 @@ ATTACHMENTS_NOT_LIST_ERROR = "`attachments` must be a list of file references." 
 ATTACHMENTS_NO_USER_ERROR = (
     "Cannot resolve file attachments without a user context."  # pragma: no mutate
 )
+# The pinned Composio Gmail toolkit types `attachment` as a single FileUploadable
+# object, not an array, so a second file would upload and then fail the send.
+GMAIL_MULTIPLE_ATTACHMENTS_ERROR = (
+    "Gmail accepts only one attachment per message."  # pragma: no mutate
+)
 
 # Agent-facing description for the friendly ``attachments`` array param (the schema
 # itself is derived from AttachmentReference in mail_models, so field changes land

@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import UploadFile
 from langchain_core.tools import StructuredTool
 
+from app.constants.email import GMAIL_MULTIPLE_ATTACHMENTS_ERROR
 from app.constants.log_tags import LogTag
 from app.models.mail_models import (
     ComposioAttachment,
@@ -186,10 +187,13 @@ async def send_email(
         if content.bcc_list:
             parameters["bcc"] = content.bcc_list
         if attachments:
+            # Composio types Gmail's `attachment` as a single FileUploadable, not
+            # an array, so reject extra files up front instead of uploading them
+            # all and failing the send.
+            if len(attachments) > 1:
+                return GmailToolResult(error=GMAIL_MULTIPLE_ATTACHMENTS_ERROR, successful=False)
             processed = await asyncio.to_thread(_process_attachments, attachments, tool_name)
-            # Single object for one file, list for many — the pinned Gmail
-            # toolkit rejects a one-element list.
-            parameters["attachment"] = processed[0] if len(processed) == 1 else processed
+            parameters["attachment"] = processed[0]
 
         log.info(
             f"{LogTag.MAIL} Sending email via Gmail tool",
