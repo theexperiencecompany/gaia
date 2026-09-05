@@ -1049,3 +1049,87 @@ class TestResetDefinitionAssembly:
         definition = mock_repo.reset_system_workflow.await_args.args[1]
         assert definition.description == ""
         assert definition.steps == []
+
+
+class TestActivationForPayingUsers:
+    """A Pro user's freshly provisioned system workflow is switched on at once, so
+    the promise GAIA makes in the opening conversation ("I'll get into your
+    inbox tonight") is kept. Anyone else keeps it dormant."""
+
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.is_subscription_active", new_callable=AsyncMock)
+    async def test_a_pro_user_gets_the_workflow_activated(
+        self, is_active: AsyncMock, mock_service: MagicMock
+    ) -> None:
+        from app.services.system_workflows.provisioner import _activate_for_paying_user
+
+        is_active.return_value = True
+        mock_service.activate_workflow = AsyncMock()
+
+        await _activate_for_paying_user("wf-9", "user-1", "gmail:email_intelligence")
+
+        is_active.assert_awaited_once_with("user-1")
+        mock_service.activate_workflow.assert_awaited_once_with("wf-9", "user-1")
+
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.is_subscription_active", new_callable=AsyncMock)
+    async def test_a_user_without_a_plan_keeps_it_dormant(
+        self, is_active: AsyncMock, mock_service: MagicMock
+    ) -> None:
+        from app.services.system_workflows.provisioner import _activate_for_paying_user
+
+        is_active.return_value = False
+        mock_service.activate_workflow = AsyncMock()
+
+        await _activate_for_paying_user("wf-9", "user-1", "gmail:email_intelligence")
+
+        mock_service.activate_workflow.assert_not_awaited()
+
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.is_subscription_active", new_callable=AsyncMock)
+    async def test_an_activation_failure_is_logged_with_its_cause_and_swallowed(
+        self, is_active: AsyncMock, mock_service: MagicMock
+    ) -> None:
+        from app.services.system_workflows.provisioner import _activate_for_paying_user
+
+        is_active.return_value = True
+        mock_service.activate_workflow = AsyncMock(side_effect=RuntimeError("composio down"))
+
+        with patch(f"{MODULE}.log") as mock_log:
+            await _activate_for_paying_user("wf-9", "user-1", "gmail:email_intelligence")
+
+        mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.kwargs == {
+            "key": "gmail:email_intelligence",
+            "workflow_id": "wf-9",
+            "user_id": "user-1",
+            "error": "composio down",
+            "error_type": "RuntimeError",
+        }
+
+    @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
+    @patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock)
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.workflow_repository")
+    async def test_provisioning_activates_each_created_workflow(
+        self,
+        mock_repo: MagicMock,
+        mock_service: MagicMock,
+        activate: AsyncMock,
+        _notify: AsyncMock,
+    ) -> None:
+        from app.services.system_workflows.provisioner import provision_system_workflows
+
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
+        created = MagicMock()
+        created.id = "wf-created"
+        mock_service.create_workflow = AsyncMock(return_value=created)
+        request = MagicMock()
+        request.trigger_config = MagicMock(type="manual", timezone="UTC")
+        with patch(
+            f"{MODULE}.SYSTEM_WORKFLOWS_BY_INTEGRATION",
+            {"gmail": [("gmail:email_intelligence", lambda: request)]},
+        ):
+            await provision_system_workflows("user-1", "gmail", "Gmail", notify=False)
+
+        activate.assert_awaited_once_with("wf-created", "user-1", "gmail:email_intelligence")

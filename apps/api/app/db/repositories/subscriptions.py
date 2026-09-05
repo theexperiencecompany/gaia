@@ -22,14 +22,6 @@ class SubscriptionsRepository(MongoRepository[SubscriptionDocument, Subscription
     async def get_active_for_user(self, user_id: str) -> SubscriptionDocument | None:
         return await self._find_one({"user_id": user_id, "status": "active"})
 
-    async def get_billing_protected_for_user(self, user_id: str) -> SubscriptionDocument | None:
-        """Active, or on hold while Dodo retries a failed charge.
-
-        Used by paid-only enforcement that removes things (workflow deactivation):
-        an on-hold subscriber must not lose their workflows over a card retry.
-        """
-        return await self._find_one({"user_id": user_id, "status": {"$in": ["active", "on_hold"]}})
-
     async def get_latest_active_for_user(self, user_id: str) -> SubscriptionDocument | None:
         found = await self._find(
             {"user_id": user_id, "status": "active"}, sort=[("created_at", -1)], limit=1

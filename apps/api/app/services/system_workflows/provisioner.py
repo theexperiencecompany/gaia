@@ -15,6 +15,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
+from app.decorators.entitlements import is_subscription_active
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -110,11 +111,12 @@ async def provision_system_workflows(
                     user_timezone = (user.get("timezone") or "").strip() or "UTC"
                 trigger_config.timezone = user_timezone
                 request.trigger_config = trigger_config
-            await WorkflowService.create_workflow(request, user_id)
+            workflow = await WorkflowService.create_workflow(request, user_id)
             created.append(request)
             log.info(
                 f"{LogTag.WORKFLOW} Provisioned system workflow for user", key=key, user_id=user_id
             )
+            await _activate_for_paying_user(workflow.id, user_id, key)
         except DuplicateKeyError:
             log.info(
                 f"{LogTag.WORKFLOW} System workflow already exists for user (concurrent creation), skipping",
@@ -135,6 +137,42 @@ async def provision_system_workflows(
 
     if created and notify:
         await _notify_workflows_provisioned(user_id, integration_display_name, created)
+
+
+async def _activate_for_paying_user(workflow_id: str, user_id: str, key: str) -> None:
+    """Switch a freshly provisioned system workflow on for a Pro user.
+
+    GAIA's opening conversation promises the inbox triage runs tonight; a
+    dormant workflow would make that a lie. Free users keep it dormant (the
+    paid-only gate would refuse to run it anyway), and an activation failure is
+    logged but never blocks the rest of provisioning: the workflow exists and can
+    be switched on by hand.
+    """
+    if not await is_subscription_active(user_id):
+        log.info(
+            f"{LogTag.WORKFLOW} System workflow left dormant for user without a plan",
+            key=key,
+            user_id=user_id,
+        )
+        return
+    try:
+        await WorkflowService.activate_workflow(workflow_id, user_id)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.WORKFLOW} Could not activate provisioned system workflow",
+            key=key,
+            workflow_id=workflow_id,
+            user_id=user_id,
+            error=str(e)[:500],
+            error_type=type(e).__name__,
+        )
+        return
+    log.info(
+        f"{LogTag.WORKFLOW} Activated provisioned system workflow for paying user",
+        key=key,
+        workflow_id=workflow_id,
+        user_id=user_id,
+    )
 
 
 async def _notify_workflows_provisioned(

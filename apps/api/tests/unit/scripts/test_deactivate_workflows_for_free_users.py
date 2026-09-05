@@ -30,7 +30,7 @@ def _repos(users: list[str], workflows: list[MagicMock]) -> tuple[MagicMock, Mag
     workflow_repo.distinct_users_with_activated_workflows = AsyncMock(return_value=users)
     workflow_repo.find_activated_for_user = AsyncMock(return_value=workflows)
     subscription_repo = MagicMock()
-    subscription_repo.get_billing_protected_for_user = AsyncMock(return_value=None)
+    subscription_repo.get_active_for_user = AsyncMock(return_value=None)
     return workflow_repo, subscription_repo
 
 
@@ -77,7 +77,7 @@ class TestFindFreeUserCandidates:
             workflow_repo.distinct_users_with_activated_workflows = AsyncMock(
                 return_value=[FREE_USER, PRO_USER]
             )
-            subscription_repo.get_billing_protected_for_user = AsyncMock(
+            subscription_repo.get_active_for_user = AsyncMock(
                 side_effect=lambda user_id: MagicMock() if user_id == PRO_USER else None
             )
             workflow_repo.find_activated_for_user = AsyncMock(return_value=[_workflow("wf-1")])
@@ -97,7 +97,7 @@ class TestFindFreeUserCandidates:
             workflow_repo.distinct_users_with_activated_workflows = AsyncMock(
                 return_value=[FREE_USER]
             )
-            subscription_repo.get_billing_protected_for_user = AsyncMock(return_value=None)
+            subscription_repo.get_active_for_user = AsyncMock(return_value=None)
             workflow_repo.find_activated_for_user = AsyncMock(return_value=[])
 
             candidates = await find_free_user_candidates()
@@ -112,7 +112,7 @@ class TestFindFreeUserCandidates:
             workflow_repo.distinct_users_with_activated_workflows = AsyncMock(
                 return_value=[FREE_USER]
             )
-            subscription_repo.get_billing_protected_for_user = AsyncMock(return_value=None)
+            subscription_repo.get_active_for_user = AsyncMock(return_value=None)
             workflow_repo.find_activated_for_user = AsyncMock(
                 return_value=[_workflow("wf-1"), _workflow("wf-2")]
             )
@@ -132,7 +132,7 @@ class TestRunMigration:
             workflow_repo.distinct_users_with_activated_workflows = AsyncMock(
                 return_value=[FREE_USER]
             )
-            subscription_repo.get_billing_protected_for_user = AsyncMock(return_value=None)
+            subscription_repo.get_active_for_user = AsyncMock(return_value=None)
             workflow_repo.find_activated_for_user = AsyncMock(return_value=[_workflow("wf-1")])
             deactivate.return_value = 1
 
@@ -152,7 +152,7 @@ class TestRunMigration:
             workflow_repo.distinct_users_with_activated_workflows = AsyncMock(
                 return_value=[FREE_USER, PRO_USER]
             )
-            subscription_repo.get_billing_protected_for_user = AsyncMock(
+            subscription_repo.get_active_for_user = AsyncMock(
                 side_effect=lambda user_id: MagicMock() if user_id == PRO_USER else None
             )
             workflow_repo.find_activated_for_user = AsyncMock(

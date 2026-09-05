@@ -58,18 +58,20 @@ class MigrationResult:
 
 
 async def find_free_user_candidates() -> list[FreeUserWorkflows]:
-    """Every user with at least one activated workflow and no billing protection.
+    """Every user with at least one activated workflow and no active subscription.
 
     Never touched: the ``system`` template owner, public template workflows, and
-    anyone with an active or on-hold subscription (on-hold is a payment retry in
-    flight, so those users are treated as still paying).
+    anyone whose subscription is ``active``. This mirrors Dodo exactly: a failed
+    renewal inside Dodo's grace period leaves the subscription active (we do not
+    process the interim update), and ``on_hold`` means Dodo has already revoked
+    access, so those workflows are paused like any other lapsed subscriber's.
     """
     candidates: list[FreeUserWorkflows] = []
 
     for user_id in await workflow_repository.distinct_users_with_activated_workflows():
         if user_id == SYSTEM_USER_ID:
             continue
-        if await subscription_repository.get_billing_protected_for_user(user_id):
+        if await subscription_repository.get_active_for_user(user_id):
             continue
         workflows = [
             w for w in await workflow_repository.find_activated_for_user(user_id) if not w.is_public
