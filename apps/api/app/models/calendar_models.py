@@ -808,9 +808,9 @@ class ListCalendarsInput(BaseModel):
 class FetchEventsInput(BaseModel):
     """Input for fetching events from one or more calendars."""
 
-    calendar_ids: list[str] = Field(
-        default_factory=list,
-        description="Calendar IDs to fetch from. If empty, fetches from all user's selected calendars. Use ['primary'] for just the primary calendar.",
+    calendar_ids: list[str] | None = Field(
+        default=None,
+        description="Calendar IDs to fetch from. None or an empty list fetches from all the user's selected calendars. Use ['primary'] for just the primary calendar.",
     )
     time_min: str | None = Field(
         default=None,

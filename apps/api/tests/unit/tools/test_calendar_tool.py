@@ -676,6 +676,13 @@ class TestFetchEvents:
         _, mock_events = self._run(tools, FetchEventsInput(calendar_ids=[]), events=[])
         assert mock_events.await_args.kwargs["selected_calendars"] is None
 
+    def test_none_calendar_ids_means_all_selected_calendars(self, tools, writer) -> None:
+        # The tool docstring tells the model to pass calendar_ids=None for "all
+        # calendars", but the field was typed list[str] and rejected None with a
+        # Pydantic list_type error, breaking every no-ids fetch. It must accept None.
+        _, mock_events = self._run(tools, FetchEventsInput(calendar_ids=None), events=[])
+        assert mock_events.await_args.kwargs["selected_calendars"] is None
+
     def test_events_are_formatted_and_has_more_is_propagated(self, tools, writer) -> None:
         events = [_timed_event("2026-01-01T09:00:00Z", "2026-01-01T10:00:00Z", "Sync", "cal-1")]
         out, _ = self._run(
