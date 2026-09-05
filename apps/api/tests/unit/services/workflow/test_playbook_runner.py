@@ -3096,6 +3096,52 @@ class TestForEach:
         ]
         assert reported == [{"step": "send_email", "items": 2, "ran": 2}]
 
+    async def test_a_pick_that_is_not_in_any_result_stops_the_step_naming_it(self) -> None:
+        """Seen live: the pick came back with an id one character off and the
+        tool errored mid-loop. A pick is a copy from the results above."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a1b2", "c3d4"]}'))
+        steps = [
+            ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            ForEachStep(
+                id="mails",
+                tool="send_email",
+                args={"to": "$item"},
+                for_each=_slot("the ones that want a reply"),
+                max_items=5,
+            ),
+        ]
+        fill = PlaybookAskFill(
+            asks=[PlaybookAskAnswer(name="mails.$for_each", items=["a1b2", "c3d5"])]
+        )
+
+        result, _ = await _run(_playbook(steps), registry, ask_fill=fill)
+
+        assert result.ok is False
+        assert [name for name, _ in recorder.calls if name == "send_email"] == []
+        assert result.failure is not None
+        assert "picked 'c3d5', which appears in no result this run produced" in result.failure
+
+    async def test_a_pick_copied_from_the_results_runs(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a1b2", "c3d4"]}'))
+        steps = [
+            ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            ForEachStep(
+                id="mails",
+                tool="send_email",
+                args={"to": "$item"},
+                for_each=_slot("the ones that want a reply"),
+                max_items=5,
+            ),
+        ]
+        fill = PlaybookAskFill(asks=[PlaybookAskAnswer(name="mails.$for_each", items=["c3d4"])])
+
+        result, _ = await _run(_playbook(steps), registry, ask_fill=fill)
+
+        assert result.ok is True, result.failure
+        assert [args["to"] for name, args in recorder.calls if name == "send_email"] == ["c3d4"]
+
     async def test_no_elements_is_a_completed_run_not_a_failure(self) -> None:
         """An inbox with nothing that wants a reply is a quiet Tuesday. Treating
         it as a failure would re-author the playbook away from the right shape."""

@@ -465,6 +465,12 @@ async def _run_for_each(
     return None
 
 
+def _items_not_in_results(items: Sequence[str], run: _Run) -> list[str]:
+    """The picked items that appear nowhere in what the run's steps returned."""
+    haystack = "\n".join(json.dumps(result.value, default=str) for result in run.steps.values())
+    return [item for item in items if item not in haystack]
+
+
 @dataclass(frozen=True, slots=True)
 class _ForEachItems:
     """What a ``for_each`` source held: the elements that run (capped) and how many there were."""
@@ -494,7 +500,19 @@ async def _for_each_items(
         )
         if failure is not None:
             return _NO_ITEMS, failure
-        raw: object = run.asks.items(step.source_key)
+        picked = run.asks.items(step.source_key)
+        invented = _items_not_in_results(picked, run)
+        if invented:
+            # Seen live: the pick came back with one id a character off, and
+            # the tool errored mid-loop. A pick is a copy from the results
+            # above, never a value of the model's own.
+            return _NO_ITEMS, _StepFailure(
+                run.position,
+                step.tool,
+                f"{step.source_key} picked {invented[0]!r}, which appears in no result this "
+                "run produced; a for_each pick copies items from the results above",
+            )
+        raw: object = picked
     else:
         try:
             raw = resolve_value(source, _context(run))
