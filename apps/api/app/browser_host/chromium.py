@@ -10,7 +10,11 @@ second context costs a fraction of a second Chromium. All context lifecycle
   * the Chromium subprocess and its root CDP client,
   * the live session registry (context id, primary page, activity, viewers),
   * an idle reaper that disposes untouched, unwatched contexts,
-  * crash recovery: a dead Chromium is relaunched and its sessions marked dead.
+  * crash recovery: a process-exit watcher relaunches a dead engine the instant
+    it dies (not on the reaper's next sweep) and marks its sessions dead. This
+    matters most for Obscura, a from-scratch engine that can segfault the whole
+    process on some pages — fast respawn turns a multi-second outage for every
+    session on the host into a sub-second blip.
 """
 
 from __future__ import annotations
@@ -228,6 +232,14 @@ class ChromiumHost:
         self._sampler: ProcessSampler | None = None
         self._lock = asyncio.Lock()
         self._reaper_task: asyncio.Task[None] | None = None
+        # Watches the engine subprocess and relaunches it the moment it exits.
+        self._watcher_task: asyncio.Task[None] | None = None
+        # Serializes recovery so the watcher and the reaper can never relaunch at
+        # once; recovery re-checks liveness under it, so the second caller no-ops.
+        self._recover_lock = asyncio.Lock()
+        # Set on ``stop()`` so the watcher treats the deliberate terminate as a
+        # shutdown, not a crash to recover from.
+        self._stopping = False
 
     # --- lifecycle ---
 
@@ -240,13 +252,24 @@ class ChromiumHost:
         log.info(f"{LogTag.BROWSER} browser host started")
 
     async def stop(self) -> None:
-        """Tear everything down: reaper, CDP client, Chromium process."""
+        """Tear everything down: reaper, process watcher, CDP client, engine process."""
+        self._stopping = True
         if self._reaper_task is not None:
             self._reaper_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._reaper_task
             self._reaper_task = None
-        await self._shutdown_chromium()
+        # Take the recovery lock so a crash recovery already in flight finishes
+        # (or is waited out) before we tear down, instead of racing it.
+        async with self._recover_lock:
+            await self._shutdown_chromium()
+        # The watcher wakes when the process it awaits exits; with ``_stopping``
+        # set it returns without recovering. Terminating the process above is
+        # what unblocks it, so this await always completes.
+        if self._watcher_task is not None:
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._watcher_task
+            self._watcher_task = None
         log.info(f"{LogTag.BROWSER} browser host stopped")
 
     @property
@@ -621,6 +644,21 @@ class ChromiumHost:
         cdp = CDPClient(self._root_ws_url)
         await cdp.start()
         self._cdp = cdp
+        # One watcher per launch, bound to the process it launched: it relaunches
+        # the engine the instant that process exits. A relaunch starts a fresh
+        # watcher for the new process; the old one has already returned.
+        self._watcher_task = asyncio.create_task(self._watch_process(self._proc))
+
+    async def _watch_process(self, proc: asyncio.subprocess.Process) -> None:
+        """Relaunch the engine the moment its process exits, not on the reaper's sweep."""
+        await proc.wait()
+        if self._stopping:
+            return
+        log.error(
+            f"{LogTag.BROWSER} browser engine process exited",
+            browser={"operation": "crash_detect", "returncode": proc.returncode},
+        )
+        await self._recover_crash()
 
     def _chromium_command(self) -> list[str]:
         """The full headless-shell argv, incl. the fresh user-data-dir it needs."""
@@ -763,16 +801,21 @@ class ChromiumHost:
             log.info(f"{LogTag.BROWSER} browser context reaped (idle)")
 
     async def _recover_crash(self) -> None:
-        dead_count = len(self._sessions)
-        for session in self._sessions.values():
-            session.dead = True
-        self._sessions.clear()
-        log.error(
-            f"{LogTag.BROWSER} Chromium crashed; relaunching",
-            browser={"operation": "crash_recover", "dead_sessions": dead_count},
-        )
-        await self._shutdown_chromium()
-        await self._launch()
+        async with self._recover_lock:
+            # The watcher and the reaper both route here; whichever loses the race
+            # finds the engine already back up (or a stop in progress) and does nothing.
+            if self._stopping or self.chromium_up:
+                return
+            dead_count = len(self._sessions)
+            for session in self._sessions.values():
+                session.dead = True
+            self._sessions.clear()
+            log.error(
+                f"{LogTag.BROWSER} browser engine crashed; relaunching",
+                browser={"operation": "crash_recover", "dead_sessions": dead_count},
+            )
+            await self._shutdown_chromium()
+            await self._launch()
 
 
 _LOCAL_STORAGE_DUMP_JS = (

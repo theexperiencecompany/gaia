@@ -3231,7 +3231,7 @@ async def test_recover_crash_logs_how_many_sessions_died() -> None:
         await host._recover_crash()
 
     mock_log.error.assert_called_once_with(
-        f"{LogTag.BROWSER} Chromium crashed; relaunching",
+        f"{LogTag.BROWSER} browser engine crashed; relaunching",
         browser={"operation": "crash_recover", "dead_sessions": 2},
     )
 

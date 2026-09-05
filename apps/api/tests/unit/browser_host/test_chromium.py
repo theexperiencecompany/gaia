@@ -315,6 +315,7 @@ async def test_recover_crash_marks_every_session_dead_before_dropping_it() -> No
         last_activity_at=0.0,
     )
     host._sessions = {"s1": session}
+    host._proc = MagicMock(returncode=-11)  # the real precondition: engine is down
     host._shutdown_chromium = AsyncMock()
     host._launch = AsyncMock()
 
@@ -323,3 +324,72 @@ async def test_recover_crash_marks_every_session_dead_before_dropping_it() -> No
     assert session.dead is True
     assert host._sessions == {}
     assert host.get("s1") is None
+
+
+# --- fast-respawn supervisor: relaunch on process exit, not on the reaper's sweep ---
+
+
+class _FakeProc:
+    """A stand-in engine process whose exit the test drives explicitly."""
+
+    def __init__(self) -> None:
+        self.returncode: int | None = None
+        self.pid = 4242
+        self._exited = asyncio.Event()
+
+    async def wait(self) -> int:
+        await self._exited.wait()
+        assert self.returncode is not None
+        return self.returncode
+
+    def die(self, code: int = -11) -> None:
+        self.returncode = code
+        self._exited.set()
+
+
+@pytest.mark.unit
+async def test_process_watcher_relaunches_engine_the_instant_it_dies() -> None:
+    """A segfault must trigger recovery immediately, not wait for the 15s reaper."""
+    host = _make_host(_FakeCDP())
+    host._recover_crash = AsyncMock()
+    proc = _FakeProc()
+
+    task = asyncio.create_task(host._watch_process(proc))  # type: ignore[arg-type]
+    await asyncio.sleep(0)  # let the watcher reach proc.wait()
+    proc.die(-11)
+    await task
+
+    host._recover_crash.assert_awaited_once()
+
+
+@pytest.mark.unit
+async def test_process_watcher_treats_deliberate_stop_as_shutdown_not_crash() -> None:
+    """A process that exits because ``stop()`` terminated it must not be relaunched."""
+    host = _make_host(_FakeCDP())
+    host._recover_crash = AsyncMock()
+    host._stopping = True
+    proc = _FakeProc()
+
+    task = asyncio.create_task(host._watch_process(proc))  # type: ignore[arg-type]
+    proc.die(0)
+    await task
+
+    host._recover_crash.assert_not_awaited()
+
+
+@pytest.mark.unit
+async def test_recover_crash_noops_when_engine_already_back_up() -> None:
+    """The reaper and the watcher both route to recovery; the loser must not relaunch a second engine."""
+    host = _make_host(_FakeCDP())  # _make_host leaves the proc alive (chromium_up)
+    host._launch = AsyncMock()
+    host._shutdown_chromium = AsyncMock()
+    session = HostSession(
+        session_id="s1", context_id="c1", target_id="t1", created_at=0.0, last_activity_at=0.0
+    )
+    host._sessions = {"s1": session}
+
+    await host._recover_crash()
+
+    host._launch.assert_not_awaited()
+    assert session.dead is False
+    assert host._sessions == {"s1": session}
