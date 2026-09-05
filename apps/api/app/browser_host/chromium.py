@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import subprocess
 import tempfile
@@ -30,6 +30,7 @@ from cdp_use.client import CDPClient
 import httpx
 from playwright.sync_api import StorageState, StorageStateCookie, sync_playwright
 
+from app.browser_host.metrics import ProcessSampler, SessionMetrics
 from app.config.settings import settings
 from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
 from app.constants.log_tags import LogTag
@@ -86,6 +87,7 @@ class HostSession:
     last_activity_at: float
     viewer_count: int = 0
     dead: bool = False
+    metrics: SessionMetrics = field(default_factory=SessionMetrics)
 
 
 class AtCapacityError(RuntimeError):
@@ -213,6 +215,7 @@ class ChromiumHost:
         # Slots claimed by a create that has not finished its CDP work yet, so the
         # capacity check stays correct while that work happens outside the lock.
         self._pending_slots = 0
+        self._sampler: ProcessSampler | None = None
         self._lock = asyncio.Lock()
         self._reaper_task: asyncio.Task[None] | None = None
 
@@ -294,6 +297,9 @@ class ChromiumHost:
                 # while a slot was actually free.
                 self._sessions[session_id] = session
                 self._pending_slots -= 1
+            session.metrics.context_count += 1
+            session.metrics.page_count += 1
+            self.sample_resources(session_id)
         except BaseException:
             async with self._lock:
                 self._pending_slots -= 1
@@ -310,6 +316,7 @@ class ChromiumHost:
     async def dispose_context(self, session_id: str) -> StorageState:
         """Dump the context's ``storage_state``, then dispose it. Returns the dump."""
         session = self._get(session_id)
+        self.sample_resources(session_id)
         state: StorageState | None = None
         try:
             state = await self._dump_storage_state(session)
@@ -323,6 +330,7 @@ class ChromiumHost:
                 self._sessions.pop(session_id, None)
             await self._dispose_context_id(session.context_id)
             log.set(browser={"session_id": session_id, "operation": "dispose"})
+            log.set_ns("browser", metrics=session.metrics.snapshot())
             if state is not None:
                 log.info(f"{LogTag.BROWSER} browser context disposed")
             else:
@@ -342,6 +350,34 @@ class ChromiumHost:
         session = self._sessions.get(session_id)
         if session is not None:
             session.last_activity_at = time.monotonic()
+
+    def sample_resources(self, session_id: str) -> None:
+        """Take one RSS/CPU reading for a session (create, navigation, dispose)."""
+        session = self._sessions.get(session_id)
+        if session is None or self._sampler is None:
+            return
+        reading = self._sampler.sample()
+        if reading is not None:
+            session.metrics.add_resource_sample(*reading)
+
+    def note_navigation_started(self, session_id: str) -> None:
+        """A ``Page.navigate`` command left the client (called by the CDP proxy)."""
+        session = self._sessions.get(session_id)
+        if session is not None:
+            session.metrics.start_navigation()
+
+    def note_navigation_finished(self, session_id: str) -> None:
+        """A load event came back; closes the timing and samples resources."""
+        session = self._sessions.get(session_id)
+        if session is None or session.metrics.finish_navigation() is None:
+            return
+        self.sample_resources(session_id)
+
+    def note_page_created(self, session_id: str) -> None:
+        """A ``Target.createTarget`` opened another page inside this session."""
+        session = self._sessions.get(session_id)
+        if session is not None:
+            session.metrics.page_count += 1
 
     def add_viewer(self, session_id: str) -> None:
         """Register a live-view watcher so the reaper won't dispose the session."""
@@ -367,6 +403,7 @@ class ChromiumHost:
             "last_activity_at": session.last_activity_at,
             "url": url,
             "title": title,
+            "metrics": session.metrics.snapshot(),
         }
 
     async def healthz(self) -> dict[str, Any]:
@@ -544,6 +581,7 @@ class ChromiumHost:
         self._proc = await asyncio.create_subprocess_exec(
             *args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
+        self._sampler = ProcessSampler.for_pid(self._proc.pid)
         self._root_ws_url = await self._await_cdp_ready()
         cdp = CDPClient(self._root_ws_url)
         await cdp.start()
@@ -599,6 +637,7 @@ class ChromiumHost:
                 self._proc.kill()
         self._proc = None
         self._root_ws_url = None
+        self._sampler = None
 
     async def _reaper_loop(self) -> None:
         while True:

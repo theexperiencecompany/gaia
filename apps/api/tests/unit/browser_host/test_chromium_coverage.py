@@ -2786,6 +2786,7 @@ async def test_create_context_registers_a_session_stamped_now(
         last_activity_at=4242.0,
         viewer_count=0,
         dead=False,
+        metrics=session.metrics,
     )
     assert len(session.session_id) == 32
     assert host._sessions == {session.session_id: session}

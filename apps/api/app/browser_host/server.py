@@ -55,6 +55,31 @@ class DeleteSessionResponse(BaseModel):
     storage_state: StorageState
 
 
+class AggregateResponse(BaseModel):
+    """A sampled quantity's spread over the session so far."""
+
+    count: int
+    min: float
+    max: float
+    avg: float
+
+
+class SessionMetricsResponse(BaseModel):
+    """Live per-session profiling numbers. Aggregates are null until first sampled.
+
+    ``rss_mb``/``cpu_percent`` describe the whole Chromium process tree, which
+    every session on this host shares — see ``browser_host/metrics.py``.
+    """
+
+    session_lifetime_seconds: float
+    navigation_count: int
+    context_count: int
+    page_count: int
+    rss_mb: AggregateResponse | None = None
+    cpu_percent: AggregateResponse | None = None
+    navigation_ms: AggregateResponse | None = None
+
+
 class SessionInfoResponse(BaseModel):
     """Live status for a session: activity timestamp, url, title, viewer state."""
 
@@ -63,6 +88,7 @@ class SessionInfoResponse(BaseModel):
     last_activity_at: float
     url: str | None = None
     title: str | None = None
+    metrics: SessionMetricsResponse
 
 
 class TouchSessionResponse(BaseModel):

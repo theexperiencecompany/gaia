@@ -25,6 +25,15 @@ INFO = {
     "last_activity_at": 1.0,
     "url": "https://example.com",
     "title": "Example",
+    "metrics": {
+        "session_lifetime_seconds": 12.5,
+        "navigation_count": 2,
+        "context_count": 1,
+        "page_count": 1,
+        "rss_mb": {"count": 2, "min": 400.0, "max": 512.0, "avg": 456.0},
+        "cpu_percent": {"count": 2, "min": 3.0, "max": 25.0, "avg": 14.0},
+        "navigation_ms": {"count": 2, "min": 120.0, "max": 900.0, "avg": 510.0},
+    },
 }
 
 

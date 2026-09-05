@@ -55,6 +55,8 @@ _ALLOWED_NAVIGATION_SCHEMES = frozenset({"http", "https"})
 _NAVIGATION_METHODS = frozenset({"Page.navigate", "Target.createTarget"})
 # Chromium's inert blank page — the one non-web URL the host itself opens.
 _BLANK_URL = "about:blank"
+# The load signal that closes a navigation's timing (see metrics.py).
+_LOAD_EVENT_METHOD = "Page.loadEventFired"
 # CDP's implementation-defined server-error code, used for a refused command.
 _CDP_REFUSED_CODE = -32000
 
@@ -146,6 +148,19 @@ def _rewrite_upstream(message: dict[str, Any], context_id: str, gettargets_ids: 
     return json.dumps(message)
 
 
+def _is_load_event(text: str) -> bool:
+    """Whether this downstream frame is ``Page.loadEventFired``.
+
+    The substring test is a guard, not the answer: it keeps the common frame off
+    the JSON parser (``_filter_downstream`` already parses every frame, and this
+    would double that cost) while the parse below is what actually decides.
+    """
+    if _LOAD_EVENT_METHOD not in text:
+        return False
+    message = json.loads(text)
+    return bool(message.get("method") == _LOAD_EVENT_METHOD)
+
+
 def _filter_downstream(raw: str, context_id: str, gettargets_ids: set[int]) -> str | None:
     """Chromium -> client: trim getTargets, drop cross-context events. None = drop."""
     message = json.loads(raw)
@@ -194,6 +209,10 @@ async def run_cdp_proxy(host: ChromiumHost, session: HostSession, client_ws: Web
                         _refusal_reply(refused_id if isinstance(refused_id, int) else None, reason)
                     )
                     continue
+                if message.get("method") == "Page.navigate":
+                    host.note_navigation_started(session.session_id)
+                elif message.get("method") == "Target.createTarget":
+                    host.note_page_created(session.session_id)
                 await chromium_ws.send(
                     _rewrite_upstream(message, session.context_id, gettargets_ids)
                 )
@@ -203,6 +222,8 @@ async def run_cdp_proxy(host: ChromiumHost, session: HostSession, client_ws: Web
             async for raw in chromium_ws:
                 host.touch(session.session_id)
                 text = raw if isinstance(raw, str) else raw.decode()
+                if _is_load_event(text):
+                    host.note_navigation_finished(session.session_id)
                 forward = _filter_downstream(text, session.context_id, gettargets_ids)
                 if forward is not None:
                     await client_ws.send_text(forward)
