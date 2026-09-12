@@ -44,10 +44,17 @@ jobs:
         # Full reference: https://www.react.doctor/ci
         with:
           blocking: warning
+          # The action is SHA-pinned but installs the react-doctor npm package
+          # at run time, defaulting to "latest". Pin it to the version in
+          # pnpm-lock.yaml — the one the local pre-commit hook runs — so a
+          # scanner release cannot red the gate with zero code changes: 0.9.13
+          # shipped `no-high-complexity-react-function` between two runs of the
+          # same PR and flagged pre-existing components that PRs touched in a
+          # line or two. Bump this together with the root package.json entry.
+          version: "0.9.12"
         #   scope: full              # On PRs, scan the whole project instead of just changed files
         #   comment: false           # Disable the sticky PR summary comment
         #   review-comments: false   # Disable inline review comments on changed lines
         #   commit-status: false     # Disable the commit status (score + counts, links to the run)
-        #   version: "0.4.0"         # Pin to a specific react-doctor version instead of "latest"
         #   directory: apps/web      # Scan a sub-directory (default: ".")
         #   project: "web,admin"     # In a monorepo, scan specific workspace project(s)

@@ -13,30 +13,23 @@ no longer define them):
 
 Idempotent: facts whose exact content already exists for the user are skipped.
 
-Run from repo root:
-    cd apps/api && uv run python scripts/migrate_mem0_memories.py [--user-id ID] [--dry-run]
+Run: uv run python -m scripts.migrate_mem0_memories [--user-id ID] [--dry-run]
 """
 
 import argparse
 import asyncio
 import os
-from pathlib import Path
 import sys
-
-# Ensure app is on path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import httpx
 
 from app.agents.llm.client import register_llm_providers
 from app.constants.memory import MemorySourceType
 from app.db.chroma.chromadb import init_chroma
-from app.db.mongodb.collections import get_async_collection
 from app.db.postgresql import init_postgresql_engine
+from app.db.repositories.users import user_repository
 from app.memory import pg_store
 from app.memory.engine import memory_engine
-
-users_collection = get_async_collection("users")
 
 MEM0_API_BASE = "https://api.mem0.ai"
 MEM0_PAGE_SIZE = 100
@@ -152,7 +145,7 @@ async def main() -> None:
     if args.user_id:
         user_ids = [args.user_id]
     else:
-        user_ids = [str(doc["_id"]) async for doc in users_collection.find({}, {"_id": 1})]
+        user_ids = await user_repository.list_all_ids()
     print(
         f"Migrating mem0 memories for {len(user_ids)} user(s){' (dry run)' if args.dry_run else ''}..."
     )

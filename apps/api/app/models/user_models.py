@@ -129,6 +129,9 @@ class OnboardingRequest(BaseModel):
     focus: str | None = Field(
         None, max_length=500, description="User's current primary focus or goal"
     )
+    working_on: str | None = Field(
+        None, max_length=500, description="What the user is working on right now"
+    )
     clarify_answers: list[ClarifyAnswer] | None = Field(
         None,
         description="No-Gmail follow-up answers (scope/blocker/constraint)",
@@ -249,6 +252,23 @@ def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
     return out
 
 
+class EditionRotation(BaseModel):
+    """Persisted shuffled-cycle state for one edition kind's template families.
+
+    ``cycle`` is a permutation of every eligible family; ``index`` points at the
+    family the NEXT edition will use. A cycle whose family set no longer matches
+    the registry is discarded and reshuffled (see edition_rotation). Stored
+    per kind (``daily``/``weekly``) on the user doc.
+
+    Both fields are required: a rotation missing either one describes no
+    position in any cycle, so defaulting them would only ever hand
+    ``advance_rotation`` a state it has to throw away.
+    """
+
+    cycle: list[str]
+    index: int
+
+
 class AuthenticatedUser(TypedDict, total=False):
     """``request.state.user`` — what every ``Depends(get_current_user)`` yields.
 
@@ -303,6 +323,13 @@ class AuthenticatedUser(TypedDict, total=False):
     memory_backfilled: datetime | None
     last_inactive_email_sent: datetime | None
     inactive_email_count: int | None
+    # Briefing engine markers (schemaless-ish, same rationale as onboarding above).
+    first_steps: dict[str, Any] | None
+    briefing_bootstrap: dict[str, Any] | None
+    briefing_dormancy: dict[str, Any] | None
+    briefing_channel_priority: list[str] | None
+    day_zero_hello: dict[str, Any] | None
+    edition_rotations: dict[str, EditionRotation] | None
     # Usage-limit upsell email dedupe + activity badge tier (usage system).
     last_limit_email_sent: datetime | None
     highest_activity_tier: str | None
@@ -377,6 +404,15 @@ class UserDocument(MongoDocument):
     memory_backfilled: datetime | None = None
     last_inactive_email_sent: datetime | None = None
     inactive_email_count: int | None = None
+    # Briefing engine markers (schemaless-ish, same rationale as onboarding above).
+    first_steps: dict[str, Any] | None = None
+    briefing_bootstrap: dict[str, Any] | None = None
+    briefing_dormancy: dict[str, Any] | None = None
+    briefing_channel_priority: list[str] | None = None
+    day_zero_hello: dict[str, Any] | None = None
+    # Edition template rotation per briefing kind (shuffled full cycle; see
+    # edition_rotation). Keys: "daily" | "weekly".
+    edition_rotations: dict[str, EditionRotation] | None = None
     # Usage-limit upsell email dedupe (1/week — see send_limit_reached_email).
     last_limit_email_sent: datetime | None = None
     # Best activity-badge tier ever reached (monotonic; drives first-time

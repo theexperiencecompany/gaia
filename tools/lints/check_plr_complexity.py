@@ -17,6 +17,9 @@ fix them in the same PR, same as any other lint failure. A genuinely new
 violation (new file, or a rule the file didn't already have) is never
 grandfathered, touched or not.
 
+One narrow waiver: a LangChain ``@tool`` function is exempt from ``PLR0913``
+only, because its parameters are the schema the model sees (see ``_is_exempt``).
+
 Usage::
 
     python3 tools/lints/check_plr_complexity.py       # check (exits 1 on failure)
@@ -27,6 +30,8 @@ Stdlib only, like the AST rules and the ignore-ratchet beside it.
 
 from __future__ import annotations
 
+import ast
+from functools import cache
 import json
 from pathlib import Path
 import subprocess
@@ -49,6 +54,11 @@ CHANGES_SCRIPT = REPO_ROOT / "scripts" / "ci" / "changes.sh"
 PLR_RULES = ("PLR0911", "PLR0912", "PLR0913", "PLR0915")
 FULL_SENTINEL = "__FULL__"
 
+# The only rule this ratchet waives, and the decorator it waives it for -- see
+# `_is_exempt` for why a @tool's argument list is a contract, not complexity.
+_ARG_COUNT_RULE = "PLR0913"
+_TOOL_DECORATOR = "tool"
+
 # Pinned to the same ruff version as the "Python ruff" CI lane
 # (.github/workflows/code-quality.yml) -- bump both together. `uvx` resolves
 # it without requiring a separate "install ruff onto PATH" CI step.
@@ -65,6 +75,51 @@ _BASELINE_HEADER = """\
 # One line per (file, rule), tab-separated, sorted. Regenerate with:
 #   python3 tools/lints/check_plr_complexity.py --update
 """
+
+
+def _decorator_name(node: ast.expr) -> str | None:
+    """Final name of a decorator expression: ``@tool``, ``@tool(...)``, ``@x.tool``."""
+    if isinstance(node, ast.Call):
+        node = node.func
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Name):
+        return node.id
+    return None
+
+
+@cache
+def _tool_decorated_def_lines(path: Path) -> frozenset[int]:
+    """The ``def`` line of every ``@tool``-decorated function in a file.
+
+    Ruff reports PLR0913 at the ``def`` line (decorators are separate nodes),
+    which is also ``FunctionDef.lineno`` -- so the two line up directly.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return frozenset()
+    return frozenset(
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and any(_decorator_name(d) == _TOOL_DECORATOR for d in node.decorator_list)
+    )
+
+
+def _is_exempt(code: str, filename: str, row: int) -> bool:
+    """True for the one waiver this ratchet grants: argument count on a @tool.
+
+    A LangChain ``@tool`` function's parameters ARE the schema the model sees,
+    so the argument list is the tool's contract rather than accidental
+    complexity -- collapsing it into nested objects would change what the LLM
+    is asked to emit. Only the argument-count rule is waived; too many returns,
+    branches, or statements inside the body are ordinary complexity and still
+    fail.
+    """
+    if code != _ARG_COUNT_RULE:
+        return False
+    return row in _tool_decorated_def_lines(Path(filename).resolve())
 
 
 def _current_violations() -> dict[tuple[str, str], int]:
@@ -95,9 +150,11 @@ def _current_violations() -> dict[tuple[str, str], int]:
     violations = json.loads(proc.stdout)
     out: dict[tuple[str, str], int] = {}
     for v in violations:
+        row = v["location"]["row"]
+        if _is_exempt(v["code"], v["filename"], row):
+            continue
         path = Path(v["filename"]).resolve().relative_to(REPO_ROOT).as_posix()
-        key = (path, v["code"])
-        out.setdefault(key, v["location"]["row"])
+        out.setdefault((path, v["code"]), row)
     return out
 
 

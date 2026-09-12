@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.db.mongodb import indexes as indexes_module
 from app.db.mongodb.indexes import create_playbook_indexes
 from app.db.mongodb.mongodb import MongoDB, init_mongodb
 
@@ -364,37 +365,12 @@ class TestGetAsyncCollection:
 # Indexes — create_all_indexes
 # ---------------------------------------------------------------------------
 
-# Must mirror the tasks gathered by create_all_indexes(). Any creator missing
-# here is left unpatched and runs against the real MongoDB, which makes these
-# tests order- and environment-dependent.
+# Every creator create_all_indexes() gathers, read off the module so a new creator
+# can never be left unpatched here and run against the real MongoDB.
 _INDEX_CREATORS = [
-    "create_user_indexes",
-    "create_conversation_indexes",
-    "create_todo_indexes",
-    "create_project_indexes",
-    "create_note_indexes",
-    "create_file_indexes",
-    "create_mail_indexes",
-    "create_calendar_indexes",
-    "create_blog_indexes",
-    "create_notification_indexes",
-    "create_reminder_indexes",
-    "create_workflow_indexes",
-    "create_payment_indexes",
-    "create_processed_webhook_indexes",
-    "create_usage_indexes",
-    "create_integration_indexes",
-    "create_user_integration_indexes",
-    "create_integration_instructions_indexes",
-    "create_device_token_indexes",
-    "create_installed_skills_indexes",
-    "create_workflow_execution_indexes",
-    "create_bot_session_indexes",
-    "create_e2b_sandbox_indexes",
-    "create_hil_approvals_indexes",
-    "create_pending_platform_registration_indexes",
-    "create_llm_call_indexes",
-    "create_playbook_indexes",
+    name
+    for name in dir(indexes_module)
+    if name.startswith("create_") and name.endswith("_indexes") and name != "create_all_indexes"
 ]
 
 

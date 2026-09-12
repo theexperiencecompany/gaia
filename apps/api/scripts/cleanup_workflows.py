@@ -78,7 +78,9 @@ async def cleanup_old_workflow_steps():
 
         # Ask for confirmation in interactive mode
         if sys.stdin.isatty():
-            response = input(f"\nDo you want to delete {workflows_to_cleanup} workflows? (y/N): ")
+            response = await asyncio.to_thread(
+                input, f"\nDo you want to delete {workflows_to_cleanup} workflows? (y/N): "
+            )
             if response.lower() != "y":
                 logger.info("Cleanup cancelled by user.")
                 return False
