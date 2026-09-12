@@ -1,3 +1,4 @@
+import type { Schema } from "@gaia/shared/api/generated";
 import type { SubTask } from "@gaia/shared/types";
 import { Priority } from "@gaia/shared/types";
 
@@ -23,13 +24,7 @@ export interface TodoCreate {
   subtasks?: SubTask[];
 }
 
-export interface TodoCounts {
-  inbox: number;
-  today: number;
-  upcoming: number;
-  completed: number;
-  overdue: number;
-}
+export type TodoCounts = Schema<"TodoCounts">;
 
 export type FilterTab =
   | "all"

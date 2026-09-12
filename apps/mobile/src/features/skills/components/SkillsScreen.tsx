@@ -11,15 +11,16 @@ import { AppIcon, Search01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { BackButton } from "@/shared/components/ui/back-button";
-import type { Skill } from "../api/skills-api";
+import type { DiscoveredSkill, Skill } from "../api/skills-api";
 import { useSkills } from "../hooks/useSkills";
-import { SkillCard } from "./SkillCard";
+import { DiscoveredSkillCard, SkillCard } from "./SkillCard";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ListItem =
   | { type: "section-header"; title: string; count: number }
   | { type: "skill"; skill: Skill }
+  | { type: "discover"; skill: DiscoveredSkill }
   | { type: "empty"; section: "my-skills" | "discover" };
 
 // ─── Section Header ───────────────────────────────────────────────────────────
@@ -203,12 +204,9 @@ export function SkillsScreen() {
     useSkills();
 
   const [localMySkills, setLocalMySkills] = useState<Skill[] | null>(null);
-  const [localDiscoverSkills, setLocalDiscoverSkills] = useState<
-    Skill[] | null
-  >(null);
 
   const effectiveMySkills = localMySkills ?? mySkills;
-  const effectiveDiscoverSkills = localDiscoverSkills ?? discoverableSkills;
+  const effectiveDiscoverSkills = discoverableSkills;
 
   const handleToggle = useCallback(
     (skill: Skill, enabled: boolean) => {
@@ -222,17 +220,12 @@ export function SkillsScreen() {
         }
         return base.map((s) => (s.id === skill.id ? { ...s, enabled } : s));
       });
-      setLocalDiscoverSkills((prev) => {
-        const base = prev ?? discoverableSkills;
-        return base.map((s) => (s.id === skill.id ? { ...s, enabled } : s));
-      });
     },
-    [mySkills, discoverableSkills],
+    [mySkills],
   );
 
   const handleRefresh = useCallback(async () => {
     setLocalMySkills(null);
-    setLocalDiscoverSkills(null);
     await refresh();
   }, [refresh]);
 
@@ -283,7 +276,7 @@ export function SkillsScreen() {
       items.push({ type: "empty", section: "discover" });
     } else {
       for (const skill of filteredDiscoverSkills) {
-        items.push({ type: "skill", skill });
+        items.push({ type: "discover", skill });
       }
     }
 
@@ -293,6 +286,7 @@ export function SkillsScreen() {
   const keyExtractor = useCallback((item: ListItem, index: number) => {
     if (item.type === "section-header") return `header-${item.title}`;
     if (item.type === "empty") return `empty-${item.section}`;
+    if (item.type === "discover") return `discover-${item.skill.path}-${index}`;
     return `skill-${item.skill.id}-${index}`;
   }, []);
 
@@ -303,6 +297,13 @@ export function SkillsScreen() {
       }
       if (item.type === "empty") {
         return <EmptySection section={item.section} hasSearch={q.length > 0} />;
+      }
+      if (item.type === "discover") {
+        return (
+          <View style={{ paddingHorizontal: spacing.md, marginBottom: 8 }}>
+            <DiscoveredSkillCard skill={item.skill} />
+          </View>
+        );
       }
       return (
         <View style={{ paddingHorizontal: spacing.md, marginBottom: 8 }}>

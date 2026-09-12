@@ -1,3 +1,4 @@
+import type { Schema } from "@shared/api/generated";
 export interface DeviceServer {
   server_key: string;
   display_name: string;
@@ -18,9 +19,7 @@ export interface Device {
   servers: DeviceServer[];
 }
 
-export interface DeviceListResponse {
-  devices: Device[];
-}
+export type DeviceListResponse = Schema<"DeviceListResponse">;
 
 export interface ApproveDeviceResponse {
   device_id: string;

@@ -8,12 +8,12 @@ import { NotificationItem } from "@/features/notification/components/Notificatio
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
-  type NotificationRecord,
   NotificationStatus,
+  type NotificationView,
 } from "@/types/features/notificationTypes";
 
 interface NotificationListSectionProps {
-  notifications: NotificationRecord[];
+  notifications: NotificationView[];
   title?: string;
 }
 

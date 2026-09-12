@@ -1,4 +1,4 @@
-export type SearchMode =
+export type ComposerMode =
   // | "deep_research"
   // | "web_search"
   // | "fetch_webpage"

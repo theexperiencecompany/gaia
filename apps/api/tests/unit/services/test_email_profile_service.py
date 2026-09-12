@@ -16,6 +16,7 @@ from app.constants.email import (
     GRAVATAR_SOURCE_NAME,
 )
 from app.models.search_models import URLResponse
+from app.services.composio.proxy_client import ProxyRequest
 from app.services.email_profile_service import (
     _domain_favicon_profile,
     _merge_profiles,
@@ -46,8 +47,8 @@ def _search_result(person: dict) -> dict:
 
 
 def _proxy_side_effect(search_payload: dict, get_payload: dict):
-    async def fake_proxy_request(**kwargs: object) -> dict:
-        endpoint = kwargs["endpoint"]
+    async def fake_proxy_request(request: ProxyRequest) -> dict:
+        endpoint = request.endpoint
         if "search" in str(endpoint):
             return search_payload
         return get_payload
@@ -158,7 +159,7 @@ class TestFetchEmailProfile:
         warm up (empty query) and retry before giving up."""
         calls = {"n": 0}
 
-        async def fake_proxy_request(**kwargs: object) -> dict:
+        async def fake_proxy_request(request: ProxyRequest) -> dict:
             calls["n"] += 1
             if calls["n"] <= 2:
                 return {"results": []}

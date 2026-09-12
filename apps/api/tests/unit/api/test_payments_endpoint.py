@@ -21,6 +21,7 @@ from app.models.payment_models import (
     PlanDuration,
     PlanResponse,
     ProCheckout,
+    SubscriptionDocument,
 )
 from app.services.analytics_service import AnalyticsEvents
 from tests.unit.services.conftest import SUBSCRIPTION_DATA_PAYLOAD, _make_webhook_event
@@ -262,7 +263,7 @@ class TestCreateSubscription:
             response = await client.post(SUBSCRIPTIONS_URL, json={"product_id": "prod_abc"})
 
         assert response.status_code == 409
-        assert response.json()["detail"] == "Active subscription exists"
+        assert response.json()["message"] == "Active subscription exists"
 
 
 # ---------------------------------------------------------------------------
@@ -455,24 +456,29 @@ class TestCancelSubscription:
             **{
                 **_make_subscription_status(),
                 "is_subscribed": True,
-                "subscription": {
-                    "dodo_subscription_id": "sub_xyz789",
-                    "status": "active",
-                    "cancel_at_next_billing_date": True,
-                },
+                "subscription": SubscriptionDocument(
+                    dodo_subscription_id="sub_xyz789",
+                    user_id="507f1f77bcf86cd799439011",
+                    status="active",
+                    cancel_at_next_billing_date=True,
+                ),
             }
         )
-        with patch(
-            "app.services.payments.payment_service.payment_service.cancel_subscription",
-            new_callable=AsyncMock,
-            return_value=mock_status,
-        ) as mock_cancel:
-            with patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture:
-                response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
+        with (
+            patch(
+                "app.services.payments.payment_service.payment_service.cancel_subscription",
+                new_callable=AsyncMock,
+                return_value=mock_status,
+            ) as mock_cancel,
+            patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.payments.log") as mock_log,
+        ):
+            response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.SUBSCRIPTION_CANCELLATION_REQUESTED)
         mock_cancel.assert_awaited_once_with("507f1f77bcf86cd799439011")
+        mock_log.set.assert_any_call(payment={"subscription_id": "sub_xyz789", "status": "active"})
 
     async def test_cancel_subscription_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -496,7 +502,7 @@ class TestCancelSubscription:
             response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
 
         assert response.status_code == 404
-        assert "No active subscription" in response.json()["detail"]
+        assert "No active subscription" in response.json()["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -709,7 +715,7 @@ class TestDodoWebhook:
             )
 
         assert response.status_code == 503
-        assert "User not found" in response.json()["detail"]
+        assert "User not found" in response.json()["message"]
 
     async def test_a_refused_delivery_is_not_narrated_as_processed(self, client: AsyncClient):
         """It used to log "Webhook processed" at info on the way to refusing the
@@ -870,7 +876,7 @@ class TestDodoWebhook:
             )
 
         assert response.status_code == 401
-        assert "Invalid webhook signature" in response.json()["detail"]
+        assert "Invalid webhook signature" in response.json()["message"]
 
     async def test_webhook_missing_headers_returns_422(self, client: AsyncClient):
         response = await client.post(
@@ -897,7 +903,7 @@ class TestDodoWebhook:
             )
 
         assert response.status_code == 400
-        assert "Invalid JSON" in response.json()["detail"]
+        assert "Invalid JSON" in response.json()["message"]
 
     async def test_webhook_processing_error_returns_500(self, client: AsyncClient):
         with (
@@ -923,4 +929,4 @@ class TestDodoWebhook:
             )
 
         assert response.status_code == 500
-        assert "Webhook processing failed" in response.json()["detail"]
+        assert "Webhook processing failed" in response.json()["message"]

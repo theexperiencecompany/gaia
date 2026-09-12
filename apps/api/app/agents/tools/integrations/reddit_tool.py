@@ -7,7 +7,7 @@ from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -40,11 +40,13 @@ def register_reddit_custom_tools(composio: Composio) -> list[str]:
         try:
             me = (
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=REDDIT_TOOLKIT,
-                    endpoint=f"{REDDIT_API_BASE}/api/v1/me",
-                    method="GET",
-                    headers=_REDDIT_HEADERS,
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=REDDIT_TOOLKIT,
+                        endpoint=f"{REDDIT_API_BASE}/api/v1/me",
+                        method="GET",
+                        headers=_REDDIT_HEADERS,
+                    )
                 )
                 or {}
             )
@@ -58,12 +60,14 @@ def register_reddit_custom_tools(composio: Composio) -> list[str]:
         try:
             subs_data = (
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=REDDIT_TOOLKIT,
-                    endpoint=f"{REDDIT_API_BASE}/subreddits/mine/subscriber",
-                    method="GET",
-                    query={"limit": 5},
-                    headers=_REDDIT_HEADERS,
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=REDDIT_TOOLKIT,
+                        endpoint=f"{REDDIT_API_BASE}/subreddits/mine/subscriber",
+                        method="GET",
+                        query={"limit": 5},
+                        headers=_REDDIT_HEADERS,
+                    )
                 )
                 or {}
             )
@@ -88,12 +92,14 @@ def register_reddit_custom_tools(composio: Composio) -> list[str]:
         try:
             messages_data = (
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=REDDIT_TOOLKIT,
-                    endpoint=f"{REDDIT_API_BASE}/message/unread",
-                    method="GET",
-                    query={"limit": 5},
-                    headers=_REDDIT_HEADERS,
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=REDDIT_TOOLKIT,
+                        endpoint=f"{REDDIT_API_BASE}/message/unread",
+                        method="GET",
+                        query={"limit": 5},
+                        headers=_REDDIT_HEADERS,
+                    )
                 )
                 or {}
             )

@@ -5,7 +5,7 @@ import type { PaywallSource } from "@/lib/analytics";
 import type { IMessage } from "@/lib/db/chatDb";
 import { type OptimisticMessage, useChatStore } from "@/stores/chatStore";
 import {
-  type ToolInfo,
+  type ActiveToolInfo,
   type TurnUiState,
   useStreamStore,
 } from "@/stores/streamStore";
@@ -33,7 +33,7 @@ interface PopupChatState {
   /** The active conversation's turn session, if one is open. */
   turn: TurnUiState | null;
   /** Auxiliary (voice/upload) loading, mirrored as-is. */
-  auxLoading: { text: string; toolInfo?: ToolInfo } | null;
+  auxLoading: { text: string; toolInfo?: ActiveToolInfo } | null;
   /**
    * Whether the paid-only wall is up, and the offer behind it. The composer
    * window is where a 402 lands (it owns sending), but it is a 420x48 pill

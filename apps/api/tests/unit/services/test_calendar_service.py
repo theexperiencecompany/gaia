@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from fastapi import HTTPException
 import pytest
 
+from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.models.calendar_models import (
     CalendarEventDisplay,
     CalendarPreferencesDocument,
@@ -166,11 +167,11 @@ class TestListCalendars:
         assert result.items[0].summary == "Work"
         # Google's extra keys ride through untouched for the web client.
         assert result.items[0].model_dump() == items[0]
-        kwargs = mock_proxy.call_args.kwargs
-        assert kwargs["toolkit"] == "GOOGLECALENDAR"
-        assert kwargs["endpoint"].endswith("/users/me/calendarList")
-        assert kwargs["method"] == "GET"
-        assert kwargs["user_id"] == USER_ID
+        request = mock_proxy.call_args.args[0]
+        assert request.toolkit == "GOOGLECALENDAR"
+        assert request.endpoint.endswith("/users/me/calendarList")
+        assert request.method == "GET"
+        assert request.user_id == USER_ID
 
     async def test_short_format_returns_subset(self, mock_proxy):
         mock_proxy.return_value = {
@@ -195,6 +196,22 @@ class TestListCalendars:
             await list_calendars(USER_ID)
         assert exc.value.status_code == 500
         assert "boom" in str(exc.value.detail)
+
+    async def test_a_disconnected_integration_is_the_structured_reconnect_detail(self, mock_proxy):
+        mock_proxy.side_effect = AppError(
+            message="Google Calendar is not connected",
+            status_code=403,
+            meta={"code": INTEGRATION_NOT_CONNECTED, "toolkit": "googlecalendar"},
+        )
+        with pytest.raises(HTTPException) as exc:
+            await list_calendars(USER_ID)
+        assert exc.value.status_code == 403
+        assert exc.value.detail == {
+            "type": "integration",
+            "code": INTEGRATION_NOT_CONNECTED,
+            "toolkit": "googlecalendar",
+            "message": "Reconnect Google Calendar to load your events.",
+        }
 
 
 class TestGetCalendarMetadataMap:
@@ -226,23 +243,23 @@ class TestFetchCalendarEvents:
             time_max="2025-01-02T00:00:00Z",
             max_results=42,
         )
-        kwargs = mock_proxy.call_args.kwargs
-        assert kwargs["endpoint"].endswith("/calendars/primary/events")
-        assert kwargs["method"] == "GET"
-        assert kwargs["query"]["maxResults"] == 42
-        assert kwargs["query"]["pageToken"] == "tk"
-        assert kwargs["query"]["timeMin"] == "2025-01-01T00:00:00Z"
-        assert kwargs["query"]["timeMax"] == "2025-01-02T00:00:00Z"
-        assert kwargs["query"]["singleEvents"] == "true"
+        request = mock_proxy.call_args.args[0]
+        assert request.endpoint.endswith("/calendars/primary/events")
+        assert request.method == "GET"
+        assert request.query["maxResults"] == 42
+        assert request.query["pageToken"] == "tk"
+        assert request.query["timeMin"] == "2025-01-01T00:00:00Z"
+        assert request.query["timeMax"] == "2025-01-02T00:00:00Z"
+        assert request.query["singleEvents"] == "true"
 
 
 class TestSearchEventsInCalendar:
     async def test_search_query_in_params(self, mock_proxy):
         mock_proxy.return_value = {"items": []}
         await search_events_in_calendar("primary", "lunch", USER_ID)
-        kwargs = mock_proxy.call_args.kwargs
-        assert kwargs["query"]["q"] == "lunch"
-        assert kwargs["query"]["maxResults"] == 50
+        request = mock_proxy.call_args.args[0]
+        assert request.query["q"] == "lunch"
+        assert request.query["maxResults"] == 50
 
     async def test_propagates_error(self, mock_proxy):
         mock_proxy.side_effect = _http_error(500)
@@ -314,13 +331,16 @@ class TestCreateCalendarEvent:
         )
         result = await create_calendar_event(event, USER_ID)
         assert result.id == "evt-1"
-        kwargs = mock_proxy.call_args.kwargs
-        assert kwargs["method"] == "POST"
-        assert kwargs["endpoint"].endswith("/calendars/primary/events")
-        body = kwargs["body"]
-        assert body["summary"] == "Sync"
-        assert body["start"]["dateTime"] == "2025-01-15T10:00:00Z"
-        assert body["end"]["dateTime"] == "2025-01-15T11:00:00Z"
+        request = mock_proxy.call_args.args[0]
+        assert request.method == "POST"
+        assert request.endpoint.endswith("/calendars/primary/events")
+        # exclude_none: Google rejects an explicit null, so unset fields are absent.
+        assert request.body == {
+            "summary": "Sync",
+            "description": "",
+            "start": {"dateTime": "2025-01-15T10:00:00Z", "timeZone": "UTC"},
+            "end": {"dateTime": "2025-01-15T11:00:00Z", "timeZone": "UTC"},
+        }
 
     async def test_all_day_event(self, mock_proxy):
         mock_proxy.return_value = {"id": "evt"}
@@ -332,7 +352,7 @@ class TestCreateCalendarEvent:
             end="2025-01-16",
         )
         await create_calendar_event(event, USER_ID)
-        body = mock_proxy.call_args.kwargs["body"]
+        body = mock_proxy.call_args.args[0].body
         assert body["start"] == {"date": "2025-01-15"}
         assert body["end"] == {"date": "2025-01-16"}
 
@@ -347,15 +367,15 @@ class TestCreateCalendarEvent:
             create_meeting_room=True,
         )
         await create_calendar_event(event, USER_ID)
-        kwargs = mock_proxy.call_args.kwargs
-        assert kwargs["body"]["conferenceData"]["createRequest"]["conferenceSolutionKey"] == {
+        request = mock_proxy.call_args.args[0]
+        assert request.body["conferenceData"]["createRequest"]["conferenceSolutionKey"] == {
             "type": "hangoutsMeet"
         }
-        assert kwargs["query"]["conferenceDataVersion"] == "1"
+        assert request.query["conferenceDataVersion"] == "1"
         # The request id is a uniqueness token minted from the UTC clock — the
         # fake clock pins it exactly (a local-time read lands 6h+ off).
         assert (
-            kwargs["body"]["conferenceData"]["createRequest"]["requestId"]
+            request.body["conferenceData"]["createRequest"]["requestId"]
             == f"meet_{int(datetime(2026, 6, 15, 2, 0, tzinfo=UTC).timestamp())}"
         )
 
@@ -435,9 +455,9 @@ class TestDeleteCalendarEvent:
             EventDeleteRequest(event_id="evt-1", calendar_id="primary"), USER_ID
         )
         assert result == EventDeleteResponse(success=True, message="Event deleted successfully")
-        kwargs = mock_proxy.call_args.kwargs
-        assert kwargs["method"] == "DELETE"
-        assert kwargs["endpoint"].endswith("/calendars/primary/events/evt-1")
+        request = mock_proxy.call_args.args[0]
+        assert request.method == "DELETE"
+        assert request.endpoint.endswith("/calendars/primary/events/evt-1")
 
     async def test_404_raises_clean_message(self, mock_proxy):
         mock_proxy.side_effect = _http_error(404)
@@ -459,7 +479,7 @@ class TestDeleteCalendarEvent:
             ),
             USER_ID,
         )
-        endpoint = mock_proxy.call_args.kwargs["endpoint"]
+        endpoint = mock_proxy.call_args.args[0].endpoint
         assert "#contacts@group.v.calendar.google.com" not in endpoint
         assert endpoint.endswith(
             "/calendars/%23contacts%40group.v.calendar.google.com/events/evt-1"
@@ -478,9 +498,9 @@ class TestUpdateCalendarEvent:
         )
         assert result.calendarId == "primary"
         # Two calls: GET existing + PUT update
-        assert mock_proxy.call_args_list[0].kwargs["method"] == "GET"
-        assert mock_proxy.call_args_list[1].kwargs["method"] == "PUT"
-        assert mock_proxy.call_args_list[1].kwargs["body"]["summary"] == "New"
+        assert mock_proxy.call_args_list[0].args[0].method == "GET"
+        assert mock_proxy.call_args_list[1].args[0].method == "PUT"
+        assert mock_proxy.call_args_list[1].args[0].body["summary"] == "New"
 
     async def test_percent_encodes_calendar_id_with_reserved_chars(self, mock_proxy):
         """Same bug as delete_calendar_event: the GET-existing + PUT-update
@@ -497,7 +517,7 @@ class TestUpdateCalendarEvent:
             ),
             USER_ID,
         )
-        get_endpoint = mock_proxy.call_args_list[0].kwargs["endpoint"]
+        get_endpoint = mock_proxy.call_args_list[0].args[0].endpoint
         assert "user@group.calendar.google.com" not in get_endpoint
         assert get_endpoint.endswith("/calendars/user%40group.calendar.google.com/events/evt")
 
@@ -524,7 +544,7 @@ class TestUpdateCalendarEvent:
             )
         assert exc.value.status_code == 404
         assert exc.value.detail == "Event not found or access denied"
-        assert [call.kwargs["method"] for call in mock_proxy.call_args_list] == ["GET", "PUT"]
+        assert [call.args[0].method for call in mock_proxy.call_args_list] == ["GET", "PUT"]
 
     async def test_failing_recurrence_conversion_logs_and_raises_400(self, mock_proxy):
         existing = {
@@ -570,7 +590,7 @@ class TestUpdateCalendarEvent:
             await update_calendar_event(request, USER_ID)
         assert exc.value.status_code == 400
         assert str(exc.value.detail).startswith("Invalid datetime format:")
-        assert [call.kwargs["method"] for call in mock_proxy.call_args_list] == ["GET"]
+        assert [call.args[0].method for call in mock_proxy.call_args_list] == ["GET"]
 
 
 # ---------------------------------------------------------------------------
@@ -791,7 +811,7 @@ class TestSearchArgumentPropagation:
         # Preference lookup is keyed by the requesting user.
         mock_calendar_repo.get_for_user.assert_awaited_once_with(USER_ID)
         # The calendar listing ran for the requesting user.
-        assert mock_proxy.call_args.kwargs["user_id"] == USER_ID
+        assert mock_proxy.call_args.args[0].user_id == USER_ID
         # The per-calendar search got every argument, positionally intact.
         assert mock_search.await_args.args == ("c1", "lunch", USER_ID)
         assert mock_search.await_args.kwargs == {
@@ -831,12 +851,12 @@ class TestDeleteCalendarEventPins:
         result = await delete_calendar_event(request, USER_ID)
         assert result.success is True
         assert result.message == "Event deleted successfully"
-        kwargs = mock_proxy.await_args.kwargs
-        assert kwargs["endpoint"].endswith("/calendars/primary/events/evt1")
-        assert kwargs["method"] == "DELETE"
+        request = mock_proxy.await_args.args[0]
+        assert request.endpoint.endswith("/calendars/primary/events/evt1")
+        assert request.method == "DELETE"
 
     async def test_given_calendar_id_is_used(self, mock_proxy):
         mock_proxy.return_value = {}
         request = EventDeleteRequest(event_id="evt1", calendar_id="cal-9")
         await delete_calendar_event(request, USER_ID)
-        assert mock_proxy.await_args.kwargs["endpoint"].endswith("/calendars/cal-9/events/evt1")
+        assert mock_proxy.await_args.args[0].endpoint.endswith("/calendars/cal-9/events/evt1")

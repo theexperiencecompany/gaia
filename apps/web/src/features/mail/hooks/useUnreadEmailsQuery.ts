@@ -1,12 +1,7 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 
-import { apiService } from "@/lib/api/service";
-import type { EmailData } from "@/types/features/mailTypes";
-
-interface UnreadEmailsResponse {
-  messages: EmailData[];
-  nextPageToken?: string;
-}
+import { api } from "@/lib/api/typed";
+import { asEmailData } from "@/types/features/mailTypes";
 
 /**
  * React Query infinite query hook for fetching unread emails with scroll-based pagination
@@ -17,26 +12,20 @@ export const useUnreadEmailsQuery = (
 ) => {
   return useInfiniteQuery({
     queryKey: ["unread-emails-infinite", maxResults],
-    queryFn: async ({
-      pageParam,
-    }: {
-      pageParam: string | null;
-    }): Promise<UnreadEmailsResponse> => {
-      const params = new URLSearchParams({
-        is_read: "false",
-        max_results: String(maxResults),
-      });
-      if (pageParam) {
-        params.set("page_token", pageParam);
-      }
-      const response = await apiService.get<UnreadEmailsResponse>(
-        `/gmail/search?${params.toString()}`,
-        {
-          errorMessage: "Failed to fetch unread emails",
-          silent: true,
+    queryFn: async ({ pageParam }: { pageParam: string | null }) => {
+      const page = await api.get("/api/v1/gmail/search", {
+        query: {
+          is_read: false,
+          max_results: maxResults,
+          page_token: pageParam ?? undefined,
         },
-      );
-      return response;
+        errorMessage: "Failed to fetch unread emails",
+        silent: true,
+      });
+      return {
+        messages: asEmailData(page.messages),
+        nextPageToken: page.nextPageToken,
+      };
     },
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextPageToken ?? null,

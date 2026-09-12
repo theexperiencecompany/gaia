@@ -97,16 +97,12 @@ function emitImageData(
   if (typeof source.image_data !== "object" || source.image_data === null) {
     return;
   }
-  const imageData = source.image_data as {
-    url?: string;
-    prompt?: string;
-    improvedPrompt?: string;
-  };
-  if (typeof imageData.url === "string" && imageData.url) {
+  const imageData = source.image_data as Partial<ImageData> | undefined;
+  if (typeof imageData?.url === "string" && imageData.url) {
     callbacks.onImageData?.({
       url: imageData.url,
       prompt: imageData.prompt ?? "",
-      improvedPrompt: imageData.improvedPrompt,
+      improved_prompt: imageData.improved_prompt ?? null,
     });
   }
 }

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Skill } from "../api/skills-api";
+import type { DiscoveredSkill, Skill } from "../api/skills-api";
 import { discoverSkills, getSkills } from "../api/skills-api";
 
 export interface UseSkillsResult {
   mySkills: Skill[];
-  discoverableSkills: Skill[];
+  discoverableSkills: DiscoveredSkill[];
   isLoading: boolean;
   isRefreshing: boolean;
   error: Error | null;
@@ -13,7 +13,9 @@ export interface UseSkillsResult {
 
 export function useSkills(): UseSkillsResult {
   const [mySkills, setMySkills] = useState<Skill[]>([]);
-  const [discoverableSkills, setDiscoverableSkills] = useState<Skill[]>([]);
+  const [discoverableSkills, setDiscoverableSkills] = useState<
+    DiscoveredSkill[]
+  >([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -32,9 +34,9 @@ export function useSkills(): UseSkillsResult {
         discoverSkills(),
       ]);
 
-      const ownedIds = new Set(owned.map((s) => s.id));
+      const ownedNames = new Set(owned.map((s) => s.name));
       setMySkills(owned);
-      setDiscoverableSkills(available.filter((s) => !ownedIds.has(s.id)));
+      setDiscoverableSkills(available.filter((s) => !ownedNames.has(s.name)));
     } catch (err) {
       setError(err instanceof Error ? err : new Error("Failed to load skills"));
     } finally {

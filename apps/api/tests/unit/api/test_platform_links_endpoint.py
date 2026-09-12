@@ -227,7 +227,7 @@ class TestLinkPlatform:
     async def test_invalid_platform(self, client: AsyncClient) -> None:
         resp = await client.post(f"{BASE}/invalid_platform", json={"token": "tok123"})
         assert resp.status_code == 400
-        assert "Invalid platform" in resp.json()["detail"]
+        assert "Invalid platform" in resp.json()["message"]
 
     @pytest.mark.asyncio
     async def test_expired_token(self, client: AsyncClient) -> None:
@@ -239,7 +239,7 @@ class TestLinkPlatform:
             resp = await client.post(f"{BASE}/discord", json={"token": "expired_tok"})
 
         assert resp.status_code == 400
-        assert "expired" in resp.json()["detail"].lower()
+        assert "expired" in resp.json()["message"].lower()
 
     @pytest.mark.asyncio
     async def test_missing_platform_user_id(self, client: AsyncClient) -> None:
@@ -252,7 +252,7 @@ class TestLinkPlatform:
             resp = await client.post(f"{BASE}/discord", json={"token": "tok_no_uid"})
 
         assert resp.status_code == 400
-        assert "Invalid token data" in resp.json()["detail"]
+        assert "Invalid token data" in resp.json()["message"]
 
     @pytest.mark.asyncio
     async def test_platform_mismatch(self, client: AsyncClient) -> None:
@@ -267,7 +267,7 @@ class TestLinkPlatform:
             resp = await client.post(f"{BASE}/discord", json={"token": "tok_mismatch"})
 
         assert resp.status_code == 400
-        assert "mismatch" in resp.json()["detail"].lower()
+        assert "mismatch" in resp.json()["message"].lower()
 
     @pytest.mark.asyncio
     async def test_successful_link(self, client: AsyncClient) -> None:
@@ -842,9 +842,9 @@ class TestImessagePremiumGate:
 
         assert resp.status_code == 429
         mock_plan.assert_awaited_once_with(FAKE_USER_ID)
-        detail = resp.json()["detail"]
-        assert detail["plan_required"] == "pro"
-        assert detail["current_plan"] == "free"
+        body = resp.json()
+        assert body["plan_required"] == "pro"
+        assert body["current_plan"] == "free"
 
     @pytest.mark.asyncio
     async def test_free_user_connect_returns_429_upsell(self, client: AsyncClient) -> None:
@@ -853,7 +853,7 @@ class TestImessagePremiumGate:
 
         assert resp.status_code == 429
         mock_plan.assert_awaited_once_with(FAKE_USER_ID)
-        assert resp.json()["detail"]["plan_required"] == "pro"
+        assert resp.json()["plan_required"] == "pro"
 
     @pytest.mark.asyncio
     async def test_pro_user_link_passes_gate(self, client: AsyncClient) -> None:
@@ -869,7 +869,7 @@ class TestImessagePremiumGate:
 
         # Gate passed; the request proceeds to token redemption and fails there.
         assert resp.status_code == 400
-        assert "expired" in resp.json()["detail"].lower()
+        assert "expired" in resp.json()["message"].lower()
 
     @pytest.mark.asyncio
     async def test_free_user_can_still_disconnect(self, client: AsyncClient) -> None:
@@ -1035,7 +1035,7 @@ class TestImessagePremiumGate:
             resp = await client.post(f"{BASE}/imessage/connect", json={"phone": "+15551234567"})
 
         assert resp.status_code == 429
-        assert resp.json()["detail"]["feature"] == IMESSAGE_REGISTRATION_FEATURE_KEY
+        assert resp.json()["feature"] == IMESSAGE_REGISTRATION_FEATURE_KEY
         mock_register.assert_not_awaited()
 
     @pytest.mark.asyncio

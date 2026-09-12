@@ -4,10 +4,10 @@ import type {
 } from "@/stores/composerStore.types";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
-import type { FileData } from "@/types/shared/fileTypes";
+import type { AttachedFileData } from "@/types/shared/fileTypes";
 
 export interface TurnOptions {
-  fileData: FileData[];
+  fileData: AttachedFileData[];
   selectedTool: string | null;
   toolCategory: string | null;
   selectedWorkflow: WorkflowData | null;

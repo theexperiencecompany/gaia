@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.models.integration_models import Integration, IntegrationTool
+from app.models.integration_models import Integration, StoredIntegrationTool
 from app.models.oauth_models import IntegrationContent
 from app.services.integrations.publish_service import (
     PublishError,
@@ -33,7 +33,7 @@ def _integration(**overrides: object) -> Integration:
         "source": "custom",
         "created_by": USER_ID,
         "is_public": False,
-        "tools": [IntegrationTool(name="lookup", description="Look things up")],
+        "tools": [StoredIntegrationTool(name="lookup", description="Look things up")],
         "mcp_config": None,
     }
     data.update(overrides)

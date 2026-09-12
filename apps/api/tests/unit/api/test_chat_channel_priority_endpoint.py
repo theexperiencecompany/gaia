@@ -53,8 +53,15 @@ class TestUpdateChatChannelPriority:
             json={"priority": ["sms", "telegram", "carrier-pigeon", "sms"]},
         )
         assert resp.status_code == 422
-        # Named, sorted, once each: the UI shows this string to the user.
-        assert "unsupported chat platforms: carrier-pigeon, sms" in resp.text
+        # The schema's closed set does the rejecting, so the envelope points at
+        # the first offending entry and names what would have been accepted.
+        body = resp.json()
+        assert body["code"] == "validation_error"
+        assert body["errors"][0]["loc"] == ["body", "priority", 0]
+        assert body["errors"][0]["type"] == "literal_error"
+        assert (
+            "'whatsapp', 'telegram', 'discord', 'slack' or 'imessage'" in body["errors"][0]["msg"]
+        )
 
     async def test_rejects_a_non_bot_platform(self, client: AsyncClient) -> None:
         resp = await client.patch(f"{API}/user/chat-channel-priority", json={"priority": ["web"]})

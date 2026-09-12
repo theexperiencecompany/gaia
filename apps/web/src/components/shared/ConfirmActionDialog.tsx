@@ -18,7 +18,7 @@ import { batchSyncConversations } from "@/services/syncService";
 export type ConfirmAction = "logout" | "clear_chats" | null;
 //  | "delete_account"
 
-interface ActionConfig {
+interface ConfirmActionConfig {
   title: string;
   description: string;
   confirmText: string;
@@ -39,7 +39,7 @@ export function ConfirmActionDialog({
   const { logout } = useLogout();
   const router = useRouter();
 
-  const getActionConfig = (): ActionConfig | null => {
+  const getActionConfig = (): ConfirmActionConfig | null => {
     switch (action) {
       case "logout":
         return {

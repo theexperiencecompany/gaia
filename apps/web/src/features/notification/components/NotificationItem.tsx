@@ -7,12 +7,12 @@ import { useNotificationActions } from "@/hooks/useNotificationActions";
 
 import {
   type NotificationAction,
-  type NotificationRecord,
   NotificationStatus,
+  type NotificationView,
 } from "../../../types/features/notificationTypes";
 
 interface NotificationItemProps {
-  notification: NotificationRecord;
+  notification: NotificationView;
   onMarkAsRead: (id: string) => void;
 }
 

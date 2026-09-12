@@ -26,7 +26,7 @@ export function EnterpriseCard({ plan, ctaHref }: EnterpriseCardProps) {
     <div className="relative flex h-full w-full flex-col overflow-hidden rounded-3xl bg-zinc-800/50 backdrop-blur-lg">
       <PricingCardHeader
         title={plan.name}
-        description={plan.description}
+        description={plan.description ?? undefined}
         isCurrentPlan={false}
       />
 

@@ -1,4 +1,5 @@
-export type TriggerType = "manual" | "schedule" | string;
+import type { Schema } from "@gaia/shared/api/generated";
+export type TriggerType = Schema<"TriggerType">;
 
 export interface TriggerSchema {
   slug: string;
@@ -19,11 +20,7 @@ export interface TriggerFieldSchema {
   description?: string;
 }
 
-export interface TriggerConfig {
-  type: string;
-  enabled: boolean;
-  [key: string]: unknown;
-}
+export type TriggerConfig = Schema<"TriggerConfig">;
 
 export interface TriggerSchemasResponse {
   schemas: TriggerSchema[];

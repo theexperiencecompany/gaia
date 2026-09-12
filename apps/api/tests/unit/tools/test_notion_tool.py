@@ -33,6 +33,7 @@ from app.models.notion_models import (
     InsertMarkdownInput,
     MovePageInput,
 )
+from app.services.composio.proxy_client import ProxyRequest
 from app.utils.errors import AppError
 
 MODULE = "app.agents.tools.integrations.notion_tool"
@@ -187,16 +188,18 @@ def test_fetch_data_sends_exact_search_request_and_maps_results() -> None:
         result = _fetch_data(request, AUTH_CREDS)
 
     proxy.assert_called_once_with(
-        user_id="user_test_123",
-        toolkit="NOTION",
-        endpoint="https://api.notion.com/v1/search",
-        method="POST",
-        body={
-            "filter": {"property": "object", "value": "page"},
-            "page_size": 100,
-            "query": "meeting notes",
-        },
-        headers={"Notion-Version": "2022-06-28"},
+        ProxyRequest(
+            user_id="user_test_123",
+            toolkit="NOTION",
+            endpoint="https://api.notion.com/v1/search",
+            method="POST",
+            body={
+                "filter": {"property": "object", "value": "page"},
+                "page_size": 100,
+                "query": "meeting notes",
+            },
+            headers={"Notion-Version": "2022-06-28"},
+        )
     )
     assert result == {
         "values": [
@@ -216,12 +219,14 @@ def test_fetch_data_databases_without_query_omits_query_and_defaults_has_more() 
         result = _fetch_data(request, AUTH_CREDS)
 
     proxy.assert_called_once_with(
-        user_id="user_test_123",
-        toolkit="NOTION",
-        endpoint="https://api.notion.com/v1/search",
-        method="POST",
-        body={"filter": {"property": "object", "value": "database"}, "page_size": 5},
-        headers={"Notion-Version": "2022-06-28"},
+        ProxyRequest(
+            user_id="user_test_123",
+            toolkit="NOTION",
+            endpoint="https://api.notion.com/v1/search",
+            method="POST",
+            body={"filter": {"property": "object", "value": "database"}, "page_size": 5},
+            headers={"Notion-Version": "2022-06-28"},
+        )
     )
     assert result == {"values": [], "count": 0, "has_more": False}
 
@@ -418,7 +423,7 @@ def test_fetch_data_empty_string_query_is_omitted_from_search_body() -> None:
     with patch(f"{MODULE}.proxy_request_sync", proxy):
         result = _fetch_data(request, AUTH_CREDS)
 
-    assert "query" not in proxy.call_args.kwargs["body"]
+    assert "query" not in proxy.call_args.args[0].body
     assert result == {"values": [], "count": 0, "has_more": False}
 
 
@@ -431,7 +436,7 @@ def test_fetch_data_strips_only_trailing_s_from_fetch_type() -> None:
     with patch(f"{MODULE}.proxy_request_sync", proxy):
         _fetch_data(request, AUTH_CREDS)
 
-    assert proxy.call_args.kwargs["body"]["filter"] == {
+    assert proxy.call_args.args[0].body["filter"] == {
         "property": "object",
         "value": "pagesX",
     }

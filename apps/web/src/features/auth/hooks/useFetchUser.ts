@@ -44,9 +44,9 @@ const useFetchUser = () => {
     // Identify the persisted client session with the stable backend user ID.
     if (data.user_id && !hasIdentified.current) {
       identifyUser(data.user_id, {
-        email: data.email,
-        name: data.name,
-        timezone: data.timezone,
+        email: data.email ?? undefined,
+        name: data.name ?? undefined,
+        timezone: data.timezone ?? undefined,
         onboarding_completed: data.onboarding?.completed ?? false,
       });
       hasIdentified.current = true;

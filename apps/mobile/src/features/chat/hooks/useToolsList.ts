@@ -1,22 +1,10 @@
+import type { Schema } from "@gaia/shared/api/generated";
 import { useQuery } from "@tanstack/react-query";
 import { apiService } from "@/lib/api";
 
-export interface ToolInfo {
-  name: string;
-  category: string;
-  display_name: string;
-  icon_url?: string;
-  requires_integration: boolean;
-  // True when the tool's integration was added but is not connected (or failed).
-  // Core platform tools are never locked.
-  locked: boolean;
-}
+export type ToolInfo = Schema<"ToolInfo">;
 
-export interface ToolsListResponse {
-  tools: ToolInfo[];
-  total_count: number;
-  categories: string[];
-}
+export type ToolsListResponse = Schema<"ToolsListResponse">;
 
 const TOOLS_LIST_QUERY_KEY = ["tools", "list"] as const;
 const TOOLS_LIST_STALE_TIME_MS = 60 * 1000;

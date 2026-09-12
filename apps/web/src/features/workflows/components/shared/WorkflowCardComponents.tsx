@@ -1,4 +1,6 @@
-"use client";
+import type { ContentCreator } from "@/types/shared/contentTypes";
+
+("use client");
 
 import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
@@ -173,11 +175,7 @@ export function SystemWorkflowChip({ size = "sm" }: SystemWorkflowChipProps) {
 
 // Reusable Creator Avatar
 interface CreatorAvatarProps {
-  creator: {
-    id: string;
-    name: string;
-    avatar?: string;
-  };
+  creator: ContentCreator;
   size?: number;
   showTooltip?: boolean;
   /** Render the creator's name beside the avatar (verified when it's ours) */

@@ -11,10 +11,10 @@ from collections.abc import MutableMapping
 from typing import Any
 
 import anyio
-from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.constants.log_tags import LogTag
+from app.schemas.errors import ErrorEnvelope, error_response
 from shared.py.wide_events import log
 
 TIMEOUT_EXCLUDE_PREFIXES: tuple[str, ...] = (
@@ -68,12 +68,11 @@ class RequestTimeoutMiddleware:
 
         if cancel_scope.cancelled_caught:
             if not response_started:
-                response = JSONResponse(
-                    status_code=504,
-                    content={
-                        "error": "request_timeout",
-                        "detail": f"Request exceeded {self.timeout}s timeout",
-                    },
+                response = error_response(
+                    504,
+                    ErrorEnvelope(
+                        message=f"Request exceeded {self.timeout}s timeout", code="request_timeout"
+                    ),
                     headers={"Retry-After": "60"},
                 )
                 await response(scope, receive, send)

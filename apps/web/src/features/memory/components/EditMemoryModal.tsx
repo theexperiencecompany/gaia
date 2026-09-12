@@ -9,14 +9,14 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
+import type { Schema } from "@shared/api/generated";
 import { useEffect, useState, useTransition } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type { MemoryEntry } from "@/features/memory/api/types";
 import { MAX_MEMORY_LENGTH } from "@/features/memory/constants";
 import { toast } from "@/lib/toast";
 
 interface EditMemoryModalProps {
-  readonly memory: MemoryEntry | null;
+  readonly memory: Schema<"MemoryEntry"> | null;
   readonly onClose: () => void;
   readonly onSaved: () => void;
 }

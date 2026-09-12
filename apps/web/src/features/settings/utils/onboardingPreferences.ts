@@ -13,7 +13,10 @@ export const mergedOnboardingUpdate = (
   patch: PreferencesPatch,
 ): { onboarding: OnboardingData } => ({
   onboarding: {
-    completed: onboarding?.completed ?? true,
+    completed: true,
+    completed_at: null,
+    phase: null,
+    first_message_conversation_id: null,
     ...onboarding,
     preferences: { ...onboarding?.preferences, ...patch },
   },

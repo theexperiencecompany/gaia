@@ -6,7 +6,7 @@
  */
 
 import type { RegisteredHandler } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 
 // =============================================================================
 // HANDLER DEFINITION
@@ -15,7 +15,7 @@ import type { TriggerConfig } from "../types";
 export const todoistTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["todoist_new_task_created"],
 
-  createDefaultConfig: (slug: string): TriggerConfig => ({
+  createDefaultConfig: (slug: string): TriggerConfigDraft => ({
     type: "integration",
     enabled: true,
     trigger_name: slug,

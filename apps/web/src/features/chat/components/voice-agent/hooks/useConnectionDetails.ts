@@ -1,7 +1,8 @@
+import type { Schema } from "@shared/api/generated";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
-import { apiService } from "@/lib/api/service";
+import { api } from "@/lib/api/typed";
 
 function decodeJwtPayload(token: string) {
   if (!token) return {};
@@ -34,15 +35,8 @@ const ONE_MINUTE_IN_MILLISECONDS = 60 * 1000;
  */
 const CONNECTION_DETAILS_STALE_TIME_MS = 2 * 60 * 1000;
 
-/** Response of GET /token — mirrors the backend's VoiceTokenResponse schema. */
-export type ConnectionDetails = {
-  serverUrl: string;
-  roomName: string;
-  participantToken: string;
-  participantIdentity: string;
-  participantName: string;
-  conversation_id: string | null;
-};
+/** Response of GET /token. */
+export type ConnectionDetails = Schema<"VoiceTokenResponse">;
 
 const fetchDetails = async (
   conversationId?: string,
@@ -51,13 +45,11 @@ const fetchDetails = async (
   // start still toasts on failure).
   silent = false,
 ): Promise<ConnectionDetails> => {
-  return apiService.get<ConnectionDetails>(
-    conversationId ? `/token?conversationId=${conversationId}` : "/token",
-    {
-      errorMessage: "Failed to initiate livekit room",
-      silent,
-    },
-  );
+  return api.get("/api/v1/token", {
+    query: { conversationId },
+    errorMessage: "Failed to initiate livekit room",
+    silent,
+  });
 };
 
 /**

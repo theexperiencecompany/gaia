@@ -9,6 +9,7 @@ import {
   showTokenLimitToast,
 } from "@/components/shared/RateLimitToast";
 import { API_ERROR_CODES } from "@/lib/api/errorCodes";
+import { getErrorCode, getErrorMessage } from "@/lib/api/errors";
 import { toast } from "@/lib/toast";
 import { useLoginModalStore } from "@/stores/loginModalStore";
 import type { UpgradeOffer } from "@/stores/upgradeModal.types";
@@ -17,57 +18,6 @@ import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 interface ErrorHandlerDependencies {
   router: AppRouterInstance;
 }
-
-const getDetail = (data: unknown): unknown =>
-  data && typeof data === "object" && "detail" in data
-    ? (data as { detail: unknown }).detail
-    : undefined;
-
-/**
- * Reads one string field of a structured backend error. `AppError` serialises
- * `{ message, why, fix }` at the top level of the body, while FastAPI's own
- * `HTTPException` nests the same shape under `detail` — both are read here so
- * callers never have to know which handler produced the response.
- */
-const readErrorString = (data: unknown, key: string): string | undefined => {
-  const detail = getDetail(data);
-  if (detail && typeof detail === "object" && key in detail) {
-    const value = (detail as Record<string, unknown>)[key];
-    if (typeof value === "string") return value;
-  }
-  if (data && typeof data === "object" && key in data) {
-    const value = (data as Record<string, unknown>)[key];
-    if (typeof value === "string") return value;
-  }
-  return undefined;
-};
-
-const getErrorCode = (data: unknown): string | undefined => {
-  const detail = getDetail(data);
-  if (detail && typeof detail === "object" && "error_code" in detail)
-    return (detail as { error_code?: string }).error_code;
-  return undefined;
-};
-
-/**
- * Extracts a human-readable message from an Axios error response body,
- * handling both string `detail` and the structured `{ message, ... }` detail
- * the backend returns for auth / integration / rate-limit errors. Prevents an
- * object `detail` from rendering as the literal "[object Object]".
- */
-export const getErrorMessage = (data: unknown): string | undefined => {
-  const detail = getDetail(data);
-  if (typeof detail === "string") return detail;
-  return readErrorString(data, "message");
-};
-
-/**
- * The remediation hint a structured backend error carries alongside its
- * message ("Ask the bot for a fresh link."). Worth rendering: it is the half
- * of the error that tells the user what to do next.
- */
-export const getErrorFix = (data: unknown): string | undefined =>
-  readErrorString(data, "fix");
 
 /**
  * Surfaces API error UI for app-shell requests. Only mounted inside the (main)
@@ -130,32 +80,17 @@ const handleForbiddenError = (
   errorData: unknown,
   router: AppRouterInstance,
 ): void => {
-  const detail = getDetail(errorData);
+  const code = getErrorCode(errorData);
+  const message = getErrorMessage(errorData);
 
-  if (
-    typeof detail === "object" &&
-    detail !== null &&
-    "error_code" in detail &&
-    (detail as { error_code: string }).error_code === "UPGRADE_REQUIRED"
-  ) {
+  if (code === "UPGRADE_REQUIRED") {
     return;
   }
 
-  if (
-    typeof detail === "object" &&
-    detail !== null &&
-    "type" in detail &&
-    detail.type === "integration"
-  ) {
-    const integrationDetail = detail as {
-      type: string;
-      message?: string;
-      toolkit?: string;
-    };
-    const toastKey = `integration-${integrationDetail.toolkit || "default"}`;
-
-    toast.error(integrationDetail.message || "Integration required.", {
-      id: toastKey,
+  if (code === API_ERROR_CODES.INTEGRATION_NOT_CONNECTED) {
+    const { toolkit } = errorData as { toolkit?: string };
+    toast.error(message || "Integration required.", {
+      id: `integration-${toolkit || "default"}`,
       duration: Infinity,
       action: {
         label: "Reconnect",
@@ -165,11 +100,9 @@ const handleForbiddenError = (
       },
     });
   } else {
-    const message =
-      typeof detail === "string"
-        ? detail
-        : "You don't have permission to access this resource.";
-    toast.error(message);
+    toast.error(
+      message || "You don't have permission to access this resource.",
+    );
   }
 };
 
@@ -212,19 +145,11 @@ const handleSubscriptionRequiredError = (errorData: unknown): boolean => {
  * Shared by the axios interceptor and the chat-stream client.
  */
 export const handleRateLimitError = (errorData: unknown): boolean => {
-  const rateLimitData = getDetail(errorData);
-
-  if (
-    typeof rateLimitData !== "object" ||
-    rateLimitData === null ||
-    !("error" in rateLimitData) ||
-    rateLimitData.error !== "rate_limit_exceeded"
-  ) {
+  if (getErrorCode(errorData) !== "rate_limit_exceeded") {
     return false;
   }
 
-  const rateLimit = rateLimitData as {
-    error: string;
+  const rateLimit = errorData as {
     feature?: string;
     plan_required?: string;
     reset_time?: string;

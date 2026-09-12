@@ -24,12 +24,13 @@ the base's auto-stamp.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.repositories.base import UserScopedDocument
+from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import ConversationSource, MessageModel, SystemPurpose
+from app.schemas.common import ResponseModel
 from app.utils.tool_data_utils import convert_legacy_tool_data
 
 
@@ -67,9 +68,8 @@ class ConversationDocument(UserScopedDocument):
     starred: bool | None = None
     messages: list[MessageModel] = Field(default_factory=list)
     # Conversation-level artifact registry: one entry per agent-written file,
-    # deduped by path. Kept as raw dicts — the element shape is owned by
-    # services/chat/artifacts_registry.py and mirrored verbatim to the client.
-    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    # deduped by path; services/chat/artifacts_registry.py owns every write.
+    artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
     createdAt: str | None = None
     updatedAt: datetime | None = None
 
@@ -88,7 +88,7 @@ class ConversationUpdate(BaseModel):
     is_unread: bool | None = None
 
 
-class ConversationSummary(BaseModel):
+class ConversationSummary(ResponseModel):
     """The projected conversation-list row — every field the web list consumes,
     without the heavy ``messages`` array."""
 
@@ -199,7 +199,7 @@ class SystemConversationCreated(BaseModel):
     detail: str
 
 
-class ConversationListResponse(BaseModel):
+class ConversationListResponse(ResponseModel):
     """One page of the conversation list: every starred conversation followed by
     the requested page of the non-starred ones."""
 
@@ -210,7 +210,7 @@ class ConversationListResponse(BaseModel):
     total_pages: int
 
 
-class ConversationSyncRow(BaseModel):
+class ConversationSyncRow(ResponseModel):
     """One batch-sync row — the conversation's client-visible fields plus its full
     message history and artifact registry.
 
@@ -227,13 +227,12 @@ class ConversationSyncRow(BaseModel):
     createdAt: str | None = None
     updatedAt: datetime | None = None
     messages: list[MessageModel] = Field(default_factory=list)
-    # Mirrored verbatim from the document — the element shape is owned by
-    # services/chat/artifacts_registry.py (see ConversationDocument.artifacts).
-    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    # Mirrored verbatim from the document (see ConversationDocument.artifacts).
+    artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
     active_stream_id: str | None = None
 
 
-class BatchSyncResponse(BaseModel):
+class BatchSyncResponse(ResponseModel):
     """The conversations a client's sync request found stale."""
 
     conversations: list[ConversationSyncRow] = Field(default_factory=list)
@@ -283,7 +282,7 @@ class PinMessageResponse(BaseModel):
     pinned: bool
 
 
-class PinnedMessagesResponse(BaseModel):
+class PinnedMessagesResponse(ResponseModel):
     """Every pinned message across the user's conversations."""
 
     results: list[ConversationMessageHit] = Field(default_factory=list)

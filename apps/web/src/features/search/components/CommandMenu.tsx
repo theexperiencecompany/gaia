@@ -1,4 +1,6 @@
-"use client";
+import type { Schema } from "@shared/api/generated";
+
+("use client");
 
 import { Kbd } from "@heroui/kbd";
 import { MessageMultiple02Icon, SearchIcon } from "@icons";
@@ -19,7 +21,7 @@ import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
-import { type ComprehensiveSearchResponse, searchApi } from "../api/searchApi";
+import { searchApi } from "../api/searchApi";
 import {
   ANIMATION_CONFIG,
   COMMAND_MENU_STYLES,
@@ -43,7 +45,7 @@ function ConversationResults({
   conversations,
   onOpen,
 }: Readonly<{
-  conversations: ComprehensiveSearchResponse["conversations"];
+  conversations: Schema<"SearchResultsResponse">["conversations"];
   onOpen: (conversationId: string) => void;
 }>) {
   if (conversations.length === 0) return null;
@@ -82,7 +84,7 @@ function MessageResults({
   messages,
   onOpen,
 }: Readonly<{
-  messages: ComprehensiveSearchResponse["messages"];
+  messages: Schema<"SearchResultsResponse">["messages"];
   onOpen: (conversationId: string) => void;
 }>) {
   if (messages.length === 0) return null;
@@ -111,7 +113,9 @@ function MessageResults({
               className={COMMAND_MENU_STYLES.resultSubtitle}
               suppressHydrationWarning
             >
-              {new Date(message.message.date).toLocaleDateString()}
+              {message.message.date
+                ? new Date(message.message.date).toLocaleDateString()
+                : null}
             </div>
           </div>
         </Command.Item>
@@ -170,12 +174,13 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
   const [search, setSearch] = useState("");
-  const [searchResults, setSearchResults] =
-    useState<ComprehensiveSearchResponse>({
-      conversations: [],
-      messages: [],
-      notes: [],
-    });
+  const [searchResults, setSearchResults] = useState<
+    Schema<"SearchResultsResponse">
+  >({
+    conversations: [],
+    messages: [],
+    notes: [],
+  });
   const [isSearching, setIsSearching] = useState(false);
 
   // Reset and focus

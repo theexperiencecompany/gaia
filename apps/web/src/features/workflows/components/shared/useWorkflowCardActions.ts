@@ -1,4 +1,6 @@
-"use client";
+import { toTriggerConfig } from "@/features/workflows/triggers/types";
+
+("use client");
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -10,7 +12,7 @@ import { useAppendToInput } from "@/stores/composerStore";
 import type {
   CommunityWorkflow,
   PublicWorkflowStep,
-  TriggerConfig,
+  TriggerConfigDraft,
   Workflow,
 } from "@/types/features/workflowTypes";
 import { useWorkflowCreation } from "../../hooks/useWorkflowCreation";
@@ -26,7 +28,7 @@ interface UseWorkflowCardActionsParams {
   slug?: string;
   prompt?: string;
   variant: "user" | "community" | "explore" | "suggestion";
-  sourceTriggerConfig?: TriggerConfig;
+  sourceTriggerConfig?: TriggerConfigDraft;
   systemWorkflowKey?: string | null;
   resolvedAction: "run" | "create" | "insert-prompt" | "navigate" | "none";
   onCardClick?: () => void;
@@ -108,10 +110,9 @@ export function useWorkflowCardActions({
         description: communityWorkflow?.description || description || undefined,
         prompt: communityWorkflow?.prompt || displayDescription || title,
         // Reproduce the trigger the card advertises; manual only as a fallback.
-        trigger_config: sourceTriggerConfig ?? {
-          type: "manual" as const,
-          enabled: true,
-        },
+        trigger_config: toTriggerConfig(
+          sourceTriggerConfig ?? { type: "manual", enabled: true },
+        ),
         system_workflow_key: systemWorkflowKey,
         // Pass formatted steps if available to avoid regeneration
         ...(formattedSteps &&

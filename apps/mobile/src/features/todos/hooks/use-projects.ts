@@ -1,13 +1,10 @@
+import type { Schema } from "@gaia/shared/api/generated";
 import { useCallback, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useTodoStore } from "../store/todo-store";
 import type { Project } from "../types/todo-types";
 
-interface ProjectCreate {
-  name: string;
-  color?: string;
-  description?: string;
-}
+type ProjectCreate = Schema<"ProjectCreate">;
 
 interface ProjectUpdate {
   name?: string;

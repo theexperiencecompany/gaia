@@ -207,7 +207,7 @@ export type CommandContext = BotUserContext & {
 /**
  * Integration information for settings.
  */
-export interface IntegrationInfo {
+export interface BotIntegrationInfo {
   name: string;
   logoUrl: string | null;
   status: "created" | "connected";
@@ -228,7 +228,7 @@ export interface AuthenticatedSettingsResponse {
   userName: string | null;
   accountCreatedAt: string | null;
   profileImageUrl: string | null;
-  connectedIntegrations: IntegrationInfo[];
+  connectedIntegrations: BotIntegrationInfo[];
 }
 
 /**

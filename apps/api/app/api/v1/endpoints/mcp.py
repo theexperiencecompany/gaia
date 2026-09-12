@@ -122,7 +122,7 @@ async def test_mcp_connection(
         return MCPConnectionTestResponse(status="failed", error=str(e))
 
 
-@router.get("/oauth/callback")
+@router.get("/oauth/callback", response_class=RedirectResponse)
 async def mcp_oauth_callback(
     state: str = Query(...),
     code: str | None = Query(None),  # Optional - may be missing if error

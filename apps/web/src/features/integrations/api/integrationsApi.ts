@@ -1,33 +1,30 @@
-import { apiService } from "@/lib/api/service";
+import type { Schema } from "@shared/api/generated";
+import { api } from "@/lib/api/typed";
 import { sanitizeRedirectUrl } from "@/lib/url-safety";
-import type { CommunityWorkflowsResponse } from "@/types/features/workflowTypes";
 
 import type {
   CommunityIntegration,
-  CommunityIntegrationsResponse,
   CreateCustomIntegrationRequest,
-  CreateCustomIntegrationResponse,
-  Integration,
-  IntegrationInstructions,
-  IntegrationToolsResponse,
-  MyIntegrationsResponse,
-  PublicIntegrationResponse,
 } from "../types";
 
-export interface IntegrationConfigResponse {
-  integrations: Integration[];
-}
+/** `addIntegration`'s result: the API's answer plus the two client-side states. */
+export type AddIntegrationOutcome = Omit<
+  Schema<"AddIntegrationResponse">,
+  "status"
+> & {
+  status:
+    | Schema<"AddIntegrationResponse">["status"]
+    | "redirecting"
+    | "bearer_required";
+};
 
 export const integrationsApi = {
   /**
    * Get the configuration for all integrations from backend
    */
-  getIntegrationConfig: async (): Promise<IntegrationConfigResponse> => {
+  getIntegrationConfig: async () => {
     try {
-      const response = (await apiService.get(
-        "/integrations/config",
-      )) as IntegrationConfigResponse;
-      return response;
+      return await api.get("/api/v1/integrations/config");
     } catch (error) {
       console.error("Failed to get integration config:", error);
       throw error;
@@ -40,47 +37,38 @@ export const integrationsApi = {
    * Per-tool schemas are not included — only `toolCount`. Fetch one
    * integration's tools on demand via `getIntegrationTools`.
    */
-  getMyIntegrations: async (): Promise<MyIntegrationsResponse> => {
-    return await apiService.get<MyIntegrationsResponse>("/integrations/me");
-  },
+  getMyIntegrations: () => api.get("/api/v1/integrations/me"),
 
   /**
    * Get the full tool list for a single integration, on demand.
    */
-  getIntegrationTools: async (
-    integrationId: string,
-  ): Promise<IntegrationToolsResponse> => {
-    return await apiService.get<IntegrationToolsResponse>(
-      `/integrations/${integrationId}/tools`,
-      { silent: true },
-    );
-  },
+  getIntegrationTools: (integrationId: string) =>
+    api.get("/api/v1/integrations/{integration_id}/tools", {
+      path: { integration_id: integrationId },
+      silent: true,
+    }),
 
   /**
    * Get the user's custom instructions for one integration.
    */
-  getIntegrationInstructions: async (
-    integrationId: string,
-  ): Promise<IntegrationInstructions> => {
-    return await apiService.get<IntegrationInstructions>(
-      `/integrations/users/me/integrations/${integrationId}/instructions`,
-      { silent: true },
-    );
-  },
+  getIntegrationInstructions: (integrationId: string) =>
+    api.get(
+      "/api/v1/integrations/users/me/integrations/{integration_id}/instructions",
+      { path: { integration_id: integrationId }, silent: true },
+    ),
 
   /**
    * Save the user's custom instructions for one integration.
    */
-  updateIntegrationInstructions: async (
-    integrationId: string,
-    content: string,
-  ): Promise<IntegrationInstructions> => {
-    return await apiService.put<IntegrationInstructions>(
-      `/integrations/users/me/integrations/${integrationId}/instructions`,
-      { content },
-      { silent: true },
-    );
-  },
+  updateIntegrationInstructions: (integrationId: string, content: string) =>
+    api.put(
+      "/api/v1/integrations/users/me/integrations/{integration_id}/instructions",
+      {
+        path: { integration_id: integrationId },
+        body: { content },
+        silent: true,
+      },
+    ),
 
   /**
    * Connect an integration using the unified backend endpoint.
@@ -98,21 +86,13 @@ export const integrationsApi = {
     url.searchParams.delete("oauth_error");
     const redirectPath = url.pathname + url.search;
 
-    const response = (await apiService.post(
-      `/integrations/connect/${integrationId.toLowerCase()}`,
+    const response = await api.post(
+      "/api/v1/integrations/connect/{integration_id}",
       {
-        redirect_path: redirectPath,
-        bearer_token: bearerToken,
+        path: { integration_id: integrationId.toLowerCase() },
+        body: { redirect_path: redirectPath, bearer_token: bearerToken },
       },
-    )) as {
-      status: "connected" | "redirect" | "error";
-      integrationId: string;
-      name: string;
-      message?: string;
-      toolsCount?: number;
-      redirectUrl?: string;
-      error?: string;
-    };
+    );
 
     if (response.status === "redirect" && response.redirectUrl) {
       const safeUrl = sanitizeRedirectUrl(response.redirectUrl);
@@ -140,7 +120,9 @@ export const integrationsApi = {
    */
   disconnectIntegration: async (integrationId: string): Promise<void> => {
     try {
-      await apiService.delete(`/integrations/${integrationId}`);
+      await api.delete("/api/v1/integrations/{integration_id}", {
+        path: { integration_id: integrationId },
+      });
     } catch (error) {
       console.error(`Failed to disconnect ${integrationId}:`, error);
       throw error;
@@ -150,39 +132,11 @@ export const integrationsApi = {
   /**
    * Create a custom MCP integration.
    */
-  createCustomIntegration: async (
-    request: CreateCustomIntegrationRequest,
-  ): Promise<CreateCustomIntegrationResponse> => {
+  createCustomIntegration: async (request: CreateCustomIntegrationRequest) => {
     try {
-      const response = await apiService.post("/integrations/custom", request);
-      return response as CreateCustomIntegrationResponse;
+      return await api.post("/api/v1/integrations/custom", { body: request });
     } catch (error) {
       console.error("Failed to create custom integration:", error);
-      throw error;
-    }
-  },
-
-  /**
-   * Test connection to an MCP server.
-   */
-  testConnection: async (
-    integrationId: string,
-  ): Promise<{
-    status: "connected" | "requires_oauth" | "failed";
-    tools_count?: number;
-    oauth_url?: string;
-    error?: string;
-  }> => {
-    try {
-      const response = await apiService.post(`/mcp/test/${integrationId}`, {});
-      return response as {
-        status: "connected" | "requires_oauth" | "failed";
-        tools_count?: number;
-        oauth_url?: string;
-        error?: string;
-      };
-    } catch (error) {
-      console.error(`Failed to test connection ${integrationId}:`, error);
       throw error;
     }
   },
@@ -192,7 +146,9 @@ export const integrationsApi = {
    */
   deleteCustomIntegration: async (integrationId: string): Promise<void> => {
     try {
-      await apiService.delete(`/integrations/custom/${integrationId}`);
+      await api.delete("/api/v1/integrations/custom/{integration_id}", {
+        path: { integration_id: integrationId },
+      });
     } catch (error) {
       console.error(
         `Failed to delete custom integration ${integrationId}:`,
@@ -205,78 +161,37 @@ export const integrationsApi = {
   /**
    * Publish a custom integration to the community marketplace
    */
-  publishIntegration: async (
-    integrationId: string,
-  ): Promise<{
-    message: string;
-    integrationId: string;
-    publicUrl: string;
-  }> => {
-    const response = await apiService.post(
-      `/integrations/custom/${integrationId}/publish`,
-      {},
-    );
-    return response as {
-      message: string;
-      integrationId: string;
-      publicUrl: string;
-    };
-  },
+  publishIntegration: (integrationId: string) =>
+    api.post("/api/v1/integrations/custom/{integration_id}/publish", {
+      path: { integration_id: integrationId },
+    }),
 
   /**
    * Unpublish a custom integration from the marketplace
    */
-  unpublishIntegration: async (
-    integrationId: string,
-  ): Promise<{
-    message: string;
-    integrationId: string;
-  }> => {
-    const response = await apiService.post(
-      `/integrations/custom/${integrationId}/unpublish`,
-      {},
-    );
-    return response as {
-      message: string;
-      integrationId: string;
-    };
-  },
+  unpublishIntegration: (integrationId: string) =>
+    api.post("/api/v1/integrations/custom/{integration_id}/unpublish", {
+      path: { integration_id: integrationId },
+    }),
 
   /**
    * Get community integrations for the public marketplace
    */
-  getCommunityIntegrations: async (params?: {
+  getCommunityIntegrations: (params?: {
     sort?: "popular" | "recent" | "name";
     category?: string;
     limit?: number;
     offset?: number;
     search?: string;
-  }): Promise<CommunityIntegrationsResponse> => {
-    const searchParams = new URLSearchParams();
-    if (params?.sort) searchParams.set("sort", params.sort);
-    if (params?.category) searchParams.set("category", params.category);
-    if (params?.limit) searchParams.set("limit", params.limit.toString());
-    if (params?.offset) searchParams.set("offset", params.offset.toString());
-    if (params?.search) searchParams.set("search", params.search);
-
-    const query = searchParams.toString();
-    const response = await apiService.get(
-      `/integrations/community${query ? `?${query}` : ""}`,
-    );
-    return response as CommunityIntegrationsResponse;
-  },
+  }) => api.get("/api/v1/integrations/community", { query: params }),
 
   /**
    * Get public integration details by integration ID (no auth required)
    */
-  getPublicIntegration: async (
-    integrationId: string,
-  ): Promise<PublicIntegrationResponse> => {
-    const response = await apiService.get(
-      `/integrations/public/${integrationId}`,
-    );
-    return response as PublicIntegrationResponse;
-  },
+  getPublicIntegration: (integrationId: string) =>
+    api.get("/api/v1/integrations/public/{identifier}", {
+      path: { identifier: integrationId },
+    }),
 
   /**
    * Add a public integration to user's workspace and trigger OAuth if needed
@@ -284,46 +199,28 @@ export const integrationsApi = {
   addIntegration: async (
     integrationId: string,
     bearerToken?: string,
-  ): Promise<{
-    status:
-      | "connected"
-      | "redirect"
-      | "redirecting"
-      | "bearer_required"
-      | "error";
-    integrationId: string;
-    name: string;
-    message: string;
-    toolsCount?: number;
-    redirectUrl?: string;
-    error?: string;
-  }> => {
+  ): Promise<AddIntegrationOutcome> => {
     if (typeof window === "undefined") {
       return {
         status: "error",
         integrationId,
         name: "",
         message: "Cannot add integration on server",
+        redirectUrl: null,
+        toolsCount: null,
+        error: null,
       };
     }
 
     const redirectPath = `/integrations?id=${integrationId}&refresh=true`;
 
-    const response = (await apiService.post(
-      `/integrations/public/${integrationId}/add`,
+    const response = await api.post(
+      "/api/v1/integrations/public/{integration_id}/add",
       {
-        redirect_path: redirectPath,
-        bearer_token: bearerToken,
+        path: { integration_id: integrationId },
+        body: { redirect_path: redirectPath, bearer_token: bearerToken },
       },
-    )) as {
-      status: "connected" | "redirect" | "error";
-      integrationId: string;
-      name: string;
-      message: string;
-      toolsCount?: number;
-      redirectUrl?: string;
-      error?: string;
-    };
+    );
 
     if (response.status === "redirect" && response.redirectUrl) {
       const safeUrl = sanitizeRedirectUrl(response.redirectUrl);
@@ -362,13 +259,12 @@ export const integrationsApi = {
         name: i.name,
         description: i.description,
         category: i.category,
-        iconUrl: i.iconUrl ?? null,
+        // The config endpoint carries no icon or tool list; cards resolve the
+        // icon by slug and the tool list is fetched per integration on demand.
+        iconUrl: null,
         cloneCount: 0,
-        toolCount: i.tools?.length ?? 0,
-        tools: (i.tools ?? []).map((t) => ({
-          name: t.name,
-          description: t.description ?? null,
-        })),
+        toolCount: 0,
+        tools: [],
         publishedAt: null,
         creator: null,
         source: "platform" as const,
@@ -376,34 +272,12 @@ export const integrationsApi = {
   },
 
   /**
-   * Search public integrations using semantic search
-   */
-  searchIntegrations: async (
-    query: string,
-  ): Promise<{
-    integrations: PublicIntegrationResponse[];
-    query: string;
-  }> => {
-    const response = await apiService.get(
-      `/integrations/search?q=${encodeURIComponent(query)}`,
-    );
-    return response as {
-      integrations: PublicIntegrationResponse[];
-      query: string;
-    };
-  },
-
-  /**
    * Get community workflows related to an integration by slug or native ID
    */
-  getRelatedWorkflows: async (
-    identifier: string,
-    limit: number = 10,
-  ): Promise<CommunityWorkflowsResponse> => {
-    const response = await apiService.get(
-      `/integrations/public/${encodeURIComponent(identifier)}/workflows?limit=${limit}`,
-      { silent: true },
-    );
-    return response as CommunityWorkflowsResponse;
-  },
+  getRelatedWorkflows: (identifier: string, limit: number = 10) =>
+    api.get("/api/v1/integrations/public/{identifier}/workflows", {
+      path: { identifier },
+      query: { limit },
+      silent: true,
+    }),
 };

@@ -471,6 +471,52 @@ jobs:
           status: ${{ job.status }}
           name: file-size
 
+  # --- API schema + generated types -----------------------------------------
+  api-schema:
+    name: API schema and generated types match the routes
+    needs: [select-runner, changes]
+    if: needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true'
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    env:
+      GAIA_PR_BASE: ${{ needs.changes.outputs.base_ref }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-uv
+      - name: Install api dev + backend dependencies (uv sync)
+        run: |
+          echo "::group::uv sync"
+          uv sync --project apps/api --group backend --group dev
+          echo "::endgroup::"
+          echo "deps: OK"
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Regenerate openapi.json + TypeScript types and fail on drift
+        run: |
+          trap 'echo "::error::repro: node scripts/ci/checks.mjs api-schema"' ERR
+          echo "::group::api-schema regenerate + diff"
+          node scripts/ci/checks.mjs api-schema
+          echo "::endgroup::"
+          echo "### API schema — ✅ in sync" >> "$GITHUB_STEP_SUMMARY"
+      - name: No hand-written twin of an API schema type
+        run: |
+          trap 'echo "::error::repro: node scripts/ci/checks.mjs api-schema-types"' ERR
+          echo "::group::api-schema-types"
+          node scripts/ci/checks.mjs api-schema-types
+          echo "::endgroup::"
+          echo "### API schema types — ✅ no hand-written twins" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: api-schema
+
   # --- Types must live in dedicated type files ----------------------------
   types-location:
     name: Types live in dedicated *.types.ts files
@@ -1655,6 +1701,7 @@ jobs:
       - circular
       - file-size
       - types-location
+      - api-schema
       - components-per-file
       - duplicates
       - package-hygiene
@@ -1700,5 +1747,5 @@ jobs:
           # lane FAMILY that job reports under (see consolidate --help).
           # Results go through env, not inline expansion.
           EXPECT: >-
-            changes=${{ needs.changes.result }},biome=${{ needs.biome.result }},deps=${{ needs.deps.result }},circular=${{ needs.circular.result }},file-size=${{ needs.file-size.result }},types-location=${{ needs.types-location.result }},components-per-file=${{ needs.components-per-file.result }},duplicates=${{ needs.duplicates.result }},package-hygiene=${{ needs.package-hygiene.result }},type-check=${{ needs.type-check.result }},python-static=${{ needs.python-static.result }},python-mypy=${{ needs.python-mypy.result }},observability=${{ needs.observability.result }},wide-event-conformance=${{ needs.wide-event-conformance.result }},dead-code=${{ needs.dead-code.result }},alert-rules=${{ needs.alert-rules.result }},suppression-hygiene=${{ needs.suppression-hygiene.result }},gitleaks=${{ needs.gitleaks.result }},semgrep=${{ needs.semgrep.result }},test-mutation-plan=${{ needs.test-mutation-plan.result }},test-mutation@mutation=${{ needs.test-mutation.result }},select-runner-services@result-only=${{ needs.select-runner-services.result }}
+            changes=${{ needs.changes.result }},biome=${{ needs.biome.result }},deps=${{ needs.deps.result }},circular=${{ needs.circular.result }},file-size=${{ needs.file-size.result }},types-location=${{ needs.types-location.result }},api-schema=${{ needs.api-schema.result }},components-per-file=${{ needs.components-per-file.result }},duplicates=${{ needs.duplicates.result }},package-hygiene=${{ needs.package-hygiene.result }},type-check=${{ needs.type-check.result }},python-static=${{ needs.python-static.result }},python-mypy=${{ needs.python-mypy.result }},observability=${{ needs.observability.result }},wide-event-conformance=${{ needs.wide-event-conformance.result }},dead-code=${{ needs.dead-code.result }},alert-rules=${{ needs.alert-rules.result }},suppression-hygiene=${{ needs.suppression-hygiene.result }},gitleaks=${{ needs.gitleaks.result }},semgrep=${{ needs.semgrep.result }},test-mutation-plan=${{ needs.test-mutation-plan.result }},test-mutation@mutation=${{ needs.test-mutation.result }},select-runner-services@result-only=${{ needs.select-runner-services.result }}
         run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT"

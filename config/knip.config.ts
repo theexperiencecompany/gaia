@@ -59,6 +59,10 @@ const config: KnipConfig = {
     // Fonts: consumed in layout via CSS variable injection
     "apps/web/src/app/fonts/index.ts": ["exports"],
 
+    // Generated API types (`mise api:types`): the whole surface is exported
+    // for consumers to pick from; most of it is unused at any given moment.
+    "libs/shared/ts/src/api/generated/index.ts": ["exports", "types"],
+
     // Auto-generated icon path data (DO NOT EDIT): the generator emits both
     // `iconPaths` and `getIconPaths`; only the latter is consumed.
     "apps/web/src/config/iconPaths.generated.ts": ["exports"],

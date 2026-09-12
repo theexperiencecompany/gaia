@@ -21,7 +21,7 @@ import {
 } from "./schedule-builder";
 import { type TriggerMode, TriggerModeTabs } from "./trigger-mode-tabs";
 import {
-  type TriggerOption,
+  type TriggerPickerOption,
   TriggerPickerSheet,
   type TriggerPickerSheetRef,
 } from "./trigger-picker-sheet";
@@ -96,7 +96,7 @@ interface RawTriggerConfig {
 
 function deriveSelectedTrigger(
   raw: RawTriggerConfig | undefined,
-): TriggerOption | null {
+): TriggerPickerOption | null {
   if (!raw) return null;
   const slug = raw.trigger_slug ?? raw.trigger_name;
   if (!slug) return null;
@@ -125,9 +125,8 @@ export function EditWorkflowModal({
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>(
     DEFAULT_SCHEDULE_CONFIG,
   );
-  const [selectedTrigger, setSelectedTrigger] = useState<TriggerOption | null>(
-    null,
-  );
+  const [selectedTrigger, setSelectedTrigger] =
+    useState<TriggerPickerOption | null>(null);
   const [triggerConfig, setTriggerConfig] = useState<TriggerConfig | null>(
     null,
   );
@@ -143,13 +142,14 @@ export function EditWorkflowModal({
       const triggerType = workflow.trigger_config?.type;
       setMode(modeFromTriggerType(triggerType));
       setScheduleConfig(
-        scheduleConfigFromCron(workflow.trigger_config?.cron_expression),
+        scheduleConfigFromCron(
+          workflow.trigger_config?.cron_expression ?? undefined,
+        ),
       );
       if (
         triggerType &&
         triggerType !== "manual" &&
-        triggerType !== "schedule" &&
-        triggerType !== "scheduled"
+        triggerType !== "schedule"
       ) {
         const raw = workflow.trigger_config as unknown as RawTriggerConfig;
         setSelectedTrigger(deriveSelectedTrigger(raw));
@@ -480,7 +480,7 @@ function ManualPanel() {
 }
 
 interface TriggerPanelProps {
-  selected: TriggerOption | null;
+  selected: TriggerPickerOption | null;
   onPick: () => void;
 }
 

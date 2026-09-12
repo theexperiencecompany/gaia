@@ -52,7 +52,7 @@ async def image_to_text(
     return response
 
 
-@router.post("/image/generate/stream")
+@router.post("/image/generate/stream", response_class=StreamingResponse)
 @tiered_rate_limit("generate_image")
 async def image_stream(
     request: MessageRequest, _user: AuthenticatedUser = Depends(get_current_user)

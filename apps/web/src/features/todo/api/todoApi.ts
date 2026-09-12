@@ -1,20 +1,11 @@
-import { TODO_ENDPOINTS } from "@shared/api/todosApi";
-import { createTodoApi, type HttpAdapter } from "@shared/todos";
-import { apiService } from "@/lib/api/service";
+import { createTodoApi } from "@shared/todos";
+import { todoHttpAdapter } from "@/lib/api/todoHttpAdapter";
+import { api } from "@/lib/api/typed";
 
-const httpAdapter: HttpAdapter = {
-  get: (url, options) => apiService.get(url, options),
-  post: (url, data, options) => apiService.post(url, data, options),
-  put: (url, data, options) => apiService.put(url, data, options),
-  patch: (url, data, options) => apiService.patch(url, data, options),
-  delete: (url, data, options) => apiService.delete(url, data, options),
-};
+export const todoApi = createTodoApi(todoHttpAdapter);
 
-export const todoApi = createTodoApi(httpAdapter);
-
-export const getTodoCanvas = async (
-  todoId: string,
-): Promise<{ content: string }> =>
-  apiService.get<{ content: string }>(TODO_ENDPOINTS.canvas(todoId), {
+export const getTodoCanvas = (todoId: string) =>
+  api.get("/api/v1/todos/{todo_id}/canvas", {
+    path: { todo_id: todoId },
     silent: true,
   });

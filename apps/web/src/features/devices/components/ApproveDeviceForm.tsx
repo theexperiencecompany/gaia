@@ -57,7 +57,7 @@ export function ApproveDeviceForm() {
         source: cameFromCli ? "cli" : "settings",
       });
     } catch {
-      // apiService already surfaced the error toast
+      // The API client already surfaced the error toast
     } finally {
       setIsApproving(false);
     }

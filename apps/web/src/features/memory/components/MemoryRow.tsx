@@ -5,18 +5,18 @@ import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import { Delete02Icon, PencilEdit02Icon } from "@icons";
+import type { Schema } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type { MemoryEntry } from "@/features/memory/api/types";
 import { cn } from "@/lib/utils";
 
 interface MemoryRowProps {
-  readonly memory: MemoryEntry;
+  readonly memory: Schema<"MemoryEntry">;
   readonly showCategory?: boolean;
   readonly isDeleting?: boolean;
-  readonly onEdit: (memory: MemoryEntry) => void;
-  readonly onForget: (memory: MemoryEntry) => void;
+  readonly onEdit: (memory: Schema<"MemoryEntry">) => void;
+  readonly onForget: (memory: Schema<"MemoryEntry">) => void;
 }
 
 function importanceColor(importance: number): string {
@@ -34,7 +34,7 @@ export function MemoryRow({
 }: MemoryRowProps) {
   const timestamp = memory.created_at ?? memory.mentioned_at;
   const [expanded, setExpanded] = useState(false);
-  const [history, setHistory] = useState<MemoryEntry[] | null>(null);
+  const [history, setHistory] = useState<Schema<"MemoryEntry">[] | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   const toggleHistory = async () => {

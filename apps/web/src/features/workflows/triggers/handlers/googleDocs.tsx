@@ -7,7 +7,7 @@
 "use client";
 
 import type { RegisteredHandler } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 
 export const googleDocsTriggerHandler: RegisteredHandler = {
   triggerSlugs: [
@@ -16,7 +16,7 @@ export const googleDocsTriggerHandler: RegisteredHandler = {
     "google_docs_document_updated",
   ],
 
-  createDefaultConfig: (slug: string): TriggerConfig => ({
+  createDefaultConfig: (slug: string): TriggerConfigDraft => ({
     type: "integration",
     enabled: true,
     trigger_name: slug,

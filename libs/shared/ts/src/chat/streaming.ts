@@ -1,3 +1,4 @@
+import type { Schema } from "../api/generated";
 import {
   DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
   type DesktopToolRequest,
@@ -7,13 +8,7 @@ import type { TodoProgressSnapshot } from "./types";
 
 export type { TodoProgressSnapshot };
 
-export interface StreamToolDataEntry {
-  tool_name: string;
-  data: unknown;
-  timestamp?: string | null;
-  tool_category?: string;
-  subagent_id?: string;
-}
+export type StreamToolDataEntry = Schema<"ToolDataEntry">;
 
 /**
  * tool_name marking a streamed tool-call-progress entry. These render via the
@@ -103,7 +98,8 @@ const toToolDataEntry = (value: unknown): StreamToolDataEntry | null => {
 
   return {
     tool_name: value.tool_name,
-    data: value.data,
+    // The frame is JSON; every tool owns the shape of its own `data`.
+    data: value.data as StreamToolDataEntry["data"],
     timestamp:
       typeof value.timestamp === "string" || value.timestamp === null
         ? value.timestamp

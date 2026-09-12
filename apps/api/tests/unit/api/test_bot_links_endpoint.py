@@ -713,7 +713,7 @@ class TestRedeemLinkCode:
         assert response.status_code == 422
         # The rejection names the offending platform — a bot operator sending a
         # typo'd platform has to be able to tell what was wrong from the body.
-        errors = response.json()["detail"]
+        errors = response.json()["errors"]
         assert [err["loc"] for err in errors] == [["body", "platform"]]
         assert "myspace" in errors[0]["msg"]
 

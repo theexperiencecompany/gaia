@@ -10,13 +10,10 @@ import {
   PlusSignIcon,
   Search01Icon,
 } from "@icons";
+import type { Schema } from "@shared/api/generated";
 import { useCallback, useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type {
-  MemoryEntry,
-  MemoryListResponse,
-} from "@/features/memory/api/types";
 import { AddMemoryModal } from "@/features/memory/components/AddMemoryModal";
 import { EditMemoryModal } from "@/features/memory/components/EditMemoryModal";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
@@ -32,12 +29,12 @@ interface MemoryListProps {
 
 export function MemoryList({ onChanged }: MemoryListProps) {
   const [page, setPage] = useState(1);
-  const [data, setData] = useState<MemoryListResponse | null>(null);
+  const [data, setData] = useState<Schema<"MemoryListResponse"> | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<MemoryEntry[] | null>(
-    null,
-  );
+  const [searchResults, setSearchResults] = useState<
+    Schema<"MemoryEntry">[] | null
+  >(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const { confirm, confirmationProps } = useConfirmation();

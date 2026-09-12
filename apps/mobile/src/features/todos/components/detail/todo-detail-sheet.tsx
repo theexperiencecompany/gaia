@@ -63,13 +63,11 @@ export const TodoDetailSheet = forwardRef<
         // optimistic local update so the sheet reflects changes immediately
         // even if the parent list query has not refetched yet.
         const localUpdate: Partial<Todo> = {
-          ...(update.title !== undefined ? { title: update.title } : {}),
+          ...(update.title != null ? { title: update.title } : {}),
           ...(update.description !== undefined
             ? { description: update.description }
             : {}),
-          ...(update.priority !== undefined
-            ? { priority: update.priority }
-            : {}),
+          ...(update.priority != null ? { priority: update.priority } : {}),
           ...(update.due_date !== undefined
             ? { due_date: update.due_date }
             : {}),
@@ -79,13 +77,11 @@ export const TodoDetailSheet = forwardRef<
           ...(update.project_id !== undefined
             ? { project_id: update.project_id }
             : {}),
-          ...(update.labels !== undefined ? { labels: update.labels } : {}),
+          ...(update.labels != null ? { labels: update.labels } : {}),
           ...(update.recurrence !== undefined
             ? { recurrence: update.recurrence }
             : {}),
-          ...(update.completed !== undefined
-            ? { completed: update.completed }
-            : {}),
+          ...(update.completed != null ? { completed: update.completed } : {}),
         };
         setTodo({ ...todo, ...localUpdate } as Todo);
         // Swallow recurrence-only failures silently — backend may not yet

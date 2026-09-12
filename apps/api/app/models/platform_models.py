@@ -9,6 +9,7 @@ from typing import Annotated, TypedDict
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.repositories.base import MongoDocument
+from app.schemas.common import ResponseModel
 
 
 class LinkPlatformRequest(BaseModel):
@@ -53,7 +54,7 @@ class PlatformLinkEntry(TypedDict):
     connectedAt: Annotated[str | None, Field(description="ISO timestamp when linked")]
 
 
-class GetPlatformLinksResponse(BaseModel):
+class GetPlatformLinksResponse(ResponseModel):
     """Response wrapper for user's linked platforms."""
 
     platform_links: dict[str, PlatformLinkEntry] = Field(
@@ -155,7 +156,7 @@ class DisconnectPlatformResponse(BaseModel):
     platform: str = Field(..., description="Platform name")
 
 
-class InitiatePlatformConnectResponse(BaseModel):
+class InitiatePlatformConnectResponse(ResponseModel):
     """Response model for initiating platform connection."""
 
     auth_url: str | None = Field(

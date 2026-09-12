@@ -114,4 +114,4 @@ class TestGateDoesNotMintPerBlockedRequest:
             response = await gated_client.get("/api/v1/conversations")
 
         assert response.status_code == 402
-        assert response.json()["detail"]["code"] == "subscription_required"
+        assert response.json()["code"] == "subscription_required"

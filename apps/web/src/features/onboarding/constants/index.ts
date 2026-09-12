@@ -1,3 +1,4 @@
+import type { Schema } from "@shared/api/generated";
 import type { Question } from "../types";
 import {
   needOptions,
@@ -8,6 +9,9 @@ import {
 import type { TypedNeedOption } from "./options.types";
 
 export { needOptions, OTHER_NEED, professionOptions } from "./options";
+
+/** A Q2 need id; the API's enum, so a chip the API rejects cannot be typed. */
+export type OnboardingNeed = Schema<"OnboardingNeed">;
 
 /** How the role reads inside "Personalised for you, since you're …". */
 export const ROLE_PHRASES: Record<string, string> = {
@@ -48,7 +52,7 @@ export function isRoleNeed(value: string): boolean {
   );
 }
 
-export function isKnownNeed(value: string): boolean {
+export function isKnownNeed(value: string): value is OnboardingNeed {
   return allNeedOptions.some((option) => option.value === value);
 }
 

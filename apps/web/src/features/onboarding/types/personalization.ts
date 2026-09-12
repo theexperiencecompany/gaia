@@ -1,3 +1,4 @@
+import type { Schema } from "@shared/api/generated";
 import type { OnboardingData } from "@/features/auth/api/authApi";
 
 /**
@@ -12,23 +13,13 @@ import type { OnboardingData } from "@/features/auth/api/authApi";
 
 import type { IntegrationRef } from "@/types/features/workflowTypes";
 
-export type OnboardingPhase =
-  | "initial"
-  | "personalization_pending"
-  | "personalization_complete"
-  | "getting_started"
-  | "completed";
+export type OnboardingPhase = Schema<"OnboardingPhase">;
 
 export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
 
 export type BioStatus = "pending" | "processing" | "completed" | "no_gmail";
 
-export interface WritingStyleExampleBlocks {
-  greeting: string;
-  body: string[];
-  signoff: string;
-  name: string;
-}
+export type WritingStyleExampleBlocks = Schema<"WritingStyleExampleBlocks">;
 
 /** The handoff conversation ids are the API's onboarding block, verbatim —
  * borrowed rather than restated so there is one declaration of them. */

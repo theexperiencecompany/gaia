@@ -3,13 +3,13 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 from app.models.integration_instructions_models import InstructionsEditor
 from app.models.integration_models import UserIntegrationStatus
 from app.models.oauth_models import IntegrationContent
-from app.schemas.common import SuccessResponse
+from app.schemas.common import ResponseModel, SuccessResponse
 
 
 # Base model that auto-converts snake_case to camelCase for JSON serialization
@@ -61,7 +61,7 @@ class AddUserIntegrationResponse(SuccessResponse, CamelModel):
     connection_status: UserIntegrationStatus
 
 
-class IntegrationInstructionsResponse(CamelModel):
+class IntegrationInstructionsResponse(ResponseModel, CamelModel):
     """A user's custom instructions for one integration."""
 
     integration_id: str
@@ -155,16 +155,16 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     creator: Optional["CommunityIntegrationCreator"] = None
 
 
-class MyIntegrationsResponse(BaseModel):
+class MyIntegrationsResponse(ResponseModel):
     """The full integration catalog personalized for one user (platform + their
     own custom integrations), each carrying connection status. Replaces the
     client-side merge of /config + /status + /users/me/integrations."""
 
-    integrations: list[MyIntegrationItem] = []
+    integrations: list[MyIntegrationItem] = Field(default_factory=list)
     total: int = 0
 
 
-class IntegrationToolsResponse(CamelModel):
+class IntegrationToolsResponse(CamelModel, ResponseModel):
     """Full tool list for a single integration (catalog data, on demand)."""
 
     integration_id: str
@@ -172,7 +172,7 @@ class IntegrationToolsResponse(CamelModel):
     count: int = 0
 
 
-class ConnectIntegrationResponse(CamelModel):
+class ConnectIntegrationResponse(ResponseModel, CamelModel):
     status: Literal["connected", "redirect", "error"]
     integration_id: str
     name: str
@@ -198,7 +198,7 @@ class CommunityIntegrationCreator(CamelModel):
     picture: str | None = None
 
 
-class CommunityIntegrationItem(CamelModel, CloneCountMixin):
+class CommunityIntegrationItem(ResponseModel, CamelModel, CloneCountMixin):
     """Integration item for community marketplace listing."""
 
     integration_id: str
@@ -214,10 +214,10 @@ class CommunityIntegrationItem(CamelModel, CloneCountMixin):
     creator: CommunityIntegrationCreator | None = None
 
 
-class CommunityListResponse(BaseModel):
+class CommunityListResponse(ResponseModel):
     """Response for community marketplace listing."""
 
-    integrations: list[CommunityIntegrationItem] = []
+    integrations: list[CommunityIntegrationItem] = Field(default_factory=list)
     total: int = 0
     has_more: bool = False
 
@@ -262,7 +262,7 @@ class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
     content: IntegrationContent | None = None
 
 
-class AddIntegrationResponse(CamelModel):
+class AddIntegrationResponse(ResponseModel, CamelModel):
     """Response for adding a public integration to user's workspace."""
 
     integration_id: str

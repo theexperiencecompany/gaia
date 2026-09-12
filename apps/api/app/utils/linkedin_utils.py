@@ -8,14 +8,12 @@ shape: Composio fetches the source URL and forwards the bytes to LinkedIn's
 upload endpoint with the authenticated headers.
 """
 
-from typing import Any
-
 from app.constants.log_tags import LogTag
 from app.models.composio_schemas.linkedin import (
     LinkedInInitializeUploadResponse,
     LinkedInUserInfo,
 )
-from app.services.composio.proxy_client import ProxyMethod, proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from shared.py.wide_events import log
 
 LINKEDIN_API_BASE = "https://api.linkedin.com/v2"
@@ -32,33 +30,6 @@ def _restli_headers() -> dict[str, str]:
     }
 
 
-def _proxy(
-    user_id: str,
-    *,
-    endpoint: str,
-    method: ProxyMethod,
-    body: dict[str, Any] | None = None,
-    query: dict[str, Any] | None = None,
-    headers: dict[str, str] | None = None,
-    binary_body: dict[str, str] | None = None,
-) -> object:
-    """Send one LinkedIn request through the Composio proxy.
-
-    Returns ``object``: each endpoint answers a different JSON shape, so callers
-    validate it into a real model instead of reading fields off it directly.
-    """
-    return proxy_request_sync(
-        user_id=user_id,
-        toolkit=LINKEDIN_TOOLKIT,
-        endpoint=endpoint,
-        method=method,
-        body=body,
-        query=query,
-        headers=headers,
-        binary_body=binary_body,
-    )
-
-
 def get_author_urn(user_id: str, organization_id: str | None = None) -> str:
     """Get the author URN (person or organization)."""
     log.set(operation="get_author_urn", organization_id=organization_id)
@@ -69,7 +40,15 @@ def get_author_urn(user_id: str, organization_id: str | None = None) -> str:
 
     try:
         info = LinkedInUserInfo.model_validate(
-            _proxy(user_id, endpoint=f"{LINKEDIN_API_BASE}/userinfo", method="GET") or {}
+            proxy_request_sync(
+                ProxyRequest(
+                    user_id=user_id,
+                    toolkit=LINKEDIN_TOOLKIT,
+                    endpoint=f"{LINKEDIN_API_BASE}/userinfo",
+                    method="GET",
+                )
+            )
+            or {}
         )
         if info.sub:
             return f"urn:li:person:{info.sub}"
@@ -97,12 +76,15 @@ def upload_image_from_url(
 
     try:
         init_result = LinkedInInitializeUploadResponse.model_validate(
-            _proxy(
-                user_id,
-                endpoint=f"{LINKEDIN_REST_BASE}/images?action=initializeUpload",
-                method="POST",
-                body={"initializeUploadRequest": {"owner": author_urn}},
-                headers=_restli_headers(),
+            proxy_request_sync(
+                ProxyRequest(
+                    user_id=user_id,
+                    toolkit=LINKEDIN_TOOLKIT,
+                    endpoint=f"{LINKEDIN_REST_BASE}/images?action=initializeUpload",
+                    method="POST",
+                    body={"initializeUploadRequest": {"owner": author_urn}},
+                    headers=_restli_headers(),
+                )
             )
             or {}
         )
@@ -114,11 +96,14 @@ def upload_image_from_url(
             log.error(f"{LogTag.INTEGRATION} Failed to get upload URL from LinkedIn")
             return None
 
-        _proxy(
-            user_id,
-            endpoint=upload_url,
-            method="PUT",
-            binary_body={"url": image_url},
+        proxy_request_sync(
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=LINKEDIN_TOOLKIT,
+                endpoint=upload_url,
+                method="PUT",
+                binary_body={"url": image_url},
+            )
         )
         return image_urn
 
@@ -145,12 +130,15 @@ def upload_document_from_url(
 
     try:
         init_result = LinkedInInitializeUploadResponse.model_validate(
-            _proxy(
-                user_id,
-                endpoint=f"{LINKEDIN_REST_BASE}/documents?action=initializeUpload",
-                method="POST",
-                body={"initializeUploadRequest": {"owner": author_urn}},
-                headers=_restli_headers(),
+            proxy_request_sync(
+                ProxyRequest(
+                    user_id=user_id,
+                    toolkit=LINKEDIN_TOOLKIT,
+                    endpoint=f"{LINKEDIN_REST_BASE}/documents?action=initializeUpload",
+                    method="POST",
+                    body={"initializeUploadRequest": {"owner": author_urn}},
+                    headers=_restli_headers(),
+                )
             )
             or {}
         )
@@ -162,11 +150,14 @@ def upload_document_from_url(
             log.error(f"{LogTag.INTEGRATION} Failed to get upload URL from LinkedIn")
             return None
 
-        _proxy(
-            user_id,
-            endpoint=upload_url,
-            method="PUT",
-            binary_body={"url": document_url},
+        proxy_request_sync(
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=LINKEDIN_TOOLKIT,
+                endpoint=upload_url,
+                method="PUT",
+                binary_body={"url": document_url},
+            )
         )
         return document_urn
 

@@ -26,6 +26,7 @@ from bson import ObjectId
 
 from app.constants.chat import USER_MESSAGE_TYPE
 from app.db.repositories.base import UserScopedRepository
+from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
     ConversationSource,
@@ -306,7 +307,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     async def list_artifacts(
         self, conversation_id: str, *, user_id: str
-    ) -> list[dict[str, object]]:
+    ) -> list[ArtifactRegistryEntry]:
         """The conversation's artifact registry, or an empty list when it has none."""
         document = await self._find_one({"conversation_id": conversation_id, "user_id": user_id})
         return list(document.artifacts) if document else []

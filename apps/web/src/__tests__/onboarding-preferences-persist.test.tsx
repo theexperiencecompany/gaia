@@ -33,7 +33,7 @@ import type { OnboardingState } from "@/features/onboarding/state/types";
 const answered: OnboardingState = [
   { type: "answer", field: FIELD_NAMES.PROFESSION, value: "founder" } as const,
   { type: "toggleNeed", value: "inbox" } as const,
-  { type: "toggleNeed", value: "todos" } as const,
+  { type: "toggleNeed", value: "tools" } as const,
   { type: "submitNeeds" } as const,
 ].reduce(reducer, initialState);
 
@@ -71,7 +71,7 @@ describe("useOnboardingPreferences", () => {
 
     expect(saveOnboardingPreferences).toHaveBeenCalledExactlyOnceWith({
       profession: "founder",
-      needs: ["inbox", "todos"],
+      needs: ["inbox", "tools"],
     });
     await waitFor(() =>
       expect(dispatch).toHaveBeenCalledWith({ type: "preferencesPersisted" }),

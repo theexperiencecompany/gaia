@@ -43,7 +43,7 @@ from app.constants.email import (
 )
 from app.db.redis import get_cache, set_cache
 from app.models.search_models import URLResponse
-from app.services.composio.proxy_client import proxy_request
+from app.services.composio.proxy_client import ProxyRequest, proxy_request
 from app.utils.email_utils import normalize_email
 from shared.py.wide_events import log
 
@@ -112,11 +112,13 @@ async def _people_search(
     """
     try:
         result: dict[str, Any] | None = await proxy_request(
-            user_id=user_id,
-            toolkit=_GMAIL_TOOLKIT,
-            method="GET",
-            endpoint=endpoint,
-            query={"query": query, "readMask": read_mask},
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=_GMAIL_TOOLKIT,
+                method="GET",
+                endpoint=endpoint,
+                query={"query": query, "readMask": read_mask},
+            )
         )
         return result
     except Exception as exc:
@@ -168,11 +170,13 @@ async def _fetch_profile_photo(user_id: str, person: dict[str, Any]) -> str | No
         return None
     try:
         full = await proxy_request(
-            user_id=user_id,
-            toolkit=_GMAIL_TOOLKIT,
-            method="GET",
-            endpoint=PEOPLE_GET_ENDPOINT_TEMPLATE.format(resource_name=resource_name),
-            query={"personFields": "photos"},
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=_GMAIL_TOOLKIT,
+                method="GET",
+                endpoint=PEOPLE_GET_ENDPOINT_TEMPLATE.format(resource_name=resource_name),
+                query={"personFields": "photos"},
+            )
         )
     except Exception as exc:
         log.debug(

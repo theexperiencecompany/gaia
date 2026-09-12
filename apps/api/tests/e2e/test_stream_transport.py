@@ -372,7 +372,7 @@ class TestTurnDedup:
 
         assert first.status_code == 200
         assert second.status_code == 409
-        assert second.json()["detail"] == "duplicate turn_id: this send was already accepted"
+        assert second.json()["message"] == "duplicate turn_id: this send was already accepted"
         assert len(runs) == 1
         # The claim holds the winning stream id, so a client can find its turn.
         claimed = await fake_redis.get(f"{STREAM_TURN_DEDUP_PREFIX}{OWNER_ID}:turn-abc")

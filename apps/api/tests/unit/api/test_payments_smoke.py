@@ -187,7 +187,7 @@ class TestDodoWebhook:
             )
 
         assert resp.status_code == 401
-        assert "Invalid webhook signature" in resp.json()["detail"]
+        assert "Invalid webhook signature" in resp.json()["message"]
 
     async def test_missing_webhook_headers(self, client: AsyncClient):
         """Webhook endpoint requires signature headers."""

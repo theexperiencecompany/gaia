@@ -9,10 +9,10 @@ import {
   BookOpen01Icon,
   Calendar01Icon,
 } from "@icons";
+import type { Schema } from "@shared/api/generated";
 import { addDays, format, isToday, parseISO, subDays } from "date-fns";
 import { type ReactNode, useEffect, useState } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type { MemoryEpisode } from "@/features/memory/api/types";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { JOURNAL_RANGE_DAYS } from "@/features/memory/constants";
 
@@ -20,7 +20,7 @@ const ISO_DATE_FORMAT = "yyyy-MM-dd";
 
 export function MemoryTimeline() {
   const [rangeEnd, setRangeEnd] = useState(() => new Date());
-  const [episodes, setEpisodes] = useState<MemoryEpisode[]>([]);
+  const [episodes, setEpisodes] = useState<Schema<"MemoryEpisode">[]>([]);
   const [loading, setLoading] = useState(true);
 
   const rangeStart = subDays(rangeEnd, JOURNAL_RANGE_DAYS - 1);

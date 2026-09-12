@@ -7,6 +7,11 @@
 #
 # One line per (file, rule), tab-separated, sorted. Regenerate with:
 #   python3 tools/lints/check_plr_complexity.py --update
+#
+# A line may carry a third field, "deferred-until=YYYY-MM-DD; <reason>", to
+# keep a touched file's known violation from failing until that date (CI
+# warns instead). Past the date it fails again: fix it, or renew the deferral
+# with a new reason. --update preserves these fields.
 apps/api/app/agents/core/messages.py	PLR0913
 apps/api/app/agents/core/nodes/memory_node.py	PLR0912
 apps/api/app/agents/core/nodes/memory_node.py	PLR0913
@@ -24,14 +29,14 @@ apps/api/app/agents/tools/core/retrieval.py	PLR0912
 apps/api/app/agents/tools/core/retrieval.py	PLR0913
 apps/api/app/agents/tools/core/retrieval.py	PLR0915
 apps/api/app/agents/tools/integration_tool.py	PLR0912
-apps/api/app/agents/tools/integrations/google_sheets_tool.py	PLR0912
-apps/api/app/agents/tools/integrations/google_sheets_tool.py	PLR0915
+apps/api/app/agents/tools/integrations/google_sheets_tool.py	PLR0912	deferred-until=2026-10-15; ProxyRequest wrap touched the file mechanically; restructuring ~1.7k lines of custom-tool closures is its own PR (decided 2026-09-11)
+apps/api/app/agents/tools/integrations/google_sheets_tool.py	PLR0915	deferred-until=2026-10-15; ProxyRequest wrap touched the file mechanically; restructuring ~1.7k lines of custom-tool closures is its own PR (decided 2026-09-11)
 apps/api/app/agents/tools/integrations/linear_tool.py	PLR0912
 apps/api/app/agents/tools/integrations/linear_tool.py	PLR0915
-apps/api/app/agents/tools/integrations/linkedin_tool.py	PLR0912
-apps/api/app/agents/tools/integrations/linkedin_tool.py	PLR0915
-apps/api/app/agents/tools/integrations/twitter_tool.py	PLR0912
-apps/api/app/agents/tools/integrations/twitter_tool.py	PLR0915
+apps/api/app/agents/tools/integrations/linkedin_tool.py	PLR0912	deferred-until=2026-10-15; ProxyRequest wrap touched the file mechanically; restructuring ~1.7k lines of custom-tool closures is its own PR (decided 2026-09-11)
+apps/api/app/agents/tools/integrations/linkedin_tool.py	PLR0915	deferred-until=2026-10-15; ProxyRequest wrap touched the file mechanically; restructuring ~1.7k lines of custom-tool closures is its own PR (decided 2026-09-11)
+apps/api/app/agents/tools/integrations/twitter_tool.py	PLR0912	deferred-until=2026-10-15; ProxyRequest wrap touched the file mechanically; restructuring ~1.7k lines of custom-tool closures is its own PR (decided 2026-09-11)
+apps/api/app/agents/tools/integrations/twitter_tool.py	PLR0915	deferred-until=2026-10-15; ProxyRequest wrap touched the file mechanically; restructuring ~1.7k lines of custom-tool closures is its own PR (decided 2026-09-11)
 apps/api/app/agents/tools/integrations/urgency_tool.py	PLR0912
 apps/api/app/agents/tools/integrations/urgency_tool.py	PLR0915
 apps/api/app/agents/tools/research_tool.py	PLR0915
@@ -56,7 +61,6 @@ apps/api/app/memory/reconciliation.py	PLR0912
 apps/api/app/patches/langchain_merge_dicts_model_name_patch.py	PLR0912
 apps/api/app/services/_vfs_scheduler.py	PLR0913
 apps/api/app/services/chat/persistence.py	PLR0913
-apps/api/app/services/composio/proxy_client.py	PLR0913
 apps/api/app/services/hil/approvals_store.py	PLR0913
 apps/api/app/services/hil/bridge.py	PLR0913
 apps/api/app/services/integrations/custom_crud.py	PLR0912
@@ -75,7 +79,6 @@ apps/api/app/utils/chat_utils.py	PLR0913
 apps/api/app/utils/composio_hooks/reddit_hooks.py	PLR0912
 apps/api/app/utils/crawl4ai_utils.py	PLR0912
 apps/api/app/utils/crawl4ai_utils.py	PLR0913
-apps/api/app/utils/linkedin_utils.py	PLR0913
 apps/api/app/utils/notification/storage.py	PLR0913
 apps/api/app/utils/notion_md.py	PLR0911
 apps/api/app/utils/notion_md.py	PLR0912
@@ -106,8 +109,6 @@ apps/api/scripts/sync_composio_tools.py	PLR0913
 apps/api/scripts/sync_composio_tools.py	PLR0915
 apps/api/scripts/test_tracked_todos.py	PLR0912
 apps/api/scripts/verify_sandbox_mounts.py	PLR0915
-apps/api/tests/integration/mcp/test_mcp_oauth_flow.py	PLR0913
-apps/api/tests/integration/mcp/test_mcp_oauth_flow.py	PLR0915
 apps/api/tests/integration/real/memory/llm.py	PLR0913
 apps/api/tests/unit/agents/test_mail_templates.py	PLR0913
 apps/api/tests/unit/agents/test_messages.py	PLR0913

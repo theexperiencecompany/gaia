@@ -11,7 +11,10 @@
 
 import { z } from "zod";
 import { isValidTimezone } from "@/lib/timezone";
-import type { Workflow } from "@/types/features/workflowTypes";
+import type {
+  TriggerConfigDraft,
+  Workflow,
+} from "@/types/features/workflowTypes";
 import { describeCron } from "../utils/cronUtils";
 
 // =============================================================================
@@ -52,11 +55,13 @@ const integrationTriggerConfigSchema = z
   .catchall(z.unknown()); // Allow any additional properties
 
 // Combined trigger config - tries built-in first, then falls back to generic
-const triggerConfigSchema = z.union([
-  scheduleTriggerConfigSchema,
-  manualTriggerConfigSchema,
-  integrationTriggerConfigSchema,
-]);
+// The form edits a TriggerConfigDraft; the API validates the wire config.
+const triggerConfigSchema: z.ZodType<TriggerConfigDraft, TriggerConfigDraft> =
+  z.union([
+    scheduleTriggerConfigSchema,
+    manualTriggerConfigSchema,
+    integrationTriggerConfigSchema,
+  ]);
 
 // =============================================================================
 // MAIN FORM SCHEMA

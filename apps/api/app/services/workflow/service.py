@@ -4,7 +4,6 @@ Handles CRUD operations and execution coordination.
 """
 
 import secrets
-from typing import Any
 import uuid
 
 from pymongo.errors import DuplicateKeyError
@@ -16,6 +15,7 @@ from app.decorators.caching import Cacheable
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     DeactivationReason,
+    PublicWorkflowCard,
     PublicWorkflowRow,
     PublicWorkflowsResponse,
     TriggerConfig,
@@ -28,6 +28,7 @@ from app.models.workflow_models import (
     WorkflowStatusResponse,
     WorkflowUpdate,
     WorkflowWithIntegrations,
+    public_workflow_steps,
 )
 from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.workflow.integration_requirements import (
@@ -1258,44 +1259,35 @@ class WorkflowService:
 
     @staticmethod
     async def _format_public_workflow(
-        row: PublicWorkflowRow, *, default_creator_name: str | None = None
-    ) -> dict[str, Any]:
-        """Shape one hydrated marketplace row into the public-card dict.
+        row: PublicWorkflowRow,
+        *,
+        default_creator_name: str | None = None,
+        categories: list[str] | None = None,
+        total_executions: int | None = None,
+    ) -> PublicWorkflowCard:
+        """Shape one hydrated marketplace row into its public card.
 
         Shared by the community and explore lists so the two payloads can't drift.
         Backfills a legacy public workflow's missing slug in place first.
         """
         await ensure_public_workflow_slug(row)
-        normalized_steps = [
-            {
-                "id": step.id,
-                "title": step.title,
-                "description": step.description,
-                "category": step.category or "general",
-            }
-            for step in row.steps
-        ]
-        return {
-            "id": row.id,
-            "title": row.title,
-            "description": row.description,
-            "slug": row.slug,
-            "prompt": row.prompt,
-            "icon": row.icon,
-            "icon_color": row.icon_color,
-            # Present only on the built-in cards: lets the client dedupe against a
-            # workflow the user was already provisioned, and name the integration
-            # that sets it up automatically.
-            "system_workflow_key": row.system_workflow_key,
-            "source_integration": row.source_integration,
-            # The card advertises "Daily at 8am" / "on new email", so adding it has
-            # to reproduce that trigger — without this the client can only guess,
-            # and every added workflow silently became manual.
-            "trigger_config": row.trigger_config.model_dump(mode="json"),
-            "steps": normalized_steps,
-            "created_at": row.created_at,
-            "creator": format_creator(row, default_name=default_creator_name),
-        }
+        return PublicWorkflowCard(
+            id=row.id,
+            title=row.title,
+            description=row.description,
+            slug=row.slug,
+            prompt=row.prompt,
+            icon=row.icon,
+            icon_color=row.icon_color,
+            system_workflow_key=row.system_workflow_key,
+            source_integration=row.source_integration,
+            trigger_config=row.trigger_config,
+            steps=public_workflow_steps(row),
+            created_at=row.created_at,
+            creator=format_creator(row, default_name=default_creator_name),
+            categories=categories,
+            total_executions=total_executions,
+        )
 
     @staticmethod
     @Cacheable(smart_hash=True, ttl=600, model=PublicWorkflowsResponse)
@@ -1308,17 +1300,18 @@ class WorkflowService:
             rows = await workflow_repository.find_explore(limit=limit, offset=offset)
             total = await workflow_repository.count_explore()
 
-            formatted_workflows = []
-            for row in rows:
-                # Explore rows carry the community card shape plus the featured-only
-                # categories/total_executions, and default the creator to the GAIA
-                # team (the plain lookup never resolves a real user — see the repo).
-                formatted = await WorkflowService._format_public_workflow(
-                    row, default_creator_name=SYSTEM_CREATOR_NAME
+            # Explore rows carry the community card shape plus the featured-only
+            # categories/total_executions, and default the creator to the GAIA
+            # team (the plain lookup never resolves a real user — see the repo).
+            formatted_workflows = [
+                await WorkflowService._format_public_workflow(
+                    row,
+                    default_creator_name=SYSTEM_CREATOR_NAME,
+                    categories=row.use_case_categories,
+                    total_executions=row.total_executions,
                 )
-                formatted["categories"] = row.use_case_categories
-                formatted["total_executions"] = row.total_executions
-                formatted_workflows.append(formatted)
+                for row in rows
+            ]
 
             return PublicWorkflowsResponse(workflows=formatted_workflows, total=total)
 

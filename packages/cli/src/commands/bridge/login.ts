@@ -2,7 +2,11 @@
 
 import { hostname, platform } from "node:os";
 import { CLI_VERSION } from "../../lib/version.js";
-import { type PollPairingResponse, pollPairing, startPairing } from "./api.js";
+import {
+  type BridgePollPairingResponse,
+  pollPairing,
+  startPairing,
+} from "./api.js";
 import {
   apiUrlFromEnvOrCreds,
   loadCredentials,
@@ -32,7 +36,7 @@ export async function runLogin(
   const deadline = Date.now() + started.expires_in * 1000;
   while (Date.now() < deadline) {
     await sleep(started.interval * 1000);
-    let poll: PollPairingResponse;
+    let poll: BridgePollPairingResponse;
     try {
       poll = await pollPairing(apiUrl, started.device_code);
     } catch (e) {

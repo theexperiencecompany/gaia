@@ -50,7 +50,7 @@ const convertToUseCase = (workflow: CommunityWorkflow): UseCase => {
     icon_color: workflow.icon_color,
     system_workflow_key: workflow.system_workflow_key,
     source_integration: workflow.source_integration,
-    trigger_config: workflow.trigger_config,
+    trigger_config: workflow.trigger_config ?? undefined,
     integrations,
     categories: workflow.categories || ["featured"],
     published_id: workflow.id,

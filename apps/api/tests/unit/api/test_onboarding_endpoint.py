@@ -323,7 +323,7 @@ class TestOnboardingAnalytics:
             response = await client.post(BASE_URL, json=_make_onboarding_request())
 
         assert response.status_code == 500
-        assert "Failed to complete onboarding" in response.json()["detail"]
+        assert "Failed to complete onboarding" in response.json()["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -588,7 +588,7 @@ class TestGetPersonalization:
             response = await client.get(PERSONALIZATION_URL)
 
         assert response.status_code == 500
-        assert response.json()["detail"] == "Failed to fetch personalization data"
+        assert response.json()["message"] == "Failed to fetch personalization data"
         log.error.assert_called_once_with(
             f"{LogTag.ONBOARDING} Error fetching personalization",
             error="DB error",
@@ -978,7 +978,7 @@ class TestOnboardingGenerationPaidOnlyGate:
             resp = await client.post(REGENERATE_URL, json=_REGENERATE_PAYLOAD)
 
         assert resp.status_code == 402
-        assert resp.json()["detail"]["code"] == "subscription_required"
+        assert resp.json()["code"] == "subscription_required"
         mock_regenerate.assert_not_called()
 
     async def test_regenerate_example_pro_user_reaches_the_handler(self, client: AsyncClient):

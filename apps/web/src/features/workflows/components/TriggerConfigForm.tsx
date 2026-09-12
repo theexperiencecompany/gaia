@@ -9,14 +9,14 @@ import {
   createDefaultTriggerConfig,
   getTriggerHandler,
 } from "@/features/workflows/triggers/registry";
-import type { TriggerConfig } from "@/features/workflows/triggers/types";
+import type { TriggerConfigDraft } from "@/features/workflows/triggers/types";
 import { findTriggerSchema } from "@/features/workflows/triggers/utils";
 
 interface TriggerConfigFormProps {
   selectedTrigger: string;
-  triggerConfig: TriggerConfig;
+  triggerConfig: TriggerConfigDraft;
   onTriggerChange: (trigger: string) => void;
-  onConfigChange: (config: TriggerConfig) => void;
+  onConfigChange: (config: TriggerConfigDraft) => void;
 }
 
 export function TriggerConfigForm({

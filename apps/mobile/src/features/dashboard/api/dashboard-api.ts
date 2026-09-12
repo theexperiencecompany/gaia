@@ -77,6 +77,6 @@ export const dashboardApi = {
     const response = await apiService.get<WorkflowListResponse>(
       `/workflows${buildQueryString({ activated: true })}`,
     );
-    return response.total_count ?? 0;
+    return response.workflows.length;
   },
 };

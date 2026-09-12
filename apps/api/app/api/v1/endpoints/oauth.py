@@ -66,7 +66,7 @@ async def get_client_metadata() -> OAuthClientMetadataResponse:
     )
 
 
-@router.get("/login/workos")
+@router.get("/login/workos", response_class=RedirectResponse)
 # evlog-map-disable-next-line audit -- pre-auth redirect; the auth event is audited at the callback
 async def login_workos(return_url: str | None = None) -> RedirectResponse:
     """
@@ -181,7 +181,7 @@ async def login_google_mobile(redirect_uri: str | None = None) -> MobileLoginUrl
     return MobileLoginUrlResponse(url=authorization_url)
 
 
-@router.get("/workos/mobile/callback")
+@router.get("/workos/mobile/callback", response_class=RedirectResponse)
 async def workos_mobile_callback(
     code: str | None = None,
     state: str | None = None,
@@ -274,7 +274,7 @@ async def workos_mobile_callback(
         return RedirectResponse(url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=server_error")
 
 
-@router.get("/login/workos/desktop")
+@router.get("/login/workos/desktop", response_class=RedirectResponse)
 # evlog-map-disable-next-line audit -- pre-auth redirect; the auth event is audited at the callback
 async def login_workos_desktop() -> RedirectResponse:
     """
@@ -296,7 +296,7 @@ async def login_workos_desktop() -> RedirectResponse:
     return RedirectResponse(url=authorization_url)
 
 
-@router.get("/workos/desktop/callback")
+@router.get("/workos/desktop/callback", response_class=RedirectResponse)
 async def workos_desktop_callback(
     code: str | None = None,
 ) -> RedirectResponse:
@@ -382,7 +382,7 @@ async def workos_desktop_callback(
         return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=server_error")
 
 
-@router.get("/workos/callback")
+@router.get("/workos/callback", response_class=RedirectResponse)
 async def workos_callback(
     code: str | None = None,
     state: str | None = None,

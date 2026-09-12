@@ -211,7 +211,7 @@ export function PricingCards({
               durationIsMonth={durationIsMonth}
               features={plan.features}
               featuresHeading={featuresHeading}
-              description={plan.description} // Pass the description from backend
+              description={plan.description ?? undefined}
               price={priceInUSDCents} // Always in USD cents
               originalPrice={originalPriceInUSDCents}
               title={displayPlanName(plan)}

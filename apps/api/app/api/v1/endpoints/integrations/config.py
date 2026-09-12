@@ -256,7 +256,7 @@ def _connect_link_error(reason: str) -> RedirectResponse:
     return RedirectResponse(url=f"{base}/integrations?connect_error={reason}")
 
 
-@router.get("/connect-link")
+@router.get("/connect-link", response_class=RedirectResponse)
 @limiter.limit("10/minute")
 async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse:  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
     """Login-free entry point for bot / non-UI users.

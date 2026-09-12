@@ -248,7 +248,7 @@ async def _handle_platform_oauth_callback(
     return _bounce(redirect_path, oauth_success="true", integration=config.platform)
 
 
-@router.get("/discord/callback")
+@router.get("/discord/callback", response_class=RedirectResponse)
 # evlog-map-disable-next-line audit -- audited at the state change in _handle_platform_oauth_callback
 async def discord_oauth_callback(
     code: str | None = None,
@@ -260,7 +260,7 @@ async def discord_oauth_callback(
     return await _handle_platform_oauth_callback(code, state, error, PLATFORM_CONFIGS["discord"])
 
 
-@router.get("/slack/callback")
+@router.get("/slack/callback", response_class=RedirectResponse)
 # evlog-map-disable-next-line audit -- audited at the state change in _handle_platform_oauth_callback
 async def slack_oauth_callback(
     code: str | None = None,

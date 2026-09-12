@@ -81,7 +81,7 @@ def require_integration(
             if not is_connected:
                 detail = {
                     "type": "integration",
-                    "error_code": INTEGRATION_NOT_CONNECTED,
+                    "code": INTEGRATION_NOT_CONNECTED,
                     "toolkit": integration_short_name,
                     "message": f"Missing connection: {integration_config.name}. Please connect integrations in settings.",
                 }

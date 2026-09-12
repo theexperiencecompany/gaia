@@ -29,7 +29,7 @@ import type {
   EmailFetchData,
   EmailSentData,
 } from "@/types/features/mailTypes";
-import type { NotificationRecord } from "@/types/features/notificationTypes";
+import type { NotificationView } from "@/types/features/notificationTypes";
 import type {
   RedditCommentCreatedData,
   RedditCommentData,
@@ -201,7 +201,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     <NotificationListSection
       notifications={
         (data as { notifications: unknown[] })
-          .notifications as NotificationRecord[]
+          .notifications as NotificationView[]
       }
       title="Your Notifications"
     />

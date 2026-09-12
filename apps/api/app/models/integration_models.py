@@ -27,7 +27,7 @@ AuthType = Literal["none", "oauth", "bearer"]
 UserIntegrationStatus = Literal["created", "connected", "expired"]
 
 
-class IntegrationTool(BaseModel):
+class StoredIntegrationTool(BaseModel):
     """Tool metadata for frontend display (not used by LLM)."""
 
     name: str
@@ -39,7 +39,7 @@ class IntegrationToolsSlice(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    tools: list[IntegrationTool] = Field(default_factory=list)
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
 
 
 class IntegrationToolsRecord(BaseModel):
@@ -50,7 +50,7 @@ class IntegrationToolsRecord(BaseModel):
     integration_id: str
     name: str | None = None
     icon_url: str | None = None
-    tools: list[IntegrationTool] = Field(default_factory=list)
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
 
 
 class ComposioConfigDoc(BaseModel):
@@ -110,7 +110,7 @@ class Integration(MongoDocument):
     auth_type: AuthType | None = None
 
     # Frontend display metadata
-    tools: list[IntegrationTool] = Field(
+    tools: list[StoredIntegrationTool] = Field(
         default_factory=list, description="Tool list for frontend display only"
     )
     icon_url: str | None = Field(None, description="Favicon URL fetched from MCP server subdomain")
@@ -265,7 +265,7 @@ class IntegrationResponse(BaseModel):
     auth_type: Literal["none", "oauth", "bearer"] | None = None
 
     # Tool metadata for frontend display
-    tools: list[IntegrationTool] = Field(default_factory=list)
+    tools: list[StoredIntegrationTool] = Field(default_factory=list)
 
     # Icon URL for custom integrations (favicon from MCP server)
     icon_url: str | None = None

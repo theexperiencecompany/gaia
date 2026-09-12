@@ -114,7 +114,7 @@ export async function generateMetadata({
       integrations: workflow.steps?.map((s) => s.category) || [],
       categories: ["featured"],
       published_id: workflow.id,
-      creator: workflow.creator,
+      creator: workflow.creator ?? undefined,
     };
 
     return generateUseCaseMetadata(workflowAsUseCase);
@@ -263,7 +263,7 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
     integrations: displayIntegrations,
     categories: displayCategories,
     published_id: displayPublishedId,
-    creator: displayCreator,
+    creator: displayCreator ?? undefined,
     steps: displaySteps,
   });
 

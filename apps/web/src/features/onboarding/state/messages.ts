@@ -8,6 +8,7 @@ import { NEW_MESSAGE_BREAK_TOKEN } from "@shared/utils";
 import {
   FIELD_NAMES,
   needLabel,
+  type OnboardingNeed,
   professionOptions,
   questions,
 } from "../constants";
@@ -20,7 +21,7 @@ import type { Message } from "../types";
 export interface TranscriptInputs {
   responses: Record<string, string>;
   questionIndex: number;
-  selectedNeeds: string[];
+  selectedNeeds: OnboardingNeed[];
   otherNeed: string;
   /** Given name of the signed-in user, if their account has one. */
   firstName?: string;

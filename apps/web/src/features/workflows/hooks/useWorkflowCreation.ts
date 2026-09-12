@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { getErrorMessage } from "@/lib/api/errors";
 import {
   type CreateWorkflowRequest,
   type Workflow,
@@ -52,19 +53,10 @@ export const useWorkflowCreation = (): UseWorkflowCreationReturn => {
         return { success: true, workflow: responseData.workflow };
       }
 
-      // Extract error detail from API response
-      // FastAPI returns {detail: "..."} or {detail: {message: "..."}} for 429 errors
       let errorMessage = "Failed to create workflow";
-      if (responseData?.detail) {
-        if (typeof responseData.detail === "string") {
-          errorMessage = responseData.detail;
-        } else if (
-          typeof responseData.detail === "object" &&
-          responseData.detail !== null
-        ) {
-          const detail = responseData.detail as { message?: string };
-          errorMessage = detail.message || errorMessage;
-        }
+      const apiMessage = getErrorMessage(responseData);
+      if (apiMessage) {
+        errorMessage = apiMessage;
       } else if (error instanceof Error) {
         errorMessage = error.message;
       }

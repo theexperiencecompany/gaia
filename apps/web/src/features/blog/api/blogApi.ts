@@ -1,25 +1,7 @@
+import type { Schema } from "@shared/api/generated";
 import { api } from "@/lib/api/client";
 
-interface TeamMember {
-  id: string;
-  name: string;
-  role: string;
-  avatar?: string;
-  linkedin?: string;
-  twitter?: string;
-}
-
-export interface BlogPost {
-  id: string;
-  slug: string;
-  title: string;
-  date: string;
-  authors: string[];
-  author_details?: TeamMember[];
-  category: string;
-  content: string;
-  image?: string;
-}
+export type BlogPost = Schema<"BlogPost">;
 
 export const blogApi = {
   getBlogs: async (includeContent: boolean = false): Promise<BlogPost[]> => {

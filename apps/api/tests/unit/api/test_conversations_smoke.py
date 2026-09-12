@@ -127,7 +127,16 @@ class TestGetConversation:
     """GET /api/v1/conversations/{id}"""
 
     async def test_get_existing(self, client: AsyncClient):
-        mock_resp = ConversationDocument(conversation_id="conv_123", user_id="user_1", messages=[])
+        # A stray top-level field a legacy row carries must still reach the
+        # client: the document is extra="allow" and the response model keeps it.
+        mock_resp = ConversationDocument.model_validate(
+            {
+                "conversation_id": "conv_123",
+                "user_id": "user_1",
+                "messages": [],
+                "metadata": {"legacy": True},
+            }
+        )
         with patch(
             f"{CONV_SERVICE}.get_conversation",
             new_callable=AsyncMock,
@@ -139,8 +148,9 @@ class TestGetConversation:
         body = resp.json()
         assert body["conversation_id"] == "conv_123"
         assert body["messages"] == []
-        # The endpoint dumps the document with exclude={"id"} — the Mongo _id
-        # must not reach the client.
+        assert body["metadata"] == {"legacy": True}
+        # The Mongo _id is excluded from the response model — it must not
+        # reach the client.
         assert "id" not in body
 
 

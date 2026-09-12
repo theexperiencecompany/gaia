@@ -20,9 +20,10 @@ from app.constants.memory import (
     MemoryRelationType,
     MemorySourceType,
 )
+from app.schemas.common import ResponseModel
 
 
-class MemoryEntityRef(BaseModel):
+class MemoryEntityRef(ResponseModel):
     """A named entity linked to a memory."""
 
     id: str = Field(description="Entity ID")
@@ -30,7 +31,7 @@ class MemoryEntityRef(BaseModel):
     entity_type: MemoryEntityType = Field(description="What kind of thing the entity is")
 
 
-class MemoryEntry(BaseModel):
+class MemoryEntry(ResponseModel):
     """A single memory: an atomic fact or experience with lineage and provenance."""
 
     id: str | None = Field(default=None, description="Unique identifier for the memory")
@@ -87,7 +88,7 @@ class MemoryEntry(BaseModel):
     )
 
 
-class MemorySearchResult(BaseModel):
+class MemorySearchResult(ResponseModel):
     """Results from a memory search."""
 
     memories: list[MemoryEntry] = Field(
@@ -96,7 +97,7 @@ class MemorySearchResult(BaseModel):
     total_count: int = Field(default=0, description="Total number of matching memories")
 
 
-class MemoryListResponse(BaseModel):
+class MemoryListResponse(ResponseModel):
     """One page of a user's memories."""
 
     memories: list[MemoryEntry] = Field(default_factory=list, description="Memories on this page")
@@ -105,7 +106,7 @@ class MemoryListResponse(BaseModel):
     total_count: int = Field(description="Total memories matching the query")
 
 
-class MemoryTreeNode(BaseModel):
+class MemoryTreeNode(ResponseModel):
     """One folder in the memory directory tree."""
 
     name: str = Field(description="Folder name (last path segment)")
@@ -117,14 +118,14 @@ class MemoryTreeNode(BaseModel):
     )
 
 
-class MemoryTreeResponse(BaseModel):
+class MemoryTreeResponse(ResponseModel):
     """The user's full memory folder tree."""
 
     tree: list[MemoryTreeNode] = Field(default_factory=list, description="Top-level folders")
     total_count: int = Field(description="Total memories across the tree")
 
 
-class MemoryGraphNode(BaseModel):
+class MemoryGraphNode(ResponseModel):
     """An entity node in the memory graph."""
 
     id: str = Field(description="Entity ID")
@@ -133,7 +134,7 @@ class MemoryGraphNode(BaseModel):
     memory_count: int = Field(description="Number of memories linked to this entity")
 
 
-class MemoryGraphEdge(BaseModel):
+class MemoryGraphEdge(ResponseModel):
     """A labeled entity-to-entity relationship in the memory graph."""
 
     id: str = Field(description="Edge ID")
@@ -145,7 +146,7 @@ class MemoryGraphEdge(BaseModel):
     )
 
 
-class MemoryGraphResponse(BaseModel):
+class MemoryGraphResponse(ResponseModel):
     """The user's entity graph with the memories that back it."""
 
     nodes: list[MemoryGraphNode] = Field(default_factory=list, description="Entity nodes")
@@ -155,7 +156,7 @@ class MemoryGraphResponse(BaseModel):
     )
 
 
-class MemoryEpisodeEntry(BaseModel):
+class MemoryEpisodeEntry(ResponseModel):
     """One timestamped line in a day's journal."""
 
     time: str = Field(description="Time of day the entry was written (HH:MM)")
@@ -163,7 +164,7 @@ class MemoryEpisodeEntry(BaseModel):
     source: str = Field(description="Where the entry came from (conversation, email, ...)")
 
 
-class MemoryEpisode(BaseModel):
+class MemoryEpisode(ResponseModel):
     """One day of the episodic journal."""
 
     date: str = Field(description="ISO date (YYYY-MM-DD)")
@@ -175,13 +176,13 @@ class MemoryEpisode(BaseModel):
     )
 
 
-class MemoryEpisodesResponse(BaseModel):
+class MemoryEpisodesResponse(ResponseModel):
     """Episodic journal pages for a date range."""
 
     episodes: list[MemoryEpisode] = Field(default_factory=list, description="One per day")
 
 
-class MemoryDocument(BaseModel):
+class MemoryDocument(ResponseModel):
     """A core markdown document GAIA maintains about the user."""
 
     doc_type: MemoryDocType = Field(description="Which core document this is")
@@ -190,13 +191,13 @@ class MemoryDocument(BaseModel):
     updated_at: datetime = Field(description="When the document was last updated")
 
 
-class MemoryDocumentsResponse(BaseModel):
+class MemoryDocumentsResponse(ResponseModel):
     """All of a user's core memory documents."""
 
     documents: list[MemoryDocument] = Field(default_factory=list, description="Core documents")
 
 
-class MemoryDocumentPreview(BaseModel):
+class MemoryDocumentPreview(ResponseModel):
     """Truncated core-document preview for the overview screen."""
 
     doc_type: MemoryDocType = Field(description="Which core document this is")
@@ -204,7 +205,7 @@ class MemoryDocumentPreview(BaseModel):
     updated_at: datetime = Field(description="When the document was last updated")
 
 
-class MemoryOverviewResponse(BaseModel):
+class MemoryOverviewResponse(ResponseModel):
     """Headline numbers and document previews for the memory settings UI."""
 
     total_memories: int = Field(description="Total non-forgotten memories")
@@ -250,7 +251,7 @@ class UpdateDocumentRequest(BaseModel):
     )
 
 
-class CreateMemoryResponse(BaseModel):
+class CreateMemoryResponse(ResponseModel):
     """Response model for memory creation."""
 
     success: bool
@@ -258,7 +259,7 @@ class CreateMemoryResponse(BaseModel):
     message: str
 
 
-class DeleteMemoryResponse(BaseModel):
+class DeleteMemoryResponse(ResponseModel):
     """Response model for memory deletion."""
 
     success: bool

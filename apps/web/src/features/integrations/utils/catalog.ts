@@ -30,7 +30,12 @@ export function toIntegration(item: MyIntegrationItem): Integration {
     iconUrl: item.iconUrl ?? undefined,
     isPublic: item.isPublic ?? undefined,
     createdBy: item.createdBy ?? undefined,
-    creator: item.creator ?? undefined,
+    creator: item.creator
+      ? {
+          name: item.creator.name ?? null,
+          picture: item.creator.picture ?? null,
+        }
+      : undefined,
     slug: item.slug ?? "",
   };
 }

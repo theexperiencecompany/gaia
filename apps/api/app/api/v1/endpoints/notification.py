@@ -76,7 +76,7 @@ async def unsubscribe_confirmation(token: Annotated[str, Query()]) -> HTMLRespon
     return HTMLResponse(content=form)
 
 
-@router.post("/notifications/unsubscribe")
+@router.post("/notifications/unsubscribe", response_class=HTMLResponse)
 async def unsubscribe_from_emails(token: Annotated[str, Query()]) -> Response:
     """RFC 8058 one-click unsubscribe target (List-Unsubscribe-Post). Mail
     clients POST here; the response must be a blank 200."""

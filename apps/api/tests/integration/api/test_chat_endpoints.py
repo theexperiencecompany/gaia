@@ -460,7 +460,7 @@ class TestChatStreamPaywall:
         response = await gated_test_client.post("/api/v1/chat-stream", json=_VALID_BODY)
 
         assert response.status_code == 402
-        assert response.json()["detail"] == {
+        assert response.json() == {
             "code": "subscription_required",
             "message": "GAIA is paid only. Subscribe to GAIA Pro to keep chatting.",
             "checkout_url": None,

@@ -309,7 +309,20 @@ class TestFormatCalendarEventContext:
         result = format_calendar_event_context(event, "What should I prepare?")
         assert "Team Standup" in result
         assert "Work" in result
+        assert "2024-01-01T09:00:00 to 2024-01-01T09:30:00" in result
         assert "What should I prepare?" in result
+
+    def test_timed_event_without_bounds_reads_unknown(self) -> None:
+        event = SelectedCalendarEventData(
+            id="ev1b", summary="Standup", description="", start={}, end={}
+        )
+        assert "Unknown to Unknown" in format_calendar_event_context(event)
+
+    def test_all_day_event_without_a_date_reads_unknown_date(self) -> None:
+        event = SelectedCalendarEventData(
+            id="ev2b", summary="Holiday", description="", start={}, end={}, isAllDay=True
+        )
+        assert "All day on Unknown date" in format_calendar_event_context(event)
 
     def test_all_day_event(self) -> None:
         event = SelectedCalendarEventData(
@@ -321,8 +334,7 @@ class TestFormatCalendarEventContext:
             isAllDay=True,
         )
         result = format_calendar_event_context(event)
-        assert "All day" in result
-        assert "2024-12-25" in result
+        assert "All day on 2024-12-25" in result
 
     def test_no_calendar_title(self) -> None:
         event = SelectedCalendarEventData(

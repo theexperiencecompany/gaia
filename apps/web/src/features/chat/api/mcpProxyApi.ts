@@ -7,6 +7,7 @@ import type {
   MCPToolCallResult,
 } from "@/features/chat/types/mcpProxy";
 import { apiauth } from "@/lib/api/client";
+import { getErrorMessage } from "@/lib/api/errors";
 
 export type {
   MCPPromptsListResult,
@@ -43,17 +44,7 @@ function getServerUrlCandidates(serverUrl: string): string[] {
 
 function extractErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
-    const detail = error.response?.data;
-    if (detail && typeof detail === "object" && "detail" in detail) {
-      const value = detail.detail;
-      if (typeof value === "string" && value.trim()) {
-        return value;
-      }
-    }
-    if (typeof detail === "string" && detail.trim()) {
-      return detail;
-    }
-    return error.message;
+    return getErrorMessage(error.response?.data) || error.message;
   }
   if (error instanceof Error) {
     return error.message;

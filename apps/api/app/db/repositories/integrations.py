@@ -15,11 +15,11 @@ from app.db.repositories.base import MongoRepository
 from app.helpers.integration_helpers import generate_integration_slug
 from app.models.integration_models import (
     Integration,
-    IntegrationTool,
     IntegrationToolsRecord,
     IntegrationToolsSlice,
     IntegrationUpdate,
     IntegrationWithCreator,
+    StoredIntegrationTool,
 )
 from app.models.oauth_models import IntegrationContent
 
@@ -406,7 +406,7 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
 
     # ---- global MCP tool metadata (frontend display) ----
 
-    async def store_tools(self, integration_id: str, tools: list[IntegrationTool]) -> None:
+    async def store_tools(self, integration_id: str, tools: list[StoredIntegrationTool]) -> None:
         """Upsert the stored tool metadata for an integration (creating a tools-only
         stub document if the integration doc does not exist yet).
 
@@ -426,12 +426,12 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
             upsert=True,
         )
 
-    async def store_tools_batch(self, items: list[tuple[str, list[IntegrationTool]]]) -> None:
+    async def store_tools_batch(self, items: list[tuple[str, list[StoredIntegrationTool]]]) -> None:
         """Upsert tool metadata for several integrations (catalog metadata population)."""
         for integration_id, tools in items:
             await self.store_tools(integration_id, tools)
 
-    async def get_tools(self, integration_id: str) -> list[IntegrationTool]:
+    async def get_tools(self, integration_id: str) -> list[StoredIntegrationTool]:
         """The stored tool metadata for an integration (empty when none stored)."""
         slice_ = await self._find_one_projected(
             {"integration_id": integration_id}, {"tools": 1}, IntegrationToolsSlice

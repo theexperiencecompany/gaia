@@ -11,6 +11,8 @@
  * - `auto` — an intent judge runs actions that match what the user asked for,
  *   and pauses for approval on anything that deviates or is unclear.
  */
+import type { Schema } from "../api/generated";
+
 export type HilMode = "always_allow" | "always_ask" | "auto";
 
 /**
@@ -44,11 +46,7 @@ export interface ApprovalDecisionPayload {
 }
 
 /** One approval's decision within POST /approvals/batch-decision. */
-export interface BatchDecisionItem {
-  approval_id: string;
-  decision: ApprovalDecision;
-  feedback?: string;
-}
+export type BatchDecisionItem = Schema<"BatchDecisionItem">;
 
 /** Body of POST /approvals/batch-decision — decide several approvals at once. */
 export interface BatchApprovalDecisionPayload {
@@ -56,16 +54,11 @@ export interface BatchApprovalDecisionPayload {
 }
 
 /** Per-approval outcome of a batch decision. */
-export interface BatchDecisionOutcome {
-  approval_id: string;
-  resolved: boolean;
-  reason: string | null;
-}
+export type BatchDecisionOutcome = Schema<"BatchDecisionOutcome">;
 
 /** Response of POST /approvals/batch-decision. */
-export interface BatchApprovalDecisionResponse {
-  outcomes: BatchDecisionOutcome[];
-}
+export type BatchApprovalDecisionResponse =
+  Schema<"BatchApprovalDecisionResponse">;
 
 /** One approval card, as streamed to the client. */
 export interface ApprovalRequestData {

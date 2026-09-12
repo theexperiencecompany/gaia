@@ -5,7 +5,7 @@
  */
 
 import type { RegisteredHandler } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 import type { NotionConfig, NotionTriggerData } from "./NotionSettings";
 import { NotionSettings } from "./NotionSettings";
 
@@ -20,7 +20,7 @@ export const notionTriggerHandler: RegisteredHandler = {
     "notion_page_content_updated",
   ],
 
-  createDefaultConfig: (slug: string): TriggerConfig => {
+  createDefaultConfig: (slug: string): TriggerConfigDraft => {
     const triggerData: NotionTriggerData = {
       trigger_name: slug,
     };

@@ -27,7 +27,7 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import SilentRunResult
 from app.models.playbook_models import PlaybookRunStatus
 from app.models.user_models import UserDocument
-from app.models.workflow_models import TriggerType
+from app.models.workflow_models import TriggerType, WorkflowStep
 from app.services.analytics_service import AnalyticsEvents
 from app.services.workflow.conversation_service import build_selected_workflow_data
 from app.services.workflow.execution_service import WorkflowFireTimedOut
@@ -50,7 +50,7 @@ def _workflow() -> MagicMock:
     workflow.title = "Inbox triage"
     workflow.description = "Triage the inbox every five minutes"
     workflow.prompt = "Triage the inbox"
-    workflow.steps = [MagicMock(id="s1", title="Read mail", description="", category="comms")]
+    workflow.steps = [WorkflowStep(id="s1", title="Read mail", description="", category="comms")]
     workflow.notify_on_completion = True
     workflow.repeat = True
     workflow.activated = True

@@ -4,7 +4,7 @@
 // line from the same data.
 
 import { type ChatStreamEvent, TOOL_CALLS_DATA_TOOL_NAME } from "@shared/chat";
-import type { ToolInfo } from "@/stores/streamStore";
+import type { ActiveToolInfo } from "@/stores/streamStore";
 
 export interface ToolDataLoadingHints {
   message: string;
@@ -37,7 +37,7 @@ export function readToolDataLoadingHints(
 
 export interface LoadingLabel {
   text: string;
-  toolInfo?: ToolInfo;
+  toolInfo?: ActiveToolInfo;
 }
 
 /**

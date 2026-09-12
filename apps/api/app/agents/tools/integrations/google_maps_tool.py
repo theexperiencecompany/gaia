@@ -7,7 +7,7 @@ from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -38,11 +38,13 @@ def register_google_maps_custom_tools(composio: Composio) -> list[str]:
         try:
             data = (
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=MAPS_TOOLKIT,
-                    endpoint=f"{MAPS_API_BASE}/geocode/json",
-                    method="GET",
-                    query={"address": "New York, NY", "result_type": "locality"},
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=MAPS_TOOLKIT,
+                        endpoint=f"{MAPS_API_BASE}/geocode/json",
+                        method="GET",
+                        query={"address": "New York, NY", "result_type": "locality"},
+                    )
                 )
                 or {}
             )

@@ -22,7 +22,7 @@ interface UseNotificationActionsOptions {
 
 // Loading state is only tracked for actions that hit the backend.
 const isLoadingAction = (action: NotificationAction): boolean =>
-  action.type === ActionType.API_CALL || action.type === ActionType.WORKFLOW;
+  action.type === ActionType.API_CALL;
 
 export function useNotificationActions(
   options: UseNotificationActionsOptions = {},
@@ -37,8 +37,7 @@ export function useNotificationActions(
     action: NotificationAction,
   ): Promise<boolean> => {
     const needsConfirmation =
-      (action.type === ActionType.WORKFLOW ||
-        action.type === ActionType.API_CALL) &&
+      action.type === ActionType.API_CALL &&
       (action.requires_confirmation || action.confirmation_message);
     if (!needsConfirmation) return true;
 
@@ -67,9 +66,6 @@ export function useNotificationActions(
         break;
       case ActionType.MODAL:
         await handleModal(notificationId, action);
-        break;
-      case ActionType.WORKFLOW:
-        await handleWorkflow(notificationId, action);
         break;
       default:
         throw new Error(`Unsupported action type: ${action.type}`);
@@ -120,7 +116,7 @@ export function useNotificationActions(
     notificationId: string,
     action: NotificationAction,
   ): Promise<void> => {
-    const config = action.config.api_call as ApiCallConfig;
+    const config = action.config?.api_call as ApiCallConfig | undefined;
     if (!config) {
       throw new Error("API call configuration is missing");
     }
@@ -156,7 +152,7 @@ export function useNotificationActions(
     _notificationId: string,
     action: NotificationAction,
   ): Promise<void> => {
-    const config = action.config.redirect as RedirectConfig;
+    const config = action.config?.redirect as RedirectConfig;
     if (!config?.url) {
       throw new Error("Redirect URL is missing");
     }
@@ -190,7 +186,7 @@ export function useNotificationActions(
     notificationId: string,
     action: NotificationAction,
   ): Promise<void> => {
-    const config = action.config.modal as ModalConfig;
+    const config = action.config?.modal as ModalConfig;
     if (!config) {
       throw new Error("Modal configuration is missing");
     }
@@ -207,34 +203,6 @@ export function useNotificationActions(
 
     // For modal actions, open the modal immediately without loading state
     options.onModalOpen?.(enhancedConfig);
-  };
-
-  const handleWorkflow = async (
-    notificationId: string,
-    action: NotificationAction,
-  ): Promise<void> => {
-    try {
-      const result = await NotificationsAPI.executeAction(
-        notificationId,
-        action.id,
-      );
-
-      if (result.success) {
-        toast.success(result.message || "Workflow started successfully");
-        // Convert NotificationResponse to ActionResult format for callback
-        const actionResult: ActionResult = {
-          success: result.success,
-          message: result.message,
-          data: result.data as ActionResultData, // Type assertion since we know it's ActionResultData for workflow calls
-        };
-        options.onSuccess?.(actionResult);
-      } else {
-        toast.error(result.message || "Failed to start workflow");
-      }
-    } catch (error) {
-      console.error("Workflow execution failed:", error);
-      throw new Error("Failed to execute workflow action");
-    }
   };
 
   const getActionButtonProps = (action: NotificationAction) => {

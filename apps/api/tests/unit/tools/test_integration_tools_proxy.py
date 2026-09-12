@@ -104,9 +104,9 @@ def test_gather_context_tools_use_proxy(
         fn(GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS)
 
     assert proxy.called
-    first_call_kwargs = proxy.call_args_list[0].kwargs
-    assert first_call_kwargs["toolkit"] == toolkit
-    assert first_call_kwargs["user_id"] == AUTH_CREDS["user_id"]
+    first_request = proxy.call_args_list[0].args[0]
+    assert first_request.toolkit == toolkit
+    assert first_request.user_id == AUTH_CREDS["user_id"]
 
 
 # ---------------------------------------------------------------------------
@@ -156,10 +156,10 @@ def test_google_docs_share_doc_routes_through_proxy() -> None:
             AUTH_CREDS,
         )
 
-    kwargs = proxy.call_args.kwargs
-    assert kwargs["toolkit"] == "GOOGLEDOCS"
-    assert kwargs["method"] == "POST"
-    assert "/permissions" in kwargs["endpoint"]
+    request = proxy.call_args.args[0]
+    assert request.toolkit == "GOOGLEDOCS"
+    assert request.method == "POST"
+    assert "/permissions" in request.endpoint
     assert result["document_id"] == "doc-1"
 
 
@@ -178,9 +178,9 @@ def test_google_docs_delete_doc_routes_through_proxy() -> None:
         )
 
     assert result["successful"] is True
-    kwargs = proxy.call_args.kwargs
-    assert kwargs["method"] == "DELETE"
-    assert kwargs["endpoint"].endswith("/files/doc-1")
+    request = proxy.call_args.args[0]
+    assert request.method == "DELETE"
+    assert request.endpoint.endswith("/files/doc-1")
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +206,7 @@ def test_google_sheets_share_routes_through_proxy() -> None:
         )
 
     assert result["total_shared"] == 1
-    assert proxy.call_args.kwargs["toolkit"] == "GOOGLESHEETS"
+    assert proxy.call_args.args[0].toolkit == "GOOGLESHEETS"
 
 
 # ---------------------------------------------------------------------------
@@ -246,9 +246,9 @@ def test_notion_fetch_data_routes_through_proxy() -> None:
         )
 
     assert result == {"values": [], "count": 0, "has_more": False}
-    kwargs = proxy.call_args.kwargs
-    assert kwargs["toolkit"] == "NOTION"
-    assert kwargs["endpoint"].endswith("/search")
+    request = proxy.call_args.args[0]
+    assert request.toolkit == "NOTION"
+    assert request.endpoint.endswith("/search")
 
 
 def _register_notion_with_blocks(markdown_blocks: list[Any], title_response: dict[str, Any]) -> Any:
@@ -506,9 +506,9 @@ def test_linkedin_react_to_post_uses_proxy() -> None:
         )
 
     assert result["post_urn"] == "urn:li:share:1"
-    kwargs = proxy.call_args.kwargs
-    assert kwargs["toolkit"] == "LINKEDIN"
-    assert kwargs["method"] == "POST"
+    request = proxy.call_args.args[0]
+    assert request.toolkit == "LINKEDIN"
+    assert request.method == "POST"
 
 
 def test_linkedin_add_comment_uses_proxy_full() -> None:

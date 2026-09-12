@@ -122,7 +122,7 @@ class TestUpdateTimezone:
             data={"timezone": "Not/A/Timezone"},
         )
         assert resp.status_code == 400
-        assert "Invalid timezone" in resp.json()["detail"]
+        assert "Invalid timezone" in resp.json()["message"]
 
 
 class TestLogout:
@@ -131,4 +131,4 @@ class TestLogout:
     async def test_logout_without_session_cookie(self, client: AsyncClient):
         resp = await client.post("/api/v1/user/logout")
         assert resp.status_code == 401
-        assert "No active session" in resp.json()["detail"]
+        assert "No active session" in resp.json()["message"]

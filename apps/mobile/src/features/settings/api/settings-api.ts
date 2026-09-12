@@ -1,5 +1,6 @@
+import type { Schema } from "@gaia/shared/api/generated";
 import type { HilPreferences } from "@gaia/shared/chat";
-import type { FeatureUsage, UsageSummary } from "@gaia/shared/types";
+import type { UsageSummary } from "@gaia/shared/types";
 import { apiService } from "@/lib/api";
 
 export type {
@@ -9,17 +10,9 @@ export type {
   UsageSummary,
 } from "@gaia/shared/types";
 
-export interface UsageHistoryEntry {
-  date: string;
-  plan_type: string;
-  features: Record<string, Pick<FeatureUsage, "title" | "periods">>;
-}
+export type UsageHistoryEntry = Schema<"UsageHistoryEntry">;
 
-export interface OnboardingPreferences {
-  profession?: string;
-  response_style?: string;
-  custom_instructions?: string | null;
-}
+export type OnboardingPreferences = Schema<"OnboardingPreferences">;
 
 export interface UpdatePreferencesResponse {
   success: boolean;

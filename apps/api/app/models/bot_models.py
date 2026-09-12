@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.repositories.base import MongoDocument
 from app.models.message_models import FileData
+from app.schemas.common import ResponseModel
 from app.services.platform_link_service import Platform
 
 # Shared field docs — the same platform identity fields recur across the
@@ -201,7 +202,7 @@ class LinkTokenRecord(BaseModel):
         return v
 
 
-class LinkTokenInfoResponse(BaseModel):
+class LinkTokenInfoResponse(ResponseModel):
     """Response model for the link-token confirmation page's display metadata."""
 
     platform: str = Field(..., description="Platform name")

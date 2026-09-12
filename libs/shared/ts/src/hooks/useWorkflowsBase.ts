@@ -18,8 +18,6 @@ export const WorkflowQueryKeys = {
 export interface WorkflowFilterState {
   search?: string;
   activated?: boolean;
-  category?: string;
-  tags?: string[];
   isPublic?: boolean;
   sourceIntegration?: string;
   isSystemWorkflow?: boolean;
@@ -37,14 +35,6 @@ function matchesWorkflowSearch(
   );
 }
 
-function matchesWorkflowTags(
-  workflow: Workflow,
-  tags: string[] | undefined,
-): boolean {
-  if (!tags || tags.length === 0) return true;
-  return tags.every((tag) => workflow.metadata.tags.includes(tag));
-}
-
 export function filterWorkflows(
   workflows: Workflow[],
   filter: WorkflowFilterState,
@@ -58,14 +48,6 @@ export function filterWorkflows(
       filter.activated !== undefined &&
       workflow.activated !== filter.activated
     ) {
-      return false;
-    }
-
-    if (filter.category && workflow.metadata.category !== filter.category) {
-      return false;
-    }
-
-    if (!matchesWorkflowTags(workflow, filter.tags)) {
       return false;
     }
 
@@ -108,17 +90,20 @@ export function sortWorkflows(
     case "created_at_asc":
       return sorted.sort(
         (a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+          new Date(a.created_at ?? 0).getTime() -
+          new Date(b.created_at ?? 0).getTime(),
       );
     case "created_at_desc":
       return sorted.sort(
         (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          new Date(b.created_at ?? 0).getTime() -
+          new Date(a.created_at ?? 0).getTime(),
       );
     case "updated_at_desc":
       return sorted.sort(
         (a, b) =>
-          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+          new Date(b.updated_at ?? 0).getTime() -
+          new Date(a.updated_at ?? 0).getTime(),
       );
     case "executions_desc":
       return sorted.sort((a, b) => b.total_executions - a.total_executions);

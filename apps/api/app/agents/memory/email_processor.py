@@ -220,7 +220,7 @@ async def _search_platform_emails(
             max_results=max_results,
         )
 
-        return result.messages
+        return result.raw_messages()
 
     except Exception as e:
         log.error(
@@ -292,7 +292,7 @@ async def fetch_emails_for_onboarding(
                     verbose=not metadata_mode,
                 ),
             )
-            batch = result.messages
+            batch = result.raw_messages()
             if not batch:
                 break
             all_emails.extend(batch)
@@ -377,7 +377,7 @@ async def _fetch_and_process_batches(
             )
             timer.record(f"Gmail API fetch — batch {batch_count}", fetch_elapsed)
 
-            batch_emails = result.messages
+            batch_emails = result.raw_messages()
 
             if not batch_emails:
                 break

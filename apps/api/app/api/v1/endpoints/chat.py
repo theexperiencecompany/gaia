@@ -124,7 +124,7 @@ async def _stream_from_redis(
             yield format_sse_data(ErrorFrame(error=_DELIVERY_FAILED).model_dump())
 
 
-@router.post("/chat-stream")
+@router.post("/chat-stream", response_class=StreamingResponse)
 @tiered_rate_limit("chat_messages")
 async def chat_stream_endpoint(
     request: Request,
@@ -258,7 +258,7 @@ async def cancel_stream_endpoint(
     return CancelStreamResponse(success=success, stream_id=stream_id)
 
 
-@router.get("/stream/{stream_id}")
+@router.get("/stream/{stream_id}", response_class=StreamingResponse)
 async def subscribe_executor_stream(
     stream_id: str,
     request: Request,

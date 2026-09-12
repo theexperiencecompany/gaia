@@ -1,23 +1,12 @@
-import { apiService } from "@/lib/api/service";
+import type { Schema } from "@shared/api/generated";
+import { api } from "@/lib/api/typed";
 
-export interface ToolInfo {
-  name: string;
-  category: string; // Integration ID
-  display_name: string; // REQUIRED - human-readable name
-  icon_url?: string;
-  requires_integration: boolean; // false for core platform tools (search, memory, etc.)
-  locked: boolean; // true for added-but-not-connected integrations; false for connected + core tools
-}
+export type ToolInfo = Schema<"ToolInfo">;
 
-export interface ToolsListResponse {
-  tools: ToolInfo[];
-  total_count: number;
-  categories: string[];
-}
+export type ToolsListResponse = Schema<"ToolsListResponse">;
 
-export const fetchAvailableTools = async (): Promise<ToolsListResponse> => {
-  return apiService.get<ToolsListResponse>("/tools", {
+export const fetchAvailableTools = () =>
+  api.get("/api/v1/tools", {
     errorMessage: "Failed to fetch available tools",
     silent: true,
   });
-};

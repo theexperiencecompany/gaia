@@ -37,6 +37,7 @@ from app.models.workflow_models import (
     WorkflowMessageResponse,
     WorkflowResponse,
     WorkflowStatusResponse,
+    as_read_view,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.integrations.integration_status import get_all_integrations_status
@@ -118,7 +119,9 @@ async def create_workflow(
                 "generated_immediately": request.generate_immediately,
             },
         )
-        return WorkflowResponse(workflow=workflow, message="Workflow created successfully")
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow created successfully"
+        )
 
     except TriggerRegistrationError as e:
         # Specific error for trigger registration failures
@@ -160,7 +163,7 @@ async def list_workflows(
             workflow=WorkflowContext(result_count=len(workflows)),
             outcome="success",
         )
-        return WorkflowListResponse(workflows=workflows)
+        return WorkflowListResponse(workflows=[as_read_view(w) for w in workflows])
 
     except Exception as e:
         log.error(
@@ -326,7 +329,9 @@ async def activate_workflow(
 
         log.set(outcome="success")
         capture_context_event(AnalyticsEvents.WORKFLOW_ACTIVATED)
-        return WorkflowResponse(workflow=workflow, message="Workflow activated successfully")
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow activated successfully"
+        )
 
     except TriggerRegistrationError as e:
         # Specific error for trigger registration failures
@@ -379,7 +384,9 @@ async def deactivate_workflow(
             )
 
         log.set(outcome="success")
-        return WorkflowResponse(workflow=workflow, message="Workflow deactivated successfully")
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow deactivated successfully"
+        )
 
     except HTTPException:
         raise
@@ -424,7 +431,9 @@ async def regenerate_workflow_steps(
             )
 
         log.set(outcome="success")
-        return WorkflowResponse(workflow=workflow, message="Workflow regeneration started")
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow regeneration started"
+        )
 
     except HTTPException:
         # The 404 above is raised inside this try; without this the bare
@@ -507,7 +516,7 @@ async def create_workflow_from_todo(
             outcome="success",
         )
         return WorkflowResponse(
-            workflow=workflow, message="Workflow created from todo successfully"
+            workflow=as_read_view(workflow), message="Workflow created from todo successfully"
         )
 
     except HTTPException:
@@ -745,7 +754,9 @@ async def get_public_workflow(request: Request, workflow_ref: str) -> WorkflowRe
                 "step_count": len(workflow.steps) if workflow.steps else 0,
             }
         )
-        return WorkflowResponse(workflow=workflow, message="Workflow retrieved successfully")
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow retrieved successfully"
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -829,7 +840,9 @@ async def get_workflow(
             ),
             outcome="success",
         )
-        return WorkflowResponse(workflow=workflow, message="Workflow retrieved successfully")
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow retrieved successfully"
+        )
 
     except HTTPException:
         raise
@@ -871,7 +884,9 @@ async def update_workflow(
             )
 
         log.set(outcome="success")
-        return WorkflowResponse(workflow=workflow, message="Workflow updated successfully")
+        return WorkflowResponse(
+            workflow=as_read_view(workflow), message="Workflow updated successfully"
+        )
 
     except TriggerRegistrationError as e:
         # Specific error for trigger registration failures

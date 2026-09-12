@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import type { ToolDataEntry } from "@/config/registries/toolRegistry";
+import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import {
   isViewingConversation,
   markConversationUnread,
@@ -25,7 +25,7 @@ interface BgMessageEvent {
     message_id: string;
     date: string;
     task_id?: string;
-    tool_data?: ToolDataEntry[];
+    tool_data?: TypedToolDataEntry[];
     follow_up_actions?: string[];
     replyToMessage?: {
       id: string;

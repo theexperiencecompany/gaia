@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import { notificationKeys } from "@/features/notification/api/queryKeys";
 import type {
-  NotificationRecord,
+  NotificationView,
   PaginatedNotificationsResponse,
 } from "@/types/features/notificationTypes";
 
@@ -33,7 +33,7 @@ function updateAllPages(
 /** Prepend a newly delivered notification; a duplicate id is a no-op. */
 export function prependNotification(
   queryClient: QueryClient,
-  notification: NotificationRecord,
+  notification: NotificationView,
 ): void {
   updateAllPages(queryClient, (page) => {
     if (page.notifications.some((n) => n.id === notification.id)) return page;
@@ -50,7 +50,7 @@ export function prependNotification(
 /** Replace a notification in place; unknown ids are ignored. */
 export function upsertNotification(
   queryClient: QueryClient,
-  notification: NotificationRecord,
+  notification: NotificationView,
 ): void {
   updateAllPages(queryClient, (page) => ({
     ...page,
@@ -64,7 +64,7 @@ export function upsertNotification(
 export function patchNotifications(
   queryClient: QueryClient,
   ids: string[],
-  patch: Partial<NotificationRecord>,
+  patch: Partial<NotificationView>,
 ): void {
   const idSet = new Set(ids);
   updateAllPages(queryClient, (page) => ({

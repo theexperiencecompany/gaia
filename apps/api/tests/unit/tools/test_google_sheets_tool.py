@@ -34,6 +34,7 @@ from app.models.google_sheets_models import (
     ShareRecipient,
     ShareSpreadsheetInput,
 )
+from app.services.composio.proxy_client import ProxyRequest
 from app.utils.errors import AppError
 from app.utils.google_sheets_utils import DRIVE_API_BASE, SHEETS_API_BASE
 
@@ -63,23 +64,23 @@ class FakeSheetsApi:
         self.files: Any = []
         self.files_error: Exception | None = None
 
-        self.calls: list[dict[str, Any]] = []
-        self.batch_bodies: list[dict[str, Any]] = []
-        self.permission_calls: list[dict[str, Any]] = []
+        self.calls: list[ProxyRequest] = []
+        self.batch_bodies: list[Any] = []
+        self.permission_calls: list[ProxyRequest] = []
 
-    def __call__(self, **kwargs: Any) -> Any:
-        self.calls.append(kwargs)
-        endpoint = kwargs["endpoint"]
+    def __call__(self, request: ProxyRequest) -> Any:
+        self.calls.append(request)
+        endpoint = request.endpoint
 
         if endpoint.endswith(":batchUpdate"):
-            self.batch_bodies.append(kwargs["body"])
+            self.batch_bodies.append(request.body)
             if self.batch_error is not None:
                 raise self.batch_error
             return self.batch_response
 
         if endpoint.endswith("/permissions"):
-            self.permission_calls.append(kwargs)
-            email = kwargs["body"]["emailAddress"]
+            self.permission_calls.append(request)
+            email = cast(dict[str, Any], request.body)["emailAddress"]
             failure = self.failing_recipients.get(email, self.permission_error)
             if failure is not None:
                 raise failure
@@ -256,11 +257,11 @@ class TestShareSpreadsheet:
         )
 
         call = api.permission_calls[0]
-        assert call["endpoint"] == f"{DRIVE_API_BASE}/files/{SPREADSHEET}/permissions"
-        assert call["method"] == "POST"
-        assert call["toolkit"] == SHEETS_TOOLKIT
-        assert call["user_id"] == "user-42"
-        assert call["body"] == {
+        assert call.endpoint == f"{DRIVE_API_BASE}/files/{SPREADSHEET}/permissions"
+        assert call.method == "POST"
+        assert call.toolkit == SHEETS_TOOLKIT
+        assert call.user_id == "user-42"
+        assert call.body == {
             "type": "user",
             "role": "commenter",
             "emailAddress": "a@x.com",
@@ -280,7 +281,7 @@ class TestShareSpreadsheet:
             ),
         )
 
-        assert api.permission_calls[0]["query"] == {"sendNotificationEmail": expected}
+        assert api.permission_calls[0].query == {"sendNotificationEmail": expected}
 
     def test_every_recipient_gets_its_own_request(self, tools: Any, api: Any) -> None:
         result = _call(
@@ -296,7 +297,7 @@ class TestShareSpreadsheet:
             ),
         )
 
-        assert [c["body"]["emailAddress"] for c in api.permission_calls] == [
+        assert [cast(dict[str, Any], c.body)["emailAddress"] for c in api.permission_calls] == [
             "a@x.com",
             "b@x.com",
             "c@x.com",
@@ -443,9 +444,9 @@ class TestCreatePivotTable:
     def test_targets_the_batch_update_endpoint(self, tools: Any, api: Any) -> None:
         _call(tools, "CUSTOM_CREATE_PIVOT_TABLE", _pivot())
 
-        batch = next(c for c in api.calls if c["endpoint"].endswith(":batchUpdate"))
-        assert batch["endpoint"] == f"{SHEETS_API_BASE}/{SPREADSHEET}:batchUpdate"
-        assert batch["method"] == "POST"
+        batch = next(c for c in api.calls if c.endpoint.endswith(":batchUpdate"))
+        assert batch.endpoint == f"{SHEETS_API_BASE}/{SPREADSHEET}:batchUpdate"
+        assert batch.method == "POST"
 
     def test_column_groupings_are_included_when_requested(self, tools: Any, api: Any) -> None:
         _call(tools, "CUSTOM_CREATE_PIVOT_TABLE", _pivot(columns=["Product"]))
@@ -1315,9 +1316,9 @@ class TestGatherContext:
         _call(tools, "CUSTOM_GATHER_CONTEXT", GatherContextInput())
 
         call = api.calls[0]
-        assert call["endpoint"] == f"{DRIVE_API_BASE}/files"
-        assert call["method"] == "GET"
-        assert call["query"] == {
+        assert call.endpoint == f"{DRIVE_API_BASE}/files"
+        assert call.method == "GET"
+        assert call.query == {
             "q": "mimeType='application/vnd.google-apps.spreadsheet'",
             "orderBy": "viewedByMeTime desc",
             "pageSize": RECENT_SPREADSHEETS_PAGE_SIZE,

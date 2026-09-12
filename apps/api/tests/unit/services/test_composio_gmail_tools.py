@@ -25,6 +25,7 @@ from app.services.composio.custom_tools.gmail_tools import (
     _timeframe_clause,
     register_gmail_custom_tools,
 )
+from app.services.composio.proxy_client import ProxyRequest
 from app.utils.timezone import Timezone
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
@@ -122,11 +123,11 @@ class TestMarkAsRead:
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )
-        kwargs = mock_proxy.call_args.kwargs
-        assert kwargs["toolkit"] == "GMAIL"
-        assert kwargs["method"] == "POST"
-        assert kwargs["endpoint"].endswith("/users/me/messages/batchModify")
-        assert kwargs["body"] == {
+        request = mock_proxy.call_args.args[0]
+        assert request.toolkit == "GMAIL"
+        assert request.method == "POST"
+        assert request.endpoint.endswith("/users/me/messages/batchModify")
+        assert request.body == {
             "ids": ["m1", "m2"],
             "removeLabelIds": ["UNREAD"],
         }
@@ -149,7 +150,7 @@ class TestMarkAsUnread:
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )
-        assert mock_proxy.call_args.kwargs["body"] == {
+        assert mock_proxy.call_args.args[0].body == {
             "ids": ["m1"],
             "addLabelIds": ["UNREAD"],
         }
@@ -163,7 +164,7 @@ class TestArchive:
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )
-        assert mock_proxy.call_args.kwargs["body"] == {
+        assert mock_proxy.call_args.args[0].body == {
             "ids": ["m1"],
             "removeLabelIds": ["INBOX"],
         }
@@ -178,7 +179,7 @@ class TestStar:
             auth_credentials=AUTH_CREDS,
         )
         assert result == {"action": "starred", "modified_count": 1, "failed_count": 0}
-        assert mock_proxy.call_args.kwargs["body"]["addLabelIds"] == ["STARRED"]
+        assert mock_proxy.call_args.args[0].body["addLabelIds"] == ["STARRED"]
 
     def test_unstar_removes_starred_label(self, mock_proxy):
         tools = _register_and_get_tools()
@@ -188,7 +189,7 @@ class TestStar:
             auth_credentials=AUTH_CREDS,
         )
         assert result == {"action": "unstarred", "modified_count": 1, "failed_count": 0}
-        assert mock_proxy.call_args.kwargs["body"]["removeLabelIds"] == ["STARRED"]
+        assert mock_proxy.call_args.args[0].body["removeLabelIds"] == ["STARRED"]
 
 
 # ---------------------------------------------------------------------------
@@ -380,8 +381,8 @@ class TestFetchMessages:
         list_iter = iter(list_responses)
         message_iter = iter([message_response] * 9)
 
-        def side_effect(*args, **kwargs):
-            endpoint = kwargs.get("endpoint", "")
+        def side_effect(request: ProxyRequest):
+            endpoint = request.endpoint
             # List call: exactly /users/me/messages (no id segment after).
             if re.match(r".+/users/me/messages/?$", endpoint):
                 return next(list_iter)
@@ -413,8 +414,8 @@ class TestFetchMessages:
         list_iter = iter(list_responses)
         message_iter = iter([message_response] * 5)
 
-        def side_effect(*args, **kwargs):
-            endpoint = kwargs.get("endpoint", "")
+        def side_effect(request: ProxyRequest):
+            endpoint = request.endpoint
             # List call: exactly /users/me/messages (no id segment after).
             if re.match(r".+/users/me/messages/?$", endpoint):
                 return next(list_iter)
@@ -453,8 +454,8 @@ class TestFetchMessages:
         # not trigger the tool's error path).
         list_call_count = [0]
 
-        def side_effect(*args, **kwargs):
-            endpoint = kwargs.get("endpoint", "")
+        def side_effect(request: ProxyRequest):
+            endpoint = request.endpoint
             # List call: exactly /users/me/messages (no id segment after).
             if re.match(r".+/users/me/messages/?$", endpoint):
                 list_call_count[0] += 1
@@ -507,8 +508,8 @@ class TestFetchMessages:
         list_iter = iter([list_resp])
         message_iter = iter([msg_resp])
 
-        def side_effect(*args, **kwargs):
-            endpoint = kwargs.get("endpoint", "")
+        def side_effect(request: ProxyRequest):
+            endpoint = request.endpoint
             # List call: exactly /users/me/messages (no id segment after).
             if re.match(r".+/users/me/messages/?$", endpoint):
                 return next(list_iter)
@@ -550,8 +551,8 @@ class TestFetchMessages:
         list_iter = iter([list_response])
         message_iter = iter([message_response] * 5)
 
-        def side_effect(*args, **kwargs):
-            endpoint = kwargs.get("endpoint", "")
+        def side_effect(request: ProxyRequest):
+            endpoint = request.endpoint
             # List call: exactly /users/me/messages (no id segment after).
             if re.match(r".+/users/me/messages/?$", endpoint):
                 return next(list_iter)
@@ -611,8 +612,8 @@ class TestFetchMessages:
         list_iter = iter([list_resp])
         message_iter = iter([msg_resp])
 
-        def side_effect(*args, **kwargs):
-            endpoint = kwargs.get("endpoint", "")
+        def side_effect(request: ProxyRequest):
+            endpoint = request.endpoint
             # List call: exactly /users/me/messages (no id segment after).
             if re.match(r".+/users/me/messages/?$", endpoint):
                 return next(list_iter)

@@ -1,3 +1,4 @@
+import type { Schema } from "../api/generated";
 export interface UsagePeriod {
   used: number;
   limit: number;
@@ -20,34 +21,11 @@ export interface FeatureUsage {
 
 /** One cost-budget window: only how much of the allowance is used (0-100) and
  * when it resets. The backend never sends raw USD spend — see cost_budget.py. */
-export interface BudgetWindow {
-  percentage: number;
-  reset_time: string;
-}
+export type BudgetWindow = Schema<"BudgetWindow">;
 
-export interface UsageBudget {
-  /** Daily AI-usage allowance (free = usage wall, pro = abuse guard). */
-  daily: BudgetWindow;
-  /** Monthly compute allowance — pro only; null on free. */
-  monthly: BudgetWindow | null;
-  /** Largest single task the plan can run, in tokens (capability, not a meter). */
-  per_request_token_ceiling: number;
-}
+export type UsageBudget = Schema<"UsageBudget">;
 
-export interface ActivityDay {
-  /** UTC date, YYYY-MM-DD. */
-  date: string;
-  /** Total actions (tool calls + messages) that day. */
-  count: number;
-  /** Input + output tokens charged to the user that day. Background work
-   * (memory, onboarding) is billed separately and never counted here. */
-  tokens: number;
-  input_tokens: number;
-  output_tokens: number;
-  /** Subset of the input that was served from the prompt cache. */
-  cached_tokens: number;
-  reasoning_tokens: number;
-}
+export type ActivityDay = Schema<"ActivityDay">;
 
 /** Year activity heatmap + the user's standing. Served by /usage/activity,
  * backed by the daily-rollup collection (see usage_daily). */
@@ -64,13 +42,4 @@ export interface UsageActivity {
   tier: "diamond" | "gold" | "silver" | "bronze" | null;
 }
 
-export interface UsageSummary {
-  user_id: string;
-  plan_type: string;
-  /** Feature key the usage UI leads with (e.g. "chat_messages"). The backend
-   * designates the primary meter so the client never hard-codes it. */
-  primary_feature: string;
-  features: Record<string, FeatureUsage>;
-  budget: UsageBudget;
-  last_updated: string;
-}
+export type UsageSummary = Schema<"UsageSummary">;

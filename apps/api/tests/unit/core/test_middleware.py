@@ -8,14 +8,17 @@ asserted anywhere; the module had no unit test at all.
 from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI
+from limits import parse
 import pytest
+from slowapi.errors import RateLimitExceeded
+from slowapi.wrappers import Limit
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.testclient import TestClient
 
 from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
-from app.core.middleware import configure_middleware
+from app.core.middleware import configure_middleware, rate_limit_handler
 
 
 @pytest.fixture
@@ -97,3 +100,55 @@ class TestPostHogContextDoesNotSwallowExceptions:
 
             with pytest.raises(RuntimeError, match="the real bug in the handler"):
                 client.get("/boom")
+
+
+class TestRateLimitHandler:
+    """slowapi's 429 answers before any route runs, so it must be the envelope too."""
+
+    def test_configure_middleware_registers_it_for_slowapi(self) -> None:
+        app = FastAPI()
+        configure_middleware(app)
+        assert app.exception_handlers[RateLimitExceeded] is rate_limit_handler
+
+    @staticmethod
+    def _app_that_is_rate_limited(retry_after: int | None) -> FastAPI:
+        app = FastAPI()
+        app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+        limit = Limit(
+            parse("5/minute"),
+            key_func=lambda: "client",
+            scope=None,
+            per_method=False,
+            methods=None,
+            error_message="Too many requests, slow down",
+            exempt_when=None,
+            cost=1,
+            override_defaults=False,
+        )
+
+        @app.get("/limited")
+        async def limited() -> None:
+            exc = RateLimitExceeded(limit)
+            if retry_after is not None:
+                exc.retry_after = retry_after
+            raise exc
+
+        return app
+
+    def test_the_429_body_is_the_envelope_with_the_retry_hint(self) -> None:
+        resp = TestClient(self._app_that_is_rate_limited(30)).get("/limited")
+        assert resp.status_code == 429
+        assert resp.json() == {
+            "message": "Too many requests, slow down",
+            "code": "rate_limit_exceeded",
+            "retry_after": 30,
+        }
+
+    def test_no_retry_hint_is_an_explicit_null(self) -> None:
+        resp = TestClient(self._app_that_is_rate_limited(None)).get("/limited")
+        assert resp.status_code == 429
+        assert resp.json() == {
+            "message": "Too many requests, slow down",
+            "code": "rate_limit_exceeded",
+            "retry_after": None,
+        }

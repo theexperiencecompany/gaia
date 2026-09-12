@@ -1,7 +1,7 @@
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
-import type { FileData } from "@/types/shared/fileTypes";
+import type { AttachedFileData } from "@/types/shared/fileTypes";
 
 function resolveUserBubbleStyles(
   isEmojiOnly: boolean,
@@ -24,7 +24,7 @@ function resolveUserBubbleStyles(
 
 interface UseChatBubbleUserParams {
   text: ChatBubbleUserProps["text"];
-  fileData: FileData[];
+  fileData: AttachedFileData[];
   selectedTool: ChatBubbleUserProps["selectedTool"];
   selectedWorkflow: ChatBubbleUserProps["selectedWorkflow"];
   selectedCalendarEvent: ChatBubbleUserProps["selectedCalendarEvent"];

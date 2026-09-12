@@ -17,7 +17,7 @@ from app.constants.log_tags import LogTag
 from app.decorators import with_doc
 from app.models.common_models import GatherContextInput
 from app.models.google_docs_models import CreateTOCInput, DeleteDocInput, ShareDocInput
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.templates.docstrings.google_docs_tool_docs import (
     CUSTOM_CREATE_TOC as CUSTOM_CREATE_TOC_DOC,
     CUSTOM_DELETE_DOC as CUSTOM_DELETE_DOC_DOC,
@@ -48,16 +48,18 @@ def _share_doc(request: ShareDocInput, user_id: str) -> dict[str, Any]:
     for recipient in request.recipients:
         try:
             result = proxy_request_sync(
-                user_id=user_id,
-                toolkit=DOCS_TOOLKIT,
-                endpoint=f"{DRIVE_API_BASE}/files/{request.document_id}/permissions",
-                method="POST",
-                body={
-                    "type": "user",
-                    "role": recipient.role,
-                    "emailAddress": recipient.email,
-                },
-                query={"sendNotificationEmail": str(recipient.send_notification).lower()},
+                ProxyRequest(
+                    user_id=user_id,
+                    toolkit=DOCS_TOOLKIT,
+                    endpoint=f"{DRIVE_API_BASE}/files/{request.document_id}/permissions",
+                    method="POST",
+                    body={
+                        "type": "user",
+                        "role": recipient.role,
+                        "emailAddress": recipient.email,
+                    },
+                    query={"sendNotificationEmail": str(recipient.send_notification).lower()},
+                )
             )
             shared.append(
                 {
@@ -178,10 +180,12 @@ def _create_toc(
 def _delete_doc(request: DeleteDocInput, user_id: str) -> dict[str, Any]:
     try:
         proxy_request_sync(
-            user_id=user_id,
-            toolkit=DOCS_TOOLKIT,
-            endpoint=f"{DRIVE_API_BASE}/files/{request.document_id}",
-            method="DELETE",
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=DOCS_TOOLKIT,
+                endpoint=f"{DRIVE_API_BASE}/files/{request.document_id}",
+                method="DELETE",
+            )
         )
     except AppError as e:
         log.error(
@@ -200,16 +204,18 @@ def _delete_doc(request: DeleteDocInput, user_id: str) -> dict[str, Any]:
 def _gather_recent_docs(user_id: str) -> dict[str, Any]:
     mime = "application/vnd.google-apps.document"
     data = proxy_request_sync(
-        user_id=user_id,
-        toolkit=DOCS_TOOLKIT,
-        endpoint=f"{DRIVE_API_BASE}/files",
-        method="GET",
-        query={
-            "q": f"mimeType='{mime}'",
-            "orderBy": "viewedByMeTime desc",
-            "pageSize": 20,
-            "fields": "files(id,name,modifiedTime,webViewLink)",
-        },
+        ProxyRequest(
+            user_id=user_id,
+            toolkit=DOCS_TOOLKIT,
+            endpoint=f"{DRIVE_API_BASE}/files",
+            method="GET",
+            query={
+                "q": f"mimeType='{mime}'",
+                "orderBy": "viewedByMeTime desc",
+                "pageSize": 20,
+                "fields": "files(id,name,modifiedTime,webViewLink)",
+            },
+        )
     )
     files = [
         {

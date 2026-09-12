@@ -208,7 +208,7 @@ class TestToolsEndpoints:
         response = await test_client.get(_TOOLS_URL)
 
         assert response.status_code == 500
-        assert "Failed to retrieve tools" in response.json()["detail"]
+        assert "Failed to retrieve tools" in response.json()["message"]
 
     async def test_list_tools_requires_auth(self, unauthenticated_client):
         """GET /tools without auth should return 401."""
@@ -263,7 +263,7 @@ class TestToolsEndpoints:
         response = await test_client.get(_CATEGORIES_URL)
 
         assert response.status_code == 500
-        assert "Failed to retrieve tool categories" in response.json()["detail"]
+        assert "Failed to retrieve tool categories" in response.json()["message"]
 
     async def test_list_categories_requires_auth(self, unauthenticated_client):
         """GET /tools/categories without auth should return 401."""
@@ -310,7 +310,7 @@ class TestToolsEndpoints:
         response = await test_client.get(f"{_CATEGORY_URL}/nonexistent")
 
         assert response.status_code == 404
-        assert "No tools found in category" in response.json()["detail"]
+        assert "No tools found in category" in response.json()["message"]
 
     @patch(
         "app.api.v1.endpoints.tools.get_tools_by_category",
@@ -323,7 +323,7 @@ class TestToolsEndpoints:
         response = await test_client.get(f"{_CATEGORY_URL}/gmail")
 
         assert response.status_code == 500
-        assert "Failed to retrieve tools for category" in response.json()["detail"]
+        assert "Failed to retrieve tools for category" in response.json()["message"]
 
     async def test_get_tools_in_category_requires_auth(self, unauthenticated_client):
         """GET /tools/category/{name} without auth should return 401."""

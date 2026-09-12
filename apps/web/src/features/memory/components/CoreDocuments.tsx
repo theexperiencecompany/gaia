@@ -6,15 +6,12 @@ import { Textarea } from "@heroui/input";
 import { Skeleton } from "@heroui/skeleton";
 import { Tab, Tabs } from "@heroui/tabs";
 import { FileEmpty02Icon, PencilEdit02Icon } from "@icons";
+import type { Schema } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
 import { type ReactNode, useEffect, useState, useTransition } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type {
-  MemoryDocType,
-  MemoryDocument,
-} from "@/features/memory/api/types";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { CORE_DOCUMENTS } from "@/features/memory/constants";
 import { toast } from "@/lib/toast";
@@ -54,10 +51,10 @@ const MARKDOWN_COMPONENTS: Components = {
 };
 
 export function CoreDocuments() {
-  const [documents, setDocuments] = useState<MemoryDocument[]>([]);
+  const [documents, setDocuments] = useState<Schema<"MemoryDocument">[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDocType, setSelectedDocType] =
-    useState<MemoryDocType>("user_md");
+    useState<Schema<"MemoryDocType">>("user_md");
   const [draft, setDraft] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
 
@@ -167,7 +164,7 @@ export function CoreDocuments() {
         radius="full"
         selectedKey={selectedDocType}
         onSelectionChange={(key) => {
-          setSelectedDocType(key as MemoryDocType);
+          setSelectedDocType(key as Schema<"MemoryDocType">);
           setDraft(null);
         }}
       >

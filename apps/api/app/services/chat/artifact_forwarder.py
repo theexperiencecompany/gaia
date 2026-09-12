@@ -40,10 +40,10 @@ from app.constants.outbound import OUTBOUND_QUEUES
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.db.repositories.conversations import conversation_repository
+from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import ConversationSource
 from app.services.artifact_events import artifact_channel
 from app.services.chat.artifacts_registry import (
-    ArtifactRegistryEntry,
     get_conversation_artifacts,
     remove_conversation_artifact,
     upsert_conversation_artifact,

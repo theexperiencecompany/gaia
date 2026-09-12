@@ -18,10 +18,10 @@ import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { apiService } from "@/lib/api/service";
+import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
-import type { PlatformLink } from "@/types/platform";
+import type { PlatformLinks } from "@/types/platform";
 
 interface PlatformConfig {
   id: string;
@@ -80,9 +80,7 @@ const PLATFORMS: PlatformConfig[] = [
 ];
 
 export default function LinkedAccountsSettings() {
-  const [platformLinks, setPlatformLinks] = useState<
-    Record<string, PlatformLink | null>
-  >({});
+  const [platformLinks, setPlatformLinks] = useState<PlatformLinks>({});
   const [isLoading, setIsLoading] = useState(true);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(
     null,
@@ -114,15 +112,10 @@ export default function LinkedAccountsSettings() {
     };
   }, []);
 
-  const fetchPlatformLinks = async (): Promise<Record<
-    string,
-    PlatformLink | null
-  > | null> => {
+  const fetchPlatformLinks = async (): Promise<PlatformLinks | null> => {
     try {
       setIsLoading(true);
-      const data = await apiService.get<{
-        platform_links: Record<string, PlatformLink | null>;
-      }>("/platform-links", { silent: true });
+      const data = await api.get("/api/v1/platform-links", { silent: true });
       setPlatformLinks(data.platform_links || {});
       return data.platform_links || {};
     } catch {
@@ -160,17 +153,11 @@ export default function LinkedAccountsSettings() {
 
       const wasConnected = platformLinks[platformId]?.platformUserId != null;
 
-      const data = await apiService.post<{
-        auth_url?: string;
-        instructions?: string;
-        action_link?: string;
-        contact_number?: string;
-        auth_type: string;
-      }>(
-        `/platform-links/${platformId}/connect`,
-        phoneNumber ? { phone: phoneNumber } : {},
-        { silent: true },
-      );
+      const data = await api.post("/api/v1/platform-links/{platform}/connect", {
+        path: { platform: platformId },
+        body: phoneNumber ? { phone: phoneNumber } : {},
+        silent: true,
+      });
 
       if (attempt !== connectAttemptRef.current) return;
 
@@ -209,7 +196,7 @@ export default function LinkedAccountsSettings() {
         setPhoneLinkTarget({
           contactNumber: data.contact_number,
           command: BOT_AUTH_COMMAND,
-          actionLink: data.action_link,
+          actionLink: data.action_link ?? undefined,
         });
         setConnectingPlatform(null);
       } else if (data.auth_type === "manual" && data.instructions) {
@@ -229,7 +216,8 @@ export default function LinkedAccountsSettings() {
           ...(data.action_link && {
             action: {
               label: "Open",
-              onClick: () => window.open(data.action_link, "_blank"),
+              onClick: () =>
+                window.open(data.action_link ?? undefined, "_blank"),
             },
           }),
         });
@@ -246,7 +234,8 @@ export default function LinkedAccountsSettings() {
 
   const handleDisconnect = async (platformId: string) => {
     try {
-      await apiService.delete(`/platform-links/${platformId}`, {
+      await api.delete("/api/v1/platform-links/{platform}", {
+        path: { platform: platformId },
         silent: true,
       });
       trackEvent(ANALYTICS_EVENTS.BOT_DISCONNECTED, { bot_id: platformId });

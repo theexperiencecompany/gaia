@@ -4,8 +4,8 @@ import { Button } from "@heroui/button";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { apiService } from "@/lib/api/service";
-import type { PlatformLink } from "@/types/platform";
+import { api } from "@/lib/api/typed";
+import type { PlatformLinks } from "@/types/platform";
 import {
   NOTIFICATION_PLATFORM_ICONS,
   NOTIFICATION_PLATFORM_LABELS,
@@ -20,17 +20,12 @@ export function NotificationConnectBanner({
   variant = "compact",
 }: NotificationConnectBannerProps) {
   const router = useRouter();
-  const [platformLinks, setPlatformLinks] = useState<
-    Record<string, PlatformLink | null>
-  >({});
+  const [platformLinks, setPlatformLinks] = useState<PlatformLinks>({});
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    apiService
-      .get<{ platform_links: Record<string, PlatformLink | null> }>(
-        "/platform-links",
-        { silent: true },
-      )
+    api
+      .get("/api/v1/platform-links", { silent: true })
       .then((data) => {
         setPlatformLinks(data.platform_links || {});
       })

@@ -4,7 +4,6 @@ from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 from fastapi import Request, Response
-from fastapi.responses import JSONResponse
 from posthog import identify_context, new_context
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
@@ -19,6 +18,7 @@ from app.core.lazy_loader import providers
 from app.core.request_context import set_authenticated_user
 from app.db.repositories.users import user_repository
 from app.models.user_models import AuthenticatedUser, user_to_legacy_dict
+from app.schemas.errors import ErrorEnvelope, error_response
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
@@ -274,16 +274,12 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 target_email=target_email,
                 dev_impersonated=bool(request.headers.get(DEV_USER_HEADER)),
             )
-            return JSONResponse(
-                status_code=401,
-                content={
-                    "detail": {
-                        "error_code": NOT_AUTHENTICATED,
-                        "message": (
-                            f"No GAIA user exists for {target_email!r} — {DEV_USER_MISSING_HINT}"
-                        ),
-                    }
-                },
+            return error_response(
+                401,
+                ErrorEnvelope(
+                    message=f"No GAIA user exists for {target_email!r} — {DEV_USER_MISSING_HINT}",
+                    code=NOT_AUTHENTICATED,
+                ),
             )
 
         request.state.user = build_user_context(

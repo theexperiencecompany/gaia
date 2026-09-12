@@ -4,22 +4,8 @@
  * Types for workflow execution history tracking.
  */
 
-export interface WorkflowExecution {
-  execution_id: string;
-  workflow_id: string;
-  user_id: string;
-  status: "running" | "success" | "failed" | "skipped";
-  started_at: string;
-  completed_at?: string;
-  duration_seconds?: number;
-  conversation_id?: string;
-  summary?: string;
-  error_message?: string;
-  trigger_type: string;
-}
+import type { Schema } from "@shared/api/generated";
 
-export interface WorkflowExecutionsResponse {
-  executions: WorkflowExecution[];
-  total: number;
-  has_more: boolean;
-}
+export type WorkflowExecution = Schema<"WorkflowExecution">;
+
+export type WorkflowExecutionsResponse = Schema<"WorkflowExecutionsResponse">;

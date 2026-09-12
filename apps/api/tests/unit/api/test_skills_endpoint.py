@@ -823,7 +823,7 @@ class TestUpdateSkill:
             )
 
         assert response.status_code == 400
-        assert "not available" in response.json()["detail"]
+        assert "not available" in response.json()["message"]
 
     async def test_update_with_allowed_target_succeeds(self, client: AsyncClient):
         from app.agents.skills.models import SkillTarget

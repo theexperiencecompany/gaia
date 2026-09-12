@@ -12,18 +12,16 @@ export interface CurrentUser {
   email: string;
   profilePicture: string;
   timezone: string | undefined;
-  onboarding: UserInfo["onboarding"];
-  selected_model: string | undefined;
+  onboarding: UserInfo["onboarding"] | undefined;
 }
 
 export function toCurrentUser(info: UserInfo): CurrentUser {
   return {
     userId: info.user_id,
-    name: info.name,
-    email: info.email,
-    profilePicture: info.picture,
-    timezone: info.timezone,
+    name: info.name ?? "",
+    email: info.email ?? "",
+    profilePicture: info.picture ?? "",
+    timezone: info.timezone ?? undefined,
     onboarding: info.onboarding,
-    selected_model: info.selected_model,
   };
 }

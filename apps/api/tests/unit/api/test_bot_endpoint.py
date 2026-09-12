@@ -1452,7 +1452,7 @@ class TestBotTranscribe:
             )
 
         assert response.status_code == 402
-        assert response.json()["detail"]["code"] == "subscription_required"
+        assert response.json()["code"] == "subscription_required"
         mock_transcribe.assert_not_called()
 
     @patch(

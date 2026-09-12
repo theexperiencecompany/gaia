@@ -66,11 +66,11 @@ async def test_rate_limit_exceeded_returns_429(
         response = await client.post(NOTES_BASE, json=_NOTE_BODY)
 
     assert response.status_code == 429
-    detail = response.json()["detail"]
-    assert detail["error"] == "rate_limit_exceeded"
-    assert detail["feature"] == "notes"
-    assert detail["message"] == "Rate limit exceeded for notes"
-    assert detail["reset_time"] == reset_time.isoformat()
+    body = response.json()
+    assert body["code"] == "rate_limit_exceeded"
+    assert body["feature"] == "notes"
+    assert body["message"] == "Rate limit exceeded for notes"
+    assert body["reset_time"] == reset_time.isoformat()
 
     # The limiter read the pre-seeded usage for the authenticated FREE user
     # (the root conftest's subscription patch), and the handler never ran —

@@ -13,10 +13,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useReducer } from "react";
 
-import type { UserInfo } from "@/features/auth/api/authApi";
 import {
+  CURRENT_USER_QUERY_KEY,
   patchCurrentUser,
-  setCurrentUser,
   useCurrentUser,
   useCurrentUserIsFresh,
 } from "@/features/auth/hooks/useCurrentUser";
@@ -74,12 +73,11 @@ export function useOnboarding(): UseOnboardingReturn {
   );
   useOnboardingPreferences(state, dispatch);
 
-  const handleSubmissionSuccess = useCallback(
-    (info: UserInfo) => {
-      setCurrentUser(queryClient, info);
-    },
-    [queryClient],
-  );
+  // The onboarding endpoint's `user` is the raw stored document, not the
+  // /user/me contract; refetching keeps the one source of truth honest.
+  const handleSubmissionSuccess = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+  }, [queryClient]);
   useOnboardingSubmission(state, stage, handleSubmissionSuccess);
 
   useOnboardingAnalytics(state, stage, hydrated);

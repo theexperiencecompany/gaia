@@ -1,27 +1,18 @@
+import type { Schema } from "@gaia/shared/api/generated";
 import { apiService } from "@/lib/api";
 
-export interface Skill {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  enabled: boolean;
-  version?: string;
-  author?: string;
-  tags?: string[];
-}
+export type Skill = Schema<"Skill">;
 
 export interface SkillsResponse {
   skills: Skill[];
   total: number;
 }
 
-export interface DiscoverSkillsResponse {
-  skills: Skill[];
-  total: number;
-}
+export type DiscoverSkillsResponse = Schema<"DiscoverSkillsResponse">;
 
-export async function discoverSkills(): Promise<Skill[]> {
+export type DiscoveredSkill = Schema<"DiscoveredSkillInfo">;
+
+export async function discoverSkills(): Promise<DiscoveredSkill[]> {
   try {
     const response =
       await apiService.get<DiscoverSkillsResponse>("/skills/discover");

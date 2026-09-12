@@ -8,12 +8,17 @@ the root-cause fix for workflows/reminders running in UTC.
 
 import asyncio
 from datetime import timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from fastapi import HTTPException
+import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import (
+    get_current_user,
     get_user_timezone,
     get_user_timezone_from_preferences,
 )
+from app.constants.error_codes import NOT_AUTHENTICATED
 
 _BACKFILL = "app.api.v1.dependencies.oauth_dependencies._backfill_user_timezone"
 
@@ -97,3 +102,22 @@ class TestGetUserTimezoneHeaderDependency:
         tz_str, now = get_user_timezone(x_timezone="+05:30")
         assert tz_str == "+05:30"
         assert now.utcoffset() == timedelta(hours=5, minutes=30)
+
+
+class TestGetCurrentUser:
+    async def test_an_unauthenticated_request_is_a_401_carrying_the_code(self) -> None:
+        request = MagicMock()
+        request.state = MagicMock(spec=[])
+        with pytest.raises(HTTPException) as exc:
+            await get_current_user(request)
+        assert exc.value.status_code == 401
+        assert exc.value.detail == {"code": NOT_AUTHENTICATED, "message": "Authentication required"}
+
+    async def test_authenticated_without_user_data_is_a_401_carrying_the_code(self) -> None:
+        request = MagicMock()
+        request.state.authenticated = True
+        request.state.user = None
+        with pytest.raises(HTTPException) as exc:
+            await get_current_user(request)
+        assert exc.value.status_code == 401
+        assert exc.value.detail == {"code": NOT_AUTHENTICATED, "message": "User data missing"}

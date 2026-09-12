@@ -10,7 +10,7 @@ export class ApiError extends Error {
   }
 }
 
-export interface StartPairingResponse {
+export interface BridgeStartPairingResponse {
   device_code: string;
   user_code: string;
   verification_url: string;
@@ -18,7 +18,7 @@ export interface StartPairingResponse {
   interval: number;
 }
 
-export interface PollPairingResponse {
+export interface BridgePollPairingResponse {
   status: "pending" | "approved" | "denied" | "expired";
   device_id: string | null;
   refresh_token: string | null;
@@ -63,7 +63,7 @@ export function startPairing(
   name: string,
   platform: string,
   daemonVersion: string,
-): Promise<StartPairingResponse> {
+): Promise<BridgeStartPairingResponse> {
   return post(apiUrl, "/device/pair/start", {
     name,
     platform,
@@ -74,7 +74,7 @@ export function startPairing(
 export function pollPairing(
   apiUrl: string,
   deviceCode: string,
-): Promise<PollPairingResponse> {
+): Promise<BridgePollPairingResponse> {
   return post(apiUrl, "/device/pair/poll", { device_code: deviceCode });
 }
 

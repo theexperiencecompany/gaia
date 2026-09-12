@@ -5,17 +5,17 @@ import {
   GROUPED_TOOLS,
   type SubagentGroupData,
   type ToolCallEntry,
-  type ToolDataEntry,
   type ToolDataMap,
   type ToolName,
+  type TypedToolDataEntry,
 } from "@/config/registries/toolRegistry";
 import type { EnrichedSubagentGroup, TimelineItem } from "../UnifiedToolThread";
 
 // ── Bucketing ────────────────────────────────────────────────────────────────
 
 interface BucketedToolData {
-  groupedEntries: ToolDataEntry[];
-  individual: ToolDataEntry[];
+  groupedEntries: TypedToolDataEntry[];
+  individual: TypedToolDataEntry[];
   toolCalls: ToolCallEntry[];
   subagentGroups: SubagentGroupData[];
 }
@@ -23,10 +23,10 @@ interface BucketedToolData {
 // Single pass over tool_data: route each entry into the right bucket and
 // collapse tools listed in GROUPED_TOOLS into one entry per tool name.
 function bucketToolData(
-  tool_data: ToolDataEntry[] | null | undefined,
+  tool_data: TypedToolDataEntry[] | null | undefined,
 ): BucketedToolData {
   const grouped = new Map<ToolName, ToolDataMap[ToolName][]>();
-  const individual: ToolDataEntry[] = [];
+  const individual: TypedToolDataEntry[] = [];
   const toolCalls: ToolCallEntry[] = [];
   const subagentGroups: SubagentGroupData[] = [];
 
@@ -57,14 +57,14 @@ function bucketToolData(
     individual.push(entry);
   });
 
-  const groupedEntries: ToolDataEntry[] = Array.from(grouped.entries()).map(
-    ([toolName, dataArray]) => ({
-      tool_name: toolName,
-      tool_category: "",
-      data: dataArray as ToolDataMap[ToolName],
-      timestamp: null,
-    }),
-  );
+  const groupedEntries: TypedToolDataEntry[] = Array.from(
+    grouped.entries(),
+  ).map(([toolName, dataArray]) => ({
+    tool_name: toolName,
+    tool_category: "",
+    data: dataArray as ToolDataMap[ToolName],
+    timestamp: null,
+  }));
 
   return { groupedEntries, individual, toolCalls, subagentGroups };
 }
@@ -179,7 +179,9 @@ export function deriveStepKeys(
 // entries exist exactly once per tool name with merged-array data, so the tool
 // name is their identity; individual entries use their payload's tool_call_id,
 // else their creation timestamp (stamped once, never rewritten).
-export function deriveProcessedToolKeys(entries: ToolDataEntry[]): string[] {
+export function deriveProcessedToolKeys(
+  entries: TypedToolDataEntry[],
+): string[] {
   return deriveStableKeys(entries, (entry) => {
     if (GROUPED_TOOLS.has(entry.tool_name)) return `grouped-${entry.tool_name}`;
     const data: unknown = entry.data;
@@ -492,10 +494,10 @@ function buildSyntheticTimeline(toolCalls: ToolCallEntry[]): TimelineItem[] {
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
 export const useSubagentSynthesis = (
-  tool_data: ToolDataEntry[] | null | undefined,
+  tool_data: TypedToolDataEntry[] | null | undefined,
 ): {
   timeline: TimelineItem[];
-  processedTools: ToolDataEntry[];
+  processedTools: TypedToolDataEntry[];
 } => {
   return React.useMemo(() => {
     const { groupedEntries, individual, toolCalls, subagentGroups } =

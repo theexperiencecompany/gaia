@@ -29,6 +29,7 @@ from app.models.google_docs_models import (
     ShareDocInput,
     ShareRecipient,
 )
+from app.services.composio.proxy_client import ProxyRequest
 from app.utils.errors import AppError
 
 MODULE = "app.agents.tools.integrations.google_docs_tool"
@@ -99,20 +100,24 @@ def test_share_doc_sends_exact_permission_request_per_recipient() -> None:
 
     assert proxy.call_args_list == [
         call(
-            user_id="user_42",
-            toolkit="GOOGLEDOCS",
-            endpoint="https://www.googleapis.com/drive/v3/files/doc-77/permissions",
-            method="POST",
-            body={"type": "user", "role": "writer", "emailAddress": "a@x.com"},
-            query={"sendNotificationEmail": "true"},
+            ProxyRequest(
+                user_id="user_42",
+                toolkit="GOOGLEDOCS",
+                endpoint="https://www.googleapis.com/drive/v3/files/doc-77/permissions",
+                method="POST",
+                body={"type": "user", "role": "writer", "emailAddress": "a@x.com"},
+                query={"sendNotificationEmail": "true"},
+            )
         ),
         call(
-            user_id="user_42",
-            toolkit="GOOGLEDOCS",
-            endpoint="https://www.googleapis.com/drive/v3/files/doc-77/permissions",
-            method="POST",
-            body={"type": "user", "role": "reader", "emailAddress": "b@x.com"},
-            query={"sendNotificationEmail": "false"},
+            ProxyRequest(
+                user_id="user_42",
+                toolkit="GOOGLEDOCS",
+                endpoint="https://www.googleapis.com/drive/v3/files/doc-77/permissions",
+                method="POST",
+                body={"type": "user", "role": "reader", "emailAddress": "b@x.com"},
+                query={"sendNotificationEmail": "false"},
+            )
         ),
     ]
     assert result == {
@@ -225,10 +230,12 @@ def test_delete_doc_sends_exact_delete_request_and_returns_confirmation() -> Non
         result = _delete_doc(DeleteDocInput(document_id="doc-9"), "user_42")
 
     proxy.assert_called_once_with(
-        user_id="user_42",
-        toolkit="GOOGLEDOCS",
-        endpoint="https://www.googleapis.com/drive/v3/files/doc-9",
-        method="DELETE",
+        ProxyRequest(
+            user_id="user_42",
+            toolkit="GOOGLEDOCS",
+            endpoint="https://www.googleapis.com/drive/v3/files/doc-9",
+            method="DELETE",
+        )
     )
     assert result == {"successful": True, "document_id": "doc-9"}
 
@@ -269,7 +276,7 @@ def test_custom_share_doc_wrapper_logs_action_and_shares_via_proxy() -> None:
     assert log_mock.set.call_args_list == [
         call(tool={"integration": "google_docs", "action": "share_doc"})
     ]
-    assert proxy.call_args.kwargs["user_id"] == "user_test_123"
+    assert proxy.call_args.args[0].user_id == "user_test_123"
     assert result["document_id"] == "doc-5"
     assert result["url"] == "https://docs.google.com/document/d/doc-5/edit"
     assert result["shared"] == [
@@ -308,10 +315,12 @@ def test_custom_delete_doc_wrapper_logs_action_and_deletes() -> None:
         call(tool={"integration": "google_docs", "action": "delete_doc"})
     ]
     proxy.assert_called_once_with(
-        user_id="user_test_123",
-        toolkit="GOOGLEDOCS",
-        endpoint="https://www.googleapis.com/drive/v3/files/doc-7",
-        method="DELETE",
+        ProxyRequest(
+            user_id="user_test_123",
+            toolkit="GOOGLEDOCS",
+            endpoint="https://www.googleapis.com/drive/v3/files/doc-7",
+            method="DELETE",
+        )
     )
     assert result == {"successful": True, "document_id": "doc-7"}
 
@@ -359,8 +368,8 @@ def test_delete_doc_raises_runtime_error_on_app_error() -> None:
 
     assert str(excinfo.value) == "Failed to delete document: 403 - Drive API error (403)"
     assert excinfo.value.__cause__ is error
-    assert proxy.call_args.kwargs["method"] == "DELETE"
-    assert proxy.call_args.kwargs["endpoint"].endswith("/files/doc-1")
+    assert proxy.call_args.args[0].method == "DELETE"
+    assert proxy.call_args.args[0].endpoint.endswith("/files/doc-1")
 
 
 # --- _fetch_document_data ------------------------------------------------------
@@ -534,16 +543,18 @@ def test_gather_recent_docs_queries_drive_and_maps_file_fields() -> None:
         result = _gather_recent_docs("user_42")
 
     proxy.assert_called_once_with(
-        user_id="user_42",
-        toolkit="GOOGLEDOCS",
-        endpoint="https://www.googleapis.com/drive/v3/files",
-        method="GET",
-        query={
-            "q": "mimeType='application/vnd.google-apps.document'",
-            "orderBy": "viewedByMeTime desc",
-            "pageSize": 20,
-            "fields": "files(id,name,modifiedTime,webViewLink)",
-        },
+        ProxyRequest(
+            user_id="user_42",
+            toolkit="GOOGLEDOCS",
+            endpoint="https://www.googleapis.com/drive/v3/files",
+            method="GET",
+            query={
+                "q": "mimeType='application/vnd.google-apps.document'",
+                "orderBy": "viewedByMeTime desc",
+                "pageSize": 20,
+                "fields": "files(id,name,modifiedTime,webViewLink)",
+            },
+        )
     )
     assert result == {
         "recent_docs": [

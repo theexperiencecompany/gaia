@@ -107,4 +107,4 @@ class TestListCommunityIntegrations:
             resp = await client.get(BASE)
 
         assert resp.status_code == 500
-        assert resp.json()["detail"] == "Failed to fetch community integrations"
+        assert resp.json()["message"] == "Failed to fetch community integrations"

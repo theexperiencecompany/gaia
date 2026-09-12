@@ -19,7 +19,6 @@ import { Text } from "@/components/ui/text";
 import type {
   InAppNotification,
   InAppNotificationAction,
-  NotificationActionType,
 } from "../types/inapp-notification-types";
 
 interface NotificationCardProps {
@@ -60,14 +59,12 @@ function getActionTone(style?: string): ActionTone {
   }
 }
 
-function getActionIcon(type: NotificationActionType): AnyIcon | null {
+function getActionIcon(type: InAppNotificationAction["type"]): AnyIcon | null {
   switch (type) {
     case "redirect":
       return LinkSquare02Icon;
     case "api_call":
       return CheckmarkCircle02Icon;
-    case "workflow":
-      return Timer02Icon;
     case "modal":
       return AlertCircleIcon;
     default:
@@ -129,10 +126,10 @@ export function NotificationCard({
       return;
     }
     const redirectAction = notification.content.actions?.find(
-      (a) => a.type === "redirect" && a.config.redirect?.url,
+      (a) => a.type === "redirect" && a.config?.redirect?.url,
     );
-    if (redirectAction?.config.redirect?.url) {
-      const url = redirectAction.config.redirect.url;
+    const url = redirectAction?.config?.redirect?.url;
+    if (url) {
       if (url.startsWith("/")) router.push(url as never);
     }
     if (isUnread) onMarkAsRead(notification.id);

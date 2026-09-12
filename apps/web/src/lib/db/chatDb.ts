@@ -1,7 +1,7 @@
 import Dexie, { type IndexableType, type Table } from "dexie";
 import { EventEmitter } from "events";
 
-import type { ToolDataEntry } from "@/config/registries/toolRegistry";
+import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
 import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
@@ -53,7 +53,7 @@ export interface IMessage {
   selectedCalendarEvent?: SelectedCalendarEventData | null;
 
   // Rich content data from BaseMessageData
-  tool_data?: ToolDataEntry[] | null;
+  tool_data?: TypedToolDataEntry[] | null;
   follow_up_actions?: string[] | null;
   image_data?: ImageData | null;
   memory_data?: MemoryData | null;

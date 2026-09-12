@@ -25,7 +25,7 @@ import {
 } from "@/features/workflows/triggers/handlers/schedule";
 import { slackTriggerHandler } from "@/features/workflows/triggers/handlers/slack";
 import { todoistTriggerHandler } from "@/features/workflows/triggers/handlers/todoist";
-import type { TriggerConfig, TriggerSchema } from "./types";
+import type { TriggerConfigDraft, TriggerSchema } from "./types";
 
 // =============================================================================
 // HANDLER INTERFACE (simplified for scalability)
@@ -41,30 +41,33 @@ export interface TriggerDisplayInfo {
 
 /**
  * Props for trigger settings components.
- * Uses generic TriggerConfig to avoid type-specific coupling.
+ * Uses generic TriggerConfigDraft to avoid type-specific coupling.
  */
 export interface TriggerSettingsProps {
-  triggerConfig: TriggerConfig;
-  onConfigChange: (config: TriggerConfig) => void;
+  triggerConfig: TriggerConfigDraft;
+  onConfigChange: (config: TriggerConfigDraft) => void;
 }
 
 /**
  * Simplified handler interface for the registry.
- * Uses TriggerConfig directly to avoid complex generics.
+ * Uses TriggerConfigDraft directly to avoid complex generics.
  */
 export interface RegisteredHandler {
   /** Trigger slugs this handler supports */
   triggerSlugs: string[];
 
   /** Create default trigger config for this type */
-  createDefaultConfig: (slug: string, schema?: TriggerSchema) => TriggerConfig;
+  createDefaultConfig: (
+    slug: string,
+    schema?: TriggerSchema,
+  ) => TriggerConfigDraft;
 
   /** Optional: Custom settings component for advanced configuration */
   SettingsComponent?: ComponentType<TriggerSettingsProps>;
 
   /** Get display info (label, integrationId) for this trigger */
   getDisplayInfo: (
-    config: TriggerConfig,
+    config: TriggerConfigDraft,
     schema?: TriggerSchema,
   ) => TriggerDisplayInfo;
 }
@@ -128,7 +131,7 @@ export function getTriggerHandler(slug: string): RegisteredHandler | undefined {
  */
 export function createDefaultTriggerConfig(
   slug: string,
-): TriggerConfig | undefined {
+): TriggerConfigDraft | undefined {
   const handler = getTriggerHandler(slug);
   if (!handler) return undefined;
   return handler.createDefaultConfig(slug);

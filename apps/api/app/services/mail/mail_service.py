@@ -16,6 +16,7 @@ from app.models.mail_models import (
     GmailLabelsResult,
     GmailMessageResource,
     GmailMessagesResponse,
+    GmailMessageSummary,
     GmailToolResult,
 )
 from app.services.composio.attachments import upload_bytes_sync
@@ -466,7 +467,10 @@ async def search_messages(
             data = GmailFetchEmailsData.model_validate(result.data or {})
             log.set_ns("mail", result_count=len(data.messages), success=True)
             return GmailMessagesResponse(
-                messages=[transform_gmail_message(msg) for msg in data.messages],
+                messages=[
+                    GmailMessageSummary.model_validate(transform_gmail_message(msg))
+                    for msg in data.messages
+                ],
                 next_page_token=data.next_page_token,
             )
         log.set_ns("mail", success=False)

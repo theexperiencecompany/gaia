@@ -47,6 +47,7 @@ from app.models.calendar_models import (
     SingleEventInput,
 )
 from app.models.common_models import GatherContextInput
+from app.services.composio.proxy_client import ProxyRequest
 from app.utils.calendar_utils import CALENDAR_API_BASE
 from app.utils.concurrency import reset_captured_loop
 from app.utils.errors import AppError
@@ -792,20 +793,20 @@ class TestGetEvent:
                 EXECUTE_REQUEST,
                 AUTH,
             )
-        assert proxy.call_args.kwargs == {
-            "user_id": "user-42",
-            "toolkit": "GOOGLECALENDAR",
-            "endpoint": f"{CALENDAR_API_BASE}/calendars/cal-1/events/e1",
-            "method": "GET",
-        }
+        assert proxy.call_args.args[0] == ProxyRequest(
+            user_id="user-42",
+            toolkit="GOOGLECALENDAR",
+            endpoint=f"{CALENDAR_API_BASE}/calendars/cal-1/events/e1",
+            method="GET",
+        )
         assert out["events"] == [{"event_id": "e1", "calendar_id": "cal-1", "event": {"id": "e1"}}]
 
     def test_partial_failure_reports_the_failed_events(self, tools) -> None:
         # BUG: the `errors` list was built with full detail and then dropped from
         # the response whenever at least one event succeeded, so the agent told
         # the user every event was fetched.
-        def side_effect(**kwargs: Any) -> dict[str, Any]:
-            if kwargs["endpoint"].endswith("missing"):
+        def side_effect(request: ProxyRequest) -> dict[str, Any]:
+            if request.endpoint.endswith("missing"):
                 raise AppError(message="Not Found", why="deleted", status_code=404)
             return {"id": "ok"}
 
@@ -876,7 +877,7 @@ class TestGetEvent:
                 EXECUTE_REQUEST,
                 AUTH,
             )
-        endpoint = proxy.call_args.kwargs["endpoint"]
+        endpoint = proxy.call_args.args[0].endpoint
         assert "user@group.calendar.google.com" not in endpoint
         assert endpoint.endswith("/calendars/user%40group.calendar.google.com/events/e1")
 
@@ -894,10 +895,8 @@ class TestDeleteEvent:
                 EXECUTE_REQUEST,
                 AUTH,
             )
-        assert proxy.call_args.kwargs["method"] == "DELETE"
-        assert (
-            proxy.call_args.kwargs["endpoint"] == f"{CALENDAR_API_BASE}/calendars/cal-1/events/e1"
-        )
+        assert proxy.call_args.args[0].method == "DELETE"
+        assert proxy.call_args.args[0].endpoint == f"{CALENDAR_API_BASE}/calendars/cal-1/events/e1"
         assert out["deleted"] == [{"event_id": "e1", "calendar_id": "cal-1"}]
 
     @pytest.mark.parametrize("send_updates", ["all", "externalOnly", "none"])
@@ -911,14 +910,14 @@ class TestDeleteEvent:
                 EXECUTE_REQUEST,
                 AUTH,
             )
-        assert proxy.call_args.kwargs["query"] == {"sendUpdates": send_updates}
+        assert proxy.call_args.args[0].query == {"sendUpdates": send_updates}
 
     def test_partial_failure_reports_the_failed_deletes(self, tools) -> None:
         # BUG: same swallowed-`errors` defect as CUSTOM_GET_EVENT. Reporting a
         # delete as successful when it failed is the worse half of the bug: the
         # user believes the event is gone.
-        def side_effect(**kwargs: Any) -> None:
-            if kwargs["endpoint"].endswith("locked"):
+        def side_effect(request: ProxyRequest) -> None:
+            if request.endpoint.endswith("locked"):
                 raise AppError(message="Forbidden", why="read-only calendar", status_code=403)
 
         with patch(f"{MODULE}.proxy_request_sync", side_effect=side_effect):
@@ -963,7 +962,7 @@ class TestDeleteEvent:
                 EXECUTE_REQUEST,
                 AUTH,
             )
-        endpoint = proxy.call_args.kwargs["endpoint"]
+        endpoint = proxy.call_args.args[0].endpoint
         assert "#contacts@group.v.calendar.google.com" not in endpoint
         assert endpoint.endswith("/calendars/%23contacts%40group.v.calendar.google.com/events/e1")
 
@@ -981,12 +980,10 @@ class TestPatchEvent:
                 EXECUTE_REQUEST,
                 AUTH,
             )
-        assert proxy.call_args.kwargs["body"] == {"summary": "New title"}
-        assert proxy.call_args.kwargs["method"] == "PATCH"
-        assert (
-            proxy.call_args.kwargs["endpoint"] == f"{CALENDAR_API_BASE}/calendars/cal-1/events/e1"
-        )
-        assert proxy.call_args.kwargs["query"] == {"sendUpdates": "all"}
+        assert proxy.call_args.args[0].body == {"summary": "New title"}
+        assert proxy.call_args.args[0].method == "PATCH"
+        assert proxy.call_args.args[0].endpoint == f"{CALENDAR_API_BASE}/calendars/cal-1/events/e1"
+        assert proxy.call_args.args[0].query == {"sendUpdates": "all"}
         assert out == {"event": {"id": "e1"}}
 
     def test_all_fields_are_mapped_to_the_google_shape(self, tools) -> None:
@@ -1005,7 +1002,7 @@ class TestPatchEvent:
                 EXECUTE_REQUEST,
                 AUTH,
             )
-        assert proxy.call_args.kwargs["body"] == {
+        assert proxy.call_args.args[0].body == {
             "summary": "S",
             "description": "D",
             "location": "L",
@@ -1013,7 +1010,7 @@ class TestPatchEvent:
             "end": {"dateTime": "2026-01-15T11:00:00Z"},
             "attendees": [{"email": "a@b.com"}, {"email": "c@d.com"}],
         }
-        assert proxy.call_args.kwargs["query"] == {"sendUpdates": "none"}
+        assert proxy.call_args.args[0].query == {"sendUpdates": "none"}
 
     def test_explicit_empty_values_are_still_patched(self, tools) -> None:
         # "" is a deliberate clear, not "unset" — only None means "leave alone".
@@ -1023,7 +1020,7 @@ class TestPatchEvent:
                 EXECUTE_REQUEST,
                 AUTH,
             )
-        assert proxy.call_args.kwargs["body"] == {
+        assert proxy.call_args.args[0].body == {
             "description": "",
             "location": "",
             "attendees": [],
@@ -1050,7 +1047,7 @@ class TestPatchEvent:
                 EXECUTE_REQUEST,
                 AUTH,
             )
-        endpoint = proxy.call_args.kwargs["endpoint"]
+        endpoint = proxy.call_args.args[0].endpoint
         assert "user@group.calendar.google.com" not in endpoint
         assert endpoint.endswith("/calendars/user%40group.calendar.google.com/events/e1")
 
@@ -1074,10 +1071,10 @@ class TestAddRecurrence:
             tools, AddRecurrenceInput(event_id="e1", calendar_id="cal-1", frequency="DAILY")
         )
         endpoint = f"{CALENDAR_API_BASE}/calendars/cal-1/events/e1"
-        assert [c.kwargs["method"] for c in proxy.call_args_list] == ["GET", "PUT"]
-        assert {c.kwargs["endpoint"] for c in proxy.call_args_list} == {endpoint}
-        assert proxy.call_args_list[1].kwargs["body"]["recurrence"] == ["RRULE:FREQ=DAILY"]
-        assert proxy.call_args_list[1].kwargs["body"]["summary"] == "Standup"
+        assert [c.args[0].method for c in proxy.call_args_list] == ["GET", "PUT"]
+        assert {c.args[0].endpoint for c in proxy.call_args_list} == {endpoint}
+        assert proxy.call_args_list[1].args[0].body["recurrence"] == ["RRULE:FREQ=DAILY"]
+        assert proxy.call_args_list[1].args[0].body["summary"] == "Standup"
         assert out["event"] == {"id": "e1", "updated": True}
         assert out["recurrence_rule"] == "RRULE:FREQ=DAILY"
 
@@ -1130,7 +1127,7 @@ class TestAddRecurrence:
                 frequency="DAILY",
             ),
         )
-        endpoint = proxy.call_args_list[0].kwargs["endpoint"]
+        endpoint = proxy.call_args_list[0].args[0].endpoint
         assert "#contacts@group.v.calendar.google.com" not in endpoint
         assert endpoint.endswith("/calendars/%23contacts%40group.v.calendar.google.com/events/e1")
         assert out["event"] == {"id": "e1", "updated": True}
@@ -1177,7 +1174,7 @@ class TestCreateEvent:
                 confirm_immediately=True,
             ),
         )
-        body = proxy.call_args.kwargs["body"]
+        body = proxy.call_args.args[0].body
         assert body["start"] == {"date": "2026-01-15"}
         assert body["end"] == {"date": "2026-01-16"}
 
@@ -1193,7 +1190,7 @@ class TestCreateEvent:
                 confirm_immediately=True,
             ),
         )
-        assert proxy.call_args.kwargs["body"]["end"] == {"date": "2027-01-01"}
+        assert proxy.call_args.args[0].body["end"] == {"date": "2027-01-01"}
 
     # -- timezone handling -------------------------------------------------
 
@@ -1215,7 +1212,7 @@ class TestCreateEvent:
                     confirm_immediately=True,
                 ),
             )
-        body = proxy.call_args.kwargs["body"]
+        body = proxy.call_args.args[0].body
         assert body["start"] == {"dateTime": "2026-01-15T10:00:00+05:30"}
         assert body["end"] == {"dateTime": "2026-01-15T11:00:00+05:30"}
 
@@ -1230,7 +1227,7 @@ class TestCreateEvent:
                     confirm_immediately=True,
                 ),
             )
-        body = proxy.call_args.kwargs["body"]
+        body = proxy.call_args.args[0].body
         assert body["start"] == {"dateTime": "2026-01-15T10:00:00+05:30"}
         assert body["end"] == {"dateTime": "2026-01-15T10:30:00+05:30"}
 
@@ -1245,7 +1242,7 @@ class TestCreateEvent:
                     confirm_immediately=True,
                 ),
             )
-        assert proxy.call_args.kwargs["body"]["start"] == {"dateTime": "2026-01-15T10:00:00"}
+        assert proxy.call_args.args[0].body["start"] == {"dateTime": "2026-01-15T10:00:00"}
 
     def test_duration_is_added_to_the_start(self, tools, writer) -> None:
         with patch(f"{MODULE}.get_config", return_value={"configurable": {}}):
@@ -1263,7 +1260,7 @@ class TestCreateEvent:
                     confirm_immediately=True,
                 ),
             )
-        assert proxy.call_args.kwargs["body"]["end"] == {"dateTime": "2026-01-16T01:30:00"}
+        assert proxy.call_args.args[0].body["end"] == {"dateTime": "2026-01-16T01:30:00"}
 
     # -- optional fields ---------------------------------------------------
 
@@ -1276,7 +1273,7 @@ class TestCreateEvent:
                     confirm_immediately=True,
                 ),
             )
-        assert set(proxy.call_args.kwargs["body"]) == {"summary", "start", "end"}
+        assert set(proxy.call_args.args[0].body) == {"summary", "start", "end"}
 
     def test_meeting_room_requests_a_conference(self, tools, writer) -> None:
         with (
@@ -1299,14 +1296,14 @@ class TestCreateEvent:
                     confirm_immediately=True,
                 ),
             )
-        body = proxy.call_args.kwargs["body"]
+        body = proxy.call_args.args[0].body
         assert body["description"] == "notes"
         assert body["location"] == "Room 3"
         assert body["attendees"] == [{"email": "a@b.com"}]
         assert body["conferenceData"]["createRequest"]["conferenceSolutionKey"] == {
             "type": "hangoutsMeet"
         }
-        assert proxy.call_args.kwargs["query"] == {
+        assert proxy.call_args.args[0].query == {
             "sendUpdates": "all",
             "conferenceDataVersion": "1",
         }
@@ -1320,7 +1317,7 @@ class TestCreateEvent:
                     confirm_immediately=True,
                 ),
             )
-        assert proxy.call_args.kwargs["query"] == {"sendUpdates": "all"}
+        assert proxy.call_args.args[0].query == {"sendUpdates": "all"}
 
     # -- confirm_immediately path ------------------------------------------
 
@@ -1340,7 +1337,7 @@ class TestCreateEvent:
                 ),
                 metadata=({"cal-1": "#ff0000"}, {"cal-1": "Team"}),
             )
-        assert proxy.call_args.kwargs["endpoint"] == f"{CALENDAR_API_BASE}/calendars/cal-1/events"
+        assert proxy.call_args.args[0].endpoint == f"{CALENDAR_API_BASE}/calendars/cal-1/events"
         assert out["created"] is True
         assert out["created_events"] == [
             {
@@ -1381,7 +1378,7 @@ class TestCreateEvent:
                 ),
                 metadata=({"user@group.calendar.google.com": "#ff0000"}, {}),
             )
-        endpoint = proxy.call_args.kwargs["endpoint"]
+        endpoint = proxy.call_args.args[0].endpoint
         assert "user@group.calendar.google.com" not in endpoint
         assert endpoint.endswith("/calendars/user%40group.calendar.google.com/events")
 

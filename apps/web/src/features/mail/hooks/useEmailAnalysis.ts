@@ -46,14 +46,16 @@ function useBulkEmailSummaries(messageIds: string[], enabled: boolean = true) {
     queryKey: ["bulk-email-summaries", messageIds],
     queryFn: async () => {
       if (!messageIds || messageIds.length === 0) {
-        return {
-          status: "success",
-          emails: {},
-          found_count: 0,
-          missing_count: 0,
-          found_message_ids: [],
-          missing_message_ids: [],
-        };
+        const none: Awaited<ReturnType<typeof mailApi.fetchEmailSummaryByIds>> =
+          {
+            status: "success",
+            emails: {},
+            found_count: 0,
+            missing_count: 0,
+            found_message_ids: [],
+            missing_message_ids: [],
+          };
+        return none;
       }
       return await mailApi.fetchEmailSummaryByIds(messageIds);
     },
@@ -80,7 +82,7 @@ export function useEmailAnalysisIndicators(
 
   return {
     hasAnalysis: (emailId: string) => !!bulkQuery.data?.emails[emailId],
-    getAnalysis: (emailId: string) => bulkQuery.data?.emails[emailId] || null,
+    getAnalysis: (emailId: string) => bulkQuery.data?.emails[emailId] ?? null,
     isLoading: bulkQuery.isLoading,
     error: bulkQuery.error,
     foundCount: bulkQuery.data?.found_count || 0,

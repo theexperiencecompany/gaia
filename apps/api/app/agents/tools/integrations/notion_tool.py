@@ -24,7 +24,7 @@ from app.models.notion_models import (
     InsertMarkdownInput,
     MovePageInput,
 )
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.templates.docstrings.notion_tool_docs import (
     FETCH_DATA_DOC,
     FETCH_PAGE_AS_MARKDOWN_DOC,
@@ -280,12 +280,14 @@ def _fetch_data(request: FetchDataInput, auth_credentials: dict[str, Any]) -> di
     try:
         search_results = (
             proxy_request_sync(
-                user_id=user_id,
-                toolkit=NOTION_TOOLKIT,
-                endpoint=f"{NOTION_API_BASE}/search",
-                method="POST",
-                body=search_body,
-                headers=_NOTION_HEADERS,
+                ProxyRequest(
+                    user_id=user_id,
+                    toolkit=NOTION_TOOLKIT,
+                    endpoint=f"{NOTION_API_BASE}/search",
+                    method="POST",
+                    body=search_body,
+                    headers=_NOTION_HEADERS,
+                )
             )
             or {}
         )

@@ -69,14 +69,14 @@ import { notificationKeys } from "@/features/notification/api/queryKeys";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
 import {
-  type NotificationRecord,
   NotificationStatus,
+  type NotificationView,
 } from "@/types/features/notificationTypes";
 
 function makeNotification(
   id: string,
   status: NotificationStatus = NotificationStatus.DELIVERED,
-): NotificationRecord {
+): NotificationView {
   return {
     id,
     user_id: "user_1",
@@ -86,10 +86,10 @@ function makeNotification(
     channels: [],
     content: { title: `Notification ${id}`, body: "" },
     created_at: new Date().toISOString(),
-  } as unknown as NotificationRecord;
+  } as unknown as NotificationView;
 }
 
-function page(notifications: NotificationRecord[]) {
+function page(notifications: NotificationView[]) {
   return { notifications, total: notifications.length, limit: 100, offset: 0 };
 }
 
@@ -189,7 +189,7 @@ describe("notification query cache", () => {
     // the rollback here, so a DOM assertion would pass even with no rollback at
     // all — i.e. it could not fail, which is not a test.
     const cached = queryClient.getQueryData<{
-      notifications: NotificationRecord[];
+      notifications: NotificationView[];
     }>(notificationKeys.list({ limit: 100 }));
     expect(cached?.notifications.map((n) => `${n.id}:${n.status}`)).toEqual([
       "a:delivered",

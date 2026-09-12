@@ -30,7 +30,7 @@ export function useSlashCommandItems({
       if (!map[match.tool.category]) {
         map[match.tool.category] = {
           displayName: match.tool.display_name, // Single source of truth from backend
-          iconUrl: match.tool.icon_url,
+          iconUrl: match.tool.icon_url ?? undefined,
         };
       }
     });

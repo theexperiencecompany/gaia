@@ -1,9 +1,5 @@
-import type {
-  NotificationActionStyle,
-  NotificationActionType,
-  NotificationStatus as SharedNotificationStatus,
-} from "@shared/types";
-import type { NotificationSource } from "../notifications";
+import type { Schema } from "@shared/api/generated";
+import type { NotificationStatus as SharedNotificationStatus } from "@shared/types";
 
 export enum NotificationType {
   INFO = "info",
@@ -19,85 +15,9 @@ export {
   NotificationStatus,
 } from "@shared/types";
 
-export interface RedirectConfig {
-  url: string;
-  open_in_new_tab?: boolean;
-  close_notification?: boolean;
-}
+export type RedirectConfig = Schema<"RedirectConfig">;
 
-export interface ApiCallPayload {
-  // Email operations
-  message_ids?: string[];
-
-  // Todo operations
-  title?: string;
-  description?: string;
-  due_date?: string;
-  priority?: "high" | "medium" | "low";
-  project_id?: string;
-  labels?: string[];
-  completed?: boolean;
-
-  // Calendar operations
-  summary?: string;
-  start?: { dateTime: string; timeZone?: string };
-  end?: { dateTime: string; timeZone?: string };
-  attendees?: Array<{ email: string; displayName?: string }>;
-  location?: string;
-
-  // Generic fields
-  id?: string;
-  ids?: string[];
-  status?: string;
-  filters?: Record<string, string | number | boolean>;
-  page?: number;
-  per_page?: number;
-
-  // File operations
-  filename?: string;
-  content?: string;
-  metadata?: Record<string, string | number | boolean>;
-}
-
-export interface ApiCallConfig {
-  endpoint: string;
-  method?: "GET" | "POST" | "PUT" | "DELETE";
-  payload?: ApiCallPayload;
-  headers?: Record<string, string>;
-  success_message?: string;
-  error_message?: string;
-  is_internal?: boolean;
-}
-
-export interface WorkflowParameters {
-  // Entity identifiers
-  user_id?: string;
-  notification_id?: string;
-  entity_id?: string;
-  entity_type?: "todo" | "calendar" | "email" | "note";
-
-  // Action parameters
-  action?: string;
-  delay_minutes?: number;
-  conditions?: Array<{
-    field: string;
-    operator: "equals" | "contains" | "greater_than" | "less_than";
-    value: string | number | boolean;
-  }>;
-
-  // Data context
-  context?: {
-    source?: string;
-    trigger_event?: string;
-    priority?: number;
-    metadata?: Record<string, string | number | boolean>;
-  };
-}
-
-export interface WorkflowConfig {
-  workflow_id: string;
-  parameters?: WorkflowParameters;
-}
+export type ApiCallConfig = Schema<"ApiCallConfig">;
 
 export interface ModalProps {
   // Base modal props
@@ -152,84 +72,11 @@ export interface ModalProps {
   };
 }
 
-export interface ModalConfig {
-  component: string;
-  props?: ModalProps;
-}
+export type ModalConfig = Schema<"ModalConfig">;
 
-export interface ActionConfig {
-  redirect?: RedirectConfig;
-  api_call?: ApiCallConfig;
-  workflow?: WorkflowConfig;
-  modal?: ModalConfig;
-}
+export type NotificationAction = Schema<"NotificationActionView">;
 
-export interface NotificationAction {
-  id: string;
-  type: NotificationActionType;
-  label: string;
-  style?: NotificationActionStyle;
-  config: ActionConfig;
-  requires_confirmation?: boolean;
-  confirmation_message?: string;
-  icon?: string;
-  disabled?: boolean;
-  executed?: boolean;
-  executed_at?: string; // ISO string
-}
-
-export interface RichContent {
-  // Interactive elements
-  buttons?: Array<{
-    label: string;
-    action: "redirect" | "api_call" | "modal";
-    style?: "primary" | "secondary" | "danger";
-    config?: ActionConfig;
-  }>;
-
-  // Media content
-  images?: Array<{
-    url: string;
-    alt?: string;
-    caption?: string;
-  }>;
-
-  // Structured data
-  charts?: Array<{
-    type: "bar" | "line" | "pie" | "scatter";
-    title: string;
-    data: Array<{
-      label: string;
-      value: number;
-      group?: string;
-    }>;
-  }>;
-
-  // Lists and tables
-  lists?: Array<{
-    title?: string;
-    items: string[];
-    ordered?: boolean;
-  }>;
-
-  tables?: Array<{
-    headers: string[];
-    rows: string[][];
-  }>;
-
-  // Embedded content
-  embeds?: Array<{
-    type: "calendar" | "todo" | "document";
-    data: Record<string, string | number | boolean>;
-  }>;
-}
-
-export interface NotificationContent {
-  title: string;
-  body: string;
-  actions?: NotificationAction[];
-  rich_content?: RichContent;
-}
+export type NotificationContent = Schema<"NotificationContent">;
 
 export interface NotificationMetadata {
   // Source tracking
@@ -274,27 +121,7 @@ export interface NotificationMetadata {
   [key: string]: string | number | boolean | string[] | object | undefined;
 }
 
-export interface ChannelDeliveryStatus {
-  channel_type: string;
-  status: SharedNotificationStatus;
-  delivered_at?: string;
-  error_message?: string;
-  retry_count?: number;
-}
-
-export interface NotificationRecord {
-  id: string;
-  user_id: string;
-  status: SharedNotificationStatus;
-  type: NotificationType;
-  created_at: string;
-  delivered_at?: string;
-  read_at?: string;
-  source: NotificationSource;
-  content: NotificationContent;
-  metadata?: NotificationMetadata;
-  channels: ChannelDeliveryStatus[];
-}
+export type NotificationView = Schema<"NotificationView">;
 
 export interface ActionResultData {
   // Entity results
@@ -393,23 +220,16 @@ export interface SendNotificationData {
 
 // API Request/Response types
 
-export interface BulkActionRequest {
-  notification_ids: string[];
-  action: BulkActions;
-}
+export type BulkActionRequest = Schema<"BulkActionRequest">;
 
 export interface NotificationResponse {
   success: boolean;
   message: string;
-  data?: ActionResultData | NotificationRecord; // Allow both types
+  data?: ActionResultData | NotificationView; // Allow both types
 }
 
-export interface PaginatedNotificationsResponse {
-  notifications: NotificationRecord[];
-  total: number;
-  limit: number;
-  offset: number;
-}
+export type PaginatedNotificationsResponse =
+  Schema<"PaginatedNotificationsResponse">;
 
 // Hook options
 export interface UseNotificationsOptions {

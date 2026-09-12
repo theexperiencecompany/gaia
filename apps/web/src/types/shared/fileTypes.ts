@@ -1,9 +1,5 @@
-export interface FileData {
-  fileId: string;
-  url: string;
-  filename: string;
-  description: string;
-  message: string;
-  type?: string;
-  size?: number;
-}
+import type { Schema } from "@shared/api/generated";
+export type FileData = Schema<"FileData">;
+
+/** A file as the composer holds it: the API record plus the byte size the browser knows. */
+export type AttachedFileData = FileData & { size?: number };

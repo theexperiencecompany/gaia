@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import JSONResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.general import MAX_PAGE_NUMBER
@@ -14,6 +13,7 @@ from app.models.chat_models import (
 from app.models.conversation_models import (
     BatchSyncResponse,
     ConversationActionResponse,
+    ConversationDocument,
     ConversationListResponse,
     CreateConversationResponse,
     DeleteAllConversationsResponse,
@@ -118,24 +118,22 @@ async def batch_sync_conversations_endpoint(
     return await batch_sync_conversations(request, user)
 
 
-@router.get("/conversations/{conversation_id}")
+@router.get("/conversations/{conversation_id}", response_model_exclude={"id"})
 async def get_conversation_endpoint(
     conversation_id: str, user: AuthenticatedUser = Depends(get_current_user)
-) -> JSONResponse:
+) -> ConversationDocument:
     """
     Retrieve a specific conversation by its ID.
+
+    The stored document itself: ``ConversationDocument`` is ``extra="allow"``,
+    so stray/legacy top-level fields the row carries still reach the client
+    verbatim, while the declared fields give the schema its shape.
     """
     log.set(
         user={"id": user["user_id"]},
         conversation={"operation": "get", "id": conversation_id},
     )
-    document = await get_conversation(conversation_id, user)
-    # Dumped rather than returned as a response model on purpose:
-    # ``ConversationDocument`` is ``extra="allow"`` so a full-document read hands
-    # back whatever stray/legacy top-level fields the row carries, and clients
-    # (web/mobile/desktop) receive them verbatim today. Declaring a response model
-    # here would silently filter those out — a product decision, not a typing fix.
-    return JSONResponse(content=document.model_dump(mode="json", exclude={"id"}))
+    return await get_conversation(conversation_id, user)
 
 
 @router.put("/conversations/{conversation_id}/messages")

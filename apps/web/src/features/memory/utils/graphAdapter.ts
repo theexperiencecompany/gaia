@@ -1,12 +1,9 @@
+import type { Schema } from "@shared/api/generated";
 import type {
   GraphApiDocument,
   GraphApiMemory,
   MemoryRelation,
 } from "@supermemory/memory-graph";
-import type {
-  MemoryEntry,
-  MemoryGraphResponse,
-} from "@/features/memory/api/types";
 
 const UNFILED_FOLDER_LABEL = "Unfiled";
 const FOLDER_DOC_PREFIX = "folder:";
@@ -26,7 +23,7 @@ type RelationsByMemoryId = Map<string, Record<string, MemoryRelation>>;
  *   the component cannot draw document-to-document edges directly.
  */
 export function adaptGraphResponse(
-  response: MemoryGraphResponse,
+  response: Schema<"MemoryGraphResponse">,
 ): GraphApiDocument[] {
   const now = new Date().toISOString();
   const entityIds = new Set(response.nodes.map((node) => node.id));
@@ -66,7 +63,7 @@ export function adaptGraphResponse(
 }
 
 function collectRelations(
-  response: MemoryGraphResponse,
+  response: Schema<"MemoryGraphResponse">,
   entityIds: Set<string>,
 ): RelationsByMemoryId {
   const memoryIds = new Set(
@@ -112,7 +109,7 @@ function collectRelations(
 }
 
 function assignMemoriesToDocs(
-  memories: MemoryEntry[],
+  memories: Schema<"MemoryEntry">[],
   entityIds: Set<string>,
   relationsByMemoryId: RelationsByMemoryId,
   folderDocs: Map<string, GraphApiDocument>,
@@ -138,7 +135,7 @@ function assignMemoriesToDocs(
 
 function getOrCreateFolderDoc(
   folderDocs: Map<string, GraphApiDocument>,
-  memory: MemoryEntry,
+  memory: Schema<"MemoryEntry">,
   now: string,
 ): GraphApiDocument {
   const folder = memory.category_path.split("/")[0] || "";
@@ -160,7 +157,7 @@ function getOrCreateFolderDoc(
 }
 
 function buildEntitySummaries(
-  response: MemoryGraphResponse,
+  response: Schema<"MemoryGraphResponse">,
 ): Map<string, string> {
   const entityNamesById = new Map(
     response.nodes.map((node) => [node.id, node.name]),
@@ -188,7 +185,7 @@ function buildEntitySummaries(
 }
 
 function toGraphMemory(
-  memory: MemoryEntry,
+  memory: Schema<"MemoryEntry">,
   fallbackTimestamp: string,
   relationsByMemoryId: RelationsByMemoryId,
 ): GraphApiMemory {

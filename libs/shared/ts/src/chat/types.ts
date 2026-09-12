@@ -5,6 +5,8 @@
 // Core message types
 // ---------------------------------------------------------------------------
 
+import type { Schema } from "../api/generated";
+
 export interface ApiFileData {
   fileId: string;
   fileName?: string;
@@ -20,11 +22,7 @@ export interface ApiToolData {
   tool_category?: string;
 }
 
-export interface ReplyToMessageData {
-  id: string;
-  content: string;
-  role: "user" | "assistant";
-}
+export type ReplyToMessageData = Schema<"ReplyToMessageData">;
 
 export interface Conversation {
   id: string;
@@ -254,21 +252,9 @@ export interface PeopleSearchData {
 // Calendar
 // ---------------------------------------------------------------------------
 
-export interface RecurrenceRule {
-  frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
-  interval?: number;
-  count?: number;
-  until?: string;
-  by_day?: string[];
-  by_month_day?: number[];
-  by_month?: number[];
-  exclude_dates?: string[];
-  include_dates?: string[];
-}
+export type RecurrenceRule = Schema<"RecurrenceRule">;
 
-export interface RecurrenceData {
-  rrule: RecurrenceRule;
-}
+export type RecurrenceData = Schema<"RecurrenceData">;
 
 export interface CalendarEventDateTime {
   date?: string;
@@ -873,12 +859,7 @@ export interface ToolDataMap {
   chart_data: GenericToolData[];
 }
 
-export interface ToolDataEntry {
-  tool_name: ToolName | string;
-  tool_category?: string;
-  data: ToolDataMap[ToolName] | unknown;
-  timestamp?: string | null;
-}
+export type ToolDataEntry = Schema<"ToolDataEntry">;
 
 export function isKnownTool(name: string): name is ToolName {
   const knownTools = new Set<string>([

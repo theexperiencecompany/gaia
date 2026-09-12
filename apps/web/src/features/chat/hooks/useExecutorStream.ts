@@ -5,7 +5,7 @@ import {
   type TurnAccumulator,
 } from "@shared/chat";
 import { useEffect, useMemo, useRef } from "react";
-import type { ToolDataEntry } from "@/config/registries/toolRegistry";
+import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
 import { loadingLabelForEvent } from "@/features/chat/utils/loadingHints";
@@ -43,7 +43,8 @@ const applyAccumulatorToMessage = (
 ): IMessage => ({
   ...base,
   content: acc.responseText,
-  tool_data: acc.toolData.length > 0 ? (acc.toolData as ToolDataEntry[]) : null,
+  tool_data:
+    acc.toolData.length > 0 ? (acc.toolData as TypedToolDataEntry[]) : null,
   follow_up_actions: acc.followUpActions,
   image_data: (acc.imageData as ImageData | null) ?? null,
   memory_data: (acc.extras.memory_data as MemoryData | undefined) ?? null,

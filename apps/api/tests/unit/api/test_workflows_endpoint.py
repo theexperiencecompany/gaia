@@ -160,7 +160,7 @@ class TestWorkflowPaidOnlyGate:
             response = await gated_client.post(BASE_URL, json=_create_workflow_payload())
 
         assert response.status_code == 402
-        assert response.json()["detail"]["code"] == "subscription_required"
+        assert response.json()["code"] == "subscription_required"
         mock_create.assert_not_called()
 
     async def test_execute_workflow_free_user_gets_402(self, gated_client: AsyncClient):
@@ -168,7 +168,7 @@ class TestWorkflowPaidOnlyGate:
             response = await gated_client.post(f"{BASE_URL}/wf_abc123/execute", json={})
 
         assert response.status_code == 402
-        assert response.json()["detail"]["code"] == "subscription_required"
+        assert response.json()["code"] == "subscription_required"
         mock_execute.assert_not_called()
 
     async def test_activate_workflow_free_user_gets_402(self, gated_client: AsyncClient):
@@ -176,7 +176,7 @@ class TestWorkflowPaidOnlyGate:
             response = await gated_client.post(f"{BASE_URL}/wf_abc123/activate")
 
         assert response.status_code == 402
-        assert response.json()["detail"]["code"] == "subscription_required"
+        assert response.json()["code"] == "subscription_required"
         mock_activate.assert_not_called()
 
     async def test_create_from_todo_free_user_gets_402(self, gated_client: AsyncClient):
@@ -187,7 +187,7 @@ class TestWorkflowPaidOnlyGate:
             )
 
         assert response.status_code == 402
-        assert response.json()["detail"]["code"] == "subscription_required"
+        assert response.json()["code"] == "subscription_required"
         mock_create.assert_not_called()
 
     async def test_regenerate_steps_free_user_gets_402(self, gated_client: AsyncClient):
@@ -200,7 +200,7 @@ class TestWorkflowPaidOnlyGate:
             )
 
         assert response.status_code == 402
-        assert response.json()["detail"]["code"] == "subscription_required"
+        assert response.json()["code"] == "subscription_required"
         mock_regen.assert_not_called()
 
     async def test_generate_prompt_free_user_gets_402(self, gated_client: AsyncClient):
@@ -213,7 +213,7 @@ class TestWorkflowPaidOnlyGate:
             )
 
         assert response.status_code == 402
-        assert response.json()["detail"]["code"] == "subscription_required"
+        assert response.json()["code"] == "subscription_required"
         mock_gen.assert_not_called()
 
 
@@ -739,6 +739,7 @@ class TestRegenerateSteps:
             )
 
         assert response.status_code == 200
+        assert response.json()["message"] == "Workflow regeneration started"
 
     async def test_regenerate_steps_not_found_returns_404(self, client: AsyncClient):
         """A missing workflow is a 404, not a 500: the endpoint re-raises its own
@@ -754,7 +755,7 @@ class TestRegenerateSteps:
             )
 
         assert response.status_code == 404
-        assert response.json()["detail"] == "Workflow not found"
+        assert response.json()["message"] == "Workflow not found"
 
     async def test_regenerate_steps_generation_failure_returns_actionable_detail(
         self, client: AsyncClient
@@ -774,7 +775,7 @@ class TestRegenerateSteps:
             )
 
         assert response.status_code == 502
-        assert response.json()["detail"] == (
+        assert response.json()["message"] == (
             "Step generation failed: PaymentRequiredResponseError: "
             "This request requires more credits"
         )
@@ -871,7 +872,7 @@ class TestCreateWorkflowFromTodo:
             )
 
         assert response.status_code == 200
-        assert "Workflow created from todo" in response.json()["message"]
+        assert response.json()["message"] == "Workflow created from todo successfully"
 
     async def test_from_todo_missing_todo_id_returns_400(self, client: AsyncClient):
         response = await client.post(
@@ -1087,6 +1088,7 @@ class TestGetPublicWorkflow:
             response = await client.get(f"{BASE_URL}/public/wf_abc123")
 
         assert response.status_code == 200
+        assert response.json()["message"] == "Workflow retrieved successfully"
         data = response.json()["workflow"]
         assert data["id"] == "wf_abc123"
         assert data["creator"]["name"] == "Test User"

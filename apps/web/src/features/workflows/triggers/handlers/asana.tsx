@@ -5,7 +5,7 @@
  */
 
 import type { RegisteredHandler } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 import { AsanaSettings } from "./AsanaSettings";
 
 // =============================================================================
@@ -15,7 +15,7 @@ import { AsanaSettings } from "./AsanaSettings";
 export const asanaTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["asana_task_trigger"],
 
-  createDefaultConfig: (slug: string): TriggerConfig => ({
+  createDefaultConfig: (slug: string): TriggerConfigDraft => ({
     type: "integration",
     enabled: true,
     trigger_name: slug,

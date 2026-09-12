@@ -10,7 +10,7 @@ This module provides helpers for Google Sheets and Drive API interactions:
 import re
 from typing import NotRequired, TypedDict, cast
 
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from shared.py.wide_events import log
 
 
@@ -139,11 +139,13 @@ def get_sheet_id_by_name(spreadsheet_id: str, sheet_name: str, user_id: str) -> 
     """
     log.set(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name)
     data = proxy_request_sync(
-        user_id=user_id,
-        toolkit=SHEETS_TOOLKIT,
-        endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}",
-        method="GET",
-        query={"fields": "sheets.properties"},
+        ProxyRequest(
+            user_id=user_id,
+            toolkit=SHEETS_TOOLKIT,
+            endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}",
+            method="GET",
+            query={"fields": "sheets.properties"},
+        )
     )
     for sheet in (data or {}).get("sheets", []):
         if sheet.get("properties", {}).get("title") == sheet_name:
@@ -164,10 +166,12 @@ def get_column_index_by_header(
     """
     log.set(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name, column_name=column_name)
     data = proxy_request_sync(
-        user_id=user_id,
-        toolkit=SHEETS_TOOLKIT,
-        endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}/values/{sheet_name}!1:1",
-        method="GET",
+        ProxyRequest(
+            user_id=user_id,
+            toolkit=SHEETS_TOOLKIT,
+            endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}/values/{sheet_name}!1:1",
+            method="GET",
+        )
     )
     # An empty sheet comes back with no `values` at all, not an empty first row.
     rows = (data or {}).get("values") or [[]]

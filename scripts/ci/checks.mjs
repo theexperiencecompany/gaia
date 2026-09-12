@@ -20,6 +20,19 @@
  *   evlog-map-bots [--json] [--min-score N] [--min-entries N] [--files-from F]
  *                       Observability score for the bots' wide-event entry
  *                       points. Implementation in lib/evlog-map-bots.mjs.
+ *   api-schema [--write]
+ *                       Regenerate apps/api/openapi.json and the TypeScript
+ *                       types in libs/shared/ts/src/api/generated, then fail
+ *                       if either differs from what is committed. --write
+ *                       regenerates without checking (what `mise api:types`
+ *                       runs).
+ *   api-schema-types    Fail when a .ts/.tsx file outside the generated dir
+ *                       hand-writes a type that mirrors an API model, or when
+ *                       web feature code calls the untyped `apiService`
+ *                       declares an interface/type named after an
+ *                       openapi.json component schema — the hand-written
+ *                       twin of a Pydantic model. `type X = Schema<"X">` is
+ *                       the one allowed form.
  *
  * Env contract: CHANGED_FILES (see lib/explicit-file-list.mjs) scopes the
  * file-walking gates to a lane's changed files; empty means full scan.
@@ -27,7 +40,7 @@
  * (default master).
  */
 import { execFileSync, execSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { explicitFileList } from "./lib/explicit-file-list.mjs";
@@ -640,6 +653,178 @@ function cmdDuplication() {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// api-schema
+//
+// The contract between the API and every TypeScript consumer is the committed
+// openapi.json plus the types generated from it. Both are build outputs, so
+// the only honest check is to rebuild them and diff: a route change that was
+// committed without `mise api:types` shows up here as a dirty tree.
+// ---------------------------------------------------------------------------
+
+const OPENAPI_JSON = "apps/api/openapi.json";
+const GENERATED_TYPES = "libs/shared/ts/src/api/generated/schema.d.ts";
+const API_SCHEMA_DRIFT_MESSAGE =
+  "API schema drifted — run `mise api:types` and commit";
+
+function regenerateApiSchema() {
+  const opts = { stdio: "inherit" };
+  execFileSync(
+    "uv",
+    [
+      "run",
+      "--frozen",
+      "--project",
+      "apps/api",
+      "--group",
+      "backend",
+      "--group",
+      "dev",
+      "python",
+      "apps/api/scripts/export_openapi.py",
+    ],
+    { ...opts, env: { ...process.env, LOG_LEVEL: "ERROR" } },
+  );
+  execFileSync(
+    "pnpm",
+    [
+      "exec",
+      "openapi-typescript",
+      OPENAPI_JSON,
+      "--alphabetize",
+      // A field with a default is optional on the wire for a request body; a
+      // response-only model marks it required itself (ResponseModel).
+      "--default-non-nullable=false",
+      "--output",
+      GENERATED_TYPES,
+    ],
+    opts,
+  );
+}
+
+function cmdApiSchema(argv) {
+  regenerateApiSchema();
+  if (argv.includes("--write")) return;
+
+  const dirty = execFileSync(
+    "git",
+    ["status", "--porcelain", "--", OPENAPI_JSON, GENERATED_TYPES],
+    { encoding: "utf8" },
+  ).trim();
+  if (dirty) {
+    console.log(dirty);
+    console.error(`❌ ${API_SCHEMA_DRIFT_MESSAGE}`);
+    process.exit(1);
+  }
+  console.log("✅ openapi.json and the generated API types match the routes.");
+}
+
+// ---------------------------------------------------------------------------
+// api-schema-types
+// ---------------------------------------------------------------------------
+
+const GENERATED_DIR = "libs/shared/ts/src/api/generated/";
+// `export interface TodoResponse {`, `type Workflow<T> =`, `declare interface X extends`.
+// The trailing `{ < = extends` is what separates a declaration from the
+// `type Foo,` line of a multi-line `import type` list.
+const TYPE_DECLARATION =
+  /^\s*(?:export\s+)?(?:declare\s+)?(?:interface|type)\s+([A-Za-z0-9_]+)\s*(?:<|\{|=|extends\b)/gm;
+// `export type Workflow = Schema<"WorkflowWithIntegrations">;` names a
+// generated type for a feature's consumers — zero fields of its own, so it
+// cannot drift. Anything else with the name is a twin.
+const SCHEMA_ALIAS = (name) =>
+  new RegExp(`^\\s*(?:export\\s+)?type\\s+${name}\\s*=\\s*Schema<["'][A-Za-z0-9_]+["']>;`, "m");
+
+function schemaComponentNames() {
+  const doc = JSON.parse(readFileSync(OPENAPI_JSON, "utf8"));
+  return new Set(Object.keys(doc.components?.schemas ?? {}));
+}
+
+function schemaTwinsIn(file, names) {
+  const src = readFileSync(file, "utf8");
+  return [...src.matchAll(TYPE_DECLARATION)]
+    .map((m) => m[1])
+    .filter((name) => names.has(name) && !SCHEMA_ALIAS(name).test(src));
+}
+
+// The web's API layer. `apiService` is the untyped request engine behind the
+// path-typed client (`lib/api/typed.ts`); only this directory may touch it.
+const WEB_API_LIB = "apps/web/src/lib/api/";
+const WEB_SRC = "apps/web/src/";
+const UNTYPED_CALL = /\bapiService\b/;
+
+function untypedCallLines(file) {
+  const lines = readFileSync(file, "utf8").split("\n");
+  return lines
+    .map((line, index) => (UNTYPED_CALL.test(line) ? index + 1 : 0))
+    .filter(Boolean);
+}
+
+function isWebFeatureFile(file) {
+  return (
+    file.startsWith(WEB_SRC) &&
+    !file.startsWith(WEB_API_LIB) &&
+    !file.includes("/__tests__/") &&
+    !/\.test\.tsx?$/.test(file)
+  );
+}
+
+function cmdApiSchemaTypes(argv) {
+  const names = schemaComponentNames();
+  // existsSync: `git ls-files` still lists a file deleted but not yet staged.
+  const scanned = typesFiles(argv).filter(
+    (file) =>
+      !file.startsWith(GENERATED_DIR) && !shouldIgnore(file) && existsSync(file),
+  );
+
+  const violations = [];
+  const untyped = [];
+  for (const file of scanned) {
+    const found = schemaTwinsIn(file, names);
+    if (found.length > 0) violations.push({ file, names: found });
+    if (isWebFeatureFile(file)) {
+      const lines = untypedCallLines(file);
+      if (lines.length > 0) untyped.push({ file, lines });
+    }
+  }
+
+  if (violations.length > 0) {
+    console.log(
+      `\n❌ api-schema-types: ${violations.length} file(s) hand-write a type that mirrors an API model:\n`,
+    );
+    for (const v of violations) {
+      for (const name of v.names) {
+        console.log(
+          `  ${v.file}: ${name} — import { Schema } from "@gaia/shared/api/generated" and use Schema<'${name}'>`,
+        );
+      }
+    }
+    console.log(
+      "\nWhy: a hand-written twin of a Pydantic model drifts the moment the model changes;" +
+        " the generated type is regenerated by `mise api:types` and cannot.",
+    );
+  }
+  if (untyped.length > 0) {
+    console.log(
+      `\n❌ api-schema-types: ${untyped.length} file(s) call the untyped apiService outside apps/web/src/lib/api:\n`,
+    );
+    for (const u of untyped) {
+      console.log(
+        `  ${u.file}:${u.lines.join(",")} — use \`api\` from "@/lib/api/typed" (the path-typed client)`,
+      );
+    }
+    console.log(
+      "\nWhy: apiService takes any URL and any type argument, so a typo in the path or a" +
+        " guessed response shape compiles; the typed client checks both against openapi.json.",
+    );
+  }
+  if (violations.length > 0 || untyped.length > 0) process.exit(1);
+  console.log(
+    "✅ No hand-written twins of API schema types; every web API call is path-typed.",
+  );
+}
+
 // ---------------------------------------------------------------------------
 // dispatch
 // ---------------------------------------------------------------------------
@@ -655,6 +840,8 @@ function usage() {
       "  duplication                            copy-paste density on changed lines",
       "  evlog-map-bots [--json] [--min-score N] [--min-entries N] [--files-from F]",
       "                                         observability score for bot entry points",
+      "  api-schema [--write]                   regenerate openapi.json + TS types, fail on drift",
+      "  api-schema-types                       no hand-written twin of an API schema type, no untyped apiService call in web features",
     ].join("\n"),
   );
 }
@@ -677,6 +864,12 @@ function main() {
       break;
     case "evlog-map-bots":
       runEvlogMapBots(rest);
+      break;
+    case "api-schema":
+      cmdApiSchema(rest);
+      break;
+    case "api-schema-types":
+      cmdApiSchemaTypes(rest);
       break;
     default:
       console.error(`checks.mjs: unknown subcommand '${sub ?? ""}'`);

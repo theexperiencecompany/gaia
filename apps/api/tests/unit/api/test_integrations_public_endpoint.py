@@ -196,7 +196,7 @@ class TestGetPublicIntegration:
             resp = await client.get(f"{BASE}/public/bad")
 
         assert resp.status_code == 500
-        assert "Failed to fetch integration" in resp.json()["detail"]
+        assert "Failed to fetch integration" in resp.json()["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -583,4 +583,4 @@ class TestSearchIntegrations:
             resp = await client.get(f"{BASE}/search", params={"q": "test"})
 
         assert resp.status_code == 500
-        assert "Failed to search" in resp.json()["detail"]
+        assert "Failed to search" in resp.json()["message"]

@@ -21,7 +21,7 @@ from app.models.google_sheets_models import (
     DataValidationInput,
     ShareSpreadsheetInput,
 )
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.templates.docstrings.google_sheets_tool_docs import (
     CUSTOM_ADD_CONDITIONAL_FORMAT_DOC as CONDITIONAL_FORMAT_DOC,
     CUSTOM_CREATE_CHART_DOC as CREATE_CHART_DOC,
@@ -69,12 +69,14 @@ def _sheets_proxy(
     return cast(
         "dict[str, Any]",
         proxy_request_sync(
-            user_id=user_id,
-            toolkit=SHEETS_TOOLKIT,
-            endpoint=endpoint,
-            method=method,  # type: ignore[arg-type]  # helper takes plain str; proxy_request_sync narrows to its ProxyMethod Literal
-            body=body,
-            query=query,
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=SHEETS_TOOLKIT,
+                endpoint=endpoint,
+                method=method,  # type: ignore[arg-type]  # helper takes plain str; proxy_request_sync narrows to its ProxyMethod Literal
+                body=body,
+                query=query,
+            )
         ),
     )
 

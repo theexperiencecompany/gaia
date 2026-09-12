@@ -105,7 +105,7 @@ export function SubscriptionSettings() {
       </div>
 
       <SubscriptionBillingSection
-        subscription={subscription}
+        subscription={subscription ?? undefined}
         billingCycle={billingCycle}
         nextBillingLabel={nextBillingLabel}
       />

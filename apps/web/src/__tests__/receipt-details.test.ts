@@ -11,6 +11,8 @@ const proMonthly: Plan = {
   dodo_product_id: "pdt_pro_monthly",
   name: "Pro",
   amount: 3000,
+  description: null,
+  max_users: null,
   currency: "USD",
   duration: "monthly",
   features: [],
@@ -39,9 +41,16 @@ function status(
 ): UserSubscriptionStatus {
   return {
     user_id: "user_1",
+    current_plan: null,
+    subscription: null,
     is_subscribed: false,
+    days_remaining: null,
     can_upgrade: true,
     can_downgrade: false,
+    has_ever_subscribed: false,
+    has_subscription: null,
+    plan_type: null,
+    status: null,
     ...overrides,
   };
 }

@@ -8,13 +8,11 @@ import secrets
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
-from fastapi.exception_handlers import (
-    http_exception_handler as default_http_exception_handler,
-)
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, UJSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
+from fastapi.utils import is_body_allowed_for_status_code
 from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -26,6 +24,13 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.core.lifespan import lifespan
 from app.core.middleware import configure_middleware
+from app.core.openapi import api_operation_id
+from app.schemas.errors import (
+    ERROR_RESPONSES,
+    ErrorEnvelope,
+    ValidationIssue,
+    error_response,
+)
 
 # Eager-import the FsOps metrics module so its Prometheus collectors register
 # on the default registry at app startup. Without this the storage layer is
@@ -60,6 +65,7 @@ def create_app() -> FastAPI:
         docs_url=None if is_prod else "/docs",
         redoc_url=None if is_prod else "/redoc",
         default_response_class=UJSONResponse,
+        generate_unique_id_function=api_operation_id,
     )
 
     configure_middleware(app)
@@ -107,10 +113,7 @@ def create_app() -> FastAPI:
             path=request.url.path,
             method=request.method,
         )
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=exc.to_dict(),
-        )
+        return error_response(exc.status_code, ErrorEnvelope.from_app_error(exc))
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(
@@ -119,22 +122,24 @@ def create_app() -> FastAPI:
     ) -> JSONResponse:
         """Log validation errors with field-level detail and return 422."""
         errors = [
-            {"loc": list(err["loc"]), "msg": err["msg"], "type": err["type"]}
+            ValidationIssue(loc=list(err["loc"]), msg=err["msg"], type=err["type"])
             for err in exc.errors()
         ]
         wide_log.warning(
             "validation_failed",
-            validation_errors=errors,
+            validation_errors=[issue.model_dump() for issue in errors],
             error_count=len(errors),
         )
-        return JSONResponse(
-            status_code=422,
-            content={"detail": errors},
+        return error_response(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ErrorEnvelope(
+                message="Request validation failed", code="validation_error", errors=errors
+            ),
         )
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> Response:
-        """Record the failure on the wide event, then defer the response to FastAPI.
+        """Record the failure on the wide event, then render it as the envelope.
 
         Starlette's ExceptionMiddleware converts an HTTPException into a
         response INSIDE call_next, so LoggingMiddleware's except path never
@@ -143,11 +148,9 @@ def create_app() -> FastAPI:
         event carried no record of what failed, and the exception the handler
         had caught was nowhere in the telemetry.
 
-        The response is delegated verbatim rather than rebuilt because the
-        default handler is what preserves `exc.headers` (WWW-Authenticate on
-        401, Retry-After on 429) and drops the body for statuses that may not
-        carry one (204/304) — recording a failure must not change what the API
-        returns.
+        Like FastAPI's default handler this preserves `exc.headers`
+        (WWW-Authenticate on 401, Retry-After on 429) and drops the body for
+        statuses that may not carry one (204/304).
         """
         failure: dict[str, Any] = {
             "status_code": exc.status_code,
@@ -166,7 +169,11 @@ def create_app() -> FastAPI:
         record = wide_log.error if exc.status_code >= 500 else wide_log.warning
         record("http_exception", **failure)
 
-        return await default_http_exception_handler(request, exc)
+        if not is_body_allowed_for_status_code(exc.status_code):
+            return Response(status_code=exc.status_code, headers=exc.headers)
+        return error_response(
+            exc.status_code, ErrorEnvelope.from_http_detail(exc.detail), headers=exc.headers
+        )
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -197,18 +204,18 @@ def create_app() -> FastAPI:
             else:
                 posthog_client.capture_exception(exc)
 
-        return JSONResponse(
-            status_code=500,
-            content={"error": "internal_server_error"},
+        return error_response(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            ErrorEnvelope(message="Internal server error", code="internal_server_error"),
         )
 
-    app.include_router(api_router, prefix="/api/v1")
-    app.include_router(health_router)
+    app.include_router(api_router, prefix="/api/v1", responses=ERROR_RESPONSES)
+    app.include_router(health_router, responses=ERROR_RESPONSES)
 
     # Dev-only identity + seeding router. Mounted only when the auth bypass is
     # active in development, so it never exists in production (every route 404s).
     if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
-        app.include_router(dev_router, prefix="/api/v1")
+        app.include_router(dev_router, prefix="/api/v1", responses=ERROR_RESPONSES)
         wide_log.warning(
             f"{LogTag.STARTUP} Dev identity router mounted at /api/v1/dev "
             "(development only — mint/seed/delete users)"

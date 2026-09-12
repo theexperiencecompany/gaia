@@ -512,6 +512,7 @@ async def _bot_stream_from_redis(
 @router.post(
     "/chat-stream",
     status_code=200,
+    response_class=StreamingResponse,
     summary="Streaming Bot Chat",
     description="Stream a chat response as Server-Sent Events.",
 )

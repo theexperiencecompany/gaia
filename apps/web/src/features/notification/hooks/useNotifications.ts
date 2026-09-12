@@ -14,13 +14,13 @@ import { NOTIFICATION_PAGE_SIZE } from "@/features/notification/constants";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
-  type NotificationRecord,
   NotificationStatus,
+  type NotificationView,
   type UseNotificationsOptions,
 } from "@/types/features/notificationTypes";
 
 interface UseNotificationsReturn {
-  notifications: NotificationRecord[];
+  notifications: NotificationView[];
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -29,8 +29,8 @@ interface UseNotificationsReturn {
   bulkMarkAsRead: (ids: string[]) => Promise<void>;
   bulkArchive: (ids: string[]) => Promise<void>;
   unreadCount: number;
-  addNotification: (notification: NotificationRecord) => void;
-  updateNotification: (notification: NotificationRecord) => void;
+  addNotification: (notification: NotificationView) => void;
+  updateNotification: (notification: NotificationView) => void;
 }
 
 // `offset` is deliberately not accepted by the hook: the UI does not page. The
@@ -48,7 +48,7 @@ const CANONICAL_FILTERS: UseNotificationsOptions = {
   limit: NOTIFICATION_PAGE_SIZE,
 };
 
-const EMPTY: NotificationRecord[] = [];
+const EMPTY: NotificationView[] = [];
 
 export function useNotifications(
   options: UseNotificationsHookOptions = {},
@@ -184,13 +184,13 @@ export function useNotifications(
   );
 
   const addNotification = useCallback(
-    (notification: NotificationRecord) =>
+    (notification: NotificationView) =>
       prependNotification(queryClient, notification),
     [queryClient],
   );
 
   const updateNotification = useCallback(
-    (notification: NotificationRecord) =>
+    (notification: NotificationView) =>
       upsertNotification(queryClient, notification),
     [queryClient],
   );

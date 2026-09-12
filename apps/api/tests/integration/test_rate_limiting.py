@@ -259,7 +259,7 @@ class TestTieredRateLimiterCheckAndIncrement:
 
         assert exc_info.value.status_code == 429
         assert exc_info.value.detail["feature"] == "generate_image"
-        assert exc_info.value.detail["error"] == "rate_limit_exceeded"
+        assert exc_info.value.detail["code"] == "rate_limit_exceeded"
 
     async def test_premium_user_gets_higher_limits(self) -> None:
         """Pro user should be able to make more requests than free."""
@@ -470,7 +470,7 @@ class TestRateLimitExceptionDetail:
         exc = RateLimitExceededException(feature="generate_image")
         assert exc.status_code == 429
         assert exc.detail["feature"] == "generate_image"
-        assert exc.detail["error"] == "rate_limit_exceeded"
+        assert exc.detail["code"] == "rate_limit_exceeded"
 
     def test_exception_with_plan_required(self) -> None:
         exc = RateLimitExceededException(feature="generate_image", plan_required="pro")

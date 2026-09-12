@@ -77,7 +77,7 @@ export function useNotificationActions(): UseNotificationActionsResult {
         });
 
         const redirectUrl =
-          response.data?.redirect_url ?? action.config.redirect?.url;
+          response.data?.redirect_url ?? action.config?.redirect?.url;
 
         if (action.type === "redirect" && redirectUrl) {
           await openRedirect(redirectUrl);

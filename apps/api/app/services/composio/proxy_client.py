@@ -14,6 +14,7 @@ of a connection.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from threading import Lock
 import time
 from typing import Any, Literal, TypedDict, cast
@@ -27,6 +28,25 @@ from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 ProxyMethod = Literal["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"]
+
+
+@dataclass(frozen=True, kw_only=True)
+class ProxyRequest:
+    """One provider call through Composio's proxy, addressed by user and toolkit.
+
+    ``binary_body`` (a URL the proxy fetches and streams) and ``body`` are two
+    different things and stay two fields; when both are given the binary one
+    is what is sent.
+    """
+
+    user_id: str
+    toolkit: str
+    endpoint: str
+    method: ProxyMethod
+    body: object = None
+    query: dict[str, Any] | None = None
+    headers: dict[str, str] | None = None
+    binary_body: dict[str, str] | None = None
 
 
 class ProxyResponse(TypedDict):
@@ -159,7 +179,7 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
             meta={
                 "toolkit": toolkit,
                 "user_id": user_id,
-                "error_code": INTEGRATION_NOT_CONNECTED,
+                "code": INTEGRATION_NOT_CONNECTED,
             },
         )
 
@@ -197,41 +217,31 @@ def _build_parameters(
     return params
 
 
-def _proxy_call(
-    *,
-    user_id: str,
-    toolkit: str,
-    endpoint: str,
-    method: ProxyMethod,
-    body: object = None,
-    query: dict[str, Any] | None = None,
-    headers: dict[str, str] | None = None,
-    binary_body: dict[str, str] | None = None,
-) -> ProxyResponse:
+def _proxy_call(request: ProxyRequest) -> ProxyResponse:
     """Internal: send a proxy request and return its status, data and headers."""
     log.set(
         composio_proxy={
-            "toolkit": toolkit,
-            "endpoint": endpoint,
-            "method": method,
-            "user_id": user_id,
+            "toolkit": request.toolkit,
+            "endpoint": request.endpoint,
+            "method": request.method,
+            "user_id": request.user_id,
         }
     )
 
-    connected_account_id = _resolve_connected_account_id(user_id, toolkit)
-    parameters = _build_parameters(headers, query)
+    connected_account_id = _resolve_connected_account_id(request.user_id, request.toolkit)
+    parameters = _build_parameters(request.headers, request.query)
 
     proxy_kwargs: dict[str, Any] = {
-        "endpoint": endpoint,
-        "method": method,
+        "endpoint": request.endpoint,
+        "method": request.method,
         "connected_account_id": connected_account_id,
     }
     if parameters:
         proxy_kwargs["parameters"] = parameters
-    if binary_body is not None:
-        proxy_kwargs["binary_body"] = binary_body
-    elif body is not None:
-        proxy_kwargs["body"] = body
+    if request.binary_body is not None:
+        proxy_kwargs["binary_body"] = request.binary_body
+    elif request.body is not None:
+        proxy_kwargs["body"] = request.body
 
     try:
         response = _get_composio().tools.proxy(**proxy_kwargs)
@@ -240,10 +250,10 @@ def _proxy_call(
     except Exception as e:
         log.error(
             f"{LogTag.COMPOSIO} composio.tools.proxy raised",
-            user_id=user_id,
-            toolkit=toolkit,
-            method=method,
-            endpoint=endpoint,
+            user_id=request.user_id,
+            toolkit=request.toolkit,
+            method=request.method,
+            endpoint=request.endpoint,
             error=str(e),
             error_type=type(e).__name__,
         )
@@ -252,9 +262,9 @@ def _proxy_call(
             why="SDK or transport error while calling the provider",
             status_code=502,
             meta={
-                "toolkit": toolkit,
-                "endpoint": endpoint,
-                "method": method,
+                "toolkit": request.toolkit,
+                "endpoint": request.endpoint,
+                "method": request.method,
                 "exception": str(e),
             },
         ) from e
@@ -267,20 +277,20 @@ def _proxy_call(
         # reconnect-integration path instead of passing 401 through and falsely
         # telling a logged-in user to sign in again.
         if status == 401:
-            invalidate_connected_account_cache(user_id=user_id, toolkit=toolkit)
+            invalidate_connected_account_cache(user_id=request.user_id, toolkit=request.toolkit)
         gaia_status = 403 if status == 401 else (status if 400 <= status < 600 else 502)
         meta: dict[str, Any] = {
-            "toolkit": toolkit,
-            "endpoint": endpoint,
-            "method": method,
+            "toolkit": request.toolkit,
+            "endpoint": request.endpoint,
+            "method": request.method,
             "provider_status": status,
             "provider_response": response.data,
         }
         if status == 401:
-            meta["error_code"] = INTEGRATION_NOT_CONNECTED
+            meta["code"] = INTEGRATION_NOT_CONNECTED
         raise AppError(
-            message=f"{toolkit} API error ({status})",
-            why=f"Provider returned non-2xx for {method} {endpoint}",
+            message=f"{request.toolkit} API error ({status})",
+            why=f"Provider returned non-2xx for {request.method} {request.endpoint}",
             status_code=gaia_status,
             meta=meta,
         )
@@ -298,17 +308,7 @@ def _proxy_call(
     )
 
 
-def proxy_request_sync(
-    *,
-    user_id: str,
-    toolkit: str,
-    endpoint: str,
-    method: ProxyMethod,
-    body: object = None,
-    query: dict[str, Any] | None = None,
-    headers: dict[str, str] | None = None,
-    binary_body: dict[str, str] | None = None,
-) -> Any:
+def proxy_request_sync(request: ProxyRequest) -> Any:
     """Send an authenticated request to a provider via Composio's proxy.
 
     Returns the parsed `data` field from the proxy response. Raises
@@ -327,69 +327,21 @@ def proxy_request_sync(
     rest assignment/index errors. Every one would need a per-call-site cast or
     model, which is the cross-file ripple Type Safety item 14 rules out.
     """
-    return _proxy_call(
-        user_id=user_id,
-        toolkit=toolkit,
-        endpoint=endpoint,
-        method=method,
-        body=body,
-        query=query,
-        headers=headers,
-        binary_body=binary_body,
-    )["data"]
+    return _proxy_call(request)["data"]
 
 
-def proxy_request_full_sync(
-    *,
-    user_id: str,
-    toolkit: str,
-    endpoint: str,
-    method: ProxyMethod,
-    body: object = None,
-    query: dict[str, Any] | None = None,
-    headers: dict[str, str] | None = None,
-    binary_body: dict[str, str] | None = None,
-) -> ProxyResponse:
+def proxy_request_full_sync(request: ProxyRequest) -> ProxyResponse:
     """Like `proxy_request_sync` but returns `{status, data, headers}`.
 
     Use when the caller needs response headers (e.g. LinkedIn's
     `x-restli-id` for the new resource ID).
     """
-    return _proxy_call(
-        user_id=user_id,
-        toolkit=toolkit,
-        endpoint=endpoint,
-        method=method,
-        body=body,
-        query=query,
-        headers=headers,
-        binary_body=binary_body,
-    )
+    return _proxy_call(request)
 
 
-async def proxy_request(
-    *,
-    user_id: str,
-    toolkit: str,
-    endpoint: str,
-    method: ProxyMethod,
-    body: object = None,
-    query: dict[str, Any] | None = None,
-    headers: dict[str, str] | None = None,
-    binary_body: dict[str, str] | None = None,
-) -> Any:
+async def proxy_request(request: ProxyRequest) -> Any:
     """Async variant of `proxy_request_sync`. Runs the SDK call in a worker thread."""
-    return await asyncio.to_thread(
-        proxy_request_sync,
-        user_id=user_id,
-        toolkit=toolkit,
-        endpoint=endpoint,
-        method=method,
-        body=body,
-        query=query,
-        headers=headers,
-        binary_body=binary_body,
-    )
+    return await asyncio.to_thread(proxy_request_sync, request)
 
 
 def invalidate_connected_account_cache(

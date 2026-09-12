@@ -3,9 +3,9 @@ import {
   getFeatureEntry,
   getFeatureSlugs,
 } from "@/lib/feature-data";
-import type { BlogPost } from "./blog.types";
+import type { BlogContentPost } from "./blog.types";
 
-export type { BlogPost, BlogPostMeta } from "./blog.types";
+export type { BlogContentPost, BlogPostMeta } from "./blog.types";
 
 // Posts are generated from content/blog/*.mdx into public/data/blog/*.json by
 // scripts/extract-blog-data.mjs and loaded via the feature-data loader (fs at
@@ -23,8 +23,10 @@ export async function getAllBlogSlugs(): Promise<string[]> {
 /**
  * Get a single blog post by slug.
  */
-export async function getBlogPost(slug: string): Promise<BlogPost | null> {
-  return (await getFeatureEntry<BlogPost>(FEATURE, slug)) ?? null;
+export async function getBlogPost(
+  slug: string,
+): Promise<BlogContentPost | null> {
+  return (await getFeatureEntry<BlogContentPost>(FEATURE, slug)) ?? null;
 }
 
 /**
@@ -32,8 +34,8 @@ export async function getBlogPost(slug: string): Promise<BlogPost | null> {
  */
 export async function getAllBlogPosts(
   includeContent: boolean = false,
-): Promise<BlogPost[]> {
-  const posts = await getAllFeatureEntries<BlogPost>(FEATURE);
+): Promise<BlogContentPost[]> {
+  const posts = await getAllFeatureEntries<BlogContentPost>(FEATURE);
 
   return posts
     .map((post) => (includeContent ? post : { ...post, content: "" }))

@@ -14,9 +14,6 @@ interface UseWorkflowPollingReturn {
   setStatus: (status: WorkflowExecutionDot) => void;
 }
 
-const TERMINAL_SUCCESS = new Set(["success", "completed"]);
-const TERMINAL_FAILURE = new Set(["failed", "error"]);
-
 /**
  * Polls workflow run status with a hard 5-minute ceiling so a stuck
  * `running` reply from the backend cannot pin the interval forever.
@@ -52,12 +49,16 @@ export function useWorkflowPolling(): UseWorkflowPollingReturn {
         workflowApi
           .getWorkflowStatus(workflowId)
           .then((statusResponse) => {
-            const reply = statusResponse.status;
-            if (TERMINAL_SUCCESS.has(reply)) {
-              setStatus("success");
-              stopPolling();
-            } else if (TERMINAL_FAILURE.has(reply)) {
+            // The status endpoint reports progress, not a state word: a
+            // failure carries an error_message, success is every step done.
+            if (statusResponse.error_message) {
               setStatus("failed");
+              stopPolling();
+            } else if (
+              statusResponse.total_steps > 0 &&
+              statusResponse.current_step_index >= statusResponse.total_steps
+            ) {
+              setStatus("success");
               stopPolling();
             }
           })

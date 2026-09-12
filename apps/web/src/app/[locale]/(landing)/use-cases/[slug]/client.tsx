@@ -139,9 +139,7 @@ function deriveRunCountText(
   useCase: UseCase | null,
 ) {
   const runCount = communityWorkflow
-    ? communityWorkflow.metadata?.total_executions ||
-      communityWorkflow.total_executions ||
-      0
+    ? communityWorkflow.total_executions || 0
     : (useCase?.total_executions ?? 0);
   if (runCount === 0) return "Never";
   return formatCompactNumber(runCount);
@@ -391,12 +389,7 @@ export default function UseCaseDetailClient({
             </div>
           ) : undefined
         }
-        categories={
-          useCase?.categories ||
-          (communityWorkflow?.metadata?.category
-            ? [communityWorkflow.metadata.category]
-            : [])
-        }
+        categories={useCase?.categories || []}
       />
       <FinalSection />
     </div>

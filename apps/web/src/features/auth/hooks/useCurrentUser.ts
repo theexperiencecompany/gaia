@@ -48,7 +48,6 @@ const UNKNOWN_USER: CurrentUser = Object.freeze({
   profilePicture: "",
   timezone: undefined,
   onboarding: undefined,
-  selected_model: undefined,
 });
 
 /** The raw query, for the few callers that need status/error, not just data. */

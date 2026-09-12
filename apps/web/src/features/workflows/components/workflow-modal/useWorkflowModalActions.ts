@@ -1,4 +1,6 @@
-"use client";
+import { toTriggerConfig } from "@/features/workflows/triggers/types";
+
+("use client");
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Dispatch } from "react";
@@ -258,7 +260,7 @@ export function useWorkflowModalActions({
       prompt: data.prompt,
       icon: data.icon ?? undefined,
       icon_color: data.icon_color ?? undefined,
-      trigger_config: data.trigger_config,
+      trigger_config: toTriggerConfig(data.trigger_config),
       // When predefined steps are supplied (from a community/featured
       // workflow), forward them so the backend reuses them instead of
       // regenerating a fresh plan.
@@ -394,9 +396,7 @@ export function useWorkflowModalActions({
         prompt: data.prompt,
         icon: data.icon,
         icon_color: data.icon_color,
-        trigger_config: {
-          ...data.trigger_config,
-        },
+        trigger_config: toTriggerConfig(data.trigger_config),
         notify_on_completion: data.notify_on_completion,
         integration_ids: selectedIntegrationSlugs,
       };

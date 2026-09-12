@@ -37,8 +37,8 @@ class TestGetAuthorUrn:
         mock_proxy.return_value = {"sub": "person123"}
         urn = get_author_urn(USER_ID)
         assert urn == "urn:li:person:person123"
-        kwargs = mock_proxy.call_args.kwargs
-        assert kwargs["endpoint"].endswith("/userinfo")
+        request = mock_proxy.call_args.args[0]
+        assert request.endpoint.endswith("/userinfo")
 
     def test_raises_when_no_sub(self, mock_proxy):
         mock_proxy.return_value = {}
@@ -60,13 +60,13 @@ class TestUploadImageFromUrl:
         urn = upload_image_from_url(USER_ID, "https://src/img.jpg", "urn:li:person:1")
         assert urn == "urn:li:image:abc"
 
-        init_kwargs = mock_proxy.call_args_list[0].kwargs
-        assert init_kwargs["endpoint"] == (f"{LINKEDIN_REST_BASE}/images?action=initializeUpload")
+        init_request = mock_proxy.call_args_list[0].args[0]
+        assert init_request.endpoint == (f"{LINKEDIN_REST_BASE}/images?action=initializeUpload")
 
-        upload_kwargs = mock_proxy.call_args_list[1].kwargs
-        assert upload_kwargs["endpoint"] == "https://upload.example/x"
-        assert upload_kwargs["method"] == "PUT"
-        assert upload_kwargs["binary_body"] == {"url": "https://src/img.jpg"}
+        upload_request = mock_proxy.call_args_list[1].args[0]
+        assert upload_request.endpoint == "https://upload.example/x"
+        assert upload_request.method == "PUT"
+        assert upload_request.binary_body == {"url": "https://src/img.jpg"}
 
     def test_returns_none_on_init_failure(self, mock_proxy):
         mock_proxy.return_value = {"value": {}}
@@ -86,8 +86,8 @@ class TestUploadDocumentFromUrl:
         ]
         urn = upload_document_from_url(USER_ID, "https://src/doc.pdf", "urn:li:person:1")
         assert urn == "urn:li:document:abc"
-        init_kwargs = mock_proxy.call_args_list[0].kwargs
-        assert "documents" in init_kwargs["endpoint"]
+        init_request = mock_proxy.call_args_list[0].args[0]
+        assert "documents" in init_request.endpoint
 
 
 def test_constants_unchanged():

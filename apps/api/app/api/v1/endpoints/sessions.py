@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.agents.workspace.paths import detect_content_type
@@ -141,6 +141,7 @@ async def list_session_artifacts(
 
 @router.get(
     "/{conv_id}/artifacts/{path:path}",
+    response_class=FileResponse,
     responses={
         400: {"description": "Invalid path"},
         404: {"description": "File not found"},
@@ -179,6 +180,7 @@ async def list_uploads(
 
 @router.get(
     "/{conv_id}/uploads/{path:path}",
+    response_class=FileResponse,
     responses={
         400: {"description": "Invalid path"},
         404: {"description": "File not found"},
@@ -210,7 +212,7 @@ async def pin_artifact(
     conv_id: str,
     payload: PinRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-) -> JSONResponse:
+) -> PinResponse:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "pin"})
     await _assert_owns(user_id, conv_id)
@@ -225,7 +227,4 @@ async def pin_artifact(
     except JuiceFSUnavailable as e:
         raise HTTPException(status_code=503, detail="Workspace storage offline") from e
     capture_context_event(AnalyticsEvents.SESSION_ARTIFACT_PINNED)
-    return JSONResponse(
-        status_code=status.HTTP_201_CREATED,
-        content=PinResponse(pinned_path=pinned_path).model_dump(),
-    )
+    return PinResponse(pinned_path=pinned_path)

@@ -2,12 +2,11 @@
 
 import { useEffect, useRef } from "react";
 
-import type { UserInfo } from "@/features/auth/api/authApi";
+import { authApi } from "@/features/auth/api/authApi";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { getBrowserTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
 
-import { completeOnboarding } from "../api/onboardingApi";
 import { FIELD_NAMES } from "../constants";
 import type { OnboardingState, Stage } from "../state/types";
 
@@ -27,7 +26,7 @@ import type { OnboardingState, Stage } from "../state/types";
 export function useOnboardingSubmission(
   state: OnboardingState,
   stage: Stage,
-  onSuccess?: (user: UserInfo) => void,
+  onSuccess?: () => void,
 ): void {
   const inFlightRef = useRef(false);
   const alreadyCompleted = useCurrentUser().onboarding?.completed === true;
@@ -40,14 +39,15 @@ export function useOnboardingSubmission(
     if (alreadyCompleted) return;
 
     inFlightRef.current = true;
-    completeOnboarding({
-      profession: state.responses[FIELD_NAMES.PROFESSION] ?? "",
-      needs: state.selectedNeeds,
-      ...(otherNeed ? { other_need: otherNeed } : {}),
-      timezone: getBrowserTimezone(),
-    })
+    authApi
+      .completeOnboarding({
+        profession: state.responses[FIELD_NAMES.PROFESSION] ?? "",
+        needs: state.selectedNeeds,
+        ...(otherNeed ? { other_need: otherNeed } : {}),
+        timezone: getBrowserTimezone(),
+      })
       .then((response) => {
-        if (response?.success && response.user) onSuccess?.(response.user);
+        if (response?.success) onSuccess?.();
       })
       .catch((error: unknown) => {
         inFlightRef.current = false;

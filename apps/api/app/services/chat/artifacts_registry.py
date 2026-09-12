@@ -10,30 +10,13 @@ the frontend's batch-sync staleness check refetch the conversation afterwards.
 """
 
 from datetime import UTC, datetime
-from typing import Any, NotRequired, TypedDict, cast
+from typing import Any, TypedDict, cast
 
 from app.constants.artifacts import ARTIFACT_ELEMENT_FIELDS
 from app.constants.cache import CONV_ARTIFACTS_CACHE_PATTERN, ONE_DAY_TTL
 from app.db.repositories.conversations import conversation_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
-
-
-class ArtifactRegistryEntry(TypedDict):
-    """One element of ``ConversationDocument.artifacts``.
-
-    This module owns the element shape (see the comment on that field): the
-    conversation document stores it as a raw dict and mirrors it verbatim to the
-    client. ``mtime`` is a Unix timestamp, matching what every publisher in
-    :mod:`app.services.artifact_events` stamps. ``body`` is present only for
-    small textual artifacts inlined at write time.
-    """
-
-    path: str
-    size_bytes: int | None
-    mtime: float | None
-    content_type: str | None
-    updated_at: str
-    body: NotRequired[str]
+from app.models.artifact_models import ArtifactRegistryEntry
 
 
 class ArtifactRegistryPatch(TypedDict, total=False):

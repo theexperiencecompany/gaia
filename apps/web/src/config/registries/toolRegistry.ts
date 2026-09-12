@@ -1,3 +1,4 @@
+import type { Schema } from "@shared/api/generated";
 import type {
   ApprovalRequestData,
   RateLimitData as SharedRateLimitData,
@@ -9,11 +10,6 @@ import type {
   IntegrationConnectionData,
   IntegrationListStreamData,
 } from "@/features/integrations/types";
-import type {
-  MemoryDocument,
-  MemoryEntry,
-  MemoryEpisode,
-} from "@/features/memory/api/types";
 import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
@@ -31,7 +27,7 @@ import type {
   PeopleSearchData,
 } from "@/types/features/mailTypes";
 import type {
-  NotificationRecord,
+  NotificationView,
   SendNotificationData,
 } from "@/types/features/notificationTypes";
 import type { RedditData } from "@/types/features/redditTypes";
@@ -60,7 +56,7 @@ import type { WeatherData } from "@/types/features/weatherTypes";
 export type MemoryData =
   | {
       action: "add";
-      memories: MemoryEntry[];
+      memories: Schema<"MemoryEntry">[];
       folder: string;
       outcome: "new" | "updated" | "extended" | "duplicate";
       message: string;
@@ -69,12 +65,12 @@ export type MemoryData =
       action: "search";
       query: string;
       folder: string | null;
-      memories: MemoryEntry[];
+      memories: Schema<"MemoryEntry">[];
       message: string;
     }
   | {
       action: "update";
-      memories: MemoryEntry[];
+      memories: Schema<"MemoryEntry">[];
       message: string;
     }
   | {
@@ -86,12 +82,12 @@ export type MemoryData =
   | {
       action: "journal";
       query: string | null;
-      episodes: MemoryEpisode[];
+      episodes: Schema<"MemoryEpisode">[];
       message: string;
     }
   | {
       action: "document";
-      document: MemoryDocument;
+      document: Schema<"MemoryDocument">;
       updated: boolean;
       message: string;
     };
@@ -174,7 +170,7 @@ const TOOL_REGISTRY = {
   google_docs_data: null as unknown as GoogleDocsData,
   code_data: null as unknown as CodeData,
   todo_data: null as unknown as TodoToolData,
-  notification_data: null as unknown as { notifications: NotificationRecord[] },
+  notification_data: null as unknown as { notifications: NotificationView[] },
   send_notification_data: null as unknown as SendNotificationData,
   integration_connection_required: null as unknown as IntegrationConnectionData,
   connect_options: null as unknown as ConnectOptionsData,
@@ -200,7 +196,7 @@ export type ToolDataMap = { [K in ToolName]: (typeof TOOL_REGISTRY)[K] };
 // Tools Message Schema
 // Derived from TOOL_REGISTRY. Represents the tool-specific portion
 // of a message. Used by the base message registry.
-export interface ToolDataEntry {
+export interface TypedToolDataEntry {
   tool_name: ToolName;
   tool_category: string;
   data: ToolDataMap[ToolName];
@@ -209,7 +205,7 @@ export interface ToolDataEntry {
 
 // Optional wrapper for tool data in messages
 type ToolsMessageSchema = {
-  tool_data?: ToolDataEntry[] | null;
+  tool_data?: TypedToolDataEntry[] | null;
 };
 
 export const TOOLS_MESSAGE_SCHEMA: ToolsMessageSchema = {
