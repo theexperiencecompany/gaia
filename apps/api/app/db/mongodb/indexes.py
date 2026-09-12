@@ -597,6 +597,7 @@ async def create_payment_indexes() -> None:
     payments_collection = get_async_collection("payments")
     plans_collection = get_async_collection("subscription_plans")
     subscriptions_collection = get_async_collection("subscriptions")
+    checkout_sessions_collection = get_async_collection("checkout_sessions")
     try:
         # Create payment collection indexes
         await asyncio.gather(
@@ -615,6 +616,9 @@ async def create_payment_indexes() -> None:
             subscriptions_collection.create_index([("user_id", 1), ("status", 1)]),
             subscriptions_collection.create_index([("user_id", 1), ("created_at", -1)]),
             subscriptions_collection.create_index("webhook_processed_at", sparse=True),
+            # Checkout session indexes - webhook-race resolution lookups
+            checkout_sessions_collection.create_index("session_id", unique=True),
+            checkout_sessions_collection.create_index([("user_id", 1), ("created_at", -1)]),
             # Plans indexes
             plans_collection.create_index("is_active"),
             plans_collection.create_index("dodo_product_id", sparse=True),
