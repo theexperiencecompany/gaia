@@ -42,7 +42,7 @@
     communicate: ["portfolio"]
     tool_calls:
       - {tool: create_tracked_todo}
-      - {tool: update_tracked_todo_canvas, min_calls: 2}
+      - {tool: [edit, write], min_calls: 2}
     end_state:
       tracked_todos:
         - {title_contains: "job search", canvas_contains: "northwind"}
@@ -50,8 +50,8 @@
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
-        - "both log entries are present in the canvas after the third turn"
-        - "the second note was appended, not written over the first"
+        - "both log entries are present in the todo's notes after the third turn"
+        - "the second note was added after the first, not written over it"
 
 - id: canvas-section-update
   ticket: "A targeted section update must change that section and leave the rest of the canvas intact."
@@ -66,7 +66,7 @@
     communicate: ["permit"]
     tool_calls:
       - {tool: create_tracked_todo}
-      - {tool: update_tracked_todo_canvas}
+      - {tool: [edit, write]}
     end_state:
       tracked_todos:
         - {title_contains: "loft", canvas_contains: "approved"}
@@ -198,7 +198,7 @@
     communicate: ["brighton"]
     tool_calls:
       - {tool: create_tracked_todo, min_calls: 1}
-      - {tool: update_tracked_todo_canvas, min_calls: 1}
+      - {tool: [edit, write], min_calls: 1}
     end_state:
       tracked_todos: [{count: 1}, {title_contains: "offsite", canvas_contains: "brighton"}]
     score: {gates: [communicate, end_state, tool_calls]}

@@ -37,6 +37,7 @@ from app.services.device.device_service import (
 )
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_connected_integrations_named
+from app.services.storage._vfs_common import folder_name
 from app.services.tracked_todo_service import tracked_todo_service
 from app.utils.artifact_utils import artifact_url_base
 from shared.py.wide_events import log
@@ -227,14 +228,16 @@ async def build_workspace_session_banner(ctx: SectionContext) -> str:
 
 
 def format_active_todo_banner(todo: TodoDocument) -> str:
+    folder = f"/workspace/gaia-tasks/{folder_name(todo.id, todo.title)}"
     return (
         "🎯 ACTIVE TODO (this run is bound to this todo)\n"
         f"   id: {todo.id}\n"
         f"   title: {todo.title or 'Untitled'}\n"
+        f"   files: {folder}/canvas.md, {folder}/activity.md\n"
         "\n"
-        "   Default write target for this turn: this todo's canvas.\n"
-        f'   - Use `update_tracked_todo_canvas(todo_id="{todo.id}", ...)` for any progress, '
-        "outcome, or learning from this run.\n"
+        "   Default write target for this turn: this todo's files.\n"
+        "   - Read canvas.md first. Record progress and outcomes as a dated entry at the end "
+        "of activity.md; keep Current State in canvas.md true; learnings go in canvas.md.\n"
         "   - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this "
         "todo (rare).\n"
         "   - To work on a different todo, you must reference it explicitly by id."

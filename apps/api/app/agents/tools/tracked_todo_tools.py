@@ -1,8 +1,9 @@
 """
 Tracked-todo LangChain tools for the executor agent.
 
-Allows GAIA's executor to create tracked todos with VFS canvas
-and search across canvas context via ChromaDB.
+Lifecycle and metadata only. The working notes (canvas.md / activity.md) are
+files under /workspace/gaia-tasks/ that the agent reads and edits with the
+ordinary file tools; see ``app.services.gaia_task_files``.
 """
 
 from dataclasses import dataclass
@@ -25,7 +26,7 @@ from app.models.trigger_subscription_models import (
     SubscriptionCondition,
     SubscriptionStatus,
 )
-from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
+from app.services.storage._vfs_common import folder_name
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
 from app.services.triggers.subscription_service import (
@@ -38,7 +39,7 @@ from app.services.user_service import get_user_by_id
 from app.utils.canvas_vector_utils import search_canvas_context
 from app.utils.cron_utils import get_next_run_time
 from app.utils.timezone import Timezone, is_valid_timezone
-from shared.py.wide_events import log, spawn_logged_task
+from shared.py.wide_events import log
 
 _RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
 _UTC_OFFSET = "+00:00"
@@ -413,6 +414,7 @@ def _format_tracked_todo_full(doc: TodoDocument, now: datetime) -> str:
     parts = [
         f'- "{doc.title}"{labels_str} (ID: {doc.id})',
         f"  Priority: {doc.priority.value} | Age: {age_days}d | Last updated: {last_update}d ago",
+        f"  files: /workspace/gaia-tasks/{folder_name(doc.id, doc.title)}/",
     ]
     detail_parts = _build_list_detail_parts(doc, now)
     if detail_parts:
@@ -468,38 +470,6 @@ def _render_catalog(trigger_name: str) -> str:
     return "\n".join(lines)
 
 
-def _patch_canvas_section(current: str, section: str, content: str) -> str:
-    """Replace (or append) a `## {section}` block within a canvas markdown string."""
-    heading = f"## {section}"
-    head_end: int | None = None
-    search_start = 0
-    while True:
-        pos = current.find(heading, search_start)
-        if pos == -1:
-            break
-        # A real heading match must (a) start a line — position 0 or right
-        # after a "\n" — and (b) end the heading exactly — end-of-string or
-        # right before a "\n". Without both checks a plain substring search
-        # either misses the section when it's the canvas's first line (no
-        # leading "\n" to match against), or false-positives on a DIFFERENT
-        # section whose name happens to start with this one (e.g. searching
-        # for "Current" would otherwise match inside "## Current State").
-        at_line_start = pos == 0 or current[pos - 1] == "\n"
-        end_pos = pos + len(heading)
-        is_exact_heading = end_pos == len(current) or current[end_pos] == "\n"
-        if at_line_start and is_exact_heading:
-            head_end = end_pos
-            break
-        search_start = pos + 1
-    if head_end is None:
-        # Section does not exist — append it as a fresh trailing block.
-        return current.rstrip() + f"\n\n{heading}\n{content}"
-    next_section = current.find("\n## ", head_end + 1)
-    if next_section == -1:
-        return current[:head_end] + "\n" + content
-    return current[:head_end] + "\n" + content.rstrip() + "\n" + current[next_section:]
-
-
 def _format_create_output(
     result: TodoResponse,
     parsed_scheduled_at: datetime | None,
@@ -507,11 +477,12 @@ def _format_create_output(
     notes: list[str],
 ) -> str:
     """Assemble the user-facing summary returned by create_tracked_todo."""
+    folder = f"/workspace/gaia-tasks/{folder_name(result.id, result.title)}"
     out = (
         f"Tracked todo created: {result.id}\n"
         f"Title: {result.title}\n"
-        "Canvas + activity log are stored on this todo. Edit them ONLY via "
-        f"update_tracked_todo_canvas(todo_id='{result.id}', ...), never with filesystem tools."
+        f"Working notes: {folder}/canvas.md (recall doc) and {folder}/activity.md "
+        "(dated log). Read and edit them with the read / edit / write tools."
     )
     if parsed_scheduled_at:
         out += _format_first_fire_note(parsed_scheduled_at, user_tz_name)
@@ -571,9 +542,9 @@ async def create_tracked_todo(
     Create a tracked todo: a GAIA-managed todo with a working-memory canvas.
 
     A tracked todo shows on the user's todos page like a normal todo, but GAIA
-    owns it: it carries canvas.md (GAIA's working notes: key IDs, current state,
-    activity log, learnings) plus an optional schedule/recurrence so GAIA can act
-    on it over time. It is distinct from the user's own hand-created action items
+    owns it: it carries canvas.md (GAIA's recall doc: key IDs, current state,
+    context, learnings) and activity.md (dated log of what happened) plus an
+    optional schedule/recurrence so GAIA can act on it over time. It is distinct from the user's own hand-created action items
     (which live in providers like Todoist, Google Tasks, Apple Reminders, Gaia
     Todos).
 
@@ -680,87 +651,13 @@ async def search_todo_context(
     lines = []
     for m in matches:
         status = " [completed]" if m.get("completed") else ""
+        folder = folder_name(m["todo_id"], m["title"])
         lines.append(
             f"- [{m['title']}]{status} (todo_id: {m['todo_id']}, score: {m['score']})\n"
+            f"  files: /workspace/gaia-tasks/{folder}/\n"
             f"  {m['snippet'][:200]}"
         )
     return "\n".join(lines)
-
-
-@tool
-async def update_tracked_todo_canvas(
-    config: RunnableConfig,
-    todo_id: Annotated[str, "ID of the tracked todo"],
-    content: Annotated[
-        str,
-        "Content to write. "
-        "For mode='replace': full canvas markdown. "
-        "For mode='append': only the new content to add at the end. "
-        "For mode='section': only the new body of the target section (without the heading line).",
-    ],
-    mode: Annotated[
-        str,
-        "How to write: "
-        "'append' (default): add content at the end of the canvas. Use for activity log entries, timeline events, new notes. No read needed. "
-        "'section': replace a specific ## Section by name. Use for targeted updates (e.g. Current State). Tool reads and patches internally, no read needed. "
-        "'replace': overwrite the entire canvas. Only use for initial setup or full restructure.",
-    ] = "append",
-    section: Annotated[
-        str | None,
-        "Section heading to replace when mode='section'. "
-        "Exact heading text without ## (e.g. 'Current State', 'Key Details', 'Learnings'). "
-        "If the section does not exist, it is appended as a new section.",
-    ] = None,
-) -> str:
-    """Update GAIA's working notes on an EXISTING tracked todo's canvas.
-
-    PRECONDITION: only call this when you already have a tracked todo for THIS initiative:
-    one you created this turn (you hold its todo_id) or the run's "🎯 ACTIVE TODO". If no
-    tracked todo exists for the task (a one-off fetch / deploy / build / lookup / edit), do
-    NOT call this. The canvas lives on the todo, not the filesystem, never use read/write/edit.
-
-    Modes (once you have a todo_id):
-    append  → activity log entries, timeline events, new context. No read needed.
-    section → update a single named section (e.g. Current State). No read needed.
-    replace → full rewrite. Only when restructuring the entire canvas.
-    """
-    user_id = config.get("metadata", {}).get("user_id")
-    if not user_id:
-        return _ERR_NO_USER_ID
-
-    if mode not in ("replace", "append", "section"):
-        return f"Error: invalid mode '{mode}'. Use 'replace', 'append', or 'section'."
-
-    if mode == "section" and not section:
-        return "Error: 'section' mode requires a section name."
-
-    doc = await todo_repository.get(todo_id, user_id=user_id)
-    if not doc:
-        return f"Error: tracked todo {todo_id} not found"
-
-    if mode == "replace":
-        await write_canvas(todo_id, user_id, content)
-    elif mode == "append":
-        await append_canvas(todo_id, user_id, content)
-    else:  # section
-        current = await read_canvas(todo_id, user_id) or ""
-        new_canvas = _patch_canvas_section(current, section or "", content)
-        await write_canvas(todo_id, user_id, new_canvas)
-
-    spawn_logged_task(
-        "canvas_reindex",
-        tracked_todo_service.reindex_canvas(todo_id=todo_id, user_id=user_id),
-        user={"id": user_id},
-        todo={"id": todo_id},
-    )
-    section_suffix = f", section={section}" if section else ""
-    await tracked_todo_service.system_log(
-        todo_id=todo_id,
-        user_id=user_id,
-        event_type="CANVAS_UPDATED",
-        details=f"Agent updated canvas (mode={mode}{section_suffix})",
-    )
-    return f"Canvas updated (mode={mode}{section_suffix})."
 
 
 @tool
@@ -769,7 +666,7 @@ async def complete_tracked_todo(
     todo_id: Annotated[str, "ID of the tracked todo to complete"],
     summary: Annotated[str, "One or two sentences describing what was achieved"],
 ) -> str:
-    """Complete a tracked todo: archive VFS canvas, remove from search index, mark done.
+    """Complete a tracked todo: mark done and flag its canvas as completed in search.
 
     Call when the todo's goal is fully achieved. Use the regular todo update for
     partial completion or status changes only.
@@ -828,8 +725,8 @@ async def update_tracked_todo(
     """Update properties of an existing tracked todo.
 
     Use this to change labels, due dates, priority, scheduling, or recurrence
-    after a tracked todo has been created. For updating canvas content,
-    use update_tracked_todo_canvas instead.
+    after a tracked todo has been created. The working notes are files: edit
+    /workspace/gaia-tasks/<folder>/canvas.md or activity.md with the file tools.
 
     Args:
         todo_id: The tracked todo ID (from ACTIVE TRACKED TODOS context block).
@@ -1105,7 +1002,6 @@ def _parse_conditions(
 tools = [
     create_tracked_todo,
     search_todo_context,
-    update_tracked_todo_canvas,
     complete_tracked_todo,
     update_tracked_todo,
     list_tracked_todos,

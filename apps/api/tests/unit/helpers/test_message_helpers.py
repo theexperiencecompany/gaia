@@ -257,7 +257,7 @@ class TestSignalMatchingSectionRenders:
     ) -> None:
         """Production: every ``calendar_event_starting_soon`` fire for a user with
         tracked todos failed with ``KeyError: 'date'`` (54 in one day). The signal
-        matching instructions carry a literal example, ``"- {date}: {what happened}"``,
+        matching instructions carry a literal example, ``"- {date} {what happened}"``,
         and ``str.format`` read it as two placeholders. The example must reach the
         agent verbatim, braces and all, and the section must render at all.
         """
@@ -284,7 +284,7 @@ class TestSignalMatchingSectionRenders:
             )
 
         assert "Ship the launch post" in result
-        assert "- {date}: {what happened}" in result
+        assert "- {date} {what happened}" in result
 
 
 class TestFormatCalendarEventContext:

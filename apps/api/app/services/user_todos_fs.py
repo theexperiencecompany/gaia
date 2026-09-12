@@ -17,7 +17,7 @@ from datetime import UTC, datetime, timedelta
 from app.agents.workspace.system_docs import USER_TODOS_GUIDE_MD
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoDocument
-from app.services._vfs_scheduler import make_scheduler, run_hashed_sync
+from app.services._vfs_scheduler import HashedSyncSpec, make_scheduler, run_hashed_sync
 from app.services.storage.metrics import FsOps
 from app.services.storage.user_todos_vfs import (
     UserTodoProjection,
@@ -37,13 +37,15 @@ async def sync_user_todos(user_id: str) -> int:
     """
     return await run_hashed_sync(
         user_id,
-        fs_op=FsOps.SYNC_USER_TODOS_VFS,
-        fetch_fn=_fetch_active_projections,
-        per_doc_sig_fn=per_doc_signature,
-        materialize_fn=materialize_user_todos,
-        guide_md=USER_TODOS_GUIDE_MD,
-        catalog_marker_path_fn=user_todos_marker_path,
-        log_name="user_todos_vfs",
+        HashedSyncSpec[UserTodoProjection](
+            fs_op=FsOps.SYNC_USER_TODOS_VFS,
+            fetch_fn=_fetch_active_projections,
+            per_doc_sig_fn=per_doc_signature,
+            materialize_fn=materialize_user_todos,
+            guide_md=USER_TODOS_GUIDE_MD,
+            catalog_marker_path_fn=user_todos_marker_path,
+            log_name="user_todos_vfs",
+        ),
     )
 
 

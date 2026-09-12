@@ -9,8 +9,12 @@ mutations go through the base ``_apply_ops`` seam; bulk writes go through
 """
 
 from datetime import UTC, datetime, timedelta
+import re
+from typing import Literal
 
+from bson import ObjectId
 from pydantic import BaseModel, ConfigDict, Field
+from pymongo import ReturnDocument
 
 from app.constants.cache import TODO_CACHE_PREFIX
 from app.constants.todos import GAIA_TRACKED_LABEL, ONBOARDING_LABEL
@@ -79,6 +83,10 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     cache_policy = CachePolicy(prefix=TODO_CACHE_PREFIX)
 
     # ------------------------------------------------------------------ reads
+
+    def is_valid_id(self, todo_id: str) -> bool:
+        """Whether ``todo_id`` is a well-formed Mongo identity for this collection."""
+        return ObjectId.is_valid(todo_id)
 
     async def get_by_id(self, todo_id: str) -> TodoDocument | None:
         """Fetch a todo by id with no user scoping — for the system executor,
@@ -330,9 +338,42 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             }
         )
 
+    async def find_tracked_by_short_id(self, user_id: str, *, short_id: str) -> list[TodoDocument]:
+        """A user's tracked todos whose ObjectId ends with ``short_id`` — the
+        ``<slug>-<shortid>`` folder name under ``/workspace/gaia-tasks/``."""
+        if re.fullmatch(r"[0-9a-f]{8}", short_id) is None:
+            return []
+        return await self._find(
+            {
+                "user_id": user_id,
+                "labels": GAIA_TRACKED_LABEL,
+                "$expr": {
+                    "$regexMatch": {
+                        "input": {"$toString": "$_id"},
+                        "regex": f"{re.escape(short_id)}$",
+                    }
+                },
+            }
+        )
+
     async def list_active_tracked_all_users(self, *, limit: int) -> list[TodoDocument]:
         """Every user's active tracked todos — the maintenance sweep's scan set."""
         return await self._find({"completed": False, "labels": GAIA_TRACKED_LABEL}, limit=limit)
+
+    async def list_tracked_for_legacy_migration(
+        self, *, limit: int, after_id: str | None = None
+    ) -> list[TodoDocument]:
+        """All tracked todos — active or completed — in ``_id`` order.
+
+        The legacy canvas → activity migration scan: completed todos can also
+        carry legacy sections, and migration is idempotent, so the sweep pages
+        this to a short page with the last id as cursor. ``after_id`` is always
+        a cursor this method previously returned, so it is a valid identity.
+        """
+        filt: dict[str, object] = {"labels": GAIA_TRACKED_LABEL}
+        if after_id is not None:
+            filt["_id"] = {"$gt": ObjectId(after_id)}
+        return await self._find(filt, sort=[("_id", 1)], limit=limit)
 
     async def find_active_by_composio_trigger(self, composio_trigger_id: str) -> list[TodoDocument]:
         """Every user's incomplete todos with an active subscription registered against
@@ -523,6 +564,57 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             {"$unset": {"workflow_id": ""}},
             scope=user_id,
         )
+
+    async def replace_note_fields(
+        self,
+        todo_id: str,
+        user_id: str,
+        *,
+        update: TodoUpdate,
+        expected_updated_at: datetime | None,
+    ) -> TodoDocument | None:
+        """Replace note bodies, optionally only when ``updated_at`` still equals
+        ``expected_updated_at`` (compare-and-set). Returns None on mismatch."""
+        extra: dict[str, object] = {"user_id": user_id}
+        if expected_updated_at is not None:
+            extra["updated_at"] = expected_updated_at
+        return await self._apply_update(todo_id, user_id, extra, update)
+
+    async def append_text_field(
+        self,
+        todo_id: str,
+        user_id: str,
+        *,
+        field: Literal["activity_content", "log_content"],
+        suffix: str,
+    ) -> TodoDocument | None:
+        """Append ``suffix`` to a note body in one atomic update (concurrent
+        appends cannot lose each other). Leading newlines are stripped so an
+        append onto an empty body starts clean."""
+        pipeline: list[dict[str, object]] = [
+            {
+                "$set": {
+                    field: {
+                        "$ltrim": {
+                            "input": {"$concat": [{"$ifNull": ["$" + field, ""]}, suffix]},
+                            "chars": "\n",
+                        }
+                    },
+                    "updated_at": datetime.now(UTC),
+                }
+            }
+        ]
+        raw = await self._raw_collection().find_one_and_update(
+            {**self._identity_filter(todo_id), "user_id": user_id},
+            pipeline,
+            return_document=ReturnDocument.AFTER,
+        )
+        if raw is None:
+            return None
+        doc = self._to_model(raw)
+        await self._cache_store(user_id, doc)
+        await self._invalidate(user_id)
+        return doc
 
 
 todo_repository = TodosRepository()

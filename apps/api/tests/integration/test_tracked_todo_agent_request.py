@@ -45,8 +45,9 @@ async def _captured_request() -> MessageRequestWithHistory:
     with (
         patch(f"{_MOD}.call_agent_silent", silent),
         patch(f"{_MOD}.read_canvas", new_callable=AsyncMock, return_value=None),
+        patch(f"{_MOD}.read_activity", new_callable=AsyncMock, return_value=None),
         patch(f"{_MOD}._collect_reference_context", new_callable=AsyncMock, return_value=""),
-        patch(f"{_MOD}.tracked_todo_service.append_canvas_timeline", new_callable=AsyncMock),
+        patch(f"{_MOD}.tracked_todo_service.append_activity_entry", new_callable=AsyncMock),
         patch(f"{_MOD}.tracked_todo_service.system_log", new_callable=AsyncMock),
     ):
         await _execute_via_agent(_todo(), USER_ID, user_data={"user_id": USER_ID})

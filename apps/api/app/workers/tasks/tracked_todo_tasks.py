@@ -19,7 +19,7 @@ from arq.connections import ArqRedis
 
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.agents.prompts.todo_prompts import TRIGGERED_RELEVANCE_GUIDANCE
-from app.constants.todos import FAILED_LABEL
+from app.constants.todos import ACTIVITY_PROMPT_TAIL_CHARS, FAILED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_daily_cost_budget
 from app.models.message_models import MessageRequestWithHistory
@@ -33,9 +33,10 @@ from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.canvas_markdown import section_body
 from app.services.hil.utils import untrusted_fence
 from app.services.notification_service import notification_service
-from app.services.todo_canvas_storage import read_canvas
+from app.services.todo_canvas_storage import read_activity, read_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_service import get_user_by_id
@@ -325,14 +326,11 @@ async def _run_execution(
 
 
 def _extract_learnings(ref_canvas: str) -> str | None:
-    """Return the ``## Learnings`` section of a canvas, or None if absent."""
-    if not ref_canvas or "## Learnings" not in ref_canvas:
+    """The ``## Learnings`` section of a canvas (heading included), or None if absent."""
+    body = section_body(ref_canvas, "Learnings")
+    if body is None:
         return None
-    learnings_start = ref_canvas.index("## Learnings")
-    next_section = ref_canvas.find("\n## ", learnings_start + 1)
-    if next_section != -1:
-        return ref_canvas[learnings_start:next_section]
-    return ref_canvas[learnings_start:]
+    return f"## Learnings\n{body}"
 
 
 async def _collect_reference_context(ref_ids: list[str], user_id: str) -> str:
@@ -362,6 +360,7 @@ def _build_execution_prompt(
     description: str,
     canvas_content: str | None,
     reference_context: str,
+    activity_content: str | None = None,
     origin: TriggerOrigin | None = None,
 ) -> str:
     """Assemble the run prompt from the todo's fields and context.
@@ -394,7 +393,14 @@ def _build_execution_prompt(
     if description:
         prompt_parts.append(f"Details: {description}")
     if canvas_content:
-        prompt_parts.append(f"Canvas context:\n{canvas_content}")
+        prompt_parts.append(f"Canvas (canvas.md):\n{canvas_content}")
+    if activity_content:
+        tail = activity_content[-ACTIVITY_PROMPT_TAIL_CHARS:]
+        truncated = " (older entries omitted; read activity.md for the full log)"
+        label = "Recent activity (activity.md)"
+        if len(activity_content) > len(tail):
+            label += truncated
+        prompt_parts.append(f"{label}:\n{tail}")
     if reference_context:
         prompt_parts.append(reference_context)
     return "\n\n".join(prompt_parts)
@@ -414,10 +420,11 @@ async def _execute_via_agent(
     """
     todo_id = doc.id
 
-    # Read canvas content from the todo's Mongo-backed canvas field
     canvas_content: str | None = None
+    activity_content: str | None = None
     try:
         canvas_content = await read_canvas(todo_id, user_id)
+        activity_content = await read_activity(todo_id, user_id)
     except Exception as exc:
         log.warning(
             "tracked_todo.canvas_read_failed",
@@ -434,6 +441,7 @@ async def _execute_via_agent(
         title=title,
         description=doc.description or "",
         canvas_content=canvas_content,
+        activity_content=activity_content,
         reference_context=reference_context,
         origin=origin,
     )
@@ -464,14 +472,14 @@ async def _execute_via_agent(
         "execution_mode": "background",
     }
 
-    # Structural paper trail — write a start marker to the canvas Timeline
-    # BEFORE the agent runs, so the run leaves evidence even if the LLM forgets.
+    # Structural paper trail: a start marker in activity.md BEFORE the agent
+    # runs, so the run leaves evidence even if the LLM forgets.
     short_conv = conversation_id[:8]
     start_iso = datetime.now(UTC).isoformat()
-    await tracked_todo_service.append_canvas_timeline(
+    await tracked_todo_service.append_activity_entry(
         todo_id=todo_id,
         user_id=user_id,
-        entry=f"▶ {start_iso} — scheduled run started (conversation_id={short_conv})",
+        entry=f"{start_iso} ▶ scheduled run started (conversation_id={short_conv})",
     )
 
     complete_message: str = ""
@@ -485,10 +493,10 @@ async def _execute_via_agent(
     except Exception as exc:
         # End marker: failure
         fail_iso = datetime.now(UTC).isoformat()
-        await tracked_todo_service.append_canvas_timeline(
+        await tracked_todo_service.append_activity_entry(
             todo_id=todo_id,
             user_id=user_id,
-            entry=f"✗ {fail_iso} — scheduled run failed ({type(exc).__name__})",
+            entry=f"{fail_iso} ✗ scheduled run failed ({type(exc).__name__})",
         )
         raise
 
@@ -502,11 +510,11 @@ async def _execute_via_agent(
             todo_id=todo_id,
             queued_task_id=run.queued_task_id,
         )
-        await tracked_todo_service.append_canvas_timeline(
+        await tracked_todo_service.append_activity_entry(
             todo_id=todo_id,
             user_id=user_id,
             entry=(
-                f"⏸ {queued_iso} — scheduled run queued behind an in-flight run "
+                f"{queued_iso} ⏸ scheduled run queued behind an in-flight run "
                 f"(task {run.queued_task_id}); not run"
             ),
         )
@@ -516,10 +524,10 @@ async def _execute_via_agent(
     # End marker: success
     end_iso = datetime.now(UTC).isoformat()
     summary = (complete_message or "").strip().replace("\n", " ")[:120]
-    await tracked_todo_service.append_canvas_timeline(
+    await tracked_todo_service.append_activity_entry(
         todo_id=todo_id,
         user_id=user_id,
-        entry=f"✓ {end_iso} — scheduled run finished (summary={summary!r})",
+        entry=f"{end_iso} ✓ scheduled run finished (summary={summary!r})",
     )
 
     log.info("tracked_todo.agent_completed", todo_id=todo_id)

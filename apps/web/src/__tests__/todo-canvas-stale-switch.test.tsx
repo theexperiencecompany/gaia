@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TodoSidebar } from "@/components/layout/sidebar/right-variants/TodoSidebar";
@@ -116,6 +122,58 @@ describe("TodoSidebar canvas.md across todo switches", () => {
     );
 
     // Open B's canvas — it must fetch and show B, not the cached A.
+    fireEvent.click(screen.getByText("canvas.md"));
+    await waitFor(() =>
+      expect(screen.getByTestId("canvas-content").textContent).toBe(
+        "# canvas for todo-b",
+      ),
+    );
+    expect(getTodoCanvas).toHaveBeenLastCalledWith("todo-b");
+  });
+
+  it("drops a late response for the previous todo after switching", async () => {
+    const todoA = makeTodo("todo-a");
+    const todoB = makeTodo("todo-b");
+
+    // Hold A's fetch pending so it resolves after the switch.
+    let resolveA!: (notes: { content: string; activity: string }) => void;
+    vi.mocked(getTodoCanvas).mockImplementationOnce(
+      () =>
+        new Promise<{ content: string; activity: string }>((resolve) => {
+          resolveA = resolve;
+        }),
+    );
+
+    const { rerender } = render(
+      <TodoSidebar
+        todo={todoA}
+        onUpdate={noop}
+        onDelete={noop}
+        projects={[]}
+      />,
+    );
+
+    // Open A's canvas; the request stays in flight.
+    fireEvent.click(screen.getByText("canvas.md"));
+
+    // Switch the selected todo while A's request is pending, then let A resolve.
+    rerender(
+      <TodoSidebar
+        todo={todoB}
+        onUpdate={noop}
+        onDelete={noop}
+        projects={[]}
+      />,
+    );
+    await act(async () => {
+      resolveA({ content: "# canvas for todo-a", activity: "" });
+    });
+
+    // A's late response must be discarded, not shown under B's title.
+    expect(screen.getByTestId("canvas-content").textContent).toBe("");
+
+    // Close and open B's canvas — it fetches fresh and shows B.
+    fireEvent.click(screen.getByTestId("canvas-close"));
     fireEvent.click(screen.getByText("canvas.md"));
     await waitFor(() =>
       expect(screen.getByTestId("canvas-content").textContent).toBe(

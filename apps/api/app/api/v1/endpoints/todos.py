@@ -3,14 +3,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Response, status
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_id,
     get_user_timezone_from_preferences,
 )
-from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.repositories.projects import project_repository
@@ -20,16 +19,15 @@ from app.models.todo_models import (
     BulkMoveRequest,
     BulkOperationResponse,
     BulkUpdateRequest,
-    Priority,
     ProjectCreate,
     ProjectResponse,
-    SearchMode,
     SubTask,
     SubtaskCreateRequest,
     SubtaskUpdateRequest,
     TodoCanvasResponse,
     TodoCounts,
     TodoLabelCount,
+    TodoListQuery,
     TodoListResponse,
     TodoModel,
     TodoResponse,
@@ -43,7 +41,6 @@ from app.models.todo_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
-from app.services.todo_canvas_storage import read_canvas
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
@@ -92,34 +89,69 @@ async def get_todo_labels(
 
 
 # Main Todo CRUD Endpoints
+def _todo_filters_applied(query: TodoListQuery) -> list[str]:
+    """Which filters the list query actually uses — the observability label set."""
+    applied = []
+    if query.q:
+        applied.append("query")
+    if query.project_id:
+        applied.append("project")
+    if query.completed is not None:
+        applied.append("completed")
+    if query.priority:
+        applied.append("priority")
+    if query.labels:
+        applied.append("labels")
+    if query.due_today:
+        applied.append("due_today")
+    if query.due_this_week:
+        applied.append("due_this_week")
+    if query.due_after or query.due_before:
+        applied.append("date_range")
+    return applied
+
+
+def _resolve_todo_date_range(query: TodoListQuery) -> tuple[datetime | None, datetime | None]:
+    """Resolve ``due_today`` / ``due_this_week`` into an explicit date range."""
+    if query.due_today:
+        today = datetime.now(UTC).date()
+        return (
+            datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC),
+            datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC),
+        )
+    if query.due_this_week:
+        start = datetime.now(UTC)
+        return (start, start + timedelta(days=7))
+    return (query.due_after, query.due_before)
+
+
+def _todo_search_params(
+    query: TodoListQuery, due_after: datetime | None, due_before: datetime | None
+) -> TodoSearchParams:
+    return TodoSearchParams(
+        q=query.q,
+        mode=query.mode,
+        project_id=query.project_id,
+        completed=query.completed,
+        priority=query.priority,
+        has_due_date=query.has_due_date,
+        overdue=query.overdue,
+        due_date_start=due_after,
+        due_date_end=due_before,
+        labels=query.labels,
+        page=query.page,
+        per_page=query.per_page,
+        include_stats=query.include_stats,
+    )
+
+
 @router.get("/todos", response_model=TodoListResponse)
 async def list_todos(
-    # Keyword-only: FastAPI binds query parameters by NAME, so the star costs
-    # nothing at the wire and keeps the signature honest about how it is called.
-    *,
-    # Search parameters
-    q: str | None = Query(None, description="Search query"),
-    mode: SearchMode = Query(
-        SearchMode.HYBRID, description="Search mode: text, semantic, or hybrid"
-    ),
-    # Filter parameters
-    project_id: str | None = Query(None),
-    completed: bool | None = Query(None),
-    priority: Priority | None = Query(None),
-    has_due_date: bool | None = Query(None),
-    overdue: bool | None = Query(None),
-    labels: list[str] | None = Query(None),
-    # Date range filters
-    due_after: datetime | None = Query(None, description="Due date after this date"),
-    due_before: datetime | None = Query(None, description="Due date before this date"),
-    # Special date filters
-    due_today: bool = Query(False, description="Only todos due today"),
-    due_this_week: bool = Query(False, description="Only todos due this week"),
-    # Pagination
-    page: int = Query(1, ge=1, le=MAX_PAGE_NUMBER),
-    per_page: int = Query(50, ge=1, le=100),
-    # Options
-    include_stats: bool = Query(False, description="Include statistics in response"),
+    # Bound as a dependency, not Query(): FastAPI does not flatten
+    # query-models through include_router, so a Query()-bound model 422s every
+    # request expecting a JSON body. Depends() binds each field as its own
+    # flattened query param (same wire as the individual Query() params it replaces).
+    query: Annotated[TodoListQuery, Depends()],
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> TodoListResponse:
     """
@@ -132,62 +164,22 @@ async def list_todos(
     - Pagination with metadata
     - Optional statistics
     """
-    filters_applied = []
-    if q:
-        filters_applied.append("query")
-    if project_id:
-        filters_applied.append("project")
-    if completed is not None:
-        filters_applied.append("completed")
-    if priority:
-        filters_applied.append("priority")
-    if labels:
-        filters_applied.append("labels")
-    if due_today:
-        filters_applied.append("due_today")
-    if due_this_week:
-        filters_applied.append("due_this_week")
-    if due_after or due_before:
-        filters_applied.append("date_range")
-
+    filters_applied = _todo_filters_applied(query)
     log.set(
         user={"id": user["user_id"]},
         todo={
             "operation": "list",
-            "search_mode": mode.value,
-            "query": q,
-            "page": page,
-            "per_page": per_page,
+            "search_mode": query.mode.value,
+            "query": query.q,
+            "page": query.page,
+            "per_page": query.per_page,
             "filters_applied": filters_applied,
-            "project_id": project_id,
+            "project_id": query.project_id,
         },
     )
 
-    # Handle special date filters
-    if due_today:
-        today = datetime.now(UTC).date()
-        due_after = datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
-        due_before = datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
-    elif due_this_week:
-        today = datetime.now(UTC)
-        due_after = today
-        due_before = today + timedelta(days=7)
-
-    params = TodoSearchParams(
-        q=q,
-        mode=mode,
-        project_id=project_id,
-        completed=completed,
-        priority=priority,
-        has_due_date=has_due_date,
-        overdue=overdue,
-        due_date_start=due_after,
-        due_date_end=due_before,
-        labels=labels,
-        page=page,
-        per_page=per_page,
-        include_stats=include_stats,
-    )
+    due_after, due_before = _resolve_todo_date_range(query)
+    params = _todo_search_params(query, due_after, due_before)
 
     try:
         result = await TodoService.list_todos(user["user_id"], params)
@@ -360,12 +352,12 @@ async def get_todo(
 async def get_todo_canvas(
     todo_id: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> TodoCanvasResponse:
-    """Return the canvas markdown for a tracked todo."""
+    """Return a tracked todo's notes: canvas.md and activity.md."""
     log.set(user={"id": user["user_id"]}, todo={"operation": "get_canvas", "id": todo_id})
-    content = await read_canvas(todo_id, user["user_id"])
-    if content is None:
+    doc = await todo_repository.get(todo_id, user_id=user["user_id"])
+    if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo not found")
-    return TodoCanvasResponse(content=content)
+    return TodoCanvasResponse(content=doc.canvas_content or "", activity=doc.activity_content or "")
 
 
 @router.put("/todos/{todo_id}", response_model=TodoResponse)

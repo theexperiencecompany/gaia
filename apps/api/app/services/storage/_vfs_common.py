@@ -44,6 +44,11 @@ GUIDE_FILENAME = "GUIDE.md"
 
 READONLY_MODE = 0o444
 RW_MODE = 0o644
+# A projected task folder is read-only too: `sed -i` and rename-based writers
+# never open the 0444 body, they create a sibling and rename over it, which
+# needs write permission on the directory, not the file.
+READONLY_DIR_MODE = 0o555
+RW_DIR_MODE = 0o755
 
 # --- Slug / shortid policy --------------------------------------------------
 
@@ -94,17 +99,16 @@ def hash_meta_only(meta: dict[str, Any]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def hash_body_with_meta(canvas: str, log_text: str, meta: dict[str, Any]) -> str:
-    """sha256 of canvas + log + meta, NUL-separated.
+def hash_body_with_meta(*bodies: str, meta: dict[str, Any]) -> str:
+    """sha256 of each body then meta, NUL-separated.
 
     Used by materializers that project a body bigger than just the
     metadata (currently only ``gaia_tasks_vfs``).
     """
     h = hashlib.sha256()
-    h.update(canvas.encode("utf-8"))
-    h.update(b"\x00")
-    h.update(log_text.encode("utf-8"))
-    h.update(b"\x00")
+    for body in bodies:
+        h.update(body.encode("utf-8"))
+        h.update(b"\x00")
     h.update(json.dumps(meta, sort_keys=True, default=str).encode("utf-8"))
     return h.hexdigest()
 
@@ -170,8 +174,12 @@ def _force_remove(func: Callable[..., Any], path: str, _exc_info: ExcInfo) -> No
 
 
 def remove_tree(path: Path) -> None:
-    """Recursively remove ``path``; tolerate 0444 children. No-op if missing."""
+    """Recursively remove ``path``; tolerate 0444 children and 0555 folders."""
     if path.exists() and path.is_dir():
+        path.chmod(RW_DIR_MODE)
+        for child in path.rglob("*"):
+            if child.is_dir():
+                child.chmod(RW_DIR_MODE)
         shutil.rmtree(path, onerror=_force_remove)
 
 

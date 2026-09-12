@@ -17,7 +17,7 @@ from datetime import UTC, datetime, timedelta
 from app.agents.workspace.system_docs import GAIA_TASKS_GUIDE_MD
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoDocument
-from app.services._vfs_scheduler import make_scheduler, run_hashed_sync
+from app.services._vfs_scheduler import HashedSyncSpec, make_scheduler, run_hashed_sync
 from app.services.storage.gaia_tasks_vfs import (
     GaiaTaskProjection,
     gaia_tasks_marker_path,
@@ -38,13 +38,15 @@ async def sync_user_gaia_tasks(user_id: str) -> int:
     """
     return await run_hashed_sync(
         user_id,
-        fs_op=FsOps.SYNC_GAIA_TASKS_VFS,
-        fetch_fn=_fetch_active_projections,
-        per_doc_sig_fn=per_doc_signature,
-        materialize_fn=materialize_gaia_tasks,
-        guide_md=GAIA_TASKS_GUIDE_MD,
-        catalog_marker_path_fn=gaia_tasks_marker_path,
-        log_name="gaia_tasks_vfs",
+        HashedSyncSpec[GaiaTaskProjection](
+            fs_op=FsOps.SYNC_GAIA_TASKS_VFS,
+            fetch_fn=fetch_active_projections,
+            per_doc_sig_fn=per_doc_signature,
+            materialize_fn=materialize_gaia_tasks,
+            guide_md=GAIA_TASKS_GUIDE_MD,
+            catalog_marker_path_fn=gaia_tasks_marker_path,
+            log_name="gaia_tasks_vfs",
+        ),
     )
 
 
@@ -53,7 +55,7 @@ async def sync_user_gaia_tasks(user_id: str) -> int:
 schedule_gaia_tasks_sync = make_scheduler(sync_user_gaia_tasks, log_name="gaia_tasks_vfs")
 
 
-async def _fetch_active_projections(user_id: str) -> list[GaiaTaskProjection]:
+async def fetch_active_projections(user_id: str) -> list[GaiaTaskProjection]:
     """Pull the user's active gaia-tasks from Mongo.
 
     Filter: carries the ``gaia-tracked`` label AND (open OR completed
@@ -61,14 +63,15 @@ async def _fetch_active_projections(user_id: str) -> list[GaiaTaskProjection]:
     """
     cutoff = datetime.now(UTC) - timedelta(days=ACTIVE_WINDOW_DAYS)
     docs = await todo_repository.list_active_gaia_tracked_since(user_id, completed_since=cutoff)
-    return [_project(doc) for doc in docs]
+    return [project_gaia_task(doc) for doc in docs]
 
 
-def _project(doc: TodoDocument) -> GaiaTaskProjection:
+def project_gaia_task(doc: TodoDocument) -> GaiaTaskProjection:
     """``TodoDocument`` → ``GaiaTaskProjection`` (preserve every field the agent uses)."""
     return {
         "id": doc.id,
         "canvas": doc.canvas_content or "",
+        "activity": doc.activity_content or "",
         "log": doc.log_content or "",
         "meta": {
             "title": doc.title,

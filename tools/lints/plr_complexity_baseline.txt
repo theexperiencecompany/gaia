@@ -15,10 +15,8 @@ apps/api/app/agents/middleware/runtime_adapter.py	PLR0913
 apps/api/app/agents/skills/parser.py	PLR0912
 apps/api/app/agents/tools/coding/_artifacts.py	PLR0913
 apps/api/app/agents/tools/coding/_filter.py	PLR0913
-apps/api/app/agents/tools/coding/edit_tool.py	PLR0913
 apps/api/app/agents/tools/coding/query_json_tool.py	PLR0911
 apps/api/app/agents/tools/coding/query_json_tool.py	PLR0913
-apps/api/app/agents/tools/coding/read_tool.py	PLR0911
 apps/api/app/agents/tools/core/mutations.py	PLR0913
 apps/api/app/agents/tools/core/retrieval.py	PLR0912
 apps/api/app/agents/tools/core/retrieval.py	PLR0913
@@ -45,8 +43,6 @@ apps/api/app/api/v1/endpoints/oauth.py	PLR0911
 apps/api/app/api/v1/endpoints/platform_auth.py	PLR0911
 apps/api/app/api/v1/endpoints/platform_auth.py	PLR0912
 apps/api/app/api/v1/endpoints/platform_auth.py	PLR0913
-apps/api/app/api/v1/endpoints/todos.py	PLR0912
-apps/api/app/api/v1/endpoints/todos.py	PLR0913
 apps/api/app/core/lazy_loader.py	PLR0912
 apps/api/app/core/lazy_loader.py	PLR0913
 apps/api/app/db/chroma/chroma_store.py	PLR0912
@@ -59,7 +55,6 @@ apps/api/app/memory/ingestion.py	PLR0915
 apps/api/app/memory/pg_store/graph.py	PLR0912
 apps/api/app/memory/reconciliation.py	PLR0912
 apps/api/app/patches/langchain_merge_dicts_model_name_patch.py	PLR0912
-apps/api/app/services/_vfs_scheduler.py	PLR0913
 apps/api/app/services/chat/chunks.py	PLR0913
 apps/api/app/services/chat/persistence.py	PLR0913
 apps/api/app/services/composio/proxy_client.py	PLR0913

@@ -1,6 +1,6 @@
 """Shared orchestration for VFS sync glue modules.
 
-The two glue modules (``gaia_tasks_fs``, ``user_todos_fs``) share two
+The glue modules (``gaia_tasks_fs``, ``user_todos_fs``, ``memory_fs``) share two
 distinct patterns:
 
 * **Hash-gated sync**: bail on missing mount, fetch active docs from
@@ -13,10 +13,10 @@ distinct patterns:
   a reference so the task isn't garbage-collected, and never raises
   into the caller. Implemented by :func:`make_scheduler`.
 
-Both helpers are deliberately small. They exist to make the two glue
-modules read top-down and identical in shape — if a third VFS area
-(``/workspace/memory/`` for semantic memory, say) gets added later it
-slots in by providing the same five callbacks.
+Both helpers are deliberately small. They exist to make the glue
+modules read top-down and identical in shape — if another VFS area
+gets added later it slots in by providing the same spec
+(:class:`HashedSyncSpec`).
 """
 
 from __future__ import annotations
@@ -24,8 +24,9 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 import contextlib
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Generic, TypeVar
 
 from app.services.storage._vfs_common import (
     catalog_signature,
@@ -45,17 +46,27 @@ from shared.py.wide_events import UserContext, log, wide_task
 ProjectionT = TypeVar("ProjectionT", bound=Mapping[str, Any])
 
 
-async def run_hashed_sync(
-    user_id: str,
-    *,
-    fs_op: str,
-    fetch_fn: Callable[[str], Awaitable[list[ProjectionT]]],
-    per_doc_sig_fn: Callable[[ProjectionT], str],
-    materialize_fn: Callable[[Path, list[ProjectionT], str], int],
-    guide_md: str,
-    catalog_marker_path_fn: Callable[[Path], Path],
-    log_name: str,
-) -> int:
+@dataclass(frozen=True)
+class HashedSyncSpec(Generic[ProjectionT]):
+    """The per-area inputs for :func:`run_hashed_sync`.
+
+    One value groups the fetch/hash/materialize callbacks with the area's
+    fs-op, guide doc, marker path, and log name — the pieces every VFS area
+    (gaia-tasks, user todos, memory) provides together. Grouping them keeps
+    the sync entry point to ``(user_id, spec)`` instead of an 8-argument
+    call that grows with every new area concern.
+    """
+
+    fs_op: str
+    fetch_fn: Callable[[str], Awaitable[list[ProjectionT]]]
+    per_doc_sig_fn: Callable[[ProjectionT], str]
+    materialize_fn: Callable[[Path, list[ProjectionT], str], int]
+    guide_md: str
+    catalog_marker_path_fn: Callable[[Path], Path]
+    log_name: str
+
+
+async def run_hashed_sync(user_id: str, spec: HashedSyncSpec[ProjectionT]) -> int:
     """Run a hash-gated VFS sync for ``user_id``.
 
     Returns the number of doc bodies rewritten. ``0`` means either the
@@ -74,17 +85,17 @@ async def run_hashed_sync(
     """
     if not _is_mounted():
         return 0
-    async with fs_timer(fs_op):
-        docs = await fetch_fn(user_id)
-        per_doc = {d["id"]: per_doc_sig_fn(d) for d in docs}
+    async with fs_timer(spec.fs_op):
+        docs = await spec.fetch_fn(user_id)
+        per_doc = {d["id"]: spec.per_doc_sig_fn(d) for d in docs}
         expected = catalog_signature(per_doc)
         u_root = user_workspace_path(user_id)
-        marker_path = catalog_marker_path_fn(u_root)
+        marker_path = spec.catalog_marker_path_fn(u_root)
         if read_marker(marker_path) == expected:
             return 0
-        written = await asyncio.to_thread(materialize_fn, u_root, docs, guide_md)
+        written = await asyncio.to_thread(spec.materialize_fn, u_root, docs, spec.guide_md)
         write_marker(marker_path, expected)
-        log.set(vfs_sync={"name": log_name, "written": written, "total": len(docs)})
+        log.set(vfs_sync={"name": spec.log_name, "written": written, "total": len(docs)})
         return written
 
 
@@ -105,7 +116,15 @@ def make_scheduler(
       — fire-and-forget MUST NOT crash the host coroutine.
     * Spawns via ``spawn_background_task`` so tasks aren't
       garbage-collected mid-flight.
+    * Runs at most one sync per user at a time. Each sync fetches its own
+      Mongo snapshot, so two in flight can finish in the wrong order and
+      leave the older snapshot on disk (marker included) until some later
+      write. A schedule that lands mid-flight marks the user dirty and the
+      running task re-syncs once more with a fresh snapshot; a burst of
+      writes therefore costs two syncs, not one per write.
     """
+    in_flight: set[str] = set()
+    dirty: set[str] = set()
 
     async def _safe(user_id: str) -> None:
         # Own ``wide_task`` scope: this body runs in a fire-and-forget task with
@@ -116,6 +135,18 @@ def make_scheduler(
             async with wide_task(log_name, user=UserContext(id=user_id)):
                 await sync_fn(user_id)
 
+    async def _drain(user_id: str) -> None:
+        try:
+            while True:
+                dirty.discard(user_id)
+                await _safe(user_id)
+                # No await between this check and the ``finally``: a schedule()
+                # that arrives after the loop exits sees the user idle and spawns.
+                if user_id not in dirty:
+                    return
+        finally:
+            in_flight.discard(user_id)
+
     def schedule(user_id: str) -> None:
         if not _is_mounted():
             return
@@ -123,6 +154,10 @@ def make_scheduler(
             asyncio.get_running_loop()
         except RuntimeError:
             return
-        spawn_background_task(_safe(user_id))
+        if user_id in in_flight:
+            dirty.add(user_id)
+            return
+        in_flight.add(user_id)
+        spawn_background_task(_drain(user_id))
 
     return schedule

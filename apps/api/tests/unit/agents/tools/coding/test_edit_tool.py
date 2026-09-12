@@ -28,6 +28,8 @@ import pytest
 from app.agents.tools.coding.edit_tool import (
     MAX_FILE_BYTES,
     MAX_PATCH_BYTES,
+    EditPatch,
+    EditTarget,
     _do_edit,
     _read_editable_content,
     edit,
@@ -48,6 +50,20 @@ CONFIG: dict[str, Any] = {
 
 ABS_PATH = "/workspace/sessions/conv-1/scratch/app.py"
 MTIME = 1_700_000_000.0
+
+
+def _target(abs_path: str = ABS_PATH, session_id: str | None = SESSION_ID) -> EditTarget:
+    return EditTarget(
+        user_id=USER_ID,
+        abs_path=abs_path,
+        role=MountRole.SCRATCH,
+        role_conv=SESSION_ID if session_id is not None else None,
+        session_id=session_id,
+    )
+
+
+def _patch(old_string: str, new_string: str, replace_all: bool = False) -> EditPatch:
+    return EditPatch(old_string=old_string, new_string=new_string, replace_all=replace_all)
 
 
 @pytest.fixture(autouse=True)
@@ -158,14 +174,8 @@ async def test_do_edit_single_occurrence_replaces_with_exact_payloads() -> None:
     ):
         out = await _do_edit(
             sbx,
-            user_id=USER_ID,
-            abs_path=ABS_PATH,
-            role=MountRole.SCRATCH,
-            role_conv=SESSION_ID,
-            old_string="return 1",
-            new_string="return 2",
-            replace_all=False,
-            session_id=SESSION_ID,
+            _target(),
+            _patch("return 1", "return 2"),
         )
 
     assert out == "Edited /workspace/sessions/conv-1/scratch/app.py (1 occurrence replaced)"
@@ -188,17 +198,7 @@ async def test_do_edit_single_occurrence_replaces_with_exact_payloads() -> None:
 
 async def test_do_edit_replace_all_replaces_every_occurrence() -> None:
     async with _do_edit_env(b"a b a c a") as (sbx, mock_atomic, mock_emit, mock_publish):
-        out = await _do_edit(
-            sbx,
-            user_id=USER_ID,
-            abs_path=ABS_PATH,
-            role=MountRole.SCRATCH,
-            role_conv=SESSION_ID,
-            old_string="a",
-            new_string="X",
-            replace_all=True,
-            session_id=SESSION_ID,
-        )
+        out = await _do_edit(sbx, _target(), _patch("a", "X", replace_all=True))
 
     assert out == "Edited /workspace/sessions/conv-1/scratch/app.py (3 occurrences replaced)"
     mock_atomic.assert_awaited_once_with(sbx, ABS_PATH, b"X b X c X")
@@ -220,17 +220,7 @@ async def test_do_edit_replace_all_replaces_every_occurrence() -> None:
 
 async def test_do_edit_multiple_occurrences_without_replace_all_is_ambiguous() -> None:
     async with _do_edit_env(b"a b a") as (sbx, mock_atomic, mock_emit, mock_publish):
-        out = await _do_edit(
-            sbx,
-            user_id=USER_ID,
-            abs_path=ABS_PATH,
-            role=MountRole.SCRATCH,
-            role_conv=SESSION_ID,
-            old_string="a",
-            new_string="X",
-            replace_all=False,
-            session_id=SESSION_ID,
-        )
+        out = await _do_edit(sbx, _target(), _patch("a", "X"))
 
     assert out == (
         "Error: old_string appears 2 times. "
@@ -243,17 +233,7 @@ async def test_do_edit_multiple_occurrences_without_replace_all_is_ambiguous() -
 
 async def test_do_edit_old_string_not_found_is_clean_error() -> None:
     async with _do_edit_env(b"hello") as (sbx, mock_atomic, mock_emit, mock_publish):
-        out = await _do_edit(
-            sbx,
-            user_id=USER_ID,
-            abs_path=ABS_PATH,
-            role=MountRole.SCRATCH,
-            role_conv=SESSION_ID,
-            old_string="nope",
-            new_string="X",
-            replace_all=False,
-            session_id=SESSION_ID,
-        )
+        out = await _do_edit(sbx, _target(), _patch("nope", "X"))
 
     assert out == "Error: old_string not found in file"
     mock_atomic.assert_not_awaited()
@@ -268,17 +248,7 @@ async def test_do_edit_read_failure_aborts_before_any_write() -> None:
         mock_emit,
         mock_publish,
     ):
-        out = await _do_edit(
-            sbx,
-            user_id=USER_ID,
-            abs_path="/workspace/missing.txt",
-            role=MountRole.SCRATCH,
-            role_conv=SESSION_ID,
-            old_string="x",
-            new_string="y",
-            replace_all=False,
-            session_id=SESSION_ID,
-        )
+        out = await _do_edit(sbx, _target(abs_path="/workspace/missing.txt"), _patch("x", "y"))
 
     assert out == "Error: file not found at /workspace/missing.txt"
     mock_atomic.assert_not_awaited()
@@ -290,17 +260,7 @@ async def test_do_edit_size_counts_bytes_not_characters() -> None:
     # "coffee☕" is 7 characters but 9 UTF-8 bytes; the reported size must be
     # the byte count (what the artifact watcher keys on), not len(content).
     async with _do_edit_env("café".encode()) as (sbx, mock_atomic, mock_emit, mock_publish):
-        out = await _do_edit(
-            sbx,
-            user_id=USER_ID,
-            abs_path=ABS_PATH,
-            role=MountRole.SCRATCH,
-            role_conv=SESSION_ID,
-            old_string="café",
-            new_string="coffee☕",
-            replace_all=False,
-            session_id=SESSION_ID,
-        )
+        out = await _do_edit(sbx, _target(), _patch("café", "coffee☕"))
 
     assert out == "Edited /workspace/sessions/conv-1/scratch/app.py (1 occurrence replaced)"
     mock_atomic.assert_awaited_once_with(sbx, ABS_PATH, b"coffee\xe2\x98\x95")
@@ -323,15 +283,7 @@ async def test_do_edit_size_counts_bytes_not_characters() -> None:
 async def test_do_edit_without_session_id_emits_unstamped_event() -> None:
     async with _do_edit_env(b"x = 1") as (sbx, mock_atomic, mock_emit, mock_publish):
         out = await _do_edit(
-            sbx,
-            user_id=USER_ID,
-            abs_path="/workspace/scratch/x.py",
-            role=MountRole.SCRATCH,
-            role_conv=None,
-            old_string="1",
-            new_string="2",
-            replace_all=False,
-            session_id=None,
+            sbx, _target(abs_path="/workspace/scratch/x.py", session_id=None), _patch("1", "2")
         )
 
     assert out == "Edited /workspace/scratch/x.py (1 occurrence replaced)"

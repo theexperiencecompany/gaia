@@ -37,6 +37,8 @@ from app.services.storage._vfs_common import (
     GUIDE_FILENAME,
     INDEX_FILENAME,
     META_FILENAME,
+    READONLY_DIR_MODE,
+    RW_DIR_MODE,
     folder_name as common_folder_name,
     hash_body_with_meta,
     meta_body,
@@ -61,6 +63,7 @@ GAIA_TASKS_DIRNAME = "gaia-tasks"
 GAIA_TASKS_MARKER = ".gaia/gaia-tasks.v"
 GAIA_TASKS_PER_DOC_MARKER_DIR = ".gaia/gaia-tasks"
 CANVAS_FILENAME = "canvas.md"
+ACTIVITY_FILENAME = "activity.md"
 LOG_FILENAME = "log.md"
 
 # --- Legacy paths (one-shot migration from the prior release) ---------------
@@ -75,18 +78,19 @@ class GaiaTaskProjection(TypedDict):
 
     id: str
     canvas: str
+    activity: str
     log: str
     meta: dict[str, Any]
 
 
 # ====================================================================
-# signatures (per-doc body shape is canvas + log + meta)
+# signatures (per-doc body shape is canvas + activity + log + meta)
 # ====================================================================
 
 
 def per_doc_signature(doc: GaiaTaskProjection) -> str:
-    """sha256 of canvas + log + serialized meta — gates per-folder rewrite."""
-    return hash_body_with_meta(doc["canvas"], doc["log"], doc["meta"])
+    """sha256 of canvas + activity + log + serialized meta — gates per-folder rewrite."""
+    return hash_body_with_meta(doc["canvas"], doc["activity"], doc["log"], meta=doc["meta"])
 
 
 # ====================================================================
@@ -165,7 +169,8 @@ def _folder_name(doc: GaiaTaskProjection) -> str:
     return common_folder_name(doc["id"], doc["meta"].get("title"))
 
 
-def _index_lines(docs: list[GaiaTaskProjection]) -> str:
+def render_index(docs: list[GaiaTaskProjection]) -> str:
+    """The generated ``index.md`` body: one line per task, newest-updated first."""
     header = (
         "<!-- Generated index of active gaia-tasks. Sorted by "
         "last-updated, newest first. Do not edit — regenerated on every "
@@ -202,7 +207,7 @@ def materialize_gaia_tasks(user_root: Path, docs: list[GaiaTaskProjection], guid
     written, expected_folders = _write_changed_docs(user_root, tasks_root, docs)
     _remove_stale_folders(tasks_root, expected_folders)
     prune_per_doc_markers(gaia_tasks_per_doc_dir(user_root), {d["id"] for d in docs})
-    write_rw_body(tasks_root / INDEX_FILENAME, _index_lines(docs))
+    write_rw_body(tasks_root / INDEX_FILENAME, render_index(docs))
     return written
 
 
@@ -223,9 +228,12 @@ def _write_changed_docs(
             continue
 
         folder.mkdir(parents=True, exist_ok=True)
+        folder.chmod(RW_DIR_MODE)
         write_readonly_body(folder / CANVAS_FILENAME, doc["canvas"])
+        write_readonly_body(folder / ACTIVITY_FILENAME, doc["activity"])
         write_readonly_body(folder / LOG_FILENAME, doc["log"])
         write_readonly_body(folder / META_FILENAME, meta_body(doc["meta"]))
+        folder.chmod(READONLY_DIR_MODE)
         write_marker(marker_path, sig)
         written += 1
     return written, expected

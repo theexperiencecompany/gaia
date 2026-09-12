@@ -10,7 +10,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api/service", () => ({
-  apiService: { get: vi.fn().mockResolvedValue({ content: "# canvas" }) },
+  apiService: {
+    get: vi.fn().mockResolvedValue({ content: "# canvas", activity: "- ran" }),
+  },
 }));
 
 import { TODO_ENDPOINTS } from "@shared/api/todosApi";
@@ -36,8 +38,9 @@ describe("getTodoCanvas", () => {
     });
   });
 
-  it("returns the canvas content", async () => {
+  it("returns both notes files", async () => {
     const res = await getTodoCanvas("todo-1");
     expect(res.content).toBe("# canvas");
+    expect(res.activity).toBe("- ran");
   });
 });

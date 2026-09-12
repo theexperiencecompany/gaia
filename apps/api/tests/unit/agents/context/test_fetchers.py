@@ -445,22 +445,26 @@ class TestWorkspaceSessionBanner:
 class TestActiveTodoBanner:
     async def test_it_states_the_binding_the_write_target_and_the_escape_hatch(self) -> None:
         """Every line here is an instruction the agent acts on: which todo the
-        run is bound to, that the canvas is the default write target, the exact
-        tool call to make, and that another todo needs an explicit id. Asserting
-        two substrings left the rest free to rot into nonsense unnoticed."""
-        todo = TodoDocument(id="todo-7", user_id="user1", title="Ship the refactor")
+        run is bound to, the exact file paths that are its default write target,
+        what goes in which file, and that another todo needs an explicit id.
+        Asserting two substrings left the rest free to rot into nonsense unnoticed."""
+        todo = TodoDocument(
+            id="66f838cc8829054e5f10e407", user_id="user1", title="Ship the refactor"
+        )
         with patch("app.db.repositories.todos.todo_repository.get", AsyncMock(return_value=todo)):
-            banner = await build_active_todo_banner(ctx(active_todo_id="todo-7"))
+            banner = await build_active_todo_banner(ctx(active_todo_id=todo.id))
 
         assert banner == format_active_todo_banner(todo)
         assert banner == (
             "🎯 ACTIVE TODO (this run is bound to this todo)\n"
-            "   id: todo-7\n"
+            "   id: 66f838cc8829054e5f10e407\n"
             "   title: Ship the refactor\n"
+            "   files: /workspace/gaia-tasks/ship-the-refactor-5f10e407/canvas.md, "
+            "/workspace/gaia-tasks/ship-the-refactor-5f10e407/activity.md\n"
             "\n"
-            "   Default write target for this turn: this todo's canvas.\n"
-            '   - Use `update_tracked_todo_canvas(todo_id="todo-7", ...)` for any progress, '
-            "outcome, or learning from this run.\n"
+            "   Default write target for this turn: this todo's files.\n"
+            "   - Read canvas.md first. Record progress and outcomes as a dated entry at the end "
+            "of activity.md; keep Current State in canvas.md true; learnings go in canvas.md.\n"
             "   - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this "
             "todo (rare).\n"
             "   - To work on a different todo, you must reference it explicitly by id."

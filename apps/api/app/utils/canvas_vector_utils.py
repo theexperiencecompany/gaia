@@ -32,6 +32,7 @@ async def store_canvas_embedding(
     user_id: str,
     title: str = "",
     labels: list[str] | None = None,
+    revision: str | None = None,
 ) -> bool:
     """Index canvas content in ChromaDB for semantic search."""
     try:
@@ -48,6 +49,8 @@ async def store_canvas_embedding(
         }
         if labels:
             metadata["labels"] = ", ".join(labels)
+        if revision is not None:
+            metadata["revision"] = revision
 
         await chroma_collection.aadd_texts(
             texts=[canvas_content],
@@ -72,10 +75,12 @@ async def update_canvas_embedding(
     user_id: str,
     title: str = "",
     labels: list[str] | None = None,
+    revision: str | None = None,
 ) -> bool:
     """Re-index canvas content after update, preserving completed status."""
     # Preserve completed metadata before deleting the old embedding
     was_completed = False
+    stored_revision: str | None = None
     try:
         raw_client = await ChromaClient.get_client()
         collection = await raw_client.get_collection(COLLECTION_NAME)
@@ -83,11 +88,18 @@ async def update_canvas_embedding(
         metadatas = existing.get("metadatas") if existing else None
         if metadatas and metadatas[0]:
             was_completed = bool(metadatas[0].get("completed", False))
+            raw_revision = metadatas[0].get("revision")
+            stored_revision = str(raw_revision) if raw_revision is not None else None
     except Exception as e:
         log.debug("canvas.preserve_completed_metadata_failed", todo_id=todo_id, error=str(e))
 
+    if revision is not None and stored_revision is not None and stored_revision >= revision:
+        return True
+
     await delete_canvas_embedding(todo_id)
-    result = await store_canvas_embedding(todo_id, canvas_content, user_id, title, labels)
+    result = await store_canvas_embedding(
+        todo_id, canvas_content, user_id, title, labels, revision=revision
+    )
 
     # Restore completed status if the todo was previously completed
     if result and was_completed:

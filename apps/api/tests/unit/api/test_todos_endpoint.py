@@ -143,3 +143,48 @@ class TestTodoAnalytics:
             AnalyticsEvents.TODO_TOGGLED,
             {"is_subtask": True, "completed": True},
         )
+
+
+class TestTodoCanvas:
+    async def test_returns_canvas_and_activity(self, client: AsyncClient) -> None:
+        doc = TodoDocument(
+            id="todo-1",
+            user_id="507f1f77bcf86cd799439011",
+            title="Fix the thing",
+            canvas_content="# Fix the thing",
+            activity_content="- 2026-09-01T09:00:00+00:00 started",
+        )
+        with patch(
+            "app.services.todo_canvas_storage.todo_repository.get",
+            new_callable=AsyncMock,
+            return_value=doc,
+        ):
+            resp = await client.get("/api/v1/todos/todo-1/canvas")
+
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "content": "# Fix the thing",
+            "activity": "- 2026-09-01T09:00:00+00:00 started",
+        }
+
+    async def test_unset_bodies_read_as_empty(self, client: AsyncClient) -> None:
+        doc = TodoDocument(id="todo-1", user_id="507f1f77bcf86cd799439011", title="t")
+        with patch(
+            "app.services.todo_canvas_storage.todo_repository.get",
+            new_callable=AsyncMock,
+            return_value=doc,
+        ):
+            resp = await client.get("/api/v1/todos/todo-1/canvas")
+
+        assert resp.json() == {"content": "", "activity": ""}
+
+    async def test_missing_todo_is_404(self, client: AsyncClient) -> None:
+        with patch(
+            "app.services.todo_canvas_storage.todo_repository.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            resp = await client.get("/api/v1/todos/todo-1/canvas")
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Todo not found"

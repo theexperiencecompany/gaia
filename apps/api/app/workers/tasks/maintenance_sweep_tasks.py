@@ -33,6 +33,9 @@ from shared.py.wide_events import log
 DORMANT_DAYS = 5
 WAITING_LABEL_MAX_DAYS = 8
 MAX_HEALTH_CHECKS_PER_USER = 10  # Max agent health-check calls per user per sweep
+# Legacy-migration page size: the cursor loop pages to a short page, so the
+# scan is complete no matter how many tracked todos exist.
+_MIGRATION_PAGE_SIZE = 200
 
 # A health-check prompt is carried by MessageRequestWithHistory, whose `message`
 # field pydantic caps at MAX_MESSAGE_LENGTH. One user's oversized canvas raised
@@ -76,7 +79,9 @@ async def maintenance_sweep_tracked_todos(_ctx: dict[str, Any]) -> str:
 
     pool = await RedisPoolManager.get_pool()
 
-    expired, overdue, dormant = await _classify_tracked_todos(pool, now)
+    todos = await todo_repository.list_active_tracked_all_users(limit=200)
+    migrated = await _migrate_all_legacy_canvases()
+    expired, overdue, dormant = await _classify_tracked_todos(pool, now, todos)
 
     # Track health-check calls per user to cap LLM usage per sweep
     health_checks_used: dict[str, int] = {}
@@ -100,6 +105,7 @@ async def maintenance_sweep_tracked_todos(_ctx: dict[str, Any]) -> str:
         f"digest_items:{len(needs_attention_todos)}"
     )
     log.set(
+        migrated_canvases=migrated,
         archived=archived,
         notified_expired=notified_expired,
         notified_overdue=notified_overdue,
@@ -117,16 +123,51 @@ async def maintenance_sweep_tracked_todos(_ctx: dict[str, Any]) -> str:
     return summary
 
 
+async def _migrate_all_legacy_canvases() -> int:
+    """Cursor every tracked todo — active or completed — through the one-shot
+    canvas → activity split. The tier classification keeps its own active-only
+    scan; this loop exists so no legacy canvas is skipped by the cap or the
+    active-only filter. Migration is idempotent, so re-scans are safe."""
+    migrated = 0
+    after_id: str | None = None
+    while True:
+        page = await todo_repository.list_tracked_for_legacy_migration(
+            limit=_MIGRATION_PAGE_SIZE, after_id=after_id
+        )
+        if not page:
+            break
+        migrated += await _migrate_legacy_canvases(page)
+        if len(page) < _MIGRATION_PAGE_SIZE:
+            break
+        after_id = page[-1].id
+    return migrated
+
+
+async def _migrate_legacy_canvases(todos: list[TodoDocument]) -> int:
+    """Offer every scanned todo to the one-shot canvas → activity split."""
+    migrated = 0
+    for todo in todos:
+        try:
+            if await tracked_todo_service.migrate_legacy_canvas(todo):
+                migrated += 1
+        except Exception as exc:
+            log.warning(
+                "maintenance_sweep.legacy_canvas_migration_failed",
+                todo_id=todo.id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+    return migrated
+
+
 async def _classify_tracked_todos(
-    pool: ArqRedis, now: datetime
+    pool: ArqRedis, now: datetime, todos: list[TodoDocument]
 ) -> tuple[list[TodoDocument], list[TodoDocument], list[TodoDocument]]:
-    """Scan active tracked todos and bucket them into expired/overdue/dormant tiers.
+    """Bucket active tracked todos into expired/overdue/dormant tiers.
 
     Todos still inside their notification backoff are skipped. Each tier is capped
     at 20 entries per sweep.
     """
-    todos = await todo_repository.list_active_tracked_all_users(limit=200)
-
     expired: list[TodoDocument] = []
     overdue: list[TodoDocument] = []
     dormant: list[TodoDocument] = []

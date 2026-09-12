@@ -1,7 +1,7 @@
 """Unit tests for app.workers.tasks.tracked_todo_tasks.
 
 The ARQ side of tracked todos: the lock-guarded entrypoint, the retry/backoff
-ladder, the recurrence re-enqueue, the agent execution path (canvas timeline
+ladder, the recurrence re-enqueue, the agent execution path (activity.md
 markers), and the orphan safety net.
 
 The bug these tests pin down: ``scheduled_at`` was only ever moved forward for a
@@ -24,7 +24,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.agents.prompts.todo_prompts import TRIGGERED_RELEVANCE_GUIDANCE
-from app.constants.todos import FAILED_LABEL
+from app.constants.todos import ACTIVITY_PROMPT_TAIL_CHARS, FAILED_LABEL
 from app.models.agent_models import SilentRunResult
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
@@ -786,7 +786,7 @@ class TestExtractLearnings:
     def test_handles_learnings_as_the_very_first_line(self):
         canvas = "## Learnings\n- first-line lesson\n\n## Context\nc"
         result = _extract_learnings(canvas)
-        assert result == "## Learnings\n- first-line lesson\n"
+        assert result == "## Learnings\n- first-line lesson"
 
 
 # ---------------------------------------------------------------------------
@@ -882,7 +882,11 @@ class TestBuildExecutionPrompt:
     def test_title_only(self):
         assert (
             _build_execution_prompt(
-                title="Ship it", description="", canvas_content=None, reference_context=""
+                title="Ship it",
+                description="",
+                canvas_content=None,
+                activity_content=None,
+                reference_context="",
             )
             == "Execute the following scheduled task: Ship it"
         )
@@ -892,20 +896,51 @@ class TestBuildExecutionPrompt:
             title="Ship it",
             description="the release",
             canvas_content="## Current State\nblocked",
+            activity_content="- 2026-09-01T09:00:00+00:00 started",
             reference_context="past stuff",
         )
         assert prompt.split("\n\n") == [
             "Execute the following scheduled task: Ship it",
             "Details: the release",
-            "Canvas context:\n## Current State\nblocked",
+            "Canvas (canvas.md):\n## Current State\nblocked",
+            "Recent activity (activity.md):\n- 2026-09-01T09:00:00+00:00 started",
             "past stuff",
         ]
 
-    def test_empty_canvas_string_is_omitted_not_rendered_as_an_empty_header(self):
+    def test_empty_bodies_are_omitted_not_rendered_as_empty_headers(self):
         prompt = _build_execution_prompt(
-            title="Ship it", description="", canvas_content="", reference_context=""
+            title="Ship it",
+            description="",
+            canvas_content="",
+            activity_content="",
+            reference_context="",
         )
-        assert "Canvas context" not in prompt
+        assert "canvas.md" not in prompt and "activity.md" not in prompt
+
+    def test_long_activity_is_tail_truncated_and_says_so(self):
+        """A recurring todo's activity grows forever; the prompt must not."""
+        activity = "\n".join(f"- entry {i}" for i in range(2000))
+        prompt = _build_execution_prompt(
+            title="Ship it",
+            description="",
+            canvas_content=None,
+            activity_content=activity,
+            reference_context="",
+        )
+        assert "- entry 1999" in prompt
+        assert "- entry 0\n" not in prompt
+        assert "older entries omitted" in prompt
+        assert len(prompt) < ACTIVITY_PROMPT_TAIL_CHARS + 300
+
+    def test_short_activity_is_not_flagged_as_truncated(self):
+        prompt = _build_execution_prompt(
+            title="Ship it",
+            description="",
+            canvas_content=None,
+            activity_content="- one line",
+            reference_context="",
+        )
+        assert "older entries omitted" not in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -930,7 +965,8 @@ class TestExecuteViaAgent:
         return (
             patch(f"{MODULE}.call_agent_silent", agent),
             patch(f"{MODULE}.read_canvas", read),
-            patch(f"{MODULE}.tracked_todo_service.append_canvas_timeline", self.timeline),
+            patch(f"{MODULE}.read_activity", AsyncMock(return_value="- earlier run")),
+            patch(f"{MODULE}.tracked_todo_service.append_activity_entry", self.timeline),
             patch(f"{MODULE}._collect_reference_context", AsyncMock(return_value="")),
         )
 
@@ -941,15 +977,14 @@ class TestExecuteViaAgent:
         agent = AsyncMock(
             return_value=SilentRunResult(message="Deploy verified.\nAll green.", tool_data={})
         )
-        p1, p2, p3, p4 = self._patches(agent=agent)
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5:
             result = await _execute_via_agent(_doc(), "user-1", user_data={"user_id": "user-1"})
 
         assert result == "Deploy verified.\nAll green."
         start, end = self._entries()
-        assert start.startswith("▶ ")
-        assert "scheduled run started (conversation_id=" in start
-        assert end.startswith("✓ ")
+        assert " ▶ scheduled run started (conversation_id=" in start
+        assert " ✓ scheduled run finished" in end
         assert "summary='Deploy verified. All green.'" in end
 
     async def test_a_queued_dispatch_is_not_a_finished_run(self):
@@ -964,14 +999,14 @@ class TestExecuteViaAgent:
                 queued_task_id="task-9",
             )
         )
-        p1, p2, p3, p4 = self._patches(agent=agent)
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5:
             result = await _execute_via_agent(_doc(), "user-1", user_data={"user_id": "user-1"})
 
         assert result == ""
         start, end = self._entries()
-        assert start.startswith("▶ ")
-        assert not end.startswith("✓ ")
+        assert " ▶ " in start
+        assert " ✓ " not in end
         assert "queued" in end and "task-9" in end
 
     async def test_the_queued_marker_names_the_todo_the_user_and_the_queued_task(self):
@@ -981,7 +1016,7 @@ class TestExecuteViaAgent:
         blanked from either is the whole finding."""
         recorded: list[dict[str, str]] = []
 
-        # append_canvas_timeline's real signature, so an argument the branch stops
+        # append_activity_entry's real signature, so an argument the branch stops
         # passing is a TypeError here rather than a quietly thinner call.
         async def timeline(todo_id: str, user_id: str, entry: str) -> bool:
             recorded.append({"todo_id": todo_id, "user_id": user_id, "entry": entry})
@@ -995,7 +1030,8 @@ class TestExecuteViaAgent:
         with (
             patch(f"{MODULE}.call_agent_silent", agent),
             patch(f"{MODULE}.read_canvas", AsyncMock(return_value="")),
-            patch(f"{MODULE}.tracked_todo_service.append_canvas_timeline", timeline),
+            patch(f"{MODULE}.read_activity", AsyncMock(return_value="")),
+            patch(f"{MODULE}.tracked_todo_service.append_activity_entry", timeline),
             patch(f"{MODULE}._collect_reference_context", AsyncMock(return_value="")),
             patch(f"{MODULE}.log") as log_mock,
         ):
@@ -1007,9 +1043,9 @@ class TestExecuteViaAgent:
         queued = recorded[1]
         assert queued["todo_id"] == "todo-7"
         assert queued["user_id"] == "user-9"
-        stamp = queued["entry"].split(" ", 2)[1]
+        stamp = queued["entry"].split(" ", 1)[0]
         assert queued["entry"] == (
-            f"⏸ {stamp} — scheduled run queued behind an in-flight run (task task-9); not run"
+            f"{stamp} ⏸ scheduled run queued behind an in-flight run (task task-9); not run"
         )
         # Stamped in UTC: a naive or local timestamp reads as a different moment
         # to anyone reading the canvas from another timezone.
@@ -1033,7 +1069,8 @@ class TestExecuteViaAgent:
         with (
             patch(f"{MODULE}.call_agent_silent", agent),
             patch(f"{MODULE}.read_canvas", AsyncMock(return_value="")),
-            patch(f"{MODULE}.tracked_todo_service.append_canvas_timeline", timeline),
+            patch(f"{MODULE}.read_activity", AsyncMock(return_value="")),
+            patch(f"{MODULE}.tracked_todo_service.append_activity_entry", timeline),
         ):
             await _execute_via_agent(_doc(), "user-1", user_data={})
 
@@ -1041,8 +1078,8 @@ class TestExecuteViaAgent:
 
     async def test_prompt_and_trigger_context_carry_the_todo_identity(self):
         agent = AsyncMock(return_value=SilentRunResult(message="ok", tool_data={}))
-        p1, p2, p3, p4 = self._patches(agent=agent, canvas="## Current State\nblocked")
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5 = self._patches(agent=agent, canvas="## Current State\nblocked")
+        with p1, p2, p3, p4, p5:
             await _execute_via_agent(
                 _doc(description="verify staging"), "user-1", user_data={"user_id": "user-1"}
             )
@@ -1059,7 +1096,7 @@ class TestExecuteViaAgent:
         prompt = kwargs["request"].message
         assert "Execute the following scheduled task: Check the deploy" in prompt
         assert "Details: verify staging" in prompt
-        assert "Canvas context:\n## Current State\nblocked" in prompt
+        assert "Canvas (canvas.md):\n## Current State\nblocked" in prompt
         # The run's content rides in messages[-1] as a "user" turn — the exact role
         # construct_langchain_messages reads. A mangled role would leave the run
         # with no user content and raise before the model is called.
@@ -1072,8 +1109,8 @@ class TestExecuteViaAgent:
         origin = TriggerOrigin(
             subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t-1"}
         )
-        p1, p2, p3, p4 = self._patches(agent=agent)
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5:
             await _execute_via_agent(
                 _doc(), "user-1", user_data={"user_id": "user-1"}, origin=origin
             )
@@ -1086,8 +1123,8 @@ class TestExecuteViaAgent:
 
     async def test_each_run_gets_a_fresh_conversation_id(self):
         agent = AsyncMock(return_value=SilentRunResult(message="ok", tool_data={}))
-        p1, p2, p3, p4 = self._patches(agent=agent)
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5:
             await _execute_via_agent(_doc(), "user-1", user_data={})
             await _execute_via_agent(_doc(), "user-1", user_data={})
 
@@ -1096,8 +1133,10 @@ class TestExecuteViaAgent:
 
     async def test_a_canvas_read_failure_does_not_abort_the_run(self):
         agent = AsyncMock(return_value=SilentRunResult(message="ok", tool_data={}))
-        p1, p2, p3, p4 = self._patches(agent=agent, canvas_side_effect=RuntimeError("mongo down"))
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5 = self._patches(
+            agent=agent, canvas_side_effect=RuntimeError("mongo down")
+        )
+        with p1, p2, p3, p4, p5:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
 
         assert result == "ok"
@@ -1105,7 +1144,7 @@ class TestExecuteViaAgent:
 
     async def test_an_agent_exception_writes_a_failure_marker_and_propagates(self):
         agent = AsyncMock(side_effect=TimeoutError("llm timeout"))
-        p1, p2, p3, p4 = self._patches(agent=agent)
+        p1, p2, p3, p4, p5 = self._patches(agent=agent)
         with p1, p2, p3, p4, pytest.raises(TimeoutError):
             await _execute_via_agent(_doc(), "user-1", user_data={})
 
@@ -1114,8 +1153,8 @@ class TestExecuteViaAgent:
 
     async def test_an_empty_agent_response_is_not_an_error(self):
         agent = AsyncMock(return_value=SilentRunResult(message="", tool_data={}))
-        p1, p2, p3, p4 = self._patches(agent=agent)
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
 
         assert result == ""
@@ -1123,8 +1162,8 @@ class TestExecuteViaAgent:
 
     async def test_a_long_response_is_truncated_for_the_return_value_and_the_marker(self):
         agent = AsyncMock(return_value=SilentRunResult(message="x" * 500, tool_data={}))
-        p1, p2, p3, p4 = self._patches(agent=agent)
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
 
         assert result == "x" * 200

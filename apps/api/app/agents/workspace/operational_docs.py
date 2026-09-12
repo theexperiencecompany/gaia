@@ -112,8 +112,8 @@ Typical flow:
 TRACKED_TODOS_DOC: Final[str] = """# Tracked todos: GAIA-managed todos with memory
 
 Tracked todos are **GAIA-managed todos**: they show on the user's todos page, but
-GAIA owns them and keeps a canvas of working notes (key IDs, state, activity log,
-learnings) so it can act on them over time. They are distinct from the user's own
+GAIA owns them and keeps working notes as files (a recall doc plus a dated activity
+log) so it can act on them over time. They are distinct from the user's own
 hand-created action items. Create one only when GAIA performs or schedules a real
 action on an external system it needs to remember, follow up on, or repeat; never
 for read-only work (fetching, listing, summarizing), no matter how often it runs.
@@ -129,25 +129,25 @@ These live at `/workspace/gaia-tasks/`:
     gaia-tasks/
         index.md                      one-line summary per task, freshest first
         <slug>-<shortid>/
-            canvas.md                 your brain dump (Key Details / State / …)
-            log.md                    system-written audit trail
-            meta.json                 labels, due, priority, schedule, refs
+            canvas.md                 recall doc: Key Details / Current State / Context / Learnings
+            activity.md               dated log, oldest first: what happened, by whom, outcome
+            log.md                    system-written audit trail (read-only)
+            meta.json                 labels, due, priority, schedule, refs (read-only)
 
 ## Tools (always available: no retrieve_tools)
 
-- `create_tracked_todo`: create a todo with a canvas.
+- `create_tracked_todo`: create a todo; the result names its folder.
 - `update_tracked_todo`: labels, due_date, priority, scheduled_at,
   recurrence, expires_at, references.
-- `update_tracked_todo_canvas`: write canvas.md; modes append / section /
-  replace.
 - `complete_tracked_todo`: mark done (requires a completion summary).
-- `search_todo_context`: semantic search over all canvases (includes done).
+- `search_todo_context`: semantic search over all notes (includes done).
 - `list_tracked_todos`: active tracked todos (≤50) with metadata.
 
-The files are read-only projections of MongoDB. `Write`/`Edit`/`sed -i` fail
-with Permission denied; that's intentional. Mutate through the tools above.
-To read a known one fast: `cat gaia-tasks/<slug>-<shortid>/canvas.md` or
-`grep -r "rahul" gaia-tasks/` beats a semantic search.
+The notes are ordinary files for you: `read`, `edit` and `write` work on
+`canvas.md` and `activity.md` (they are stored on the todo, so this works even
+when the folder is not on disk). `log.md`, `meta.json` and `index.md` are
+generated; edits to them are refused. In `bash`, the folder is a read-only
+projection: `cat` and `grep -r "rahul" gaia-tasks/` are fine, `sed -i` is not.
 
 ## Search first, create last
 
@@ -172,23 +172,23 @@ Overusing tracked todos degrades search quality and clutters GAIA's memory.
 - **Immediate** (finishes this conversation): create → delegate → document →
   complete.
 - **Long-running** (spans conversations / needs follow-up): create with
-  `scheduled_at` → act → update canvas → leave open → resume later via active
+  `scheduled_at` → act → update the files → leave open → resume later via active
   todos or search → eventually complete with learnings.
 
-## Canvas
+## The two files
 
-`update_tracked_todo_canvas` modes: pick the right one, never default to
-`replace`:
-- `append` (default): add activity-log entries / timeline / notes. No read
-  needed.
-- `section`: replace one named section body (e.g. "Current State"). No read
-  needed.
-- `replace`: full rewrite. Only for restructuring.
+`canvas.md` is what you want to recall later. Sections: `Key Details` (ids,
+addresses, URLs needed to act), `Current State` (true right now; rewrite it
+after every action), `Context` (decisions, open questions, signals), `Learnings`
+(written ONLY at completion: what worked, timing insights, reusable patterns).
+Keep it short and current: `edit` the section that changed, never append to the
+end of the file.
 
-Default template sections: `Key Details` (ids, addresses, URLs needed to act),
-`Current State` (true right now), `Activity Log` (which agent did what, tools,
-outcome), `Timeline` (dated actions), `Context`, `Learnings` (written ONLY at
-completion: what worked, timing insights, reusable patterns).
+`activity.md` is the chronological record: one dated entry per thing that
+happened (`- 2026-09-02T10:15:00+00:00 Gmail agent: sent ... thread 18f3a2b`),
+oldest first, newest at the end. Scheduled runs stamp their own start/finish
+markers here. After delegation, add what each agent did (tools used, ids,
+outcome). Never write learnings here, and never write activity into canvas.md.
 
 ## Scheduling & recurrence
 
@@ -209,8 +209,9 @@ completion: what worked, timing insights, reusable patterns).
 
 - Not creating one when GAIA touched an external system (even "just" an email).
 - Multiple todos for one initiative.
-- Vague canvas ("made progress") instead of ids + tool names.
-- Not collecting subagent activity reports before writing the canvas.
+- Vague notes ("made progress") instead of ids + tool names.
+- Not collecting subagent activity reports before writing activity.md.
+- Appending activity to the end of canvas.md (it belongs in activity.md).
 - Not searching before creating.
 - Not writing learnings before completing.
 """

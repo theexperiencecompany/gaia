@@ -12,9 +12,14 @@ const httpAdapter: HttpAdapter = {
 
 export const todoApi = createTodoApi(httpAdapter);
 
-export const getTodoCanvas = async (
-  todoId: string,
-): Promise<{ content: string }> =>
-  apiService.get<{ content: string }>(TODO_ENDPOINTS.canvas(todoId), {
+export interface TodoNotes {
+  /** canvas.md: the recall doc (Key Details / Current State / Context / Learnings). */
+  content: string;
+  /** activity.md: the dated log, oldest first. */
+  activity: string;
+}
+
+export const getTodoCanvas = async (todoId: string): Promise<TodoNotes> =>
+  apiService.get<TodoNotes>(TODO_ENDPOINTS.canvas(todoId), {
     silent: true,
   });

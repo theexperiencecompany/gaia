@@ -35,3 +35,8 @@ BLOCKING_LABEL: Final[str] = "blocked"
 BLOCKING_LABELS: Final[frozenset[str]] = frozenset(
     {WAITING_FOR_REPLY_LABEL, WAITING_FOR_APPROVAL_LABEL, BLOCKING_LABEL}
 )
+
+# How much of activity.md (from the end) a scheduled run sees in its prompt:
+# enough for the recent trail, bounded so a long-lived recurring todo does not
+# grow the prompt without limit. Older entries stay readable via the file.
+ACTIVITY_PROMPT_TAIL_CHARS: Final[int] = 4_000

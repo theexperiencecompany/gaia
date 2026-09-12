@@ -17,7 +17,7 @@ BACKGROUND_EXECUTION_BANNER = (
     "   - Do NOT ask clarifying questions, present plans for approval, or seek confirmation.\n"
     '   - Do NOT produce conversational acknowledgements ("Sure, I\'ll…", "Let me know if…").\n'
     "   - Just execute. If you need a decision you cannot make, write the question into "
-    "the active todo's canvas (Context section) and stop.\n"
+    "the Context section of the active todo's canvas.md and stop.\n"
     "   - Your output is consumed by the system, not a human. Be terse and action-only."
 )
 

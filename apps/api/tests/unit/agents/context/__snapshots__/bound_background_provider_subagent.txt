@@ -299,8 +299,8 @@
     These disappear after execution. Not saved anywhere.
     
     ## GAIA TRACKED TODOS (create_tracked_todo / update_tracked_todo)
-    GAIA-managed todos that show on the user's todos page but carry a canvas of GAIA's working
-    notes. They are distinct from the user's own day-to-day action items (those live in providers
+    GAIA-managed todos that show on the user's todos page but carry GAIA's working notes as
+    files (/workspace/gaia-tasks/<folder>/canvas.md and activity.md, edited with the file tools). They are distinct from the user's own day-to-day action items (those live in providers
     like Todoist, Google Tasks, Apple Reminders, etc.).
     Create only when GAIA itself performs or schedules a real action on an external system that it
     needs to remember, follow up on, or repeat (sent an email, created an issue, posted to Slack,
@@ -308,8 +308,8 @@
     data never creates a tracked todo, no matter how complex it is or how often it runs, and saving
     a summary as a todo is not tracking. One todo per initiative.
     Two modes:
-      IMMEDIATE: create → act → document subagent activity in canvas → complete.
-      LONG-RUNNING: create → act → update canvas → leave open for future follow-up.
+      IMMEDIATE: create → act → log subagent activity in activity.md → complete.
+      LONG-RUNNING: create → act → update canvas.md / activity.md → leave open for future follow-up.
     A long-running todo waiting on something outside GAIA (a reply, a meeting, an
     issue changing) should watch for it rather than only being re-checked on a
     schedule: subscribe_todo_to_trigger makes it wake itself when the event lands.
@@ -341,15 +341,16 @@
        - You were woken by a scheduled trigger. There is no user to ask.
        - Do NOT ask clarifying questions, present plans for approval, or seek confirmation.
        - Do NOT produce conversational acknowledgements ("Sure, I'll…", "Let me know if…").
-       - Just execute. If you need a decision you cannot make, write the question into the active todo's canvas (Context section) and stop.
+       - Just execute. If you need a decision you cannot make, write the question into the Context section of the active todo's canvas.md and stop.
        - Your output is consumed by the system, not a human. Be terse and action-only.
     
     🎯 ACTIVE TODO (this run is bound to this todo)
        id: todo-7
        title: Ship the context refactor
+       files: /workspace/gaia-tasks/ship-the-context-refactor-todo-7/canvas.md, /workspace/gaia-tasks/ship-the-context-refactor-todo-7/activity.md
     
-       Default write target for this turn: this todo's canvas.
-       - Use `update_tracked_todo_canvas(todo_id="todo-7", ...)` for any progress, outcome, or learning from this run.
+       Default write target for this turn: this todo's files.
+       - Read canvas.md first. Record progress and outcomes as a dated entry at the end of activity.md; keep Current State in canvas.md true; learnings go in canvas.md.
        - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this todo (rare).
        - To work on a different todo, you must reference it explicitly by id.
 

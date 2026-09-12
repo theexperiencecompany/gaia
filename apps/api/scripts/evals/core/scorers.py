@@ -210,6 +210,13 @@ def validate_tool_expectations(case_id: str, expected: dict[str, object]) -> Non
             )
 
 
+def _wanted_tool_names(want: dict[str, object]) -> list[str]:
+    tool = want.get("tool", "")
+    if isinstance(tool, list):
+        return [str(t) for t in tool]
+    return [str(tool)]
+
+
 def _call_matches_args(call: dict[str, object], wanted: dict[str, object]) -> bool:
     args = call.get("args")
     if not isinstance(args, dict):
@@ -220,7 +227,9 @@ def _call_matches_args(call: dict[str, object], wanted: dict[str, object]) -> bo
 class ToolCallCorrectness(Gate):
     """Every expected tool call happened, with the arguments the case demands.
 
-    An expected entry is ``{tool, min_calls?, args?}``. The ``args`` check is
+    An expected entry is ``{tool, min_calls?, args?}``. ``tool`` is a name or a
+    list of names meaning "any of these" (a note the agent may land with either
+    ``edit`` or ``write``). The ``args`` check is
     **opt-in**: an entry without it gates on the tool name and call count alone,
     which is what every case written before the check existed means. When
     ``args`` is present, only calls carrying those argument values count towards
@@ -249,9 +258,10 @@ class ToolCallCorrectness(Gate):
             )
         missing: list[str] = []
         for want in wanted:
-            name = str(want.get("tool", ""))
+            names = _wanted_tool_names(want)
+            name = "|".join(names)
             min_calls = _min_calls(want)
-            by_name = [t for t in actual if t.get("name") == name]
+            by_name = [t for t in actual if t.get("name") in names]
             wanted_args = want.get("args")
             if isinstance(wanted_args, dict):
                 matches = [t for t in by_name if _call_matches_args(t, wanted_args)]

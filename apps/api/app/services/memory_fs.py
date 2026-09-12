@@ -32,7 +32,7 @@ from app.memory.projection import (
     render_facts_page,
     render_journal_page,
 )
-from app.services._vfs_scheduler import make_scheduler, run_hashed_sync
+from app.services._vfs_scheduler import HashedSyncSpec, make_scheduler, run_hashed_sync
 from app.services.storage.metrics import FsOps
 
 
@@ -45,13 +45,15 @@ async def sync_user_memory_fs(user_id: str) -> int:
     """
     return await run_hashed_sync(
         user_id,
-        fs_op=FsOps.SYNC_MEMORY_VFS,
-        fetch_fn=_fetch_projections,
-        per_doc_sig_fn=per_doc_signature,
-        materialize_fn=materialize_memory,
-        guide_md=MEMORY_GUIDE_MD,
-        catalog_marker_path_fn=memory_marker_path,
-        log_name="memory_vfs",
+        HashedSyncSpec[MemoryFileProjection](
+            fs_op=FsOps.SYNC_MEMORY_VFS,
+            fetch_fn=_fetch_projections,
+            per_doc_sig_fn=per_doc_signature,
+            materialize_fn=materialize_memory,
+            guide_md=MEMORY_GUIDE_MD,
+            catalog_marker_path_fn=memory_marker_path,
+            log_name="memory_vfs",
+        ),
     )
 
 

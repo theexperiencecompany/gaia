@@ -40,6 +40,7 @@ from app.workers.tasks.maintenance_sweep_tasks import (
     _health_check_expired,
     _is_dormant,
     _is_user_daytime,
+    _migrate_all_legacy_canvases,
     _notify_overdue,
     _register_notification,
     _send_user_dormant_digest,
@@ -80,6 +81,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
     """
     defaults = {
         "list": [_doc()],
+        "migration": [],
         "daytime": True,
         "canvas": "",
         "health": "NEEDS_ATTENTION: nothing to do",
@@ -88,6 +90,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
     pool = _pool()
     mocks: dict[str, AsyncMock] = {
         "list": AsyncMock(return_value=defaults["list"]),
+        "migration_finder": AsyncMock(return_value=defaults["migration"]),
         "get_pool": AsyncMock(return_value=pool),
         "daytime": AsyncMock(return_value=defaults["daytime"]),
         "canvas": AsyncMock(return_value=defaults["canvas"]),
@@ -97,9 +100,15 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
         "system_log": AsyncMock(),
         "add_labels": AsyncMock(),
         "notify": AsyncMock(),
+        "migrate": AsyncMock(return_value=False),
     }
     patches = [
         patch(f"{MODULE}.todo_repository.list_active_tracked_all_users", mocks["list"]),
+        patch(
+            f"{MODULE}.todo_repository.list_tracked_for_legacy_migration",
+            mocks["migration_finder"],
+            create=True,
+        ),
         patch(f"{MODULE}.RedisPoolManager.get_pool", mocks["get_pool"]),
         patch(f"{MODULE}._is_user_daytime", mocks["daytime"]),
         patch(f"{MODULE}._read_canvas", mocks["canvas"]),
@@ -109,6 +118,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
         patch(f"{MODULE}.tracked_todo_service.system_log", mocks["system_log"]),
         patch(f"{MODULE}.todo_repository.add_labels", mocks["add_labels"]),
         patch(f"{MODULE}.notification_service.create_notification", mocks["notify"]),
+        patch(f"{MODULE}.tracked_todo_service.migrate_legacy_canvas", mocks["migrate"]),
     ]
     return pool, mocks, patches
 
@@ -199,11 +209,7 @@ class TestIsDormant:
 
 class TestClassifyTrackedTodos:
     async def _classify(self, pool: MagicMock, todos: list[TodoDocument]):
-        with patch(
-            f"{MODULE}.todo_repository.list_active_tracked_all_users",
-            AsyncMock(return_value=todos),
-        ):
-            return await _classify_tracked_todos(pool, NOW)
+        return await _classify_tracked_todos(pool, NOW, todos)
 
     async def test_buckets_expired_overdue_and_dormant(self):
         pool = _pool()
@@ -582,7 +588,147 @@ class TestSendUserDormantDigest:
 # ---------------------------------------------------------------------------
 
 
+class TestMigrateAllLegacyCanvases:
+    """The cursor loop's own contract: it pages to a short page, sums every
+    page's migrated count, and stops on the empty page."""
+
+    async def test_empty_scan_returns_zero(self):
+        with (
+            patch(
+                f"{MODULE}.todo_repository.list_tracked_for_legacy_migration",
+                AsyncMock(return_value=[]),
+                create=True,
+            ),
+            patch(f"{MODULE}._migrate_legacy_canvases", AsyncMock(return_value=0)) as migrate,
+        ):
+            assert await _migrate_all_legacy_canvases() == 0
+
+        migrate.assert_not_awaited()
+
+    async def test_sums_every_page_to_a_short_page(self):
+        from app.workers.tasks.maintenance_sweep_tasks import _MIGRATION_PAGE_SIZE
+
+        full = [_doc(id=f"a{i}", updated_at=NOW) for i in range(_MIGRATION_PAGE_SIZE)]
+        short = [_doc(id="last", updated_at=NOW)]
+        finder = AsyncMock(side_effect=[full, short])
+        with (
+            patch(
+                f"{MODULE}.todo_repository.list_tracked_for_legacy_migration",
+                finder,
+                create=True,
+            ),
+            patch(f"{MODULE}._migrate_legacy_canvases", AsyncMock(return_value=2)) as migrate,
+        ):
+            assert await _migrate_all_legacy_canvases() == 4
+
+        assert migrate.await_count == 2
+        assert [c.args[0][0].id for c in migrate.await_args_list] == ["a0", "last"]
+
+    async def test_short_first_page_stops_immediately(self):
+        """A first page shorter than the size is the whole scan — the loop must
+        stop without a second fetch."""
+        finder = AsyncMock(side_effect=[[_doc(id="only", updated_at=NOW)]])
+        with (
+            patch(
+                f"{MODULE}.todo_repository.list_tracked_for_legacy_migration",
+                finder,
+                create=True,
+            ),
+            patch(f"{MODULE}._migrate_legacy_canvases", AsyncMock(return_value=1)),
+        ):
+            assert await _migrate_all_legacy_canvases() == 1
+
+        finder.assert_awaited_once()
+
+
+class TestMigrateLegacyCanvases:
+    """The per-page loop's count: each migrated todo adds one, nothing else."""
+
+    async def test_counts_each_migrated_todo(self):
+        from app.workers.tasks.maintenance_sweep_tasks import _migrate_legacy_canvases
+
+        todos = [_doc(id="a", updated_at=NOW), _doc(id="b", updated_at=NOW)]
+        with patch(
+            f"{MODULE}.tracked_todo_service.migrate_legacy_canvas",
+            AsyncMock(side_effect=[True, True]),
+        ) as migrate:
+            assert await _migrate_legacy_canvases(todos) == 2
+
+        assert migrate.await_count == 2
+
+    async def test_zero_when_nothing_migrates(self):
+        from app.workers.tasks.maintenance_sweep_tasks import _migrate_legacy_canvases
+
+        with patch(
+            f"{MODULE}.tracked_todo_service.migrate_legacy_canvas",
+            AsyncMock(return_value=False),
+        ):
+            assert await _migrate_legacy_canvases([_doc(id="a", updated_at=NOW)]) == 0
+
+
 class TestMaintenanceSweep:
+    async def test_every_tracked_todo_gets_the_legacy_canvas_migration(self):
+        """The one-shot split rides the sweep over ALL tracked todos — active
+        or completed — not just the active page the tiers classify."""
+        todos = [_doc(id="a", updated_at=NOW), _doc(id="b", completed=True, updated_at=NOW)]
+        with _sweep(migration=todos) as (pool, mocks):
+            pool.exists = AsyncMock(return_value=1)
+            await maintenance_sweep_tracked_todos({})
+
+        assert [c.args[0].id for c in mocks["migrate"].await_args_list] == ["a", "b"]
+        # Pins the scan bound: a changed literal would widen or unbind the page.
+        mocks["list"].assert_awaited_once_with(limit=200)
+
+    async def test_legacy_migration_pages_past_the_first_page(self):
+        """The migration cursor walks every page to a short page, so a legacy
+        todo past the first 200 — including a completed one — still migrates,
+        while classification keeps the active-only list."""
+        from app.workers.tasks.maintenance_sweep_tasks import _MIGRATION_PAGE_SIZE
+
+        active = [_doc(id="active-1", updated_at=NOW)]
+        first_page = [_doc(id=f"migr-{i}", updated_at=NOW) for i in range(_MIGRATION_PAGE_SIZE)]
+        last_page = [_doc(id="done-legacy", completed=True, updated_at=NOW)]
+        finder = AsyncMock(side_effect=[first_page, last_page])
+        classify = AsyncMock(return_value=([], [], []))
+        with (
+            patch(
+                f"{MODULE}.todo_repository.list_active_tracked_all_users",
+                AsyncMock(return_value=active),
+            ),
+            patch(
+                f"{MODULE}.todo_repository.list_tracked_for_legacy_migration",
+                finder,
+                create=True,
+            ),
+            patch(f"{MODULE}._classify_tracked_todos", classify),
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=_pool())),
+            patch(
+                f"{MODULE}.tracked_todo_service.migrate_legacy_canvas",
+                AsyncMock(return_value=False),
+            ) as migrate,
+        ):
+            await maintenance_sweep_tracked_todos({})
+
+        assert finder.await_count == 2
+        assert finder.await_args_list[0].kwargs == {
+            "limit": _MIGRATION_PAGE_SIZE,
+            "after_id": None,
+        }
+        assert finder.await_args_list[1].kwargs == {
+            "limit": _MIGRATION_PAGE_SIZE,
+            "after_id": f"migr-{_MIGRATION_PAGE_SIZE - 1}",
+        }
+        assert migrate.await_count == _MIGRATION_PAGE_SIZE + 1
+        assert "done-legacy" in [c.args[0].id for c in migrate.await_args_list]
+        assert classify.await_args.args[2] == active
+
+    async def test_migration_failure_does_not_abort_the_sweep(self):
+        with _sweep(migration=[_doc(id="a", updated_at=NOW)]) as (_pool, mocks):
+            mocks["migrate"].side_effect = RuntimeError("mongo hiccup")
+            summary = await maintenance_sweep_tracked_todos({})
+
+        assert summary.startswith("archived:0")
+
     async def test_expired_todo_archived_by_the_health_check(self):
         with _sweep(
             list=[_doc(id="exp-1", expires_at=datetime.now(UTC) - timedelta(hours=1))],
@@ -629,6 +775,15 @@ class TestMaintenanceSweep:
         """Pin the operator-visible summary format with the processing steps faked."""
         with (
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=_pool())),
+            patch(
+                f"{MODULE}.todo_repository.list_active_tracked_all_users",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                f"{MODULE}.todo_repository.list_tracked_for_legacy_migration",
+                AsyncMock(return_value=[]),
+                create=True,
+            ),
             patch(f"{MODULE}._classify_tracked_todos", AsyncMock(return_value=([], [], []))),
             patch(f"{MODULE}._process_expired", AsyncMock(return_value=(3, 2))),
             patch(f"{MODULE}._process_overdue", AsyncMock(return_value=4)),
