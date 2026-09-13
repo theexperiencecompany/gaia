@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.6.0...desktop-v0.7.0) (2026-09-13)
+
+
+### Features
+
+* expose custom and device-hosted MCP servers to the agent from chat ([#1208](https://github.com/theexperiencecompany/gaia/issues/1208)) ([9e97335](https://github.com/theexperiencecompany/gaia/commit/9e973359c2da0ec143f23d35daefd65fbb6aa334))
+
 ## [0.6.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.5.0...desktop-v0.6.0) (2026-08-25)
 
 
