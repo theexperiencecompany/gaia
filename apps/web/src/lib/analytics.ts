@@ -44,6 +44,9 @@ export const ANALYTICS_EVENTS = {
   CHAT_GRID_INTEGRATION_CONNECT_CLICKED:
     "chat:grid_integration_connect_clicked",
   CHAT_MESSAGE_RETRIED: "chat:message_retried",
+  // Client-only: opening a cited source from a search-grounded answer. The
+  // search itself is measured server-side; this captures the citation UX.
+  CHAT_CITATION_OPENED: "chat:citation_opened",
 
   INTEGRATION_ERROR: "integration:error",
 
