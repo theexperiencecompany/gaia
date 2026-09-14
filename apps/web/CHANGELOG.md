@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.25.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.24.0...web-v0.25.0) (2026-09-14)
+
+
+### Features
+
+* server owns every mutating analytics event, drop frontend duplicates ([#1227](https://github.com/theexperiencecompany/gaia/issues/1227)) ([676a1a4](https://github.com/theexperiencecompany/gaia/commit/676a1a4647dfcf5cec9adbaba3436f2229d017b9))
+
+
+### Bug Fixes
+
+* **desktop:** repair splash, window lifecycle and next-server prepare ([#1222](https://github.com/theexperiencecompany/gaia/issues/1222)) ([b677ec0](https://github.com/theexperiencecompany/gaia/commit/b677ec05af08f5f246ebff7d233e6a1eeec70afe))
+
 ## [0.24.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.23.0...web-v0.24.0) (2026-09-13)
 
 

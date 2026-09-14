@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.7.0...desktop-v0.7.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **desktop:** repair splash, window lifecycle and next-server prepare ([#1222](https://github.com/theexperiencecompany/gaia/issues/1222)) ([b677ec0](https://github.com/theexperiencecompany/gaia/commit/b677ec05af08f5f246ebff7d233e6a1eeec70afe))
+
 ## [0.7.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.6.0...desktop-v0.7.0) (2026-09-13)
 
 
