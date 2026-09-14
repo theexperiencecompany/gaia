@@ -12,22 +12,16 @@ girlfriend of").  This script collapses all edges between the same unordered
 
 import argparse
 import asyncio
-from pathlib import Path
-import sys
 import uuid
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import delete, select
 
 from app.db.chroma.chromadb import init_chroma
-from app.db.mongodb.collections import get_async_collection
 from app.db.postgresql import init_postgresql_engine
+from app.db.repositories.users import user_repository
 from app.memory.pg_store._session import memory_session
 from app.memory.pg_store.graph import _canonical_pair
 from app.models.memory_db_models import MemoryGraphEdge
-
-users_collection = get_async_collection("users")
 
 
 async def dedupe_user(user_id: str, dry_run: bool) -> int:
@@ -94,7 +88,7 @@ async def main() -> None:
     if args.user_id:
         user_ids = [args.user_id]
     else:
-        user_ids = [str(doc["_id"]) async for doc in users_collection.find({}, {"_id": 1})]
+        user_ids = await user_repository.list_all_ids()
 
     total = 0
     for user_id in user_ids:

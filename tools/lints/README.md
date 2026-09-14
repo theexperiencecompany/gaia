@@ -277,6 +277,17 @@ exemption to "has this PR touched the file" turns each PR that happens to
 edit a grandfathered file into the moment its debt gets paid down, without
 blocking unrelated work everywhere else.
 
+**One waiver — `@tool` and `PLR0913` only:** a function decorated with
+LangChain's `@tool` (bare, called, or attribute form) is exempt from the
+argument-count rule. A tool's parameters are the JSON schema the model sees, so
+the argument list is the tool's contract, not accidental complexity — collapsing
+it into nested objects to satisfy a linter would change what the LLM is asked to
+emit. The waiver is per function and per rule: `PLR0911`/`0912`/`0915` still
+apply to a `@tool` body, and an undecorated function in the same file gets no
+cover from it. Implemented by inspecting the flagged function's decorators in
+`check_plr_complexity.py::_is_exempt` — not by a ruff or pyproject exclusion,
+which would silence the rule for whole files.
+
 **Fix:** if the violation is new, simplify the function (or, if it's a
 genuine one-off, justify it in review and add it to the baseline with
 `--update`). If it's grandfathered but your PR touches that file, fix the
