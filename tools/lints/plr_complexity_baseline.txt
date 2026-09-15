@@ -62,7 +62,6 @@ apps/api/app/services/mcp/resilient_adapter.py	PLR0912
 apps/api/app/services/mcp/resilient_adapter.py	PLR0915
 apps/api/app/services/mcp/token_management.py	PLR0912
 apps/api/app/services/onboarding/first_message_service.py	PLR0913
-apps/api/app/services/onboarding/post_onboarding_service.py	PLR0913
 apps/api/app/services/onboarding/social_profile_service.py	PLR0912
 apps/api/app/services/onboarding/social_profile_service.py	PLR0915
 apps/api/app/services/tools/tools_service.py	PLR0912
@@ -105,8 +104,6 @@ apps/api/scripts/sync_composio_tools.py	PLR0913
 apps/api/scripts/sync_composio_tools.py	PLR0915
 apps/api/scripts/test_tracked_todos.py	PLR0912
 apps/api/scripts/verify_sandbox_mounts.py	PLR0915
-apps/api/tests/e2e/test_onboarding.py	PLR0913
-apps/api/tests/e2e/test_onboarding.py	PLR0915
 apps/api/tests/integration/mcp/test_mcp_oauth_flow.py	PLR0913
 apps/api/tests/integration/mcp/test_mcp_oauth_flow.py	PLR0915
 apps/api/tests/integration/real/memory/llm.py	PLR0913

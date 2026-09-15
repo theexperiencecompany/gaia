@@ -56,6 +56,7 @@ from httpx import AsyncClient
 from langchain_core.messages import AIMessage
 import pytest
 
+from app.agents.memory.email_processor import OnboardingFetchOptions
 from app.constants.onboarding import (
     INTELLIGENCE_TASK,
     WORKFLOWS_TASK,
@@ -88,6 +89,9 @@ from tests.conftest import FAKE_USER
 pytestmark = pytest.mark.e2e
 
 USER_ID: str = FAKE_USER["user_id"]
+
+#: Patch-target prefix for the onboarding service package.
+_SVC = "app.services.onboarding"
 
 #: The sender the triage LLM reports as important. Todo specs that cite it keep
 #: their ``source_email``; anything else is dropped as hallucinated.
@@ -485,82 +489,9 @@ def stages(users: _UserStore) -> _StageSink:
     return _StageSink(users)
 
 
-@pytest.fixture(autouse=True)
-def world(
-    users: _UserStore,
-    stages: _StageSink,
-    externals: _Externals,
-    arq_pool: ArqRedis,
-) -> Iterator[None]:
-    """Wire the store, the socket and every external service into the real flow."""
-    svc = "app.services.onboarding"
-
-    async def _check_connection(slugs: list[str], _user_id: str) -> dict[str, bool]:
-        if externals.composio_gate is not None:
-            await externals.composio_gate.wait()
-        return {slug: (slug == "gmail" and externals.has_gmail) for slug in slugs}
-
-    composio = AsyncMock()
-    composio.check_connection_status.side_effect = _check_connection
-
-    async def _fetch_emails(
-        user_id: str,
-        months: int = 1,
-        batch_size: int = 100,
-        max_total: int = 100,
-        on_batch: Callable[[int, str | None], Awaitable[None]] | None = None,
-        fmt: str = "metadata",
-        into: list[dict[str, Any]] | None = None,
-        include_sent: bool = False,
-    ) -> list[dict[str, Any]]:
-        batch = list(externals.inbox)
-        if into is not None:
-            into.extend(batch)
-        if on_batch is not None:
-            await on_batch(len(batch), batch[0]["sender"] if batch else None)
-        return batch
-
-    async def _structured(schema: type, prompt: Any, *, label: str, **_: Any) -> Any:
-        externals.llm_labels.append(label)
-        externals.llm_prompts[label] = str(prompt)
-        if label in externals.llm_failures:
-            raise RuntimeError(f"model refused: {label}")
-        return _structured_result(schema, externals)
-
-    async def _invoke_llm(_runnable: Any, messages: Any, *, label: str = "model", **_: Any) -> Any:
-        externals.llm_labels.append(label)
-        externals.llm_prompts[label] = str(messages)
-        if label in externals.llm_failures:
-            raise RuntimeError(f"model refused: {label}")
-        return AIMessage(content="Hey, you're all set.")
-
-    async def _search_messages(**_: Any) -> Any:
-        result = AsyncMock()
-        result.messages = externals.sent_emails
-        return result
-
-    async def _create_workflow(
-        request: Any, _user_id: str, user_timezone: str = "UTC", **_: Any
-    ) -> _FakeWorkflow:
-        externals.workflows_created.append(request.title)
-        externals.workflow_timezones.append(user_timezone)
-        return _FakeWorkflow(f"wf-{len(externals.workflows_created)}")
-
-    async def _delete_workflow(workflow_id: str, _user_id: str) -> bool:
-        if externals.workflow_delete_error == workflow_id:
-            raise RuntimeError("composio trigger teardown failed")
-        externals.workflows_deleted.append(workflow_id)
-        return True
-
-    async def _generate_prompt(**_: Any) -> dict[str, Any]:
-        return {
-            "prompt": "Do the thing.",
-            "suggested_trigger": SuggestedTrigger(type="schedule", cron_expression="0 8 * * *"),
-        }
-
-    async def _create_todo(todo: Any, _user_id: str) -> _FakeTodo:
-        externals.todos_created.append(todo.title)
-        return _FakeTodo(f"todo-{len(externals.todos_created)}")
+@pytest.fixture
+def persistence_patches(users: _UserStore, externals: _Externals) -> list[Any]:
+    """Every repository the flow writes through, wired to the in-memory store."""
 
     async def _list_onboarding_todos(_user_id: str, limit: int = 3) -> list[Any]:
         todos = []
@@ -573,18 +504,9 @@ def world(
             todos.append(todo)
         return todos
 
-    async def _seed_conversation(**_: Any) -> str | None:
-        return externals.seeded_conversation_id
-
-    async def _seed_user_data(user_id: str) -> None:
-        externals.seeded_users.append(user_id)
-
     async def _purge_workflows(workflow_ids: list[str], _user_id: str) -> int:
         externals.purged_workflow_ids.append(list(workflow_ids))
         return len(workflow_ids)
-
-    async def _provision(user_id: str, slug: str, *_args: Any, **_kw: Any) -> None:
-        externals.provisioned.append(slug)
 
     async def _list_user_integrations(_user_id: str) -> list[Any]:
         out = []
@@ -613,67 +535,191 @@ def world(
     memory = AsyncMock()
     memory.delete_all.side_effect = lambda _uid: externals.memories_cleared
 
-    patches = [
-        # --- persistence -------------------------------------------------
-        patch(f"{svc}.onboarding_service.user_repository", users),
-        patch(f"{svc}.intelligence_job.user_repository", users),
-        patch(f"{svc}.intelligence_service.user_repository", users),
-        patch(f"{svc}.post_onboarding_service.user_repository", users),
+    return [
+        patch(f"{_SVC}.onboarding_service.user_repository", users),
+        patch(f"{_SVC}.intelligence_job.user_repository", users),
+        patch(f"{_SVC}.intelligence_service.user_repository", users),
         patch("app.workers.tasks.onboarding_tasks.user_repository", users),
         patch("app.api.v1.endpoints.onboarding.user_repository", users),
-        patch(f"{svc}.onboarding_service.todo_repository", todo_repo),
-        patch(f"{svc}.intelligence_job.todo_repository", todo_repo),
-        patch(f"{svc}.intelligence_service.todo_repository", todo_repo),
+        patch(f"{_SVC}.onboarding_service.todo_repository", todo_repo),
+        patch(f"{_SVC}.intelligence_job.todo_repository", todo_repo),
+        patch(f"{_SVC}.intelligence_service.todo_repository", todo_repo),
         patch("app.api.v1.endpoints.onboarding.todo_repository", todo_repo),
         patch("app.api.v1.endpoints.onboarding.workflow_repository", AsyncMock()),
         patch(
-            f"{svc}.intelligence_service.workflow_repository.delete_many_for_user", _purge_workflows
+            f"{_SVC}.intelligence_service.workflow_repository.delete_many_for_user",
+            _purge_workflows,
         ),
-        patch(f"{svc}.onboarding_service.conversation_repository", conversation_repo),
-        patch(f"{svc}.onboarding_service.user_integration_repository", integrations_repo),
-        patch(f"{svc}.onboarding_service.memory_engine", memory),
-        patch(f"{svc}.onboarding_service.disconnect_integration", _disconnect),
-        # --- transport ---------------------------------------------------
-        patch(f"{svc}.intelligence_service.websocket_manager", stages),
-        # --- composio ----------------------------------------------------
-        patch(f"{svc}.intelligence_service.get_composio_service", lambda: composio),
+        patch(f"{_SVC}.onboarding_service.conversation_repository", conversation_repo),
+        patch(f"{_SVC}.onboarding_service.user_integration_repository", integrations_repo),
+        patch(f"{_SVC}.onboarding_service.memory_engine", memory),
+        patch(f"{_SVC}.onboarding_service.disconnect_integration", _disconnect),
+    ]
+
+
+@pytest.fixture
+def composio_patches(externals: _Externals) -> list[Any]:
+    """Connection status, optionally held open so a test can race the pipeline."""
+
+    async def _check_connection(slugs: list[str], _user_id: str) -> dict[str, bool]:
+        if externals.composio_gate is not None:
+            await externals.composio_gate.wait()
+        return {slug: (slug == "gmail" and externals.has_gmail) for slug in slugs}
+
+    composio = AsyncMock()
+    composio.check_connection_status.side_effect = _check_connection
+
+    return [
+        patch(f"{_SVC}.intelligence_service.get_composio_service", lambda: composio),
         patch("app.api.v1.endpoints.onboarding.get_composio_service", lambda: composio),
-        # --- gmail -------------------------------------------------------
-        patch(f"{svc}.intelligence_service.fetch_emails_for_onboarding", _fetch_emails),
-        patch(f"{svc}.writing_style_service.search_messages", _search_messages),
-        patch(f"{svc}.intelligence_service.inbox_scan_cache.get", AsyncMock(return_value=None)),
-        patch(f"{svc}.intelligence_service.inbox_scan_cache.put", AsyncMock()),
+    ]
+
+
+@pytest.fixture
+def gmail_patches(externals: _Externals) -> list[Any]:
+    """The inbox: fetch, sent-mail search, and the scan cache."""
+
+    async def _fetch_emails(
+        user_id: str,
+        months: int = 1,
+        max_total: int = 100,
+        on_batch: Callable[[int, str | None], Awaitable[None]] | None = None,
+        into: list[dict[str, Any]] | None = None,
+        options: OnboardingFetchOptions | None = None,
+    ) -> list[dict[str, Any]]:
+        batch = list(externals.inbox)
+        if into is not None:
+            into.extend(batch)
+        if on_batch is not None:
+            await on_batch(len(batch), batch[0]["sender"] if batch else None)
+        return batch
+
+    async def _search_messages(**_: Any) -> Any:
+        result = AsyncMock()
+        result.messages = externals.sent_emails
+        return result
+
+    return [
+        patch(f"{_SVC}.intelligence_service.fetch_emails_for_onboarding", _fetch_emails),
+        patch(f"{_SVC}.writing_style_service.search_messages", _search_messages),
+        patch(f"{_SVC}.intelligence_service.inbox_scan_cache.get", AsyncMock(return_value=None)),
+        patch(f"{_SVC}.intelligence_service.inbox_scan_cache.put", AsyncMock()),
         patch(
-            f"{svc}.intelligence_service.extract_social_profiles_from_emails",
+            f"{_SVC}.intelligence_service.extract_social_profiles_from_emails",
             AsyncMock(return_value=[SocialProfile(platform="linkedin", url="https://li/x")]),
         ),
-        # --- llm ---------------------------------------------------------
-        patch(f"{svc}.intelligence_service.ainvoke_structured", _structured),
-        patch(f"{svc}.writing_style_service.ainvoke_structured", _structured),
-        patch(f"{svc}.inbox_triage_service.ainvoke_structured", _structured),
-        patch(f"{svc}.first_message_service.ainvoke_llm", _invoke_llm),
-        patch(f"{svc}.first_message_service.get_helper_llm", lambda **_: AsyncMock()),
-        # --- downstream services ----------------------------------------
-        patch(f"{svc}.intelligence_service.WorkflowService.create_workflow", _create_workflow),
-        patch(f"{svc}.onboarding_service.WorkflowService.delete_workflow", _delete_workflow),
+    ]
+
+
+@pytest.fixture
+def llm_patches(externals: _Externals) -> list[Any]:
+    """Every model call, recorded by label so a test can fail exactly one."""
+
+    async def _structured(schema: type, prompt: Any, *, label: str, **_: Any) -> Any:
+        externals.llm_labels.append(label)
+        externals.llm_prompts[label] = str(prompt)
+        if label in externals.llm_failures:
+            raise RuntimeError(f"model refused: {label}")
+        return _structured_result(schema, externals)
+
+    async def _invoke_llm(_runnable: Any, messages: Any, *, label: str = "model", **_: Any) -> Any:
+        externals.llm_labels.append(label)
+        externals.llm_prompts[label] = str(messages)
+        if label in externals.llm_failures:
+            raise RuntimeError(f"model refused: {label}")
+        return AIMessage(content="Hey, you're all set.")
+
+    return [
+        patch(f"{_SVC}.intelligence_service.ainvoke_structured", _structured),
+        patch(f"{_SVC}.writing_style_service.ainvoke_structured", _structured),
+        patch(f"{_SVC}.inbox_triage_service.ainvoke_structured", _structured),
+        patch(f"{_SVC}.first_message_service.ainvoke_llm", _invoke_llm),
+        patch(f"{_SVC}.first_message_service.get_helper_llm", lambda **_: AsyncMock()),
+    ]
+
+
+@pytest.fixture
+def downstream_patches(externals: _Externals) -> list[Any]:
+    """Workflows, todos, conversation seeding and system provisioning."""
+
+    async def _create_workflow(
+        request: Any, _user_id: str, user_timezone: str = "UTC", **_: Any
+    ) -> _FakeWorkflow:
+        externals.workflows_created.append(request.title)
+        externals.workflow_timezones.append(user_timezone)
+        return _FakeWorkflow(f"wf-{len(externals.workflows_created)}")
+
+    async def _delete_workflow(workflow_id: str, _user_id: str) -> bool:
+        if externals.workflow_delete_error == workflow_id:
+            raise RuntimeError("composio trigger teardown failed")
+        externals.workflows_deleted.append(workflow_id)
+        return True
+
+    async def _generate_prompt(**_: Any) -> dict[str, Any]:
+        return {
+            "prompt": "Do the thing.",
+            "suggested_trigger": SuggestedTrigger(type="schedule", cron_expression="0 8 * * *"),
+        }
+
+    async def _create_todo(todo: Any, _user_id: str) -> _FakeTodo:
+        externals.todos_created.append(todo.title)
+        return _FakeTodo(f"todo-{len(externals.todos_created)}")
+
+    async def _seed_conversation(**_: Any) -> str | None:
+        return externals.seeded_conversation_id
+
+    async def _seed_user_data(user_id: str) -> None:
+        externals.seeded_users.append(user_id)
+
+    async def _provision(user_id: str, slug: str, *_args: Any, **_kw: Any) -> None:
+        externals.provisioned.append(slug)
+
+    return [
+        patch(f"{_SVC}.intelligence_service.WorkflowService.create_workflow", _create_workflow),
+        patch(f"{_SVC}.onboarding_service.WorkflowService.delete_workflow", _delete_workflow),
         patch(
-            f"{svc}.intelligence_service.WorkflowGenerationService.generate_workflow_prompt",
+            f"{_SVC}.intelligence_service.WorkflowGenerationService.generate_workflow_prompt",
             _generate_prompt,
         ),
         patch(
-            f"{svc}.intelligence_service.compute_missing_integrations", AsyncMock(return_value=[])
+            f"{_SVC}.intelligence_service.compute_missing_integrations", AsyncMock(return_value=[])
         ),
-        patch(f"{svc}.intelligence_service.TodoService.create_todo", _create_todo),
-        patch(f"{svc}.intelligence_service.seed_onboarding_conversation", _seed_conversation),
-        patch(f"{svc}.intelligence_service.provision_system_workflows", _provision),
-        patch(f"{svc}.post_onboarding_service.seed_onboarding_todo", _seed_user_data),
+        patch(f"{_SVC}.intelligence_service.TodoService.create_todo", _create_todo),
+        patch(f"{_SVC}.intelligence_service.seed_onboarding_conversation", _seed_conversation),
+        patch(f"{_SVC}.intelligence_service.provision_system_workflows", _provision),
+        patch(f"{_SVC}.post_onboarding_service.seed_onboarding_todo", _seed_user_data),
         patch(
-            f"{svc}.intelligence_service.generate_holo_card_content",
+            f"{_SVC}.intelligence_service.generate_holo_card_content",
             AsyncMock(return_value=("Curious Adventurer", "A bio.", "completed")),
         ),
     ]
+
+
+@pytest.fixture
+def all_patches(
+    stages: _StageSink,
+    persistence_patches: list[Any],
+    composio_patches: list[Any],
+    gmail_patches: list[Any],
+    llm_patches: list[Any],
+    downstream_patches: list[Any],
+) -> list[Any]:
+    """Every group of patches the flow needs, plus the socket sink."""
+    return [
+        *persistence_patches,
+        patch(f"{_SVC}.intelligence_service.websocket_manager", stages),
+        *composio_patches,
+        *gmail_patches,
+        *llm_patches,
+        *downstream_patches,
+    ]
+
+
+@pytest.fixture(autouse=True)
+def world(arq_pool: ArqRedis, all_patches: list[Any]) -> Iterator[None]:
+    """Wire the store, the socket and every external service into the real flow."""
     with ExitStack() as stack:
-        for patcher in patches:
+        for patcher in all_patches:
             stack.enter_context(patcher)
         yield
 

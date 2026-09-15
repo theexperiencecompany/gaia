@@ -9,6 +9,7 @@ from bson import ObjectId
 import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.constants.briefing import BRIEFING_DAILY_KEY
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.models.agent_models import SilentRunResult
@@ -66,22 +67,20 @@ def _onboarded_user():
 def _make_workflow(
     workflow_id: str | None = None,
     user_id: str = "user_abc",
-    title: str = "Daily Standup",
-    steps: list | None = None,
     is_todo_workflow: bool = False,
     source_todo_id: str | None = None,
+    system_workflow_key: str | None = None,
 ):
     wf = MagicMock()
     wf.id = workflow_id or str(uuid4())
     wf.user_id = user_id
-    wf.title = title
+    wf.title = "Daily Standup"
     wf.description = "A test workflow"
     wf.prompt = "Run the standup"
-    wf.steps = steps or [
-        MagicMock(id="s1", title="Step 1", description="Do it", category="general")
-    ]
+    wf.steps = [MagicMock(id="s1", title="Step 1", description="Do it", category="general")]
     wf.is_todo_workflow = is_todo_workflow
     wf.source_todo_id = source_todo_id
+    wf.system_workflow_key = system_workflow_key
     wf.model_dump = MagicMock(return_value={"id": wf.id, "title": wf.title})
     return wf
 
@@ -450,7 +449,7 @@ class TestExecuteWorkflowById:
         _no_real_analytics.assert_called_once_with(
             workflow.user_id,
             AnalyticsEvents.WORKFLOW_EXECUTED,
-            {"workflow_id": workflow.id, "trigger_type": "schedule"},
+            {"workflow_id": workflow.id, "trigger_type": "schedule", "system_workflow_key": None},
         )
 
     async def test_integration_execution_captures_workflow_executed(self, ctx, _no_real_analytics):
@@ -487,7 +486,11 @@ class TestExecuteWorkflowById:
         _no_real_analytics.assert_called_once_with(
             workflow.user_id,
             AnalyticsEvents.WORKFLOW_EXECUTED,
-            {"workflow_id": workflow.id, "trigger_type": "integration"},
+            {
+                "workflow_id": workflow.id,
+                "trigger_type": "integration",
+                "system_workflow_key": None,
+            },
         )
 
     async def test_explicit_trigger_type_wins_over_trigger_data(self, ctx, _no_real_analytics):
@@ -530,7 +533,47 @@ class TestExecuteWorkflowById:
         _no_real_analytics.assert_called_once_with(
             workflow.user_id,
             AnalyticsEvents.WORKFLOW_EXECUTED,
-            {"workflow_id": workflow.id, "trigger_type": "schedule"},
+            {"workflow_id": workflow.id, "trigger_type": "schedule", "system_workflow_key": None},
+        )
+
+    async def test_system_workflow_execution_names_itself_on_the_event(
+        self, ctx, _no_real_analytics
+    ):
+        # The daily briefing is an ordinary scheduled workflow, so its delivery
+        # rides the same event — `system_workflow_key` is what tells the two apart.
+        workflow = _make_workflow(system_workflow_key=BRIEFING_DAILY_KEY)
+        mock_execution = MagicMock()
+        mock_execution.execution_id = str(uuid4())
+
+        _, p_scheduler = _patch_scheduler(workflow)
+
+        with (
+            p_scheduler,
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(return_value=("conv_123", [])),
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.create_execution",
+                AsyncMock(return_value=mock_execution),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.complete_execution",
+                AsyncMock(),
+            ),
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            await execute_workflow_by_id(ctx, workflow.id, context={"trigger_type": "schedule"})
+
+        _no_real_analytics.assert_called_once_with(
+            workflow.user_id,
+            AnalyticsEvents.WORKFLOW_EXECUTED,
+            {
+                "workflow_id": workflow.id,
+                "trigger_type": "schedule",
+                "system_workflow_key": BRIEFING_DAILY_KEY,
+            },
         )
 
     async def test_manual_execution_does_not_capture_workflow_executed(
@@ -2137,7 +2180,11 @@ class TestTheByIdTaskThreadsItsIdsThrough:
         _no_real_analytics.assert_any_call(
             workflow.user_id,
             AnalyticsEvents.WORKFLOW_EXECUTED,
-            {"workflow_id": workflow.id, "trigger_type": TriggerType.INTEGRATION.value},
+            {
+                "workflow_id": workflow.id,
+                "trigger_type": TriggerType.INTEGRATION.value,
+                "system_workflow_key": None,
+            },
         )
 
 

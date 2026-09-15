@@ -54,6 +54,7 @@ def _workflow() -> MagicMock:
     workflow.repeat = True
     workflow.activated = True
     workflow.occurrence_count = 0
+    workflow.system_workflow_key = None
     return workflow
 
 
@@ -384,6 +385,7 @@ class TestASuccessfulFiresBookkeepingIsAddressedCorrectly:
             {
                 "workflow_id": harness.workflow.id,
                 "trigger_type": TriggerType.SCHEDULE.value,
+                "system_workflow_key": None,
             },
         )
 

@@ -1171,11 +1171,17 @@ async def _run_and_record_success(
     # tracked-todo, and integration triggers — only flow through this task,
     # so their completion is captured here. `trigger_type` already folds
     # unstamped integration fires in (see the derivation above).
+    # `system_workflow_key` names which GAIA-managed workflow delivered
+    # (briefing:daily, gmail:email_intelligence, ...); None for user workflows.
     if trigger_type != TriggerType.MANUAL.value:
         capture_event(
             workflow.user_id,
             AnalyticsEvents.WORKFLOW_EXECUTED,
-            {"workflow_id": workflow_id, "trigger_type": trigger_type},
+            {
+                "workflow_id": workflow_id,
+                "trigger_type": trigger_type,
+                "system_workflow_key": workflow.system_workflow_key,
+            },
         )
 
     # Arm the next occurrence (scheduled recurring workflows only). A re-arm

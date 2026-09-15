@@ -14,6 +14,7 @@ import pytest
 
 from app.constants.onboarding import NOT_SPECIFIED
 from app.constants.todos import ONBOARDING_TODO_LIMIT
+from app.db.repositories.users import user_repository
 from app.models.onboarding_models import (
     EmailSummary,
     InboxTriage,
@@ -744,7 +745,7 @@ def holo_stack() -> Any:
             f"{MODULE}.generate_holo_card_content",
             AsyncMock(return_value=("a phrase", "a bio", "ok")),
         ) as content,
-        patch(f"{MODULE}.save_personalization_data", AsyncMock()) as save,
+        patch.object(user_repository, "save_personalization", AsyncMock()) as save,
         patch(f"{MODULE}._emit_stage", AsyncMock()) as emit,
     ):
         yield content, save, emit
@@ -760,10 +761,10 @@ class TestRunHoloCard:
         ) as metadata:
             await _run_holo_card(_ctx(focus="focus"), user)
 
-        args = save.await_args.args
-        assert args[0] == USER
-        assert args[1] == "mistgrove"
-        assert args[2] == "a phrase"
+        assert save.await_args.args[0] == USER
+        saved = save.await_args.kwargs
+        assert saved["house"] == "mistgrove"
+        assert saved["personality_phrase"] == "a phrase"
         # Both the id and the already-loaded document: without the document the
         # lookup re-reads Mongo, without the id it reads the wrong person.
         metadata.assert_awaited_once_with(USER, user=user)
@@ -843,6 +844,21 @@ class TestRunHoloCard:
         await _run_holo_card(_ctx(focus=""), UserDocument(id=USER))
 
         assert content.await_args.args[1] == ""
+
+    async def test_a_save_failure_is_reported_as_a_failed_outcome(self, holo_stack: Any) -> None:
+        """The save used to be wrapped in a helper that logged and swallowed its
+        own exception, so a card that never reached Mongo still produced
+        ``holo_card done, outcome=ok`` — the one line an operator would trust."""
+        _, save, emit = holo_stack
+        save.side_effect = RuntimeError("mongo down")
+
+        with patch(f"{MODULE}.log") as log:
+            await _run_holo_card(_ctx(focus=""), UserDocument(id=USER))
+
+        assert [c.kwargs.get("outcome") for c in log.info.call_args_list] == []
+        assert log.error.call_args.kwargs["outcome"] == "failed"
+        assert log.error.call_args.kwargs["error_type"] == "RuntimeError"
+        assert emit.await_args.args[1] is OnboardingStage.HOLO_READY
 
     async def test_a_failure_still_announces_readiness(self, holo_stack: Any) -> None:
         # The frontend waits on HOLO_READY; skipping it leaves the card spinning.

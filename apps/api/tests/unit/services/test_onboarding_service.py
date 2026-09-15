@@ -21,10 +21,7 @@ from app.services.onboarding.onboarding_service import (
     get_user_onboarding_status,
     update_onboarding_preferences,
 )
-from app.services.onboarding.post_onboarding_service import (
-    save_personalization_data,
-    seed_initial_user_data,
-)
+from app.services.onboarding.post_onboarding_service import seed_initial_user_data
 
 
 @pytest.fixture
@@ -35,15 +32,6 @@ def mock_repo() -> Iterator[MagicMock]:
         repo.clear_onboarding = AsyncMock()
         repo.update_onboarding_preferences = AsyncMock()
         yield repo
-
-
-@pytest.fixture
-def mock_save_personalization() -> Iterator[AsyncMock]:
-    with patch(
-        "app.services.onboarding.post_onboarding_service.user_repository.save_personalization",
-        new_callable=AsyncMock,
-    ) as mock_save:
-        yield mock_save
 
 
 @pytest.fixture
@@ -382,69 +370,37 @@ class TestUpdateOnboardingPreferences:
         assert exc_info.value.status_code == 500
 
 
-class TestSavePersonalizationData:
-    async def test_saves_data(
-        self, mock_save_personalization: AsyncMock, sample_user_id: str
-    ) -> None:
-        await save_personalization_data(
-            sample_user_id,
-            house="explorer",
-            personality_phrase="Creative thinker",
-            user_bio="A passionate engineer.",
-            bio_status=BioStatus.COMPLETED,
-            workflow_ids=["wf1", "wf2"],
-            account_number=42,
-            member_since="Mar 2024",
-            overlay_color="#ff0000",
-            overlay_opacity=80,
-        )
-
-        mock_save_personalization.assert_awaited_once()
-        kwargs = mock_save_personalization.call_args.kwargs
-        assert kwargs["house"] == "explorer"
-        assert kwargs["personality_phrase"] == "Creative thinker"
-        assert kwargs["user_bio"] == "A passionate engineer."
-        assert kwargs["bio_status"] == BioStatus.COMPLETED
-        assert kwargs["workflow_ids"] == ["wf1", "wf2"]
-        assert kwargs["account_number"] == 42
-        assert kwargs["overlay_color"] == "#ff0000"
-        assert kwargs["overlay_opacity"] == 80
-
-    async def test_handles_exception(
-        self, mock_save_personalization: AsyncMock, sample_user_id: str
-    ) -> None:
-        mock_save_personalization.side_effect = Exception("DB error")
-
-        await save_personalization_data(
-            sample_user_id,
-            house="explorer",
-            personality_phrase="phrase",
-            user_bio="bio",
-            bio_status=BioStatus.COMPLETED,
-            workflow_ids=[],
-            account_number=1,
-            member_since="Jan 2024",
-            overlay_color="#000",
-            overlay_opacity=50,
-        )
-
-
 class TestSeedInitialUserData:
-    async def test_seeds_onboarding_todo(self) -> None:
-        with patch(
-            "app.services.onboarding.post_onboarding_service.seed_onboarding_todo",
-            new_callable=AsyncMock,
-        ) as mock_todo:
-            await seed_initial_user_data("user1")
-            mock_todo.assert_awaited_once_with("user1")
-
-    async def test_handles_exception(self) -> None:
-        with patch(
-            "app.services.onboarding.post_onboarding_service.seed_onboarding_todo",
-            new_callable=AsyncMock,
-            side_effect=Exception("seed error"),
+    async def test_seeds_onboarding_todo_and_universal_workflows(self) -> None:
+        with (
+            patch(
+                "app.services.onboarding.post_onboarding_service.seed_onboarding_todo",
+                new_callable=AsyncMock,
+            ) as mock_todo,
+            patch(
+                "app.services.onboarding.post_onboarding_service.provision_universal_system_workflows",
+                new_callable=AsyncMock,
+            ) as mock_provision,
         ):
             await seed_initial_user_data("user1")
+            mock_todo.assert_awaited_once_with("user1")
+            # Silent, like per-integration provisioning during onboarding.
+            mock_provision.assert_awaited_once_with("user1", notify=False)
+
+    async def test_todo_seed_failure_still_provisions_universal_workflows(self) -> None:
+        with (
+            patch(
+                "app.services.onboarding.post_onboarding_service.seed_onboarding_todo",
+                new_callable=AsyncMock,
+                side_effect=Exception("seed error"),
+            ),
+            patch(
+                "app.services.onboarding.post_onboarding_service.provision_universal_system_workflows",
+                new_callable=AsyncMock,
+            ) as mock_provision,
+        ):
+            await seed_initial_user_data("user1")
+            mock_provision.assert_awaited_once_with("user1", notify=False)
 
 
 class TestOnboardingServiceLogPins:

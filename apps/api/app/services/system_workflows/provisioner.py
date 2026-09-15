@@ -1,8 +1,9 @@
 """
 SystemWorkflowProvisioner
 
-Auto-creates GAIA-managed workflows when users connect integrations.
-Called from handle_oauth_connection() as a background task.
+Auto-creates GAIA-managed workflows when users connect integrations (called
+from handle_oauth_connection() as a background task) and the universal set every
+user gets at onboarding completion (called from seed_initial_user_data()).
 
 These workflows are standard Workflow documents in MongoDB — identical to
 user-created workflows except for is_system_workflow=True. The entire existing
@@ -28,6 +29,7 @@ from app.models.notification.notification_models import (
 )
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
 from app.services.notification_service import NotificationService
+from app.services.system_workflows.definitions.briefing import BRIEFING_SYSTEM_WORKFLOWS
 from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
 from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLOWS
 from app.services.user_service import get_user_by_id
@@ -45,9 +47,17 @@ SYSTEM_WORKFLOWS_BY_INTEGRATION: dict[
     "googlecalendar": CALENDAR_SYSTEM_WORKFLOWS,
 }
 
+# Provisioned for every user at onboarding completion, whatever they connect:
+# the briefings read what is connected and omit the rest.
+UNIVERSAL_SYSTEM_WORKFLOWS: list[tuple[str, Callable[[], CreateWorkflowRequest]]] = (
+    BRIEFING_SYSTEM_WORKFLOWS
+)
+
 # Flat registry: system_workflow_key -> factory (for reset-to-default)
 SYSTEM_WORKFLOW_REGISTRY: dict[str, Callable[[], CreateWorkflowRequest]] = {
-    key: factory for entries in SYSTEM_WORKFLOWS_BY_INTEGRATION.values() for key, factory in entries
+    key: factory
+    for entries in (*SYSTEM_WORKFLOWS_BY_INTEGRATION.values(), UNIVERSAL_SYSTEM_WORKFLOWS)
+    for key, factory in entries
 }
 
 
@@ -86,6 +96,46 @@ async def provision_system_workflows(
         integration_id=integration_id,
     )
 
+    created = await _provision_entries(
+        user_id, entries, integration_display_name=integration_display_name
+    )
+    if created and notify:
+        await _notify_workflows_provisioned(user_id, integration_display_name, created)
+
+
+async def provision_universal_system_workflows(
+    user_id: str, notify: bool = True
+) -> list[CreateWorkflowRequest]:
+    """Create the workflows every user gets, whatever they have connected.
+
+    Called from seed_initial_user_data() once onboarding has written the profile
+    timezone, so the schedules are stamped with it. Same idempotent path as the
+    per-integration set: a key that already exists for the user is skipped.
+    Returns the definitions created this call.
+    """
+    log.set(
+        component="system_workflow_provisioner",
+        operation="provision_universal_system_workflows",
+        user_id=user_id,
+    )
+    log.info(
+        f"{LogTag.WORKFLOW} Provisioning universal system workflow(s)",
+        entries_count=len(UNIVERSAL_SYSTEM_WORKFLOWS),
+        user_id=user_id,
+    )
+    created = await _provision_entries(user_id, UNIVERSAL_SYSTEM_WORKFLOWS)
+    if created and notify:
+        await _notify_workflows_provisioned(user_id, None, created)
+    return created
+
+
+async def _provision_entries(
+    user_id: str,
+    entries: list[tuple[str, Callable[[], CreateWorkflowRequest]]],
+    *,
+    integration_display_name: str | None = None,
+) -> list[CreateWorkflowRequest]:
+    """Create each definition the user does not have yet; returns the ones created."""
     created: list[CreateWorkflowRequest] = []
     user_timezone: str | None = None
 
@@ -134,23 +184,25 @@ async def provision_system_workflows(
                 outcome="failed",
                 exc_info=True,
             )
-
-    if created and notify:
-        await _notify_workflows_provisioned(user_id, integration_display_name, created)
+    return created
 
 
 async def _notify_workflows_provisioned(
     user_id: str,
-    integration_display_name: str,
+    integration_display_name: str | None,
     created: list[CreateWorkflowRequest],
 ) -> None:
-    """Send a friendly notification summarising the newly provisioned workflows."""
-    integration_name = integration_display_name
+    """Send a friendly notification summarising the newly provisioned workflows.
+
+    ``integration_display_name`` is None for the universal set, which belongs to
+    the user rather than to an integration.
+    """
+    subject = f"your {integration_display_name}" if integration_display_name else "you"
 
     if len(created) == 1:
-        title = f"I set up a workflow for your {integration_name}"
+        title = f"I set up a workflow for {subject}"
     else:
-        title = f"I set up {len(created)} workflows for your {integration_name}"
+        title = f"I set up {len(created)} workflows for {subject}"
 
     workflow_lines = "\n".join(f"• {r.title} — {r.description}" for r in created)
     body = f"Here's what I've got running for you:\n\n{workflow_lines}\n\nYou can adjust or turn them off anytime."

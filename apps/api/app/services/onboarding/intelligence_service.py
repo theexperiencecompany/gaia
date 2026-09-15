@@ -90,9 +90,6 @@ from app.services.onboarding.first_message_service import (
     generate_first_message,
 )
 from app.services.onboarding.inbox_triage_service import triage_inbox
-from app.services.onboarding.post_onboarding_service import (
-    save_personalization_data,
-)
 from app.services.onboarding.social_profile_service import (
     dedup_profiles_by_platform,
     extract_social_profiles_from_emails,
@@ -1078,17 +1075,17 @@ async def _run_holo_card(
         )
         phrase_bio_duration_s = round(time.monotonic() - t_phrase_bio, 2)
         t_save = time.monotonic()
-        await save_personalization_data(
+        await user_repository.save_personalization(
             ctx.user_id,
-            card_design.house,
-            phrase,
-            user_bio,
-            bio_status,
-            [],
-            metadata.account_number,
-            metadata.member_since,
-            card_design.overlay_color,
-            card_design.overlay_opacity,
+            house=card_design.house,
+            personality_phrase=phrase,
+            user_bio=user_bio,
+            bio_status=bio_status,
+            account_number=metadata.account_number,
+            member_since=metadata.member_since,
+            overlay_color=card_design.overlay_color,
+            overlay_opacity=card_design.overlay_opacity,
+            workflow_ids=[],
         )
         log.info(
             f"{LogTag.ONBOARDING} holo_card done",
