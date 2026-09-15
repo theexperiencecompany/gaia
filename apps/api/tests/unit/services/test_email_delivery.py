@@ -85,6 +85,28 @@ class TestResendProviderSend:
         params = m_send.call_args[0][0]
         assert "reply_to" not in params
 
+    @pytest.mark.regression
+    async def test_forwards_the_idempotency_key(self, mock_resend):
+        """A retried send with the same key is dropped by Resend instead of mailed twice."""
+        m_settings, m_send, m_contact = mock_resend
+        provider = ResendEmailProvider()
+
+        await provider.send(
+            EmailMessage(
+                sender="s", to=["a@example.com"], subject="t", html="h", idempotency_key="k-1"
+            )
+        )
+
+        assert m_send.call_args[0][1] == {"idempotency_key": "k-1"}
+
+    async def test_sends_no_options_without_a_key(self, mock_resend):
+        m_settings, m_send, m_contact = mock_resend
+        provider = ResendEmailProvider()
+
+        await provider.send(EmailMessage(sender="s", to=["a@example.com"], subject="t", html="h"))
+
+        assert m_send.call_args[0][1] is None
+
     async def test_failure_propagates(self, mock_resend):
         m_settings, m_send, m_contact = mock_resend
         m_send.side_effect = RuntimeError("resend down")

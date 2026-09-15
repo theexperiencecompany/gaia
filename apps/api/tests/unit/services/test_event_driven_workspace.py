@@ -313,8 +313,9 @@ def _oauth_patches(repo, sched):
         patch(f"{OAUTH}.schedule_user_provision", sched),
         patch(f"{OAUTH}.track_login", MagicMock()),
         patch(f"{OAUTH}.track_signup", MagicMock()),
-        patch(f"{OAUTH}.send_welcome_email", new_callable=AsyncMock),
-        patch(f"{OAUTH}.add_marketing_contact", new_callable=AsyncMock),
+        # Signup queues its ESP deliveries on the worker rather than sending
+        # them here; stub the pool so the enqueue never reaches a real Redis.
+        patch(f"{OAUTH}.RedisPoolManager.get_pool", new_callable=AsyncMock),
     )
 
 
@@ -324,7 +325,7 @@ async def test_new_user_provisions_workspace():
     repo.create = AsyncMock(return_value=UserDocument(id="NEW123", name="Ada", email="ada@x.com"))
     sched = MagicMock()
     p = _oauth_patches(repo, sched)
-    with p[0], p[1], p[2], p[3], p[4], p[5]:
+    with p[0], p[1], p[2], p[3], p[4]:
         from app.services.oauth.oauth_service import store_user_info
 
         user_id, is_new = await store_user_info("Ada", "ada@x.com", None)
@@ -340,7 +341,7 @@ async def test_existing_user_does_not_provision():
     repo.update = AsyncMock()
     sched = MagicMock()
     p = _oauth_patches(repo, sched)
-    with p[0], p[1], p[2], p[3], p[4], p[5]:
+    with p[0], p[1], p[2], p[3], p[4]:
         from app.services.oauth.oauth_service import store_user_info
 
         user_id, is_new = await store_user_info("Ada", "ada@x.com", None)

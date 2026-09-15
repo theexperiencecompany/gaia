@@ -1,5 +1,6 @@
 """Unit tests for OAuth service operations."""
 
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
@@ -10,6 +11,7 @@ from tests.helpers import captured_wide_event
 
 from app.constants.log_tags import LogTag
 from app.models.user_models import BioStatus, UserDocument
+from app.services.email.signup_delivery import signup_email_job_id
 from app.services.oauth.oauth_service import (
     check_integration_status,
     check_multiple_integrations_status,
@@ -36,6 +38,7 @@ def mock_user_repo():
         mock_repo.update = AsyncMock()
         mock_repo.create = AsyncMock()
         mock_repo.set_bio_status = AsyncMock()
+        mock_repo.stamp_signup_deliveries = AsyncMock()
         yield mock_repo
 
 
@@ -74,24 +77,6 @@ def mock_track_signup():
 def mock_track_login():
     with patch("app.services.oauth.oauth_service.track_login") as mock_tl:
         yield mock_tl
-
-
-@pytest.fixture
-def mock_send_welcome_email():
-    with patch(
-        "app.services.oauth.oauth_service.send_welcome_email",
-        new_callable=AsyncMock,
-    ) as mock_swe:
-        yield mock_swe
-
-
-@pytest.fixture
-def mock_add_marketing_contact():
-    with patch(
-        "app.services.oauth.oauth_service.add_marketing_contact",
-        new_callable=AsyncMock,
-    ) as mock_acr:
-        yield mock_acr
 
 
 @pytest.fixture
@@ -280,8 +265,6 @@ class TestStoreUserInfo:
         self,
         mock_user_repo,
         mock_track_signup,
-        mock_send_welcome_email,
-        mock_add_marketing_contact,
     ):
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = None
@@ -301,8 +284,6 @@ class TestStoreUserInfo:
         self,
         mock_user_repo,
         mock_track_signup,
-        mock_send_welcome_email,
-        mock_add_marketing_contact,
     ):
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = None
@@ -318,8 +299,7 @@ class TestStoreUserInfo:
         self,
         mock_user_repo,
         mock_track_signup,
-        mock_send_welcome_email,
-        mock_add_marketing_contact,
+        mock_redis_pool_manager,
     ):
         """WorkOS has no first/last name for email-code signups; storing "" left
         the user (and every greeting, email and prompt) nameless forever."""
@@ -331,19 +311,22 @@ class TestStoreUserInfo:
 
         assert mock_user_repo.create.call_args.args[0].name == "Aryan Randeriya"
         assert mock_track_signup.call_args.kwargs["name"] == "Aryan Randeriya"
-        mock_send_welcome_email.assert_awaited_once_with(
-            "aryan.randeriya@test.com", "Aryan Randeriya", user_id=uid
+        # The derived name is what the queued delivery reads back off the row,
+        # so storing it is what decides how the welcome email greets the user.
+        # Not assert_awaited_once_with: enqueue_worker_job also attaches the
+        # caller's trace id, which is not this test's subject.
+        assert mock_redis_pool_manager.enqueue_job.await_args.args == (
+            "deliver_signup_emails",
+            uid,
         )
-        mock_add_marketing_contact.assert_awaited_once_with(
-            "aryan.randeriya@test.com", "Aryan Randeriya", user_id=uid
-        )
+        assert mock_redis_pool_manager.enqueue_job.await_args.kwargs[
+            "_job_id"
+        ] == signup_email_job_id(uid)
 
     async def test_new_user_keeps_the_workos_name_when_there_is_one(
         self,
         mock_user_repo,
         mock_track_signup,
-        mock_send_welcome_email,
-        mock_add_marketing_contact,
     ):
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=str(ObjectId()))
@@ -356,8 +339,6 @@ class TestStoreUserInfo:
         self,
         mock_user_repo,
         mock_track_signup,
-        mock_send_welcome_email,
-        mock_add_marketing_contact,
     ):
         mock_user_repo.get_by_email.return_value = None
         created = UserDocument(id=str(ObjectId()))
@@ -372,42 +353,76 @@ class TestStoreUserInfo:
             signup_method="workos",
         )
 
-    async def test_new_user_sends_welcome_email(
+    async def test_new_user_queues_the_signup_email_delivery(
         self,
         mock_user_repo,
         mock_track_signup,
-        mock_send_welcome_email,
-        mock_add_marketing_contact,
+        mock_redis_pool_manager,
     ):
+        """Creating the user queues the ESP round-trips on the worker instead of
+        running them here. In-process they were fast but unowned: nothing drains
+        those tasks on shutdown, so a restart mid-send lost the welcome email and
+        the marketing contact with no record. What the job then does is
+        ``tests/unit/workers/tasks/test_signup_email_tasks.py``'s subject."""
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=uid)
 
         await store_user_info("Bob", "bob@test.com", None)
 
-        mock_send_welcome_email.assert_awaited_once_with("bob@test.com", "Bob", user_id=uid)
+        # A real signup is created owing both deliveries. Stamping here instead
+        # would mark them settled before the ESP was ever called, and the sweep
+        # would have nothing left to recover when the queued job was lost.
+        created = mock_user_repo.create.call_args.args[0]
+        assert created.welcome_email_sent_at is None
+        assert created.marketing_contact_added_at is None
+        # Not assert_awaited_once_with: enqueue_worker_job also attaches the
+        # caller's trace id, which is not this test's subject.
+        assert mock_redis_pool_manager.enqueue_job.await_args.args == (
+            "deliver_signup_emails",
+            uid,
+        )
+        assert mock_redis_pool_manager.enqueue_job.await_args.kwargs[
+            "_job_id"
+        ] == signup_email_job_id(uid)
 
-    async def test_new_user_adds_contact_to_resend(
+    async def test_a_dev_minted_user_is_stamped_so_the_sweep_never_mails_it(
         self,
         mock_user_repo,
         mock_track_signup,
-        mock_send_welcome_email,
-        mock_add_marketing_contact,
+        mock_redis_pool_manager,
     ):
+        """Suppressing the side effects is not enough on its own. The recovery
+        sweep selects on a *missing* delivery stamp, so an unstamped seeded
+        account looks exactly like a signup whose enqueue was lost — and every
+        dev user would get a founder email and a marketing contact an hour
+        after minting, which is the one thing this path promises never happens.
+
+        The stamps ride in the insert rather than a follow-up write. One round
+        trip, and no window in which the row exists unstamped for a sweep to
+        find — mint is also the one signup path callers drive without a live
+        event loop of their own, and a second write there had nothing to run on.
+        """
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=uid)
 
-        await store_user_info("Bob", "bob@test.com", None)
+        await store_user_info("Bob", "bob@test.com", None, external_side_effects=False)
 
-        mock_add_marketing_contact.assert_awaited_once_with("bob@test.com", "Bob", user_id=uid)
+        created = mock_user_repo.create.call_args.args[0]
+        # Mongo stores a BSON date as UTC and reads a naive one back as though
+        # it already were; a local-clock stamp would land silently shifted.
+        assert created.welcome_email_sent_at is not None
+        assert created.welcome_email_sent_at.tzinfo is UTC
+        assert created.marketing_contact_added_at == created.welcome_email_sent_at
+        mock_user_repo.stamp_signup_deliveries.assert_not_awaited()
+        mock_redis_pool_manager.enqueue_job.assert_not_awaited()
+        mock_track_signup.assert_not_called()
 
     async def test_new_user_signup_tracking_failure_does_not_raise(
         self,
         mock_user_repo,
         mock_track_signup,
-        mock_send_welcome_email,
-        mock_add_marketing_contact,
     ):
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = None
@@ -418,35 +433,21 @@ class TestStoreUserInfo:
         result = await store_user_info("Bob", "bob@test.com", None)
         assert result == (uid, True)
 
-    async def test_new_user_welcome_email_failure_does_not_raise(
+    async def test_new_user_signup_survives_a_failed_email_enqueue(
         self,
         mock_user_repo,
         mock_track_signup,
-        mock_send_welcome_email,
-        mock_add_marketing_contact,
+        mock_redis_pool_manager,
     ):
+        """Redis being unreachable must cost the signup emails, not the signup:
+        the account is already written by this point, so raising here would fail
+        a registration that actually succeeded."""
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=uid)
-        mock_send_welcome_email.side_effect = Exception("SMTP error")
+        mock_redis_pool_manager.enqueue_job.side_effect = Exception("Redis down")
 
-        result = await store_user_info("Bob", "bob@test.com", None)
-        assert result == (uid, True)
-
-    async def test_new_user_resend_failure_does_not_raise(
-        self,
-        mock_user_repo,
-        mock_track_signup,
-        mock_send_welcome_email,
-        mock_add_marketing_contact,
-    ):
-        uid = str(ObjectId())
-        mock_user_repo.get_by_email.return_value = None
-        mock_user_repo.create.return_value = UserDocument(id=uid)
-        mock_add_marketing_contact.side_effect = Exception("Resend API error")
-
-        result = await store_user_info("Bob", "bob@test.com", None)
-        assert result == (uid, True)
+        assert await store_user_info("Bob", "bob@test.com", None) == (uid, True)
 
 
 # ---------------------------------------------------------------------------

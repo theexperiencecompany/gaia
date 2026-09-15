@@ -20,6 +20,7 @@ cached read may carry a slightly stale ``last_active_at``; nothing reads that
 field off a cached path (the inactivity scan is an uncached query).
 """
 
+from collections.abc import Iterable
 from datetime import UTC, datetime
 
 from bson import ObjectId
@@ -30,6 +31,7 @@ from app.constants.cache import (
     REPO_GLOBAL_SCOPE,
     USER_CACHE_PREFIX,
 )
+from app.constants.email import SignupDelivery
 from app.constants.first_steps import (
     FIRST_STEPS_COLLAPSED_AT_FIELD,
     FIRST_STEPS_COLLAPSED_FIELD,
@@ -158,6 +160,25 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         return await self._find_lenient(
             {"created_at": {"$gte": created_since}, "is_active": {"$ne": False}},
         )
+
+    async def find_undelivered_signup_ids(
+        self, created_since: datetime, *, limit: int
+    ) -> list[str]:
+        """Ids of recent signups still missing at least one delivery stamp.
+
+        ``created_since`` is load-bearing rather than cosmetic: every account
+        that predates the stamps is missing both, so an unbounded window would
+        hand the entire user base to the recovery sweep.
+        """
+        docs = await self._find(
+            {
+                "created_at": {"$gte": created_since},
+                "$or": [{delivery.value: {"$exists": False}} for delivery in SignupDelivery],
+            },
+            sort=[("created_at", -1)],
+            limit=limit,
+        )
+        return [doc.id for doc in docs]
 
     def _backfill_query(
         self, active_since: datetime, eligible_before: datetime
@@ -624,6 +645,25 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
         return updated is not None
+
+    async def stamp_signup_deliveries(
+        self, user_id: str, deliveries: Iterable[SignupDelivery]
+    ) -> bool:
+        """Record signup deliveries as settled; ``False`` when no such user exists.
+
+        Written on each delivery's own success, once the ESP has accepted it.
+        Unfetched because nothing here needs the document back, and a stamp is
+        the job's hot path — two per signup. A ``False`` is a delivery that
+        landed for a user who has since been deleted.
+        """
+        now = datetime.now(UTC)
+        matched = await self._apply_raw_update_unfetched(
+            {"_id": self._id_value(user_id)},
+            {"$set": {delivery.value: now for delivery in deliveries}},
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=user_id,
+        )
+        return matched > 0
 
     async def mark_memory_backfilled(self, user_id: str) -> None:
         """Stamp the memory-backfill marker so the daily cron won't re-select the user."""

@@ -15,6 +15,7 @@ import time
 
 import pytest
 
+from app.constants.email import SignupDelivery
 from app.db.repositories.users import UserRepository
 from app.models.onboarding_models import SocialProfile
 from app.models.user_models import (
@@ -459,6 +460,132 @@ class TestWorkerScans:
         stamped = (await repo.get(created.id)).memory_backfilled
         assert stamped is not None
         assert before <= stamped <= datetime.now(UTC)
+
+
+class TestSignupDeliveryStamps:
+    """The pair the signup-delivery recovery sweep is built on.
+
+    A missing stamp is the only durable record that a new user is still owed a
+    welcome email and a place in the marketing audience, so the query that finds
+    those users and the write that retires them are the whole mechanism. Both
+    run against real Mongo here because both are pure query shape — an ``$or``
+    over ``{$exists: false}`` and a ``$set`` of named fields — which a stubbed
+    repository proves nothing about.
+    """
+
+    @staticmethod
+    def _recent(ages_in_hours: int) -> datetime:
+        return datetime.now(UTC) - timedelta(hours=ages_in_hours)
+
+    async def test_only_recent_signups_missing_a_stamp_are_selected(self, repo, make_user):
+        """Both halves of this matter. Missing the un-stamped users means a lost
+        enqueue is never recovered; including the settled or the ancient ones
+        means re-mailing people who already got the email — and every account
+        predating these fields carries neither stamp, so the lookback is the
+        only thing standing between the sweep and the entire user base.
+        """
+        lookback = datetime.now(UTC) - timedelta(days=7)
+        settled = datetime.now(UTC)
+        # Inserted oldest-first, so Mongo's natural order is the reverse of the
+        # expected one: an unsorted query cannot accidentally pass this.
+        owed_one = await repo.create(
+            make_user(email="half@b.com", created_at=self._recent(2), welcome_email_sent_at=settled)
+        )
+        owed_both = await repo.create(make_user(email="owed@b.com", created_at=self._recent(1)))
+        # Excluded: both deliveries already landed.
+        await repo.create(
+            make_user(
+                email="done@b.com",
+                created_at=self._recent(3),
+                welcome_email_sent_at=settled,
+                marketing_contact_added_at=settled,
+            )
+        )
+        # Excluded: predates the lookback, so its missing stamps mean "before
+        # this mechanism existed", not "still owed".
+        await repo.create(
+            make_user(email="ancient@b.com", created_at=datetime.now(UTC) - timedelta(days=8))
+        )
+
+        ids = await repo.find_undelivered_signup_ids(lookback, limit=10)
+
+        # Newest first: a capped run should drain the freshest signups, whose
+        # welcome email is still worth sending, before older ones.
+        assert ids == [owed_both.id, owed_one.id]
+
+    async def test_the_lookback_boundary_includes_the_user_sitting_on_it(self, repo, make_user):
+        boundary = datetime.now(UTC) - timedelta(days=7)
+        on_boundary = await repo.create(make_user(email="on@b.com", created_at=boundary))
+        await repo.create(make_user(email="off@b.com", created_at=boundary - timedelta(seconds=1)))
+
+        ids = await repo.find_undelivered_signup_ids(boundary, limit=10)
+
+        assert ids == [on_boundary.id]
+
+    async def test_the_batch_is_capped_and_takes_the_newest(self, repo, make_user):
+        """The cap keeps one run from spiking the ESP; the stamps are what make
+        the next run resume with whoever is left."""
+        # Oldest inserted first. Natural order would hand back the two oldest,
+        # which is exactly the batch a capped run must NOT take: the stalest
+        # signups, whose welcome email is least worth sending.
+        await repo.create(make_user(email="n3@b.com", created_at=self._recent(3)))
+        middle = await repo.create(make_user(email="n2@b.com", created_at=self._recent(2)))
+        newest = await repo.create(make_user(email="n1@b.com", created_at=self._recent(1)))
+
+        ids = await repo.find_undelivered_signup_ids(self._recent(24), limit=2)
+
+        assert ids == [newest.id, middle.id]
+
+    async def test_stamping_one_delivery_leaves_the_other_owed(
+        self, repo, make_user, local_time_offset_from_utc
+    ):
+        """The two deliveries fail independently, so they retire independently.
+        Stamping both when only one landed loses the other with no trace.
+
+        The instant is compared against a UTC cutoff by the sweep, so a naive
+        local ``now()`` would land hours off and either re-select the user or
+        hide them for good.
+        """
+        created = await repo.create(make_user(created_at=self._recent(1)))
+        # Warm the entity cache first: a stamp shadowed by a stale cached read
+        # would let the job re-send a delivery it had already made.
+        assert (await repo.get(created.id)).welcome_email_sent_at is None
+        before = datetime.now(UTC) - timedelta(milliseconds=1)  # BSON stores milliseconds
+
+        assert (
+            await repo.stamp_signup_deliveries(created.id, [SignupDelivery.WELCOME_EMAIL]) is True
+        )
+
+        stored = await repo.get(created.id)
+        assert stored.welcome_email_sent_at is not None
+        assert before <= stored.welcome_email_sent_at <= datetime.now(UTC)
+        assert stored.marketing_contact_added_at is None
+        # Still owed the contact, so the sweep must still find them.
+        assert await repo.find_undelivered_signup_ids(self._recent(24), limit=10) == [created.id]
+
+    async def test_stamping_both_retires_the_signup_from_the_sweep(self, repo, make_user):
+        created = await repo.create(make_user(created_at=self._recent(1)))
+
+        await repo.stamp_signup_deliveries(created.id, list(SignupDelivery))
+
+        stored = await repo.get(created.id)
+        assert stored.welcome_email_sent_at is not None
+        assert stored.marketing_contact_added_at is not None
+        assert await repo.find_undelivered_signup_ids(self._recent(24), limit=10) == []
+
+    async def test_stamping_a_user_that_no_longer_exists_touches_nobody(self, repo, make_user):
+        """A user deleted between the sweep's scan and the job's run. The write
+        matches nothing and must not spill onto whoever is left."""
+        survivor = await repo.create(make_user(created_at=self._recent(1)))
+
+        # Reported, not swallowed: a stamp that matched nobody means the job
+        # just delivered to a user who is already gone.
+        assert await repo.stamp_signup_deliveries("0" * 24, list(SignupDelivery)) is False
+
+        stored = await repo.get(survivor.id)
+        assert stored.welcome_email_sent_at is None
+        assert stored.marketing_contact_added_at is None
+        assert await repo.find_undelivered_signup_ids(self._recent(24), limit=10) == [survivor.id]
 
 
 class TestPlatformLinking:

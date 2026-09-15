@@ -4,6 +4,7 @@ from arq import cron
 from arq.typing import WorkerCoroutine
 from arq.worker import func
 
+from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK
 
@@ -21,6 +22,7 @@ from app.workers.tasks import (
     check_inactive_users,
     cleanup_expired_reminders,
     cleanup_stuck_personalization,
+    deliver_signup_emails,
     execute_workflow_by_id,
     generate_workflow_steps,
     process_gmail_emails_to_memory,
@@ -35,6 +37,7 @@ from app.workers.tasks import (
     sweep_abandoned_imessage_registrations,
     sweep_expired_memories,
     sweep_idle_sandboxes,
+    sweep_undelivered_signup_emails,
 )
 from app.workers.tasks.device_tasks import warm_device_servers
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
@@ -85,6 +88,17 @@ _promote_usage_badges = arq_task(promote_usage_badges)
 _sweep_dormant_user_workflows = arq_task(sweep_dormant_user_workflows)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 _sweep_expired_memories = arq_task(sweep_expired_memories)
+# keep_result=0 on purpose. The job id is per user, so a kept result would make
+# ARQ refuse every re-enqueue for an hour after the job finished — including the
+# hourly recovery sweep's, which is the one thing that retries a delivery the
+# ESP rejected. Dedup then covers exactly the window it should (queued or in
+# flight); a re-run is made harmless by the delivery stamps, not by the result.
+_deliver_signup_emails = func(
+    arq_task(deliver_signup_emails),
+    name=SIGNUP_EMAIL_TASK,
+    keep_result=0,
+)
+_sweep_undelivered_signup_emails = arq_task(sweep_undelivered_signup_emails)
 _warm_device_servers = arq_task(warm_device_servers)
 # Named from the constant the webhook enqueues by, so the two cannot drift.
 _sync_workflows_for_subscription_state = func(
@@ -116,6 +130,8 @@ WorkerSettings.functions = [
     _sweep_dormant_user_workflows,
     _sweep_abandoned_imessage_registrations,
     _sweep_expired_memories,
+    _deliver_signup_emails,
+    _sweep_undelivered_signup_emails,
     _warm_device_servers,
     _sync_workflows_for_subscription_state,
 ]
@@ -208,6 +224,14 @@ WorkerSettings.cron_jobs = [
         cast(WorkerCoroutine, _sweep_dormant_user_workflows),
         hour=6,  # Daily at 06:00 UTC
         minute=0,
+        second=0,
+    ),
+    # Finish the signup deliveries of anyone whose enqueue was lost (a Redis
+    # hiccup during signup) or whose job failed. Hourly, off the other sweeps'
+    # minutes; idempotent via the per-user job id and the delivery stamps.
+    cron(
+        cast(WorkerCoroutine, _sweep_undelivered_signup_emails),
+        minute=40,
         second=0,
     ),
     # Retire memories whose forget_after has passed. Without this, expiry is

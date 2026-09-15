@@ -15,6 +15,7 @@ from .platform_link_tasks import sweep_abandoned_imessage_registrations
 from .reminder_tasks import cleanup_expired_reminders, process_reminder
 from .sandbox_tasks import sweep_idle_sandboxes
 from .session_tasks import prune_inactive_sessions
+from .signup_email_tasks import deliver_signup_emails, sweep_undelivered_signup_emails
 from .usage_badge_tasks import promote_usage_badges
 from .user_tasks import check_inactive_users
 from .workflow_tasks import (
@@ -46,4 +47,6 @@ __all__ = [
     "backfill_active_users",
     "backfill_user_memories",
     "promote_usage_badges",
+    "deliver_signup_emails",
+    "sweep_undelivered_signup_emails",
 ]

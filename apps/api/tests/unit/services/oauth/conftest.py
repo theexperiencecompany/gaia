@@ -79,24 +79,6 @@ def mock_track_login():
 
 
 @pytest.fixture
-def mock_send_welcome_email():
-    with patch(
-        "app.services.oauth.oauth_service.send_welcome_email",
-        new_callable=AsyncMock,
-    ) as mock_swe:
-        yield mock_swe
-
-
-@pytest.fixture
-def mock_add_marketing_contact():
-    with patch(
-        "app.services.oauth.oauth_service.add_marketing_contact",
-        new_callable=AsyncMock,
-    ) as mock_acr:
-        yield mock_acr
-
-
-@pytest.fixture
 def mock_fetch_and_store_provider_metadata():
     with patch(
         "app.services.oauth.oauth_service.fetch_and_store_provider_metadata",

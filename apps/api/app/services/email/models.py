@@ -12,3 +12,4 @@ class EmailMessage(BaseModel):
     html: str
     reply_to: str | None = None
     headers: dict[str, str] | None = None
+    idempotency_key: str | None = None

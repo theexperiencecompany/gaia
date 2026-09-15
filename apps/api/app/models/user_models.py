@@ -399,6 +399,9 @@ class AuthenticatedUser(TypedDict, total=False):
     nurture: dict[str, Any] | None
     # Activation checklist collapse (first_steps_service).
     first_steps: FirstStepsState | None
+    # Signup delivery stamps (signup_email_tasks) — absent while still owed.
+    welcome_email_sent_at: datetime | None
+    marketing_contact_added_at: datetime | None
 
 
 class PlatformLinkRecord(TypedDict, total=False):
@@ -592,6 +595,14 @@ class UserDocument(MongoDocument):
     nurture: dict[str, Any] | None = None
     # Activation checklist collapse (first_steps_service).
     first_steps: FirstStepsState | None = None
+    # Signup's two outbound ESP deliveries, stamped when each one lands (see
+    # app/workers/tasks/signup_email_tasks.py). These attribute names must keep
+    # matching the values of ``constants.email.SignupDelivery``, which is what
+    # the repository and the recovery sweep address them by. A missing stamp
+    # means the delivery is still owed; a dev-minted user is owed neither and is
+    # stamped at creation so the sweep never mails a seeded account.
+    welcome_email_sent_at: datetime | None = None
+    marketing_contact_added_at: datetime | None = None
 
 
 class OnboardingStatusResponse(BaseModel):

@@ -1,6 +1,10 @@
+import asyncio
+from datetime import UTC, datetime
+
 from fastapi import BackgroundTasks, HTTPException
 
 from app.constants.auth import LOGIN_METHOD_WORKOS
+from app.constants.email import SIGNUP_EMAIL_ENQUEUE_TIMEOUT_SECONDS
 from app.constants.integrations import (
     GMAIL_INTEGRATION_ID,
     GOOGLE_CALENDAR_INTEGRATION_ID,
@@ -13,7 +17,7 @@ from app.models.oauth_models import OAuthIntegration
 from app.models.user_models import BioStatus, UserDocument, UserUpdate
 from app.services.analytics_service import track_login, track_signup
 from app.services.composio.composio_service import get_composio_service
-from app.services.email import add_marketing_contact, send_welcome_email
+from app.services.email.signup_delivery import enqueue_signup_emails
 
 # Re-exported on purpose: the reader lives below this module now, and its
 # callers here keep importing it from the OAuth surface they already know.
@@ -83,28 +87,23 @@ async def _run_signup_side_effects(user_id: str, email: str, signup_name: str) -
             error_type=type(e).__name__,
         )
 
-    # Send welcome email to new user
+    # Welcome email + marketing contact are ESP round-trips that signup must not
+    # wait on: a slow or unreachable provider used to hang user creation for as
+    # long as the HTTP client allowed (observed: 90s+ with no timeout anywhere in
+    # the path). They go on the worker queue rather than an in-process task
+    # because nothing drains those on shutdown — a restart mid-send dropped both
+    # deliveries without a trace. Queued, the job outlives this process — and
+    # losing even this enqueue is survivable, because the user's row carries no
+    # delivery stamps and the hourly recovery sweep finishes it later. That is also
+    # why the handoff is bounded: a stalled Redis must not hold the OAuth callback.
     try:
-        await send_welcome_email(email, signup_name, user_id=user_id)
-        log.info(f"{LogTag.OAUTH} Welcome email sent to new user", user={"id": user_id})
+        async with asyncio.timeout(SIGNUP_EMAIL_ENQUEUE_TIMEOUT_SECONDS):
+            pool = await RedisPoolManager.get_pool()
+            await enqueue_signup_emails(pool, user_id)
+        log.info(f"{LogTag.OAUTH} Queued signup email delivery", user={"id": user_id})
     except Exception as e:
         log.error(
-            f"{LogTag.OAUTH} Failed to send welcome email to",
-            user={"id": user_id},
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-
-    # Add contact to marketing audience
-    try:
-        await add_marketing_contact(email, signup_name, user_id=user_id)
-        log.info(
-            f"{LogTag.OAUTH} Contact added to marketing audience for new user",
-            user={"id": user_id},
-        )
-    except Exception as e:
-        log.error(
-            f"{LogTag.OAUTH} Failed to add marketing contact for",
+            f"{LogTag.OAUTH} Failed to queue signup email delivery",
             user={"id": user_id},
             error=str(e),
             error_type=type(e).__name__,
@@ -184,8 +183,21 @@ async def store_user_info(
     # store an empty name forever. The email's local part is the fallback; the
     # user can correct it in settings and no later login overwrites it.
     signup_name = name or derive_name_from_email(email)
+    # A user whose side effects are suppressed is owed neither signup delivery,
+    # so it is created with both already settled: the recovery sweep selects on
+    # a *missing* stamp and would otherwise mail and enrol every seeded account
+    # an hour after minting. The stamps ride in the insert rather than a
+    # follow-up write — one round trip, and no window in which the row exists
+    # unstamped. A real signup is created owing both; only the job stamps those.
+    settled_at = None if external_side_effects else datetime.now(UTC)
     created = await user_repository.create(
-        UserDocument(name=signup_name, email=email, picture=picture_url or "")
+        UserDocument(
+            name=signup_name,
+            email=email,
+            picture=picture_url or "",
+            welcome_email_sent_at=settled_at,
+            marketing_contact_added_at=settled_at,
+        )
     )
 
     if not external_side_effects:
