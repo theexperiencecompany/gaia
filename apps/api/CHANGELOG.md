@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.25.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.24.0...api-v0.25.0) (2026-09-15)
+
+
+### Features
+
+* **api:** benchmark end-to-end chat turn latency ([#1229](https://github.com/theexperiencecompany/gaia/issues/1229)) ([dd8637b](https://github.com/theexperiencecompany/gaia/commit/dd8637b6ace24760873cd11177cd95b922bb8a13))
+
+
+### Performance Improvements
+
+* **memory:** fail-fast interactive recall to the embedding sidecar ([#1239](https://github.com/theexperiencecompany/gaia/issues/1239)) ([1360d7d](https://github.com/theexperiencecompany/gaia/commit/1360d7d7bac05f6934ded01f1734961ffc523940))
+
 ## [0.24.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.23.0...api-v0.24.0) (2026-09-14)
 
 
