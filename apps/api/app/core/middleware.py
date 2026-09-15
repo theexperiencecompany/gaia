@@ -51,30 +51,19 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONRe
 
 
 def configure_middleware(app: FastAPI) -> None:
-    """
-    Configure middleware for the FastAPI application.
-
-    Args:
-        app (FastAPI): FastAPI application instance
-    """
+    """Configure middleware for the FastAPI application."""
 
     # Attach limiter to app state
     app.state.limiter = limiter
 
-    # Exception handler for rate limiting
-    # The decorator form, as in app_factory: add_exception_handler is typed
-    # Callable[[Request, Exception], ...], which rejects a handler that names
-    # the exception it is registered for.
+    # Decorator form, as in app_factory: add_exception_handler is typed
+    # Callable[[Request, Exception], ...], which rejects a handler naming
+    # the exception it's registered for.
     app.exception_handler(RateLimitExceeded)(rate_limit_handler)
 
-    # Middleware stack, innermost → outermost (add order == inner first).
-    # LoggingMiddleware is deliberately the OUTERMOST app middleware: it owns
-    # the per-request wide event, and everything that runs inside its
-    # dispatch — auth, CORS, timeout, rate limiting, the handler — both gets
-    # recorded (an auth 401, a timeout 504 and a rate-limit 429 all emit an
-    # http_request line) and can attach context with log.set(). Any response
-    # produced outside the boundary is invisible in Loki, which is how
-    # timed-out requests used to produce zero telemetry.
+    # Middleware stack, innermost -> outermost (add order == inner first).
+    # LoggingMiddleware is outermost: it owns the wide event, so anything
+    # outside its boundary is invisible in Loki (how timeouts used to vanish).
 
     # Rate limiting (innermost — a 429 flows up through the boundary)
     app.add_middleware(SlowAPIMiddleware)
@@ -82,21 +71,14 @@ def configure_middleware(app: FastAPI) -> None:
     # Pyinstrument profiling for detailed call stack analysis
     app.add_middleware(ProfilingMiddleware)
 
-    # Request timeout — INSIDE Logging on purpose: its anyio cancel scope is
-    # contained in its own __call__, so the 504 it synthesizes travels up to
-    # LoggingMiddleware as a normal response and gets emitted. With timeout
-    # outside Logging, the cancellation killed the emit and the slowest
-    # requests were the only ones with no canonical event.
+    # Inside Logging on purpose: its cancel scope is contained in its own
+    # __call__, so the synthesized 504 travels up as a normal response and gets
+    # emitted. Outside Logging, the cancellation killed the emit for the slowest requests.
     app.add_middleware(RequestTimeoutMiddleware)
 
-    # Paid-only gate — INSIDE CORS, and that is the whole point of its position.
-    # It runs late enough that WorkOSAuthMiddleware has already put the caller on
-    # request.state (which rides scope["state"], so it survives every layer in
-    # between), and early enough that no handler can spend money first. It must
-    # stay inside CORS: a 402 it returns short-circuits everything further out,
-    # so with the gate outside CORS the paywall response would carry no
-    # Access-Control-Allow-Origin and the browser would refuse to read the
-    # checkout link out of it — the paywall modal would never open.
+    # Inside CORS on purpose: runs after WorkOSAuthMiddleware sets request.state.user
+    # and before any handler can spend money. Outside CORS, its 402 would carry no
+    # Access-Control-Allow-Origin, so the browser couldn't read the checkout link.
     app.add_middleware(EntitlementMiddleware)
 
     # CORS (inside Logging so preflight rejections are visible in Loki)
@@ -126,11 +108,9 @@ def configure_middleware(app: FastAPI) -> None:
     # Wide-event boundary — outermost (see block comment above).
     app.add_middleware(LoggingMiddleware)
 
-    # WebSocket wide-event boundary — outermost, after Logging. This is a pure
-    # ASGI middleware (not BaseHTTPMiddleware, which drops websocket scope), so
-    # add_middleware still works and the app keeps its FastAPI type. It wraps
-    # every websocket connection in a log_context() boundary so a handler just
-    # calls log.set() like an HTTP handler — see the middleware's docstring.
+    # Pure ASGI middleware (not BaseHTTPMiddleware, which drops websocket scope),
+    # so add_middleware still works and the app keeps its FastAPI type. Wraps every
+    # websocket connection in a log_context() boundary so handlers just call log.set().
     app.add_middleware(WebSocketWideEventMiddleware)
 
 
@@ -180,7 +160,7 @@ def get_allowed_origin_regex() -> str | None:
 
     Matches any localhost origin on any port over http or https, with or
     without a subdomain — covers dev servers on arbitrary ports (e.g. worktree
-    ports) and `*.localhost` tunnels alike.
+    ports) and *.localhost tunnels alike.
     """
     if settings.ENV == "production":
         return None

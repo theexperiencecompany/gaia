@@ -9,11 +9,6 @@ from langchain_core.tools import StructuredTool
 import pytest
 
 from app.constants.log_tags import LogTag
-
-# ---------------------------------------------------------------------------
-# All public symbols imported directly from the module under test.
-# Deleting mail_service.py will break every test in this file.
-# ---------------------------------------------------------------------------
 from app.models.mail_models import (
     GmailDraftsResponse,
     GmailMessagesResponse,
@@ -340,10 +335,8 @@ class TestSendEmail:
         upload.content_type = "application/pdf"
         upload.file = io.BytesIO(b"data")
 
-        # Mock the Composio upload one layer down so the REAL shaping runs: the
-        # bug this guards is the parameter Composio actually receives. Composio's
-        # Gmail tools take a singular ``attachment`` of ``{name, mimetype, s3key}``
-        # (a pre-uploaded file), NOT a plural ``attachments`` of raw bytes.
+        # Composio's Gmail tools take a singular attachment of {name, mimetype,
+        # s3key} (a pre-uploaded file), not a plural attachments of raw bytes.
         with patch(
             "app.services.mail.mail_service.upload_bytes_sync",
             return_value={"name": "doc.pdf", "mimetype": "application/pdf", "s3key": "k/1"},
@@ -395,12 +388,12 @@ class TestSendEmail:
 
 
 class TestAttachmentsSurviveArgumentValidation:
-    """``attachment`` is Gmail's own param, and only the tool's own schema has it.
+    """attachment is Gmail's own param, and only the tool's own schema has it.
 
     Shaping the parameter correctly is not enough: LangChain validates the call
     against the schema the tool was bound with and silently drops anything that
     schema does not declare. Under the agent-facing schema — where the modifier
-    has replaced ``attachment`` with the reference-based ``attachments`` — the
+    has replaced attachment with the reference-based attachments — the
     file is dropped between here and Composio and the mail sends without it.
     """
 
@@ -430,7 +423,7 @@ class TestAttachmentsSurviveArgumentValidation:
         )
 
     def _args_reaching_the_tool(self, schema: SimpleNamespace, call: dict) -> dict:
-        """What Composio's executor receives, through the real LangChain plumbing."""
+        """Return what Composio's executor receives, through the real LangChain plumbing."""
         received: dict = {}
 
         def _execute(**kwargs: object) -> str:
@@ -836,12 +829,7 @@ class TestSearchMessages:
         assert params["query"] == ""
 
     async def test_forwards_message_format_to_gmail(self, mock_invoke_gmail_tool):
-        """output_format="metadata" must land on the Gmail tool as format="metadata".
-
-        This is the documented lightweight-fetch path (skips body decode, bypasses
-        GMAIL_FULL_FETCH_HARD_LIMIT); a typoed key or a dropped condition would
-        silently fall back to the expensive full fetch.
-        """
+        """output_format="metadata" must reach the Gmail tool as format="metadata", or it silently full-fetches."""
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
             {
                 "successful": True,
@@ -1041,9 +1029,7 @@ class TestCreateDraft:
         assert params["bcc"] == ["bcc@example.com"]
 
     async def test_passes_body_through_without_html_flag(self, mock_invoke_gmail_tool):
-        """``is_html`` no longer exists on the service — bodies are converted
-        to HTML by the Composio before-hook, so the service just forwards
-        whatever body it was given and never sets an html param itself."""
+        """is_html no longer exists on the service; HTML conversion is now the Composio before-hook's job."""
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
 
         await create_draft(
@@ -1363,17 +1349,6 @@ class TestGetEmailById:
 
         assert result.success is False
         assert result.message is None
-
-
-# ---------------------------------------------------------------------------
-# get_contact_list
-# ---------------------------------------------------------------------------
-
-
-# ===========================================================================
-# Exact-parameter pins: every literal, dict write, and branch in the compose
-# and fetch helpers is pinned so a single-operator mutation fails a test.
-# ===========================================================================
 
 
 class TestSendEmailParamPins:

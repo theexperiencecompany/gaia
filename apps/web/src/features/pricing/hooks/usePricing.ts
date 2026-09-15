@@ -110,15 +110,11 @@ export const useUserSubscriptionStatus = () => {
 };
 
 /**
- * Whether the subscription plan is not yet definitively known: the persisted
- * user store hasn't rehydrated with a real id yet, or the (consequently
- * disabled, or still-pending) `["subscription-status"]` query hasn't
- * produced data yet. Deliberately keyed off `data === undefined`, never off
- * `isLoading` — in TanStack Query v5 a disabled query reports
- * `isLoading === false` even though it has never fetched, which would
- * otherwise read as "answered" when it is really "unasked". See
- * `useIsPaid` for the invariant this backs: never treat "unknown" as
- * "free"/"not paid".
+ * Whether the subscription plan is not yet known: the user store hasn't
+ * rehydrated a real id, or the (disabled/pending) `["subscription-status"]`
+ * query hasn't produced data. Keyed off `data === undefined`, never
+ * `isLoading` — a v5 disabled query reports `isLoading === false` despite never
+ * fetching. See `useIsPaid`: never treat "unknown" as "not paid".
  */
 export function useIsSubscriptionStatusUnknown(): boolean {
   const user = useCurrentUser();

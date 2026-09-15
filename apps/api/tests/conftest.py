@@ -21,17 +21,9 @@ from httpx import ASGITransport, AsyncClient
 from hypothesis import HealthCheck, settings as _hypothesis_settings
 import pytest
 
-# Hypothesis profiles. Profiled: 20 hypothesis tests were 10.4s of the 10.8s
-# of test time in tests/unit/utils — 100 examples each. PR lanes select the
-# "ci" profile (HYPOTHESIS_PROFILE=ci) to keep the feedback loop short; the
-# default (full) profile runs on master and locally, so nothing is lost.
-# The property tests do not set ``max_examples`` themselves (a per-test value
-# would silently override the profile); ``deadline=None`` stays per-test.
-# differing_executors: hypothesis flags a @given method whose class is
-# instantiated anew between calls — exactly what mutmut's in-process runner
-# does when it re-runs the suite per mutant (the "clean" run of the registry
-# shard failed on test_property_cron_datetime). The explicit per-test
-# @settings(max_examples=...) used to mask it; the profiles carry it now.
+# Hypothesis profiles: PR lanes select "ci" (25 examples) to keep feedback
+# short; master/local keep "default" (200). suppress differing_executors
+# since mutmut's in-process runner reinstantiates the @given class per mutant.
 _hypothesis_settings.register_profile(
     "ci",
     max_examples=25,
@@ -54,11 +46,9 @@ _hypothesis_settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
 # here (not at the top) because it must run before any app module loads.
 import tests.offline_env  # isort: skip  # noqa: F401 -- imported for its side effects
 
-# Imported AFTER the env setup above, not with the top-level imports: document
-# models now extend MongoDocument, so importing any of them pulls in
-# app.db.repositories.base -> app.db.redis -> app.config.settings, which
-# instantiates settings at import time. Without ENV set first, that resolves to
-# ProductionSettings and fails validation (CI has no production keys).
+# Imported after the env setup above: document models extend MongoDocument,
+# pulling in app.config.settings which instantiates settings at import
+# time; without ENV set first that resolves to ProductionSettings and fails.
 from app.config.posthog import init_posthog
 from app.core.lazy_loader import MissingKeyStrategy, providers
 from app.models.payment_models import (
@@ -67,20 +57,9 @@ from app.models.payment_models import (
     UserSubscriptionStatus,
 )
 
-# ---------------------------------------------------------------------------
-# Infrastructure mock strategy
-#
-# Hermetic by default: a bare local run (no Docker) must be fully offline, so
-# USE_REAL_SERVICES defaults to "0" and the global _get_mongodb_instance mock
-# keeps the suite hermetic. CI (the Dagger service container, see
-# .dagger/src/gaia_ci/main.py _service_test_container) sets USE_REAL_SERVICES=1
-# explicitly, and only then do integration/service/e2e tests reach the real
-# Postgres/Redis/MongoDB/ChromaDB.
-#
-# Unit tests that need isolated DB behaviour use the mock_mongodb fixture
-# (tests/unit/conftest.py), which patches _get_collection at a higher level
-# and is unaffected by this decision.
-# ---------------------------------------------------------------------------
+# Hermetic by default (USE_REAL_SERVICES=0): a bare local run stays offline
+# via the global _get_mongodb_instance mock. CI sets USE_REAL_SERVICES=1 so
+# integration/service/e2e tests reach the real Postgres/Redis/MongoDB/ChromaDB.
 
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
 
@@ -93,10 +72,9 @@ _mock_subscription.plan_type = PlanType.FREE
 # services that must never be called in any test environment.
 _always_patches = [
     patch("app.config.secrets.inject_infisical_secrets", return_value=None),
-    # settings.py binds the real function into its own namespace at import
-    # (line 25), before this conftest's patches start — so the source-module
-    # patch above is inert for the _ensure_infisical_loaded call path. Patch
-    # the settings-module binding too, or every run dials the real vault.
+    # settings.py binds the real function into its own namespace at import,
+    # before this conftest's patches start, so the source-module patch above
+    # is inert for _ensure_infisical_loaded; patch the settings binding too.
     patch("app.config.settings.inject_infisical_secrets", return_value=None),
     patch("shared.py.secrets.inject_infisical_secrets", return_value=None),
     patch(
@@ -129,12 +107,8 @@ _patches = [*_always_patches, *_infra_patches]
 for p in _patches:
     p.start()
 
-# Fail loud if the Infisical fence is ever re-pointed at the real vault: a
-# future refactor that binds or resolves inject_infisical_secrets at import
-# time inside settings.py would silently defeat every patch above. These
-# asserts pin the two bindings that matter. importlib (not a top-level
-# import) so the E402 rule stays clean: a from-import here
-# would also be a module-level import after the patch loop.
+# Fail loud if the Infisical fence is ever re-pointed at the real vault.
+# importlib (not a top-level import) keeps E402 clean after the patch loop.
 _secrets_module = importlib.import_module("app.config.secrets")
 _settings_module = importlib.import_module("app.config.settings")
 
@@ -145,16 +119,9 @@ assert isinstance(_secrets_module.inject_infisical_secrets, MagicMock), (
     "hermetic fence broken: secrets.inject_infisical_secrets is not mocked"
 )
 
-# Register the PostHog provider the way production startup does
-# (unified_startup -> provider_registration -> init_posthog). The test app's
-# lifespan is a no-op, so without this the provider is never registered and
-# every capture_context_event/capture_event call raises KeyError from
-# providers.get("posthog") — turning instrumented endpoints into 500s. With
-# POSTHOG_PROJECT_TOKEN blanked above, the SILENT-strategy loader resolves to
-# None: capture calls no-op (log.debug + return) instead of raising. Tests
-# that assert specific capture behavior patch the endpoint's own binding, so
-# they are unaffected. importlib (not a top-level import) for the same reason
-# as the settings imports above.
+# Registers the PostHog provider the way production startup does, since the
+# test app's lifespan is a no-op; POSTHOG_PROJECT_TOKEN is blanked above so
+# the SILENT-strategy loader no-ops capture calls instead of raising KeyError.
 _posthog_module = importlib.import_module("app.config.posthog")
 _posthog_module.init_posthog()
 
@@ -167,17 +134,14 @@ _posthog_module.init_posthog()
 # providers, direct os.environ reads, and subprocesses never see a live key.
 _CREDENTIAL_ENV_RE = re.compile(r"(API_KEY|TOKEN|SECRET|_KEY|_SECRET)")
 
-# Keys the harness itself provisions with fake values at import time (above).
-# They are test fixtures, not developer secrets: WORKOS_API_KEY is required by
-# DevelopmentSettings, and the encryption/signing keys back code paths the
-# suite exercises. Blanking them would break the suite, not make it safer.
+# Keys the harness provisions with fake values at import time: test
+# fixtures, not developer secrets, backing code paths the suite exercises.
+# Blanking them would break the suite, not make it safer.
 _HERMETIC_ALLOWLIST = frozenset({"WORKOS_API_KEY", "MCP_ENCRYPTION_KEY", "AGENT_SECRET"})
 
-# Live-credential tiers (composio, model_onboarding) declare the keys their
-# tests legitimately need by setting HERMETIC_ALLOW_KEYS (comma-separated) in
-# their own conftest at import time — before the session fence runs. The fence
-# then leaves those keys untouched. This is the explicit opt-in: nothing is
-# allowed to survive the fence by accident, only by declaration.
+# Live-credential tiers declare the keys their tests need via
+# HERMETIC_ALLOW_KEYS (comma-separated) in their own conftest, before the
+# session fence runs; nothing survives the fence by accident, only by declaration.
 _HERMETIC_ALLOW_ENV = "HERMETIC_ALLOW_KEYS"
 
 
@@ -188,17 +152,9 @@ def _hermetic_allowed_keys() -> frozenset[str]:
     return _HERMETIC_ALLOWLIST | declared
 
 
-# Keys that must be PRESENT (non-empty) at test time but never real. Today
-# GOOGLE_API_KEY is the only one: three pre-existing unit modules
-# (tests/unit/override/test_langgraph_bigtool.py, test_hook_chain.py and
-# tests/unit/agents/test_agent_routing.py) construct real
-# ChatGoogleGenerativeAI clients through app code, and langchain's pydantic
-# validation reads the env var directly. The clients are constructed but never
-# invoked, so a deterministic fake satisfies validation without leaking a real
-# key into the test env — and any genuine network call fails loudly on the
-# invalid key instead of silently billing a live credential. The root fix (the
-# tests injecting their own fake key or mocking the LLM factory) belongs to the
-# test-ownership work.
+# Keys that must be PRESENT (non-empty) but never real: three unit modules
+# construct (but never invoke) real ChatGoogleGenerativeAI clients whose
+# pydantic validation reads GOOGLE_API_KEY directly, so a fake satisfies it.
 _HERMETIC_FAKE_KEYS = {
     "GOOGLE_API_KEY": "sk-hermetic-test-key-not-real",  # pragma: allowlist secret
 }
@@ -227,15 +183,9 @@ def _hermetic_environment() -> Iterator[None]:
         os.environ["LANG"] = "C.UTF-8"
         os.environ["LC_ALL"] = "C.UTF-8"
         os.environ["PYTHONHASHSEED"] = "0"
-        # Process identity the worker stamps at import (app/workers/lifecycle/
-        # startup.py setdefaults GAIA_SERVICE_NAME=arq_worker before its app
-        # imports, so the first emitted log line already carries the Promtail
-        # label). Any test importing that chain would otherwise leak the var and
-        # trip the pollution guard below — e.g. test_worker_smoke, or any
-        # single-file selection that is the only importer of app.worker. Pinning
-        # it here keeps the guard's baseline complete: under tests the process
-        # is not the worker, and env_context() falls through "" to the default
-        # service name.
+        # worker/lifecycle/startup.py setdefaults GAIA_SERVICE_NAME=arq_worker
+        # at import; pinning it here keeps a test importing that chain (e.g.
+        # test_worker_smoke) from leaking the var and tripping the pollution guard.
         os.environ.setdefault("GAIA_SERVICE_NAME", "")
         yield
     finally:
@@ -247,11 +197,8 @@ def _hermetic_environment() -> Iterator[None]:
 def _env_pollution_guard(_hermetic_environment: Iterator[None]) -> Iterator[None]:
     """Fail if any test leaked os.environ mutations.
 
-    The fence restores the original environment at teardown, which silently
-    masks leaks; this guard depends on the fence so it tears down BEFORE the
-    restore and compares the environment a test left behind against the
-    post-fence baseline. Any key added, changed, or removed by a test fails
-    the run with the exact diff.
+    Depends on the fence fixture so it tears down BEFORE the fence restores
+    the original environment (which would otherwise mask leaks silently).
     """
     baseline = os.environ.copy()
     yield
@@ -288,11 +235,9 @@ FAKE_USER_2: dict = {
     "timezone": "America/New_York",
 }
 
-# Real UserSubscriptionStatus shape, as get_user_subscription_status returns it
-# for a paying subscriber (payment_service.get_user_subscription_status
-# constructs exactly this model). The root conftest's global patch pins
-# get_user_subscription_status to a FREE plan, so PRO-tier tests opt in by
-# patching it with this object.
+# Real UserSubscriptionStatus shape for a paying subscriber. The root
+# conftest's global patch pins get_user_subscription_status to a FREE plan,
+# so PRO-tier tests opt in by patching it with this object.
 PRO_USER_SUBSCRIPTION: UserSubscriptionStatus = UserSubscriptionStatus(
     user_id="507f1f77bcf86cd799439033",
     current_plan=None,
@@ -340,11 +285,9 @@ def _create_test_app() -> FastAPI:
             allow_headers=["*"],
         )
 
-    # Import app_factory explicitly BEFORE patching it: mock.patch resolves
-    # "app.core.app_factory" via getattr on the app.core package, which only
-    # has the attribute once the submodule has been imported. In the normal
-    # suite something imports it first; under mutmut's mutants/ isolation the
-    # import order differs and the patch target AttributeErrors.
+    # Import app_factory explicitly before patching it: mock.patch resolves
+    # it via getattr on app.core, which needs the submodule already imported
+    # or mutmut's isolation hits an AttributeError on the patch target.
     __import__("app.core.app_factory", fromlist=["lifespan"])
 
     with (
@@ -448,13 +391,11 @@ async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
 
 @pytest.fixture
 async def gated_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
-    """``client`` with the real ``EntitlementMiddleware`` in front of the app.
+    """Client with the real EntitlementMiddleware in front of the app.
 
-    The test app strips every middleware, so a route's 402 contract cannot be
-    proved through ``client``: the deny-by-default gate lives in the middleware,
-    not in the route. This stacks the gate exactly as production does (auth
-    outside it, writing ``request.state.user``; the gate inside) around the
-    same app, so a test asserts what a FREE caller really gets.
+    The test app strips every middleware, so a route's 402 contract cannot
+    be proved through client. This stacks the gate around the same app as
+    production does, so a test asserts what a FREE caller really gets.
     """
     from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -504,12 +445,12 @@ def fake_user_2() -> dict:
 
 @pytest.fixture
 def pro_user() -> dict:
-    """Authenticated user dict for a paying PRO user.
+    """Return an authenticated user dict for a paying PRO user.
 
-    FAKE_USER-shaped, plus a ``subscription`` key holding the real
-    ``UserSubscriptionStatus`` for a PRO plan. The global
-    ``get_user_subscription_status`` patch always reports FREE, so PRO-tier
-    tests patch that seam with ``pro_user["subscription"]``.
+    FAKE_USER-shaped, plus a subscription key holding the real
+    UserSubscriptionStatus for a PRO plan. The global
+    get_user_subscription_status patch always reports FREE, so PRO-tier
+    tests patch that seam with pro_user["subscription"].
     """
     return PRO_USER.copy()
 
@@ -518,14 +459,10 @@ def pro_user() -> dict:
 def pro_plan() -> Iterator[MagicMock]:
     """Make the paid-only gate see a PRO caller for the duration of a test.
 
-    Patches the single seam every gate reads — ``get_cached_plan_type`` — so it
-    covers the ``EntitlementMiddleware``, the imperative ``require_active_subscription``
-    decorator and the imperative ``is_paid`` helper at once.
-
-    Deliberately NOT autouse. The suite's default caller is FREE (the global
-    ``get_user_subscription_status`` patch reports a free plan), and a dozen
-    existing tests assert the 402 that falls out of that default. Flipping the
-    default to PRO would turn those green-for-the-wrong-reason.
+    Patches the single seam every gate reads — get_cached_plan_type — so it
+    covers EntitlementMiddleware, require_active_subscription and is_paid at
+    once. Deliberately NOT autouse: a dozen tests assert the 402 that falls
+    out of the suite's default FREE caller.
     """
     from app.models.payment_models import PlanType
 
@@ -576,27 +513,21 @@ def skip_destructive(request):
 def fake_auth_credentials() -> dict:
     """Auth credentials shape that matches the post-migration contract.
 
-    Composio no longer returns `access_token` in connected-account credentials.
-    The patched `CustomTool.__call__` injects only `user_id`. Tests that exercise
+    Composio no longer returns access_token in connected-account credentials.
+    The patched CustomTool.__call__ injects only user_id. Tests that exercise
     custom tools should use this fixture instead of hand-rolling a bearer token.
     """
     return {"user_id": "test_user_123"}
 
 
-# Note: There is intentionally no shared `mock_proxy_request_sync` fixture.
-# Every consumer does `from app.services.composio.proxy_client import
-# proxy_request_sync`, which binds the symbol at the call-site module's
-# namespace. A fixture that patches `app.services.composio.proxy_client.
-# proxy_request_sync` would NOT intercept those bindings — the tests would
-# pass without exercising the mock. Tests must patch the call site directly
-# (e.g. `app.services.calendar_service.proxy_request_sync`,
-# `app.utils.twitter_utils.proxy_request_sync`).
+# No shared `mock_proxy_request_sync` fixture: consumers import
+# proxy_request_sync by name, binding it at the call-site module, so
+# patching the source module would not intercept it. Patch the call site directly.
 
 
-# The enqueue wrapper is imported into each service module at its call site
-# (`from app.workers.queue import enqueue_worker_job`), so patching the source
-# module would NOT intercept the already-bound names. Patch every known call
-# site. Keep this list in sync with `grep -rl "from app.workers.queue import"`.
+# enqueue_worker_job is imported by name into each call site, so patching
+# the source module would not intercept it. Keep in sync with
+# `grep -rl "from app.workers.queue import"`.
 _ENQUEUE_CALL_SITES = (
     "app.workers.tasks.tracked_todo_tasks",
     "app.services.workflow.queue_service",
@@ -610,16 +541,12 @@ _ENQUEUE_CALL_SITES = (
 
 @pytest.fixture
 def route_enqueue_via_pool():
-    """Route the wide-event enqueue wrapper through ``pool.enqueue_job``.
+    """Route the wide-event enqueue wrapper through pool.enqueue_job.
 
-    Services enqueue ARQ jobs through ``enqueue_worker_job`` (the wide-event
-    wrapper in ``app.workers.queue``), which forwards to the pool's
-    ``enqueue_job`` with the same args. Tests that mock the pool directly
-    (``pool.enqueue_job = AsyncMock(...)``) therefore never see the call
-    unless the wrapper is routed through the pool. Requesting this fixture
-    patches the wrapper at every call site with a forwarding side effect so
-    the tests' existing ``pool.enqueue_job`` mocks and assertions stay
-    authoritative.
+    Services enqueue ARQ jobs through enqueue_worker_job, which wraps
+    pool.enqueue_job; a test that mocks the pool directly never sees the
+    call otherwise. Patches the wrapper at every call site with a
+    forwarding side effect so pool.enqueue_job mocks stay authoritative.
     """
     with contextlib.ExitStack() as stack:
 
@@ -639,12 +566,9 @@ def route_enqueue_via_pool():
 def posthog_provider() -> Iterator[Callable[..., None]]:
     """Install a controllable "posthog" provider under the real registry.
 
-    The env fence blanks ``POSTHOG_PROJECT_TOKEN``, so the production provider
-    is unavailable for the whole suite. Tests go through the real registry
-    rather than patching ``providers`` because the provider NAME is part of
-    what they pin: a lookup under any other key finds nothing, and the code
-    under test then silently attributes nobody. Production's provider is
-    re-registered on teardown.
+    The env fence blanks POSTHOG_PROJECT_TOKEN, so the production provider
+    is unavailable for the suite. Uses the real registry, not a patch,
+    since the provider NAME is part of what tests pin; re-registered on teardown.
     """
 
     def install(*, available: bool, client: object | None) -> None:
@@ -668,10 +592,9 @@ def _reset_limit_origin() -> Iterator[None]:
     later cases mail the wrong email.
     """
     yield
-    # Imported here, not at module level: limit_upsell -> email senders ->
-    # constants.llm -> langchain_core.language_models, whose ``base`` module
-    # eagerly imports ``transformers`` (~0.85s). Collection and workers that
-    # never run a test should not pay for it.
+    # Imported here, not at module level: the import chain eagerly pulls in
+    # transformers (~0.85s), a cost collection and no-test workers should
+    # not pay.
     from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 
     mark_run_origin(LimitHitOrigin.INTERACTIVE)
@@ -681,14 +604,10 @@ def _reset_limit_origin() -> Iterator[None]:
 def _isolate_wide_event_state() -> Iterator[None]:
     """Keep one test's wide-event boundary from leaking into the next.
 
-    ``log.reset()`` (used bare in ~8 unit test files to simulate a request)
-    seeds the runner ContextVar with a shared, MUTABLE ``_EventState``. A later
-    async test's ``log.set(...)`` mutates that same object in place — the async
-    context copy shares the reference — so its fields surface back in the sync
-    runner context and bleed into subsequent tests. That is how a workflow
-    execution id set in one test made ``current_workflow_execution_id()`` return
-    non-None in a test that opened no boundary at all. Reset to the module
-    defaults after every test so no shared object survives.
+    log.reset() seeds the runner ContextVar with a shared, MUTABLE
+    _EventState; a later async test's log.set(...) mutates the same object,
+    which once made a workflow execution id leak into a test that opened no
+    boundary at all. Reset after every test so no shared object survives.
     """
     from shared.py import wide_events
 

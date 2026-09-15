@@ -1,20 +1,7 @@
-"""
-Unified Integration Dependencies
+"""Unified FastAPI dependencies validating Google OAuth and Composio integrations.
 
-This module provides FastAPI dependencies for validating both Google OAuth scopes
-and Composio integrations before allowing access to protected endpoints.
-
-Supports all configured integrations:
-- Google OAuth integrations (managed_by="self"): calendar, drive, docs
-- Composio integrations (managed_by="composio"): gmail, sheets, notion, twitter, linkedin
-
-Usage:
-    # Modern approach - use for any integration
-    require_integration("gmail")  # Composio integration
-    require_integration("calendar")  # Google OAuth integration
-
-    # Legacy approach - maintained for backward compatibility
-    require_integration("gmail")  # Still works but function name is misleading
+Supports Google OAuth (managed_by="self": calendar, drive, docs) and Composio
+(managed_by="composio": gmail, sheets, notion, twitter, linkedin, …).
 """
 
 from collections.abc import Callable, Coroutine
@@ -36,23 +23,11 @@ http_async_client = httpx.AsyncClient(timeout=10.0)
 def require_integration(
     integration_short_name: str,
 ) -> Callable[..., Coroutine[Any, Any, dict[str, Any]]]:
-    """
-    Unified dependency factory that creates a dependency to check for any integration.
-
-    Automatically handles both Google OAuth scopes and Composio integrations
-    based on the integration's configuration.
-
-    Args:
-        integration_short_name: The short name of the integration (e.g., "gmail", "calendar", "drive")
-
-    Returns:
-        A dependency function that validates the user has the required integration
+    """Create a dependency checking Google OAuth or Composio integration access.
 
     Raises:
-        HTTPException: 403 if the user doesn't have the required integration
-        ValueError: If unknown integration name is provided
+        ValueError: Unknown integration name.
     """
-    # Get the short name mapping from oauth_config
     short_name_mapping = get_short_name_mapping()
 
     if integration_short_name not in short_name_mapping:
@@ -112,7 +87,7 @@ def require_integration(
 def require_integration_user_id(
     integration_short_name: str,
 ) -> Callable[..., Coroutine[Any, Any, str]]:
-    """``require_integration`` for handlers that need only the authenticated user id.
+    """require_integration for handlers that need only the authenticated user id.
 
     Same checks, same failure modes — it just unwraps the one field instead of
     handing back the whole auth-context dict for each handler to dig into.

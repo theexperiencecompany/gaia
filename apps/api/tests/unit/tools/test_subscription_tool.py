@@ -126,8 +126,7 @@ class TestGetSubscriptionDetails:
         }
 
     async def test_unresolvable_plan_and_status_render_unknown(self) -> None:
-        """A subscription whose catalogue row vanished still reports, with the
-        gaps rendered as 'unknown' rather than crashing or lying."""
+        """A subscription whose catalogue row vanished still reports, with the gaps rendered as "unknown" rather than crashing or lying."""
         details = SubscriptionDetails(
             plan_type=PlanType.PRO,
             is_subscribed=True,
@@ -161,8 +160,7 @@ class TestGetSubscriptionDetails:
         service.assert_awaited_once_with(FAKE_USER_ID)
 
     async def test_price_line_needs_both_amount_and_currency(self) -> None:
-        """Half a price (amount without currency) renders no price line at all —
-        quoting '30.00 USD per ' would be worse than silence."""
+        """Half a price (amount without currency) renders no price line at all — quoting "30.00 USD per " would be worse than silence."""
         details = SubscriptionDetails(
             plan_type=PlanType.PRO,
             is_subscribed=True,

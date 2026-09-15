@@ -1,31 +1,4 @@
-"""Workspace provisioning composed end to end, against a real filesystem.
-
-``provision_user_workspace`` is what a user's ``/workspace`` actually *is*: the
-system-file symlinks, the SKILL.md catalog, the ``.connected`` markers the
-prompt stats, and the instructions projection. It is run on registration, on
-every integration connect/disconnect, and on startup for every stale user —
-and nothing else re-runs it, so whatever it leaves on disk is what the agent
-sees until the next such event.
-
-The unit tier covers each writer in isolation with the others stubbed. What it
-cannot cover is the composition, and the composition is where the interesting
-failures are: the linker writes symlinks and the materializer then walks the
-same directories with a pruner, one module computes a path and another writes
-to it, and a three-marker gate decides whether any of it runs at all. Those
-three modules only ever meet here.
-
-**The trap this file exists to avoid.** ``materialize_user_integrations`` and
-``delete_session_dir`` open with ``if not _is_mounted(): return``. A test that
-calls ``provision_user_workspace`` without a mount runs no materializer, writes
-no file, raises nothing, and passes — asserting nothing at all. Every test below
-runs against ``mount``, which points the module at a real tmpdir *and* patches
-``_is_mounted``, and every assertion is on a file that either is or is not on
-disk. ``TestWithoutAMount`` pins the vacuous case explicitly so it stays a
-deliberate no-op rather than a silent one.
-
-No FUSE, no docker, no Mongo: the only stub is the per-user instructions read
-(``get_all_instructions``), which is the single Mongo touch on this path.
-"""
+"""Workspace provisioning composed end to end, against a real filesystem."""
 
 from __future__ import annotations
 
@@ -62,17 +35,11 @@ OTHER_INTEGRATION = "linear"
 
 @pytest.fixture
 def mount(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A real tmpdir that also answers the mountpoint check.
+    """Build a real tmpdir that also answers the mountpoint check.
 
-    ``Path.is_mount()`` is False for every tmpdir, and the two entry points here
-    silently return when it is — so without this patch the whole file would
-    assert on a workspace nothing ever wrote to.
-
-    Both namespaces, and this is not belt-and-braces: ``lifecycle`` imported
-    ``_is_mounted`` by value, while ``system_workspace`` reaches ``_require_mount``
-    which reads the ``juicefs`` module global. Patching only ``juicefs`` leaves
-    the materializer gate live — the first draft of this file did exactly that
-    and 16 tests reported on files no writer had ever been reached to create.
+    Patches both namespaces: lifecycle imported _is_mounted by value, while
+    system_workspace reaches it via the juicefs module global. Patching only
+    one leaves the materializer gate live and every assertion silently vacuous.
     """
     root = tmp_path / "jfs"
     root.mkdir()
@@ -84,7 +51,7 @@ def mount(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture
 def unmounted_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """The same real tmpdir, honestly reporting itself as not a mountpoint."""
+    """Build the same real tmpdir, honestly reporting itself as not a mountpoint."""
     root = tmp_path / "jfs"
     root.mkdir()
     monkeypatch.setattr(settings, "JUICEFS_HOST_MOUNT_PATH", str(root))
@@ -111,11 +78,10 @@ def instructions(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
 
 @pytest.fixture
 async def bootstrapped(mount: Path, instructions: dict[str, str]) -> Path:
-    """The shared ``_system`` subtree, written exactly as startup writes it.
+    """Write the shared _system subtree exactly as startup writes it.
 
-    ``init_system_subtree`` runs before any user is provisioned; without it
-    ``link_system_files_into_workspace`` short-circuits and the whole symlink
-    layer is skipped (see ``TestWithoutTheSharedSubtree``).
+    Without it, link_system_files_into_workspace short-circuits and the
+    whole symlink layer is skipped (see TestWithoutTheSharedSubtree).
     """
     await ensure_system_subtree()
     return mount
@@ -144,8 +110,8 @@ def instructions_file(mount: Path, iid: str = INTEGRATION, user: str = USER) -> 
 def link_location(mount: Path, rel_path: str, user: str = USER) -> Path:
     """Where a system file's per-user pointer must land.
 
-    Mirrors the ``skills/`` overlay split by hand rather than importing
-    ``_host_base_and_rel``: the point is to check the routing, and reusing the
+    Mirrors the skills/ overlay split by hand rather than importing
+    _host_base_and_rel: the point is to check the routing, and reusing the
     routing function would only prove it agrees with itself.
     """
     if rel_path == "skills" or rel_path.startswith("skills/"):
@@ -154,7 +120,7 @@ def link_location(mount: Path, rel_path: str, user: str = USER) -> Path:
 
 
 def real_files(root: Path) -> set[str]:
-    """Every non-symlink regular file under ``root``, root-relative."""
+    """Every non-symlink regular file under root, root-relative."""
     if not root.exists():
         return set()
     return {
@@ -173,11 +139,7 @@ class TestTheProvisionedTree:
         assert user_tree(bootstrapped).is_dir()
 
     async def test_every_system_file_gets_a_pointer_in_the_users_tree(self, bootstrapped: Path):
-        """The load-bearing agreement. ``system_files()`` decides what the read
-        tool serves from memory and what the prompt names; ``_link_location``
-        decides where the pointer lands. They are computed in different modules,
-        and a disagreement means in-sandbox ``cat``/``ls``/``grep`` find nothing
-        at a path the agent was told to use — with no error anywhere."""
+        """system_files() and _link_location are computed independently and must agree on every path."""
         await lc.provision_user_workspace(USER)
 
         missing = [
@@ -191,10 +153,7 @@ class TestTheProvisionedTree:
     async def test_each_pointer_aims_at_a_file_that_exists_in_the_shared_subtree(
         self, bootstrapped: Path
     ):
-        """A symlink into ``_system`` is only useful if ``_system`` holds that
-        exact path. The link writer and the subtree writer derive their paths
-        independently, so a prefix drift leaves 63 dangling links that resolve
-        to nothing inside the sandbox too."""
+        """The link writer and the subtree writer derive paths independently and must never drift."""
         await lc.provision_user_workspace(USER)
 
         dangling = []
@@ -210,10 +169,7 @@ class TestTheProvisionedTree:
     async def test_the_pointer_target_is_the_in_sandbox_path_not_a_host_path(
         self, bootstrapped: Path
     ):
-        """Deliberately broken host-side: the target is resolved inside the
-        sandbox, where ``mount_juicefs.sh`` bind-mounts ``/_system`` at
-        ``/workspace/.system``. A host-absolute target would resolve for the API
-        process and for nothing the agent runs."""
+        """The symlink target is deliberately broken host-side; it resolves only inside the sandbox."""
         link = link_location(bootstrapped, "INDEX.md")
 
         await lc.provision_user_workspace(USER)
@@ -224,9 +180,7 @@ class TestTheProvisionedTree:
     async def test_the_executor_skills_land_in_the_skills_overlay_not_the_user_tree(
         self, bootstrapped: Path
     ):
-        """``/workspace/skills`` is a separate JuiceFS subtree (``/skills/<uid>``)
-        mounted over the user tree. An executor skill written under
-        ``users/<uid>/skills`` lands in the shadowed copy and is invisible."""
+        """/workspace/skills is a separate JuiceFS subtree (/skills/<uid>) mounted over the user tree."""
         await lc.provision_user_workspace(USER)
 
         assert (bootstrapped / "skills" / USER / "create-artifacts" / "skill.md").is_symlink()
@@ -238,16 +192,7 @@ class TestTheProvisionedTree:
         assert (agent_dir(bootstrapped) / "skills" / "gmail-draft-send" / "skill.md").is_symlink()
 
     async def test_a_multi_file_skills_bundled_resources_are_all_placed(self, bootstrapped: Path):
-        """A skill whose SKILL.md points at ``reference.md`` / ``scripts/`` is
-        broken, not degraded, when only the body is materialized — the agent
-        reads an instruction to open a file that is not there.
-
-        This asserts the *linker's* output: once ``_system`` exists every one of
-        these is a symlink, and ``_write_skill_dir``'s pruner skips symlinks
-        entirely. The materializer's own copies are pinned in
-        ``TestTheFallbackCopiesSurviveTheirOwnPruner`` below, which is the half
-        that can actually regress.
-        """
+        """A skill whose SKILL.md points at reference.md / scripts/ is broken if only the body links."""
         skill_dir = user_tree(bootstrapped) / "integrations/docgen/agent/skills/create-docx"
 
         await lc.provision_user_workspace(USER)
@@ -257,8 +202,7 @@ class TestTheProvisionedTree:
         assert (skill_dir / "scripts" / "build.sh").is_symlink()
 
     async def test_provisioning_stamps_all_three_staleness_markers(self, bootstrapped: Path):
-        """These three files are the entire gate. An unstamped marker means the
-        full catalog is rewritten on every integration change forever."""
+        """These three files are the entire staleness gate; an unstamped one forces a full rewrite."""
         await lc.provision_user_workspace(USER, {INTEGRATION})
         root = user_tree(bootstrapped)
 
@@ -267,9 +211,7 @@ class TestTheProvisionedTree:
         assert (root / INSTRUCTIONS_MARKER).is_file()
 
     async def test_the_catalog_covers_every_integration_that_ships_skills(self, bootstrapped: Path):
-        """Not just the connected ones: the catalog is what tells the agent an
-        integration *could* be used. Materializing only connected integrations
-        would make an unconnected one un-discoverable and un-suggestable."""
+        """The catalog covers every integration that could be used, not just the connected ones."""
         await lc.provision_user_workspace(USER, {INTEGRATION})
 
         expected = {iid for iid, skills in skills_by_subagent().items() if iid != "executor"}
@@ -281,22 +223,13 @@ class TestTheProvisionedTree:
 
 
 class TestTheFallbackCopiesSurviveTheirOwnPruner:
-    """``_write_skill_dir`` writes a skill's resources and then, in the same
-    pass, walks the directory deleting anything not in the manifest.
+    """_write_skill_dir writes a skill's resources, then prunes anything not in the manifest.
 
-    This is the one path in provisioning that *deletes* files it has no second
-    copy of, and it has been wrong before: the pruner compared ``existing.name``
-    against a manifest holding skill-relative keys like ``templates/report.mjs``,
-    so every nested resource was unlinked microseconds after being written. The
-    skill body survived, which is why it looked fine — the agent got a SKILL.md
-    telling it to open ``templates/`` files that were no longer there.
-
-    Nothing above catches it. Once the shared ``_system`` subtree exists the
-    linker has replaced all of these with symlinks, and the pruner skips
-    symlinks, so the bug is invisible in the bootstrapped fixture. These call the
-    materializer directly, on a bare directory, which is exactly the state it
-    runs in before the linker (and the state it stays in when ``_system`` is
-    unavailable).
+    This is the one path that *deletes* files with no second copy: it has
+    been wrong before, comparing existing.name against manifest keys like
+    templates/report.mjs, unlinking every nested resource right after writing
+    it. Invisible once _system exists (the pruner skips symlinks), so these
+    call the materializer directly on a bare directory.
     """
 
     #: A real multi-file builtin: a body, a flat resource, and two nested ones.
@@ -312,9 +245,7 @@ class TestTheFallbackCopiesSurviveTheirOwnPruner:
         assert missing == [], f"written and then pruned in the same pass: {missing}"
 
     def test_the_nested_resource_holds_the_shipped_content(self, tmp_path: Path):
-        """Existence is not enough — an empty or truncated file satisfies
-        ``is_file()`` and still breaks the script the skill tells the agent to
-        run."""
+        """Existence is not enough — an empty or truncated file still satisfies is_file()."""
         materialize_skills(tmp_path, set())
         skill = next(s for s in skills_by_subagent()["docgen"] if s.slug == "create-docx")
         expected = dict(skill.resources)["templates/report.mjs"]
@@ -324,9 +255,7 @@ class TestTheFallbackCopiesSurviveTheirOwnPruner:
         assert body == expected
 
     def test_a_resource_that_left_the_manifest_is_removed(self, tmp_path: Path):
-        """The control. Without it, deleting the pruner outright would leave
-        every test above green — and a renamed template would outlive the
-        registry change forever, shadowed by a stale copy."""
+        """Control: without the pruner a renamed template would outlive the registry change forever."""
         materialize_skills(tmp_path, set())
         stale = tmp_path / self.SKILL_DIR / "templates" / "retired.mjs"
         stale.write_text("a template that was renamed two releases ago")
@@ -336,9 +265,7 @@ class TestTheFallbackCopiesSurviveTheirOwnPruner:
         assert not stale.exists()
 
     def test_a_second_pass_rewrites_nothing_and_deletes_nothing(self, tmp_path: Path):
-        """Provisioning re-runs on every integration connect/disconnect. A pass
-        that churns files each time defeats the ``matches_text`` de-duplication
-        and, worse, means the prune is deciding something new every run."""
+        """Provisioning re-runs on every connect/disconnect; a repeat pass must churn nothing."""
         materialize_skills(tmp_path, set())
         before = {p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*") if p.is_file()}
 
@@ -352,15 +279,13 @@ class TestTheFallbackCopiesSurviveTheirOwnPruner:
 class TestDeDuplication:
     """One copy of every system body on the whole mount, not one per user.
 
-    This is the entire reason ``_system`` exists. ``matches_text`` returning True
+    This is the entire reason _system exists. matches_text returning True
     for a symlink is what keeps the copy-writers from clobbering the pointers —
     lose that and every user silently gets 63 full copies back.
     """
 
     async def test_no_system_body_is_copied_into_the_users_tree(self, bootstrapped: Path):
-        """The precise regression: a materializer that overwrites the symlink
-        with a real copy. Nothing errors — storage just grows per user and the
-        shared subtree stops being the source of truth for that file."""
+        """The regression: a materializer overwriting the symlink with a real per-user copy."""
         await lc.provision_user_workspace(USER, {INTEGRATION})
 
         system_rel = {f.rel_path for f in system_files()}
@@ -371,9 +296,7 @@ class TestDeDuplication:
     async def test_the_only_real_files_in_the_users_tree_are_the_per_user_ones(
         self, bootstrapped: Path, instructions: dict[str, str]
     ):
-        """Whitelist rather than blacklist: a new writer that starts dropping
-        per-user copies somewhere unexpected shows up here even if its path is
-        not in the system manifest."""
+        """Whitelist rather than blacklist, so a new writer dropping copies anywhere unexpected shows up."""
         instructions[INTEGRATION] = "always cc legal"
 
         await lc.provision_user_workspace(USER, {INTEGRATION})
@@ -396,17 +319,13 @@ class TestDeDuplication:
 
 
 class TestTheStalenessGate:
-    """``_materialize_if_stale`` skips the whole catalog rewrite when all three
-    signatures match. Both directions are load-bearing and fail silently:
+    """_materialize_if_stale skips the whole catalog rewrite when all three signatures match.
 
-    * skips too much → the user connects an integration and the agent is never
-      told about it, because ``.connected`` was never written;
-    * skips too little → every provisioning rewrites the full 63-file catalog.
-
-    The probe is ``.connected``: it is written by ``materialize_skills`` (behind
-    the gate) and, unlike the system files, is *not* re-created by the linker
-    that runs before the gate. So deleting it and re-provisioning asks exactly
-    one question — did the materializer run?
+    Both directions are load-bearing: skipping too much never tells the agent
+    about a new connection; skipping too little rewrites the full 63-file
+    catalog every time. The probe is .connected — unlike the system files, it
+    is not re-created by the linker, so deleting it asks exactly one question:
+    did the materializer run?
     """
 
     async def test_re_provisioning_with_nothing_changed_does_no_work(
@@ -424,9 +343,7 @@ class TestTheStalenessGate:
     async def test_connecting_an_integration_rewrites_the_catalog(
         self, bootstrapped: Path, instructions: dict[str, str]
     ):
-        """The headline symptom of a gate that only watches the library hash:
-        the user connects Linear, the agent is never told, and nothing changes
-        until an unrelated deploy ships a new skill."""
+        """A gate that only watches the library hash would never tell the agent about a new connection."""
         await lc.provision_user_workspace(USER, {INTEGRATION})
 
         await lc.provision_user_workspace(USER, {INTEGRATION, OTHER_INTEGRATION})
@@ -439,8 +356,7 @@ class TestTheStalenessGate:
     async def test_disconnecting_an_integration_clears_its_marker(
         self, bootstrapped: Path, instructions: dict[str, str]
     ):
-        """A marker left behind keeps advertising a tool the user revoked; the
-        agent then attempts it and fails at the API instead of routing around it."""
+        """A marker left behind keeps advertising a tool the user revoked."""
         await lc.provision_user_workspace(USER, {INTEGRATION, OTHER_INTEGRATION})
         assert connected_marker(bootstrapped, OTHER_INTEGRATION).is_file()
 
@@ -452,9 +368,7 @@ class TestTheStalenessGate:
     async def test_a_user_with_no_integrations_still_gets_the_full_catalog(
         self, bootstrapped: Path, instructions: dict[str, str]
     ):
-        """The registration path — provisioning runs before any integration
-        exists. The catalog must still be there (it is what the agent reads to
-        know what it *could* connect), with no ``.connected`` claiming otherwise."""
+        """Provisioning runs before any integration exists; the catalog must still be there."""
         await lc.provision_user_workspace(USER)
 
         assert (agent_dir(bootstrapped) / "skills" / "gmail-draft-send" / "skill.md").is_symlink()
@@ -464,9 +378,7 @@ class TestTheStalenessGate:
     async def test_edited_instructions_rewrite_the_catalog(
         self, bootstrapped: Path, instructions: dict[str, str]
     ):
-        """Third signature. The user saves new instructions in the UI; if this
-        is not gated on, the projection the subagent reads keeps serving the
-        old text indefinitely."""
+        """Third staleness signature: edited instructions must rewrite the catalog."""
         instructions[INTEGRATION] = "always cc legal"
         await lc.provision_user_workspace(USER, {INTEGRATION})
 
@@ -478,8 +390,7 @@ class TestTheStalenessGate:
     async def test_a_deploy_that_ships_a_new_skill_library_rewrites_the_catalog(
         self, bootstrapped: Path, instructions: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ):
-        """The startup resync path. Existing users' workspaces must pick up a
-        newly shipped builtin skill without a connect/disconnect to trigger it."""
+        """The startup resync path: a new skill library must rewrite the catalog with no connect event."""
         await lc.provision_user_workspace(USER, {INTEGRATION})
         probe = connected_marker(bootstrapped)
         probe.unlink()
@@ -493,8 +404,7 @@ class TestTheStalenessGate:
     async def test_a_workspace_that_never_provisioned_is_not_treated_as_current(
         self, bootstrapped: Path, instructions: dict[str, str]
     ):
-        """All three markers absent must read as "stale", not as "all None,
-        nothing to do" — otherwise a brand-new user gets an empty catalog."""
+        """All three markers absent must read as "stale", not as "nothing to do"."""
         await lc.provision_user_workspace(USER, {INTEGRATION})
 
         assert connected_marker(bootstrapped).is_file()
@@ -502,9 +412,7 @@ class TestTheStalenessGate:
     async def test_a_half_written_catalog_is_never_stamped_as_current(
         self, bootstrapped: Path, instructions: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ):
-        """Markers are stamped after the writers, so a mount that goes read-only
-        mid-rewrite leaves the gate saying "stale" and the next run repairs it.
-        Stamping first would wedge a partial catalog as permanently current."""
+        """Markers stamp after the writers, so a mid-rewrite failure never gets marked current."""
 
         def boom(user_root: Path, connected: set[str]) -> int:
             raise OSError("mount went read-only")
@@ -519,9 +427,11 @@ class TestTheStalenessGate:
 
 
 class TestInstructionsProjection:
-    """``integrations/<id>/agent/instructions.md`` is a read-only projection of
-    Mongo. Mongo is the truth, so a file that outlives its row is the agent
-    following an instruction the user believes they deleted."""
+    """integrations/<id>/agent/instructions.md is a read-only projection of Mongo.
+
+    A file that outlives its row is the agent following an instruction the
+    user believes they deleted.
+    """
 
     async def test_saved_instructions_appear_beside_the_integrations_skills(
         self, bootstrapped: Path, instructions: dict[str, str]
@@ -535,9 +445,7 @@ class TestInstructionsProjection:
     async def test_cleared_instructions_are_pruned_from_disk(
         self, bootstrapped: Path, instructions: dict[str, str]
     ):
-        """The one the plan calls out. The user deletes their instructions; if
-        the projection survives, the subagent keeps obeying them and there is no
-        UI anywhere that would reveal it."""
+        """Deleted instructions must be pruned from disk, or the subagent keeps obeying them invisibly."""
         instructions[INTEGRATION] = "always cc legal@example.com"
         await lc.provision_user_workspace(USER, {INTEGRATION})
         assert instructions_file(bootstrapped).is_file()
@@ -550,8 +458,7 @@ class TestInstructionsProjection:
     async def test_pruning_one_integration_leaves_the_others_instructions_alone(
         self, bootstrapped: Path, instructions: dict[str, str]
     ):
-        """The prune walks every ``*/agent`` directory, so an over-broad
-        condition silently wipes instructions the user never touched."""
+        """The prune walks every */agent directory, so an over-broad condition could wipe untouched ones."""
         instructions.update({INTEGRATION: "cc legal", OTHER_INTEGRATION: "tag the sprint"})
         await lc.provision_user_workspace(USER, set())
 
@@ -564,8 +471,7 @@ class TestInstructionsProjection:
     async def test_the_projection_never_shadows_a_skill_body(
         self, bootstrapped: Path, instructions: dict[str, str]
     ):
-        """Instructions and skills share ``agent/``. Writing the projection must
-        not disturb the symlinks the linker placed one directory down."""
+        """Instructions and skills share agent/; writing one must not disturb the other's symlinks."""
         instructions[INTEGRATION] = "cc legal"
 
         await lc.provision_user_workspace(USER, {INTEGRATION})
@@ -575,9 +481,7 @@ class TestInstructionsProjection:
     async def test_an_integration_id_that_could_escape_writes_nothing_outside_the_user(
         self, bootstrapped: Path, instructions: dict[str, str]
     ):
-        """The integration id reaches this from a Mongo document, so it is only
-        as trusted as whatever wrote that row. A ``..`` here would write into
-        another user's tree on the shared mount."""
+        """An integration id with a ".." must not escape into another user's tree on the shared mount."""
         instructions[f"../../{OTHER}"] = "owned"
         instructions[INTEGRATION] = "legitimate"
 
@@ -588,19 +492,16 @@ class TestInstructionsProjection:
 
 
 class TestWithoutTheSharedSubtree:
-    """``link_system_files_into_workspace`` no-ops when ``_system`` is absent —
-    a fresh mount before startup has run, or a worker that came up first. The
-    documented contract is that the copy-writers then transparently produce
+    """link_system_files_into_workspace no-ops when _system is absent.
+
+    The documented contract is that copy-writers then transparently produce
     per-user copies, so the workspace is degraded (bigger) but never broken.
     """
 
     async def test_the_catalog_is_still_materialized_as_real_files(
         self, mount: Path, instructions: dict[str, str]
     ):
-        """No symlink layer, so the bodies must be written outright. If this
-        fallback were lost, a user provisioned before ``ensure_system_subtree``
-        would have an empty ``integrations/`` tree until something else
-        re-provisioned them."""
+        """No symlink layer, so the skill bodies must be written outright."""
         await lc.provision_user_workspace(USER, {INTEGRATION})
 
         body = agent_dir(mount) / "skills" / "gmail-draft-send" / "skill.md"
@@ -618,14 +519,7 @@ class TestWithoutTheSharedSubtree:
     async def test_an_unconnected_integrations_skills_are_materialized_too(
         self, mount: Path, instructions: dict[str, str]
     ):
-        """The catalog is what tells the agent an integration *could* be used,
-        so it is written for every integration that ships skills, not just the
-        connected ones — ``.connected`` is the only thing that varies.
-
-        Asserted here rather than on a linked workspace on purpose: with the
-        shared subtree present the linker creates these same directories, so a
-        materializer that had quietly narrowed to the connected set would still
-        look correct. Without the subtree the materializer is the only writer."""
+        """The catalog materializes every integration that ships skills, not just connected ones."""
         await lc.provision_user_workspace(USER, {INTEGRATION})
 
         unconnected = agent_dir(mount, OTHER_INTEGRATION) / "skills"
@@ -637,9 +531,7 @@ class TestWithoutTheSharedSubtree:
     async def test_the_subtree_arriving_later_replaces_the_copies_with_pointers(
         self, mount: Path, instructions: dict[str, str]
     ):
-        """Startup order is not guaranteed. When the subtree does show up, the
-        next provisioning must reclaim the per-user copies rather than leave two
-        divergent sources for the same body."""
+        """When the subtree arrives later, the next provisioning must reclaim per-user copies."""
         await lc.provision_user_workspace(USER, {INTEGRATION})
         body = agent_dir(mount) / "skills" / "gmail-draft-send" / "skill.md"
         assert not body.is_symlink()
@@ -651,12 +543,11 @@ class TestWithoutTheSharedSubtree:
 
 
 class TestWithoutAMount:
-    """Native dev: ``mise dev`` has no FUSE mount, so provisioning is a
-    deliberate no-op rather than a crash on the signup path.
+    """Native dev has no FUSE mount, so provisioning is a deliberate no-op, not a crash.
 
-    This is also the guard for every other test in this file — it pins that the
-    unmounted path really does write nothing, which is precisely why the rest
-    must patch ``_is_mounted`` to assert anything at all.
+    This is also the guard for every other test in this file — it pins that
+    the unmounted path writes nothing, which is why the rest must patch
+    _is_mounted to assert anything at all.
     """
 
     async def test_provisioning_writes_nothing_and_does_not_raise(
@@ -692,10 +583,7 @@ class TestUserIsolation:
     async def test_a_user_id_that_could_escape_is_refused_before_anything_is_written(
         self, bootstrapped: Path, instructions: dict[str, str], bad: str
     ):
-        """``_place_symlink`` unlinks whatever it finds before linking, so an id
-        like ``../_system`` would replace the ONE shared copy every user points
-        at — and the hash marker then stops ``ensure_system_subtree`` from ever
-        repairing it."""
+        """A user_id like "../_system" must be refused before _place_symlink can replace the shared copy."""
         marker = bootstrapped / SYSTEM_SUBDIR / ".gaia_system.v"
         before = marker.read_text()
 

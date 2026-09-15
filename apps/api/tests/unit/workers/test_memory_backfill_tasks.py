@@ -1,9 +1,9 @@
 """Unit tests for app.workers.tasks.memory_backfill_tasks.
 
 The daily cron that replays pre-memory-engine conversations into long-term
-memory: ``backfill_active_users`` enqueues one deterministic job per eligible
-user, and ``backfill_user_memories`` replays that user's conversations through
-``memory_engine.retain``, consolidates inline, marks the user backfilled (the
+memory: backfill_active_users enqueues one deterministic job per eligible
+user, and backfill_user_memories replays that user's conversations through
+memory_engine.retain, consolidates inline, marks the user backfilled (the
 idempotency marker), and notifies only when facts were actually learned.
 """
 

@@ -1,6 +1,6 @@
 """The hand-written new-user playbooks must not drift from the real catalogue.
 
-``NEED_PLAYBOOKS`` names integration ids inline, in prose, and nothing else
+NEED_PLAYBOOKS names integration ids inline, in prose, and nothing else
 checks them: a renamed or removed id leaves the model telling a brand-new user
 to connect something that cannot be connected, on their very first reply.
 """

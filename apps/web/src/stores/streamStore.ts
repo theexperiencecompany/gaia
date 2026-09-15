@@ -16,14 +16,13 @@ export interface ActiveToolInfo {
 }
 
 /**
- * Turn lifecycle phases. A session entry exists only while a turn is active —
- * absence means idle. Terminal states (done/error/aborted) remove the entry.
+ * Turn lifecycle phases. A session entry exists only while a turn is active — absence means
+ * idle; terminal states (done/error/aborted) remove the entry.
  *
  * - connecting: send fired, SSE not yet delivering events
- * - streaming: SSE open (covers the background-executor tail that streams over
- *   the same connection after `main_response_complete`)
- * - awaiting_executor: SSE closed but a delegated background executor still owes
- *   its result message (delivered via the `conversation.new_message` WebSocket)
+ * - streaming: SSE open (covers the background-executor tail after `main_response_complete`)
+ * - awaiting_executor: SSE closed, a delegated background executor still owes its result
+ *   (delivered via the `conversation.new_message` WebSocket)
  */
 export type TurnPhase = "connecting" | "streaming" | "awaiting_executor";
 

@@ -1,30 +1,18 @@
 #!/usr/bin/env python3
 # mypy: ignore-errors -- dev eval script; typing not maintained here
 """
-Run `compose_first_question` over the onboarding answers we actually see.
+Run compose_first_question over the onboarding answers we actually see.
 
-Not a test: it calls a real model, so it goes red when the provider is down and
-that would be a useless CI signal. It exists to read the copy — ten personas,
-their question, their chips, and whether the validator let the model's answer
-through or fell back to the static line.
+Not a test: it calls a real model, so it reads red when the provider is
+down. Reads the copy for ten personas — question, chips, and whether the
+validator used the model's answer or fell back to the static line.
 
-Usage (from apps/api/):
-    uv run python scripts/evals/first_question_personas.py
-    uv run python scripts/evals/first_question_personas.py --follow
-
-`--follow` takes each chip of the first five personas and sends it as the user's
-next message to the LOCALLY RUNNING API, so you can read GAIA's actual reply and
-judge whether a chip leads anywhere concrete. It needs `mise dev --agent` (or any
-boot with `DEV_AUTH_BYPASS_EMAIL` set); it mints one dev user per persona, which
-must be able to pass the paid-only gate.
-
-`--turns 2` (the default) keeps going: it answers GAIA's offer with "yes" in the
-SAME conversation and captures whether a tool actually ran on that turn. An offer
-nobody can accept is the failure mode a single-turn read cannot see.
-
-Every reply is then scored 0/1 by an LLM judge on the same lane against the rules
-the new-user prompt block actually ships, and the script prints a per-reply table,
-per-criterion totals, and the worst replies verbatim.
+Usage: uv run python scripts/evals/first_question_personas.py [--follow]
+[--turns N]. --follow sends each chip of the first five personas to the
+LOCALLY RUNNING API (needs mise dev --agent/DEV_AUTH_BYPASS_EMAIL) and reads
+GAIA's reply; --turns 2 (default) answers "yes" in the same conversation to
+catch an offer nobody can accept. Every reply is then scored 0/1 by an LLM
+judge against the new-user prompt's rules and reported per-reply/per-criterion.
 """
 
 import argparse
@@ -243,13 +231,9 @@ CRITERIA: dict[str, str] = {
 }
 
 ACCEPT_ONLY_CRITERIA = {"i_acts"}
-#: Proposing a menu is the RIGHT move on the chip turn and the WRONG move once the
-#: user has said yes, so grading (b) on an accept turn would mark correct behaviour
-#: down and put its own target permanently out of reach.
-#: ``f_one_question`` joined them for the same reason: a turn that correctly DOES
-#: the thing has nothing left to ask, and "Gmail connect link is on its way, tap
-#: it and I'll take the inbox from there." was being marked down for ending
-#: without a question mark.
+#: Proposing a menu is right on the chip turn and wrong once the user has
+#: said yes, so grading these on an accept turn would mark correct behaviour
+#: down; f_one_question joined since an acting turn has nothing left to ask.
 OFFER_ONLY_CRITERIA = {"b_concrete", "f_one_question"}
 
 
@@ -332,15 +316,12 @@ class Graded(BaseModel):
 
 
 async def run_follow(rows: list[tuple[str, object]], api_url: str, turns: int) -> None:
-    """Each chip of the first personas, replayed as a real thread of ``turns`` turns.
+    """Replay each chip of the first personas as a real thread of turns.
 
-    Every persona gets its own minted dev user, so one persona's threads can
-    never surface in another's reply, and every chip gets its own conversation id
-    so the accept turn lands in the thread that made the offer.
-
-    Every conversation is collected BEFORE any judging: the replies are the
-    expensive, unrepeatable part, and a slow judge must not be able to cost a
-    ten-minute run of them.
+    Every persona gets its own minted dev user and every chip its own
+    conversation id, so replies never cross threads. Conversations are all
+    collected before any judging, since a slow judge must not cost the
+    expensive, unrepeatable run itself.
     """
     collected: list[Graded] = []
     for index, (label, result) in enumerate(rows[:FOLLOW_PERSONA_COUNT]):
@@ -354,12 +335,9 @@ async def run_follow(rows: list[tuple[str, object]], api_url: str, turns: int) -
         print(f"  chips: {result.chips}")
         async with dev_client(email) as client:
             for chip in result.chips:
-                # The cheap dev lane sometimes returns a degenerate draft — a "."
-                # question with four EMPTY chips. Replaying one sends an empty
-                # message, gets "[no text in stream]" back, and the judge scored
-                # that silence a straight pass, which quietly inflated every
-                # total. A chip with no words is a composer failure, not a reply
-                # worth grading.
+                # A degenerate draft (a "." question with EMPTY chips) once let
+                # an empty chip's "[no text in stream]" score a straight pass,
+                # quietly inflating every total — skip rather than grade it.
                 if not chip.strip():
                     print("\n  --- chip: <empty> — skipped (degenerate composer output)")
                     continue
@@ -395,7 +373,7 @@ async def run_follow(rows: list[tuple[str, object]], api_url: str, turns: int) -
 async def _grade_all(collected: list[Graded]) -> None:
     """Judge every collected reply, a few at a time, writing verdicts in place.
 
-    A judge that fails leaves ``verdict`` as None and is reported as ungraded
+    A judge that fails leaves verdict as None and is reported as ungraded
     rather than scored zero: a provider blip is not the agent getting it wrong,
     and averaging it in as a 0 would understate the prompt.
     """
@@ -421,7 +399,7 @@ async def _grade_all(collected: list[Graded]) -> None:
 
 
 def _scored_criteria(row: Graded) -> dict[str, int]:
-    """The criteria that actually apply to this row.
+    """Return the criteria that actually apply to this row.
 
     Offer turns are not graded on acting, and accept turns are not graded on
     offering: scoring either everywhere would report correct behaviour as a miss.
@@ -436,7 +414,7 @@ def _scored_criteria(row: Graded) -> dict[str, int]:
 
 
 def _opener(reply: str) -> str:
-    """The first few words, lowercased — the unit repetition is visible in."""
+    """Return the first few words, lowercased, so opener repetition is visible."""
     return " ".join(reply.split()[:3]).lower().strip(".,:")
 
 

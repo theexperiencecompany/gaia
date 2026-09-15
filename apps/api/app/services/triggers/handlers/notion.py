@@ -38,8 +38,7 @@ class NotionTriggerHandler(TriggerHandler):
         "notion_page_content_updated",
     ]
 
-    # GAIA-facing names map to Composio's current slugs. The upstream
-    # NOTION_PAGE_ADDED_TO_DATABASE / NOTION_PAGE_UPDATED_TRIGGER /
+    # The old NOTION_PAGE_ADDED_TO_DATABASE / NOTION_PAGE_UPDATED_TRIGGER /
     # NOTION_ALL_PAGE_EVENTS_TRIGGER slugs were retired by Composio; stored
     # workflows keep their old GAIA names and resync against the new slugs.
     SUPPORTED_EVENTS: ClassVar[set[str]] = {
@@ -148,14 +147,7 @@ class NotionTriggerHandler(TriggerHandler):
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
-        """Register Notion triggers with parallel execution and rollback.
-
-        If any trigger registration fails, all successfully created triggers
-        are rolled back to maintain atomicity.
-
-        Raises:
-            TriggerRegistrationError: If any trigger registration fails
-        """
+        """Register Notion triggers in parallel, rolling back all on any failure."""
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
             raise TriggerRegistrationError(

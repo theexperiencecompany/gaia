@@ -7,8 +7,8 @@ tool names and one did not. Those are not cosmetic — the reply string is what 
 judge grades, and the tool list is what "did it actually do the thing" is scored
 against. So every option that survived the consolidation is pinned here.
 
-Nothing in this file touches a network or a model: ``assemble`` takes the raw
-lines, which is the whole reason it was split out of ``send_turn``.
+Nothing in this file touches a network or a model: assemble takes the raw
+lines, which is the whole reason it was split out of send_turn.
 """
 
 from __future__ import annotations
@@ -52,8 +52,7 @@ class TestReplyAssembly:
         assert assemble(lines)[0] == "the answer"
 
     def test_boundary_is_kept_when_the_caller_opts_out(self) -> None:
-        """``first_question_personas`` never dropped it, and its scores were read
-        against replies that still contained the preamble."""
+        """first_question_personas never dropped it, and its scores were read against replies that still contained the preamble."""
         lines = [
             sse(response="let me look"),
             sse(message_boundary={"discarded": True}),
@@ -139,8 +138,7 @@ class TestBotMessagesAfter:
 
 
 class TestTurnOptions:
-    """The defaults are ``chat_quality``'s behaviour and three scripts rely on
-    them, so a silent change to one flips what those runs measure."""
+    """The defaults are chat_quality's behaviour and three scripts rely on them, so a silent change flips what those runs measure."""
 
     def test_defaults_are_the_chat_quality_shape(self) -> None:
         options = TurnOptions()

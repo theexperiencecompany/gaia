@@ -52,8 +52,7 @@ class TestDeliverMessageToPlatform:
         )
 
     async def test_group_conversation_delivers_to_its_channel(self) -> None:
-        """A group conversation's bot session carries a channel_id, so the message
-        is delivered back to that channel — not the user's DM."""
+        """A group conversation's bot session carries a channel_id, so delivery goes to that channel, not the user's DM."""
         session = SimpleNamespace(channel_id="C-group-1")
         with (
             patch.object(
@@ -84,8 +83,7 @@ class TestDeliverMessageToPlatform:
         )
 
     async def test_no_conversation_id_never_looks_up_a_session(self) -> None:
-        """Without a conversation_id the DM path is taken directly — the bot-session
-        lookup is skipped entirely (guards the falsy-conversation_id short-circuit)."""
+        """Without a conversation_id the DM path is taken directly — the bot-session lookup is skipped entirely."""
         with (
             patch.object(
                 pms.bot_session_repository, "get_by_conversation_id", new_callable=AsyncMock
@@ -109,8 +107,7 @@ class TestDeliverMessageToPlatform:
 
     @pytest.mark.parametrize("session", [SimpleNamespace(channel_id=None), None])
     async def test_dm_or_missing_session_falls_back_to_dm(self, session: object) -> None:
-        """A DM conversation (channel_id=None) and a non-bot conversation (no
-        session) both fall back to the DM: no override, not a channel send."""
+        """A DM conversation and a non-bot conversation with no session both fall back to the DM, never a channel send."""
         with (
             patch.object(
                 pms.bot_session_repository,
@@ -159,8 +156,7 @@ class TestDeliverMessageToPlatform:
 
 
 class TestBotPlatformConsistency:
-    """Every bot source must be routable by is_bot_platform and categorised as
-    a BOT by SourceCategory."""
+    """Every bot source must be routable by is_bot_platform and categorised as a BOT by SourceCategory."""
 
     @pytest.mark.parametrize("source", sorted(BOT_CONVERSATION_SOURCES, key=lambda s: s.value))
     def test_every_bot_source_is_routable_and_categorised(self, source) -> None:

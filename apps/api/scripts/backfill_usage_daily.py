@@ -1,19 +1,19 @@
 """
-One-time, idempotent migration: backfill `usage_daily` for existing users.
+One-time, idempotent migration: backfill usage_daily for existing users.
 
-The activity heatmap and percentile badge read from the `usage_daily` collection
+The activity heatmap and percentile badge read from the usage_daily collection
 (one doc per user per UTC day), which only starts accumulating when this feature
 ships. Without a backfill, every existing user opens an empty year grid and
 nobody can earn a badge for ~30 days (the percentile compares trailing-30-day
 totals, and everyone would be at zero).
 
 This script reconstructs history from the durable data we already have: the
-`messages` arrays embedded in `conversations`. Each *user-role* message counts
-as one action on its UTC day, and each `tool_data` entry on a bot message (one
+messages arrays embedded in conversations. Each *user-role* message counts
+as one action on its UTC day, and each tool_data entry on a bot message (one
 persisted tool execution) counts as one more — matching what the live
-`record_activity()` path meters from deploy day onward.
+record_activity() path meters from deploy day onward.
 
-Idempotency: for each (user, day) the backfilled value is written with `$max`,
+Idempotency: for each (user, day) the backfilled value is written with $max,
 so re-runs never inflate counts, and days already ahead of the backfill value
 (because live tracking has been running) are left untouched.
 

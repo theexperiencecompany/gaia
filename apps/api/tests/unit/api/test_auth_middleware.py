@@ -28,10 +28,7 @@ from tests.helpers import captured_wide_event
 
 @pytest.fixture(autouse=True)
 def _no_dev_bypass(monkeypatch):
-    """This file tests the WorkOS session/agent paths. The developer's ambient
-    .env legitimately sets DEV_AUTH_BYPASS_EMAIL, which would short-circuit the
-    middleware before anything under test runs — pin it off. The bypass path
-    itself is covered in tests/integration/api/test_dev_endpoints.py."""
+    """Pin off DEV_AUTH_BYPASS_EMAIL, which the developer's ambient .env may set and which would short-circuit the middleware before anything under test runs."""
     from app.config.settings import settings
 
     monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", None)
@@ -299,12 +296,12 @@ def _bare_request(
     method: str = "GET",
     headers: dict[str, str] | None = None,
 ):
-    """A Request with just the pieces the middleware touches, no ASGI stack.
+    """Build a Request with just the pieces the middleware touches, no ASGI stack.
 
     The two authenticate helpers are called directly here rather than through
     TestClient: WorkOSAuthMiddleware runs outside LoggingMiddleware's context,
     so a wide event captured around a full request would not receive its
-    ``log.error`` at all.
+    log.error at all.
     """
     raw = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
     request = Request(
@@ -445,10 +442,9 @@ class TestAuthenticateAgentTokenDirectly:
         assert verify.call_args.args == ("aaa bbb",)
 
     async def test_the_credential_is_taken_verbatim_after_the_first_space(self) -> None:
-        # Split on a literal single space, not on whitespace runs: a second
-        # space belongs to the credential, so "Bearer  jwt" verifies " jwt" and
-        # fails. Loosening this to a whitespace split would silently start
-        # accepting headers we reject today.
+        # Split on a literal single space, not whitespace runs: "Bearer  jwt"
+        # verifies " jwt" and fails; loosening to a whitespace split would
+        # accept headers we reject today.
         request = _bare_request(headers={"Authorization": "Bearer  jwt"})
         with patch("app.api.v1.middleware.auth.verify_agent_token", return_value=None) as verify:
             await _middleware()._authenticate_agent_token(request)
@@ -553,9 +549,7 @@ class TestAuthenticateSession:
         assert result_sess is None
 
     async def test_auth_outcome_is_independent_of_last_active_touch(self) -> None:
-        """The last-active touch is fire-and-forget: a valid WorkOS session
-        authenticates regardless of the touch (the previous swallow that turned a
-        touch failure into a failed auth is gone; touch_last_active never raises)."""
+        """A valid WorkOS session authenticates regardless of the fire-and-forget last-active touch; touch_last_active never raises."""
         user_info = {"user_id": "u1", "email": "a@b.com", "name": "Test"}
         middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
         with (
@@ -574,23 +568,20 @@ class TestAuthenticateSession:
         mock_touch.assert_awaited_once_with("a@b.com")
 
 
-# ---------------------------------------------------------------------------
-# PostHogRequestContextMiddleware — the identity every authenticated capture
-# inherits. If it binds nothing, or binds the wrong id, every event a route
-# handler emits lands on an anonymous (or a second) profile and cross-surface
-# funnels silently stop joining.
-# ---------------------------------------------------------------------------
+# PostHogRequestContextMiddleware is the identity every authenticated capture
+# inherits; a wrong or missing id lands events on the wrong profile and
+# breaks cross-surface funnel joins.
 
 GAIA_USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 REQUEST_PATH = "/api/v1/notes"
 
 
 async def _noop_asgi(scope, receive, send) -> None:  # pragma: no cover - never called
-    """BaseHTTPMiddleware requires an inner app; ``dispatch`` is driven directly."""
+    """BaseHTTPMiddleware requires an inner app; dispatch is driven directly."""
 
 
 def _authenticated_request(user: dict | None) -> Request:
-    """A plain GET carrying ``state.user`` exactly as WorkOSAuthMiddleware leaves it."""
+    """Build a plain GET carrying state.user exactly as WorkOSAuthMiddleware leaves it."""
     request = Request(
         {
             "type": "http",
@@ -611,9 +602,9 @@ def _authenticated_request(user: dict | None) -> Request:
 
 
 async def _dispatch(request: Request) -> tuple[Response, dict]:
-    """Run the middleware over ``request``, reporting what the route saw.
+    """Run the middleware over request, reporting what the route saw.
 
-    ``downstream`` records the identity a capture inside the handler would be
+    downstream records the identity a capture inside the handler would be
     attributed to, plus the path the handler could still read — the middleware
     must hand the route its own request, not a substitute.
     """
@@ -633,8 +624,7 @@ class TestPostHogRequestContextIdentity:
     async def test_authenticated_request_is_identified_by_gaia_user_id(
         self, posthog_provider
     ) -> None:
-        """The whole point of the middleware: a capture in the route handler is
-        attributed to the stable Mongo user id, with no call site repeating it."""
+        """A capture in the route handler is attributed to the stable Mongo user id, with no call site repeating it."""
         posthog_provider(available=True, client=object())
 
         response, downstream = await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
@@ -652,8 +642,7 @@ class TestPostHogRequestContextIdentity:
         assert get_context_distinct_id() is None
 
     async def test_unauthenticated_request_is_not_identified(self, posthog_provider) -> None:
-        """Nobody to attribute to — the request must stay personless rather than
-        binding the string "None" as a distinct_id and inventing a profile."""
+        """Nobody to attribute to — the request must stay personless rather than binding "None" as a distinct_id."""
         posthog_provider(available=True, client=object())
 
         response, downstream = await _dispatch(_authenticated_request(None))
@@ -683,8 +672,7 @@ class TestPostHogRequestContextIdentity:
     async def test_request_is_served_when_the_posthog_client_is_none(
         self, posthog_provider
     ) -> None:
-        """Available-but-unbuilt: the provider resolves to None, and identifying
-        against no client would raise inside every authenticated request."""
+        """An available-but-unbuilt provider resolves to None; identifying against no client would raise inside every authenticated request."""
         posthog_provider(available=True, client=None)
 
         response, downstream = await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
@@ -694,8 +682,7 @@ class TestPostHogRequestContextIdentity:
         assert response.body == b"handler ran"
 
     def test_identity_is_bound_through_the_real_asgi_stack(self, posthog_provider) -> None:
-        """The unit tests above drive ``dispatch`` directly; this one proves the
-        middleware still binds identity when Starlette runs it for real."""
+        """Proves the middleware still binds identity when Starlette runs it for real, not just via direct dispatch."""
         posthog_provider(available=True, client=object())
         seen: dict = {}
 

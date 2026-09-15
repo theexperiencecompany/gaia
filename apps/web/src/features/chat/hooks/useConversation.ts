@@ -5,12 +5,9 @@ import type { OptimisticMessage } from "@/stores/chatStore";
 import { useChatStore } from "@/stores/chatStore";
 import type { MessageType } from "@/types/features/convoTypes";
 
-// Stable MessageType per stored message. The store preserves idle IMessage
-// references across streaming ticks (only the streaming message is replaced —
-// see chatStore.addOrUpdateMessage), so caching the conversion by that ref keeps
-// idle messages referentially stable and remaps only the streaming one. That
-// stability is what lets the message list memoize and skip re-rendering every
-// bubble on every token.
+// Caches by message ref, since the store preserves idle IMessage references
+// across streaming ticks (only the streaming message is replaced — see
+// chatStore.addOrUpdateMessage) — this lets the message list skip re-rendering every bubble per token.
 const conversionCache = new WeakMap<IMessage, MessageType>();
 
 export const mapStoredMessageToConversationMessage = (

@@ -78,14 +78,9 @@ export function useFounderLetter(hidden: boolean) {
 
   const closeLetter = useCallback(() => setIsLetterOpen(false), []);
 
-  // Voice mode hides the letter. Hiding it is derived, not an effect: the
-  // early return in the component stops rendering while `hidden`, which takes
-  // an open modal with it — otherwise the body scroll would stay locked with
-  // nothing on screen to explain why.
-  // Voice mode hiding the letter must CLOSE it for good (master's documented
-  // intent): once `hidden`, clear the open flag via render-time adjustment so
-  // exiting voice mode doesn't resurrect the modal. Render-phase setState is
-  // React's sanctioned pattern here — no adjustment effect needed.
+  // Voice mode hides the letter via a derived early return (not an effect) so
+  // body scroll doesn't stay locked with nothing on screen; clearing
+  // `isLetterOpen` here closes it for good, so exiting voice mode won't reopen it.
   if (hidden && isLetterOpen) {
     setIsLetterOpen(false);
   }

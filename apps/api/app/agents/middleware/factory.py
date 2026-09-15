@@ -1,10 +1,10 @@
-"""Factory functions for the standard agent middleware stack (executor, comms,
-subagents). Centralized here so build_graph.py and base_subagent.py share one
-configuration.
+"""Factory functions for the standard agent middleware stack (executor, comms, subagents).
 
-Summarization and compaction receive the graph's own ``chat_llm`` and invoke it
-inside the graph, where the ambient request config routes them to the same
-model the conversation is using."""
+Centralized here so build_graph.py and base_subagent.py share one
+configuration. Summarization and compaction receive the graph's own
+chat_llm and invoke it inside the graph, where the ambient request config
+routes them to the same model the conversation is using.
+"""
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -41,31 +41,24 @@ from app.constants.summarization import (
 from app.models.agent_models import AgentMiddlewareStack
 from shared.py.wide_events import log
 
-# Coding tools operate on the persistent E2B workspace; their outputs are
-# already capped by the bash output limiter, the read tool's pagination, and the
-# query_json/grep output cap, so the compaction middleware should leave them alone.
+# Coding tools' outputs are already capped by the bash output limiter, read
+# tool pagination, and query_json/grep, so compaction should leave them alone.
 CODING_TOOL_NAMES = {"bash", "read", "write", "edit", "query_json", "grep"}
 SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
 
-# Tools that already perform their own context-safe offload (return a small
-# digest + write a clean file the agent mines). The generic compaction
-# middleware must leave their output alone — re-handling it would clobber the
-# tool's own file format with the generic wrapper.
+# Tools that already perform their own context-safe offload (small digest +
+# clean file). Generic compaction must leave their output alone.
 SELF_OFFLOADING_TOOL_NAMES = {"GMAIL_FETCH_MESSAGES", "GMAIL_FETCH_THREAD"}
 
-# Loop-guard hard-stop is OFF by default: it must never silently abandon a tool
-# call in an interactive run where the user is watching and can intervene. It is
-# only safe to enable for unattended (silent / workflow) runs. Because the
-# executor graph — and therefore its middleware — is a single per-process
-# instance shared by BOTH interactive and workflow runs, we cannot select
-# hard-stop per run at graph-build time; flipping this constant would enable it
-# for every run on the graph. See create_middleware_stack for the wiring note.
+# Loop-guard hard-stop is OFF by default: only safe for unattended runs. The
+# executor graph is a per-process singleton shared by both run kinds, so this
+# can't be selected per run at build time (see create_middleware_stack).
 LOOP_GUARD_HARD_STOP = False
 
 
 @dataclass(frozen=True)
 class AccountingOptions:
-    """LLMAccountingMiddleware knobs; ``enabled=False`` leaves it out."""
+    """LLMAccountingMiddleware knobs; enabled=False leaves it out."""
 
     enabled: bool = True
     recursion_limit: int = AGENT_RECURSION_LIMIT
@@ -73,9 +66,9 @@ class AccountingOptions:
 
 @dataclass(frozen=True)
 class SubagentStackOptions:
-    """SubagentMiddleware wiring; ``enabled=False`` leaves it out.
+    """SubagentMiddleware wiring; enabled=False leaves it out.
 
-    ``join`` adds SubagentJoinMiddleware (executor only), which rewrites a
+    join adds SubagentJoinMiddleware (executor only), which rewrites a
     turn-ending response into a wait_for_subagents call while background
     subagents are uncollected.
     """
@@ -94,8 +87,8 @@ class SubagentStackOptions:
 class ContextOptions:
     """Summarization and compaction knobs.
 
-    ``summarize`` / ``compact`` include the respective middleware; summarization
-    is also skipped, with a warning, when the stack has no ``chat_llm``.
+    summarize / compact include the respective middleware; summarization
+    is also skipped, with a warning, when the stack has no chat_llm.
     """
 
     summarize: bool = True
@@ -111,7 +104,7 @@ class ContextOptions:
 
 @dataclass(frozen=True)
 class LoopGuardOptions:
-    """LoopGuardMiddleware knobs; warn-only unless ``hard_stop``."""
+    """LoopGuardMiddleware knobs; warn-only unless hard_stop."""
 
     enabled: bool = True
     hard_stop: bool = LOOP_GUARD_HARD_STOP
@@ -126,43 +119,17 @@ def create_middleware_stack(
     context: ContextOptions = ContextOptions(),
     loop_guard: LoopGuardOptions = LoopGuardOptions(),
 ) -> AgentMiddlewareStack:
-    """
-    Create the standard middleware stack for agents.
+    """Create the standard middleware stack for agents.
 
-    Uses LangChain's AgentMiddleware system:
-    - SubagentMiddleware: Spawn subagents for parallel/focused work
-    - WorkspaceArchivingSummarizationMiddleware: Archives history to the user's
-      persistent workspace and summarizes at threshold
-    - WorkspaceCompactionMiddleware: Persists large tool outputs to the
-      persistent workspace and replaces them with a /workspace/... reference
-
-    Args:
-        agent_name: Name used for accounting/log attribution
-        chat_llm: The graph's own configurable LLM. Summarization and the
-            compaction digest invoke it inside the graph, so ambient request
-            config routes them to the same model the conversation uses. When
-            None, summarization is skipped and compaction keeps its
-            deterministic tiers.
-        accounting: LLMAccountingMiddleware (on by default) and the recursion
-            limit it reports against.
-        subagent: SubagentMiddleware wiring (off by default): the spawned
-            subagents' LLM, tools, registry, exclusions, tool space and runtime
-            config, plus the executor-only join enforcement.
-        context: Summarization and compaction: whether each is on, the
-            summarization trigger/keep sizes and archive flag, the compaction
-            threshold and per-output cap, and the tools each must leave alone.
-        loop_guard: LoopGuardMiddleware (on by default) and whether it hard-stops.
-
-    Returns:
-        List of AgentMiddleware instances in execution order
+    chat_llm is the graph's own configurable LLM: summarization and the
+    compaction digest invoke it inside the graph, so ambient request config
+    routes them to the same model the conversation uses. When None,
+    summarization is skipped and compaction keeps its deterministic tiers.
     """
     middleware: AgentMiddlewareStack = []
 
-    # LLM accounting middleware — emits `llm_call` wide events + recursion
-    # high-water-mark signals. Inserted FIRST so it observes every model call
-    # on the way in (before_model) and on the way out (after_model).
-    # ``caching_debug`` flips on a second diagnostic instance that runs LAST,
-    # so we can compare state.messages before vs. after other middleware.
+    # Emits `llm_call` wide events + recursion high-water-mark signals.
+    # Inserted FIRST so it observes every model call in and out.
     if accounting.enabled:
         middleware.append(
             LLMAccountingMiddleware(
@@ -177,10 +144,8 @@ def create_middleware_stack(
             }
         )
 
-    # HIL approval gate — outermost tool-call wrapper (only accounting, a
-    # before/after_model hook, precedes it) so no other middleware runs a side
-    # effect before the user decides. A no-op unless the user's HIL preference is
-    # on, so it needs no build-time flag.
+    # HIL approval gate — outermost tool-call wrapper so no other middleware
+    # runs a side effect before the user decides. A no-op unless HIL is on.
     middleware.append(HILApprovalMiddleware())
     log.debug(f"{LogTag.AGENT} HILApprovalMiddleware enabled", agent_name=agent_name)
 
@@ -242,16 +207,13 @@ def create_middleware_stack(
             llm_summary=chat_llm is not None,
         )
 
-    # Media description — a lane that can't see pixels gets prose for any tool
-    # result carrying images. Inner to compaction, so the description is attached
-    # before compaction inspects the result; compaction never spills media anyway.
-    # No enable flag: it no-ops on every result without media, i.e. nearly all.
+    # Inner to compaction, so the description is attached before compaction
+    # inspects the result. No enable flag: it no-ops without media.
     middleware.append(MediaDescriptionMiddleware())
     log.debug(f"{LogTag.AGENT} Media description middleware enabled", agent_name=agent_name)
 
-    # Loop-guard middleware — added LAST so it sits innermost and observes the
-    # raw tool result before compaction/summarization transform it, counting the
-    # tool's actual failures. warn-only unless hard_stop is enabled.
+    # Added LAST so it sits innermost, observing the raw tool result before
+    # compaction/summarization transform it. warn-only unless hard_stop is on.
     if loop_guard.enabled:
         middleware.append(LoopGuardMiddleware(hard_stop=loop_guard.hard_stop))
         log.debug(
@@ -260,11 +222,8 @@ def create_middleware_stack(
             hard_stop=loop_guard.hard_stop,
         )
 
-    # Subagent-join enforcement (executor only) — after everything else so it
-    # sees the response other after_model hooks may have adjusted. Rewrites a
-    # turn-ending response into a wait_for_subagents call while background
-    # subagents are uncollected; collection must never depend on the model
-    # remembering to call the join.
+    # After everything else so it sees the adjusted response. Rewrites a
+    # turn-ending response into wait_for_subagents while subagents are uncollected.
     if subagent.join:
         middleware.append(SubagentJoinMiddleware())
         log.debug(f"{LogTag.AGENT} SubagentJoinMiddleware enabled", agent_name=agent_name)
@@ -281,26 +240,10 @@ def create_executor_middleware(
     subagent_excluded_tools: set[str] | None = None,
     subagent_tool_runtime_config: ToolRuntimeConfig | None = None,
 ) -> AgentMiddlewareStack:
-    """
-    Create middleware stack for the executor agent.
-
-    The executor agent handles complex multi-step tasks and should have:
-    - SubagentMiddleware: For parallel/focused work with lightweight subagents
-    - Summarization and compaction middleware
+    """Create middleware stack for the executor agent: SubagentMiddleware plus summarization/compaction.
 
     The executor's SubagentMiddleware needs LLM and tool_registry set after
     creation via set_llm()/set_tools() since they aren't available at factory time.
-
-    Args:
-        chat_llm: The graph's chat LLM; also serves summarization + compaction
-        subagent_llm: LLM for subagent execution
-        subagent_tools: Tools available to subagents
-        subagent_registry: Alternative tool registry for subagents
-        subagent_excluded_tools: Tool names to exclude from subagent access
-                                 (e.g., handoff, subagent:-prefixed tools)
-
-    Returns:
-        List of middleware for executor agent
     """
     return create_middleware_stack(
         agent_name="executor_agent",
@@ -349,36 +292,12 @@ def create_subagent_middleware(
     agent_name: str = "provider_subagent",
     subagent: SubagentStackOptions = SubagentStackOptions(enabled=True),
 ) -> AgentMiddlewareStack:
-    """
-    Create middleware stack for provider subagents.
+    """Create middleware stack for provider subagents.
 
-    Provider subagents handle focused integration work and should have:
-    - SubagentMiddleware: For spawning focused sub-subagents
-    - WorkspaceCompactionMiddleware: Persist oversized tool outputs to /workspace
-    - Summarization: compaction bounds a single tool output, not the accumulated
-      history. Without summarization a run grows unbounded up to
-      EXECUTOR_RECURSION_LIMIT steps — in production this averaged 91k input
-      tokens per call against 43k for comms/executor, peaking at a full 1M-token
-      window. Trimming is safe here because the result is read from the
-      finish_task call, never from replayed history.
-
-    Spawned sub-subagents will NOT have SubagentMiddleware (enforced by
-    SubagentMiddleware itself which excludes spawn_subagent from child tools).
-
-    Args:
-        agent_name: The subagent's own name, used to attribute its ``llm_call``
-            events. Without it every one of the ~35 integration subagents meters
-            under a single ``provider_subagent`` bucket, so per-subagent cost and
-            cache behaviour cannot be told apart.
-        subagent: The spawn wiring. ``llm`` is both the subagent's own model
-            (its summarization and compaction ride it) and the model its spawned
-            sub-subagents run on; ``tools``/``registry``/``excluded_tools``/
-            ``tool_space``/``tool_runtime_config`` shape what those sub-subagents
-            may reach. ``enabled=False`` leaves out the spawn_subagent middleware,
-            for authoring-only subagents that must not spawn or execute.
-
-    Returns:
-        List of middleware for provider subagents
+    SubagentMiddleware, WorkspaceCompactionMiddleware, and summarization —
+    without which a run grows unbounded up to EXECUTOR_RECURSION_LIMIT steps
+    (once averaged 91k input tokens/call vs 43k for comms/executor).
+    agent_name attributes llm_call events per subagent (~35 integrations).
     """
     return create_middleware_stack(
         agent_name=agent_name,

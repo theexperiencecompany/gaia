@@ -1,8 +1,4 @@
-"""
-Utility functions for LangGraph bigtool agent.
-
-Contains helper functions for tool selection formatting and type definitions.
-"""
+"""Helper functions for LangGraph bigtool tool selection formatting and type definitions."""
 
 from collections.abc import Sequence
 from typing import Annotated, NotRequired, TypedDict, cast
@@ -38,25 +34,12 @@ def _is_remove_all(message: BaseMessage) -> bool:
 
 
 def messages_delta_reducer(state: list[AnyMessage], writes: Sequence[Messages]) -> list[AnyMessage]:
-    """The canonical reducer for the ``messages`` channel.
+    """Wrap LangGraph's messages reducer to also collapse a REMOVE_ALL_MESSAGES tombstone.
 
-    LangGraph's `_messages_delta_reducer` documents that it does NOT implement
-    `REMOVE_ALL_MESSAGES`, so it passes that tombstone through as if it were an
-    ordinary message. `SummarizationMiddleware` clears history with exactly that
-    write, and every provider serializer rejects a `RemoveMessage` in a request
-    ("Unexpected message with type RemoveMessage at the position 0"). This wraps
-    the stock reducer with the one case it omits: a `REMOVE_ALL_MESSAGES`
-    tombstone truncates everything accumulated so far and is itself consumed.
-
-    Applying the sentinel in stream order — rather than, say, scanning for the
-    last one — is what keeps the reducer batching-invariant, which
-    `DeltaChannel` requires: `reducer(reducer(s, xs), ys) == reducer(s, xs + ys)`.
-
-    Writes are `Messages`, not `list[AnyMessage]`: `RemoveMessage` is
-    deliberately absent from the `AnyMessage` union, so only the wider type
-    describes a batch that carries a tombstone. The return stays `AnyMessage` —
-    every tombstone has been consumed by then, so the channel's value really
-    does hold nothing but real messages.
+    Upstream passes that tombstone through unconsumed, which providers reject.
+    Consuming it in stream order (not by scanning for the last one) keeps the
+    reducer batching-invariant, as DeltaChannel requires. Writes is Messages,
+    not list[AnyMessage], because RemoveMessage isn't in that union.
     """
     flat: list[MessageLikeRepresentation] = []
     for write in writes:
@@ -86,15 +69,9 @@ def messages_delta_reducer(state: list[AnyMessage], writes: Sequence[Messages]) 
 class State(_BigtoolState):
     """Extended state with todos channel for agent task management."""
 
-    # Override MessagesState's plain add_messages channel with a DeltaChannel:
-    # a full-snapshot channel re-serializes the entire message list into every
-    # checkpoint, so a thread with N steps costs O(N²) storage (a single
-    # runaway thread reached 17 GB). DeltaChannel persists only the per-step
-    # delta and writes a full snapshot every MESSAGES_SNAPSHOT_FREQUENCY
-    # updates. `messages_delta_reducer` wraps LangGraph's batching-invariant
-    # messages reducer (dedup by id + RemoveMessage tombstoning) built for
-    # DeltaChannel's `(state, list[writes]) -> state` batch contract — plain
-    # `add_messages` is a `(left, right)` reducer and is not compatible.
+    # DeltaChannel replaces MessagesState's full-snapshot add_messages channel:
+    # a full snapshot re-serializes on every checkpoint (O(N^2) storage — one
+    # runaway thread hit 17 GB). messages_delta_reducer adapts to its batch contract.
     messages: Annotated[
         list[AnyMessage],
         DeltaChannel(
@@ -117,7 +94,7 @@ PRUNED_MESSAGE_IDS_KEY = "_pruned_message_ids"
 
 
 def pop_pruned_tombstones(state: State) -> list[RemoveMessage]:
-    """Pop ``PRUNED_MESSAGE_IDS_KEY`` and return its ids as RemoveMessage tombstones."""
+    """Pop PRUNED_MESSAGE_IDS_KEY and return its ids as RemoveMessage tombstones."""
     raw = cast("dict[str, object]", state).pop(PRUNED_MESSAGE_IDS_KEY, None)
     if raw is None:
         # Absent is fine: the hook may not have run this call.
@@ -165,18 +142,9 @@ def format_selected_tools(
     tool_registry: dict[str, BaseTool],
     response_texts: dict[str, str] | None = None,
 ) -> tuple[list[ToolMessage], list[str]]:
-    """Format selected tools, gracefully handling tools not in registry.
+    """Format selected tools into a ToolMessage, tolerating ids not in the registry (e.g. subagent: prefixed).
 
-    Handles tools like subagent: prefixed ones that may not be in the registry.
-
-    Args:
-        selected_tools: Dict mapping tool_call_id to list of tool IDs
-        tool_registry: Dict mapping tool ID to tool instance
-        response_texts: Pre-rendered block per tool_call_id, used verbatim when present
-
-    Returns:
-        Tuple of (tool_messages, tool_ids) where tool_messages show available tools
-        and tool_ids are the IDs to bind
+    Uses response_texts verbatim when present, skipping the rendered tool_names list.
     """
     tool_messages = []
     tool_ids = []

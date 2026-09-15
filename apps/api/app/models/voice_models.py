@@ -1,11 +1,11 @@
 """Trimmed ElevenLabs voice payloads.
 
-What ``voice_service`` keeps from the ElevenLabs voices / shared-voices APIs —
+What voice_service keeps from the ElevenLabs voices / shared-voices APIs —
 the raw provider response is read once at the boundary and reduced to these
 shapes, which are what everything downstream (the picker mappers in
-``app/utils/voice_utils.py``, the availability checks) actually consumes.
+app/utils/voice_utils.py, the availability checks) actually consumes.
 
-These cross a serialization boundary: both fetchers are ``@Cacheable`` for a
+These cross a serialization boundary: both fetchers are @Cacheable for a
 day, so an instance is JSON-encoded into Redis and validated back out of it —
 hence Pydantic models rather than TypedDicts. The cached JSON is field-for-field
 what the previous plain dicts stored, so entries written before this shape
@@ -27,7 +27,7 @@ class ElevenLabsVoice(BaseModel):
 
 
 class ElevenLabsAccountVoice(ElevenLabsVoice):
-    """A voice on the ElevenLabs account, whose metadata lives in ``labels``."""
+    """A voice on the ElevenLabs account, whose metadata lives in labels."""
 
     # Provider-owned free-form label bag: ElevenLabs lets an account define its own
     # label keys on cloned voices, so this is a genuinely dynamic mapping, not a

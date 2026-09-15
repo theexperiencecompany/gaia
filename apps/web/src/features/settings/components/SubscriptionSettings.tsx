@@ -21,11 +21,9 @@ import { SubscriptionUpsell } from "./SubscriptionUpsell";
 
 export function SubscriptionSettings() {
   const { data: status, refetch: refetchStatus } = useUserSubscriptionStatus();
-  // True while the plan is not yet definitively known — a cold cache right
-  // after a hard refresh, or the user store still rehydrating. Gates the
-  // skeleton below instead of TanStack's own `isLoading`, which reports
-  // false for a disabled-and-never-fetched query and would otherwise flash
-  // "No subscription" at a paying user. See useIsPaid for the invariant.
+  // True while plan status isn't yet known (cold cache / rehydrating store).
+  // Gates the skeleton instead of TanStack's `isLoading`, which reports false
+  // for a disabled query and would flash "No subscription" at a paying user.
   const isUnknown = useIsSubscriptionStatusUnknown();
   // Managing an existing Pro plan (monthly <-> yearly) is a different job
   // than subscribing for the first time — see the branches below.

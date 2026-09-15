@@ -27,16 +27,11 @@ def _graph_run(
     *,
     expired: bool = False,
 ) -> Iterator[MagicMock]:
-    """Run the prompt as if inside a graph run of ``category``, yielding its stream writer.
+    """Run the prompt inside a graph run of category, yielding its stream writer.
 
-    ``category=None`` simulates no runnable context at all (get_config raises).
-    ``expired`` is the stored connection status the prompt reads to tell a dead
-    grant from one that was never set up.
-
-    The status lookup answers from the arguments it is handed rather than a fixed
-    value: a stub that ignores them cannot tell the real call from one that passed
-    the wrong user, dropped an argument, or swapped the two — and every such
-    mutation survived while it did.
+    category=None simulates no runnable context; expired is the stored status
+    distinguishing a dead grant from one never set up. The status stub checks
+    its actual arguments so a wrong user/integration id fails loudly.
     """
 
     async def _is_expired(user_id: str, integration_id: str) -> bool:
@@ -69,8 +64,7 @@ def _graph_run(
 
 
 class TestRequestIntegrationConnection:
-    """The connect prompt is platform-aware: UI gets a card and URL-free copy,
-    non-UI embeds the connect URL inline so bot users can act on it."""
+    """The connect prompt is platform-aware: UI gets a card, non-UI embeds the connect URL inline."""
 
     async def test_ui_source_points_to_card_without_url(self) -> None:
         with _graph_run("ui"):
@@ -95,8 +89,7 @@ class TestRequestIntegrationConnection:
 
     @pytest.mark.parametrize("category", ["bot", "bg"])
     async def test_non_ui_prefers_login_free_connect_link(self, category: str) -> None:
-        """When a login-free link is minted, the bot reply uses THAT — not the
-        generic /integrations page (which requires a GAIA login)."""
+        """A minted login-free link is used over the generic /integrations page, which requires GAIA login."""
         with _graph_run(category):
             msg = await request_integration_connection("gmail", "Gmail", "user1")
         assert _MAGIC_LINK in msg
@@ -118,9 +111,7 @@ class TestRequestIntegrationConnection:
 
 
 class TestExpiredConnectionPrompt:
-    """A grant that died and one that was never set up are different asks. The
-    stored status is the only thing that tells them apart, so the prompt reads it
-    rather than trusting a caller to pass it."""
+    """The prompt reads the stored status itself to tell a dead grant from one never set up."""
 
     async def test_expired_copy_tells_the_agent_not_to_offer_a_first_time_connect(self) -> None:
         with _graph_run("ui", expired=True):
@@ -151,8 +142,7 @@ class TestExpiredConnectionPrompt:
         return payload
 
     async def test_card_carries_the_expired_flag_both_ways(self) -> None:
-        """The streamed payload is the renderers' contract — `expired` is what lets
-        the card read as a re-login instead of a first-time connect."""
+        """The streamed payload's expired flag is what lets the card read as re-login vs first-time connect."""
         with _graph_run("ui", expired=True) as writer:
             await request_integration_connection("gmail", "Gmail", "user1")
         assert self._card(writer)["expired"] is True

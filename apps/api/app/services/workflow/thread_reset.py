@@ -5,9 +5,9 @@ checkpoint threads and replays all previous runs out of Postgres — one
 production workflow carried 1.39 MB of message state across three threads and
 ~83k input tokens per LLM call. What those threads silently provided (what the
 previous run did) is supplied instead by the recorded trace in
-:mod:`app.services.workflow.run_trace`, so they can be dropped before each run.
+:mod:app.services.workflow.run_trace, so they can be dropped before each run.
 
-Distinct from ``conversation_service._delete_checkpoint_threads``, which deletes
+Distinct from conversation_service._delete_checkpoint_threads, which deletes
 everything containing the conversation id because the conversation itself is
 going away. A live reset must be conservative: only the threads this
 conversation demonstrably owns (anchored suffix, never a substring), and never
@@ -46,10 +46,9 @@ async def reset_workflow_threads(conversation_id: str) -> int:
             return 0
         checkpointer = manager.get_checkpointer()
 
-        # The conversation's own thread, the executor's, and each handoff
-        # subagent's `<namespace>_executor_<conv>`. Compared with `right()`
-        # rather than LIKE: the ids are full of underscores, and a LIKE pattern
-        # would need them escaped to keep `_` from matching any character.
+        # Covers the conversation's own thread, the executor's, and each handoff
+        # subagent's `<namespace>_executor_<conv>`. Compared with `right()` not
+        # LIKE: the ids are full of underscores that LIKE would need escaped.
         executor_thread = f"{EXECUTOR_THREAD_PREFIX}{conversation_id}"
         suffix = f"_{executor_thread}"
         async with pool.connection() as conn, conn.cursor() as cur:

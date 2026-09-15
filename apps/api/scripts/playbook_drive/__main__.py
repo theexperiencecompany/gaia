@@ -1,7 +1,7 @@
 """Drive the playbook surface against a running stack with the scripted model.
 
 Boot the stack in sim mode first (the API with the dev auth bypass, the ARQ
-worker, and ``tools/llm-stub``; see the ``driving-gaia`` skill), then::
+worker, and tools/llm-stub; see the driving-gaia skill), then::
 
     cd apps/api
     uv run --group backend python -m scripts.playbook_drive --worker-log /path/to/worker.log
@@ -83,7 +83,7 @@ def run_scenario(
 
 
 def _results_path(requested: Path) -> Path:
-    """The results file, kept inside the working directory or the system temp dir.
+    """Return the results file, kept inside the working directory or the system temp dir.
 
     A dev tool takes its output path from the command line; keeping it under
     one of two known roots means a stray argument cannot write anywhere else.

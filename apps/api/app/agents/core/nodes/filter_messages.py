@@ -22,7 +22,7 @@ T = TypeVar("T", bound=MessagesState)
 
 
 def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> T:  # noqa: ARG001 -- execute_hooks() passes state/config/store positionally
-    """Filters out unanswered tool calls from AI messages (timed wrapper)."""
+    """Strip unanswered tool calls from AI messages, timed as a graph node."""
     start = time.perf_counter()
     try:
         return _filter_messages(state)
@@ -33,20 +33,7 @@ def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> 
 
 
 def _filter_messages(state: T) -> T:
-    """
-    Filters out unanswered tool calls from AI messages.
-
-    This node scans the message history to identify tool calls that have
-    corresponding ToolMessage responses. For AI messages with tool calls,
-    only the tool calls that have responses are kept. This ensures incomplete
-    tool interactions are cleaned up from the message history.
-
-    Args:
-        state: The current state containing messages.
-
-    Returns:
-        The updated state with unanswered tool calls removed from AI messages.
-    """
+    """Keep only the tool calls on AI messages that have a ToolMessage response."""
     try:
         # First pass: collect all tool call IDs that have corresponding ToolMessage responses
         answered_tool_call_ids = set()

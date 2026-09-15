@@ -7,14 +7,8 @@ import type {
 import type { MessageType } from "@/types/features/convoTypes";
 
 /**
- * Utility for transforming raw message data into typed props for chat components.
- *
- * Extracted from ChatRenderer to:
- * - Automatically map chat bubble props for bot and user messages instead of manually passing each key
- * - Separate data transformation from UI logic
- * - Provide type-safe prop mapping with function overloads
- * - Filter undefined values to prevent React warnings
- * - Enable easier testing and code reuse
+ * Transforms raw message data into typed chat-bubble props (extracted from
+ * ChatRenderer), filtering undefined values to avoid React warnings.
  */
 
 // Options interface for the function parameters

@@ -19,14 +19,12 @@ from __future__ import annotations
 import ast
 from collections.abc import Sequence
 from functools import cache
-import io
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
-import tokenize
 
 APP_DIR = Path("apps/api/app")
 TESTS_DIR = Path("apps/api/tests")
@@ -36,7 +34,7 @@ LOCAL_BASE_BRANCH = "master"
 
 
 def _base_ref() -> str:
-    """The branch this diff is scoped to: the PR's base on CI, master locally.
+    """Return the branch this diff is scoped to: the PR's base on CI, master locally.
 
     GAIA_PR_BASE before GITHUB_BASE_REF, and the order is load-bearing rather
     than defensive. For a PR in a native GitHub stack the `pull_request` payload
@@ -54,7 +52,7 @@ def _base_ref() -> str:
 
 
 def _merge_base() -> str:
-    """The merge-base commit between HEAD and the PR's base ref, or "" outside CI.
+    """Return the merge-base commit between HEAD and the PR's base ref, or "" outside CI.
 
     The single source of truth both diff-against-base computations in this
     file use (line ranges below, and comment-only detection). Resolving the
@@ -96,41 +94,35 @@ def _merge_base() -> str:
     return ""
 
 
-def _tokens_without_comments(source: str) -> list[tuple[int, str]] | None:
-    """``source``'s tokens with COMMENT and NL (comment-only-line terminator)
-    stripped, or None if it fails to tokenize.
+def _code_without_docs(source: str) -> str | None:
+    """Return ``source``'s AST dump with docstrings removed, or None if it fails to parse.
 
-    Stripping only COMMENT would leave a stray NL where a whole-line comment
-    used to be, making a deleted comment-only line look like a structural
-    change. Stripping both makes the comparison see straight through both
-    forms: a trailing ``# noqa: X`` sliced off a code line, and a whole line
-    that was nothing but a comment to begin with.
+    Comments never reach the AST and mutmut skips triple-quoted strings, so two
+    sources with equal dumps differ only in text that cannot produce a mutant.
     """
-    tokens: list[tuple[int, str]] = []
     try:
-        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
-            if tok.type in (tokenize.COMMENT, tokenize.NL, tokenize.ENCODING):
-                continue
-            tokens.append((tok.type, tok.string))
-    except (tokenize.TokenError, IndentationError, SyntaxError):
+        tree = ast.parse(source)
+    except SyntaxError:
         return None
-    return tokens
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            body = node.body
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
+                del body[0]
+    return ast.dump(tree)
 
 
 def _is_comment_only_change(module_path: str, merge_base: str) -> bool:
-    """True when ``module_path``'s diff against ``merge_base`` changes only
-    comments — i.e. it has zero possible mutants, so requiring a test file
-    for it would be meaningless.
+    """Return True when ``module_path``'s diff against ``merge_base`` changes only comments or docstrings.
 
-    A pragmatic line-based diff (skip lines whose changed side starts with
-    ``#``) is not enough here: this codebase's suppressions are routinely
-    trailing comments on a code line (``except Exception as e:  # noqa:
-    BLE001``), and after the comment is deleted the changed line no longer
-    starts with ``#`` at all — a line-prefix check would misclassify that as
-    a code change. Tokenizing both sides and comparing with COMMENT/NL
-    stripped catches both the trailing-comment and whole-line-comment forms
-    correctly, because it compares what the code actually *is*, not how the
-    diff happens to be shaped.
+    Such a diff has zero mutants, so no test file is required. Compared by AST,
+    not line prefix: deleting a trailing ``# noqa`` leaves a changed line that
+    does not start with ``#``.
     """
     try:
         old_source = subprocess.check_output(
@@ -143,11 +135,11 @@ def _is_comment_only_change(module_path: str, merge_base: str) -> bool:
     new_full_path = Path(module_path)
     if not new_full_path.exists():
         return False  # deleted file — not comment-only
-    old_tokens = _tokens_without_comments(old_source)
-    new_tokens = _tokens_without_comments(new_full_path.read_text())
-    if old_tokens is None or new_tokens is None:
+    old_code = _code_without_docs(old_source)
+    new_code = _code_without_docs(new_full_path.read_text())
+    if old_code is None or new_code is None:
         return False  # unparseable on either side — don't guess, enforce normally
-    return old_tokens == new_tokens
+    return old_code == new_code
 
 
 @cache
@@ -209,7 +201,7 @@ def _collect_module_strings(refs: set[str], node: ast.AST) -> None:
 
 
 def _is_bare_module_path(candidate: str) -> bool:
-    """True for ``app.some.module`` / ``app.some.module.thing`` and nothing else.
+    """Return True for ``app.some.module`` / ``app.some.module.thing`` and nothing else.
 
     Rejects strings that embed a module name in surrounding syntax (quotes,
     parens, spaces) — those are fixture data, not references.
@@ -392,7 +384,7 @@ def main() -> int:
         if merge_base and _is_comment_only_change(module, merge_base):
             print(
                 f"::notice::mutation gate: {rel}'s diff vs {merge_base[:12]} is "
-                "comment-only (no mutable code changed) — skipping",
+                "comment/docstring-only (no mutable code changed) — skipping",
                 file=sys.stderr,
             )
             continue
@@ -430,7 +422,7 @@ def main() -> int:
 
 
 def _entry(module_rel: str, testfiles: list[str], merge_base: str) -> dict[str, object]:
-    """Module matrix entry with the PR's changed line ranges for this file.
+    """Return the module matrix entry with the PR's changed line ranges for this file.
 
     The gate is diff-driven: a survivor only fails the lane when its mutation
     lands on a line the PR changed. Mutants on untouched lines are noted, not

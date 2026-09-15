@@ -35,7 +35,7 @@ async def update_hil_preferences(
 
 
 async def set_tool_override(user_id: str, tool_name: str, ask: bool | None) -> HILPreferences:
-    """Set (``ask`` = True/False) or clear (``ask`` = None) one tool's override."""
+    """Set (ask = True/False) or clear (ask = None) one tool's override."""
     await user_repository.set_hil_tool_override(user_id, tool_name, ask)
     capture_event(
         user_id,

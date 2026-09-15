@@ -59,10 +59,7 @@ class TestPrettyPrintMessages:
         assert _pretty_print_messages(messages) == expected
 
     def test_context_over_the_cap_keeps_exactly_the_newest_chars(self):
-        # A maxed-out executor result used to flow verbatim into the follow-up
-        # request. The cap trims the HEAD, never the tail: follow-ups react to
-        # the newest exchange, so dropping the end would suggest actions for a
-        # turn that already scrolled past.
+        # The cap trims the HEAD, never the tail: follow-ups react to the newest exchange.
         messages = [HumanMessage(content="A" * 4_000), AIMessage(content="B" * 4_000)]
         full = "".join(m.pretty_repr() for m in messages)
         assert len(full) > _FOLLOW_UP_CONTEXT_MAX_CHARS
@@ -231,11 +228,8 @@ class TestFollowUpActionsNode:
         assert {"main_response_complete": True} in written_values
         assert {"follow_up_actions": suggested_actions} in written_values
 
-        # The node assembles [static_system, dynamic_context]. Tool names live in
-        # the dynamic-context message so the static system prefix stays
-        # byte-identical across users (prompt-cache friendly). There is no third
-        # human message: the context used to be sent twice, and the duplicate was
-        # ~350 tokens of uncached per-turn weight for no added information.
+        # [static_system, dynamic_context]: tool names live in dynamic_context so the
+        # static prefix stays byte-identical across users (prompt-cache friendly).
         assert len(captured_llm_inputs) == 1
         msgs = captured_llm_inputs[0]
         assert len(msgs) == 2
@@ -315,16 +309,11 @@ class TestFollowUpActionsNode:
             await follow_up_actions_node(state, config, store)
 
         assert len(captured_invocations) == 1
-        # [static_system, dynamic_context, human_message]
         llm_msgs = captured_invocations[0]
-        # Two messages, not three — the context is carried once, in the
-        # dynamic-context system message, never repeated as a human turn.
+        # Two messages, not three — the context is carried once, never repeated as a human turn.
         assert len(llm_msgs) == 2
 
-        # The HumanMessage content is the pretty-printed slice of recent_messages.
         # With 6 input messages and a window of 4, only messages 2-5 must appear.
-        # The window rides in the dynamic-context message now that the duplicate
-        # human turn is gone — same content, one copy.
         context_msg = llm_msgs[1]
         for i in range(2, 6):
             assert f"message {i}" in context_msg.content

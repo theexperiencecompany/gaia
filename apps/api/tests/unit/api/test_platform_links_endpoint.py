@@ -1,4 +1,4 @@
-"""Tests for app/api/v1/endpoints/platform_links.py"""
+"""Tests for app/api/v1/endpoints/platform_links.py."""
 
 from typing import cast
 from unittest.mock import AsyncMock, patch
@@ -91,12 +91,7 @@ class TestMintLinkCode:
 
     @pytest.mark.asyncio
     async def test_empty_session_user_is_refused_before_anything_is_minted(self) -> None:
-        """Direct invocation: an empty caller never reaches the mint.
-
-        The auth dependency normally fills this in, so the handler's own guard
-        is only reachable by calling it directly — and it has to answer 401,
-        not a 402 paywall or a bare status with no reason.
-        """
+        """Direct invocation with an empty caller must answer 401, not a 402 paywall or a bare status with no reason."""
         with (
             patch(
                 "app.api.v1.endpoints.platform_links.mint_platform_link_code",
@@ -137,10 +132,8 @@ class TestMintLinkCode:
         assert body["code"] == "CODE123"
         assert body["first_message"] == expected_message
         assert body["handoff_text"] == f"{expected_message} #CODE123"
-        # Bound to the session's user, never to a client-supplied id, and the
-        # code carries the ANSWERS rather than a rendered string: GAIA's side of
-        # the first contact is composed at redeem, when the connected
-        # integrations are known.
+        # Bound to the session's user, not a client-supplied id; the code carries
+        # answers, not a rendered string, since GAIA's side is composed at redeem.
         mock_mint.assert_awaited_once_with(FAKE_USER_ID, self._status().preferences)
         # The opening line is composed from THIS user's onboarding answers —
         # read for anyone else and the message describes the wrong person.
@@ -416,13 +409,7 @@ class TestLinkPlatform:
     async def test_an_internal_failure_is_not_reported_as_an_ownership_conflict(
         self, client: AsyncClient
     ) -> None:
-        """A plain ValueError is an internal fault, not something the user owns.
-
-        link_account raises bare ValueError for an empty id or a missing user.
-        Collapsed into the shared 409 these told the person linking that a
-        stranger held their account, sending them to fix something that was
-        never theirs to fix.
-        """
+        """link_account's bare ValueError (empty id or missing user) is an internal fault, not the shared 409 that tells the user a stranger holds their account."""
         mock_redis = AsyncMock()
         mock_redis.hgetall = AsyncMock(
             return_value={"platform": "discord", "platform_user_id": "DISC_X"}
@@ -491,12 +478,7 @@ class TestLinkPlatform:
 
     @pytest.mark.asyncio
     async def test_conflict_leaves_the_token_redeemable(self, client: AsyncClient) -> None:
-        """A refused link must not spend the token its own message asks them to retry with.
-
-        The 409 says "disconnect the other account, then link this one" — and the
-        retry it asks for arrives with the same token, so consuming it on the way
-        in answers the second attempt with "Invalid or expired link token".
-        """
+        """A refused link must not spend the token its own message asks the user to retry with, or the retry gets "Invalid or expired link token"."""
         mock_redis = AsyncMock()
         mock_redis.hgetall = AsyncMock(
             return_value={"platform": "discord", "platform_user_id": "DISC_DUP"}
@@ -634,11 +616,7 @@ class TestDisconnectPlatform:
     async def test_disconnect_propagates_service_apperror_with_why_and_fix(
         self, client: AsyncClient
     ) -> None:
-        """The service's AppError reaches the client with status, message, why AND fix.
-
-        The endpoint re-raises AppError rather than rebuilding an HTTPException,
-        so the structured guidance the service attached survives to the client.
-        """
+        """The endpoint re-raises the service's AppError rather than rebuilding an HTTPException, so status, message, why, and fix all survive to the client."""
         with (
             patch(
                 "app.api.v1.endpoints.platform_links.disconnect_platform_account",
@@ -970,8 +948,7 @@ class TestImessagePremiumGate:
     @pytest.mark.regression
     @pytest.mark.asyncio
     async def test_pro_user_connect_returns_the_number_to_text(self, client: AsyncClient) -> None:
-        """The deep link is an Apple-only `sms:` URL — a desktop browser opens it to a
-        blank tab. The number the user has to text must reach the client as data."""
+        """The deep link is an Apple-only sms: URL that opens a blank tab on desktop, so the number to text must also reach the client as data."""
         photon_user = PhotonUser(
             id="pu_123", phoneNumber="+15551234567", assignedPhoneNumber="+14155955082"
         )

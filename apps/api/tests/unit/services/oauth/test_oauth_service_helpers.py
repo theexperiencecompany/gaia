@@ -1,7 +1,8 @@
-"""Unit tests for the helpers extracted from store_user_info and
-handle_oauth_connection. Kept apart from test_oauth_service.py so that file
-imports only symbols that exist on the base revision — the regression-proof
-lane runs its marked tests there."""
+"""Unit tests for the helpers extracted from store_user_info and handle_oauth_connection.
+
+Kept apart from test_oauth_service.py so that file imports only symbols that exist on the
+base revision — the regression-proof lane runs its marked tests there.
+"""
 
 import asyncio
 from unittest.mock import MagicMock, patch
@@ -24,9 +25,9 @@ from app.services.workflow.trigger_service import TriggerService
 
 
 class LoguruErrorSpy:
-    """Records every real-time error line with the ``exception=`` flag it carried.
+    """Records every real-time error line with the exception= flag it carried.
 
-    ``log.error(..., exc_info=True)`` pops ``exc_info`` before the wide event
+    log.error(..., exc_info=True) pops exc_info before the wide event
     sees it, so whether the traceback is attached to the line is observable
     only at the loguru sink — and a swallowed failure without its traceback is
     exactly the one nobody can diagnose.
@@ -59,8 +60,7 @@ class LoguruErrorSpy:
 
 class TestReturningUserProfile:
     def test_a_blank_stored_name_is_filled_from_the_login_name(self):
-        """A user with no stored name gets the one this login carries — and that
-        same name is what analytics must report, not a placeholder."""
+        """The filled name is also what analytics must report, not a placeholder."""
         existing_user = UserDocument(
             id=str(ObjectId()), email="alice@test.com", name=None, picture="https://p/x.jpg"
         )
@@ -77,9 +77,11 @@ class TestReturningUserProfile:
 
 
 class TestRunSignupSideEffects:
-    """Signup's outbound effects are all swallowed so none can fail the signup,
-    which makes the wide event the only place a failure is visible. A blank or
-    misattributed entry there is a signup silently missing its email."""
+    """Signup's outbound effects are all swallowed so none can fail the signup.
+
+    That makes the wide event the only place a failure is visible; a blank or
+    misattributed entry there is a signup silently missing its email.
+    """
 
     async def test_the_esp_deliveries_are_queued_rather_than_run_in_process(
         self,
@@ -87,11 +89,7 @@ class TestRunSignupSideEffects:
         mock_schedule_user_provision,
         mock_redis_pool_manager,
     ):
-        """Signup hands the ESP round-trips to the worker queue and touches no
-        provider itself. An in-process task would be fast too, but nothing
-        drains those on shutdown: a restart mid-send dropped both deliveries
-        without even reaching their own failure loggers. The queued job outlives
-        the process, so the record of the work survives the restart."""
+        """In-process delivery was undrained on shutdown, so a restart mid-send lost both emails."""
         user_id = str(ObjectId())
 
         await _run_signup_side_effects(user_id, "bob@test.com", "Bob")
@@ -112,9 +110,7 @@ class TestRunSignupSideEffects:
         mock_schedule_user_provision,
         mock_redis_pool_manager,
     ):
-        """Redis being unreachable costs the signup emails, not the signup. The
-        loss is only ever visible in the wide event, so a blank entry here is a
-        delivery nobody can find out was never queued."""
+        """The loss is visible only in the wide event; a blank entry means nobody can find it."""
         user_id = str(ObjectId())
         mock_redis_pool_manager.enqueue_job.side_effect = RuntimeError("Redis down")
 
@@ -200,8 +196,7 @@ class TestRefreshBioStatusForReconnect:
     async def test_broadcasts_the_processing_status_to_that_user(
         self, mock_user_repo, mock_websocket_manager
     ):
-        """The frontend re-runs the bio only on this exact payload — a renamed
-        key or field leaves the card stuck on the no-Gmail placeholder."""
+        """A renamed key or field here leaves the frontend card stuck on the no-Gmail placeholder."""
         await _refresh_bio_status_for_reconnect(self.USER_ID, self._no_gmail_user())
 
         mock_user_repo.set_bio_status.assert_awaited_once_with(self.USER_ID, BioStatus.PROCESSING)
@@ -216,8 +211,7 @@ class TestRefreshBioStatusForReconnect:
     async def test_an_empty_user_id_is_never_broadcast(
         self, mock_user_repo, mock_websocket_manager
     ):
-        """Broadcasting to "" fans the update out to nobody at best; the guard is
-        what keeps it off the socket layer entirely."""
+        """Without the guard, broadcasting to "" would still reach the socket layer."""
         await _refresh_bio_status_for_reconnect("", self._no_gmail_user())
 
         mock_websocket_manager.broadcast_to_user.assert_not_awaited()
@@ -277,8 +271,7 @@ class TestHandleGmailConnection:
     async def test_reads_the_connecting_users_own_document(
         self, mock_user_repo, mock_redis_pool_manager, mock_enqueue_personalization
     ):
-        """Read the wrong document and a completed onboarding is invisible, so
-        the reconnect never refreshes the bio."""
+        """The wrong document hides a completed onboarding, so the reconnect never refreshes the bio."""
         mock_user_repo.get.return_value = UserDocument(onboarding={"completed": True})
 
         await _handle_gmail_connection(self.USER_ID)
@@ -289,8 +282,7 @@ class TestHandleGmailConnection:
     async def test_a_failed_user_load_is_recorded_and_the_pipeline_still_runs(
         self, mock_user_repo, mock_redis_pool_manager, mock_enqueue_personalization
     ):
-        """Losing the document only costs the bio refresh — the personalization
-        pipeline is what the connect was for and must still be queued."""
+        """Losing the document costs only the bio refresh; the personalization pipeline still queues."""
         mock_user_repo.get.side_effect = RuntimeError("mongo down")
         spy = LoguruErrorSpy()
 
@@ -342,8 +334,7 @@ class TestHandleGmailConnection:
 
 class TestSetupIntegrationTriggers:
     def test_resyncs_this_users_workflow_triggers_for_the_reconnected_integration(self):
-        """A reconnect strands the workflow triggers registered against the old
-        connected account; the resync is what keeps existing workflows firing."""
+        """The resync keeps workflows firing after a reconnect strands the old account's triggers."""
         workflow_trigger = MagicMock()
         workflow_trigger.workflow_trigger_schema.slug = "gmail_new_email"
         plain_trigger = MagicMock()

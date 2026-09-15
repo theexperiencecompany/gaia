@@ -53,7 +53,7 @@ def _now() -> str:
 
 
 class RunJournal:
-    """Thread-safe append-only journal backed by ``runs/<run_id>/journal.jsonl``."""
+    """Thread-safe append-only journal backed by runs/<run_id>/journal.jsonl."""
 
     def __init__(self, runs_dir: Path, run_id: str) -> None:
         self.dir = runs_dir / run_id
@@ -93,17 +93,12 @@ class RunJournal:
             )
 
     def has_terminal(self, case_id: str) -> bool:
-        """Whether the case reached a real verdict, so ``--resume`` can skip it.
+        """Whether the case reached a real verdict, so --resume can skip it.
 
-        An ``errored`` case is not a verdict — the agent was never measured — so
-        it stays resumable rather than freezing a crash into the run's score.
-
-        Neither is a ``failed`` record that never ran. Those exist because a
-        fault used to be journaled as a wrong answer, and the status alone
-        cannot tell them apart from a genuine miss — the record has to be read.
-        Without this, a run contaminated by an outage could not be repaired: the
-        publish gate refuses it, and ``--resume`` skipped exactly the cases that
-        needed re-running, so the only exit was a full re-run from scratch.
+        An errored case is not a verdict, and neither is a failed record
+        that never ran (a fault once journaled as a wrong answer): without
+        checking this, an outage-contaminated run could never be repaired,
+        since --resume would skip exactly the cases needing a re-run.
         """
         if self._status.get(case_id, "") not in TERMINAL_STATUSES:
             return False
@@ -119,15 +114,10 @@ class RunJournal:
     def records(self) -> list[dict[str, Any]]:
         """Every appended record, in order, parsed once per file revision.
 
-        This used to re-read and re-parse the whole file on every call, and
-        ``record_for`` calls it per case — so a 470-case run re-parsed ~110k
-        lines over its lifetime. The cache is keyed on the file's size and mtime
-        so an external append (a concurrent writer, a resumed run) still
-        invalidates it rather than serving a stale list.
-
-        Read under the same lock ``append`` writes under: the class promises
-        thread safety, and without it a reader can parse the file mid-write and
-        see a torn final line.
+        Used to re-parse the whole file on every call (record_for is called
+        per case), so a 470-case run re-parsed ~110k lines. Cached by file
+        size+mtime so an external append still invalidates it. Read under
+        the same lock append writes under, or a reader could see a torn line.
         """
         with self._lock:
             if not self.path.exists():
@@ -145,7 +135,7 @@ class RunJournal:
         """One record per case — the most recent attempt.
 
         The journal only appends, so a re-run leaves both attempts on disk.
-        Reports and cost tables that iterate ``records()`` directly count a
+        Reports and cost tables that iterate records() directly count a
         retried case twice, crediting the stale failure alongside the fresh
         pass. Anything that aggregates should read this instead.
         """
@@ -155,9 +145,9 @@ class RunJournal:
         return latest
 
     def record_for(self, case_id: str) -> dict[str, Any] | None:
-        """The case's latest outcome.
+        """Return the case's latest outcome.
 
-        The journal is append-only, so a re-run (``--only-failed``) leaves both
+        The journal is append-only, so a re-run (--only-failed) leaves both
         attempts on disk. Returning the first match would report the stale one,
         which is how a re-run could look like it changed nothing.
         """

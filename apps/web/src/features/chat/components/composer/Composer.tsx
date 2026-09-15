@@ -97,11 +97,9 @@ const Composer: React.FC<MainSearchbarProps> = ({
     if (replyToMessage) inputRef.current?.focus();
   }, [replyToMessage, inputRef]);
 
-  // NOTE: Workflow auto-send logic lives in ChatPage, NOT here.
-  // Composer remounts across the NewChatLayout → ChatWithMessages layout
-  // switch that happens when the optimistic message makes hasMessages toggle
-  // to true, which would reset the once-only guard and fire the workflow
-  // twice. ChatPage is memoized and never remounts, so it hosts that guard.
+  // Workflow auto-send lives in ChatPage, not here: Composer remounts across
+  // the NewChatLayout -> ChatWithMessages switch (hasMessages toggling true),
+  // which would reset a once-only guard and fire the workflow twice.
 
   // Let the parent (drag-and-drop on the chat page) attach files directly.
   useImperativeHandle(fileUploadRef, () => ({ attachFiles }), [attachFiles]);

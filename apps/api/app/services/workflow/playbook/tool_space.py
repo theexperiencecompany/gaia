@@ -2,9 +2,9 @@
 
 A playbook's top-level steps run against the executor's registry, but a
 handoff's children run inside that subagent's own space, and for an MCP
-integration that space lives on the USER's ``MCPClient`` rather than in the
+integration that space lives on the USER's MCPClient rather than in the
 global registry. PostHog is the case that proved it: the tools its subagent
-exposes are fetched per user at connect time, so a recorded ``exec`` step is
+exposes are fetched per user at connect time, so a recorded exec step is
 absent from the registry entirely.
 
 The validator and the replay runner both have to resolve a handoff the same
@@ -39,9 +39,9 @@ class ToolSpace:
     Top level is the full registry with no runtime: anything in it may run.
     Inside a handoff it is the subagent's scoped tool set AND its runtime
     config, the boundary a delegated call already had. The scoped dict holds
-    more than the subagent can bind (the always-available ``search_memory``,
-    ``grep``, ``query_json``...), so "in the space" is not "runnable";
-    ``tool_space_denial`` is the one answer to that question, for the validator
+    more than the subagent can bind (the always-available search_memory,
+    grep, query_json...), so "in the space" is not "runnable";
+    tool_space_denial is the one answer to that question, for the validator
     at write time and the runner at replay.
     """
 
@@ -70,7 +70,7 @@ class SubagentTools:
 
 
 def handoff_tool_space(space: SubagentTools) -> ToolSpace:
-    """The space a handoff's children run in, built from the resolved subagent.
+    """Return the space a handoff's children run in, built from the resolved subagent.
 
     One construction for both sides: the validator building the runtime config
     one way and the runner another is exactly how a playbook is accepted at
@@ -92,7 +92,7 @@ def handoff_tool_space(space: SubagentTools) -> ToolSpace:
 
 
 def tool_space_denial(tool_name: str, space: ToolSpace) -> str | None:
-    """Why this space may not run ``tool_name``, or ``None`` when it may."""
+    """Why this space may not run tool_name, or None when it may."""
     if tool_name not in space.tools:
         if space.subagent_id is None:
             return f"no tool named {tool_name!r} exists"
@@ -110,7 +110,7 @@ def tool_space_denial(tool_name: str, space: ToolSpace) -> str | None:
 async def resolve_subagent_tools(
     subagent_id: str, user_id: str, registry: ToolRegistry
 ) -> SubagentTools | None:
-    """The tools a handoff to ``subagent_id`` can reach, or ``None`` if no such subagent.
+    """Return the tools a handoff to subagent_id can reach, or None if no such subagent.
 
     An MCP integration's tools are fetched from the user's own client, which is
     the only place they exist. A connection failure returns an empty tool set
@@ -149,11 +149,9 @@ async def resolve_subagent_tools(
         )
         return SubagentTools(tools={}, initial_tool_ids=initial, subagent=subagent)
 
-    # The live subagent binds its MCP tools at startup (``build_scoped_tool_dict``
-    # with ``mcp_tools`` set), so they belong in ``initial_tool_ids`` here too:
-    # a handoff that cannot retrieve refuses every tool outside that set, and a
-    # replay bound to the registry-only ids would reject the very MCP step the
-    # validator just accepted.
+    # The live subagent binds its MCP tools at startup, so they belong in
+    # ``initial_tool_ids`` here too — a replay bound to registry-only ids
+    # would reject the very MCP step the validator just accepted.
     bound = set(initial)
     return SubagentTools(
         tools={**scoped, **{tool.name: tool for tool in mcp_tools}},

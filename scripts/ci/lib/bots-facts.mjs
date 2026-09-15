@@ -131,13 +131,10 @@ function catchBinding(clause) {
 /**
  * Whether `throw <expr>` keeps the caught error alive.
  *
- * The JS analogue of tools/evlog_map's `_preserves_caught_error`. Python's
- * `raise X from e` sets `__cause__`; JS's equivalent is the `cause` option —
- * `throw new X(msg, { cause: err })` — which is what the log sink follows to
- * report what actually failed. `throw err` is the rethrow shape (JS has no
- * bare `throw`, so nothing maps to Python's bare `raise`). A `new X("...")`
- * that drops the caught error destroys its type and message before anything
- * reads them, exactly like `raise X(...)` with no `from`.
+ * JS analogue of tools/evlog_map's `_preserves_caught_error`: the `cause`
+ * option (`throw new X(msg, { cause: err })`) is what the log sink follows,
+ * `throw err` is the rethrow shape, and a bare `new X("...")` destroys the
+ * caught error's type and message exactly like `raise X(...)` with no `from`.
  */
 function throwPreservesCause(expr, binding) {
   if (binding === null) return false;

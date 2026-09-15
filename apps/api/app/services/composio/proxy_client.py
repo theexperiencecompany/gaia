@@ -1,12 +1,12 @@
 """Composio proxy client — single source of truth for proxy API calls.
 
-Composio dropped support for returning OAuth `access_token` values in the
+Composio dropped support for returning OAuth access_token values in the
 connected-accounts API. Every provider request must now go through
-`composio.tools.proxy(...)`, which authenticates server-side via the
-`connected_account_id`.
+composio.tools.proxy(...), which authenticates server-side via the
+connected_account_id.
 
-This module wraps that flow so callers only need to supply `user_id`,
-`toolkit`, and the request shape. The connected account lookup is cached
+This module wraps that flow so callers only need to supply user_id,
+toolkit, and the request shape. The connected account lookup is cached
 in-process with a short TTL since the value is stable for the lifetime
 of a connection.
 """
@@ -34,7 +34,7 @@ ProxyMethod = Literal["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"]
 class ProxyRequest:
     """One provider call through Composio's proxy, addressed by user and toolkit.
 
-    ``binary_body`` (a URL the proxy fetches and streams) and ``body`` are two
+    binary_body (a URL the proxy fetches and streams) and body are two
     different things and stay two fields; when both are given the binary one
     is what is sent.
     """
@@ -52,7 +52,7 @@ class ProxyRequest:
 class ProxyResponse(TypedDict):
     """A proxy call's full result: provider status, payload and headers.
 
-    ``data`` is the provider's parsed JSON body, so it stays ``Any`` — every
+    data is the provider's parsed JSON body, so it stays Any — every
     provider answers a different shape and this is the boundary where it lands.
     """
 
@@ -166,11 +166,9 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
             total_accounts=total_accounts,
             account_summary=account_summary,
         )
-        # 403, not 401: the user's GAIA session is valid — they simply have no
-        # active connection for this integration. Returning 401 makes the web
-        # client's axios interceptor treat it as session expiry and pop the
-        # "please log in" modal at a logged-in user (e.g. /dashboard firing
-        # /calendar/events). 403 routes to the "reconnect integration" path.
+        # 403, not 401: the user's session is valid, they just have no active
+        # connection. 401 would trip the client's session-expiry interceptor and
+        # pop a "please log in" modal on a logged-in user; 403 routes to reconnect.
         raise AppError(
             message=f"No active {toolkit} connection",
             why=f"User {user_id} has no active connected account for {toolkit}",
@@ -218,7 +216,7 @@ def _build_parameters(
 
 
 def _proxy_call(request: ProxyRequest) -> ProxyResponse:
-    """Internal: send a proxy request and return its status, data and headers."""
+    """Send a proxy request and return its status, data and headers."""
     log.set(
         composio_proxy={
             "toolkit": request.toolkit,
@@ -271,11 +269,9 @@ def _proxy_call(request: ProxyRequest) -> ProxyResponse:
 
     status = int(response.status)
     if status >= 400:
-        # A provider 401 means Composio's stored token was rejected and refresh
-        # already failed — the *integration* needs reconnecting, not the user's
-        # GAIA session. Surface it as 403 so the web client routes it to the
-        # reconnect-integration path instead of passing 401 through and falsely
-        # telling a logged-in user to sign in again.
+        # A provider 401 means Composio's token was rejected and refresh failed —
+        # the integration needs reconnecting, not the GAIA session. Surface as 403
+        # so the web client routes to reconnect instead of a false "sign in again".
         if status == 401:
             invalidate_connected_account_cache(user_id=request.user_id, toolkit=request.toolkit)
         gaia_status = 403 if status == 401 else (status if 400 <= status < 600 else 502)
@@ -311,43 +307,32 @@ def _proxy_call(request: ProxyRequest) -> ProxyResponse:
 def proxy_request_sync(request: ProxyRequest) -> Any:
     """Send an authenticated request to a provider via Composio's proxy.
 
-    Returns the parsed `data` field from the proxy response. Raises
-    `AppError` on non-2xx provider responses or when the user has no
-    active connection for the toolkit.
-
-    The return stays `Any`: one function fronts every provider in the
-    codebase and each answers a different JSON shape, so the concrete type
-    only exists at the call site. Callers validate what they receive into a
-    real model there.
-
-    Measured, don't re-litigate: annotating this and `proxy_request` as
-    `-> object` (the honest type of parsed JSON) produced **47 new mypy errors
-    across 16 files** — 40 of them `"object" has no attribute "get"` in the
-    integration tools (linkedin 11, instagram 9, teams 5, twitter 3, ...), the
-    rest assignment/index errors. Every one would need a per-call-site cast or
-    model, which is the cross-file ripple Type Safety item 14 rules out.
+    Returns the parsed data field; raises AppError on a non-2xx response or
+    no active connection. Return stays Any: one function fronts every
+    provider's differently-shaped JSON, and annotating it -> object measured
+    47 new mypy errors across 16 files (mostly "object has no attribute get").
     """
     return _proxy_call(request)["data"]
 
 
 def proxy_request_full_sync(request: ProxyRequest) -> ProxyResponse:
-    """Like `proxy_request_sync` but returns `{status, data, headers}`.
+    """Like proxy_request_sync but returns {status, data, headers}.
 
     Use when the caller needs response headers (e.g. LinkedIn's
-    `x-restli-id` for the new resource ID).
+    x-restli-id for the new resource ID).
     """
     return _proxy_call(request)
 
 
 async def proxy_request(request: ProxyRequest) -> Any:
-    """Async variant of `proxy_request_sync`. Runs the SDK call in a worker thread."""
+    """Async variant of proxy_request_sync. Runs the SDK call in a worker thread."""
     return await asyncio.to_thread(proxy_request_sync, request)
 
 
 def invalidate_connected_account_cache(
     user_id: str | None = None, toolkit: str | None = None
 ) -> None:
-    """Clear cached `connected_account_id` entries.
+    """Clear cached connected_account_id entries.
 
     Call after a user disconnects or reconnects an integration so the next
     proxy request re-resolves the account.

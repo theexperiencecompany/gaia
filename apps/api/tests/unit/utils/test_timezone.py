@@ -1,6 +1,6 @@
 """Brutal unit tests for the canonical timezone module (the single source of truth).
 
-Every test imports the real production code in ``app.utils.timezone`` and asserts
+Every test imports the real production code in app.utils.timezone and asserts
 on actual behaviour. If a primitive were deleted, the matching test would fail.
 """
 
@@ -193,10 +193,7 @@ class TestIsValidTimezone:
 
 # ---------------------------------------------------------------------------
 class TestTryParseEdges:
-    """Pins the offset guards and the tzinfo input path of ``try_parse``
-    (mutation survivors on 2026-08-28: the bounds, the sign and the tzinfo
-    branch were only reachable through ``parse``, which hides failures
-    behind the UTC fallback)."""
+    """Pin the offset guards and tzinfo input path of try_parse (mutation survivors 2026-08-28)."""
 
     @pytest.mark.parametrize("bad", ["+24:00", "+23:60", "-24:00", "+00:60", "+99:99"])
     def test_out_of_range_offset_is_not_a_zone(self, bad: str) -> None:

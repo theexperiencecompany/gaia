@@ -1,7 +1,7 @@
 """Resolve the latest published GAIA desktop release from GitHub Releases.
 
 Every app in the monorepo publishes into one GitHub Releases feed, so the newest
-``desktop-*`` tag is usually buried several entries below the most recent web/api
+desktop-* tag is usually buried several entries below the most recent web/api
 releases. The web download page calls this (cached) so its buttons can link
 straight to the right platform binary instead of dumping users on the raw GitHub
 releases list.
@@ -29,9 +29,9 @@ from shared.py.wide_events import log
     model=DesktopReleaseResponse,
 )
 async def get_latest_desktop_release() -> DesktopReleaseResponse:
-    """Return the newest non-draft ``desktop-*`` release and its assets.
+    """Return the newest non-draft desktop-* release and its assets.
 
-    Raises ``AppError`` 502 if GitHub is unreachable, or 404 if no desktop
+    Raises AppError 502 if GitHub is unreachable, or 404 if no desktop
     release has been published yet.
     """
     url = f"{GITHUB_API_BASE}/repos/{GAIA_GITHUB_REPO}/releases"

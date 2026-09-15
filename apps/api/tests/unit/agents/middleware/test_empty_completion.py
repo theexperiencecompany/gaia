@@ -4,7 +4,7 @@
 with no text, no error and no cancellation. The turn-level recovery was a fixed
 apology asking the user to retype their message — recovery in the wrong layer:
 the model call is what failed. These tests drive the real middleware against a
-scripted handler, the same seam ``MiddlewareExecutor.wrap_model_invocation``
+scripted handler, the same seam MiddlewareExecutor.wrap_model_invocation
 builds in production; the model is the only thing faked, because a real model
 cannot be made to return nothing on demand.
 """
@@ -77,8 +77,7 @@ class TestAnEmptyCompletionIsRetriedOnce:
         assert response.result == [ANSWER]
 
     async def test_the_retry_asks_the_same_question_unchanged(self):
-        """Nothing about the request was wrong, so nothing is appended to it —
-        a correction note here would teach the model that silence was a turn."""
+        """Nothing about the request was wrong; appending a correction note would teach the model that silence was a turn."""
         handler = _ScriptedHandler(EMPTY, ANSWER)
 
         await EmptyCompletionRetryMiddleware().awrap_model_call(_request(), handler)
@@ -105,8 +104,7 @@ class TestOnlyGenuineSilenceIsRetried:
         assert response.result == [ANSWER]
 
     async def test_a_tool_call_with_no_prose_is_content_and_is_left_alone(self):
-        """A card, a connect frame or a delegation is the model acting. Retrying
-        it would run the same tool twice."""
+        """A card, a connect frame or a delegation is the model acting; retrying it would run the same tool twice."""
         handler = _ScriptedHandler(TOOL_CALL)
 
         response = await EmptyCompletionRetryMiddleware().awrap_model_call(_request(), handler)
@@ -115,8 +113,7 @@ class TestOnlyGenuineSilenceIsRetried:
         assert response.result == [TOOL_CALL]
 
     async def test_a_failed_call_raises_through_and_is_never_retried(self):
-        """The turn's error path owns a failure; a second call would double the
-        latency the user waits through before seeing the error."""
+        """The turn's error path owns a failure; a second call would double the user's wait before the error shows."""
         calls: list[ModelRequest] = []
 
         async def failing(request: ModelRequest) -> ModelResponse:
@@ -133,8 +130,7 @@ class TestOnlyGenuineSilenceIsRetried:
         assert len(calls) == 1
 
     async def test_a_cancelled_call_is_never_retried(self):
-        """A user stop cancels this task: the retry must not resurrect the turn
-        the user just stopped paying for."""
+        """A user stop cancels this task; the retry must not resurrect the turn the user stopped paying for."""
         calls: list[ModelRequest] = []
 
         async def cancelled(request: ModelRequest) -> ModelResponse:
@@ -152,8 +148,7 @@ class TestOnlyGenuineSilenceIsRetried:
 
 
 class TestTheRetryIsRecordedOnTheTurn:
-    """One retried turn is indistinguishable from an ordinary one in the
-    conversation, so the wide event is the only place this is countable."""
+    """A retried turn is indistinguishable from an ordinary one in the conversation; the wide event is the only place it's countable."""
 
     async def _fields(self, handler: _ScriptedHandler) -> dict[str, Any]:
         with patch("app.agents.middleware.empty_completion.log") as mock_log:
@@ -177,8 +172,7 @@ class TestTheRetryIsRecordedOnTheTurn:
         }
 
     async def test_an_ordinary_turn_records_nothing(self):
-        """The flag must mean "this happened", so it is absent, not False, on
-        every turn that never went silent."""
+        """The flag must mean "this happened", so it is absent, not False, on a turn that never went silent."""
         fields = await self._fields(_ScriptedHandler(ANSWER))
 
         assert fields == {}

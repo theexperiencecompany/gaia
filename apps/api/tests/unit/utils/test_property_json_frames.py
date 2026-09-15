@@ -3,13 +3,13 @@
 These builders feed the SSE chat stream and the message-to-tool_data
 conversion, so the wire contract is the invariant:
 
-- ``format_sse_response`` / ``format_sse_data`` must always emit a
-  ``data: <json>\\n\\n`` frame whose JSON parses and carries the input back
+- format_sse_response / format_sse_data must always emit a
+  data: <json>\\n\\n frame whose JSON parses and carries the input back
   losslessly — including text with quotes, newlines, and non-ASCII characters.
-  An interpolation bug (``str()`` instead of ``json.dumps``) would produce an
+  An interpolation bug (str() instead of json.dumps) would produce an
   unparseable frame for exactly those inputs.
-- ``convert_legacy_tool_data`` must move every non-None legacy tool field into
-  a ``tool_data`` entry with a parseable ISO timestamp, never leave a converted
+- convert_legacy_tool_data must move every non-None legacy tool field into
+  a tool_data entry with a parseable ISO timestamp, never leave a converted
   field at the top level, and preserve pre-existing unified entries.
 """
 

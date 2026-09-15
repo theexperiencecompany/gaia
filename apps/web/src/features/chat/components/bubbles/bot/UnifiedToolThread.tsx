@@ -95,13 +95,9 @@ function StackedIcons({
   );
 }
 
-// ── Stable keys for streamed entries ────────────────────────────────────────
-
-// Root timeline items get one stable React key each, derived from stream-
-// stable structure (tool_call_id / subagent_id / anchored slot — never payload
-// content) by deriveTimelineItemKeys in ./TextBubble/useSubagentSynthesis. A
-// growing reasoning delta therefore keeps its key across every stream frame
-// instead of remounting its Thinking row (which would snap `expanded` shut).
+// Root timeline items get one stable React key each, derived from
+// stream-stable structure (tool_call_id/subagent_id/anchored slot, never
+// payload) — a growing reasoning delta keeps its key instead of remounting and snapping `expanded` shut.
 
 // ── Component ───────────────────────────────────────────────────────────────
 
@@ -183,9 +179,8 @@ export default function UnifiedToolThread({
   }, [timeline, getIconUrl]);
 
   // One stable React key per timeline item — derived from stream-stable
-  // structure (tool_call_id / subagent_id / anchored slot), never payload
-  // content, so a growing reasoning delta keeps its row's identity and its
-  // `expanded` state across every stream frame.
+  // structure (tool_call_id/subagent_id/anchored slot), never payload, so a
+  // growing reasoning delta keeps its row's identity and `expanded` state.
   const itemKeys = deriveTimelineItemKeys(timeline);
 
   if (timeline.length === 0) return null;

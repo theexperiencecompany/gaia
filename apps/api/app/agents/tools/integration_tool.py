@@ -1,5 +1,5 @@
 """
-Integration Management Tools
+Integration Management Tools.
 
 Tools for listing, connecting, and managing user integrations.
 """
@@ -635,12 +635,9 @@ async def run_on_device(device_id: str, command: str, config: RunnableConfig) ->
         parts.append("(no output)")
     if result.truncated:
         parts.append("(output truncated: command produced more than the cap)")
-    # macOS privacy (TCC) denies protected folders (Downloads/Desktop/Documents)
-    # to a process without Full Disk Access, and there is no way to grant it from
-    # here. The fix differs by device: the desktop app IS the grantee (reopen it),
-    # while the CLI daemon inherits its terminal's grant (restart it). Guarded on
-    # a present stderr first: `(stderr or "")` hides a None-vs-"" distinction no
-    # test can observe, which makes the fallback literal an unkillable mutant.
+    # macOS TCC denies protected folders (Downloads/Desktop/Documents) without Full
+    # Disk Access: reopen the desktop app (grantee) or restart the CLI daemon
+    # (inherits its grant). Checks `result.stderr` first, not `(stderr or "")`, to kill a None-vs-"" mutant.
     if result.stderr and "operation not permitted" in result.stderr.lower():
         parts.append(_full_disk_access_hint(device))
     return "\n".join(parts)

@@ -1,6 +1,6 @@
 """Unit tests for app.memory.chroma_store — per-conversation chunk deletion.
 
-The Chroma collection is mocked at the ``_get_collection`` seam; the id-prefix
+The Chroma collection is mocked at the _get_collection seam; the id-prefix
 selection logic under test is real.
 """
 
@@ -55,11 +55,11 @@ class TestDeleteConversationChunks:
 class _RacyChromaServer:
     """A shared Chroma server where a concurrent creator won the race.
 
-    ``list_collections`` returns a stale (empty) snapshot while the collection
+    list_collections returns a stale (empty) snapshot while the collection
     is in fact already registered, so the old check-then-create path calls
-    ``create_collection`` and the server rejects it as a duplicate — exactly
-    the ``Collection [...] already exists`` teardown failure seen under xdist.
-    ``get_or_create_collection`` reads the real state and returns it.
+    create_collection and the server rejects it as a duplicate — exactly
+    the Collection [...] already exists teardown failure seen under xdist.
+    get_or_create_collection reads the real state and returns it.
     """
 
     def __init__(self, existing: dict[str, AsyncMock]) -> None:
@@ -101,12 +101,7 @@ class TestGetCollectionConcurrentCreate:
 
 
 class _ConflictingChromaServer:
-    """A server whose get-or-create rejects a differing persisted embedding
-    function, exercising ``_get_collection``'s plain-get fallback.
-
-    ``get_collection`` is keyed by name, so a fallback that drops the name (or
-    returns nothing) fails to resolve the right collection.
-    """
+    """A server whose get-or-create rejects a differing persisted embedding function, exercising the plain-get fallback."""
 
     def __init__(self, by_name: dict[str, AsyncMock]) -> None:
         self._by_name = by_name

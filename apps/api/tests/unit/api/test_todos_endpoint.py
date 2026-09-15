@@ -66,7 +66,7 @@ def _empty_list_response() -> TodoListResponse:
 
 
 class TestListTodos:
-    """GET /api/v1/todos"""
+    """GET /api/v1/todos."""
 
     async def test_page_over_max_returns_422(self, client: AsyncClient) -> None:
         resp = await client.get(f"/api/v1/todos?page={MAX_PAGE_NUMBER + 1}")
@@ -202,8 +202,7 @@ class TestTodoAnalytics:
 
 
 class TestListQueryHelpers:
-    """The list endpoint's extracted helpers, tested directly so the filter
-    label set and date-range resolution are pinned exactly."""
+    """Test the list endpoint's extracted filter-label and date-range helpers directly."""
 
     def test_no_filters_applied(self):
         assert _todo_filters_applied(TodoListQuery()) == []

@@ -1,19 +1,4 @@
-"""retrieve_tools must surface per-user MCP tools end-to-end.
-
-After the resilience rewrite removed per-user `mcp_{iid}_{user_id}` categories
-from ToolRegistry, MCP tool names no longer appear in
-`tool_registry.get_tool_names()`. retrieve_tools had two filters keyed against
-that set — one in discovery mode (Chroma post-processing) and one in binding
-mode (exact_tool_names validation). Both used to drop every MCP tool as
-"unknown."
-
-These tests exercise the live `retrieve_tools` factory with mocked Chroma /
-MCPClient boundaries and verify:
-
-1. Discovery mode returns posthog tool names from a Chroma hit.
-2. Binding mode validates posthog tool names directly via MCPClient.
-3. User A's tools never leak into user B's retrieve_tools results.
-"""
+"""retrieve_tools must surface per-user MCP tools end-to-end."""
 
 from __future__ import annotations
 
@@ -43,7 +28,7 @@ def _fake_search_item(key: str, namespace: tuple, score: float = 0.95):
 
 
 def _fake_mcp_client(integration_tools_map: dict[str, list[Any]]):
-    """Build a MagicMock MCPClient whose `_tools` dict contains the given tools.
+    """Build a MagicMock MCPClient whose _tools dict contains the given tools.
 
     integration_tools_map: {integration_id: [tool, tool, ...]}
     """
@@ -62,8 +47,7 @@ def _config(user_id: str) -> RunnableConfig:
 @pytest.mark.integration
 class TestRetrieveToolsBindingMode:
     async def test_binding_resolves_mcp_names_from_mcp_client(self):
-        """exact_tool_names that come from a user's posthog MCP should validate
-        even though they're not in tool_registry.get_tool_names()."""
+        """exact_tool_names from a user's posthog MCP validate even though absent from tool_registry."""
         user_id = "user-a"
         mcp_tools = [_fake_tool("persons-list"), _fake_tool("query-trends")]
 
@@ -96,8 +80,7 @@ class TestRetrieveToolsBindingMode:
 @pytest.mark.integration
 class TestRetrieveToolsDiscoveryMode:
     async def test_discovery_keeps_mcp_tool_hits(self):
-        """Chroma hits with posthog tool names must survive the available-names
-        filter once we union the user's MCPClient tool names in."""
+        """Chroma hits with posthog tool names must survive the available-names filter."""
         user_id = "user-a"
         mcp_tools = [_fake_tool("persons-list"), _fake_tool("query-trends")]
 
@@ -155,11 +138,7 @@ class TestRetrieveToolsDiscoveryMode:
 @pytest.mark.integration
 class TestRetrieveToolsCrossUserIsolation:
     async def test_user_b_only_sees_their_own_mcp_tools(self):
-        """User A has posthog tools, user B has notion tools. retrieve_tools
-        for each user must see only that user's MCP tool names — the
-        MCPClient pool is keyed per user, and the binding filter must respect
-        that scoping.
-        """
+        """retrieve_tools for each user must see only that user's MCP tool names."""
         user_a = "user-a"
         user_b = "user-b"
         user_a_client = _fake_mcp_client({"posthog": [_fake_tool("persons-list")]})

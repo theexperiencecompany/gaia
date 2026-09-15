@@ -2610,7 +2610,7 @@ export interface paths {
         };
         /**
          * Get Notifications
-         * @description Get user's notifications with pagination
+         * @description Get user's notifications with pagination.
          */
         get: operations["notification_get_notifications"];
         put?: never;
@@ -2699,7 +2699,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk Actions
-         * @description Perform bulk actions on multiple notifications
+         * @description Perform bulk actions on multiple notifications.
          */
         post: operations["notification_bulk_actions"];
         delete?: never;
@@ -2767,7 +2767,7 @@ export interface paths {
         put?: never;
         /**
          * Register Device Token
-         * @description Register a device token for push notifications
+         * @description Register a device token for push notifications.
          */
         post: operations["notification_register_device_token"];
         delete?: never;
@@ -2787,7 +2787,7 @@ export interface paths {
         put?: never;
         /**
          * Unregister Device Token
-         * @description Unregister a device token
+         * @description Unregister a device token.
          */
         post: operations["notification_unregister_device_token"];
         delete?: never;
@@ -4366,7 +4366,7 @@ export interface paths {
          *     Returns the workflow if it exists, otherwise returns None.
          *     Detects generating state when:
          *     - Workflow generation is queued (Redis flag)
-         *     - Workflow exists but has no steps yet
+         *     - Workflow exists but has no steps yet.
          */
         get: operations["todos_get_workflow_status"];
         put?: never;
@@ -5380,8 +5380,8 @@ export interface components {
          *     percentage is measured against — so background work (memory extraction,
          *     onboarding) never shows up as something the user did. Cached and reasoning
          *     tokens are broken out because they explain an otherwise surprising input
-         *     total; ``tokens`` is input + output, matching how the per-request ceiling
-         *     counts them (``cost_budget.record_model_call_usage``).
+         *     total; tokens is input + output, matching how the per-request ceiling
+         *     counts them (cost_budget.record_model_call_usage).
          */
         ActivityDay: {
             /** Cached Tokens */
@@ -5565,12 +5565,12 @@ export interface components {
         };
         /**
          * ArtifactRegistryEntry
-         * @description One element of ``ConversationDocument.artifacts``.
+         * @description One element of ConversationDocument.artifacts.
          *
-         *     ``app.services.chat.artifacts_registry`` owns every write of this shape; the
+         *     app.services.chat.artifacts_registry owns every write of this shape; the
          *     conversation document stores it and mirrors it verbatim to the client.
-         *     ``mtime`` is a Unix timestamp, matching what every publisher in
-         *     :mod:`app.services.artifact_events` stamps. ``body`` is present only for
+         *     mtime is a Unix timestamp, matching what every publisher in
+         *     :mod:app.services.artifact_events stamps. body is present only for
          *     small textual artifacts inlined at write time.
          */
         ArtifactRegistryEntry: {
@@ -6075,7 +6075,7 @@ export interface components {
         /**
          * BudgetWindow
          * @description One cost-budget window: how much of the allowance is used, and when it
-         *     resets. Deliberately no raw USD — see ``cost_budget.get_budget_status``.
+         *     resets. Deliberately no raw USD — see cost_budget.get_budget_status.
          */
         BudgetWindow: {
             /** Percentage */
@@ -6146,7 +6146,7 @@ export interface components {
         };
         /**
          * BulkActionRequest
-         * @description Request model for bulk actions
+         * @description Request model for bulk actions.
          */
         BulkActionRequest: {
             /** @description Action to be performed on the notifications */
@@ -6340,10 +6340,10 @@ export interface components {
         };
         /**
          * CalendarListResponse
-         * @description Response for ``GET /calendar/list`` — Google's ``calendarList.list`` payload.
+         * @description Response for GET /calendar/list — Google's calendarList.list payload.
          *
-         *     ``extra="allow"`` keeps the envelope keys Google sends alongside ``items``
-         *     (``kind``, ``etag``, ``nextSyncToken``).
+         *     extra="allow" keeps the envelope keys Google sends alongside items
+         *     (kind, etag, nextSyncToken).
          */
         CalendarListResponse: {
             /** Items */
@@ -6489,10 +6489,10 @@ export interface components {
          * CheckoutSource
          * @description Where in the product a checkout was started.
          *
-         *     The server is the single emitter of ``payment:checkout_started``, so the
+         *     The server is the single emitter of payment:checkout_started, so the
          *     attribution the funnel reads has to arrive on the request. Closed and
-         *     repository-owned: it mirrors ``CheckoutSource`` in
-         *     ``apps/web/src/features/pricing/hooks/useDodoPayments.ts``, and a new
+         *     repository-owned: it mirrors CheckoutSource in
+         *     apps/web/src/features/pricing/hooks/useDodoPayments.ts, and a new
          *     surface adds a member on both sides in the same change.
          * @enum {string}
          */
@@ -6595,9 +6595,9 @@ export interface components {
          * ConditionMatch
          * @description How a subscription's conditions combine.
          *
-         *     ``ALL`` is the AND-chain default. ``ANY`` is a flat OR — one true condition
+         *     ALL is the AND-chain default. ANY is a flat OR — one true condition
          *     fires it. There is deliberately no nesting: an OR-of-ANDs is expressed as
-         *     several ``ALL`` subscriptions on the same todo, which already covers every
+         *     several ALL subscriptions on the same todo, which already covers every
          *     boolean shape these payloads need without an expression language in the hot
          *     path that evaluates every webhook for every subscriber.
          * @enum {string}
@@ -6667,8 +6667,8 @@ export interface components {
          * ConversationDocument
          * @description A conversation and its embedded message history as stored in MongoDB.
          *
-         *     ``extra="allow"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,
-         *     ``metadata``) so a full-document read returns them verbatim, matching the
+         *     extra="allow" preserves stray/legacy top-level fields (e.g. artifacts,
+         *     metadata) so a full-document read returns them verbatim, matching the
          *     pre-repository behaviour.
          */
         ConversationDocument: {
@@ -6782,7 +6782,7 @@ export interface components {
         /**
          * ConversationSummary
          * @description The projected conversation-list row — every field the web list consumes,
-         *     without the heavy ``messages`` array.
+         *     without the heavy messages array.
          */
         ConversationSummary: {
             /** Conversation Id */
@@ -6821,7 +6821,7 @@ export interface components {
          * @description One batch-sync row — the conversation's client-visible fields plus its full
          *     message history and artifact registry.
          *
-         *     ``active_stream_id`` is the stream of an in-flight turn (``None`` when idle),
+         *     active_stream_id is the stream of an in-flight turn (None when idle),
          *     carried here so a reloading client re-attaches without a discovery request.
          */
         ConversationSyncRow: {
@@ -7860,11 +7860,11 @@ export interface components {
         };
         /**
          * FileDocument
-         * @description An uploaded file's metadata as stored in the ``files`` collection.
+         * @description An uploaded file's metadata as stored in the files collection.
          *
-         *     User-scoped and addressed by the business ``file_id`` (a UUID); the Mongo
-         *     ``_id`` (ObjectId) rides along as ``id`` because the update endpoint still
-         *     returns it. ``updated_at`` is stamped by the base on every write.
+         *     User-scoped and addressed by the business file_id (a UUID); the Mongo
+         *     _id (ObjectId) rides along as id because the update endpoint still
+         *     returns it. updated_at is stamped by the base on every write.
          */
         FileDocument: {
             /** Conversation Id */
@@ -8140,10 +8140,10 @@ export interface components {
         };
         /**
          * GmailMessageSummary
-         * @description One message as ``transform_gmail_message`` shapes it for the web client.
+         * @description One message as transform_gmail_message shapes it for the web client.
          *
          *     The declared fields are the derived ones every consumer reads; the raw
-         *     Gmail/Composio keys ride along via ``extra="allow"`` exactly as before.
+         *     Gmail/Composio keys ride along via extra="allow" exactly as before.
          */
         GmailMessageSummary: {
             /**
@@ -8259,9 +8259,9 @@ export interface components {
         };
         /**
          * GoogleCalendarEventDateTime
-         * @description The ``start``/``end`` object of a Google Calendar ``events`` resource.
+         * @description The start/end object of a Google Calendar events resource.
          *
-         *     An event carries either ``date`` (all-day) or ``dateTime`` + ``timeZone``; both
+         *     An event carries either date (all-day) or dateTime + timeZone; both
          *     are declared optional so a single type covers both.
          */
         GoogleCalendarEventDateTime: {
@@ -8276,10 +8276,10 @@ export interface components {
         };
         /**
          * GoogleCalendarEventResource
-         * @description A single Google Calendar ``events`` resource, forwarded to the client verbatim.
+         * @description A single Google Calendar events resource, forwarded to the client verbatim.
          *
          *     Only the fields GAIA itself reads (filtering, sorting, display) or injects
-         *     (``calendarId``/``calendarTitle``) are declared. Google owns the rest of this
+         *     (calendarId/calendarTitle) are declared. Google owns the rest of this
          *     schema and varies it by event type, so everything else passes through untouched
          *     rather than guessing at a structure that would silently drop fields the web
          *     client reads.
@@ -8306,12 +8306,12 @@ export interface components {
         };
         /**
          * GoogleCalendarListEntry
-         * @description One entry of Google's ``calendarList.list`` payload, forwarded to the client
+         * @description One entry of Google's calendarList.list payload, forwarded to the client
          *     verbatim.
          *
          *     Declared: the fields the service and the web calendar picker read. Everything
          *     else Google sends rides through as extras and is projected into
-         *     ``CalendarSummary`` where it is needed.
+         *     CalendarSummary where it is needed.
          */
         GoogleCalendarListEntry: {
             /** Backgroundcolor */
@@ -8924,7 +8924,7 @@ export interface components {
         };
         /**
          * LogoutResponse
-         * @description ``POST /user/logout``: where the client sends the browser next.
+         * @description POST /user/logout: where the client sends the browser next.
          */
         LogoutResponse: {
             /**
@@ -9899,8 +9899,8 @@ export interface components {
         /**
          * MyIntegrationItem
          * @description One integration as it pertains to the current user: catalog metadata plus
-         *     their connection `status`, without the heavy per-tool schemas (only `tool_count`).
-         *     Fetch full tools on demand from `GET /integrations/{id}/tools`.
+         *     their connection status, without the heavy per-tool schemas (only tool_count).
+         *     Fetch full tools on demand from GET /integrations/{id}/tools.
          */
         MyIntegrationItem: {
             /** Authtype */
@@ -10136,8 +10136,8 @@ export interface components {
          * NotificationRecord
          * @description Persisted notification with its original request and per-channel statuses.
          *
-         *     Identity is the UUID ``id`` (not Mongo's ``_id``); the notification repository
-         *     sets ``identity_field = "id"``.
+         *     Identity is the UUID id (not Mongo's _id); the notification repository
+         *     sets identity_field = "id".
          */
         NotificationRecord: {
             /** Archived At */
@@ -10396,7 +10396,7 @@ export interface components {
          * @description The pains the user handed GAIA during onboarding (Q2, up to three picks).
          *
          *     Six are shown to everyone; the rest come in pairs, one pair per Q1 role, and
-         *     only that role sees its pair (``ROLE_NEEDS``). Each value is a different job
+         *     only that role sees its pair (ROLE_NEEDS). Each value is a different job
          *     GAIA can start on, so the picks carry signal into the first thread, the
          *     bot opener and the comms playbooks.
          * @enum {string}
@@ -10404,7 +10404,7 @@ export interface components {
         OnboardingNeed: "inbox" | "calendar" | "mornings" | "reminders" | "grunt_work" | "tools" | "founder_team_updates" | "founder_competitors" | "executive_reports" | "executive_decisions" | "sales_leads" | "sales_call_research" | "product_feedback" | "product_specs" | "marketing_content" | "marketing_reports" | "engineering_prs" | "engineering_notifications" | "finance_numbers" | "finance_reports" | "creative_revisions" | "creative_deadlines" | "student_assignments" | "student_exams";
         /**
          * OnboardingPhase
-         * @description Tracks the current phase of user onboarding
+         * @description Tracks the current phase of user onboarding.
          * @enum {string}
          */
         OnboardingPhase: "initial" | "personalization_pending" | "personalization_complete" | "getting_started" | "completed";
@@ -10539,7 +10539,7 @@ export interface components {
         };
         /**
          * PaginatedNotificationsResponse
-         * @description Response model for paginated notifications
+         * @description Response model for paginated notifications.
          */
         PaginatedNotificationsResponse: {
             /** Limit */
@@ -10751,8 +10751,8 @@ export interface components {
          * @description Billing cycle a plan is charged on.
          *
          *     Closed and repository-owned: the catalogue is written by
-         *     ``scripts/payment_setup.py`` and the web already types the wire field as
-         *     ``"monthly" | "yearly"`` (``apps/web/src/features/pricing/api/pricingApi.ts``).
+         *     scripts/payment_setup.py and the web already types the wire field as
+         *     "monthly" | "yearly" (apps/web/src/features/pricing/api/pricingApi.ts).
          * @enum {string}
          */
         PlanDuration: "monthly" | "yearly";
@@ -10831,15 +10831,15 @@ export interface components {
          * PlatformLinkEntry
          * @description One linked platform account — the single shape for this entry.
          *
-         *     A ``TypedDict`` rather than a model (Type Safety item 6) because it has two
+         *     A TypedDict rather than a model (Type Safety item 6) because it has two
          *     consumers with different needs, and this type serves both without a rival
-         *     copy. ``PlatformLinkService.get_linked_platforms`` assembles it in-process
-         *     from an already-loaded ``UserDocument``, and the outbound-delivery paths
-         *     read it tolerating a legacy non-string ``platformUserId`` (Telegram stores
+         *     copy. PlatformLinkService.get_linked_platforms assembles it in-process
+         *     from an already-loaded UserDocument, and the outbound-delivery paths
+         *     read it tolerating a legacy non-string platformUserId (Telegram stores
          *     chat_id as an int) which they coerce at the envelope; validating there would
          *     start raising on those rows — a behaviour change (item 13). Pydantic still
-         *     validates it as a field of ``GetPlatformLinksResponse`` below, so the HTTP
-         *     boundary rejects the same values a ``BaseModel`` here would.
+         *     validates it as a field of GetPlatformLinksResponse below, so the HTTP
+         *     boundary rejects the same values a BaseModel here would.
          */
         PlatformLinkEntry: {
             /**
@@ -10870,7 +10870,7 @@ export interface components {
         };
         /**
          * PlatformType
-         * @description Platform types for push notifications
+         * @description Platform types for push notifications.
          * @enum {string}
          */
         PlatformType: "ios" | "android";
@@ -10886,8 +10886,8 @@ export interface components {
          * PollPairingResponse
          * @description Result of a pairing poll.
          *
-         *     ``status`` is ``pending`` (keep polling), ``approved`` (``device_id`` and
-         *     ``refresh_token`` set) or ``expired`` (stop).
+         *     status is pending (keep polling), approved (device_id and
+         *     refresh_token set) or expired (stop).
          */
         PollPairingResponse: {
             /** Device Id */
@@ -10907,7 +10907,7 @@ export interface components {
         Priority: "high" | "medium" | "low" | "none";
         /**
          * ProjectCreate
-         * @description Model for creating projects
+         * @description Model for creating projects.
          */
         ProjectCreate: {
             /**
@@ -10928,7 +10928,7 @@ export interface components {
         };
         /**
          * ProjectResponse
-         * @description Complete project response
+         * @description Complete project response.
          */
         ProjectResponse: {
             /**
@@ -11099,7 +11099,7 @@ export interface components {
          * PublicWorkflowCard
          * @description One marketplace card, as the community, explore and related lists emit it.
          *
-         *     The three lists share this shape; ``categories`` and ``total_executions``
+         *     The three lists share this shape; categories and total_executions
          *     are set only where the list has them (explore, related) and are null on the
          *     others, so a consumer never has to guess which list a card came from.
          */
@@ -11204,7 +11204,7 @@ export interface components {
         };
         /**
          * PushTokenRequest
-         * @description Request model for registering a device token
+         * @description Request model for registering a device token.
          */
         PushTokenRequest: {
             /**
@@ -11222,7 +11222,7 @@ export interface components {
         };
         /**
          * PushTokenResponse
-         * @description Response model for device token operations
+         * @description Response model for device token operations.
          */
         PushTokenResponse: {
             /**
@@ -11849,7 +11849,7 @@ export interface components {
         };
         /**
          * SendEmailWithAttachmentsResponse
-         * @description Response for ``POST /gmail/send``, which also reports the attachment count.
+         * @description Response for POST /gmail/send, which also reports the attachment count.
          */
         SendEmailWithAttachmentsResponse: {
             /** Attachments Count */
@@ -11874,7 +11874,7 @@ export interface components {
          *     All metadata fields (name, description, target, etc.) live at the
          *     top level alongside ownership and installation tracking fields.
          *     System skills use user_id="system"; user skills use the actual user ID.
-         *     ``id`` (the stringified ``_id``, a UUID) is inherited from ``MongoDocument``.
+         *     id (the stringified _id, a UUID) is inherited from MongoDocument.
          */
         Skill: {
             /**
@@ -12008,8 +12008,8 @@ export interface components {
          * SkillTarget
          * @description A place a skill can run: the executor, or a connected integration subagent.
          *
-         *     ``value`` is the subagent ``agent_name`` written to a skill's ``target``;
-         *     ``icon`` is the integration id (``executor`` for the general bucket) so the
+         *     value is the subagent agent_name written to a skill's target;
+         *     icon is the integration id (executor for the general bucket) so the
          *     UI can reuse the integration logo set.
          */
         SkillTarget: {
@@ -12275,12 +12275,12 @@ export interface components {
         };
         /**
          * SubscriptionDocument
-         * @description A subscription as stored in the ``subscriptions`` collection.
+         * @description A subscription as stored in the subscriptions collection.
          *
-         *     Global (webhook updates key on ``dodo_subscription_id`` with no user in scope);
-         *     ``user_id`` is a plain field. ``id`` is the stringified Mongo ``_id`` — kept so
+         *     Global (webhook updates key on dodo_subscription_id with no user in scope);
+         *     user_id is a plain field. id is the stringified Mongo _id — kept so
          *     the status endpoint returns the same id it did before the repository.
-         *     ``extra="allow"`` preserves the many Dodo billing fields verbatim in responses.
+         *     extra="allow" preserves the many Dodo billing fields verbatim in responses.
          */
         SubscriptionDocument: {
             /** Cancel At Next Billing Date */
@@ -12753,7 +12753,7 @@ export interface components {
         };
         /**
          * TodoModel
-         * @description Model for creating todos
+         * @description Model for creating todos.
          */
         TodoModel: {
             /**
@@ -12851,7 +12851,7 @@ export interface components {
         };
         /**
          * TodoResponse
-         * @description Complete todo response with all fields
+         * @description Complete todo response with all fields.
          */
         TodoResponse: {
             /**
@@ -13014,7 +13014,7 @@ export interface components {
         };
         /**
          * TodoUpdateRequest
-         * @description Model for updating todos - all fields optional for partial updates
+         * @description Model for updating todos - all fields optional for partial updates.
          */
         TodoUpdateRequest: {
             /** Completed */
@@ -13087,22 +13087,14 @@ export interface components {
         };
         /**
          * ToolDataEntry
-         * @description Unified structure for tool execution data.
+         * @description Unified shape for tool execution data attached to a message.
          *
-         *     Every key an emitter can stamp must be declared here. This TypedDict is the
-         *     element type of ``MessageModel.tool_data``, and Pydantic drops undeclared
-         *     keys on ``model_dump()`` — which is how a message reaches Mongo. An emitted
-         *     key missing from this shape therefore survives the live SSE frame (the
-         *     frontend parses those against its own loose schema) and silently vanishes
-         *     from the stored turn, so the bug only ever appears on reload.
-         *
-         *     ``data`` is deliberately open: every tool owns the shape it puts here (a
-         *     calendar option list, an email thread, a rendered artifact), so the only
-         *     honest constraint is "JSON the frontend's per-tool card knows how to read".
-         *     Everything around it is closed.
-         *
-         *     The frontend mirror is ``ToolDataEntrySchema`` in
-         *     ``libs/shared/ts/src/chat/schema.ts``.
+         *     Every key an emitter can stamp must be declared here — Pydantic drops
+         *     undeclared keys on model_dump(), so a key missing from this TypedDict
+         *     silently vanishes from the stored turn (only visible on reload). data is
+         *     deliberately open: each tool owns its own JSON shape; the frontend's
+         *     per-tool card is the only reader. Mirrored by ToolDataEntrySchema in
+         *     libs/shared/ts/src/chat/schema.ts.
          */
         ToolDataEntry: {
             /** Data */
@@ -13582,7 +13574,7 @@ export interface components {
         };
         /**
          * UpdateProjectRequest
-         * @description Model for updating projects - all fields optional
+         * @description Model for updating projects - all fields optional.
          */
         UpdateProjectRequest: {
             /** Color */
@@ -13725,7 +13717,7 @@ export interface components {
         };
         /**
          * UsageHistoryEntry
-         * @description One item in the ``GET /usage/history`` response list.
+         * @description One item in the GET /usage/history response list.
          */
         UsageHistoryEntry: {
             /** Date */
@@ -14000,10 +13992,10 @@ export interface components {
         };
         /**
          * WorkflowCreator
-         * @description The public-facing creator card built by ``format_creator``.
+         * @description The public-facing creator card built by format_creator.
          *
-         *     A ``TypedDict``, not a model: it rides inside the untyped card dicts of
-         *     ``PublicWorkflowsResponse.workflows`` as well as ``Workflow.creator``, so it
+         *     A TypedDict, not a model: it rides inside the untyped card dicts of
+         *     PublicWorkflowsResponse.workflows as well as Workflow.creator, so it
          *     has to stay a plain dict on the wire for both.
          */
         WorkflowCreator: {
@@ -14244,9 +14236,9 @@ export interface components {
         };
         /**
          * WorkflowTriggerResponse
-         * @description A ``WorkflowTriggerSchema`` plus the identifiers of the integration that owns it.
+         * @description A WorkflowTriggerSchema plus the identifiers of the integration that owns it.
          *
-         *     The `/triggers/schema` wire contract consumed by web and mobile.
+         *     The /triggers/schema wire contract consumed by web and mobile.
          */
         WorkflowTriggerResponse: {
             /** Composio Slug */
@@ -14271,8 +14263,8 @@ export interface components {
         };
         /**
          * WorkflowWithIntegrations
-         * @description Read-time view of a workflow: the persisted `Workflow` plus its computed
-         *     integration requirements. Never persisted — the storage model is `Workflow`;
+         * @description Read-time view of a workflow: the persisted Workflow plus its computed
+         *     integration requirements. Never persisted — the storage model is Workflow;
          *     these fields are populated by the service on read paths only.
          */
         WorkflowWithIntegrations: {

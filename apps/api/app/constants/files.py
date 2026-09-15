@@ -27,12 +27,9 @@ ODT_MIME = "application/vnd.oasis.opendocument.text"
 ODS_MIME = "application/vnd.oasis.opendocument.spreadsheet"
 ODP_MIME = "application/vnd.oasis.opendocument.presentation"
 
-# Local (offline, native-code) document extraction runs synchronously on a
-# thread. This bounds how long a request waits (e.g. a decompression-bomb
-# DOCX/XLSX). It does not stop the worker thread: the native call has no
-# cooperative cancellation and keeps its executor slot until it finishes.
-# (Decompression-bomb *memory* is bounded by MAX_UPLOAD_BYTES at the upload
-# endpoint, not by this timeout.)
+# Bounds how long a request waits for local document extraction (e.g. a
+# decompression-bomb DOCX/XLSX); does not stop the worker thread (no
+# cooperative cancellation). Bomb memory is bounded by MAX_UPLOAD_BYTES.
 LOCAL_EXTRACTION_TIMEOUT_SECONDS = 60.0
 
 # LlamaParse is a hosted cloud API used only as an OCR fallback for scanned
@@ -43,10 +40,8 @@ OCR_EXTRACTION_TIMEOUT_SECONDS = 120.0
 # Markdown chunks are capped so one summary fits a single LLM prompt.
 MAX_CHUNK_CHARS = 3000
 
-# Summarization/indexing budget for one document. Chunks beyond this are not
-# indexed for search (the full file stays available in the workspace); a note
-# entry records the truncation. Keeps LLM cost and the Mongo file document
-# (page_wise_summary embeds every indexed chunk's content) bounded.
+# Chunks beyond this are not indexed for search (the full file stays available
+# in the workspace); a note entry records the truncation. Bounds LLM cost and the Mongo file document.
 MAX_INDEXED_CHUNKS = 200
 
 # Concurrent LLM calls per document while summarizing chunks.

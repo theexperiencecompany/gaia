@@ -467,12 +467,9 @@ describe("WhatsAppAdapter - media routing", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Unsupported / unparseable media — driven through the real webhook router.
-// When extractMedia returns null (unknown type, or media without an id) the
-// adapter must reply with unsupportedMediaMessage(type) and never touch the
-// shared pipeline or download anything.
-// ---------------------------------------------------------------------------
+// Unsupported/unparseable media, driven through the real webhook router: when
+// extractMedia returns null, the adapter must reply with unsupportedMediaMessage(type)
+// and never touch the shared pipeline or download anything.
 
 /** Builds a Kapso event with a fresh timestamp so the replay guard accepts it. */
 function kapsoEvent(over: {

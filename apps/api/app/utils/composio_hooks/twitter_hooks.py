@@ -50,9 +50,7 @@ def twitter_search_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Too
 
 @register_schema_modifier(tools=["TWITTER_FOLLOW_USER"])
 def twitter_follow_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
-    """
-    Add guidance to search for user first if username is unknown.
-    """
+    """Add guidance to search for user first if username is unknown."""
     guidance = (
         "\n\n💡 USER DISCOVERY TIP: If the user doesn't provide a username:\n"
         "1. Use TWITTER_RECENT_SEARCH with the person's name to find their tweets\n"
@@ -66,9 +64,7 @@ def twitter_follow_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Too
 
 @register_schema_modifier(tools=["TWITTER_CREATION_OF_A_POST"])
 def twitter_create_post_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
-    """
-    Add guidance for creating tweets with media and threads.
-    """
+    """Add guidance for creating tweets with media and threads."""
     guidance = (
         "\n\n📱 POSTING TIPS:\n"
         "• For media: Upload first with TWITTER_UPLOAD_MEDIA, then use media_media_ids\n"
@@ -82,9 +78,7 @@ def twitter_create_post_schema_modifier(tool: str, toolkit: str, schema: Tool) -
 
 @register_schema_modifier(tools=["TWITTER_USER_HOME_TIMELINE_BY_USER_ID"])
 def twitter_timeline_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
-    """
-    Set sensible defaults for timeline requests.
-    """
+    """Set sensible defaults for timeline requests."""
     # `input_parameters` is typed as a Dict by Composio's SDK, but callers in practice
     # (including this codebase's own test doubles) don't always hand us a real,
     # validated `Tool`, so this stays defensive against a non-dict value.

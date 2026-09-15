@@ -1,7 +1,7 @@
 """
 Service tests: verify get_conversations' composition against real MongoDB.
 
-The `mongo_db` fixture points the repository layer at the test database, so the
+The mongo_db fixture points the repository layer at the test database, so the
 real service function runs unmodified over real documents.
 
 Scoped deliberately to what the service adds *above* the repository — the

@@ -2,9 +2,9 @@
 
 Two layers are tested:
 
-1. Pure unit: ``_dedupe_edges`` collapses duplicate/bidirectional edges in
+1. Pure unit: _dedupe_edges collapses duplicate/bidirectional edges in
    memory without touching the DB.
-2. Integration: ``insert_edges`` + ``get_graph`` write a pair and then confirm
+2. Integration: insert_edges + get_graph write a pair and then confirm
    that a same-pair edge (different wording or opposite direction) is silently
    dropped, leaving only one edge in the graph.
 """
@@ -98,11 +98,7 @@ def test_dedupe_edges_bidirectional_collapses_to_one() -> None:
 
 
 def test_dedupe_edges_preserves_original_direction() -> None:
-    """Dedup must never flip an edge: relationship labels are directional.
-
-    Swapping endpoints to a canonical order would invert the meaning
-    ("Alice is from Lisbon" -> "Lisbon is from Alice").
-    """
+    """Dedup must never flip an edge — swapping endpoints to canonical order would invert meaning ("Alice is from Lisbon" -> "Lisbon is from Alice")."""
     a = uuid.UUID("00000000-0000-0000-0000-000000000001")
     b = uuid.UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
     # Stored with the larger UUID as source — must come back unchanged.
@@ -171,11 +167,7 @@ async def test_get_graph_deduplicates_preexisting_duplicate_edges(
     make_memory_user: Callable[[], str],
     pg_engine: AsyncEngine,
 ) -> None:
-    """get_graph collapses pre-existing duplicate edges that bypassed the write guard.
-
-    Simulates edges that existed before the write guard was added (or were
-    inserted via another path) and verifies _dedupe_edges is applied on read.
-    """
+    """Simulates edges from before the write guard existed, to prove _dedupe_edges also runs on read."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     from app.memory.pg_store._session import memory_session

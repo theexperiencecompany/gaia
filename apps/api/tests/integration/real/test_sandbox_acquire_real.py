@@ -1,26 +1,17 @@
 """Cross-replica sandbox acquisition, against real Redis + real Mongo.
 
-The multi-instance invariant the sandbox pool exists for: N replicas acquiring a
-sandbox for the SAME user must end up with ONE E2B sandbox, not N. A replica's
-in-process pool cache — and its in-process ``asyncio.Lock`` — are private to its
-process, so a second replica arrives cold and has only two shared things to
-coordinate through: the Redis lease and the Mongo record. If either fails to do
-its job, both replicas run ``_create_fresh_sandbox`` and the user gets a second
-sandbox: wasted spend, an orphaned box no one pauses, and a split workspace.
+N replicas acquiring a sandbox for the SAME user must end up with ONE E2B
+sandbox, not N; if the Redis lease or Mongo record fails to coordinate them,
+both run _create_fresh_sandbox and the user gets a second sandbox (wasted
+spend, an orphaned box, a split workspace).
 
-Two replicas are simulated faithfully by giving each acquire its OWN
-``SandboxPool`` (via a per-task contextvar), so the only coordination they share
-is Redis — exactly as two separate processes would. Using the module singleton
-instead would let its in-process ``asyncio.Lock`` serialize them, masking a
-broken Redis lease.
-
-The cold private cache is simulated by stubbing ``_reuse_cached_entry`` to None
-(a replica never sees another replica's warm entry). Everything E2B (create /
-resume), the JuiceFS host writes (subtree seed, artifact watcher), the creation
-rate-limit and the idle-pause scheduler are the external boundary and are
-stubbed. What stays real is the whole coordination under test: the distributed
-lock in ``acquire_sandbox`` and the get_for_user → create-or-resume →
-record_acquisition decision in ``_acquire_or_create``.
+Two replicas are simulated with separate SandboxPool instances (per-task
+contextvar) sharing only Redis, since the module singleton's in-process lock
+would mask a broken lease. The cold private cache is simulated by stubbing
+_reuse_cached_entry to None. E2B create/resume, JuiceFS host writes, the
+creation rate-limit and the idle-pause scheduler are stubbed; what stays real
+is the distributed lock in acquire_sandbox and the get_for_user →
+create-or-resume → record_acquisition decision in _acquire_or_create.
 """
 
 from __future__ import annotations
@@ -126,11 +117,7 @@ async def test_two_replicas_create_one_sandbox(real_redis, mongo_db, clean_doc, 
 async def test_a_later_replica_resumes_rather_than_recreates(
     real_redis, mongo_db, clean_doc, boundary
 ) -> None:
-    """A replica arriving after the sandbox exists must resume, never create again.
-
-    The sequential half — a fresh replica with a cold cache, long after the
-    create — isolating the Mongo handoff from any lock-timing luck.
-    """
+    """A replica arriving after the sandbox exists must resume, never create again."""
     first: list[str | None] = []
     await _acquire_as_own_replica(first)
     assert boundary["create"] == 1
@@ -147,11 +134,7 @@ async def test_a_later_replica_resumes_rather_than_recreates(
 async def test_the_lock_is_released_after_a_failed_acquire(
     real_redis, mongo_db, clean_doc, boundary
 ) -> None:
-    """A crashing acquire must not wedge the user's lock for the next replica.
-
-    If the lease leaked on the failure path, the retry below would block until
-    the max-hold cap rather than proceeding immediately.
-    """
+    """A crashing acquire must not wedge the user's lock for the next replica."""
     seed: list[str | None] = []
     await _acquire_as_own_replica(seed)  # records the doc
 

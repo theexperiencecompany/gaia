@@ -31,7 +31,7 @@ class KnowledgeItem(BaseModel):
 
 @dataclass
 class KnowledgeResult:
-    """Result from a knowledge search"""
+    """Result from a knowledge search."""
 
     content: str
     relevance_score: float
@@ -39,7 +39,7 @@ class KnowledgeResult:
 
 
 class GaiaKnowledgeService:
-    """Service for managing GAIA self-knowledge in ChromaDB"""
+    """Service for managing GAIA self-knowledge in ChromaDB."""
 
     def __init__(self) -> None:
         self.collection_name = "gaia_knowledge"

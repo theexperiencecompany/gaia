@@ -1,8 +1,8 @@
 """LinkedIn tools using Composio custom tool infrastructure.
 
-LinkedIn API calls go through Composio's proxy via `proxy_request_sync`/
-`proxy_request_full_sync`. The proxy attaches OAuth server-side; tools
-only need `user_id` from `auth_credentials`.
+LinkedIn API calls go through Composio's proxy via proxy_request_sync/
+proxy_request_full_sync. The proxy attaches OAuth server-side; tools
+only need user_id from auth_credentials.
 
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """

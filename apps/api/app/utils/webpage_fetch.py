@@ -51,7 +51,7 @@ def _elapsed_ms(start: float) -> float:
 async def _ensure_url_allowed(url: str) -> None:
     """SSRF guard for the agent-controlled fetch URL (delegates to the shared policy).
 
-    Raises ``FetchError`` if the URL isn't HTTP(S) or resolves to a non-public
+    Raises FetchError if the URL isn't HTTP(S) or resolves to a non-public
     address (loopback, private, link-local incl. cloud metadata, or reserved).
     """
     try:
@@ -61,7 +61,7 @@ async def _ensure_url_allowed(url: str) -> None:
 
 
 class WebpageFetcher(ABC):
-    """One webpage-fetching engine. ``fetch`` returns markdown or raises ``FetchError``."""
+    """One webpage-fetching engine. fetch returns markdown or raises FetchError."""
 
     name: str
 
@@ -71,7 +71,7 @@ class WebpageFetcher(ABC):
 
     @abstractmethod
     async def fetch(self, url: str) -> str:
-        """Render ``url`` to markdown, raising ``FetchError`` on failure."""
+        """Render url to markdown, raising FetchError on failure."""
 
 
 class Crawl4aiFetcher(WebpageFetcher):
@@ -80,7 +80,7 @@ class Crawl4aiFetcher(WebpageFetcher):
     name = "crawl4ai"
 
     def is_configured(self) -> bool:
-        """Always available — no external credentials required."""
+        """Return True unconditionally — no external credentials required."""
         return True
 
     async def fetch(self, url: str) -> str:
@@ -108,7 +108,7 @@ class FirecrawlFetcher(WebpageFetcher):
         self._client: FirecrawlApp | None = None
 
     def is_configured(self) -> bool:
-        """True when a Firecrawl API key is configured."""
+        """Return True when a Firecrawl API key is configured."""
         return bool(settings.FIRECRAWL_API_KEY)
 
     def _get_client(self) -> FirecrawlApp:
@@ -140,7 +140,7 @@ class HttpxFetcher(WebpageFetcher):
     name = "httpx"
 
     def is_configured(self) -> bool:
-        """Always available — pure-Python, no external service."""
+        """Return True unconditionally — pure-Python, no external service."""
         return True
 
     async def fetch(self, url: str) -> str:
@@ -181,7 +181,7 @@ class HttpxFetcher(WebpageFetcher):
 
 
 def _default_fetchers() -> list[WebpageFetcher]:
-    """The fetch waterfall, cheapest/most-capable first."""
+    """Return the fetch waterfall, cheapest/most-capable first."""
     return [Crawl4aiFetcher(), FirecrawlFetcher(), HttpxFetcher()]
 
 
@@ -189,7 +189,7 @@ async def _fetch_first_success(url: str, fetchers: list[WebpageFetcher] | None =
     """Try each configured engine in order, returning the first success.
 
     Records every engine attempt (outcome, latency, content length) in a single
-    ``webpage_fetch`` wide-event field, keyed by host for high-cardinality drill-down.
+    webpage_fetch wide-event field, keyed by host for high-cardinality drill-down.
     """
     fetchers = fetchers if fetchers is not None else _default_fetchers()
     host = urlparse(url).hostname or ""

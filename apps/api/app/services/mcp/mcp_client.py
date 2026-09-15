@@ -1,21 +1,12 @@
-"""
-MCP Client wrapper.
+"""MCP client wrapper implementing the full MCP OAuth 2.1 authorization flow.
 
-Implements complete MCP OAuth 2.1 authorization flow per specification.
 See: https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization
 
-Features:
-- RFC 9728 Protected Resource Metadata discovery
-- RFC 8414 Authorization Server Metadata discovery
-- RFC 7591 Dynamic Client Registration (DCR)
-- RFC 8707 Resource Indicators for token binding
-- RFC 7009 Token Revocation on disconnect
-- RFC 7662 Token Introspection (optional)
-- PKCE with S256 (required by MCP)
-- Client Metadata Document support (draft-ietf-oauth-client-id-metadata-document)
-- OIDC nonce support for OpenID Connect flows
-- JWT issuer validation
-- HTTPS enforcement for all OAuth endpoints
+Covers RFC 9728 (Protected Resource Metadata), RFC 8414 (Authorization Server
+Metadata), RFC 7591 (Dynamic Client Registration), RFC 8707 (Resource
+Indicators), RFC 7009 (Token Revocation), RFC 7662 (Token Introspection),
+PKCE with S256, Client Metadata Document support, OIDC nonce, JWT issuer
+validation, and HTTPS enforcement for all OAuth endpoints.
 """
 
 import asyncio
@@ -125,7 +116,7 @@ from shared.py.wide_events import McpContext, log, log_context
 
 
 class _SanitizedMcpServer(TypedDict):
-    """One ``mcpServers`` entry with credentials reduced to presence flags."""
+    """One mcpServers entry with credentials reduced to presence flags."""
 
     url: str | None
     transport: str | None
@@ -134,7 +125,7 @@ class _SanitizedMcpServer(TypedDict):
 
 
 class _SanitizedMcpConfig(TypedDict):
-    """Log-safe projection of :class:`MCPUseConfig` — never fed back to mcp_use."""
+    """Log-safe projection of :class:MCPUseConfig — never fed back to mcp_use."""
 
     mcpServers: dict[str, _SanitizedMcpServer]
 
@@ -237,22 +228,19 @@ async def _with_wide_event(coro: Awaitable[None], label: str) -> None:
     """Run a background coroutine inside its own wide event boundary.
 
     Detached tasks escape the request's logging middleware, so without this
-    every ``log.set()`` they make (mcp_connect, mcp_connect_error, mcp_reconnect)
-    would be discarded. ``log_context`` binds a fresh accumulator and flushes a
-    canonical ``background_task`` line on exit so those fields reach Loki.
+    every log.set() they make (mcp_connect, mcp_connect_error, mcp_reconnect)
+    would be discarded. log_context binds a fresh accumulator and flushes a
+    canonical background_task line on exit so those fields reach Loki.
     """
     async with log_context(f"mcp:{label}"):
         await coro
 
 
 def _spawn_background(coro: Awaitable[None], label: str) -> asyncio.Task[None] | None:
-    """Spawn a fire-and-forget task that survives until completion.
+    """Spawn a fire-and-forget task inside a wide event boundary so its log.set() fields emit.
 
-    The coroutine runs inside a wide event boundary so its ``log.set()`` fields
-    are emitted — a detached task has no HTTP middleware to flush them.
-
-    Returns None if there is no running event loop (e.g., test contexts where
-    the caller will await inline instead).
+    Returns None if there is no running event loop (e.g. tests), in which
+    case the caller awaits inline instead.
     """
     try:
         asyncio.get_running_loop()
@@ -277,7 +265,7 @@ def _spawn_background(coro: Awaitable[None], label: str) -> asyncio.Task[None] |
 
 
 def _parse_device_server_url(server_url: str) -> tuple[str, str]:
-    """Split a ``device://<device_id>/<server_key>`` URL into its parts."""
+    """Split a device://<device_id>/<server_key> URL into its parts."""
     prefix = f"{DEVICE_TRANSPORT}://"
     if not server_url.startswith(prefix):
         raise ValueError(f"Not a device server URL: {server_url}")
@@ -377,15 +365,9 @@ class MCPClient:
     ) -> MCPUseConfig:
         """Build mcp-use config dict.
 
-        Transport selection:
-        - If mcp_config.transport is set, use that explicitly
-        - Otherwise, defaults to "streamable-http" per MCP spec 2025-11-25
-        - SSE transport is deprecated per MCP spec 2025-11-25
-
-        Auth handling:
-        - When auth is a string token, mcp-use uses BearerAuth directly
-          without OAuth discovery. This is the proper way to pass
-          already-obtained tokens to mcp-use.
+        Defaults transport to "streamable-http" per MCP spec 2025-11-25 (SSE
+        is deprecated there) unless mcp_config.transport is set. A string
+        auth token uses BearerAuth directly, skipping OAuth discovery.
         """
         server_config: MCPUseServerConfig = {"url": mcp_config.server_url}
 
@@ -457,10 +439,8 @@ class MCPClient:
             )
             server_config["auth"] = None
 
-        # Composio's hosted MCP gateway authenticates the calling platform via an
-        # x-api-key header (GAIA's COMPOSIO_KEY), not per-user OAuth/bearer. Without
-        # it these servers reject the request with a bare 401. requires_auth stays
-        # False because there is no user credential — this is a platform key.
+        # Composio's hosted MCP gateway authenticates via x-api-key (COMPOSIO_KEY),
+        # not per-user OAuth; requires_auth stays False since there's no user credential.
         if (
             mcp_config.server_url
             and COMPOSIO_MCP_HOST in mcp_config.server_url
@@ -471,14 +451,10 @@ class MCPClient:
         return {"mcpServers": {integration_id: server_config}}
 
     async def connect(self, integration_id: str) -> list[BaseTool]:
-        """
-        Connect to an MCP server and return LangChain tools.
+        """Connect to an MCP server and return LangChain tools, deduplicating concurrent connects.
 
-        For unauthenticated MCPs: Connects directly.
-        For OAuth MCPs: Uses stored credentials from completed OAuth flow.
-        Supports platform integrations (from code) and custom integrations.
-
-        Deduplicates concurrent connections to the same integration.
+        Unauthenticated MCPs connect directly; OAuth MCPs use stored
+        credentials. Supports both platform and custom integrations.
         """
         # Return cached tools if already connected
         if integration_id in self._tools:
@@ -508,17 +484,12 @@ class MCPClient:
     async def reconnect_and_call(
         self, integration_id: str, tool_name: str, kwargs: dict[str, object]
     ) -> object:
-        """Force a fresh connect for `integration_id` then call `tool_name` once.
+        """Force a fresh connect for integration_id then call tool_name once.
 
-        Invoked by the tool wrapper when a call hits a dead connector — the
-        user sees latency, never the underlying error. Telemetry tracks how
-        often this fires (spikes flag something else killing sessions).
-
-        Concurrency: if another connect or reconnect is already in flight for
-        this integration, we wait for it and reuse its result rather than
-        racing. Without that guard, popping `_clients`/`_tools` while another
-        coroutine holds `_connecting[iid]` would make that coroutine raise
-        "Concurrent connect failed" when it checks `_tools` post-wait.
+        Invoked when a call hits a dead connector; telemetry tracks how often
+        this fires. Waits for and reuses any in-flight connect/reconnect
+        rather than racing — without that guard, popping _clients/_tools
+        mid-flight raises "Concurrent connect failed" in the other coroutine.
         """
         start = time.monotonic()
         log.warning(
@@ -594,12 +565,9 @@ class MCPClient:
             )
             raise RuntimeError(f"Tool '{tool_name}' not found in {integration_id} after reconnect")
 
-        # Bypass our wrapper to avoid recursion if this call also fails — the
-        # wrapper already retried once by invoking this method.
-        # LangChain declares BaseTool._arun as `-> Any` and the wrapper stashes the
-        # original behind a dynamic attribute, so nothing narrower than `object` is
-        # knowable here. `object` is what the sole consumer already wants: the tool
-        # wrapper's `filtered_arun` returns `object` and hands this straight back.
+        # Bypass the wrapper to avoid recursion (it already retried once). LangChain
+        # types BaseTool._arun as -> Any and stashes the original dynamically, so
+        # `object` is the narrowest knowable type here — and what filtered_arun wants.
         underlying = getattr(fresh_tool, "_original_arun", None)
         if underlying is None:
             underlying = fresh_tool._arun
@@ -674,18 +642,15 @@ class MCPClient:
         """Build an mcp_use client whose only session tunnels to a paired device.
 
         The device MCP server has no outbound URL, so we bypass config-based
-        connector creation and inject a :class:`DeviceConnector`-backed session
+        connector creation and inject a :class:DeviceConnector-backed session
         directly. Everything downstream (adapter, tool conversion) reads from
-        ``get_all_active_sessions()``, which this populates.
+        get_all_active_sessions(), which this populates.
         """
         device_id, server_key = _parse_device_server_url(mcp_config.server_url)
 
-        # Defense in depth: never tunnel to a device the calling user does not
-        # own. Integration-list scoping already keeps other users' device
-        # integrations out of this user's tool set, but this is the hard gate —
-        # a mixed-up or leaked integration_id can't cross the user boundary,
-        # and a revoked device can't be reached on a stale integration doc.
-        # Deferred import: device-service stack deferred until a paired-device tunnel is actually built
+        # Defense in depth (hard gate: user must own the device) — a leaked or
+        # stale id can't cross the user boundary or reach a revoked device.
+        # Deferred import: device-service loaded lazily until a paired-device tunnel is built.
         from app.services.device.device_service import (  # noqa: PLC0415 -- deferred
             get_active_device,
         )
@@ -718,12 +683,9 @@ class MCPClient:
             )
             return await self._build_device_client(integration_id, mcp_config)
 
-        # SSRF re-check (DNS-rebinding defense): the schema validator only ran a
-        # shape check at create/update time. Re-resolve the host right before the
-        # outbound connection, inside the try so a rejection is handled like any
-        # other connection failure rather than escaping uncaught. Run it before
-        # _build_config, which can trigger an OAuth token refresh (outbound I/O)
-        # to the still-unvalidated host.
+        # SSRF re-check (DNS-rebinding defense): the schema validator only did a
+        # shape check at create/update time. Re-resolved here, before _build_config
+        # (which can itself trigger outbound I/O via an OAuth refresh).
         await assert_public_http_url(mcp_config.server_url)
 
         config = await self._build_config(integration_id, mcp_config)
@@ -745,8 +707,7 @@ class MCPClient:
     async def _convert_tools_safe(
         self, client: BaseMCPClient, integration_id: str
     ) -> list[BaseTool]:
-        """Convert MCP tools to LangChain format via the resilient adapter,
-        closing the session on failure so a bad schema doesn't leak it."""
+        """Convert MCP tools via the resilient adapter, closing the session on failure."""
         # Use resilient adapter that handles invalid schemas gracefully
         # It will skip tools with bad schemas and return the ones that work
         adapter = ResilientLangChainAdapter()
@@ -798,18 +759,15 @@ class MCPClient:
             raw_tool.metadata["integration_id"] = integration_id
 
     def _make_evict_callback(self, iid: str) -> Callable[[], None]:
-        """Callback that evicts a stale session after a connection error.
+        """Build a callback that evicts a stale session after a connection error.
 
-        Pops from dicts AND schedules async session close via fire-and-forget task.
+        Pops from dicts and schedules async session close via fire-and-forget task.
         """
 
         def _evict() -> None:
-            # Evict in-memory client/tool cache so the next call
-            # forces a fresh _do_connect. Do NOT flip MongoDB status
-            # here — a tool-call hiccup is usually transient (server
-            # 5xx, connection drop) and the user's tokens are fine.
-            # _do_connect's exception path will reset status only if
-            # the re-connect proves the credentials are dead.
+            # Evict the in-memory cache to force a fresh _do_connect. Do NOT flip
+            # MongoDB status here — a hiccup is usually transient; _do_connect's
+            # exception path resets status only if the reconnect proves the credentials dead.
             stale_client = self._clients.pop(iid, None)
             self._tools.pop(iid, None)
             if stale_client:
@@ -855,10 +813,9 @@ class MCPClient:
         )
         post_tasks.append(store_mcp_tools(integration_id, tool_metadata))
 
-        # 3. Index integration tools in ChromaDB. Custom MCPs use a
-        # URL-derived namespace and also register a subagent doc; platform
-        # MCPs use the integration's tool_space (or fall back to id).
-        # Redis cache in index_tools_to_store dedupes across users.
+        # Index integration tools in ChromaDB: custom MCPs use a URL-derived
+        # namespace and register a subagent doc; platform MCPs use tool_space
+        # (or id). Redis cache in index_tools_to_store dedupes across users.
         if is_custom:
             custom_name = resolved.custom_doc.get("name") if resolved.custom_doc else None
             custom_desc = resolved.custom_doc.get("description") if resolved.custom_doc else None
@@ -908,10 +865,10 @@ class MCPClient:
     ) -> list[BaseTool] | None:
         """Shared connect-failure handling.
 
-        Raises :class:`StepUpAuthRequiredError` for 403 insufficient_scope, retries
+        Raises :class:StepUpAuthRequiredError for 403 insufficient_scope, retries
         once via token refresh on auth-related failures (returning the retried
         connection's tools), and resets MongoDB status only on demonstrably dead
-        credentials. Returns ``None`` when the caller should re-raise.
+        credentials. Returns None when the caller should re-raise.
         """
         error_str = str(e).lower()
 
@@ -1002,11 +959,7 @@ class MCPClient:
         return None
 
     async def _do_connect(self, integration_id: str) -> list[BaseTool]:
-        """Internal connect implementation.
-
-        Includes a single retry on auth-related failures (401, 405 from
-        OAuth fallback, etc.) — refreshes the token and retries once.
-        """
+        """Connect, with a single retry on auth failures (401, 405) that refreshes the token."""
         # Resolve integration from platform config or MongoDB
         resolved = await IntegrationResolver.resolve(integration_id)
         if not resolved or not resolved.mcp_config:
@@ -1055,10 +1008,9 @@ class MCPClient:
                 resolved, mcp_config, is_custom, integration_id, tools
             )
 
-            # The status mutator's decorator invalidates before its write and runs
-            # concurrently with store_tools above; bust once more now that tools are
-            # actually persisted, so a concurrent /tools read can't cache an
-            # empty-but-connected catalog for the TTL.
+            # The status mutator's decorator invalidates before its write, racing
+            # store_tools above; bust once more now that tools are persisted so a
+            # concurrent read can't cache an empty-but-connected catalog for the TTL.
             await invalidate_user_integration_caches(self.user_id)
 
             return tools
@@ -1072,13 +1024,10 @@ class MCPClient:
     async def _index_platform_mcp_tools(self, integration_id: str, tools: list[BaseTool]) -> None:
         """Index platform MCP tools (e.g. posthog, deepwiki) to ChromaDB.
 
-        Uses the integration's declared `subagent_config.tool_space` as the
-        namespace. If the platform integration lacks a subagent_config we skip
-        indexing rather than fall back to integration_id — a bare integration_id
-        can collide with custom-MCP namespaces (which are URL-derived but could
-        happen to match), and indexing under the wrong namespace silently
-        corrupts retrieve_tools for the other integration via the
-        chroma:indexed:{namespace} cache.
+        Uses subagent_config.tool_space as the namespace; skips indexing if
+        absent rather than falling back to integration_id, which can collide
+        with a URL-derived custom-MCP namespace and silently corrupt
+        retrieve_tools for the other integration.
         """
         from app.config.oauth_config import (  # noqa: PLC0415 -- oauth_config transitively imports the langchain tool subgraphs, far too heavy on this module's import path
             get_integration_by_id,
@@ -1214,13 +1163,12 @@ class MCPClient:
 
     @staticmethod
     def _metadata_document_candidate() -> tuple[str, bool, str]:
-        """Compute ``(api_base, is_localhost, client metadata document URL)``.
+        """Compute (api_base, is_localhost, client metadata document URL).
 
-        Shared by auth-URL building and token exchange so the client_id used in
-        the authorization request cannot drift from the one sent to the token
-        endpoint. Per draft-ietf-oauth-client-id-metadata-document, the
-        client_id can be the URL to the client metadata document — but only
-        when the auth server can actually fetch it (non-localhost API base).
+        Shared by auth-URL building and token exchange so client_id can't
+        drift between them. Per draft-ietf-oauth-client-id-metadata-document,
+        client_id can be that document's URL, but only when the auth server
+        can fetch it (non-localhost API base).
         """
         api_base = get_api_base_url()
         return api_base, is_localhost_url(api_base), get_client_metadata_document_url(api_base)
@@ -1266,11 +1214,9 @@ class MCPClient:
         redirect_uri: str,
     ) -> str:
         """Resolve client_id per MCP spec priority: configured creds → stored DCR → metadata doc → DCR."""
-        # Priority order per MCP spec:
-        # 1. Pre-configured credentials (from MCPConfig or env vars)
-        # 2. Stored DCR client (from PostgreSQL, saved during previous _register_client)
-        # 3. Client Metadata Document URL (when AS supports it and API is non-localhost)
-        # 4. Dynamic Client Registration (DCR) as last resort
+        # Priority order per MCP spec: pre-configured credentials, then stored
+        # DCR client, then Client Metadata Document URL (non-localhost only),
+        # then Dynamic Client Registration (DCR) as last resort.
         client_id, _ = self._resolve_client_credentials(mcp_config)
 
         if not client_id:
@@ -1309,10 +1255,9 @@ class MCPClient:
         excluded_scopes: set[str] | None,
     ) -> str:
         """Resolve the authorization request scope string, injecting offline_access and dropping rejected scopes."""
-        # Scope selection per MCP spec (SDK helper: WWW-Authenticate scope >
-        # PRM scopes_supported > AS scopes_supported). A configured override
-        # (mcp_config.oauth_scopes) wins when the server didn't dictate a scope
-        # via the 401 challenge — GAIA-specific behavior the SDK doesn't cover.
+        # Scope selection per MCP spec (WWW-Authenticate > PRM > AS scopes); a
+        # configured override (oauth_scopes) wins only when the 401 challenge
+        # didn't dictate a scope — GAIA-specific behavior the SDK doesn't cover.
         if not oauth_config.initial_scope and mcp_config.oauth_scopes:
             scope_str = " ".join(mcp_config.oauth_scopes)
         else:
@@ -1325,12 +1270,9 @@ class MCPClient:
                 or ""
             )
 
-        # Inject offline_access if the server supports it and it's not already present.
-        # This is the key to "connect once, stay forever" — without it many OAuth servers
-        # issue short-lived or session-only refresh tokens (like a browser session cookie).
-        # offline_access tells the server: issue a long-lived refresh token for background use.
-        # We only add it when the server advertises support to avoid breaking servers that
-        # reject unknown scopes.
+        # Inject offline_access when the server supports it and it's missing:
+        # without it many OAuth servers issue short-lived refresh tokens,
+        # breaking "connect once, stay forever". Only added when advertised.
         scopes_supported = oauth_config.scopes_supported
         scope_parts = scope_str.split() if scope_str else []
         if "offline_access" in scopes_supported and "offline_access" not in scope_parts:
@@ -1341,9 +1283,8 @@ class MCPClient:
             )
 
         # Drop scopes the auth server previously rejected with invalid_scope so a
-        # re-authorization retry can converge. Some servers advertise scopes in
-        # their metadata (e.g. agentmail's "user:org:read") that a dynamically
-        # registered client is not actually permitted to request.
+        # retry can converge (e.g. agentmail's "user:org:read", which a
+        # dynamically registered client isn't actually permitted to request).
         if excluded_scopes:
             dropped = [s for s in scope_parts if s in excluded_scopes]
             if dropped:
@@ -1364,18 +1305,11 @@ class MCPClient:
         challenge_data: McpAuthChallenge | None = None,
         excluded_scopes: set[str] | None = None,
     ) -> str:
-        """
-        Build OAuth authorization URL using MCP spec discovery.
+        """Build OAuth authorization URL using MCP spec discovery.
 
-        1. Discovers auth server via Protected Resource Metadata
-        2. Fetches Authorization Server Metadata for endpoints
-        3. Tries client metadata document URL if supported (no DCR needed)
-        4. Falls back to DCR on auth server if no client_id configured
-        5. Returns authorization URL for browser redirect
-
-        Supports platform integrations (from code) and custom integrations.
-        ``challenge_data`` is an optional pre-fetched WWW-Authenticate challenge
-        from probe, passed to avoid duplicate discovery HTTP calls.
+        Supports platform and custom integrations. challenge_data is an
+        optional pre-fetched WWW-Authenticate challenge, passed to avoid
+        duplicate discovery HTTP calls.
         """
         # Resolve integration from platform config or MongoDB
         resolved = await IntegrationResolver.resolve(integration_id)
@@ -1388,11 +1322,9 @@ class MCPClient:
             integration_id, mcp_config, challenge_data=challenge_data
         )
 
-        # Resolve client credentials with the following priority order per MCP spec:
-        # 1. Pre-configured credentials (from MCPConfig or env vars)
-        # 2. Stored DCR client (from PostgreSQL, saved during previous _register_client)
-        # 3. Client Metadata Document URL (when AS supports it and API is non-localhost)
-        # 4. Dynamic Client Registration (DCR) as last resort
+        # Priority order per MCP spec: pre-configured credentials, then stored
+        # DCR client, then Client Metadata Document URL (non-localhost only),
+        # then Dynamic Client Registration (DCR) as last resort.
         client_id = await self._obtain_auth_client_id(
             integration_id, mcp_config, oauth_config, redirect_uri
         )
@@ -1447,14 +1379,10 @@ class MCPClient:
         redirect_uri: str,
         redirect_path: str,
     ) -> str | None:
-        """Re-issue the authorization URL after an ``invalid_scope`` rejection.
+        """Re-issue the authorization URL after an invalid_scope rejection, or None if pointless.
 
-        Some auth servers advertise scopes in their metadata that a dynamically
-        registered client cannot actually request. We drop the rejected scope(s)
-        and rebuild the URL — retrying only when a genuinely new scope was named
-        (so the loop converges) and bounding the total drops.
-
-        Returns the new authorization URL, or None when retrying would not help.
+        Drops the rejected scope(s) and rebuilds the URL, retrying only when a
+        genuinely new scope was named so the loop converges.
         """
         rejected = parse_rejected_scopes(error_description)
         excluded = await self.token_store.get_excluded_scopes(integration_id)
@@ -1482,11 +1410,9 @@ class MCPClient:
             ValueError: For other registration failures
         """
         registration_endpoint = str(as_metadata.registration_endpoint)
-        # Branding rendered on the third-party consent screen the user authorizes.
-        # These URIs are optional cosmetics; RFC 7591 servers (e.g. Clerk-backed
-        # ones like granola) reject non-HTTPS branding URIs with
-        # 400 invalid_client_metadata, so only send them when the frontend is
-        # served over HTTPS. The redirect_uri itself may stay http://localhost.
+        # Branding on the consent screen is optional cosmetics; some RFC 7591
+        # servers (e.g. granola) reject non-HTTPS branding URIs with 400
+        # invalid_client_metadata — redirect_uri itself may stay http://localhost.
         frontend = get_frontend_url()
         branding: _ClientBranding = {}
         if frontend.startswith("https://"):
@@ -1579,7 +1505,7 @@ class MCPClient:
         token_endpoint: str,
         exchange: _TokenExchangeRequest,
     ) -> dict[str, Any]:
-        """POST the RFC 6749 authorization-code grant to ``token_endpoint`` and return the parsed response."""
+        """POST the RFC 6749 authorization-code grant to token_endpoint and return the parsed response."""
         token_data: dict[str, Any] = {
             "grant_type": "authorization_code",
             # Always include client_id in body for PKCE compatibility
@@ -1640,10 +1566,9 @@ class MCPClient:
             )
 
         try:
-            # Decode JWT payload without verification (nonce is for replay protection)
-            # A fixed three "=" rather than computed padding: JWT segments are
-            # emitted unpadded, base64 needs at most two, and the decoder ignores
-            # the surplus — so this is always enough and never wrong.
+            # Decode JWT payload without verification (nonce is for replay protection).
+            # Fixed three "=" padding: base64 needs at most two, and the decoder
+            # ignores the surplus, so this is always enough and never wrong.
             payload_b64 = id_token.split(".")[1] + "==="
             payload = _json.loads(base64.urlsafe_b64decode(payload_b64))
         except Exception as e:
@@ -1670,15 +1595,11 @@ class MCPClient:
         state: str,
         redirect_uri: str,
     ) -> list[BaseTool]:
-        """
-        Exchange authorization code for tokens and connect.
+        """Exchange authorization code for tokens and connect.
 
-        Implements RFC 6749 token exchange with:
-        - PKCE code_verifier (RFC 7636)
-        - Resource binding (RFC 8707)
-        - Structured error parsing
-        - Token response validation
-        - JWT issuer validation (when applicable)
+        Implements RFC 6749 token exchange with PKCE (RFC 7636), resource
+        binding (RFC 8707), structured error parsing, response validation,
+        and JWT issuer validation when applicable.
         """
         is_valid, code_verifier = await self.token_store.verify_oauth_state(integration_id, state)
         if not is_valid:
@@ -1780,10 +1701,9 @@ class MCPClient:
             expires_at=expires_at,
         )
 
-        # Optimistically flip status to connected so the redirect can fire
-        # immediately and the frontend integration card reflects the new state.
-        # The background connect below will reconcile (reset to disconnected)
-        # if credentials prove dead.
+        # Optimistically flip status to connected so the redirect fires
+        # immediately; the background connect below reconciles (resets to
+        # disconnected) if credentials prove dead.
         try:
             await update_user_integration_status(self.user_id, integration_id, "connected")
         except Exception as status_err:
@@ -1794,11 +1714,9 @@ class MCPClient:
                 error_type=type(status_err).__name__,
             )
 
-        # Dispatch the actual MCP connect in the background. Session handshake,
-        # tools/list, schema conversion, Mongo tool store, and Chroma indexing
-        # easily take 5-15s for servers like posthog (339 tools). The user has
-        # already authenticated; they should not have to stare at a blank tab
-        # while we warm caches.
+        # Dispatch the actual MCP connect in the background: handshake, tools/list,
+        # schema conversion, and indexing can take 5-15s for servers like posthog
+        # (339 tools), and the already-authenticated user shouldn't wait on it.
         async def _bg_connect_after_oauth() -> None:
             try:
                 await self.connect(integration_id)
@@ -1827,18 +1745,12 @@ class MCPClient:
         return []
 
     async def disconnect(self, integration_id: str) -> None:
-        """
-        Disconnect from an MCP server.
+        """Disconnect from an MCP server.
 
-        Performs:
-        1. Token revocation at authorization server (RFC 7009) — backgrounded;
-           local state is already invalidated before the revoke HTTP POSTs
-           complete (which can take up to 20s on a slow OAuth provider).
-        2. In-memory client cleanup (timeout-bounded so a slow upstream can't
-           hold the DELETE request hostage for 6+ seconds — see Loki trace
-           2026-05-26 12:04:53).
-        3. OAuth discovery cache cleanup
-        4. Credential deletion from PostgreSQL
+        Revokes tokens (RFC 7009) in the background — local state invalidates
+        first since the revoke can take up to 20s. Client cleanup is
+        timeout-bounded (Loki trace 2026-05-26 12:04:53); also clears OAuth
+        discovery cache and deletes PostgreSQL credentials.
         """
         # Fire-and-forget the upstream OAuth revoke — the user has already
         # been disconnected locally; provider-side revocation is best-effort.
@@ -1939,7 +1851,7 @@ class MCPClient:
         """Find which connected integration owns a given tool name.
 
         Returns the integration_id, or None if no connected MCP exposes the tool.
-        Scans the in-memory `_tools` map; with ~N integrations × ~M tools per
+        Scans the in-memory _tools map; with ~N integrations × ~M tools per
         user this is sub-millisecond and avoids needing a separate reverse
         index (which would have to stay in sync with connect/disconnect).
         """
@@ -1958,20 +1870,12 @@ class MCPClient:
         return await user_integration_repository.is_connected(self.user_id, integration_id)
 
     async def ensure_connected(self, integration_id: str) -> list[BaseTool]:
-        """
-        Ensure connection to an MCP server, reconnecting if needed.
+        """Ensure connection to an MCP server, reconnecting via stored tokens if needed.
 
-        Uses stored tokens to reconnect if not already connected in memory.
-        Connection status checked against MongoDB user_integrations.
-
-        The DB status is checked FIRST, before the warm ``_tools`` map. The map
-        is a transport cache, never the authorization record: ``disconnect()``
-        only clears the dicts of the process that handled it, so with more than
-        one replica a revoked integration stayed live on every other replica for
-        the life of the process — the pool caps at 5000 sessions and has no TTL,
-        so nothing evicted it. A stale session found here is dropped rather than
-        left behind, because ``_find_integration_id_by_server_url`` routes proxy
-        tool calls off ``_clients``.
+        DB status is checked before the warm _tools map (a transport cache
+        only): disconnect() clears just the local process's dicts, so a
+        revoked integration could stay live on other replicas (pool caps at
+        5000, no TTL). Stale sessions found here are dropped.
         """
         if not await self.is_connected_db(integration_id):
             if integration_id in self._tools or integration_id in self._clients:
@@ -2033,7 +1937,7 @@ class MCPClient:
         resolved: ResolvedIntegration | None,
         target: str,
     ) -> bool:
-        """Check whether a resolved integration's normalized server URL matches ``target``."""
+        """Check whether a resolved integration's normalized server URL matches target."""
         return bool(
             resolved
             and resolved.mcp_config
@@ -2117,18 +2021,10 @@ class MCPClient:
         tool_name: str,
         arguments: dict[str, Any],
     ) -> CallToolResult:
-        """Call a specific tool on a specific MCP server identified by server_url.
+        """Call a tool on the MCP server identified by server_url.
 
         Finds the connected integration whose server_url matches, then calls
-        the tool via the active session.
-
-        Args:
-            server_url: The MCP server URL to route the call to.
-            tool_name: The name of the tool to call.
-            arguments: The arguments to pass to the tool.
-
-        Raises:
-            ValueError: If no connected integration matches the given server_url.
+        the tool via the active session. Raises ValueError if none match.
         """
         matching_integration_id = await self._find_integration_id_by_server_url(server_url)
 
@@ -2181,14 +2077,11 @@ class MCPClient:
         return result
 
     async def _get_session_for_server(self, server_url: str) -> ClientSession:
-        """Resolve the underlying official MCP ``ClientSession`` for ``server_url``.
+        """Resolve the underlying official MCP ClientSession for server_url.
 
-        Returns the SDK session beneath mcp_use's wrapper so resource/prompt calls
-        yield typed ``*Result`` models — mcp_use's convenience session returns bare
-        lists for list ops and has no ``list_resource_templates`` at all.
-
-        Raises:
-            ValueError: If no connected integration matches or the session is unavailable.
+        Bypasses mcp_use's wrapper so resource/prompt calls yield typed
+        *Result models — its convenience session returns bare lists and has
+        no list_resource_templates at all. Raises ValueError if unavailable.
         """
         matching_integration_id = await self._find_integration_id_by_server_url(server_url)
         if matching_integration_id is None:
@@ -2246,20 +2139,10 @@ class MCPClient:
     async def read_ui_resource_details(
         self, server_url: str, resource_uri: str
     ) -> McpUiResourceDetails | None:
-        """Read a UI resource and return HTML plus content-level UI metadata.
+        """Read a UI resource and return HTML plus content-level UI metadata, or None on failure.
 
-        Finds the active session matching ``server_url``, then reads the resource
-        and extracts:
-        - html: text content for the app HTML
-        - csp: content-level ``_meta.ui.csp`` when present
-        - permissions: content-level ``_meta.ui.permissions`` when present
-
-        Args:
-            server_url: MCP server URL to resolve the active integration/session.
-            resource_uri: Resource URI (for example ``ui://tool-name/app.html``).
-
-        Returns:
-            The resource details, or ``None`` on failure.
+        Finds the active session matching server_url, then reads the resource
+        and extracts html plus content-level _meta.ui.csp/permissions when present.
         """
         try:
             matching_integration_id = await self._find_integration_id_by_server_url(server_url)

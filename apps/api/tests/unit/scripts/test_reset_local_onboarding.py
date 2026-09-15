@@ -1,7 +1,7 @@
 """Unit tests for the local onboarding reset tool.
 
 Two things make it safe to keep in the repo: it refuses anything that is not a
-loopback dev stack, and ``--dry-run`` (the default) never writes.
+loopback dev stack, and --dry-run (the default) never writes.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch

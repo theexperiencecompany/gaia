@@ -3,8 +3,8 @@
 Scaffolding for the context-assembly refactor, not the deliverable: a snapshot
 records whatever the code does, so it cannot fail meaningfully on its own. Its
 job is to make a structural change reviewable — every movement in
-``__snapshots__/`` must be attributable to a named test in
-``test_context_invariants.py`` or ``test_context_defects.py``.
+__snapshots__/ must be attributable to a named test in
+test_context_invariants.py or test_context_defects.py.
 """
 
 import pytest
@@ -74,8 +74,7 @@ class TestTierSnapshots:
 
     @pytest.mark.parametrize("tier", [AgentTier.EXECUTOR, AgentTier.PROVIDER_SUBAGENT])
     async def test_bound_background_run_shows_both_banners(self, tier: AgentTier) -> None:
-        """An active todo plus a headless run — the only shape where both
-        run-binding banners appear at once."""
+        """An active todo plus a headless run — the only shape where both run-binding banners appear at once."""
         messages = await effective_context(
             tier,
             ContextSeed(
@@ -91,8 +90,7 @@ class TestTierSnapshots:
         assert_snapshot(f"bound_background_{tier.value}", messages)
 
     async def test_multi_turn_thread_collapses_stale_slots(self) -> None:
-        """A checkpointed thread carrying a stale copy of every slot. Pins the
-        'exactly one per slot, and it is the latest' behaviour end to end."""
+        """Pins the "exactly one per slot, and it is the latest" behaviour end to end."""
         stale = await effective_context(
             AgentTier.EXECUTOR,
             ContextSeed(

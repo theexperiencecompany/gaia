@@ -1,7 +1,7 @@
 """JuiceFS shard routing.
 
-Phase 1: single shard, `shard_for()` always returns 0.
-Phase 2: hash-based routing across N shards. The Mongo `e2b_sandboxes` doc
+Phase 1: single shard, shard_for() always returns 0.
+Phase 2: hash-based routing across N shards. The Mongo e2b_sandboxes doc
 records the shard so we never re-shard a user without an explicit migration.
 """
 
@@ -26,13 +26,10 @@ def shard_for(user_id: str) -> int:
 def shard_meta_url(shard_id: int) -> str:
     """Resolve the JuiceFS metadata URL for the given shard.
 
-    The template in settings contains `{shard}` which is substituted. Single-
-    shard deployments may use a template with no `{shard}` placeholder.
-
-    Redis meta uses the DB number as the shard (redis://host:6379/{shard}).
-    For Postgres, JuiceFS expects scheme `postgres://`, not `postgresql://` —
-    managed providers (Neon, Supabase, etc.) hand out the latter, so we
-    rewrite at the boundary.
+    The template in settings contains {shard}, substituted here (single-shard
+    deployments may omit the placeholder). Redis meta uses the DB number as
+    the shard. JuiceFS expects postgres://, not postgresql:// — managed
+    providers (Neon, Supabase) hand out the latter, so it's rewritten here.
     """
     template = settings.JUICEFS_META_URL_TEMPLATE or ""
     if "{shard}" in template:

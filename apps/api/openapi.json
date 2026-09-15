@@ -59,7 +59,7 @@
         "type": "string"
       },
       "ActivityDay": {
-        "description": "One UTC day of the heatmap: actions plus the tokens they burned.\n\nToken counts are the *charged* ones only \u2014 the same spend the budget\npercentage is measured against \u2014 so background work (memory extraction,\nonboarding) never shows up as something the user did. Cached and reasoning\ntokens are broken out because they explain an otherwise surprising input\ntotal; ``tokens`` is input + output, matching how the per-request ceiling\ncounts them (``cost_budget.record_model_call_usage``).",
+        "description": "One UTC day of the heatmap: actions plus the tokens they burned.\n\nToken counts are the *charged* ones only \u2014 the same spend the budget\npercentage is measured against \u2014 so background work (memory extraction,\nonboarding) never shows up as something the user did. Cached and reasoning\ntokens are broken out because they explain an otherwise surprising input\ntotal; tokens is input + output, matching how the per-request ceiling\ncounts them (cost_budget.record_model_call_usage).",
         "properties": {
           "cached_tokens": {
             "title": "Cached Tokens",
@@ -481,7 +481,7 @@
         "type": "object"
       },
       "ArtifactRegistryEntry": {
-        "description": "One element of ``ConversationDocument.artifacts``.\n\n``app.services.chat.artifacts_registry`` owns every write of this shape; the\nconversation document stores it and mirrors it verbatim to the client.\n``mtime`` is a Unix timestamp, matching what every publisher in\n:mod:`app.services.artifact_events` stamps. ``body`` is present only for\nsmall textual artifacts inlined at write time.",
+        "description": "One element of ConversationDocument.artifacts.\n\napp.services.chat.artifacts_registry owns every write of this shape; the\nconversation document stores it and mirrors it verbatim to the client.\nmtime is a Unix timestamp, matching what every publisher in\n:mod:app.services.artifact_events stamps. body is present only for\nsmall textual artifacts inlined at write time.",
         "properties": {
           "body": {
             "title": "Body",
@@ -1730,7 +1730,7 @@
         "type": "object"
       },
       "BudgetWindow": {
-        "description": "One cost-budget window: how much of the allowance is used, and when it\nresets. Deliberately no raw USD \u2014 see ``cost_budget.get_budget_status``.",
+        "description": "One cost-budget window: how much of the allowance is used, and when it\nresets. Deliberately no raw USD \u2014 see cost_budget.get_budget_status.",
         "properties": {
           "percentage": {
             "title": "Percentage",
@@ -1831,7 +1831,7 @@
         "type": "object"
       },
       "BulkActionRequest": {
-        "description": "Request model for bulk actions",
+        "description": "Request model for bulk actions.",
         "properties": {
           "action": {
             "$ref": "#/components/schemas/BulkActions",
@@ -2209,7 +2209,7 @@
       },
       "CalendarListResponse": {
         "additionalProperties": true,
-        "description": "Response for ``GET /calendar/list`` \u2014 Google's ``calendarList.list`` payload.\n\n``extra=\"allow\"`` keeps the envelope keys Google sends alongside ``items``\n(``kind``, ``etag``, ``nextSyncToken``).",
+        "description": "Response for GET /calendar/list \u2014 Google's calendarList.list payload.\n\nextra=\"allow\" keeps the envelope keys Google sends alongside items\n(kind, etag, nextSyncToken).",
         "properties": {
           "items": {
             "items": {
@@ -2504,7 +2504,7 @@
         "type": "object"
       },
       "CheckoutSource": {
-        "description": "Where in the product a checkout was started.\n\nThe server is the single emitter of ``payment:checkout_started``, so the\nattribution the funnel reads has to arrive on the request. Closed and\nrepository-owned: it mirrors ``CheckoutSource`` in\n``apps/web/src/features/pricing/hooks/useDodoPayments.ts``, and a new\nsurface adds a member on both sides in the same change.",
+        "description": "Where in the product a checkout was started.\n\nThe server is the single emitter of payment:checkout_started, so the\nattribution the funnel reads has to arrive on the request. Closed and\nrepository-owned: it mirrors CheckoutSource in\napps/web/src/features/pricing/hooks/useDodoPayments.ts, and a new\nsurface adds a member on both sides in the same change.",
         "enum": [
           "paywall_modal",
           "pricing_card",
@@ -2706,7 +2706,7 @@
         "type": "object"
       },
       "ConditionMatch": {
-        "description": "How a subscription's conditions combine.\n\n``ALL`` is the AND-chain default. ``ANY`` is a flat OR \u2014 one true condition\nfires it. There is deliberately no nesting: an OR-of-ANDs is expressed as\nseveral ``ALL`` subscriptions on the same todo, which already covers every\nboolean shape these payloads need without an expression language in the hot\npath that evaluates every webhook for every subscriber.",
+        "description": "How a subscription's conditions combine.\n\nALL is the AND-chain default. ANY is a flat OR \u2014 one true condition\nfires it. There is deliberately no nesting: an OR-of-ANDs is expressed as\nseveral ALL subscriptions on the same todo, which already covers every\nboolean shape these payloads need without an expression language in the hot\npath that evaluates every webhook for every subscriber.",
         "enum": [
           "all",
           "any"
@@ -2876,7 +2876,7 @@
       },
       "ConversationDocument": {
         "additionalProperties": true,
-        "description": "A conversation and its embedded message history as stored in MongoDB.\n\n``extra=\"allow\"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,\n``metadata``) so a full-document read returns them verbatim, matching the\npre-repository behaviour.",
+        "description": "A conversation and its embedded message history as stored in MongoDB.\n\nextra=\"allow\" preserves stray/legacy top-level fields (e.g. artifacts,\nmetadata) so a full-document read returns them verbatim, matching the\npre-repository behaviour.",
         "properties": {
           "artifacts": {
             "items": {
@@ -3143,7 +3143,7 @@
       },
       "ConversationSummary": {
         "additionalProperties": true,
-        "description": "The projected conversation-list row \u2014 every field the web list consumes,\nwithout the heavy ``messages`` array.",
+        "description": "The projected conversation-list row \u2014 every field the web list consumes,\nwithout the heavy messages array.",
         "properties": {
           "conversation_id": {
             "title": "Conversation Id",
@@ -3282,7 +3282,7 @@
         "type": "object"
       },
       "ConversationSyncRow": {
-        "description": "One batch-sync row \u2014 the conversation's client-visible fields plus its full\nmessage history and artifact registry.\n\n``active_stream_id`` is the stream of an in-flight turn (``None`` when idle),\ncarried here so a reloading client re-attaches without a discovery request.",
+        "description": "One batch-sync row \u2014 the conversation's client-visible fields plus its full\nmessage history and artifact registry.\n\nactive_stream_id is the stream of an in-flight turn (None when idle),\ncarried here so a reloading client re-attaches without a discovery request.",
         "properties": {
           "active_stream_id": {
             "anyOf": [
@@ -5507,7 +5507,7 @@
         "type": "object"
       },
       "FileDocument": {
-        "description": "An uploaded file's metadata as stored in the ``files`` collection.\n\nUser-scoped and addressed by the business ``file_id`` (a UUID); the Mongo\n``_id`` (ObjectId) rides along as ``id`` because the update endpoint still\nreturns it. ``updated_at`` is stamped by the base on every write.",
+        "description": "An uploaded file's metadata as stored in the files collection.\n\nUser-scoped and addressed by the business file_id (a UUID); the Mongo\n_id (ObjectId) rides along as id because the update endpoint still\nreturns it. updated_at is stamped by the base on every write.",
         "properties": {
           "conversation_id": {
             "anyOf": [
@@ -6033,7 +6033,7 @@
       },
       "GmailMessageSummary": {
         "additionalProperties": true,
-        "description": "One message as ``transform_gmail_message`` shapes it for the web client.\n\nThe declared fields are the derived ones every consumer reads; the raw\nGmail/Composio keys ride along via ``extra=\"allow\"`` exactly as before.",
+        "description": "One message as transform_gmail_message shapes it for the web client.\n\nThe declared fields are the derived ones every consumer reads; the raw\nGmail/Composio keys ride along via extra=\"allow\" exactly as before.",
         "properties": {
           "body": {
             "default": "",
@@ -6209,7 +6209,7 @@
       },
       "GoogleCalendarEventDateTime": {
         "additionalProperties": true,
-        "description": "The ``start``/``end`` object of a Google Calendar ``events`` resource.\n\nAn event carries either ``date`` (all-day) or ``dateTime`` + ``timeZone``; both\nare declared optional so a single type covers both.",
+        "description": "The start/end object of a Google Calendar events resource.\n\nAn event carries either date (all-day) or dateTime + timeZone; both\nare declared optional so a single type covers both.",
         "properties": {
           "date": {
             "anyOf": [
@@ -6250,7 +6250,7 @@
       },
       "GoogleCalendarEventResource": {
         "additionalProperties": true,
-        "description": "A single Google Calendar ``events`` resource, forwarded to the client verbatim.\n\nOnly the fields GAIA itself reads (filtering, sorting, display) or injects\n(``calendarId``/``calendarTitle``) are declared. Google owns the rest of this\nschema and varies it by event type, so everything else passes through untouched\nrather than guessing at a structure that would silently drop fields the web\nclient reads.",
+        "description": "A single Google Calendar events resource, forwarded to the client verbatim.\n\nOnly the fields GAIA itself reads (filtering, sorting, display) or injects\n(calendarId/calendarTitle) are declared. Google owns the rest of this\nschema and varies it by event type, so everything else passes through untouched\nrather than guessing at a structure that would silently drop fields the web\nclient reads.",
         "properties": {
           "calendarId": {
             "anyOf": [
@@ -6358,7 +6358,7 @@
       },
       "GoogleCalendarListEntry": {
         "additionalProperties": true,
-        "description": "One entry of Google's ``calendarList.list`` payload, forwarded to the client\nverbatim.\n\nDeclared: the fields the service and the web calendar picker read. Everything\nelse Google sends rides through as extras and is projected into\n``CalendarSummary`` where it is needed.",
+        "description": "One entry of Google's calendarList.list payload, forwarded to the client\nverbatim.\n\nDeclared: the fields the service and the web calendar picker read. Everything\nelse Google sends rides through as extras and is projected into\nCalendarSummary where it is needed.",
         "properties": {
           "backgroundColor": {
             "anyOf": [
@@ -7533,7 +7533,7 @@
         "type": "object"
       },
       "LogoutResponse": {
-        "description": "``POST /user/logout``: where the client sends the browser next.",
+        "description": "POST /user/logout: where the client sends the browser next.",
         "properties": {
           "logout_url": {
             "anyOf": [
@@ -9697,7 +9697,7 @@
         "type": "object"
       },
       "MyIntegrationItem": {
-        "description": "One integration as it pertains to the current user: catalog metadata plus\ntheir connection `status`, without the heavy per-tool schemas (only `tool_count`).\nFetch full tools on demand from `GET /integrations/{id}/tools`.",
+        "description": "One integration as it pertains to the current user: catalog metadata plus\ntheir connection status, without the heavy per-tool schemas (only tool_count).\nFetch full tools on demand from GET /integrations/{id}/tools.",
         "properties": {
           "authType": {
             "anyOf": [
@@ -10289,7 +10289,7 @@
         "type": "object"
       },
       "NotificationRecord": {
-        "description": "Persisted notification with its original request and per-channel statuses.\n\nIdentity is the UUID ``id`` (not Mongo's ``_id``); the notification repository\nsets ``identity_field = \"id\"``.",
+        "description": "Persisted notification with its original request and per-channel statuses.\n\nIdentity is the UUID id (not Mongo's _id); the notification repository\nsets identity_field = \"id\".",
         "properties": {
           "archived_at": {
             "anyOf": [
@@ -10831,7 +10831,7 @@
         "type": "object"
       },
       "OnboardingNeed": {
-        "description": "The pains the user handed GAIA during onboarding (Q2, up to three picks).\n\nSix are shown to everyone; the rest come in pairs, one pair per Q1 role, and\nonly that role sees its pair (``ROLE_NEEDS``). Each value is a different job\nGAIA can start on, so the picks carry signal into the first thread, the\nbot opener and the comms playbooks.",
+        "description": "The pains the user handed GAIA during onboarding (Q2, up to three picks).\n\nSix are shown to everyone; the rest come in pairs, one pair per Q1 role, and\nonly that role sees its pair (ROLE_NEEDS). Each value is a different job\nGAIA can start on, so the picks carry signal into the first thread, the\nbot opener and the comms playbooks.",
         "enum": [
           "inbox",
           "calendar",
@@ -10862,7 +10862,7 @@
         "type": "string"
       },
       "OnboardingPhase": {
-        "description": "Tracks the current phase of user onboarding",
+        "description": "Tracks the current phase of user onboarding.",
         "enum": [
           "initial",
           "personalization_pending",
@@ -11175,7 +11175,7 @@
         "type": "object"
       },
       "PaginatedNotificationsResponse": {
-        "description": "Response model for paginated notifications",
+        "description": "Response model for paginated notifications.",
         "properties": {
           "limit": {
             "title": "Limit",
@@ -11652,7 +11652,7 @@
         "type": "object"
       },
       "PlanDuration": {
-        "description": "Billing cycle a plan is charged on.\n\nClosed and repository-owned: the catalogue is written by\n``scripts/payment_setup.py`` and the web already types the wire field as\n``\"monthly\" | \"yearly\"`` (``apps/web/src/features/pricing/api/pricingApi.ts``).",
+        "description": "Billing cycle a plan is charged on.\n\nClosed and repository-owned: the catalogue is written by\nscripts/payment_setup.py and the web already types the wire field as\n\"monthly\" | \"yearly\" (apps/web/src/features/pricing/api/pricingApi.ts).",
         "enum": [
           "monthly",
           "yearly"
@@ -11769,7 +11769,7 @@
         "type": "string"
       },
       "PlatformLinkEntry": {
-        "description": "One linked platform account \u2014 the single shape for this entry.\n\nA ``TypedDict`` rather than a model (Type Safety item 6) because it has two\nconsumers with different needs, and this type serves both without a rival\ncopy. ``PlatformLinkService.get_linked_platforms`` assembles it in-process\nfrom an already-loaded ``UserDocument``, and the outbound-delivery paths\nread it tolerating a legacy non-string ``platformUserId`` (Telegram stores\nchat_id as an int) which they coerce at the envelope; validating there would\nstart raising on those rows \u2014 a behaviour change (item 13). Pydantic still\nvalidates it as a field of ``GetPlatformLinksResponse`` below, so the HTTP\nboundary rejects the same values a ``BaseModel`` here would.",
+        "description": "One linked platform account \u2014 the single shape for this entry.\n\nA TypedDict rather than a model (Type Safety item 6) because it has two\nconsumers with different needs, and this type serves both without a rival\ncopy. PlatformLinkService.get_linked_platforms assembles it in-process\nfrom an already-loaded UserDocument, and the outbound-delivery paths\nread it tolerating a legacy non-string platformUserId (Telegram stores\nchat_id as an int) which they coerce at the envelope; validating there would\nstart raising on those rows \u2014 a behaviour change (item 13). Pydantic still\nvalidates it as a field of GetPlatformLinksResponse below, so the HTTP\nboundary rejects the same values a BaseModel here would.",
         "properties": {
           "connectedAt": {
             "anyOf": [
@@ -11829,7 +11829,7 @@
         "type": "object"
       },
       "PlatformType": {
-        "description": "Platform types for push notifications",
+        "description": "Platform types for push notifications.",
         "enum": [
           "ios",
           "android"
@@ -11853,7 +11853,7 @@
         "type": "object"
       },
       "PollPairingResponse": {
-        "description": "Result of a pairing poll.\n\n``status`` is ``pending`` (keep polling), ``approved`` (``device_id`` and\n``refresh_token`` set) or ``expired`` (stop).",
+        "description": "Result of a pairing poll.\n\nstatus is pending (keep polling), approved (device_id and\nrefresh_token set) or expired (stop).",
         "properties": {
           "device_id": {
             "anyOf": [
@@ -11906,7 +11906,7 @@
         "type": "string"
       },
       "ProjectCreate": {
-        "description": "Model for creating projects",
+        "description": "Model for creating projects.",
         "properties": {
           "color": {
             "anyOf": [
@@ -11949,7 +11949,7 @@
         "type": "object"
       },
       "ProjectResponse": {
-        "description": "Complete project response",
+        "description": "Complete project response.",
         "properties": {
           "color": {
             "anyOf": [
@@ -12288,7 +12288,7 @@
         "type": "object"
       },
       "PublicWorkflowCard": {
-        "description": "One marketplace card, as the community, explore and related lists emit it.\n\nThe three lists share this shape; ``categories`` and ``total_executions``\nare set only where the list has them (explore, related) and are null on the\nothers, so a consumer never has to guess which list a card came from.",
+        "description": "One marketplace card, as the community, explore and related lists emit it.\n\nThe three lists share this shape; categories and total_executions\nare set only where the list has them (explore, related) and are null on the\nothers, so a consumer never has to guess which list a card came from.",
         "properties": {
           "categories": {
             "anyOf": [
@@ -12541,7 +12541,7 @@
         "type": "object"
       },
       "PushTokenRequest": {
-        "description": "Request model for registering a device token",
+        "description": "Request model for registering a device token.",
         "properties": {
           "device_id": {
             "anyOf": [
@@ -12573,7 +12573,7 @@
         "type": "object"
       },
       "PushTokenResponse": {
-        "description": "Response model for device token operations",
+        "description": "Response model for device token operations.",
         "properties": {
           "message": {
             "description": "Response message",
@@ -13886,7 +13886,7 @@
         "type": "object"
       },
       "SendEmailWithAttachmentsResponse": {
-        "description": "Response for ``POST /gmail/send``, which also reports the attachment count.",
+        "description": "Response for POST /gmail/send, which also reports the attachment count.",
         "properties": {
           "attachments_count": {
             "title": "Attachments Count",
@@ -13935,7 +13935,7 @@
         "type": "object"
       },
       "Skill": {
-        "description": "A skill tracked in MongoDB with a flat schema.\n\nAll metadata fields (name, description, target, etc.) live at the\ntop level alongside ownership and installation tracking fields.\nSystem skills use user_id=\"system\"; user skills use the actual user ID.\n``id`` (the stringified ``_id``, a UUID) is inherited from ``MongoDocument``.",
+        "description": "A skill tracked in MongoDB with a flat schema.\n\nAll metadata fields (name, description, target, etc.) live at the\ntop level alongside ownership and installation tracking fields.\nSystem skills use user_id=\"system\"; user skills use the actual user ID.\nid (the stringified _id, a UUID) is inherited from MongoDocument.",
         "properties": {
           "allowed_tools": {
             "description": "Pre-approved tools (experimental)",
@@ -14168,7 +14168,7 @@
         "type": "string"
       },
       "SkillTarget": {
-        "description": "A place a skill can run: the executor, or a connected integration subagent.\n\n``value`` is the subagent ``agent_name`` written to a skill's ``target``;\n``icon`` is the integration id (``executor`` for the general bucket) so the\nUI can reuse the integration logo set.",
+        "description": "A place a skill can run: the executor, or a connected integration subagent.\n\nvalue is the subagent agent_name written to a skill's target;\nicon is the integration id (executor for the general bucket) so the\nUI can reuse the integration logo set.",
         "properties": {
           "connected": {
             "default": true,
@@ -14713,7 +14713,7 @@
       },
       "SubscriptionDocument": {
         "additionalProperties": true,
-        "description": "A subscription as stored in the ``subscriptions`` collection.\n\nGlobal (webhook updates key on ``dodo_subscription_id`` with no user in scope);\n``user_id`` is a plain field. ``id`` is the stringified Mongo ``_id`` \u2014 kept so\nthe status endpoint returns the same id it did before the repository.\n``extra=\"allow\"`` preserves the many Dodo billing fields verbatim in responses.",
+        "description": "A subscription as stored in the subscriptions collection.\n\nGlobal (webhook updates key on dodo_subscription_id with no user in scope);\nuser_id is a plain field. id is the stringified Mongo _id \u2014 kept so\nthe status endpoint returns the same id it did before the repository.\nextra=\"allow\" preserves the many Dodo billing fields verbatim in responses.",
         "properties": {
           "cancel_at_next_billing_date": {
             "anyOf": [
@@ -15484,7 +15484,7 @@
         "type": "object"
       },
       "TodoModel": {
-        "description": "Model for creating todos",
+        "description": "Model for creating todos.",
         "properties": {
           "completed": {
             "default": false,
@@ -15666,7 +15666,7 @@
         "type": "object"
       },
       "TodoResponse": {
-        "description": "Complete todo response with all fields",
+        "description": "Complete todo response with all fields.",
         "properties": {
           "completed": {
             "default": false,
@@ -15970,7 +15970,7 @@
         "type": "object"
       },
       "TodoUpdateRequest": {
-        "description": "Model for updating todos - all fields optional for partial updates",
+        "description": "Model for updating todos - all fields optional for partial updates.",
         "properties": {
           "completed": {
             "anyOf": [
@@ -16252,7 +16252,7 @@
         "type": "object"
       },
       "ToolDataEntry": {
-        "description": "Unified structure for tool execution data.\n\nEvery key an emitter can stamp must be declared here. This TypedDict is the\nelement type of ``MessageModel.tool_data``, and Pydantic drops undeclared\nkeys on ``model_dump()`` \u2014 which is how a message reaches Mongo. An emitted\nkey missing from this shape therefore survives the live SSE frame (the\nfrontend parses those against its own loose schema) and silently vanishes\nfrom the stored turn, so the bug only ever appears on reload.\n\n``data`` is deliberately open: every tool owns the shape it puts here (a\ncalendar option list, an email thread, a rendered artifact), so the only\nhonest constraint is \"JSON the frontend's per-tool card knows how to read\".\nEverything around it is closed.\n\nThe frontend mirror is ``ToolDataEntrySchema`` in\n``libs/shared/ts/src/chat/schema.ts``.",
+        "description": "Unified shape for tool execution data attached to a message.\n\nEvery key an emitter can stamp must be declared here \u2014 Pydantic drops\nundeclared keys on model_dump(), so a key missing from this TypedDict\nsilently vanishes from the stored turn (only visible on reload). data is\ndeliberately open: each tool owns its own JSON shape; the frontend's\nper-tool card is the only reader. Mirrored by ToolDataEntrySchema in\nlibs/shared/ts/src/chat/schema.ts.",
         "properties": {
           "data": {
             "title": "Data"
@@ -17426,7 +17426,7 @@
         "type": "object"
       },
       "UpdateProjectRequest": {
-        "description": "Model for updating projects - all fields optional",
+        "description": "Model for updating projects - all fields optional.",
         "properties": {
           "color": {
             "anyOf": [
@@ -17810,7 +17810,7 @@
         "type": "object"
       },
       "UsageHistoryEntry": {
-        "description": "One item in the ``GET /usage/history`` response list.",
+        "description": "One item in the GET /usage/history response list.",
         "properties": {
           "date": {
             "title": "Date",
@@ -18332,7 +18332,7 @@
         "type": "object"
       },
       "WorkflowCreator": {
-        "description": "The public-facing creator card built by ``format_creator``.\n\nA ``TypedDict``, not a model: it rides inside the untyped card dicts of\n``PublicWorkflowsResponse.workflows`` as well as ``Workflow.creator``, so it\nhas to stay a plain dict on the wire for both.",
+        "description": "The public-facing creator card built by format_creator.\n\nA TypedDict, not a model: it rides inside the untyped card dicts of\nPublicWorkflowsResponse.workflows as well as Workflow.creator, so it\nhas to stay a plain dict on the wire for both.",
         "properties": {
           "avatar": {
             "anyOf": [
@@ -18747,7 +18747,7 @@
         "type": "object"
       },
       "WorkflowTriggerResponse": {
-        "description": "A ``WorkflowTriggerSchema`` plus the identifiers of the integration that owns it.\n\nThe `/triggers/schema` wire contract consumed by web and mobile.",
+        "description": "A WorkflowTriggerSchema plus the identifiers of the integration that owns it.\n\nThe /triggers/schema wire contract consumed by web and mobile.",
         "properties": {
           "composio_slug": {
             "title": "Composio Slug",
@@ -18794,7 +18794,7 @@
         "type": "object"
       },
       "WorkflowWithIntegrations": {
-        "description": "Read-time view of a workflow: the persisted `Workflow` plus its computed\nintegration requirements. Never persisted \u2014 the storage model is `Workflow`;\nthese fields are populated by the service on read paths only.",
+        "description": "Read-time view of a workflow: the persisted Workflow plus its computed\nintegration requirements. Never persisted \u2014 the storage model is Workflow;\nthese fields are populated by the service on read paths only.",
         "properties": {
           "activated": {
             "default": true,
@@ -28649,7 +28649,7 @@
     },
     "/api/v1/notifications": {
       "get": {
-        "description": "Get user's notifications with pagination",
+        "description": "Get user's notifications with pagination.",
         "operationId": "notification_get_notifications",
         "parameters": [
           {
@@ -28766,7 +28766,7 @@
     },
     "/api/v1/notifications/bulk-actions": {
       "post": {
-        "description": "Perform bulk actions on multiple notifications",
+        "description": "Perform bulk actions on multiple notifications.",
         "operationId": "notification_bulk_actions",
         "requestBody": {
           "content": {
@@ -29012,7 +29012,7 @@
     },
     "/api/v1/notifications/register-device": {
       "post": {
-        "description": "Register a device token for push notifications",
+        "description": "Register a device token for push notifications.",
         "operationId": "notification_register_device_token",
         "requestBody": {
           "content": {
@@ -29074,7 +29074,7 @@
     },
     "/api/v1/notifications/unregister-device": {
       "post": {
-        "description": "Unregister a device token",
+        "description": "Unregister a device token.",
         "operationId": "notification_unregister_device_token",
         "requestBody": {
           "content": {
@@ -35415,7 +35415,7 @@
     },
     "/api/v1/todos/{todo_id}/workflow-status": {
       "get": {
-        "description": "Get the standalone workflow for a todo.\nReturns the workflow if it exists, otherwise returns None.\nDetects generating state when:\n- Workflow generation is queued (Redis flag)\n- Workflow exists but has no steps yet",
+        "description": "Get the standalone workflow for a todo.\nReturns the workflow if it exists, otherwise returns None.\nDetects generating state when:\n- Workflow generation is queued (Redis flag)\n- Workflow exists but has no steps yet.",
         "operationId": "todos_get_workflow_status",
         "parameters": [
           {

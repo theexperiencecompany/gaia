@@ -1,13 +1,13 @@
 """Deny-by-default paid-only gate for every authenticated HTTP request.
 
-The per-route ``@require_subscription()`` decorator this replaced was opt-in: a route was
+The per-route @require_subscription() decorator this replaced was opt-in: a route was
 paywalled only if someone remembered to decorate it, and it failed *open* when
 it could not resolve a caller. Every new endpoint was free until noticed. This
 middleware inverts that — a route is paywalled unless it is named in
-``entitlement_allowlist.FREE_PATH_PREFIXES``.
+entitlement_allowlist.FREE_PATH_PREFIXES.
 
-Runs immediately inside ``WorkOSAuthMiddleware`` so ``request.state.user`` is
-already resolved (see ``app.core.middleware.configure_middleware`` for the
+Runs immediately inside WorkOSAuthMiddleware so request.state.user is
+already resolved (see app.core.middleware.configure_middleware for the
 ordering, which is load-bearing). Unauthenticated requests pass straight
 through: auth is the route's own job, and 402ing an anonymous caller would tell
 the world which paths exist.
@@ -39,16 +39,15 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
     """402 every authenticated non-PRO request that is not explicitly free.
 
     A plan read that cannot be answered at all is a 503, not a 402 — see the
-    ``except`` branch in ``dispatch``.
+    except branch in dispatch.
     """
 
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        # CORS preflight carries no credentials and is answered by
-        # CORSMiddleware, which sits *inside* this one. Blocking it here would
-        # break every cross-origin call with an opaque CORS failure rather than
-        # a readable 402.
+        # CORS preflight carries no credentials and is answered by CORSMiddleware, which
+        # sits *inside* this one — blocking it here breaks cross-origin calls with an
+        # opaque CORS failure rather than a readable 402.
         if request.method == "OPTIONS":
             return await call_next(request)
 
@@ -65,19 +64,9 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
         except SubscriptionRequiredException as exc:
             return self._payment_required(exc)
         except Exception as e:
-            # Still fails CLOSED — the request never reaches its handler, so no
-            # paid surface goes free — but it does NOT claim the caller is
-            # unsubscribed. "We could not read your plan" and "you are not on
-            # PRO" are different facts, and only the second one is a 402.
-            #
-            # The distinction is worth a status code because the blast radius
-            # changed with this middleware: the plan read touches Redis, and on
-            # a miss Mongo, on EVERY authenticated request. Answering 402 there
-            # showed every paying user in the product a "GAIA is paid only"
-            # modal during an infrastructure blip — indistinguishable, from
-            # their side, from having been wrongly unsubscribed. 503 says the
-            # true thing, and clients already retry it instead of routing the
-            # user to a checkout they do not need.
+            # Still fails CLOSED (no paid surface goes free) but does not claim the caller
+            # is unsubscribed: "could not read your plan" and "not on PRO" are different
+            # facts, and answering 402 here showed every paying user a paywall during a Redis/Mongo blip — clients already retry a 503 instead of routing to an unneeded checkout.
             log.error(
                 "Entitlement check failed — denying request (fail-closed)",
                 user={"id": str(user_id)},
@@ -94,7 +83,7 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
         """Render the exact body the app's HTTPException handler would emit.
 
         The web's axios interceptor and the chat-stream client both match on
-        ``code == "subscription_required"``; rendering the same envelope the
+        code == "subscription_required"; rendering the same envelope the
         generic handler does keeps that contract byte-identical whether a 402
         comes from here or from an imperative in-handler gate.
         """
@@ -104,8 +93,8 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
     def _entitlement_unavailable() -> JSONResponse:
         """503 for a plan read that could not be answered at all.
 
-        ``Retry-After`` is what makes this recoverable without a reload: the
-        gate runs before ``call_next``, so nothing was executed and a retry is
+        Retry-After is what makes this recoverable without a reload: the
+        gate runs before call_next, so nothing was executed and a retry is
         safe on every method, not just the idempotent ones.
         """
         return error_response(

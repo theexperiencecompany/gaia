@@ -76,7 +76,7 @@ class FinalizedOutput(BaseModel):
 
     @property
     def backend_trigger_type(self) -> TriggerType:
-        """This draft's trigger in the vocabulary the rest of the system uses."""
+        """Return this draft's trigger in the vocabulary the rest of the system uses."""
         return TRIGGER_TYPE_BY_DRAFT_TYPE.get(self.trigger_type, TriggerType.MANUAL)
 
     def to_stream_payload(self) -> dict[str, Any]:

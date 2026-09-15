@@ -59,7 +59,7 @@ def _make_composio_mock() -> MagicMock:
     composio = MagicMock()
 
     def _custom_tool(**kwargs):
-        """Decorator that passes the function through unchanged."""
+        """Pass the function through unchanged."""
 
         def wrapper(fn):
             return fn
@@ -105,10 +105,8 @@ def _register_linear_tools() -> dict[str, Any]:
     from app.agents.tools.integrations.linear_tool import register_linear_custom_tools
 
     register_linear_custom_tools(composio)
-    # The inner functions are local to register_linear_custom_tools,
-    # but since our mock decorator is a passthrough, they are returned as names only.
-    # We need to re-import and directly call the code. Instead, let's patch graphql_request
-    # and invoke via the module.
+    # The inner functions are local to register_linear_custom_tools, so the passthrough mock
+    # decorator can't capture them by name; tests instead patch graphql_request directly.
     return {}
 
 
@@ -485,10 +483,9 @@ class TestLinearGetMyTasks:
         side_effect=lambda i: {"id": i.get("id")},
     )
     def test_get_my_tasks_overdue_filter(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
-        # Pin production's "today" to the local date so the overdue comparison
-        # (due_date < today) uses the same reference as the test's date strings.
-        # Without this, _user_local_today() falls back to datetime.now(UTC).date()
-        # which can differ from local date in timezones ahead of UTC.
+        # Pin production's "today" to the local date so the overdue comparison (due_date < today)
+        # matches the test's date strings — without it, _user_local_today() falls back to UTC's
+        # date, which can differ from local date in timezones ahead of UTC.
         local_today = datetime.now().date()
         yesterday = (local_today - timedelta(days=1)).isoformat()
         mock_gql.side_effect = [
@@ -1371,12 +1368,7 @@ class TestLinearGetIssueActivity:
 
     @patch(f"{LINEAR_MODULE}.graphql_request")
     def test_get_activity_labels_added_as_a_plain_list(self, mock_gql: MagicMock) -> None:
-        """QUERY_ISSUE_HISTORY selects `addedLabels { id name }`, so a non-empty
-        label change arrives as a list of label objects, not a {nodes: [...]}
-        connection. Every fixture in this repo used the connection shape *and*
-        left it empty, so the branch that reads `["addedLabels"]["nodes"]` was
-        never executed against real data.
-        """
+        """QUERY_ISSUE_HISTORY selects addedLabels as a list of label objects, not a {nodes: [...]} connection — every fixture used the connection shape and left it empty, so this branch never ran against real data."""
         mock_gql.return_value = {
             "issue": {
                 "history": {

@@ -81,10 +81,9 @@ export function usePricingCardCta({
       return;
     }
 
-    // Plan status not yet resolved — isCurrentPlan/hasActiveSubscription
-    // read as false in this window, which would otherwise let an already-
-    // subscribed user click straight into a duplicate checkout. The button
-    // is disabled while this is true, so this is a defensive no-op.
+    // Plan status not yet resolved — isCurrentPlan/hasActiveSubscription read
+    // as false here, which could otherwise send an already-subscribed user into
+    // a duplicate checkout. The button is disabled meanwhile, so this is a defensive no-op.
     if (isSubscriptionStatusUnknown) return;
 
     if (isCurrentPlan && hasActiveSubscription) {

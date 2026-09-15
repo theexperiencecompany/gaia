@@ -3,7 +3,7 @@
 These writes are always best-effort: Cloudinary is the durable copy and Mongo
 holds the authoritative metadata, so a missing mount (native dev) or any write
 failure must never fail the upload. The agent reads files from the returned
-`/workspace/...` paths.
+/workspace/... paths.
 """
 
 import contextlib
@@ -39,9 +39,9 @@ async def mirror_upload(
     content: bytes,
     content_type: str,
 ) -> str | None:
-    """Mirror an upload into the session's read-only `user-uploaded/` dir.
+    """Mirror an upload into the session's read-only user-uploaded/ dir.
 
-    Returns the `/workspace/...` path the agent can read, or None when JuiceFS
+    Returns the /workspace/... path the agent can read, or None when JuiceFS
     is unavailable / the write fails.
     """
     relative_path = f"{USER_UPLOADED_DIRNAME}/{safe_filename}"
@@ -96,9 +96,9 @@ async def write_summary_sidecar(
     safe_filename: str,
     summary_md: str,
 ) -> None:
-    """Write a file's full summary to its `<file>.summary.md` sidecar.
+    """Write a file's full summary to its <file>.summary.md sidecar.
 
-    Best-effort, mirroring `mirror_upload`: the inline summary in the agent
+    Best-effort, mirroring mirror_upload: the inline summary in the agent
     context comes from Mongo independently, so a failure here is non-fatal.
     """
     relative_path = f"{USER_UPLOADED_DIRNAME}/{safe_filename}.summary.md"

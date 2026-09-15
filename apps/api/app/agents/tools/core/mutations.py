@@ -5,11 +5,11 @@ user from the run config, log the call, apply through the owning service,
 capture analytics only AFTER the mutation succeeded, schedule a projection
 resync, and turn failures into structured tool-result strings instead of
 raising into the graph. This factory IS that envelope — a domain supplies only
-its args schema and an ``apply`` coroutine of real business logic, so twenty
+its args schema and an apply coroutine of real business logic, so twenty
 tool modules don't each re-derive it (and drift).
 
 HIL note: tools built here are ordinary registry tools. Gating posture is
-stamped at registration time (``Tool.always_gate``), never inside the wrapper.
+stamped at registration time (Tool.always_gate), never inside the wrapper.
 """
 
 from collections.abc import Awaitable, Callable
@@ -45,13 +45,12 @@ def define_mutation_tool(
     resync: Callable[[str], None] | None = None,
     event: str | None = None,
 ) -> BaseTool:
-    """Build a state-changing tool around ``apply``.
+    """Build a state-changing tool around apply.
 
-    ``apply(user_id, **args)`` runs the real mutation through the owning
-    service/repository and returns the agent-facing confirmation text; raise
-    ``AppError`` (or anything else) to fail the call loud. ``event`` is captured
-    with ``{"area": area}`` only on success. ``resync`` schedules the owning
-    area's projection refresh, fire-and-forget.
+    apply(user_id, **args) runs the mutation and returns the agent-facing
+    confirmation text; raise to fail the call loud. event is captured with
+    {"area": area} only on success. resync schedules the owning area's
+    projection refresh, fire-and-forget.
     """
 
     @tool(name, description=description, args_schema=args_model)

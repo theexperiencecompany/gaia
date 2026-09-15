@@ -731,10 +731,8 @@ class TestResyncSubscriptions:
         h.update.assert_not_awaited()
 
     async def test_an_unknown_trigger_skips_but_the_sweep_continues(self) -> None:
-        # A handlerless trigger must be skipped with `continue`, not `break` — a
-        # `break` would abandon every trigger the user reconnected after it. Ordering
-        # is pinned by call order (first lookup handlerless, second real) so the set's
-        # iteration order can never mask a `break`.
+        # A handlerless trigger must be skipped with continue, not break, which would abandon every
+        # trigger reconnected after it. Call order (first lookup handlerless, second real) pins this.
         todo = _todo(id="todo-ok", labels=[BLOCKING_LABEL], trigger_subscriptions=[_paused_sub()])
         with (
             _ResyncHarness([todo], ["ti_new"]) as h,

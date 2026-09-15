@@ -6,10 +6,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models.chat_models import BOT_CONVERSATION_SOURCES
 
-#: The platform names a priority list may contain. Only bot platforms: a
-#: proactive message is a text, and the web app is not somewhere GAIA can text.
-#: Spelled out so the OpenAPI schema (and the generated client type) carries the
-#: closed set; ``CHAT_CHANNEL_VALUES`` below pins it to BOT_CONVERSATION_SOURCES.
+#: Bot platforms a priority list may contain — a proactive message is a text,
+#: so the web app isn't included. Spelled out for the OpenAPI schema;
+#: CHAT_CHANNEL_VALUES below pins it to BOT_CONVERSATION_SOURCES.
 ChatChannel = Literal["whatsapp", "telegram", "discord", "slack", "imessage"]
 
 CHAT_CHANNEL_VALUES: frozenset[str] = frozenset(s.value for s in BOT_CONVERSATION_SOURCES)

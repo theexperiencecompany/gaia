@@ -1,6 +1,6 @@
 """Unit tests for the files service package.
 
-Covers the ``FileService`` upload/update/delete flows plus the store/summaries
+Covers the FileService upload/update/delete flows plus the store/summaries
 helpers they orchestrate. External boundaries (Cloudinary, Mongo, ChromaDB,
 the JuiceFS sandbox mirror, the summary LLM) are mocked at the same seams the
 production code uses.
@@ -31,7 +31,7 @@ from shared.py.wide_events import FileContext
 
 
 def _file_doc(**overrides: object) -> FileDocument:
-    """A stored file document as the repository returns it."""
+    """Build a stored file document as the repository returns it."""
     data: dict[str, object] = {
         "id": "0" * 24,
         "file_id": "f-1",
@@ -82,7 +82,7 @@ def _upload_file_mock(
 def _no_analytics() -> Iterator[None]:
     """Neutralize analytics captures for tests not asserting on them.
 
-    ``capture_event`` resolves the PostHog provider at call time, which is not
+    capture_event resolves the PostHog provider at call time, which is not
     registered in this test module's import chain — capture-specific tests
     patch the call explicitly and assert on it.
     """
@@ -92,9 +92,9 @@ def _no_analytics() -> Iterator[None]:
 
 @pytest.fixture
 def mock_file_repo() -> Iterator[AsyncMock]:
-    """One mock behind both module bindings of ``file_repository``.
+    """One mock behind both module bindings of file_repository.
 
-    ``store.py`` (insert_metadata) and ``service.py`` (get/update/delete) each
+    store.py (insert_metadata) and service.py (get/update/delete) each
     import the repository singleton directly, so both bindings must point at
     the same mock.
     """
@@ -128,7 +128,7 @@ def mock_chroma_client() -> Iterator[tuple[MagicMock, AsyncMock]]:
 
 @pytest.fixture
 def mock_sandbox_mirror() -> Iterator[tuple[AsyncMock, AsyncMock]]:
-    """Mock the JuiceFS projection boundary used by ``FileService.upload``."""
+    """Mock the JuiceFS projection boundary used by FileService.upload."""
     with (
         patch(
             "app.services.files.service.mirror_upload",
@@ -252,9 +252,7 @@ class TestFileServiceUpload:
         mock_chroma_client,
         mock_sandbox_mirror,
     ):
-        """`_log_upload_context` is pinned on its own below, but nothing proved
-        upload() hands it the real conversation id — dropping it there degrades
-        every upload's wide event to "" and no other assertion notices."""
+        """upload() must hand _log_upload_context the real conversation id, or every upload's wide event silently degrades to ""."""
         mock_cloudinary_upload.return_value = {
             "secure_url": "https://res.cloudinary.com/test/uploaded.pdf"
         }
@@ -698,8 +696,7 @@ class TestReindexFile:
         )
 
     async def test_chroma_client_init_fails_still_calls_index(self):
-        """When the client is unavailable, delete_from_index swallows its error
-        and index_file is still attempted."""
+        """When the Chroma client is unavailable, delete_from_index swallows its error and index_file still runs."""
         with (
             patch(
                 "app.services.files.store.ChromaClient.get_langchain_client",
@@ -889,8 +886,7 @@ class TestFileServiceUpdate:
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_ignores_non_allowlisted_fields(self, mock_del_cache, mock_file_repo):
-        """Only filename/description may be written — protected fields in the
-        payload must never reach the update model (mass-assignment guard)."""
+        """Only filename/description may be written; protected payload fields must never reach the update model (mass-assignment guard)."""
         mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc(filename="old.pdf"))
         mock_file_repo.apply_metadata_update = AsyncMock(return_value=_file_doc())
 

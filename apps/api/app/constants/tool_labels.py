@@ -5,11 +5,11 @@ Without curation it title-cases the raw Composio slug, producing ugly,
 redundant labels like "Googlecalendar Custom Fetch Events" (with the toolkit
 also shown separately as the category).
 
-``TOOL_DISPLAY_NAMES`` curates the user-facing tools with action-phrased
+TOOL_DISPLAY_NAMES curates the user-facing tools with action-phrased
 labels. Anything not listed falls back to a cleaned slug (toolkit prefix and
-``CUSTOM`` noise stripped, then title-cased) — see ``humanize_tool_name``.
+CUSTOM noise stripped, then title-cased) — see humanize_tool_name.
 
-When a tool has a curated label, ``format_tool_call_entry`` also drops the
+When a tool has a curated label, format_tool_call_entry also drops the
 secondary category line (the icon already conveys the integration), so curated
 tools render as a single clean line. Grow this map over time.
 """
@@ -176,11 +176,10 @@ _NOISE_TOKENS = frozenset({"CUSTOM", "TOOL", "TOOLS"})
 def humanize_tool_name(raw: str, category: str | None = None) -> str:
     """Return a clean display label for a raw tool slug.
 
-    Curated names win. Otherwise strip a leading toolkit token (when it matches
-    ``category``) and ``CUSTOM`` noise, then title-case — so
-    ``GOOGLECALENDAR_CUSTOM_FETCH_EVENTS`` becomes ``"Fetch Events"`` rather than
-    ``"Googlecalendar Custom Fetch Events"`` (the toolkit is already shown as the
-    category, so repeating it is the redundancy we're removing).
+    Curated names win; otherwise strips a leading toolkit token (when it
+    matches category) and CUSTOM noise, then title-cases — so
+    GOOGLECALENDAR_CUSTOM_FETCH_EVENTS becomes "Fetch Events", not
+    "Googlecalendar Custom Fetch Events" (the toolkit is already the category).
     """
     if raw in TOOL_DISPLAY_NAMES:
         return TOOL_DISPLAY_NAMES[raw]

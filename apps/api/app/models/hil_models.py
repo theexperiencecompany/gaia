@@ -11,11 +11,11 @@ from app.db.repositories.base import MongoDocument
 
 
 class HILApprovalStatus(StrEnum):
-    """Where one approval stands. ``StrEnum`` because these values are already written
+    """Where one approval stands. StrEnum because these values are already written
     to Mongo and streamed to the client as plain strings — the enum names them without
     changing a single stored document.
 
-    ``AUTO_APPROVED`` means *decided without asking*, and nothing more. It does not mean
+    AUTO_APPROVED means *decided without asking*, and nothing more. It does not mean
     the call ran: approvals are settled in their own graph node, and every tool — auto
     or not — is executed afterwards by the tool node.
     """
@@ -29,7 +29,7 @@ class HILApprovalStatus(StrEnum):
 
     @property
     def settled(self) -> bool:
-        """Whether the decision is final. Every status but ``PENDING`` is."""
+        """Whether the decision is final. Every status but PENDING is."""
         return self is not HILApprovalStatus.PENDING
 
 
@@ -40,7 +40,7 @@ HIL_DEFAULT_MODE: HILMode = "always_allow"
 
 
 class DeclinedCallRecord(TypedDict):
-    """What ``bridge.remember_declined_call`` stores in Redis for one declined call.
+    """What bridge.remember_declined_call stores in Redis for one declined call.
 
     Written and read by that one module, so it needs no runtime validation — the
     TypedDict is the shape contract both sides are checked against.
@@ -63,10 +63,10 @@ class HILPreferences(BaseModel):
 
 class HILToolRiskRecord(MongoDocument):
     """Cached LLM classification for one CUSTOM-integration tool (Mongo
-    ``hil_tool_risk``), for durability across restarts/processes.
+    hil_tool_risk), for durability across restarts/processes.
 
     Supported/internal tools are never stored here — they resolve straight from
-    the tool registry's ``destructive`` flag.
+    the tool registry's destructive flag.
     """
 
     tool_name: str
@@ -77,7 +77,7 @@ class HILToolRiskRecord(MongoDocument):
 
 
 class HILApprovalRecord(MongoDocument):
-    """Durable record of one approval request (Mongo ``hil_approvals``).
+    """Durable record of one approval request (Mongo hil_approvals).
 
     The decision source of truth and audit trail: who asked to run what, the
     decision, decider, and timing. The LangGraph checkpoint holds *graph* state;
@@ -111,17 +111,14 @@ class HILApprovalRecord(MongoDocument):
     # Stamped when the resume run is dispatched; a decided record without it is
     # a crashed resume the sweep re-dispatches.
     resumed_at: datetime | None = None
-    # Set only when a *detached background subagent* parked on this approval. The
-    # subagent's graph is checkpointed under this deterministic thread id, so the
-    # executor's wait_for_subagents join can rediscover and resume it after the
-    # executor's own pause — durable state, never the in-process session. ``None`` for
-    # every other approval (interactive tool calls, blocking handoffs).
+    # Set only when a detached background subagent parked here: durable state
+    # (never the in-process session) so wait_for_subagents can rediscover and
+    # resume it via this thread id after the executor's own pause. None otherwise.
     subagent_thread_id: str | None = None
     subagent_agent_name: str | None = None
-    # Stamped by the join once the parked subagent has been resumed and its result
-    # collected. Distinct from ``resumed_at`` (which records that a decision dispatched
-    # the *executor*): a batch decision wakes the executor once, then each parked
-    # subagent is collected individually across join rounds.
+    # Stamped by the join once this parked subagent is resumed and collected.
+    # Distinct from resumed_at (records dispatching the executor): one batch
+    # decision wakes the executor once, but each subagent is collected separately.
     subagent_collected_at: datetime | None = None
 
 
@@ -135,10 +132,9 @@ class HILApprovalUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    # Typed on the write side only. set_resume_item is the sole writer and takes
-    # an ExecutorRunItem, so every write is controlled. HILApprovalRecord keeps
-    # `dict[str, Any]` on the read side deliberately — narrowing a persisted
-    # field would start rejecting rows written before this type existed.
+    # Typed on the write side only — set_resume_item is the sole writer, taking
+    # an ExecutorRunItem. The read side (HILApprovalRecord) stays dict[str, Any]
+    # deliberately: narrowing it would reject rows written before this type existed.
     resume_item: ExecutorRunItem | None = None
     resumed_at: datetime | None = None
     subagent_thread_id: str | None = None

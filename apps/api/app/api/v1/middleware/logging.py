@@ -36,13 +36,10 @@ R = TypeVar("R")
 def log_function_call(
     func: Callable[P, Awaitable[R]] | Callable[P, R],
 ) -> Callable[P, Awaitable[R]] | Callable[P, R]:
-    """
-    Decorator that logs function calls with execution time tracking.
+    """Log a function call's execution time, wrapping both sync and async functions.
 
-    Slow functions (>1s) emit a warning that is captured in the wide event's
-    warnings[] array. Exceptions emit an error into errors[].
-
-    Supports both sync and async functions.
+    A call over 1s emits a warning into the wide event's warnings[]; an exception
+    emits an error into errors[].
     """
 
     func_name = func.__qualname__
@@ -109,31 +106,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     """Middleware that emits one structured wide event per HTTP request.
 
     Every scalar field is available for LogQL filtering in Grafana without any
-    pre-processing — just add `| json` to any query. The `errors`/`warnings`
-    arrays are the exception: bare `| json` drops arrays outright, and they are
-    absent (not empty) when nothing was recorded, so `| errors != "[]"` matches
-    every line. Reach into them with an explicit JSON expression instead.
-
-    LogQL examples:
-        # Requests that had any warning (even if 200 OK)
-        {service="gaia-backend"} | json first_warning="warnings[0].msg" | first_warning != ""
-
-        # Requests that had any error logged mid-flight
-        {service="gaia-backend"} | json first_error="errors[0].msg" | first_error != ""
-
-        # Every failed request — final_level folds in the HTTP status, so this
-        # also catches a 5xx that logged nothing
-        {service="gaia-backend"} | json | message="http_request" | final_level =~ "ERROR|CRITICAL"
-
-        # All chat requests by duration
-        {service="gaia-backend"} | json | path =~ "/api/v1/chat.*" | unwrap duration_ms
-
-        # Errors on a specific commit
-        {service="gaia-backend"} | json | commit="abc1234"
-            | json first_error="errors[0].msg" | first_error != ""
-
-        # Requests by specific user
-        {service="gaia-backend"} | json | user_id="<id>"
+    pre-processing — just add | json to any query. The errors/warnings arrays
+    are the exception: bare | json drops arrays outright, and they are absent
+    (not empty) when nothing was recorded, so | errors != "[]" matches every
+    line. Reach into them with an explicit JSON expression instead.
     """
 
     _SKIP_PATHS = frozenset(["/health", "/metrics", "/favicon.ico"])
@@ -142,11 +118,9 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     def _attach_user_context(request: Request) -> None:
         """Merge the authenticated user's identity into the wide event.
 
-        Called after ``call_next``: the auth middlewares run inside this
-        boundary and populate ``request.state.user`` during it. Attaching from
-        state here guarantees user identity on every event regardless of what
-        the handler did; fields a handler set explicitly win over the
-        automatic ones.
+        Called after call_next, since the auth middlewares populate
+        request.state.user inside that boundary. Fields a handler set
+        explicitly win over the automatic ones.
         """
         user = getattr(request.state, "user", None)
         if not user:
@@ -239,14 +213,11 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         wide_event_context = wide_log.get()
 
         context = {
-            # --- Business context accumulated by handlers/services ---
-            # Spread first so the authoritative HTTP values below always win.
-            # env/service/commit are NOT spread here: the JSON sink stamps them
-            # on every line (shared.py.logging._build_json_entry) and re-emits a
-            # colliding app field as ctx_<key>, so the infra identity is
-            # authoritative for real-time lines too, not just this one.
+            # Spread first so the authoritative HTTP values below always win. env/service/commit
+            # are NOT spread here: the JSON sink stamps them on every line and re-emits a
+            # colliding field as ctx_<key>, so infra identity stays authoritative there too.
             **wide_event_context,
-            # --- HTTP request characteristics (always authoritative) ---
+            # HTTP request characteristics (always authoritative)
             "method": request.method,
             "path": request.url.path,
             "status_code": status_code,

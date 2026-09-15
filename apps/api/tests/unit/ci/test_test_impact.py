@@ -35,14 +35,9 @@ def load_module() -> ModuleType:
 ti = load_module()
 
 
-# `select` and `fetch` fall back to the slice's own environment so a workflow
-# step stays one command line. That makes these tests inherit whatever the job
-# running them exported — and test-python DOES export SLICE_NAME/SLICE_PATHS/
-# SLICE_IGNORE. Under unit-b the ambient SLICE_PATHS restricted the selection
-# to tests/unit, which dropped the always-on tests/contracts and moved the
-# total from 30 to 28: green locally, red in CI, for a reason that had nothing
-# to do with the code under test. Clear the lot so every test states its own
-# inputs.
+# `select`/`fetch` fall back to the job's exported SLICE_NAME/SLICE_PATHS/
+# SLICE_IGNORE; ambient SLICE_PATHS once dropped the total 30 to 28 (green
+# locally, red in CI). Clear the lot so every test states its own inputs.
 CI_ENV = (
     "SLICE_NAME",
     "SLICE_PATHS",
@@ -70,7 +65,7 @@ def _hermetic_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def recorded_map(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     """Run two fake 'tests' under coverage with dynamic contexts.
 
-    ``alpha.py`` is touched by both, ``beta.py`` by only the second — the
+    alpha.py is touched by both, beta.py by only the second — the
     asymmetry is the whole point of the map.
     """
     from coverage import Coverage
@@ -176,7 +171,7 @@ def test_normalise_context_and_path() -> None:
 
 @pytest.fixture
 def suite(tmp_path: Path):
-    """A synthetic 10-test suite on disk, plus its map."""
+    """Build a synthetic 10-test suite on disk, plus its map."""
     root = tmp_path / "api"
     (root / "app").mkdir(parents=True)
     (root / "tests" / "unit").mkdir(parents=True)

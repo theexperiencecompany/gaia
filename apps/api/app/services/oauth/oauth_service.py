@@ -87,15 +87,9 @@ async def _run_signup_side_effects(user_id: str, email: str, signup_name: str) -
             error_type=type(e).__name__,
         )
 
-    # Welcome email + marketing contact are ESP round-trips that signup must not
-    # wait on: a slow or unreachable provider used to hang user creation for as
-    # long as the HTTP client allowed (observed: 90s+ with no timeout anywhere in
-    # the path). They go on the worker queue rather than an in-process task
-    # because nothing drains those on shutdown — a restart mid-send dropped both
-    # deliveries without a trace. Queued, the job outlives this process — and
-    # losing even this enqueue is survivable, because the user's row carries no
-    # delivery stamps and the hourly recovery sweep finishes it later. That is also
-    # why the handoff is bounded: a stalled Redis must not hold the OAuth callback.
+    # Welcome email + marketing contact must not block signup (observed 90s+ hangs): queued so
+    # a restart doesn't drop them, bounded so a stalled Redis can't hold the OAuth callback. A
+    # lost enqueue is survivable via the hourly recovery sweep.
     try:
         async with asyncio.timeout(SIGNUP_EMAIL_ENQUEUE_TIMEOUT_SECONDS):
             pool = await RedisPoolManager.get_pool()
@@ -121,26 +115,10 @@ async def store_user_info(
     *,
     external_side_effects: bool = True,
 ) -> tuple[str, bool]:
-    """
-    Stores user info from Google callback.
+    """Store user info from a Google callback, updating or creating the user.
 
-    - Updates existing users or creates new ones
-    - Stores profile picture URL directly without processing
-
-    Args:
-        name (str): The user's name.
-        email (str): The user's email.
-        picture_url (str): The URL of the profile picture from Google.
-        external_side_effects: When False, skip the outbound effects of signup
-            (PostHog events, welcome email, marketing audience, workspace
-            provisioning) while keeping the stored data shape identical — for
-            dev/test minting, which must never email or pollute analytics.
-
-    Returns:
-        tuple[str, bool]: (user_id, is_new_user)
-
-    Raises:
-        HTTPException: If any step in the process fails.
+    external_side_effects=False skips signup emails/analytics/workspace
+    provisioning while keeping the stored data shape identical, for dev/test minting.
     """
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
@@ -154,10 +132,9 @@ async def store_user_info(
         if update_fields:
             await user_repository.update(existing_user.id, UserUpdate(**update_fields))
         if external_side_effects:
-            # A returning user gets back only the workflows the dormancy sweep
-            # paused — never one they switched off themselves (that records no
-            # reason). Fire-and-forget: re-registering triggers must not slow or
-            # fail a login.
+            # Only workflows the dormancy sweep paused resume — never one the
+            # user switched off themselves (that records no reason).
+            # Fire-and-forget so re-registering triggers can't slow or fail a login.
             spawn_logged_task(
                 "resume_dormancy_paused_workflows",
                 resume_dormancy_paused_workflows(existing_user.id),
@@ -183,12 +160,9 @@ async def store_user_info(
     # store an empty name forever. The email's local part is the fallback; the
     # user can correct it in settings and no later login overwrites it.
     signup_name = name or derive_name_from_email(email)
-    # A user whose side effects are suppressed is owed neither signup delivery,
-    # so it is created with both already settled: the recovery sweep selects on
-    # a *missing* stamp and would otherwise mail and enrol every seeded account
-    # an hour after minting. The stamps ride in the insert rather than a
-    # follow-up write — one round trip, and no window in which the row exists
-    # unstamped. A real signup is created owing both; only the job stamps those.
+    # Suppressed side effects mean this user owes no signup delivery, so stamps
+    # are set on insert (the recovery sweep selects on a *missing* stamp and
+    # would otherwise mail/enrol every seeded account an hour later).
     settled_at = None if external_side_effects else datetime.now(UTC)
     created = await user_repository.create(
         UserDocument(
@@ -209,18 +183,9 @@ async def store_user_info(
 
 
 async def check_integration_status(integration_id: str, user_id: str) -> bool:
-    """
-    Check if a specific integration is connected.
+    """Return True if integration_id is connected for user_id.
 
-    This function uses the cached get_all_integrations_status() to avoid making
-    unnecessary API calls. It will only hit the cache once per user.
-
-    Args:
-        integration_id: The integration ID to check (e.g., 'gmail', 'calendar', 'notion')
-        user_id: The user ID to check status for
-
-    Returns:
-        bool: True if the integration is connected, False otherwise
+    Uses the cached get_all_integrations_status(), so it hits the cache once per user.
     """
     try:
         all_statuses: dict[str, bool] = await get_all_integrations_status(user_id)
@@ -239,19 +204,7 @@ async def check_integration_status(integration_id: str, user_id: str) -> bool:
 async def check_multiple_integrations_status(
     integration_ids: list[str], user_id: str
 ) -> dict[str, bool]:
-    """
-    Check status for multiple integrations.
-
-    This function uses the cached get_all_integrations_status() to efficiently
-    return status for multiple integrations without making additional API calls.
-
-    Args:
-        integration_ids: List of integration IDs to check
-        user_id: The user ID to check status for
-
-    Returns:
-        dict[str, bool]: Mapping of integration_id -> connection status
-    """
+    """Return connection status for each of integration_ids, from the cached status map."""
     try:
         all_statuses = await get_all_integrations_status(user_id)
         return {
@@ -396,14 +349,9 @@ async def handle_oauth_connection(
     background_tasks: BackgroundTasks,
     connected_account_id: str | None = None,
 ) -> None:
-    """
-    Handle successful OAuth connection: setup triggers, update bio status, queue processing.
+    """Handle successful OAuth connection: setup triggers, update bio status, queue processing.
 
-    Args:
-        user_id: The user ID
-        integration_config: The integration configuration object
-        background_tasks: FastAPI background tasks
-        connected_account_id: Composio's nanoid for the account that just authorized
+    connected_account_id is Composio's nanoid for the account that just authorized.
     """
     log.set(auth={"user_id": user_id, "provider": integration_config.id})
     log.set_ns(

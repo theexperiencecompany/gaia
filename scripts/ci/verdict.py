@@ -100,7 +100,7 @@ CHECKOUT_VERDICT_DIR = REPO_ROOT / "verify-logs" / "verdicts"
 
 
 def default_out_dir() -> Path:
-    """The verdict directory when no `--out` says otherwise."""
+    """Return the verdict directory when no `--out` says otherwise."""
     override = os.environ.get(VERDICT_DIR_ENV)
     if override:
         return Path(override)
@@ -274,7 +274,7 @@ def report(
 
 
 def _verdict_parser(prog: str, *, default_lane: str) -> argparse.ArgumentParser:
-    """The flags every verdict-producing subcommand shares."""
+    """Return the flags every verdict-producing subcommand shares."""
     parser = argparse.ArgumentParser(prog=f"verdict.py {prog}")
     parser.add_argument("--lane", default=default_lane)
     parser.add_argument("--out", type=Path, default=default_out_dir())
@@ -361,8 +361,7 @@ def _take_findings(args: list[str]) -> tuple[list[Finding], list[str]]:
 
 
 def cmd_emit(args: list[str]) -> int:
-    """Write one lane's verdict. Exits 0 even for a failure — it reports, it does
-    not decide; `ci_verdict_die` is the call site that dies on one."""
+    """Write one lane's verdict and exit 0 even on failure; `ci_verdict_die` is what dies."""
     parser = _verdict_parser("emit", default_lane="")
     parser.add_argument("--status", choices=[str(s) for s in Status])
     parser.add_argument("--summary")
@@ -536,7 +535,7 @@ def _missing_members(lane: str, family: str, matched: list[str], planned: str) -
 
 
 def _row_for(entry: str, found: dict[str, VerdictDoc]) -> list[Row]:
-    """The table rows one `--expect` entry produces, and nothing else.
+    """Return the table rows one `--expect` entry produces, and nothing else.
 
     Its own function because "what does this entry resolve to" is a separate
     question from "what does the gate do about it" — and because the four cases
@@ -729,10 +728,11 @@ def _pytestmark_is_regression(body: list[ast.stmt]) -> bool:
 
 
 def _test_ids(source: str, *, marked_only: bool) -> set[str]:
-    """Test node ids in ``source``; with ``marked_only`` just those carrying the
-    regression mark — on the function, on its class, on the module's
-    ``pytestmark``, or on one of its ``pytest.param`` cases (pytest's ``-m``
-    then narrows the run to the marked cases)."""
+    """Return test node ids in ``source``; with ``marked_only``, only regression-marked ones.
+
+    The mark counts on the function, its class, the module's ``pytestmark``, or
+    a ``pytest.param`` case.
+    """
     tree = ast.parse(source)
     module_marked = _pytestmark_is_regression(tree.body)
     ids: set[str] = set()

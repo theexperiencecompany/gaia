@@ -84,14 +84,10 @@ export function normalizeMessageBreakTokens(text: string): string {
 }
 
 /**
- * Drops a trailing partial break sentinel.
- *
- * The token arrives split across stream chunks, so a half-received
- * `<NEW_MESSAG` would otherwise flash in the bubble as literal text — and on
- * Telegram an unclosed `<` makes the whole HTML edit fail to parse. This also
- * runs on FINAL text: a reply whose last chunk is `…numbers<NEW_MESSAGE_B` (the
- * model was cut off mid-sentinel) has no later chunk to hide the fragment, so
- * without this the fragment is what the user reads.
+ * Drops a trailing partial break sentinel. The token arrives split across stream chunks, so a
+ * half-received `<NEW_MESSAG` would otherwise flash in the bubble as literal text — and on
+ * Telegram an unclosed `<` fails the whole HTML edit. Also runs on FINAL text: a reply cut off
+ * mid-sentinel has no later chunk to hide the fragment, so without this it's what the user reads.
  */
 export function stripPartialBreakToken(text: string): string {
   return text.replace(PARTIAL_SENTINEL_RE, "");

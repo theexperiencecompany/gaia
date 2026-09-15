@@ -1,6 +1,4 @@
-"""
-Linear trigger handler.
-"""
+"""Linear trigger handler."""
 
 import asyncio
 from typing import Any, ClassVar
@@ -66,7 +64,6 @@ class LinearTriggerHandler(TriggerHandler):
                 log.error(f"{LogTag.TRIGGER} Linear get all teams tool not found")
                 return []
 
-            # Invoke the tool
             result: ToolExecutionResponse = await asyncio.to_thread(tool.invoke, {})
 
             # Check response status

@@ -9,26 +9,12 @@ import { useIsPaid } from "./useIsPaid";
 import { useUserSubscriptionStatus } from "./usePricing";
 
 /**
- * Takes the paid-only wall down the moment the subscription behind it is
- * real, wherever the wall is being rendered.
- *
- * The wall refuses ordinary closes — that is what makes it a wall — so
- * something has to close it for the user, and nothing else in the app ever
- * calls `closeModal`. Two situations need it:
- *
- * - a cold-cache render raised the wall while the plan status was still
- *   unknown (see `useComposerSubmit`, which lets the action through while
- *   unknown rather than trapping a Pro user), and
- * - the checkout that lifts the wall finished somewhere else entirely: the
- *   desktop popup sends the user to subscribe in their browser, and the
- *   window holding the wall never hears about it.
- *
- * That second case is also why this asks again on a timer. The
- * `["subscription-status"]` query is a minute stale and never refetches on
- * focus, so a window sitting behind a wall would otherwise never re-read the
- * plan — the popup's wall survived a successful subscription until the app
- * was restarted. The asking stops the moment the answer is yes, and never
- * starts while no wall is up.
+ * Takes the paid-only wall down the moment the subscription is real — the
+ * wall refuses ordinary closes, so this is the only caller of `closeModal`.
+ * Needed both for a cold-cache render that raised the wall on an unknown
+ * status, and when checkout finishes elsewhere (e.g. the desktop popup). It
+ * also polls, since `["subscription-status"]` is stale with no refetch-on-focus,
+ * or the popup's wall would survive a paid subscription until app restart.
  */
 export function useClearPaywallWhenPaid(): void {
   const open = useUpgradeModalStore((state) => state.open);

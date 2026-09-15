@@ -1,5 +1,4 @@
-"""Usage summary assembly — the shared source for ``GET /usage/summary`` and
-the ``account/usage.json`` workspace projection.
+"""Usage summary assembly, shared by GET /usage/summary and the account/usage.json projection.
 
 Lives in the service layer so the endpoint stays a delegate and every consumer
 (the UI API, the agent's account view) reads the same numbers from the same
@@ -86,7 +85,7 @@ async def get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, Fea
 
 
 async def build_usage_summary(user_id: str) -> UsageSummary:
-    """The full usage summary: plan tier, per-feature windows, budget percentages."""
+    """Build the full usage summary: plan tier, per-feature windows, budget percentages."""
     subscription = await payment_service.get_user_subscription_status(user_id)
     user_plan = subscription.plan_type or PlanType.FREE
 

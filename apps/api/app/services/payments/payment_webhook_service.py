@@ -1,7 +1,4 @@
-"""
-Clean payment webhook service for Dodo Payments integration.
-Handles webhook events and updates database state accordingly.
-"""
+"""Payment webhook service for the Dodo Payments integration."""
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -142,21 +139,12 @@ class PaymentWebhookService:
     async def process_webhook(
         self, webhook_data: dict[str, Any], webhook_id: str
     ) -> DodoWebhookProcessingResult:
-        """
-        Process a Dodo payment webhook exactly once.
+        """Process a Dodo payment webhook exactly once.
 
-        The delivery is claimed (inserted under the unique ``webhook_id``)
-        before its handler runs, so a replay or a racing duplicate is turned
-        away at the claim, never after the side effects. A handler failure —
-        raised or returned — releases the claim so Dodo's retry is a clean run;
-        only a processed or ignored delivery keeps it.
-
-        Args:
-            webhook_data: The webhook payload
-            webhook_id: Unique webhook ID from webhook-id header for idempotency
-
-        Returns:
-            Processing result
+        Claimed under the unique webhook_id before its handler runs, so a
+        replay or racing duplicate is turned away at the claim, never after
+        the side effects. A handler failure releases the claim so Dodo's
+        retry is a clean run; only a processed or ignored delivery keeps it.
         """
         event_type_raw = str(webhook_data.get("type", "unknown"))
         if not await processed_webhook_repository.claim(webhook_id, event_type=event_type_raw):
@@ -205,12 +193,9 @@ class PaymentWebhookService:
             log.info(f"{LogTag.PAYMENT} Webhook processed", type=event.type, status=result.status)
 
             if result.status == WebhookProcessingStatus.FAILED:
-                # The handler ran and the state change still did not land, so
-                # this delivery is unfinished. Recording the outcome would keep
-                # the claim and the endpoint would answer 200 — between them
-                # that ends the event's life: Dodo stops resending and a manual
-                # redelivery is refused as a replay. Hand the claim back and let
-                # the endpoint ask for a retry.
+                # Recording the outcome here would end the delivery's life (Dodo
+                # stops resending, manual redelivery refused as replay) even
+                # though the state change never landed — release the claim instead.
                 log.error(
                     f"{LogTag.PAYMENT} Webhook handler did not complete; releasing the claim",
                     webhook_id=webhook_id,
@@ -221,11 +206,9 @@ class PaymentWebhookService:
                 return result
 
             if result.status == WebhookProcessingStatus.ABANDONED:
-                # No retry can land this one. The endpoint acknowledges it so
-                # Dodo stops redelivering; the claim is released so a human can
-                # redeliver it by hand once the cause (a missing user, a row
-                # that never came) is fixed, instead of being turned away as a
-                # replay.
+                # No retry can land this one: ack so Dodo stops redelivering, but
+                # release the claim so a human can redeliver by hand once the
+                # cause (a missing user, a row that never came) is fixed.
                 log.error(
                     f"{LogTag.PAYMENT} Webhook abandoned; releasing the claim for manual redelivery",
                     webhook_id=webhook_id,
@@ -275,7 +258,7 @@ class PaymentWebhookService:
             )
 
     def _handler_for(self, event_type: str, webhook_id: str) -> WebhookHandler | None:
-        """The handler for this type, if GAIA acts on it.
+        """Return the handler for this type, if GAIA acts on it.
 
         Resolved through the enum so an event type Dodo added since is
         acknowledged and ignored — not rejected as a validation error the
@@ -302,12 +285,10 @@ class PaymentWebhookService:
     ) -> None:
         """Capture a payment against the GAIA user who made it.
 
-        A webhook has no authenticated request for the context to inherit, so
-        the id has to come off the payment's own metadata. Without one the event
-        would land on an anonymous profile and quietly split that person's
-        funnel in two, so it is not sent at all — and the gap is logged, because
-        a real payment with no event behind it is invisible in PostHog by
-        definition.
+        A webhook has no authenticated request to inherit context from, so the
+        id comes off the payment's own metadata. Without one the event is not
+        sent at all — sending it anonymous would split the person's funnel —
+        and the gap is logged, since an uncaptured payment is invisible in PostHog.
         """
         user_id = await self._get_user_id_from_metadata(payment_data.metadata)
         if not user_id:
@@ -351,7 +332,6 @@ class PaymentWebhookService:
         )
 
     async def _handle_payment_failed(self, event: DodoWebhookEvent) -> DodoWebhookProcessingResult:
-        """Handle failed payment."""
         payment_data = event.get_payment_data()
         if not payment_data:
             raise ValueError("Invalid payment data")
@@ -387,7 +367,6 @@ class PaymentWebhookService:
     async def _handle_payment_cancelled(
         self, event: DodoWebhookEvent
     ) -> DodoWebhookProcessingResult:
-        """Handle cancelled payment."""
         payment_data = event.get_payment_data()
         if not payment_data:
             raise ValueError("Invalid payment data")
@@ -425,10 +404,10 @@ class PaymentWebhookService:
     def _reply_for(
         outcome: SubscriptionEventOutcome, event: DodoWebhookEvent, kind: SubscriptionEventKind
     ) -> tuple[WebhookProcessingStatus, str]:
-        """What the delivery is owed for what the reducer did.
+        """Return what the delivery is owed for what the reducer did.
 
         A missing row is the one outcome whose answer depends on time:
-        ``subscription.active`` is a separate delivery with its own retries,
+        subscription.active is a separate delivery with its own retries,
         so a lifecycle event that beat it is asked to come back — but only for
         as long as the activation could plausibly still be on its way.
         """

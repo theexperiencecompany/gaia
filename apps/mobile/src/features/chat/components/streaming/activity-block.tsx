@@ -858,14 +858,11 @@ interface SummaryIconItem {
 }
 
 /**
- * Persistent per-turn activity surface — an OBJECT, not a MODE. Rendered as
- * the first sibling of every AI turn; streamed text accumulates below it
- * simultaneously instead of the old mutually-exclusive surface swap.
- *
- * RUNNING shows a single live line (pulse + current step + elapsed ticker);
- * COMPLETED collapses to one tappable "Used N tools · Xs" row. The unified
- * chain only ever appears via explicit tap — expansion animates height
- * 0↔measured without adding/removing list items (FlashList-safe).
+ * Persistent per-turn activity surface — an OBJECT, not a MODE: rendered as the
+ * first sibling of every AI turn, with streamed text accumulating below it
+ * simultaneously. RUNNING shows a live line (pulse + step + elapsed ticker);
+ * COMPLETED collapses to a tappable "Used N tools · Xs" row that expands via
+ * height 0↔measured (FlashList-safe, no list item add/remove).
  */
 export function ActivityBlock({
   toolData,

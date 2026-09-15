@@ -41,7 +41,7 @@ async def _stub_is_up(client: httpx.AsyncClient) -> bool:
 
 
 def _spawn_stub() -> subprocess.Popen[bytes]:
-    """Launch the stub. Sync, and called off the loop via ``to_thread``."""
+    """Launch the stub. Sync, and called off the loop via to_thread."""
     return subprocess.Popen(
         ["uv", "run", "tools/llm-stub/server.py"],
         cwd=_REPO_ROOT,
@@ -54,10 +54,10 @@ def _spawn_stub() -> subprocess.Popen[bytes]:
 async def ensure_stub() -> None:
     """Start the scripted LLM stub if it is not already answering.
 
-    Async throughout: the poll used to be ``httpx.get`` + ``time.sleep`` inside a
+    Async throughout: the poll used to be httpx.get + time.sleep inside a
     coroutine, which blocks the event loop for up to fifteen seconds while the
     stub boots — long enough to stall every other case the run has in flight.
-    The process is registered with ``atexit`` so a stub this run started does not
+    The process is registered with atexit so a stub this run started does not
     outlive it and hold the port against the next one.
     """
     global _STUB_PROCESS

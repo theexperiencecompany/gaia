@@ -1,27 +1,16 @@
 """E2E: subscribing a tracked todo to a trigger, through a real compiled graph.
 
-WHAT THIS TESTS (REAL GAIA CODE):
-- ``list_trigger_fields`` / ``subscribe_todo_to_trigger`` from
-  ``app.agents.tools.tracked_todo_tools`` — the real tools, bound into a real
-  compiled agent graph.
-- The real matchable-fields catalog and the real deterministic validator: the
-  model writes a camelCased field name, and the repair path resolves it without
-  any second LLM call.
-- ``create_agent`` from ``app.override.langgraph_bigtool.create_agent`` compiles
-  the graph; the real pre-model hooks run.
+Covers real GAIA code: list_trigger_fields/subscribe_todo_to_trigger bound
+into a real compiled agent graph via create_agent, the real pre-model hooks,
+and the real matchable-fields catalog with its deterministic validator — a
+model-written camelCased field name is repaired without a second LLM call.
 
-The point of driving it here rather than calling the tool directly is the loop:
-a rejection has to be something the *next model turn* can act on. A unit test can
-assert the error text; only running the loop shows the model gets a second turn
-with the catalog in front of it.
+Driving it through the loop (not calling the tool directly) matters because a
+rejection has to be something the *next model turn* can act on — only the loop
+shows the model gets a second turn with the catalog in front of it.
 
-Mock surfaces:
-- LLM: BindableToolsFakeModel (scripted tool calls)
-- Composio registration + Mongo: mocked at the service seam
-- Store: InMemoryStore, Checkpointer: MemorySaver
-
-DELETE ``app/services/triggers/matchable_fields.py`` → these tests FAIL.
-DELETE the validator's mechanical repair → the typo test FAILS.
+Mocked: the LLM, Composio/Mongo (service seam), store and checkpointer.
+Deleting matchable_fields.py or the validator's repair fails these tests.
 """
 
 from unittest.mock import AsyncMock, patch
@@ -92,11 +81,7 @@ class TestSubscribeThroughTheGraph:
     async def test_a_typod_field_is_repaired_and_the_subscription_registers(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """The model writes ``threadId``; the catalog says ``thread_id``.
-
-        No LLM repair pass runs — the deterministic stage resolves it, and the
-        tool reports what it changed so the model does not repeat the mistake.
-        """
+        """The model writes threadId; the deterministic stage resolves it to thread_id with no second LLM call, and the tool reports what it changed."""
         script = [
             AIMessage(
                 content="",
@@ -151,11 +136,7 @@ class TestSubscribeThroughTheGraph:
     async def test_a_rejection_gives_the_next_turn_the_catalog_to_retry_from(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """The model invents a field, is refused, and its second turn succeeds.
-
-        This is the repair loop: the agent loop is the pass, and the catalog in
-        the error is what makes the retry right rather than another guess.
-        """
+        """The model invents a field, is refused with the catalog in the error, and its second turn succeeds instead of guessing again."""
         script = [
             AIMessage(
                 content="",

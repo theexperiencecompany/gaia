@@ -109,7 +109,7 @@ class DraftRequest(BaseModel):
 class MailDocument(UserScopedDocument):
     """An analyzed-email importance summary as stored in the mail collection.
 
-    ``extra="allow"`` because the analyzer stores a variable set of summary fields
+    extra="allow" because the analyzer stores a variable set of summary fields
     that the read endpoints return verbatim; keeping them avoids dropping data.
     """
 
@@ -165,10 +165,9 @@ class BulkEmailImportanceSummariesResponse(BaseModel):
     missing_message_ids: list[str]
 
 
-# Every Gmail message, label and draft payload below stays ``dict[str, Any]``:
-# Google owns those schemas and ``transform_gmail_message`` spreads the raw
-# Composio message before adding its derived keys, so the field set varies per
-# message. Only the envelopes the API builds itself are modelled here.
+# Gmail message/label/draft payloads below stay dict[str, Any]: Google owns
+# those schemas, and transform_gmail_message spreads the raw Composio message
+# before adding derived keys, so the field set varies. Only API-built envelopes are modelled.
 
 
 class GmailToolResult(BaseModel):
@@ -222,10 +221,10 @@ class GmailMessageResource(BaseModel):
 
 
 class GmailMessageSummary(ResponseModel):
-    """One message as ``transform_gmail_message`` shapes it for the web client.
+    """One message as transform_gmail_message shapes it for the web client.
 
     The declared fields are the derived ones every consumer reads; the raw
-    Gmail/Composio keys ride along via ``extra="allow"`` exactly as before.
+    Gmail/Composio keys ride along via extra="allow" exactly as before.
     """
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
@@ -253,9 +252,9 @@ class GmailMessagesResponse(BaseModel):
     next_page_token: str | None = Field(default=None, serialization_alias="nextPageToken")
 
     def raw_messages(self) -> list[dict[str, Any]]:
-        """The messages as the dicts ``transform_gmail_message`` produced.
+        """The messages as the dicts transform_gmail_message produced.
 
-        The memory pipeline (``email_processor``, ``process_email_content``) still
+        The memory pipeline (email_processor, process_email_content) still
         reads Gmail messages by key; this is its one conversion point.
         """
         return [message.model_dump(by_alias=True) for message in self.messages]
@@ -329,7 +328,7 @@ class SendEmailResponse(BaseModel):
 
 
 class SendEmailWithAttachmentsResponse(SendEmailResponse):
-    """Response for ``POST /gmail/send``, which also reports the attachment count."""
+    """Response for POST /gmail/send, which also reports the attachment count."""
 
     attachments_count: int
 
@@ -438,7 +437,7 @@ class AttachmentReference(BaseModel):
 
 
 class ComposioAttachment(TypedDict):
-    """The ``FileUploadable`` shape Composio's compose tools expect."""
+    """The FileUploadable shape Composio's compose tools expect."""
 
     name: str
     mimetype: str
@@ -446,11 +445,11 @@ class ComposioAttachment(TypedDict):
 
 
 def attachment_references_param_schema(description: str) -> dict[str, Any]:
-    """Agent-facing schema for the friendly ``attachments`` array param.
+    """Agent-facing schema for the friendly attachments array param.
 
-    Item properties are derived from ``AttachmentReference`` field descriptions,
+    Item properties are derived from AttachmentReference field descriptions,
     so a field change lands in one place instead of drifting between the model
-    and a hand-written schema dict. Kept ``{"type": "string"}`` (not the model's
+    and a hand-written schema dict. Kept {"type": "string"} (not the model's
     nullable anyOf) to match the shape agents already see.
     """
     return {

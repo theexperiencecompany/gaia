@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""
-Cleanup script to remove old/invalid workflow steps from the database.
-This removes workflows with malformed or outdated step structures.
-"""
+"""Remove workflows with malformed or outdated step structures from the database."""
 
 import asyncio
 from datetime import UTC, datetime, timedelta
@@ -23,11 +20,6 @@ workflows_collection = get_async_collection("workflows")
 async def cleanup_old_workflow_steps():
     """Remove workflows with old/invalid step structures."""
     try:
-        # Find workflows with invalid step structures
-        # 1. Steps that don't have required fields
-        # 2. Steps created more than 30 days ago without executions
-        # 3. Steps with malformed tool configurations
-
         thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
 
         # Query for workflows to clean up
@@ -117,7 +109,6 @@ async def cleanup_orphaned_workflow_data():
 
         logger.info(f"Found {invalid_count} workflows with corrupt/orphaned data.")
 
-        # Delete invalid workflows
         result = await workflows_collection.delete_many(invalid_query)
 
         logger.info(f"Cleaned up {result.deleted_count} corrupt/orphaned workflows.")

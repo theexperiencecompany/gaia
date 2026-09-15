@@ -3,7 +3,7 @@
 Sync explore/use-case workflows from production into the local database.
 
 The use-cases pages read GET /api/v1/workflows/explore, which serves every
-document in the `workflows` collection with ``is_explore: True``. This script
+document in the workflows collection with is_explore: True. This script
 pulls the ACTUAL explore workflows from the production API
 (https://api.heygaia.io) and writes them into the local MongoDB so local dev
 shows exactly the same use cases as prod.

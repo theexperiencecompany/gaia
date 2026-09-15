@@ -263,8 +263,7 @@ class TestExternalAdapterIdentity:
 
 @pytest.mark.asyncio
 class TestExternalTransformBrutalEdges:
-    """Pin the exact CommonMark output: no stray leading/trailing whitespace,
-    and no platform-specific markdown leaking back into the Python side."""
+    """Pins the exact CommonMark output: no stray whitespace, no platform-specific markdown leaking through."""
 
     async def test_title_only_has_no_trailing_newline(self) -> None:
         # A reminder with a title and empty body must not emit a dangling "\n".

@@ -1,7 +1,7 @@
 """Smoke tests for the FastAPI entry point (app.main).
 
 app.main constructs the real app at import time; under the root conftest's
-hermetic mocks that is safe (the same path the `client` fixture uses). Route
+hermetic mocks that is safe (the same path the client fixture uses). Route
 registration resolves lazily at request time in FastAPI 0.139, so the
 registration assertion dispatches a real request instead of inspecting
 app.routes. app.main.py was at 0% coverage.

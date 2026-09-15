@@ -1,27 +1,18 @@
 #!/usr/bin/env python3
 """Provision / re-sync user workspaces in bulk.
 
-Re-materializes the per-user JuiceFS workspace (system-file symlinks + user-root
-docs + SKILL.md / instructions catalog) for many users at once. Run this when:
+Re-materializes the per-user JuiceFS workspace (system-file symlinks,
+user-root docs, SKILL.md/instructions catalog) for many users at once. Use
+it after shipping new builtin skills (a deploy already re-syncs active users
+at startup; this forces it and/or covers inactive ones) or to backfill users
+who predate registration-time provisioning.
 
-- You ship new builtin skills and want existing users re-synced immediately. A
-  deploy already re-syncs *active* users at startup; this forces it and/or
-  covers inactive users.
-- Backfilling users who predate registration-time provisioning.
+Per-user work reuses the same idempotent, hash-gated path used at
+registration, so this is safe to re-run. Requires the JuiceFS mount (dockered
+API / prod); no-ops on a host without it.
 
-Per-user work is delegated to the same idempotent, hash-gated path used at
-registration, so this is safe to re-run.
-
-Usage::
-
-    cd apps/api
-    uv run python -m app.scripts.sync_user_workspaces                 # active users, stale only
-    uv run python -m app.scripts.sync_user_workspaces --all           # every user, stale only
-    uv run python -m app.scripts.sync_user_workspaces --all --force   # every user, ignore marker
-    uv run python -m app.scripts.sync_user_workspaces --active-days 90
-
-Requires the JuiceFS mount (run inside the dockered API / prod). No-ops on a
-host without the mount.
+Usage: uv run python -m app.scripts.sync_user_workspaces [--all] [--force]
+[--active-days N].
 """
 
 from __future__ import annotations

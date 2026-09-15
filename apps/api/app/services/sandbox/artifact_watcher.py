@@ -1,27 +1,18 @@
 """Per-sandbox artifact watcher.
 
-Watches a user's `/workspace/sessions/*/artifacts/` trees inside their E2B
-sandbox and publishes change events to the Redis channel `artifacts:{user_id}`.
-The chat stream subscribes to that channel and forwards matching events to the
-browser as `artifact_data` tool chunks, so anything the agent drops into
-`artifacts/` shows up in the chat UI within ~1-2s — including writes from
-bash, background processes, and non-shell writers, not just the `write` tool.
+Watches a user's /workspace/sessions/*/artifacts/ trees inside their E2B
+sandbox and publishes change events to the Redis channel artifacts:{user_id},
+which the chat stream forwards to the browser within ~1-2s — including bash,
+background, and non-shell writes, not just the write tool.
 
-Two interchangeable detection mechanisms behind one interface (the active one
-is decided empirically in Phase 0 and pinned via `ARTIFACT_DETECTION_MODE`):
+Two interchangeable detection mechanisms behind one interface, picked via
+ARTIFACT_DETECTION_MODE: watch_dir (E2B envd's native recursive watch, low
+latency, primary) and accesslog (tail JuiceFS's FUSE-native .accesslog, where
+every FS op streams through — debounce-rescan + diff on mutation, fallback).
 
-* ``watch_dir`` — E2B envd's native recursive directory watch. Low latency,
-  path-accurate. Primary.
-* ``accesslog`` — tail JuiceFS's FUSE-native ``/workspace/.accesslog``. Every
-  FS op streams through it (so FUSE-on-inotify limitations don't apply); on
-  any mutating op we debounce-rescan the host-side `artifacts/` dirs and
-  diff against the last snapshot. Robust fallback.
-
-The host-side JuiceFS mount is authoritative for file contents/metadata
-(zero-R2 PG reads); the sandbox-side stream is only a latency optimization.
-The Phase 6 `GET /sessions/{conv}/artifacts` endpoint is the defense-in-depth
-recovery path for any missed event. The wire contract lives in
-`app.services.artifact_events`.
+The host-side JuiceFS mount is authoritative for file contents/metadata; the
+sandbox-side stream is only a latency optimization. GET /sessions/{conv}/artifacts
+is the defense-in-depth recovery path for any missed event.
 """
 
 from __future__ import annotations
@@ -62,12 +53,9 @@ from app.services.storage import (
 from shared.py.wide_events import log, log_context, spawn_logged_task
 
 SESSIONS_WATCH_ROOT = f"{WORKSPACE_ROOT}/{SESSIONS_DIRNAME}"
-# `.accesslog` is a JuiceFS *mount-root* virtual file. mount_juicefs.sh mounts
-# JuiceFS at /mnt/jfs and bind-mounts users/<uid> -> /workspace, so the
-# accesslog lives at /mnt/jfs/.accesslog (NOT /workspace/.accesslog, which is
-# just a nonexistent path under the bound user prefix). It is root-owned
-# (mounted by mount.sh under user="root"), so reads need root — we drive them
-# through `commands.run(user="root")` so the sandbox user never needs sudo.
+# `.accesslog` is a JuiceFS mount-root virtual file, so it lives at
+# /mnt/jfs/.accesslog (not /workspace/.accesslog). It's root-owned; read via
+# `commands.run(user="root")` since the sandbox user has no sudo.
 SANDBOX_JFS_MOUNT = "/mnt/jfs"
 ACCESSLOG_PATH = f"{SANDBOX_JFS_MOUNT}/.accesslog"
 
@@ -90,10 +78,9 @@ _ACCESSLOG_DEBOUNCE_SECONDS = 0.7
 # Force a full rescan at least this often during ongoing activity, so an op whose
 # inode we couldn't map to a conversation can never strand an artifact update.
 _ACCESSLOG_FULL_BACKSTOP_SECONDS = 30.0
-# Pull the op name + its parenthesized inode args out of an accesslog line:
-#   "<ts> [uid:..,gid:..,pid:..] write (12345,4096,0): OK <0.000123>"
-# -> op="write", args="12345,4096,0". Stops at the first ")", so a result tuple
-# like create's "(inode,attr)" after the colon is ignored.
+# Pull op + parenthesized inode args from a line like
+# "<ts> [..] write (12345,4096,0): OK <0.000123>" -> op="write",
+# args="12345,4096,0" (stops at first ")", so a result tuple is ignored).
 _ACCESSLOG_OP_RE = re.compile(r"\]\s+(\w+)\s+\(([^)]*)\)")
 _ACCESSLOG_INT_RE = re.compile(r"\d+")
 
@@ -101,7 +88,7 @@ DetectionMode = Literal["watch_dir", "accesslog"]
 
 
 def _strip_artifacts_prefix(abs_path: str, conv_id: str) -> str:
-    """`/workspace/sessions/{c}/artifacts/a/b.md` -> `a/b.md`."""
+    """/workspace/sessions/{c}/artifacts/a/b.md -> a/b.md."""
     root = session_artifacts(conv_id) + "/"
     if abs_path.startswith(root):
         return abs_path[len(root) :]
@@ -123,7 +110,7 @@ async def _record_watch_exit(user_id: str, mode: DetectionMode, exc: Exception |
 
 
 class ArtifactWatcher:
-    """One instance per pooled sandbox. Owned by `PooledSandbox.watcher`."""
+    """One instance per pooled sandbox. Owned by PooledSandbox.watcher."""
 
     def __init__(self, user_id: str, sandbox: AsyncSandbox) -> None:
         self.user_id = user_id
@@ -233,14 +220,9 @@ class ArtifactWatcher:
         )
 
     def _on_watch_exit(self, exc: Exception | None = None) -> None:
-        # Stream died (envd restart / pause). Mark dead so the next acquire
-        # transparently reopens it. envd only invokes on_exit on a real error,
-        # and until now it flipped the flag with no trace at all — a sandbox
-        # whose artifacts silently stopped reaching chat looked identical to
-        # one the agent never wrote to. The flag flip is synchronous (the envd
-        # callback is sync and must complete before acquire can reopen), and
-        # the wide-event record of the exit is spawned so it still lands even
-        # though the callback itself cannot await.
+        # Stream died (envd restart/pause); mark dead synchronously — envd's
+        # callback can't await — so the next acquire reopens it. Previously this
+        # failed silently, indistinguishable from a sandbox nobody wrote to.
         self._stopped = True
         self._handle = None
         spawn_logged_task(
@@ -288,10 +270,9 @@ class ArtifactWatcher:
     # -- accesslog mode ---------------------------------------------------
 
     async def _start_accesslog(self) -> None:
-        # `user="root"`: mount.sh creates the JuiceFS mount and its root-only
-        # `.accesslog` as root, so we have to read it as root. We drive that
-        # through envd's `user=` parameter instead of sudo — the sandbox user
-        # has no sudo capability (template removes them from the `sudo` group).
+        # `user="root"`: `.accesslog` is root-only, and driven via envd's `user=`
+        # param instead of sudo — the sandbox user has no sudo capability
+        # (template removes them from the `sudo` group).
         self._handle = await self.sandbox.commands.run(
             f"tail -n0 -F {ACCESSLOG_PATH}",
             background=True,
@@ -312,9 +293,6 @@ class ArtifactWatcher:
         The tail handle has no exit callback (unlike watch_dir's on_exit), so a
         paused/restarted sandbox would otherwise leave is_alive() returning True
         forever and the next acquire would never reopen the watcher.
-
-        Spawned with a boundary so the stream's death is one event (when it
-        happened, how long it lived) rather than a silent flag flip.
         """
         with contextlib.suppress(Exception):
             await handle.wait()
@@ -326,12 +304,10 @@ class ArtifactWatcher:
     def _on_accesslog_line(self, line: str) -> None:
         """Route a mutating accesslog op to a scoped or full rescan.
 
-        Each op carries inode args (not paths). We resolve them against the
-        inode->conv map: a hit scopes the next rescan to that conversation; a
-        touch of the sessions root means a conv was added/removed (full rescan);
-        an op whose inodes we don't know is something we don't track (scratch,
-        .gaia, skills) and is ignored — the periodic full-rescan backstop in
-        `_debounced_rescan` still catches anything the map missed.
+        Ops carry inode args, not paths, resolved against the inode->conv map:
+        a hit scopes the rescan to that conversation, a sessions-root touch
+        means a conv was added/removed (full rescan), and an unmapped inode is
+        ignored — the periodic full-rescan backstop still catches it.
         """
         m = _ACCESSLOG_OP_RE.search(line)
         if m is None:

@@ -1,7 +1,7 @@
-"""Contract tests for LLMCallsRepository — the ``llm_calls`` ledger.
+"""Contract tests for LLMCallsRepository — the llm_calls ledger.
 
 Real Mongo, because the two things that matter here are storage facts, not
-Python facts: what actually lands in the document (a stored ``null`` reads back
+Python facts: what actually lands in the document (a stored null reads back
 identically to an absent field, so only Mongo can show which one we wrote), and
 that a call with no user is still a row rather than a dropped write. This is the
 collection that replaces log-scraping — a field that silently fails to persist
@@ -90,8 +90,7 @@ class TestCreate:
         assert raw["duration_ms"] == pytest.approx(1843.5)
 
     async def test_a_system_lane_call_with_no_user_is_still_recorded(self, repo, raw_collection):
-        """``user_id`` is genuinely absent on system lanes. Dropping the write
-        would leave that spend out of the ledger entirely."""
+        """user_id is genuinely absent on system lanes; dropping the write would leave that spend out of the ledger entirely."""
         await repo.create(_doc(agent_name="memory_consolidation", background=True))
 
         assert await raw_collection.count_documents({}) == 1
@@ -102,9 +101,7 @@ class TestCreate:
     async def test_unknown_identifiers_are_absent_rather_than_stored_as_null(
         self, repo, raw_collection
     ):
-        """The base writes with ``exclude_none``, so an unreachable id leaves no
-        key at all — which is what makes the sparse ``workflow_execution_id``
-        index cover only the calls that really ran inside a workflow."""
+        """The base writes with exclude_none, so an unreachable id leaves no key at all, keeping the sparse index scoped to real workflow calls."""
         await repo.create(_doc())
 
         raw = await raw_collection.find_one({})
@@ -127,8 +124,7 @@ class TestCreate:
         )
 
     async def test_every_call_is_its_own_row_never_an_upsert(self, repo, raw_collection):
-        """Unlike ``usage_daily``, this collection does not roll up: two calls in
-        one conversation are two rows, or the per-call ledger is not one."""
+        """Unlike usage_daily, this collection does not roll up: two calls in one conversation are two rows."""
         await repo.create(_doc(user_id="u1", conversation_id=CONVERSATION, cost_usd=0.01))
         await repo.create(_doc(user_id="u1", conversation_id=CONVERSATION, cost_usd=0.02))
 
@@ -137,8 +133,7 @@ class TestCreate:
     async def test_the_creation_time_the_caller_stamped_is_the_one_stored(
         self, repo, raw_collection
     ):
-        """``created_at`` is both the TTL key and the time axis of every ledger
-        query, so it has to be the moment the call was metered."""
+        """created_at is both the TTL key and the query time axis, so it must be the moment the call was metered."""
         metered_at = datetime(2026, 8, 29, 12, 0, tzinfo=UTC)
 
         await repo.create(_doc(created_at=metered_at, user_id="u1"))
@@ -160,7 +155,7 @@ class TestRead:
 
 
 class TestBackfillIdempotency:
-    """``--apply`` must be safe to re-run.
+    """--apply must be safe to re-run.
 
     The backfill takes long enough to be interrupted, and the natural response
     to an interrupted run is to run it again. If that duplicated history, every
@@ -183,8 +178,7 @@ class TestBackfillIdempotency:
         assert await raw_collection.count_documents({}) == 2
 
     async def test_a_partial_re_run_fills_only_the_gap(self, repo, raw_collection):
-        """The interrupted-run case: some rows landed, the rest did not. The
-        second pass must add exactly what is missing."""
+        """The interrupted-run case: the second pass must add exactly what is missing."""
         await raw_collection.create_index("backfill_key", unique=True, sparse=True)
         await repo.insert_backfilled([_doc(user_id="u1", backfilled=True, backfill_key="key-a")])
 
@@ -199,9 +193,7 @@ class TestBackfillIdempotency:
         assert await raw_collection.count_documents({}) == 2
 
     async def test_the_stored_backfilled_row_is_marked_as_such(self, repo, raw_collection):
-        """Backfilled rows carry only the context the log line held, so an
-        analysis that needs first-party precision has to be able to exclude
-        them."""
+        """Backfilled rows carry only the context the log line held, so precision-sensitive analysis can exclude them."""
         await raw_collection.create_index("backfill_key", unique=True, sparse=True)
 
         await repo.insert_backfilled([_doc(user_id="u1", backfilled=True, backfill_key="key-a")])

@@ -1,24 +1,15 @@
 """Signup's outbound ESP deliveries, as a durable ARQ job plus its recovery sweep.
 
-The welcome email and the marketing-audience contact are HTTP round-trips to an
-external provider, so signup must not wait on them. Running them as an
-in-process fire-and-forget task made signup fast but left the delivery with no
-owner: nothing drains those tasks on shutdown, so an API restart mid-send
-dropped both effects without even reaching their own failure loggers — the user
-silently never got the founder email and never entered the nurture sequence.
+The welcome email and marketing-contact call are HTTP round-trips; running
+them in-process fire-and-forget left them ownerless — an API restart
+mid-send silently dropped both, with no failure log. Queuing in Redis makes
+the job durable (ARQ only drops it once it finishes), but not the intent:
+SignupDelivery stamps make a re-run resumable instead of double-sending, and
+a per-user job id collapses duplicate enqueues.
 
-Queued in Redis instead, the job outlives the process that enqueued it: ARQ only
-removes a job from the queue once it finishes, so a worker that dies mid-send
-leaves the job to be picked up and re-run.
-
-That made the *job* durable but not the *intent*, which is what the other two
-pieces here are for. Each landed delivery stamps the user (``SignupDelivery``),
-so a re-run after a mid-send death resumes instead of mailing the same person
-twice, and the enqueue carries a per-user job id so two enqueues collapse into
-one job. A signup whose enqueue never reached Redis at all leaves both stamps
-missing, and ``sweep_undelivered_signup_emails`` finishes it later — before
-that, a single Redis hiccup lost both deliveries forever with no record
-anywhere that they were owed.
+An enqueue that never reached Redis leaves both stamps missing;
+sweep_undelivered_signup_emails finishes those later. Before that existed, a
+single Redis hiccup lost both deliveries forever with no record they were owed.
 """
 
 from __future__ import annotations
@@ -85,16 +76,10 @@ async def _add_contact(user_id: str, email: str, signup_name: str | None) -> Non
 async def deliver_signup_emails(_ctx: dict[str, Any], user_id: str) -> str:
     """Run whichever signup deliveries this user is still owed, concurrently.
 
-    Only the user id is queued: the stored row is the one source of the address
-    and name, so a sweep re-enqueue cannot disagree with signup about either,
-    and reading it is also what makes the job resumable — an already-stamped
-    delivery is skipped rather than sent again.
-
-    Both failure paths are swallowed on purpose: the account already exists, so
-    there is nothing to roll back, and raising here would only make ARQ retry a
-    welcome email the provider may well have already sent. The missing stamp is
-    what hands the delivery to the sweep, and the wide event is where a lost one
-    is diagnosed.
+    Only the user id is queued; reading the stored row keeps a sweep re-enqueue
+    from disagreeing with signup on the address/name, and makes the job
+    resumable (an already-stamped delivery is skipped). Failures are swallowed,
+    not raised — retrying could resend an email the provider already delivered.
     """
     log.set(user=UserContext(id=user_id))
     user = await user_repository.get(user_id)

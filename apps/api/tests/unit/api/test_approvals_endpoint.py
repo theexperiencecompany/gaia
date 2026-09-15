@@ -33,7 +33,7 @@ def _prefs(
 
 
 class TestPostApprovalDecision:
-    """POST /api/v1/approvals/{id}/decision"""
+    """POST /api/v1/approvals/{id}/decision."""
 
     @patch("app.api.v1.endpoints.approvals.resolve_approval", new_callable=AsyncMock)
     async def test_decision_success(self, mock_resolve: AsyncMock, client: AsyncClient):
@@ -109,7 +109,7 @@ class TestPostApprovalDecision:
 
 
 class TestPostBatchDecision:
-    """POST /api/v1/approvals/batch-decision"""
+    """POST /api/v1/approvals/batch-decision."""
 
     @patch("app.api.v1.endpoints.approvals.resolve_approvals_batch", new_callable=AsyncMock)
     async def test_batch_success(self, mock_batch: AsyncMock, client: AsyncClient):
@@ -193,7 +193,7 @@ class TestPostBatchDecision:
 
 
 class TestGetPreferences:
-    """GET /api/v1/approvals/preferences"""
+    """GET /api/v1/approvals/preferences."""
 
     @patch("app.api.v1.endpoints.approvals.get_hil_preferences", new_callable=AsyncMock)
     async def test_default_preferences(self, mock_get: AsyncMock, client: AsyncClient):
@@ -231,7 +231,7 @@ class TestGetPreferences:
 
 
 class TestPutPreferences:
-    """PUT /api/v1/approvals/preferences"""
+    """PUT /api/v1/approvals/preferences."""
 
     @patch("app.api.v1.endpoints.approvals.update_hil_preferences", new_callable=AsyncMock)
     async def test_partial_update(self, mock_update: AsyncMock, client: AsyncClient):
@@ -275,7 +275,7 @@ class TestPutPreferences:
 
 
 class TestSetToolOverride:
-    """PUT /api/v1/approvals/tools/{tool_name}"""
+    """PUT /api/v1/approvals/tools/{tool_name}."""
 
     @patch("app.api.v1.endpoints.approvals.set_tool_override", new_callable=AsyncMock)
     async def test_force_ask(self, mock_set: AsyncMock, client: AsyncClient):

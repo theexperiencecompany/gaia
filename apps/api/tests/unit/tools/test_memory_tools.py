@@ -2,7 +2,7 @@
 
 The memory engine is mocked at the facade boundary; the payload shaping,
 truncation, doc-type resolution and message formatting under test are real.
-The ``memory_data`` payloads asserted here are the frontend tool-card contract
+The memory_data payloads asserted here are the frontend tool-card contract
 documented at the top of the module under test.
 """
 
@@ -100,7 +100,7 @@ def _make_document(
 
 @pytest.fixture
 def stream() -> Iterator[MagicMock]:
-    """Capture the ``memory_data`` events the tools emit to the frontend."""
+    """Capture the memory_data events the tools emit to the frontend."""
     writer = MagicMock()
     with patch(f"{MODULE}.get_stream_writer", return_value=writer):
         yield writer

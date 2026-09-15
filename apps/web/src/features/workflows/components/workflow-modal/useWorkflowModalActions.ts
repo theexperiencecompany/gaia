@@ -173,10 +173,8 @@ export function useWorkflowModalActions({
   }, [formData.prompt, integrations, existingWorkflow]);
 
   // The integration backing the selected event trigger, if it still needs
-  // connecting. Resolved from the selected trigger slug (not trigger_config,
-  // which can briefly lag the selection) so this banner always agrees with the
-  // settings panel below — same slug, same integration. This one alone gates
-  // saving: a trigger that can't fire makes the whole workflow inert.
+  // connecting. Resolved from the trigger slug (not trigger_config, which can
+  // lag) so this agrees with the settings panel below; alone gates saving, since a trigger that can't fire makes the workflow inert.
   const missingTriggerIntegration = useMemo(() => {
     if (formData.activeTab !== "trigger" || !formData.selectedTrigger)
       return null;
@@ -196,10 +194,9 @@ export function useWorkflowModalActions({
     triggerSchemas,
   ]);
 
-  // Integrations the generated steps require but the user hasn't connected.
-  // Sourced from the backend-computed `missing_integrations` (same data the
-  // workflow card uses) but re-checked against live connection status so a
-  // freshly-connected integration drops out of the banner without a refetch.
+  // Integrations the generated steps require but aren't connected. Sourced
+  // from the backend's `missing_integrations` (same data the workflow card
+  // uses) but re-checked against live status so a freshly-connected one drops out without a refetch.
   const missingStepIntegrations = useMemo<Integration[]>(() => {
     const refs = currentWorkflow?.missing_integrations ?? [];
     return refs
@@ -492,11 +489,9 @@ export function useWorkflowModalActions({
   const handleActivationToggle = async (newActivated: boolean) => {
     if (mode !== "edit" || !currentWorkflow) return;
 
-    // GAIA is paid-only: a free user can't enable a workflow. Show the
-    // upsell toast and open the paywall — never call activateWorkflow. While
-    // the subscription-status is still unknown, let the toggle proceed (the
-    // backend is the backstop) rather than gating on a not-yet-resolved
-    // "false".
+    // GAIA is paid-only: a free user can't enable a workflow — show the upsell
+    // toast and open the paywall instead of calling activateWorkflow. While
+    // status is unknown, let the toggle proceed; the backend is the backstop.
     if (newActivated && !isSubscriptionStatusUnknown && !isPaid) {
       toast.info("Workflows require GAIA Pro", {
         action: {

@@ -2,8 +2,8 @@
 
 Mint users, seed deterministic sample data, attach files, and tear them down so
 coding agents can bootstrap a full environment without a WorkOS login. The router
-is mounted by ``create_app`` only when ``ENV == development`` and
-``DEV_AUTH_BYPASS_EMAIL`` is set, so every route here 404s in production.
+is mounted by create_app only when ENV == development and
+DEV_AUTH_BYPASS_EMAIL is set, so every route here 404s in production.
 """
 
 from fastapi import APIRouter, File, Form, Header, UploadFile, status
@@ -108,10 +108,9 @@ async def run_executor(payload: RunDevAgentRequest) -> DevAgentRunResponse:
     try:
         result = await run_executor_direct(payload.email, payload.task, payload.conversation_id)
     except GraphRecursionError as e:
-        # The agent looped without converging. That is a result about the agent,
-        # not a server fault: raising 500 made callers classify it as
-        # infrastructure and drop it from their accuracy, which flatters the
-        # agent by hiding its worst outcome.
+        # The agent looped without converging — a result about the agent, not
+        # a server fault. Raising 500 let callers classify it as infrastructure
+        # and drop it from accuracy, flattering the agent's worst outcome.
         log.set(dev={"converged": False, "reason": str(e)[:200]})
         return DevAgentRunResponse(
             user_id="",

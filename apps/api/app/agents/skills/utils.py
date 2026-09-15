@@ -38,14 +38,8 @@ def get_github_headers() -> dict[str, str]:
 def parse_github_url(url: str) -> tuple[str, str]:
     """Parse GitHub URL into owner and repo.
 
-    Args:
-        url: GitHub URL or owner/repo string
-
-    Returns:
-        Tuple of (owner, repo)
-
     Raises:
-        ValueError: If URL is invalid
+        ValueError: If URL is invalid.
     """
     url = url.strip()
     if not url:
@@ -72,14 +66,7 @@ def parse_github_url(url: str) -> tuple[str, str]:
 
 
 def find_skill_files(tree_entries: list[dict]) -> list[str]:
-    """Find all SKILL.md and skill.md files in the tree.
-
-    Args:
-        tree_entries: List of tree entries from Git Tree API
-
-    Returns:
-        List of paths to skill files
-    """
+    """Find all SKILL.md and skill.md files in the tree entries from Git Tree API."""
     skill_files = []
 
     for entry in tree_entries:
@@ -96,14 +83,7 @@ def find_skill_files(tree_entries: list[dict]) -> list[str]:
 
 
 def get_folder_path(file_path: str) -> str:
-    """Get the folder path from a file path.
-
-    Args:
-        file_path: Path to the file
-
-    Returns:
-        Folder path (empty string if in root)
-    """
+    """Get the folder path from a file path (empty string if in root)."""
     if "/" not in file_path:
         return ""
     return file_path.rsplit("/", 1)[0]
@@ -112,18 +92,7 @@ def get_folder_path(file_path: str) -> str:
 def get_folder_priority(file_path: str) -> int:
     """Get priority for folder sorting (lower = higher priority).
 
-    Priority order:
-    1. Root (empty path)
-    2. skills/
-    3. .claude/skills/, .cursor/skills/, etc.
-    4. .claude/
-    5. Other folders
-
-    Args:
-        file_path: Path to the skill file
-
-    Returns:
-        Priority value (lower = higher priority)
+    Order: root, skills/, .claude(cursor)/skills/, .claude/, other folders.
     """
     folder = get_folder_path(file_path)
 

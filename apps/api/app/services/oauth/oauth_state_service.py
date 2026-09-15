@@ -1,5 +1,5 @@
 """
-OAuth State Management Service
+OAuth State Management Service.
 
 Provides secure state token management for OAuth flows to prevent:
 - Open redirect vulnerabilities
@@ -18,21 +18,10 @@ from shared.py.wide_events import OAuthContext, log
 
 
 async def create_oauth_state(user_id: str, redirect_path: str, integration_id: str) -> str:
-    """
-    Create a secure state token for OAuth flow.
+    """Create a secure state token for OAuth flow, stored in Redis with expiration.
 
-    Args:
-        user_id: The user ID initiating the OAuth flow
-        redirect_path: The frontend path to redirect to after OAuth completes
-        integration_id: The integration being connected
-
-    Returns:
-        A secure random state token
-
-    Security:
-        - Uses cryptographically secure random token (32 bytes = 256 bits)
-        - Stores state server-side with automatic expiration
-        - Validates redirect path against allowlist
+    Uses a 32-byte cryptographically secure random token and validates the
+    redirect path against an allowlist.
     """
     log.set(
         auth={"user_id": user_id, "provider": integration_id},
@@ -77,19 +66,9 @@ async def create_oauth_state(user_id: str, redirect_path: str, integration_id: s
 async def validate_and_consume_oauth_state(
     state_token: str,
 ) -> dict[str, str] | None:
-    """
-    Validate and consume an OAuth state token.
+    """Validate an OAuth state token and delete it to prevent replay, or return None.
 
-    Args:
-        state_token: The state token to validate
-
-    Returns:
-        Dictionary containing user_id, redirect_path, and integration_id if valid,
-        None if invalid or expired
-
-    Security:
-        - Token is consumed (deleted) after validation to prevent replay attacks
-        - Returns None for invalid/expired tokens
+    Returns user_id, redirect_path, and integration_id when valid.
     """
     try:
         redis_client = redis_cache.client
@@ -137,22 +116,7 @@ async def validate_and_consume_oauth_state(
 
 
 def is_safe_redirect_path(path: str) -> bool:
-    """
-    Validate that a redirect path is safe.
-
-    Args:
-        path: The path to validate
-
-    Returns:
-        True if the path is safe, False otherwise
-
-    Security checks:
-        - No absolute URLs (must be relative paths)
-        - No protocol-relative URLs (//example.com or /\\example.com)
-        - Must start with /
-        - No javascript: or data: URLs
-        - No path traversal attempts
-    """
+    """Return True if path is a safe relative redirect (no protocol-relative or traversal tricks)."""
     if not path:
         return False
 

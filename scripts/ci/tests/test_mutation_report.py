@@ -105,12 +105,7 @@ def _module_record(
 
 
 def test_the_module_record_carries_every_survivor_with_its_full_diff(tmp_path: Path) -> None:
-    """This lane's own record: one entry per MUTANT, each with the WHOLE diff.
-
-    The diff is the record's reason to exist — a mutant id alone is unactionable
-    because mutmut's numbering cannot be regenerated outside the run that
-    produced it — and this file, not the shared verdict, is what `replay` reads.
-    """
+    """Record one entry per mutant with its whole diff — mutmut ids cannot be regenerated, and replay reads this."""
     rows = [(f"{BOT_PREFIX}{n}", "survived", f"CHANGED:{BOT_ARGS_LINE}") for n in (3, 4, 5)]
     record = _module_record(tmp_path, rows)
 
@@ -406,7 +401,7 @@ def test_collect_summary_counts_modules_without_repeating_findings(tmp_path: Pat
 
 
 def _sandbox(tmp_path: Path, mutmut_behaviour: str) -> Path:
-    """A miniature repo `mutation.sh shard` can run for real, end to end.
+    """Return a miniature repo `mutation.sh shard` can run for real, end to end.
 
     The fake venv python is the point: it answers the mutmut invocations the way
     a broken (or empty) run does and hands everything else to the real
@@ -470,7 +465,7 @@ REPO_VERDICTS = REPO_ROOT / "verify-logs" / "verdicts"
 
 
 def _isolated_env(tmp_path: Path, **extra: str) -> dict[str, str]:
-    """The environment every emitting subprocess runs in.
+    """Return the environment every emitting subprocess runs in.
 
     `verdict.py emit` resolves its output directory as
     `--out > $GAIA_VERDICT_DIR > $RUNNER_TEMP/verdicts > verify-logs/verdicts`,
@@ -494,7 +489,7 @@ def _assert_nothing_escaped(tmp_path: Path) -> None:
 
 
 def _assert_repo_verdicts_untouched(before: set[Path]) -> None:
-    """The repo's verdict tree is not a test output directory.
+    """Assert the repo's verdict tree is not a test output directory.
 
     Checked by path rather than by `git status`, which is blind here:
     verify-logs/ is gitignored, so a verdict written into the checkout is
@@ -506,7 +501,7 @@ def _assert_repo_verdicts_untouched(before: set[Path]) -> None:
 
 @pytest.fixture(autouse=True)
 def repo_verdicts_untouched() -> Iterator[None]:
-    """Applies the guard to every test in this file, including future ones."""
+    """Apply the guard to every test in this file, including future ones."""
     before = set(REPO_VERDICTS.rglob("*")) if REPO_VERDICTS.exists() else set()
     yield
     _assert_repo_verdicts_untouched(before)
@@ -564,7 +559,7 @@ def test_a_mutmut_child_that_produced_nothing_is_an_error_not_a_pass(tmp_path: P
 
 
 def test_a_run_that_generated_no_mutants_is_a_skip_not_a_pass(tmp_path: Path) -> None:
-    """mutmut ran and found nothing to mutate: honest, but still not proof.
+    """Mutmut ran and found nothing to mutate: honest, but still not proof.
 
     Distinguished from the case above by the evidence that it ran at all — a
     log with output in it and a mutants/ tree on disk.
@@ -651,17 +646,10 @@ def _shard_with_env(root: Path, **env: str) -> subprocess.CompletedProcess[str]:
 def test_the_shard_takes_its_cpu_tokens_from_a_private_pool_never_the_host(
     tmp_path: Path, flock: str
 ) -> None:
-    """A shard acquires nproc-2 host CPU tokens before its first module. Run on
-    the box with the pool inherited, this suite queued behind the real shards
-    for the semaphore's full 600 s fail-open wait — per test — and the harness
-    lane died at its cap with the last 6% never reached (job 103243166187).
-    conftest.py points every test at a pool of its own; this proves the shard
-    honours it: its grant lands there, and is gone again when it exits.
+    """Keep the shard's CPU grant and verdict inside the test's own pool and verdict dir.
 
-    The verdict is the same story one rung over: the first run of this test
-    inherited the job's RUNNER_TEMP, the shard wrote `mutation/app/services/
-    x.py` into the job's real verdict directory, and the harness job's
-    ownership check refused to upload a lane it does not own (run 34595547568).
+    Inheriting the real pool queued each test 600 s (job 103243166187); inheriting
+    RUNNER_TEMP wrote a foreign verdict the upload refused (run 34595547568).
     """
     root = _sandbox(tmp_path, "exit 0")
     pool = Path(os.environ["GAIA_CPU_SLOTS_DIR"])
@@ -766,8 +754,7 @@ print(json.dumps([{"module": "app/calc.py", "testfiles": ["tests/test_calc.py"]}
 
 
 def _synthetic_repo(tmp_path: Path) -> Path:
-    """A git repo with a tiny app/ + tests/ — mutmut against apps/api is far too
-    heavy for a laptop, and replay's contract does not depend on the real API."""
+    """Build a git repo with a tiny app/ + tests/; mutmut on apps/api is too heavy here."""
     root = tmp_path / "repo"
     api = root / "apps" / "api"
     (api / "app").mkdir(parents=True)
@@ -865,11 +852,7 @@ def test_replay_reports_a_mutant_the_suite_kills(tmp_path: Path) -> None:
 
 
 def test_replay_baseline_never_runs_the_mutated_bytecode(tmp_path: Path) -> None:
-    """A `+ → -` mutation keeps the file size, and on a fast runner the revert
-    lands in the same second — the two things a .pyc header is validated
-    against — so an in-tree __pycache__ from the mutated run would make the
-    baseline run fail too and report INCONCLUSIVE. Pinning the mtime makes the
-    collision certain rather than timing-dependent."""
+    """Isolate bytecode: a same-size, same-second revert reuses a stale .pyc and reads INCONCLUSIVE."""
     root = _synthetic_repo(tmp_path)
     same_second = tmp_path / "python-with-pinned-mtime"
     same_second.write_text(

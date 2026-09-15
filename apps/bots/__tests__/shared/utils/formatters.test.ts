@@ -219,13 +219,9 @@ describe("formatConversationList", () => {
 // convertToTelegramHtml — Telegram HTML parse mode
 // ---------------------------------------------------------------------------
 describe("convertToTelegramHtml", () => {
-  // --- Regression guards ---------------------------------------------------
-  // These encode the exact production bug legacy Markdown caused (captured in
-  // the live DOM: an auth token's underscores were parsed as italics and
-  // silently dropped, corrupting the link). They assert OBSERVABLE output, so
-  // they fail on any parse mode that mangles URLs/underscores — which is what
-  // makes them catch the regression the old implementation-coupled tests
-  // could not.
+  // Regression guards: legacy Markdown parsed an auth token's underscores as
+  // italics and silently dropped them, corrupting the link. Asserting observable
+  // output catches any parse mode that mangles URLs/underscores.
 
   it("keeps underscores in a bare URL intact (no italic, nothing dropped)", () => {
     const out = convertToTelegramHtml(
@@ -259,8 +255,6 @@ describe("convertToTelegramHtml", () => {
       "I have 3 apples and 12 oranges",
     );
   });
-
-  // --- Formatting conversions ---------------------------------------------
 
   it("converts **bold** to <b>", () => {
     expect(convertToTelegramHtml("Hello **world**")).toBe("Hello <b>world</b>");

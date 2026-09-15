@@ -23,15 +23,10 @@ import { classifyNavigation } from "./navigation-policy";
 import { closeSplashWindow, getLoaderBounds } from "./splash";
 
 /**
- * Guard top-level navigation of the main window.
- *
- * The renderer shares the privileged preload bridge, so any XSS or
- * rogue redirect that navigates the window to an attacker origin would
- * hand that origin our IPC surface. We therefore block navigation to any
- * origin outside the app's known-good set (web server + API origin).
- *
- * @param event - The `will-navigate` / `will-redirect` event.
- * @param url - The target URL being navigated to.
+ * Guard top-level navigation of the main window. The renderer shares the
+ * privileged preload bridge, so an XSS or rogue redirect to an attacker origin
+ * would hand that origin our IPC surface — block navigation outside the app's
+ * known-good origins (web server + API origin).
  */
 function guardNavigation(event: Event, url: string): void {
   // Web server (dev or embedded prod) and API origin are the only
@@ -103,16 +98,10 @@ export function consumePendingDeepLink(): string | null {
 }
 
 /**
- * Create the main application window.
- *
- * The window is created **hidden** (`show: false`) and starts
- * polling for the appropriate server (production or dev) in the
- * background. Once the server responds and the page loads, the
- * renderer is expected to send a `window-ready` IPC message
- * which triggers {@link showMainWindow}.
- *
- * @param serverReady - Callback returning `true` when the production
- *   server is up. Ignored in development mode.
+ * Create the main application window. Created **hidden** (`show: false`) and
+ * polls for the appropriate server (prod or dev, `serverReady` ignored in dev)
+ * in the background; once it responds and the page loads, the renderer sends
+ * `window-ready`, which triggers {@link showMainWindow}.
  */
 export async function createMainWindow(
   serverReady: () => boolean,

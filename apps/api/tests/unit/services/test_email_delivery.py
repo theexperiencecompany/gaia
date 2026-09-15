@@ -299,8 +299,7 @@ class TestSendProSubscriptionEmail:
         assert message.html == "<h1>welcome pro</h1>"
 
     async def test_failure_propagates(self):
-        """The failure is recorded against the user ID — the field every
-        dashboard groups by — and carries no email address."""
+        """The failure is recorded against the user ID, the field every dashboard groups by, and carries no email address."""
         with (
             patch(
                 f"{SENDERS_MOD}.send_email",

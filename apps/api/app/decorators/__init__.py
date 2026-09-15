@@ -1,6 +1,4 @@
-"""
-Decorators package for GAIA backend.
-"""
+"""Decorators package for GAIA backend."""
 
 from .caching import Cacheable, CacheInvalidator
 from .documentation import with_doc
@@ -24,7 +22,6 @@ from .rate_limiting import (
 __all__ = [
     # Documentation
     "with_doc",
-    # Rate limiting
     "with_rate_limiting",
     "tiered_rate_limit",
     "enforce_rate_limit",

@@ -43,7 +43,7 @@ class TestGetDomainCacheKey:
         assert key == "favicon:https://app.example.org:8443"
 
     def test_scheme_is_part_of_key(self) -> None:
-        """http and https for the same host get distinct cache keys."""
+        """Http and https for the same host get distinct cache keys."""
         # NOSONAR python:S5332 — the http:// literal is intentional here: this
         # asserts the cache key separates schemes; no real connection is made.
         http_key = _get_domain_cache_key("http://example.com")  # NOSONAR python:S5332

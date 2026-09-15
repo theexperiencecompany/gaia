@@ -66,8 +66,7 @@ class TestOnboardingGate:
         create.assert_not_awaited()
 
     async def test_unstamped_trigger_fire_is_recognized_and_skipped(self) -> None:
-        """In-flight jobs queued before the trigger service stamped trigger_type
-        carry only trigger_data — they must still be treated as system-initiated."""
+        """A job queued before trigger_type was stamped carries only trigger_data but is still system-initiated."""
         result, budget, create = await _run_task(
             _workflow(), _user(completed=False), {"trigger_data": {"event": "x"}}
         )

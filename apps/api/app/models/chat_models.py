@@ -16,22 +16,14 @@ class ImageData(BaseModel):
 
 
 class ToolDataEntry(TypedDict):
-    """Unified structure for tool execution data.
+    """Unified shape for tool execution data attached to a message.
 
-    Every key an emitter can stamp must be declared here. This TypedDict is the
-    element type of ``MessageModel.tool_data``, and Pydantic drops undeclared
-    keys on ``model_dump()`` — which is how a message reaches Mongo. An emitted
-    key missing from this shape therefore survives the live SSE frame (the
-    frontend parses those against its own loose schema) and silently vanishes
-    from the stored turn, so the bug only ever appears on reload.
-
-    ``data`` is deliberately open: every tool owns the shape it puts here (a
-    calendar option list, an email thread, a rendered artifact), so the only
-    honest constraint is "JSON the frontend's per-tool card knows how to read".
-    Everything around it is closed.
-
-    The frontend mirror is ``ToolDataEntrySchema`` in
-    ``libs/shared/ts/src/chat/schema.ts``.
+    Every key an emitter can stamp must be declared here — Pydantic drops
+    undeclared keys on model_dump(), so a key missing from this TypedDict
+    silently vanishes from the stored turn (only visible on reload). data is
+    deliberately open: each tool owns its own JSON shape; the frontend's
+    per-tool card is the only reader. Mirrored by ToolDataEntrySchema in
+    libs/shared/ts/src/chat/schema.ts.
     """
 
     tool_name: str
@@ -42,10 +34,9 @@ class ToolDataEntry(TypedDict):
     # Optional: emitters always stamp it, but legacy stored entries predate the
     # field, so a read must tolerate its absence rather than fail validation.
     timestamp: NotRequired[str | None]
-    # Which card renders the entry. Stamped by format_tool_call_entry, the HIL
-    # approval frame, the reasoning absorber, and the artifact/rate-limit
-    # emitters; absent on the plain per-tool-field entries normalize_custom_event
-    # builds, which the frontend keys off tool_name alone.
+    # Which card renders the entry, stamped by format_tool_call_entry, the HIL
+    # frame, the reasoning absorber and rate-limit/artifact emitters; absent on
+    # plain per-tool-field entries, which the frontend keys off tool_name alone.
     tool_category: NotRequired[str]
     # Tags an entry produced inside a delegated subagent, so
     # reconstruct_subagent_groups can fold it into that subagent's group.
@@ -168,7 +159,7 @@ class ConversationSource(str, Enum):
 class SourceCategory(str, Enum):
     """Generalized origin of a graph invocation.
 
-    Coarser than ``ConversationSource``: every specific channel rolls up to one
+    Coarser than ConversationSource: every specific channel rolls up to one
     of these so traces and tools can branch on "where did this run come from"
     without enumerating every platform.
     """
@@ -179,9 +170,9 @@ class SourceCategory(str, Enum):
 
     @classmethod
     def from_source(cls, source: "ConversationSource | str | None") -> "SourceCategory":
-        """Map a specific ``ConversationSource`` to its category.
+        """Map a specific ConversationSource to its category.
 
-        Unknown / unset sources fall back to ``BG`` — the only callers that
+        Unknown / unset sources fall back to BG — the only callers that
         leave the source blank are the silent background paths.
         """
         channel = ConversationSource.coerce(source)
@@ -192,10 +183,9 @@ class SourceCategory(str, Enum):
         return cls.BG
 
 
-# Specific channels that belong to each generalized category. Single source of
-# truth for "which conversation sources are messaging-platform bots" — reused by
-# delivery routing and the web conversation-list filter. Members are enums so all
-# comparisons happen on ConversationSource, never raw strings.
+# Single source of truth for "which conversation sources are messaging-platform
+# bots" — reused by delivery routing and the web conversation-list filter.
+# Members are enums so comparisons stay on ConversationSource, never raw strings.
 _UI_SOURCES: frozenset[ConversationSource] = frozenset(
     {ConversationSource.WEB, ConversationSource.MOBILE, ConversationSource.DESKTOP}
 )

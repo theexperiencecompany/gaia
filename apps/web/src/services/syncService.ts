@@ -16,11 +16,9 @@ import {
 import type { MessageType } from "@/types/features/convoTypes";
 import { fromRegistryEntries } from "@/types/features/toolDataTypes";
 
-// When a remote message overwrites an existing local one, carry forward a
-// non-empty local tool_data if the remote copy lacks it. Executor tool cards are
-// produced client-side-first during streaming and saved locally on abort; the
-// backend's cancelled/partial copy may not have caught up yet, and a wholesale
-// "remote wins" replacement would otherwise delete the cards the user already saw.
+// Carries forward non-empty local tool_data when the remote copy lacks it: executor tool cards
+// are produced client-side during streaming and saved locally on abort, so the backend's
+// cancelled/partial copy may not have caught up yet — a bare "remote wins" would delete them.
 const withPreservedToolData = (remote: IMessage, local: IMessage): IMessage => {
   const remoteHasToolData =
     Array.isArray(remote.tool_data) && remote.tool_data.length > 0;
@@ -61,18 +59,15 @@ const mergeMessageLists = (
       // but keep locally-retained tool cards the backend copy may still be missing.
       messageMap.set(msg.id, withPreservedToolData(msg, existing));
     } else {
-      // Message exists locally
-      // ALWAYS prefer remote version for synced messages to ensure consistency
-      // Local timestamps might be drifted or ahead due to optimistic updates (like on abort)
-      // The only exception is 'sending' status handled above
+      // Always prefer the remote version here: local timestamps can drift ahead of the server's
+      // via optimistic updates (e.g. abort). The only exception is 'sending', handled above.
       messageMap.set(msg.id, withPreservedToolData(msg, existing));
     }
   });
 
-  // No orphan sweep: the client's send id IS the persisted message id (single
-  // identity), so the server copy lands on the same key above and replaces the
-  // optimistic record naturally. Sends the server never received stay visible
-  // and are marked failed by the turn lifecycle — never silently deleted.
+  // No orphan sweep: the client's send id IS the persisted message id, so the server copy
+  // replaces the optimistic record above naturally. Sends the server never received stay
+  // visible and are marked failed by the turn lifecycle — never silently deleted.
 
   // Convert back to array and sort by creation time
   return Array.from(messageMap.values()).toSorted(

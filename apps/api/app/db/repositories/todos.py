@@ -3,9 +3,9 @@
 The heaviest domain in the migration: alongside plain CRUD it carries the tracked
 todo lifecycle (canvas/log bodies, scheduling, retry state), bulk operations, a
 text/filter list query, three dashboard aggregations, and system-wide finders the
-executor and maintenance sweep use across users. Array, positional, and ``$unset``
-mutations go through the base ``_apply_ops`` seam; bulk writes go through
-``_bulk_set`` / ``_bulk_delete``; every read returns a typed model.
+executor and maintenance sweep use across users. Array, positional, and $unset
+mutations go through the base _apply_ops seam; bulk writes go through
+_bulk_set / _bulk_delete; every read returns a typed model.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -74,7 +74,7 @@ def _first_count(buckets: list[_FacetCount]) -> int:
 
 
 class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
-    """The ``todos`` collection repository (user-scoped, cached)."""
+    """The todos collection repository (user-scoped, cached)."""
 
     collection_name = "todos"
     document_model = TodoDocument
@@ -85,17 +85,18 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     # ------------------------------------------------------------------ reads
 
     def is_valid_id(self, todo_id: str) -> bool:
-        """Whether ``todo_id`` is a well-formed Mongo identity for this collection."""
+        """Whether todo_id is a well-formed Mongo identity for this collection."""
         return ObjectId.is_valid(todo_id)
 
     async def get_by_id(self, todo_id: str) -> TodoDocument | None:
-        """Fetch a todo by id with no user scoping — for the system executor,
-        which is handed only a todo id. Prefer ``get(id, user_id=...)`` everywhere
-        a user is in context."""
+        """Fetch a todo by id with no user scoping, for the system executor which has only the id.
+
+        Prefer get(id, user_id=...) everywhere a user is in context.
+        """
         return await self._find_one({"_id": self._id_value(todo_id)})
 
     async def list_onboarding_todos(self, user_id: str, *, limit: int) -> list[TodoDocument]:
-        """A user's onboarding-seeded todos, most-recently-created first."""
+        """Return a user's onboarding-seeded todos, most-recently-created first."""
         return await self._find(
             {"user_id": user_id, "labels": ONBOARDING_LABEL},
             sort=[("created_at", -1)],
@@ -103,7 +104,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         )
 
     async def find_by_ids(self, user_id: str, todo_ids: list[str]) -> list[TodoDocument]:
-        """The user's todos whose ids are in ``todo_ids`` (order not preserved)."""
+        """Return the user's todos whose ids are in todo_ids (order not preserved)."""
         if not todo_ids:
             return []
         return await self._find(
@@ -111,7 +112,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         )
 
     async def count_in_project(self, user_id: str, project_id: str) -> int:
-        """How many of the user's todos belong to ``project_id``."""
+        """How many of the user's todos belong to project_id."""
         return await self._count({"user_id": user_id, "project_id": project_id})
 
     async def count_for_user(self, user_id: str) -> int:
@@ -123,7 +124,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     ) -> dict[str, object]:
         """Build the Mongo filter for a filtered/text list query.
 
-        ``inbox_project_id`` is resolved by the caller (it may create the Inbox);
+        inbox_project_id is resolved by the caller (it may create the Inbox);
         when provided it is the default scope for the unfiltered main list.
         """
         query: dict[str, object] = {"user_id": user_id}
@@ -177,9 +178,11 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def list_page(
         self, *, user_id: str, params: TodoSearchParams, inbox_project_id: str | None
     ) -> TodoPage:
-        """One page of todos (newest first) plus the unpaginated total for the
-        same filter. Covers text and filter queries; semantic/hybrid search is a
-        vector concern handled above the repository."""
+        """Return one page of todos (newest first) plus the unpaginated total for the same filter.
+
+        Covers text and filter queries; semantic/hybrid search is a vector
+        concern handled above the repository.
+        """
         query = self._list_filter(user_id, params, inbox_project_id)
         total = await self._count(query)
         skip = (params.page - 1) * params.per_page
@@ -299,7 +302,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._aggregate(pipeline, TodoLabelCount)
 
     async def list_active_tracked(self, user_id: str, *, limit: int) -> list[TodoDocument]:
-        """A user's active (incomplete) tracked todos, most-recently-updated first."""
+        """Return a user's active (incomplete) tracked todos, most-recently-updated first."""
         return await self._find(
             {"user_id": user_id, "labels": GAIA_TRACKED_LABEL, "completed": False},
             sort=[("updated_at", -1)],
@@ -309,8 +312,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def list_active_gaia_tracked_since(
         self, user_id: str, *, completed_since: datetime
     ) -> list[TodoDocument]:
-        """Tracked todos that are open OR completed since ``completed_since`` — the
-        VFS materialization set for ``/workspace/gaia-tasks/``."""
+        """Tracked todos open or completed since completed_since — the VFS set for /workspace/gaia-tasks/."""
         return await self._find(
             {
                 "user_id": user_id,
@@ -325,8 +327,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def list_active_user_todos_since(
         self, user_id: str, *, completed_since: datetime
     ) -> list[TodoDocument]:
-        """Non-tracked todos that are open OR completed since ``completed_since`` —
-        the VFS materialization set for ``/workspace/todos/``."""
+        """Non-tracked todos open or completed since completed_since — the VFS set for /workspace/todos/."""
         return await self._find(
             {
                 "user_id": user_id,
@@ -339,8 +340,10 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         )
 
     async def find_tracked_by_short_id(self, user_id: str, *, short_id: str) -> list[TodoDocument]:
-        """A user's tracked todos whose ObjectId ends with ``short_id`` — the
-        ``<slug>-<shortid>`` folder name under ``/workspace/gaia-tasks/``."""
+        """Find a user's tracked todos whose ObjectId ends with short_id.
+
+        short_id is the <slug>-<shortid> folder name under /workspace/gaia-tasks/.
+        """
         if re.fullmatch(r"[0-9a-f]{8}", short_id) is None:
             return []
         return await self._find(
@@ -363,11 +366,11 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def list_tracked_for_legacy_migration(
         self, *, limit: int, after_id: str | None = None
     ) -> list[TodoDocument]:
-        """All tracked todos — active or completed — in ``_id`` order.
+        """All tracked todos — active or completed — in id order.
 
-        The legacy canvas → activity migration scan: completed todos can also
+        The legacy canvas to activity migration scan: completed todos can also
         carry legacy sections, and migration is idempotent, so the sweep pages
-        this to a short page with the last id as cursor. ``after_id`` is always
+        this to a short page with the last id as cursor. after_id is always
         a cursor this method previously returned, so it is a valid identity.
         """
         filt: dict[str, object] = {"labels": GAIA_TRACKED_LABEL}
@@ -376,8 +379,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._find(filt, sort=[("_id", 1)], limit=limit)
 
     async def find_active_by_composio_trigger(self, composio_trigger_id: str) -> list[TodoDocument]:
-        """Every user's incomplete todos with an active subscription registered against
-        ``composio_trigger_id`` — the per-resource half of trigger dispatch."""
+        """Every user's incomplete todos actively subscribed to composio_trigger_id (per-resource dispatch)."""
         return await self._find(
             {
                 "completed": False,
@@ -393,9 +395,11 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def find_active_by_user_and_trigger(
         self, user_id: str, trigger_name: str
     ) -> list[TodoDocument]:
-        """One user's incomplete todos with an active subscription to ``trigger_name``
-        — the account-level half of dispatch, for triggers (Gmail) that register no
-        per-subscriber Composio instance and can only be found by user."""
+        """One user's incomplete todos actively subscribed to trigger_name (account-level dispatch).
+
+        For triggers (Gmail) that register no per-subscriber Composio instance
+        and can only be found by user.
+        """
         return await self._find(
             {
                 "user_id": user_id,
@@ -412,8 +416,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def find_paused_by_user_and_trigger(
         self, user_id: str, trigger_name: str
     ) -> list[TodoDocument]:
-        """One user's incomplete todos whose ``trigger_name`` subscription is paused —
-        the resync set after the integration behind it is reconnected."""
+        """One user's incomplete todos paused on trigger_name (the resync set after reconnect)."""
         return await self._find(
             {
                 "user_id": user_id,
@@ -430,12 +433,11 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def count_trigger_references(
         self, composio_trigger_id: str, *, excluding_todo_id: str | None = None
     ) -> int:
-        """How many todos still reference ``composio_trigger_id``. Summed with the
-        workflow count before a Composio trigger is deleted — the two consumers share
-        trigger instances, so either one alone would delete the other's live trigger.
+        """How many todos still reference composio_trigger_id.
 
-        Counts paused subscriptions too: a paused subscription is resumed on
-        reconnect, so its trigger must survive the pause.
+        Summed with the workflow count before deleting a Composio trigger,
+        since the two consumers share trigger instances. Counts paused
+        subscriptions too, since those resume on reconnect.
         """
         query: dict[str, object] = {
             "trigger_subscriptions.composio_trigger_ids": composio_trigger_id
@@ -449,8 +451,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def find_due_tracked_all_users(
         self, *, now: datetime, max_retries: int, limit: int
     ) -> list[TodoDocument]:
-        """Every user's scheduled-and-due tracked todos still under their retry
-        budget — the executor safety net's re-enqueue candidates."""
+        """Every user's due tracked todos still under their retry budget (executor re-enqueue candidates)."""
         return await self._find(
             {
                 "scheduled_at": {"$lte": now},
@@ -464,17 +465,18 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     # ----------------------------------------------------------------- writes
 
     async def bulk_update(self, user_id: str, todo_ids: list[str], update: TodoUpdate) -> int:
-        """Apply the same ``$set`` to many of the user's todos; returns the count
-        modified. One generation bump invalidates the whole scope."""
+        """Apply the same $set to many of the user's todos, returning the count modified.
+
+        One generation bump invalidates the whole scope.
+        """
         return await self._bulk_set([(tid, update) for tid in todo_ids], scope=user_id)
 
     async def bulk_delete(self, user_id: str, todo_ids: list[str]) -> int:
-        """Delete many of the user's todos in one round trip; returns the count
-        deleted."""
+        """Delete many of the user's todos in one round trip, returning the count deleted."""
         return await self._bulk_delete(todo_ids, scope=user_id)
 
     async def delete_all_for_user(self, user_id: str) -> int:
-        """Delete every todo owned by ``user_id`` (dev-data reset); returns the count."""
+        """Delete every todo owned by user_id (dev-data reset); returns the count."""
         return await self._delete_many({"user_id": user_id}, scope=user_id)
 
     async def delete_onboarding_todos(self, user_id: str) -> int:
@@ -486,8 +488,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def move_todos_to_project(
         self, user_id: str, from_project_id: str, to_project_id: str
     ) -> int:
-        """Reassign every todo in ``from_project_id`` to ``to_project_id`` (used
-        when a project is deleted and its todos fall back to Inbox)."""
+        """Reassign every todo in from_project_id to to_project_id (project deletion falls back to Inbox)."""
         todos = await self._find({"user_id": user_id, "project_id": from_project_id})
         ids = [todo.id for todo in todos]
         return await self.bulk_update(user_id, ids, TodoUpdate(project_id=to_project_id))
@@ -508,7 +509,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def add_references(
         self, todo_id: str, *, user_id: str, references: list[str]
     ) -> TodoDocument | None:
-        """Link related past tracked todos onto ``references`` ($addToSet)."""
+        """Link related past tracked todos onto references ($addToSet)."""
         return await self._apply_raw_update(
             self._scoped_filter(todo_id, user_id),
             {"$addToSet": {"references": {"$each": references}}},
@@ -573,8 +574,10 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         update: TodoUpdate,
         expected_updated_at: datetime | None,
     ) -> TodoDocument | None:
-        """Replace note bodies, optionally only when ``updated_at`` still equals
-        ``expected_updated_at`` (compare-and-set). Returns None on mismatch."""
+        """Replace note bodies, optionally gated by expected_updated_at (compare-and-set).
+
+        Returns None on mismatch.
+        """
         extra: dict[str, object] = {"user_id": user_id}
         if expected_updated_at is not None:
             extra["updated_at"] = expected_updated_at
@@ -588,9 +591,10 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         field: Literal["activity_content", "log_content"],
         suffix: str,
     ) -> TodoDocument | None:
-        """Append ``suffix`` to a note body in one atomic update (concurrent
-        appends cannot lose each other). Leading newlines are stripped so an
-        append onto an empty body starts clean."""
+        """Append suffix to a note body in one atomic update so concurrent appends cannot lose each other.
+
+        Leading newlines are stripped so an append onto an empty body starts clean.
+        """
         pipeline: list[dict[str, object]] = [
             {
                 "$set": {

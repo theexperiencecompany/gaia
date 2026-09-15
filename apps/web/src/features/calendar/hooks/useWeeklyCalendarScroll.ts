@@ -185,10 +185,9 @@ export const useWeeklyCalendarScroll = ({
     };
   }, [extendedDates, columnWidth, getTodayIndex, scrollToDate]);
 
-  // Effect 1b: Handle selectedDate changes (chevron buttons, today button).
-  // Deliberately keyed on selectedDate only — everything else is read through
-  // refs so toggling calendars or loading more dates never yanks the scroll
-  // position back to the selected date.
+  // Handles selectedDate changes (chevron/today button) — keyed on
+  // selectedDate only; everything else reads through refs so toggling
+  // calendars or loading more dates never yanks scroll back to it.
   useEffect(() => {
     let scrollTimer: ReturnType<typeof setTimeout> | undefined;
     // Skip initial load

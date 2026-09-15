@@ -1,12 +1,4 @@
-"""Integration tests for tool execution within the real production agent graph.
-
-Tests that tools registered with create_agent are invoked correctly when the
-fake LLM emits tool calls, and that results are properly wired back into the
-graph state via the real DynamicToolNode.
-
-DELETE app/override/langgraph_bigtool/create_agent.py → every test below fails.
-DELETE app/override/langgraph_bigtool/utils.py → every test below fails.
-"""
+"""Integration tests for tool execution within the real production agent graph."""
 
 from uuid import uuid4
 
@@ -70,11 +62,7 @@ class TestToolExecution:
     """Tool execution verified through real create_agent graph invocation."""
 
     async def test_tool_call_produces_tool_message(self):
-        """Fake LLM returning a tool call must produce a ToolMessage in state.
-
-        Fails if DynamicToolNode is removed or should_continue stops routing
-        AIMessages with tool_calls to the 'tools' node.
-        """
+        """Fake LLM returning a tool call must produce a ToolMessage in state."""
         tool_call = {
             "name": "add_numbers",
             "args": {"a": 3, "b": 7},
@@ -102,11 +90,7 @@ class TestToolExecution:
         )
 
     async def test_full_tool_cycle_message_sequence(self):
-        """Human → AI(tool_call) → ToolMessage → AI(final) completes in correct order.
-
-        Validates the full routing cycle: agent → tools → agent → end.
-        Fails if any node in the real create_agent graph is missing or miswired.
-        """
+        """Human → AI(tool_call) → ToolMessage → AI(final) completes in correct order."""
         tool_call = {
             "name": "add_numbers",
             "args": {"a": 5, "b": 5},
@@ -139,11 +123,7 @@ class TestToolExecution:
         )
 
     async def test_state_accumulates_across_turns(self):
-        """Consecutive ainvoke calls on the same thread must accumulate messages.
-
-        Fails if InMemorySaver checkpointing is broken in create_agent, or if
-        the State reducer drops messages between turns.
-        """
+        """Consecutive ainvoke calls on the same thread must accumulate messages."""
         graph = _compile(
             BindableToolsFakeModel(
                 responses=[
@@ -177,11 +157,7 @@ class TestToolExecution:
         )
 
     async def test_no_tool_call_produces_only_ai_message(self):
-        """Plain text LLM response must not route to the tool node.
-
-        Fails if should_continue in the real create_agent incorrectly routes
-        plain-text AIMessages to the DynamicToolNode.
-        """
+        """Plain text LLM response must not route to the tool node."""
         graph = _compile(create_fake_llm(["I can help you with that."]))
 
         result = await graph.ainvoke(

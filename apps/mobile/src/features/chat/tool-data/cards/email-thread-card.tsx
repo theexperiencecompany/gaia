@@ -5,11 +5,9 @@ import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Text } from "@/components/ui/text";
 import { CollapsibleCard } from "@/features/chat/tool-data/primitives";
 
-// ---------------------------------------------------------------------------
-// Types — mirror the web `EmailThreadData` shape from
-// apps/web/src/types/features/mailTypes.ts. Fields are optional to tolerate
+// Types mirror the web `EmailThreadData` shape from
+// apps/web/src/types/features/mailTypes.ts; fields are optional to tolerate
 // loose tool output during streaming.
-// ---------------------------------------------------------------------------
 
 export interface EmailThreadMessage {
   id?: string;

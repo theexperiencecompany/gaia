@@ -5,7 +5,7 @@ fields leaves the model guessing again, and guessing is what the whole
 matchable-fields layer exists to stop — so the catalog rides along on every
 refusal, not only on the happy path.
 
-Split from ``test_tracked_todo_tools.py`` (already 1300 lines) because watching a
+Split from test_tracked_todo_tools.py (already 1300 lines) because watching a
 trigger is a separate responsibility from todo CRUD, not because it is a separate
 module.
 """
@@ -419,8 +419,7 @@ class TestSubscriptionsAreVisibleOnTheTodo:
 
 
 class TestFormatSubscriptionLines:
-    """The exact watch line: the join word encodes AND vs OR semantics, and the
-    paused marker tells the user their watch is dead — both must be verbatim."""
+    """The exact watch line: the join word encodes AND vs OR semantics, and the paused marker tells the user their watch is dead — both must be verbatim."""
 
     @staticmethod
     def _two_conditions() -> list[SubscriptionCondition]:

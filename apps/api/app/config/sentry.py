@@ -1,6 +1,4 @@
-"""
-Sentry configuration for error tracking and performance monitoring.
-"""
+"""Sentry configuration for error tracking and performance monitoring."""
 
 from collections.abc import Callable
 from typing import Any
@@ -14,9 +12,8 @@ from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 # Direct identifiers never leave the process for Sentry. Pseudonymous ids
-# (user_id, user.id, trace_id, request_id) stay — they are the correlation
-# handles that make an issue actionable. When an investigation genuinely needs
-# the identifying detail, join back to the full wide event in Loki via trace_id.
+# (user_id, trace_id, request_id) stay for correlation; join back to the
+# full wide event in Loki via trace_id when the identifying detail is needed.
 _PII_KEYS = frozenset({"client_ip", "email", "user_agent", "user_email"})
 
 
@@ -32,13 +29,8 @@ def _scrub_pii(extra: dict[str, Any]) -> dict[str, Any]:
 def _make_sentry_loguru_sink() -> Callable[[object], None]:
     """Return a Loguru sink that forwards ERROR+ records to Sentry.
 
-    Loguru does not emit through Python's stdlib logging, so Sentry's
-    built-in LoggingIntegration / enable_logs=True never sees Loguru
-    error() / critical() / exception() calls. This sink bridges that gap.
-
-    Exceptions in the record are captured via capture_exception so that
-    Sentry shows the full traceback. Plain error messages without an
-    attached exception are forwarded as capture_message with level=error.
+    Bridges the gap left by Sentry's built-in LoggingIntegration, which only
+    sees stdlib logging and never Loguru's error()/critical()/exception().
     """
 
     def _sink(message: object) -> None:
@@ -48,14 +40,8 @@ def _make_sentry_loguru_sink() -> Callable[[object], None]:
 
         extra = dict(record["extra"])
 
-        # Skip the per-request wide-event roll-up (the single "http_request"
-        # line LoggingMiddleware emits with logger_name="REQUEST"). Forwarding
-        # it would turn every 5xx into a Sentry event with the constant message
-        # "http_request" — all grouped under one useless issue — carrying the
-        # full wide event (user email, client_ip) in extras. The underlying
-        # log.error() / log.exception() calls that made the request an ERROR
-        # already pass through this sink individually with proper grouping, so
-        # nothing is lost by dropping the roll-up.
+        # Skip the per-request wide-event roll-up ("http_request"): forwarding it
+        # would group every 5xx under one useless Sentry issue carrying PII in extras.
         if extra.get("logger_name") == REQUEST_LOGGER_NAME:
             return
         exc_info = record["exception"]
@@ -91,16 +77,10 @@ def init_sentry() -> None:
         # Keep request headers, cookies and client IPs out of Sentry events —
         # the loguru sink already forwards the pseudonymous ids needed to
         # correlate an issue back to its wide event in Loki.
-        # https://docs.sentry.io/platforms/python/data-management/data-collected/
         send_default_pii=False,
-        # Set traces_sample_rate to 1.0 to capture 100%
-        # of transactions for tracing.
         traces_sample_rate=0.1 if settings.ENV == "production" else 1.0,
-        # Set profile_session_sample_rate to 1.0 to profile 100%
-        # of profile sessions.
         profiles_sample_rate=0.1 if settings.ENV == "production" else 1.0,
-        # enable_logs captures stdlib logging records via Sentry's logging
-        # integration. Loguru errors are captured separately via the sink below.
+        # Loguru errors are captured separately via the sink below.
         enable_logs=True,
         profile_lifecycle="trace",
     )

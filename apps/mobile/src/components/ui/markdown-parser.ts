@@ -221,9 +221,8 @@ function parseCodeBlockLines(
 }
 
 // Captures the first marker and requires every repeat to match it, so mixed
-// sequences like "- * _" stay text (CommonMark only treats a uniform run as a
-// rule). Unambiguous by construction (every \s* is anchored between mandatory
-// chars), so it cannot backtrack exponentially on adversarial input.
+// sequences like "- * _" stay text. Unambiguous by construction (every \s* is
+// anchored between mandatory chars), so it can't backtrack exponentially.
 const HR_LINE_REGEX = /^\s*([-*_])(?:\s*\1){2,}\s*$/;
 
 function isHrLine(line: string): boolean {
@@ -471,10 +470,9 @@ function parseBlocks(lines: string[]): Block[] {
     if (result.block) {
       blocks.push(result.block);
     }
-    // Termination contract: every parser either consumes ≥1 line or returns
-    // null with next ≥ start+1 (parseParagraphLines handles the
-    // boundary-nobody-accepts case). If this invariant breaks, the loop
-    // stalls — the regression tests pin it.
+    // Termination contract: every parser consumes ≥1 line or returns null with
+    // next ≥ start+1 (parseParagraphLines handles the boundary-nobody-accepts
+    // case); breaking this stalls the loop — regression tests pin it.
     i = result.next;
   }
 

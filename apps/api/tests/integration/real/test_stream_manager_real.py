@@ -102,8 +102,7 @@ class TestStreamManagerReal:
         assert await StreamManager.is_cancelled("s5")
 
     async def test_update_progress_accumulates_text(self, real_redis):
-        """Chunks accumulate as pending text and land in complete_message once the
-        message boundary settles them (a retracted preamble is dropped instead)."""
+        """Chunks accumulate as pending text and land in complete_message once the message boundary settles them."""
         await StreamManager.start_stream("s6", "conv-6", "user-6")
 
         await StreamManager.update_progress("s6", message_chunk="Hello ")
@@ -137,7 +136,7 @@ class TestStreamManagerReal:
         assert tool_names == ["search", "calendar"]
 
     async def test_cleanup_removes_all_keys(self, real_redis):
-        """cleanup must delete progress and signal keys."""
+        """Cleanup must delete progress and signal keys."""
         await StreamManager.start_stream("s8", "conv-8", "user-8")
         await StreamManager.cancel_stream("s8")
 

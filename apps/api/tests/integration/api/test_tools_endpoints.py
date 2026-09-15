@@ -1,21 +1,4 @@
-"""Integration tests for tools/skills API endpoints.
-
-Tests the /api/v1/tools endpoints with mocked service layer to verify
-routing, auth enforcement, and response structure.
-
-The cache and MCP merge logic that previously lived in the endpoint layer
-has moved entirely into get_available_tools() (the service layer). The
-endpoint's job is now simpler:
-  1. extract user_id from auth
-  2. call get_available_tools(user_id=user_id)
-  3. call filter_tools_response on the result
-  4. return
-
-TestMCPToolMerge verifies that the endpoint correctly passes user_id to the
-service (which is what enables per-user MCP tool fetching inside the service)
-and that the full tool catalog — including user-specific MCP tools — flows
-back through the endpoint unchanged.
-"""
+"""Integration tests for tools/skills API endpoints."""
 
 from unittest.mock import AsyncMock, patch
 
@@ -30,13 +13,9 @@ from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListRe
 
 @pytest.fixture(autouse=True)
 def clear_cacheable_redis_cache():
-    """Prevent @Cacheable(smart_hash=True) on list_tool_categories from leaking
-    cached Redis values across tests.
+    """Prevent @Cacheable(smart_hash=True) on list_tool_categories from leaking Redis values.
 
-    The Cacheable decorator delegates entirely to get_cache / set_cache (Redis),
-    so we patch both at the decorator's import site to no-ops for every test.
-    This ensures the @Cacheable wrapper on list_tool_categories never reads a
-    stale cached value left by a previous test in the same session.
+    Patches get_cache/set_cache at the decorator's import site to no-ops.
     """
     with (
         patch("app.decorators.caching.get_cache", new_callable=AsyncMock) as mock_dec_get,
@@ -157,12 +136,7 @@ class TestToolsEndpoints:
     async def test_list_tools_passes_user_id_to_service(
         self, mock_get_tools, test_client, test_user
     ):
-        """GET /tools must forward the authenticated user_id to get_available_tools.
-
-        The service uses user_id to fetch the user's workspace integrations and
-        any personal MCP tools. Passing None or omitting user_id would mean the
-        user's custom tools are silently excluded from the response.
-        """
+        """GET /tools must forward the authenticated user_id to get_available_tools."""
         mock_get_tools.return_value = _make_tools_list_response(
             [_make_tool_info(name="cached_tool", category="general", display_name="General")]
         )
@@ -177,11 +151,7 @@ class TestToolsEndpoints:
 
     @patch(_PATCH_GET_AVAILABLE_TOOLS, new_callable=AsyncMock)
     async def test_list_tools_returns_full_service_result(self, mock_get_tools, test_client):
-        """GET /tools should return the full tool catalog returned by get_available_tools.
-
-        The service now owns caching and MCP merging. The endpoint must return
-        the complete result without silently dropping tools.
-        """
+        """GET /tools should return the full tool catalog returned by get_available_tools."""
         system_tool = _make_tool_info(name="send_email", category="gmail", display_name="Gmail")
         mcp_tool = _make_tool_info(
             name="mcp_tool",
@@ -384,13 +354,8 @@ class TestToolsEndpoints:
         assert tool["requires_integration"] is True
 
 
-# ---------------------------------------------------------------------------
-# MCP tool pass-through tests
-# The cache and MCP merge logic moved from the endpoint into get_available_tools
-# (the service layer). The endpoint's job is to call get_available_tools with
-# the correct user_id so the service can fetch per-user MCP tools. These tests
-# verify the endpoint correctly passes user_id and returns the full catalog.
-# ---------------------------------------------------------------------------
+# MCP tool pass-through tests: verify the endpoint passes user_id to
+# get_available_tools (the service layer owns cache/MCP merge) and returns the full catalog.
 
 
 @pytest.mark.integration
@@ -410,12 +375,7 @@ class TestMCPToolMerge:
     async def test_service_result_with_mcp_tools_is_returned_in_full(
         self, mock_get_tools, test_client
     ):
-        """GET /tools returns all tools from get_available_tools, including user MCP tools.
-
-        The service produces a catalog that already includes merged MCP tools.
-        The endpoint must not drop any tools from that catalog.
-        If the endpoint were to ignore the service result, both assertions would fail.
-        """
+        """GET /tools returns all tools from get_available_tools, including user MCP tools."""
         system_tool = _make_tool_info(
             name="send_email",
             category="gmail",
@@ -450,11 +410,7 @@ class TestMCPToolMerge:
     async def test_service_result_without_mcp_tools_is_returned_unchanged(
         self, mock_get_tools, test_client
     ):
-        """GET /tools returns the catalog as-is when the service produces no MCP tools.
-
-        When the user has no MCP integrations the service returns only the global
-        system tools. The endpoint must still return the full catalog unchanged.
-        """
+        """GET /tools returns the catalog as-is when the service produces no MCP tools."""
         system_tools = [
             _make_tool_info(name="send_email", category="gmail", display_name="Gmail"),
             _make_tool_info(
@@ -479,11 +435,7 @@ class TestMCPToolMerge:
 
     @patch(_PATCH_GET_AVAILABLE_TOOLS, new_callable=AsyncMock)
     async def test_service_deduplication_respected(self, mock_get_tools, test_client):
-        """GET /tools does not re-introduce duplicate tools if the service already deduped.
-
-        The service deduplicates by tool name. The endpoint receives the already-deduped
-        catalog and must return it verbatim — total_count must equal len(tools).
-        """
+        """GET /tools does not re-introduce duplicate tools if the service already deduped."""
         # The service would have deduped a name clash between system and MCP tools.
         # The endpoint receives the already-deduped single entry.
         deduped_tool = ToolInfo(
@@ -507,12 +459,7 @@ class TestMCPToolMerge:
     async def test_user_id_passed_to_service_on_cache_miss(
         self, mock_get_tools, test_client, test_user
     ):
-        """GET /tools always calls get_available_tools with the authenticated user_id.
-
-        The service uses user_id to load per-user workspace tools (including MCP tools).
-        If the endpoint passes None or omits user_id the service cannot fetch user tools.
-        This test fails if the endpoint stops forwarding user_id to the service.
-        """
+        """GET /tools always calls get_available_tools with the authenticated user_id."""
         mock_get_tools.return_value = _make_tools_list_response()
 
         response = await test_client.get(_TOOLS_URL)

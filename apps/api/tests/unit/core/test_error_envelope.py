@@ -1,7 +1,7 @@
-"""Every non-2xx body the app emits is one ``ErrorEnvelope``.
+"""Every non-2xx body the app emits is one ErrorEnvelope.
 
-Before this there were two shapes on the wire — ``AppError`` rendered flat
-``{message, why, fix, ...}`` while ``HTTPException`` rendered ``{detail}`` —
+Before this there were two shapes on the wire — AppError rendered flat
+{message, why, fix, ...} while HTTPException rendered {detail} —
 and 17 client files each guessed which one they were holding. These pin the
 single shape for every path that produces an error body: the two exception
 kinds, request validation, the crash handler, and the middlewares that answer
@@ -151,7 +151,7 @@ class TestOneEnvelope:
     async def test_structured_detail_without_message_keeps_its_status(
         self, client: AsyncClient
     ) -> None:
-        """A mapping detail with no ``message`` renders under the status phrase, never as a 500."""
+        """A mapping detail with no message renders under the status phrase, never as a 500."""
         resp = await client.get("/http-structured-no-message")
         body = resp.json()
         assert resp.status_code == 403

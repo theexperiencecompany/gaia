@@ -636,14 +636,12 @@ export class GaiaClient {
   }
 
   /**
-   * Redeems a one-tap link code the web minted during onboarding.
+   * Redeems a one-tap link code the web minted during onboarding — the reverse of
+   * {@link createLinkToken}: the code, not this request, decides which GAIA user gets linked.
+   * The API delivers GAIA's first contact itself on the outbound queue once linked, so this
+   * only returns whether the link succeeded.
    *
-   * The reverse of {@link createLinkToken}: the code — not this request —
-   * decides which GAIA user gets linked. The API composes GAIA's first contact
-   * and delivers it itself on the outbound queue once the link completes, so
-   * the only thing that comes back is whether the link is in. Throws
-   * {@link GaiaApiError} with status 400 (expired or already used), 409 (handle
-   * linked to another account) or 429 (the platform needs a paid plan).
+   * @throws {@link GaiaApiError} status 400 (expired/used), 409 (handle linked elsewhere), 429 (needs paid plan).
    */
   async redeemLinkCode(
     platform: string,

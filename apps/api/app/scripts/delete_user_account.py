@@ -1,41 +1,17 @@
 #!/usr/bin/env python3
 """Fully delete one user's account and data across every store. DRY-RUN by default.
 
-There is no user-facing account-deletion feature; this script is the operational
-path for GDPR/erasure requests. It removes the user from every store that holds
-their data, in an order that revokes external access first and deletes the login
-identity last (so a re-login cannot resurrect the account mid-teardown):
+The operational path for GDPR/erasure requests (no user-facing deletion
+feature exists). Revokes external access (Composio OAuth, E2B sandboxes)
+first and deletes the WorkOS login identity last, so a re-login can't
+resurrect the account mid-teardown. PostHog person deletion and Langfuse
+traces are manual follow-ups, not covered here.
 
-1. Composio      — revoke OAuth grants (Gmail/Calendar/... access is cut first)
-2. E2B           — kill the user's sandboxes
-3. MongoDB       — every collection with a matching ``user_id`` (+ GridFS,
-                   ``support_requests`` by email, ``bot_sessions`` by platform
-                   link, ``users`` doc last)
-4. PostgreSQL    — memory graph, OAuth/MCP credentials, bridge devices, and the
-                   LangGraph checkpoint threads of the user's conversations
-5. ChromaDB      — every collection, ``where={"user_id": ...}``
-6. JuiceFS       — the user's workspace directory (propagates to R2)
-7. Redis         — keys containing the uid (rate limits, caches, budgets)
-8. Resend        — marketing-audience contact
-9. WorkOS        — the login identity, last
-
-PostHog person deletion is a manual follow-up: the server only holds the
-capture token, not the personal API key that deletion requires. Langfuse traces
-keyed by ``user_id`` are likewise not covered here.
-
-Usage (inside the dockered API, with Infisical bootstrap creds in env)::
-
-    cd apps/api
-    uv run python -m app.scripts.delete_user_account <email>       # dry-run
-    uv run python -m app.scripts.delete_user_account <email> \
-        --execute --uid <24-hex-uid> --confirm-email <email>       # delete
-
-Safety: execute mode refuses to run unless ``--uid`` matches the id the email
-resolves to *now* (guards against the email resolving to a different user
-between dry-run and execute) and ``--confirm-email`` matches exactly. Every
-delete filters on exact ``user_id`` equality — no regex or wildcard matching
-against user-owned data. The run ends with a verification sweep and exits
-non-zero if any step failed or any remnant survived.
+Usage: uv run python -m app.scripts.delete_user_account <email> [--execute
+--uid <24-hex-uid> --confirm-email <email>]. Execute mode requires --uid to
+match what the email resolves to right now and --confirm-email to match
+exactly; every delete filters on exact user_id equality. Ends with a
+verification sweep and exits non-zero on any failed step or surviving remnant.
 """
 
 from __future__ import annotations
@@ -256,8 +232,7 @@ async def _revoke_external_access(d: _Footprint) -> None:
 
 
 def _delete_mongo_data(d: _Footprint) -> None:
-    """Mongo collections + GridFS; users doc last so a partial failure leaves
-    the account findable."""
+    """Delete Mongo collections and GridFS; users doc last so a partial failure leaves the account findable."""
     try:
         bucket = gridfs.GridFSBucket(d.db)
         for file_doc in d.db["fs.files"].find({"metadata.user_id": d.uid}, {"_id": 1}):
@@ -287,10 +262,12 @@ def _delete_mongo_data(d: _Footprint) -> None:
 
 
 def _delete_postgres_data(d: _Footprint) -> None:
-    """Per-user tables + the LangGraph checkpoint threads of the user's
-    conversations (base thread == conversation_id plus derived executor/workflow
-    threads that embed it — same contract as
-    conversation_service._delete_checkpoint_threads)."""
+    """Delete per-user tables and the user's LangGraph checkpoint threads.
+
+    Matches conversation_id-based thread ids (base thread plus derived
+    executor/workflow threads that embed it) — same contract as
+    conversation_service._delete_checkpoint_threads.
+    """
     try:
         with d.pg.cursor() as cur:
             for table in PG_USER_TABLES:

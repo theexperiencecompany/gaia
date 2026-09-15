@@ -1,23 +1,16 @@
-"""Persistence-side models for the ``conversations`` collection, plus the
+"""Persistence-side models for the conversations collection, plus the
 conversation endpoints' response shapes.
 
-The persistence models describe the document as it is actually stored and read
-back — distinct from the API *request* models, which live in ``chat_models``. The
-embedded ``messages`` array reuses ``MessageModel``; a before-validator runs the
-legacy tool-data normalization at the read boundary so the rest of the app never
-sees an un-normalized message.
+Distinct from the API request models in chat_models. Embedded messages reuse
+MessageModel; a before-validator normalizes legacy tool-data at the read
+boundary. Response models live here (not chat_models) because they're built
+from the persistence shapes above, and conversation_models already imports
+chat_models — the reverse would cycle.
 
-The response models at the bottom of this file live here rather than alongside
-the requests in ``chat_models`` because they are built from the persistence
-shapes above (``ConversationSummary``, ``ConversationMessageHit``) — and
-``conversation_models`` already imports ``chat_models``, so the other direction
-would be a cycle.
-
-Timestamps are the legacy camelCase pair: ``createdAt`` is an ISO string written
-at insert time, ``updatedAt`` is a BSON date bumped via ``$currentDate`` on every
-write. They are intentionally NOT the base's stamped snake_case ``created_at`` /
-``updated_at`` — normalizing them to the standard pair is a tracked follow-up, so
-the repository bumps ``updatedAt`` explicitly on each write rather than relying on
+Timestamps are the legacy camelCase pair: createdAt is an ISO string set at
+insert; updatedAt is a BSON date bumped via $currentDate on every write, not
+the base's snake_case created_at/updated_at (normalizing is a tracked
+follow-up) — the repository bumps updatedAt explicitly rather than relying on
 the base's auto-stamp.
 """
 
@@ -35,7 +28,7 @@ from app.utils.tool_data_utils import convert_legacy_tool_data
 
 
 def _normalize_messages(value: object) -> object:
-    """Run legacy per-tool-field → unified ``tool_data`` conversion on each message."""
+    """Run legacy per-tool-field → unified tool_data conversion on each message."""
     if isinstance(value, list):
         return [convert_legacy_tool_data(m) if isinstance(m, dict) else m for m in value]
     return value
@@ -51,8 +44,8 @@ def _coerce_source(value: object) -> object:
 class ConversationDocument(UserScopedDocument):
     """A conversation and its embedded message history as stored in MongoDB.
 
-    ``extra="allow"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,
-    ``metadata``) so a full-document read returns them verbatim, matching the
+    extra="allow" preserves stray/legacy top-level fields (e.g. artifacts,
+    metadata) so a full-document read returns them verbatim, matching the
     pre-repository behaviour.
     """
 
@@ -90,7 +83,7 @@ class ConversationUpdate(BaseModel):
 
 class ConversationSummary(ResponseModel):
     """The projected conversation-list row — every field the web list consumes,
-    without the heavy ``messages`` array."""
+    without the heavy messages array."""
 
     model_config = ConfigDict(extra="allow")
 
@@ -214,7 +207,7 @@ class ConversationSyncRow(ResponseModel):
     """One batch-sync row — the conversation's client-visible fields plus its full
     message history and artifact registry.
 
-    ``active_stream_id`` is the stream of an in-flight turn (``None`` when idle),
+    active_stream_id is the stream of an in-flight turn (None when idle),
     carried here so a reloading client re-attaches without a discovery request.
     """
 

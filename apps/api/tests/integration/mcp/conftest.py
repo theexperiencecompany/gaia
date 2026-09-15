@@ -10,7 +10,7 @@ import pytest
 def _mock_ssrf_guard() -> Iterator[None]:
     """Neutralize the DNS-resolving SSRF guard for the whole MCP integration suite.
 
-    ``_do_connect`` and ``probe_mcp_connection`` call ``assert_public_http_url``,
+    _do_connect and probe_mcp_connection call assert_public_http_url,
     which performs real DNS resolution. Integration tests use fake hostnames that
     do not resolve, so patch the guard to a no-op where it is used.
     """

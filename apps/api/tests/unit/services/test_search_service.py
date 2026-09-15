@@ -1,6 +1,6 @@
 """Unit tests for the search service.
 
-``search_messages`` orchestrates two repositories (conversations + notes) and
+search_messages orchestrates two repositories (conversations + notes) and
 assembles the response with highlight snippets. These tests mock the repository
 singletons (services never mock the DB) and assert the service's own behaviour:
 response shape, snippet attachment, error mapping, and — critically — that the
@@ -135,8 +135,7 @@ class TestSearchMessagesRegexEscaping:
     async def test_query_is_regex_escaped_before_reaching_repositories(
         self, mock_conversation_repo, mock_note_repo, mock_get_context_window
     ):
-        """A metacharacter-laden query must reach both repositories as an escaped
-        literal — never the raw pattern (ReDoS / regex-injection hardening)."""
+        """A metacharacter-laden query must reach both repositories as an escaped literal, never the raw pattern."""
         mock_conversation_repo.search.return_value = ConversationSearchResults()
         mock_note_repo.search_by_plaintext.return_value = []
 

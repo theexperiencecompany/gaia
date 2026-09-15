@@ -2,7 +2,7 @@
 Rich marketplace content for native integrations.
 
 Each entry is keyed by the integration ID and imported into oauth_config.py
-to populate the `content` field on each OAuthIntegration — keeping
+to populate the content field on each OAuthIntegration — keeping
 oauth_config.py clean while keeping content colocated with the config.
 
 Content is only returned from the /integrations/public/{id} detail endpoint,

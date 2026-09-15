@@ -1,19 +1,4 @@
-"""E2E test: sending an email through the real GAIA Gmail send path.
-
-Starts from the API call the web mail composer actually makes
-(``POST /api/v1/gmail/send-json`` and ``POST /api/v1/gmail/send``) and asserts
-on the response the user sees. Everything between is real production code:
-
-- ``app.api.v1.endpoints.mail.send_email_json`` / ``send_email_route``
-- ``app.services.mail.mail_service.send_email`` (tool selection, parameter build)
-- ``app.services.mail.mail_service.invoke_gmail_tool``
-- ``app.services.composio.langchain_composio_service.LangchainProvider`` — the
-  real Composio→LangChain tool wrapper, including its pydantic argument schema
-
-The only fake is Composio's remote execution call (``execute_tool``), which is
-where the request would leave the process for Gmail. It returns recorded
-``ToolExecutionResponse`` payloads (``{"data", "error", "successful"}``).
-"""
+"""Drive the real Gmail send path from the API call the web composer makes, faking only Composio's remote execute_tool call."""
 
 from typing import Any
 
@@ -91,7 +76,7 @@ class FakeGmail:
     """Stands in for Composio's remote tool execution — the network boundary.
 
     Records every outbound call so tests can assert what would have been sent to
-    Gmail, and replays a caller-supplied ``ToolExecutionResponse``.
+    Gmail, and replays a caller-supplied ToolExecutionResponse.
     """
 
     def __init__(self, response: dict[str, Any] | None, known_tools: set[str] | None = None):
@@ -145,11 +130,7 @@ class TestSendEmailFlow:
     async def test_send_returns_gmail_message_id_and_addresses_all_recipients(
         self, client, gmail_boundary
     ):
-        """A successful send returns Gmail's message id and mails every recipient.
-
-        ``to[0]`` becomes ``recipient_email`` and the remainder ``extra_recipients``
-        (route logic); the id lives under the Composio response envelope's ``data``.
-        """
+        """A successful send returns Gmail's message id (from the Composio response envelope's data), addressing to[0] as recipient_email and the rest as extra_recipients."""
         fake = gmail_boundary(
             {
                 "data": {"id": "gmail-msg-9001", "threadId": "gmail-thread-42"},
@@ -183,12 +164,7 @@ class TestSendEmailFlow:
         assert params["body"] == "Attached below."
 
     async def test_send_reports_failure_instead_of_claiming_success(self, client, gmail_boundary):
-        """A Gmail rejection must NOT come back as "Email sent successfully".
-
-        Composio signals failure with ``successful: False`` and an ``error``. If
-        the route ignores that, the composer tells the user the mail went out
-        when nothing was delivered.
-        """
+        """A Gmail rejection (successful: False, error set) must not come back as "Email sent successfully" — the composer would tell the user mail went out when nothing was delivered."""
         gmail_boundary(
             {
                 "data": {},

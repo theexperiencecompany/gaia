@@ -45,13 +45,10 @@ def _like_escape(value: str) -> str:
 async def _delete_checkpoint_threads(conversation_id: str) -> None:
     """Delete the LangGraph Postgres checkpoint threads for a conversation.
 
-    A conversation owns its base thread (`thread_id == conversation_id`) plus
-    derived threads that embed the id — `executor_<conv>`,
-    `<integration>_executor_<conv>_<runhex>`, `workflow_<conv>`, and nested
-    combinations. Rather than enumerate the (dynamic, per-integration) prefixes,
-    match every thread whose id contains the conversation_id and delete each via
-    the saver. Best-effort: the nightly `prune_checkpoint_versions` orphan sweep
-    is the backstop if this fails, so a failure here never fails the API call.
+    A conversation owns its base thread plus derived ones that embed the id
+    (executor_<conv>, workflow_<conv>, etc.); rather than enumerate the
+    dynamic prefixes, this matches every thread whose id contains
+    conversation_id. Best-effort: the nightly prune_checkpoint_versions sweep is the backstop.
     """
 
     manager = await get_checkpointer_manager()
@@ -70,7 +67,7 @@ async def _delete_checkpoint_threads(conversation_id: str) -> None:
 
 
 async def _cleanup_checkpoint_threads(conversation_id: str) -> None:
-    """Best-effort wrapper around `_delete_checkpoint_threads` for delete paths.
+    """Best-effort wrapper around _delete_checkpoint_threads for delete paths.
 
     Mirrors the session-dir cleanup contract: a failure is logged and swallowed
     so a Postgres hiccup never fails an already-committed conversation delete;
@@ -87,7 +84,6 @@ async def _cleanup_checkpoint_threads(conversation_id: str) -> None:
 async def create_conversation_service(
     conversation: ConversationModel, user: AuthenticatedUser
 ) -> CreateConversationResponse:
-    """Create a new conversation."""
     user_id = user.get("user_id", "")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
@@ -248,7 +244,7 @@ async def update_messages(
 ) -> UpdateMessagesResponse:
     """Append messages to a conversation.
 
-    ``max_messages`` caps stored history to the most recent N (via ``$slice``) so
+    max_messages caps stored history to the most recent N (via $slice) so
     per-workflow threads can't outgrow MongoDB's 16MB document limit.
     """
     user_id = user.get("user_id", "")
@@ -403,7 +399,6 @@ async def mark_conversation_as_read(
 async def mark_conversation_as_unread(
     conversation_id: str, user: AuthenticatedUser
 ) -> ConversationActionResponse:
-    """Mark a conversation as unread."""
     user_id = user.get("user_id", "")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
@@ -426,9 +421,10 @@ async def mark_conversation_as_unread(
 async def batch_sync_conversations(
     request: BatchSyncRequest, user: AuthenticatedUser
 ) -> BatchSyncResponse:
-    """Return only conversations updated since the client's last-seen timestamp,
-    including their messages and the stream id of an in-flight turn
-    (``active_stream_id``) so a reloaded client can re-attach without a separate
+    """Return only conversations updated since the client's last-seen timestamp.
+
+    Includes their messages and the stream id of an in-flight turn
+    (active_stream_id) so a reloaded client can re-attach without a separate
     discovery request.
     """
     user_id = user.get("user_id", "")

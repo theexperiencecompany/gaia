@@ -1,16 +1,16 @@
 """Env-configured PostHog client for Python services outside the API.
 
 The API builds its own client through its lazy-provider registry
-(``apps/api/app/config/posthog.py``) because that is how every external client
+(apps/api/app/config/posthog.py) because that is how every external client
 in that app is wired. Services without that registry — the voice agent today —
 need the same client without importing the API, and copying the construction
 into each app is exactly the drift this package exists to prevent.
 
-Event names follow the project-wide ``domain:action`` convention shared with
-``apps/api/app/services/analytics_service.py`` and
-``libs/shared/ts/src/analytics``.
+Event names follow the project-wide domain:action convention shared with
+apps/api/app/services/analytics_service.py and
+libs/shared/ts/src/analytics.
 
-Identity: ``distinct_id`` is always GAIA's stable user id. Never an email, never
+Identity: distinct_id is always GAIA's stable user id. Never an email, never
 a platform handle — those produce a second, unmergeable profile for the same
 person.
 """
@@ -41,7 +41,7 @@ class PostHogAnalytics:
 
     Token-less environments (local dev without Infisical, CI) are legitimate, so
     a missing token disables capture instead of failing the process — the same
-    contract as the API's SILENT provider strategy and the bots' `Analytics`.
+    contract as the API's SILENT provider strategy and the bots' Analytics.
     """
 
     def __init__(self, project_token: str | None = None, host: str | None = None) -> None:
@@ -65,7 +65,7 @@ class PostHogAnalytics:
         event: str,
         properties: dict[str, Any] | None = None,
     ) -> None:
-        """Capture ``event`` for ``distinct_id`` (GAIA's stable user id)."""
+        """Capture event for distinct_id (GAIA's stable user id)."""
         if self._client is None:
             return
         try:
@@ -90,7 +90,7 @@ class PostHogAnalytics:
     def shutdown(self) -> None:
         """Flush queued events and close the client.
 
-        ``shutdown()`` rather than ``flush()``: it also joins the consumer
+        shutdown() rather than flush(): it also joins the consumer
         threads and stops the poller, which a short-lived worker process needs
         before the interpreter exits or the queued events are dropped.
         """

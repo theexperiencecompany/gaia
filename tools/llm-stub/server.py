@@ -67,8 +67,7 @@ async def health() -> dict[str, str]:
 
 
 def _log_request(parsed: ChatRequest) -> None:
-    """One line per request so a sim run is debuggable from the stub's stdout:
-    role sequence, the resolved latest-user text, and the directives found."""
+    """Log one line per request: role sequence, latest-user text, and directives found."""
     roles = ",".join(m.get("role", "?") for m in parsed.messages)
     try:
         script_idx = _script_message_index(parsed.messages)

@@ -8,16 +8,15 @@ picked, propose one concrete first thing to set up, and make the yes easy.
 
 Only the needs the user actually picked are rendered, so the block a founder
 who ticked "inbox" carries is three lines, not eight. The text lives here
-rather than in ``agents/context/text.py`` because it is prompt prose and is
+rather than in agents/context/text.py because it is prompt prose and is
 held to this package's rules (no dashes, human voice).
 """
 
 from app.models.user_models import OnboardingNeed
 
 #: One line per need: what they want, then the two or three things you can
-#: CREATE for it right now. Every item maps to a real GAIA primitive (integration
-#: connect link, scheduled workflow, held todo list, reminder, memory) so the
-#: model cannot offer something that does not exist.
+#: CREATE for it now. Every item maps to a real GAIA primitive so the model
+#: cannot offer something that does not exist.
 NEED_PLAYBOOKS: dict[OnboardingNeed, str] = {
     OnboardingNeed.INBOX: (
         "inbox out of control (Gmail). Offer: hand the connect to the executor (call_executor: "
@@ -152,11 +151,9 @@ NEED_PLAYBOOKS: dict[OnboardingNeed, str] = {
     ),
 }
 
-#: The one worked example of the whole move, in the register we want: a real
-#: sentence to open, two offers joined the way speech joins them, an easy yes to
-#: close. It is rendered into the guidance block AND read by the persona eval's
-#: judge, so the copy the model is shown and the copy it is graded against are
-#: the same string and cannot drift apart.
+#: The one worked example of the whole move. Rendered into the guidance block
+#: AND read by the persona eval's judge, so the copy shown to the model and
+#: the copy it is graded against are the same string.
 TARGET_REPLY_EXAMPLE = (
     "Okay, pipeline. The simplest thing is a follow-up list I keep for you: name the deals "
     "and people, and I'll make sure none of them go quiet. Once Gmail's connected I can also "
@@ -267,14 +264,12 @@ def build_new_user_guidance(
     other_need: str | None = None,
     seeded_chips: list[str] | None = None,
 ) -> str:
-    """The guidance block for a user with these onboarding answers, or ``""``.
+    """Build the guidance block for a user with these onboarding answers, or "".
 
     Empty when the user picked nothing: with nothing to anchor on, the block
-    would be the generic coaching it exists to prevent.
-
-    ``seeded_chips`` are the answers the seeded conversation offered. They are
-    the user's likely first message, and without them the model met "Growth"
-    with no idea it was answering its own question.
+    would be the generic coaching it exists to prevent. seeded_chips are the
+    seeded conversation's likely first message, so the model knows what
+    question it's answering.
     """
     chips = seeded_chips or []
     lines = [f"- {NEED_PLAYBOOKS[need]}" for need in needs if need in NEED_PLAYBOOKS]

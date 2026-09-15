@@ -1,5 +1,5 @@
 """
-OAuth Integration Configuration
+OAuth Integration Configuration.
 
 Single source of truth for all OAuth integration configurations in GAIA.
 Defines integrations, scopes, display properties, and subagent configurations.
@@ -540,14 +540,9 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             # miners into the agent AND its spawned chunk-readers so triage mines
             # the offload with query_json/grep instead of read-whole-file + bash.
             extra_initial_tools=["query_json", "grep"],
-            # Custom read tools supersede the stock ones and are the agent's
-            # single canonical path: GMAIL_FETCH_MESSAGES (paginating, renders
-            # the card) replaces GMAIL_FETCH_EMAILS, whose fixed page size
-            # silently capped inbox reads; GMAIL_FETCH_THREAD (normalized,
-            # offloading) replaces GMAIL_FETCH_MESSAGE_BY_THREAD_ID's raw,
-            # unshaped thread view. Exclude the stock tools so they are neither
-            # bound nor retrievable by the agent. (The REST mail layer still
-            # invokes them by name — exclude_tools gates agent retrieval only.)
+            # GMAIL_FETCH_MESSAGES (paginated) replaces GMAIL_FETCH_EMAILS's capped
+            # page size; GMAIL_FETCH_THREAD (normalized) replaces the raw thread view.
+            # Excluded here so the agent can't retrieve them; REST mail still calls them by name.
             exclude_tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"],
             memory_prompt=GMAIL_MEMORY_PROMPT,
         ),
@@ -1969,10 +1964,8 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
         short_name="browserbase",
         managed_by="mcp",
         mcp_config=MCPConfig(
-            # Browserbase has no OAuth (no PRM/AS-metadata/DCR — /register 404s).
-            # It authenticates with the user's API key, so the frontend prompts
-            # for it via the bearer-token modal (auth_type="bearer") instead of
-            # attempting an OAuth flow.
+            # No OAuth (no PRM/AS-metadata/DCR — /register 404s); auth_type="bearer"
+            # prompts for the user's API key via the bearer-token modal instead.
             server_url="https://mcp.browserbase.com/mcp",
             requires_auth=True,
             auth_type="bearer",
@@ -2030,7 +2023,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
 
 @cache
 def get_integration_by_id(integration_id: str) -> OAuthIntegration | None:
-    """Get an integration by its ID."""
     return next((i for i in OAUTH_INTEGRATIONS if i.id == integration_id), None)
 
 

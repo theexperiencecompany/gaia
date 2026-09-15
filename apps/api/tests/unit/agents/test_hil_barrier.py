@@ -289,9 +289,7 @@ class TestBackgroundParking:
         assert self.enqueue.await_count == 0
 
     async def test_the_start_card_carries_the_handoffs_whole_presentation(self) -> None:
-        """The card the UI renders for a background handoff. Its fields come off
-        the BackgroundHandoff, and the payload drops None values, so a lost
-        icon_url or tool_category is a card rendered with neither."""
+        """The start card's fields come off the BackgroundHandoff; the payload drops None values."""
         writer = MagicMock()
         done = SubagentOutcome(text="done")
         with (
@@ -321,10 +319,7 @@ class TestBackgroundParking:
         }
 
     async def test_a_recording_handoff_stores_its_result_with_the_call_record(self) -> None:
-        """A workflow handoff's stored result is the subagent's text PLUS the
-        record of the calls it actually made — that record is what the executor
-        transcribes playbook steps from. Recording the wrong text, the wrong
-        messages, or neither leaves the executor with nothing to transcribe."""
+        """A workflow handoff's stored result is the subagent's text PLUS the call record the executor transcribes from."""
         messages = ("ai-message", "tool-message")
         done = SubagentOutcome(text="done", run_messages=messages)
         seen: list[tuple[Any, Any]] = []
@@ -348,8 +343,7 @@ class TestBackgroundParking:
         append.assert_awaited_once_with(CONV, "gmail", "done\n\n<call-record>")
 
     async def test_a_handoff_that_records_nothing_stores_the_text_untouched(self) -> None:
-        """The other side: a chat handoff has no playbook to feed, so its result
-        is the subagent's own text and the recorder is never reached."""
+        """A chat handoff has no playbook to feed, so its result is the subagent's own text and the recorder is never reached."""
         done = SubagentOutcome(text="done", run_messages=("ai-message",))
         recorder = MagicMock(side_effect=AssertionError("must not record"))
 
@@ -377,10 +371,7 @@ class TestBackgroundParking:
         decrement.assert_called_once_with(STREAM)
 
     async def test_a_wake_failure_does_not_raise_the_create_task_coroutine(self) -> None:
-        """The wake check runs in the task's finally block, after the counter has
-        already been decremented — a Redis blip here must not blow up the
-        fire-and-forget coroutine (create_task swallows the exception silently,
-        so an uncaught raise here is invisible except as a lost wake-up)."""
+        """A Redis blip in the wake check (task's finally block) must not blow up the fire-and-forget coroutine."""
         done = SubagentOutcome(text="done")
         with (
             patch(f"{RUNNER}.make_redis_stream_writer", MagicMock()),

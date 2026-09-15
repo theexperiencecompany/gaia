@@ -1,6 +1,4 @@
-"""
-Service tests: call real create_conversation() against real MongoDB.
-"""
+"""Service tests: call real create_conversation() against real MongoDB."""
 
 from __future__ import annotations
 

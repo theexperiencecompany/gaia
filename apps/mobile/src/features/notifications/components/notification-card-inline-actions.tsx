@@ -17,10 +17,8 @@ interface ActionTone {
   text: string;
 }
 
-// Web tones (apps/web .../EnhancedNotificationCard.tsx):
-//   primary  → bg-primary/10 text-primary
-//   danger   → bg-red-500/10 text-red-500
-//   default  → bg-zinc-800/50 text-zinc-400
+// Web tones (EnhancedNotificationCard.tsx): primary = bg-primary/10 text-primary,
+// danger = bg-red-500/10 text-red-500, default = bg-zinc-800/50 text-zinc-400.
 function getActionTone(style?: string): ActionTone {
   switch (style) {
     case "primary":

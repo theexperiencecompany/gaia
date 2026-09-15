@@ -1,31 +1,17 @@
 /**
- * ARCHITECTURE INVARIANTS — these govern everything under features/chat/stream/.
+ * ARCHITECTURE INVARIANTS for features/chat/stream/: a turn's state spans five
+ * stores (event log, Mongo, SSE, IndexedDB, per-tab Zustand), and every bug
+ * here has been two of them disagreeing at a boundary.
  *
- * A turn's state is distributed across five stores: the backend event log
- * (Redis Stream), Mongo, the SSE connection, IndexedDB, and per-tab Zustand.
- * A reload destroys tab memory at an arbitrary instant while the server keeps
- * streaming — so every bug this system has ever had was two of those stores
- * disagreeing at a boundary. These rules make that class of bug unwritable:
- *
- * 1. DERIVE, don't synchronize. Client state that matters must be
- *    reconstructable from a source of truth — the event log for server facts,
- *    IndexedDB for client facts. A fix that reconciles two stores with a flag
- *    or heuristic is wrong; re-derive instead. (The send queue is rebuilt from
- *    persisted "queued" records; a missing user record is rebuilt from the
- *    replayed init frame.)
- *
- * 2. Check the store you write. Zustand is per-tab, IndexedDB is shared
- *    across tabs — never gate a write to one on a read from the other.
- *
- * 3. One identity. The client's send id IS the server's user_message_id and
- *    the turn's idempotency key. Never mint a second id or reconcile ids —
- *    reuse is what makes redelivery safe (the backend rejects duplicates).
- *
- * 4. The event log is complete. A session attaching mid-turn must render the
- *    turn exactly as if the page had been open the whole time, from replay
- *    alone. A new client-visible fact about a turn must therefore be carried
- *    in a frame (see apps/api/app/models/stream_events.py), never assumed to
- *    survive in tab memory.
+ * 1. DERIVE, don't synchronize — reconstruct from a source of truth (event log
+ *    for server facts, IndexedDB for client facts) rather than reconciling
+ *    two stores with a flag/heuristic.
+ * 2. Check the store you write — Zustand is per-tab, IndexedDB is cross-tab;
+ *    never gate a write to one on a read from the other.
+ * 3. One identity — the client's send id IS the server's user_message_id and
+ *    the turn's idempotency key; never mint a second id.
+ * 4. The event log is complete — a mid-turn attach must render from replay
+ *    alone, so a new client-visible fact must ride a frame, never tab memory.
  */
 import { v4 as uuidv4 } from "uuid";
 import { db } from "@/lib/db/chatDb";
@@ -129,12 +115,10 @@ class TurnManager {
 
   /**
    * Re-attach to a conversation's in-flight turn after a reload, if one
-   * exists. The caller supplies the server's verdict — the active stream id,
-   * or null when nothing is streaming — fetched alongside the conversation
-   * sync, so opening a conversation costs a single request. The event log
-   * replays everything missed, so the resumed session renders the turn
-   * exactly as if the page had been open the whole time. No-op when a resume
-   * for this conversation is already in flight.
+   * exists. The caller supplies the server's verdict (active stream id or
+   * null) fetched alongside the conversation sync, so opening a conversation
+   * costs one request. No-op when a resume for this conversation is already
+   * in flight.
    */
   async resumeIfActive(
     conversationId: string,
@@ -153,10 +137,9 @@ class TurnManager {
         return;
       }
       if (!activeStreamId) {
-        // Authoritative verdict: no turn is running for this conversation.
-        // Any record still claiming to be in flight is a dead send from a
-        // previous page — surface it as failed (visible, retryable) instead
-        // of leaving a zombie spinner or silently deleting the message.
+        // Authoritative verdict: no turn running. A record still claiming to be
+        // in flight is a dead send from a previous page — surface it as failed
+        // (visible, retryable) rather than a zombie spinner or silent deletion.
         await markDeadSendsFailed(conversationId);
         return;
       }
@@ -281,10 +264,9 @@ class TurnManager {
     if (queue.length === 0) this.queues.delete(key);
     if (!next) return;
 
-    // The held message is now actually being sent: flip its optimistic bubble
-    // from "queued" (grey) to "sending", and refresh its timestamp to dispatch
-    // time — messages sort by createdAt, so a queued send must order after
-    // everything that streamed in while it waited, not at its typing time.
+    // Flip the optimistic bubble from "queued" to "sending" and refresh its
+    // timestamp to dispatch time — messages sort by createdAt, so a queued
+    // send must order after everything that streamed in while it waited.
     const dispatchedAt = new Date();
     if (next.options.optimisticUserId) {
       db.updateMessage(next.options.optimisticUserId, {

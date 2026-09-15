@@ -14,15 +14,10 @@ const WEB_PORT = process.env.WEB_PORT ?? "3000";
 const API_PORT = process.env.API_PORT ?? "8000";
 
 /**
- * The seeded dev user. Matches the `mise seed` / `mise dev --sim` default.
- *
- * Ports are per-worktree but the Docker infra (Mongo) is shared across all
- * worktrees, and `global-setup` resets → mints → seeds this user. So two
- * worktrees running e2e at once against the SAME `DEV_USER` will clobber each
- * other's data mid-run. Run e2e in one worktree at a time, or give a worktree
- * its own identity by setting `DEV_USER` here AND the matching
- * `DEV_AUTH_BYPASS_EMAIL` on its API (browser page loads carry no `X-Dev-User`
- * header, so the seeded user must equal the server's bypass email).
+ * The seeded dev user, matching `mise seed` / `mise dev --sim` defaults. Ports
+ * are per-worktree but Mongo is shared, so two worktrees running e2e against the
+ * same `DEV_USER` clobber each other's data — run one worktree at a time, or set
+ * a distinct `DEV_USER` here AND matching `DEV_AUTH_BYPASS_EMAIL` on its API.
  */
 export const DEV_USER = process.env.DEV_USER ?? "dev@gaia.local";
 

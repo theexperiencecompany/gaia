@@ -40,10 +40,10 @@ class BlogPost(BlogPostBase):
 
 
 class BlogDocument(MongoDocument):
-    """A blog post as stored in the ``blog`` collection (global, keyed by ``_id``).
+    """A blog post as stored in the blog collection (global, keyed by _id).
 
-    ``author_details`` is not stored — it is populated by a ``$lookup`` join to the
-    ``team`` collection when a post is read (see :class:`BlogAggregateRow`)."""
+    author_details is not stored — it is populated by a $lookup join to the
+    team collection when a post is read (see :class:BlogAggregateRow)."""
 
     slug: str
     title: str

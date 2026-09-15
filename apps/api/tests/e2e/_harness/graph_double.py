@@ -1,13 +1,13 @@
 """A compiled-graph stand-in that replays a scripted LangGraph event stream.
 
-``execute_graph_streaming`` is the translator between LangGraph's three stream
-modes and the chat SSE vocabulary. Driving it needs a graph whose ``astream``
+execute_graph_streaming is the translator between LangGraph's three stream
+modes and the chat SSE vocabulary. Driving it needs a graph whose astream
 emits an exact, chosen sequence of events — including sequences a real run only
 produces under conditions a test cannot arrange (a pre-model hook replaying a
-historical ``AIMessage``, a model-fallback marker in ``response_metadata``, a
+historical AIMessage, a model-fallback marker in response_metadata, a
 silent-metadata chunk).
 
-This double replaces only ``graph``. Everything the assertions cover —
+This double replaces only graph. Everything the assertions cover —
 frame shapes, the dedup set, the node gate, the tool-output join, the cancel
 path — is the real production function.
 """
@@ -27,12 +27,12 @@ ROOT: tuple[str, ...] = ()
 
 
 def agent_update(*messages: BaseMessage, namespace: tuple[str, ...] = ROOT) -> Event:
-    """An ``updates`` event from the LLM node — the only node whose tool calls stream."""
+    """Build an updates event from the LLM node — the only node whose tool calls stream."""
     return (namespace, "updates", {"agent": {"messages": list(messages)}})
 
 
 def node_update(node: str, *messages: BaseMessage, namespace: tuple[str, ...] = ROOT) -> Event:
-    """An ``updates`` event from any other node (pre-model hooks, tools)."""
+    """Build an updates event from any other node (pre-model hooks, tools)."""
     return (namespace, "updates", {node: {"messages": list(messages)}})
 
 
@@ -41,7 +41,7 @@ def message(
     namespace: tuple[str, ...] = ROOT,
     **metadata: Any,
 ) -> Event:
-    """A ``messages`` event: one model chunk or tool result, plus its metadata."""
+    """Build a messages event: one model chunk or tool result, plus its metadata."""
     return (namespace, "messages", (chunk, metadata))
 
 
@@ -68,13 +68,12 @@ def tool_message(
 
 
 def custom(payload: Any, namespace: tuple[str, ...] = ROOT) -> Event:
-    """A ``custom`` event — how subagents, reasoning and progress reach the stream."""
+    """Build a custom event — how subagents, reasoning and progress reach the stream."""
     return (namespace, "custom", payload)
 
 
 def flat(*events: Event) -> list[Event]:
-    """Strip the namespace off each event, giving the 2-tuples LangGraph yields
-    when ``subgraphs`` is not requested — the subagent driver's shape."""
+    """Strip the namespace off each event, giving the 2-tuples LangGraph yields when subgraphs is not requested."""
     return [event[1:] for event in events]
 
 
@@ -88,7 +87,7 @@ class _Snapshot:
 
 
 class ScriptedGraph:
-    """Replays ``events`` from ``astream``; records ``aupdate_state`` writes."""
+    """Replays events from astream; records aupdate_state writes."""
 
     def __init__(
         self,
@@ -122,11 +121,11 @@ class ScriptedGraph:
         outer = self
 
         class _Tracked:
-            """Wraps the generator so an explicit ``aclose()`` is observable.
+            """Wraps the generator so an explicit aclose() is observable.
 
-            A ``finally:`` inside the generator is not: CPython runs it when the
+            A finally: inside the generator is not: CPython runs it when the
             generator is collected, whether or not production ever closed it. A
-            test asserting on a flag set there passes with the ``aclose()`` call
+            test asserting on a flag set there passes with the aclose() call
             deleted — which is exactly what happened to the cancellation test.
             """
 

@@ -119,7 +119,7 @@ async def get_notifications(
     channel_type: str | None = Query(None, description="Filter by channel type (e.g., email, sms)"),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> PaginatedNotificationsResponse:
-    """Get user's notifications with pagination"""
+    """Get user's notifications with pagination."""
     user_id = current_user.get("user_id")
 
     if not user_id:
@@ -348,7 +348,7 @@ async def bulk_actions(
     request: BulkActionRequest = Body(...),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> NotificationResponse[BulkActionSummary]:
-    """Perform bulk actions on multiple notifications"""
+    """Perform bulk actions on multiple notifications."""
     user_id = current_user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
@@ -448,9 +448,7 @@ async def register_device_token(
     request: PushTokenRequest = Body(...),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> PushTokenResponse:
-    """
-    Register a device token for push notifications
-    """
+    """Register a device token for push notifications."""
     user_id = current_user.get("user_id")
 
     if not user_id:
@@ -510,9 +508,7 @@ async def unregister_device_token(
     token: str = Body(..., embed=True),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> PushTokenResponse:
-    """
-    Unregister a device token
-    """
+    """Unregister a device token."""
     user_id = current_user.get("user_id")
 
     if not user_id:

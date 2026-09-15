@@ -3,7 +3,7 @@
 A user-authored (and agent-updatable) markdown note attached to one
 integration, e.g. "for Slack, focus on #eng, #design, #pm". Stored in
 MongoDB as the source of truth; materialized read-only into the user's
-workspace at ``integrations/<id>/agent/instructions.md`` and injected into
+workspace at integrations/<id>/agent/instructions.md and injected into
 the matching subagent's dynamic context so it acts on the guidance
 immediately. One document per (user_id, integration_id).
 """
@@ -52,9 +52,9 @@ class IntegrationInstructions(BaseModel):
 
 
 class IntegrationInstructionsDocument(UserScopedDocument):
-    """Storage model for one ``(user_id, integration_id)`` instructions record.
+    """Storage model for one (user_id, integration_id) instructions record.
 
-    ``id`` is the stringified Mongo ``_id`` (the editor surfaces it). ``updated_at``
+    id is the stringified Mongo _id (the editor surfaces it). updated_at
     is stamped by the base on every write."""
 
     integration_id: str

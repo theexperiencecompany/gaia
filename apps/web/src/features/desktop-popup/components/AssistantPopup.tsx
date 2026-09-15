@@ -34,10 +34,9 @@ export default function AssistantPopup() {
   useChatStoreSync();
   usePopupChatPublisher();
   usePopupEscapeDismiss();
-  // This window is where the 402 landed and where the paid-only wall lives,
-  // so it is where the wall has to come down: the feed window only mirrors
-  // what this one publishes, and the checkout that lifts it finishes over in
-  // the user's browser.
+  // This window is where the 402 landed and the paid-only wall lives, so it's
+  // where the wall must come down — the feed window only mirrors what this one
+  // publishes, and checkout finishes in the user's browser.
   useClearPaywallWhenPaid();
 
   // Outside Electron (browser dev), show the panel immediately.

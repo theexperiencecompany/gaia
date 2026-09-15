@@ -1,7 +1,7 @@
 """Unit tests for contact_service.build_contact_index.
 
 The helper is pure (no deps): messages in, deduped/sorted contacts out.
-The Gmail payloads it ingests are typed ``Any`` on purpose — a malformed
+The Gmail payloads it ingests are typed Any on purpose — a malformed
 upstream entry must be skipped, never crash the list.
 """
 

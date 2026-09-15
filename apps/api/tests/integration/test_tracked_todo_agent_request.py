@@ -1,19 +1,13 @@
 """The request a tracked-todo run hands the agent must actually carry its prompt.
 
-``construct_langchain_messages`` reads the user's content from ``messages[-1]``;
-``request.message`` is only passed along as ``query=`` for memory retrieval. A
-caller that fills ``message`` but leaves ``messages`` empty, and supplies no
-selected workflow/tool/calendar event either, produces empty content and the
-whole run raises before the model is ever called.
-
-That is not hypothetical. Every agent-path tracked todo — any tracked todo
-without a ``workflow_id`` — failed exactly this way on every attempt, burned its
-three retries and was marked failed. The unit tests never saw it because they
-mock ``call_agent_silent``, so the real message construction never ran.
-
-``workflow_tasks`` looks like the same shape but is not: it passes
-``selectedWorkflow``, and that branch builds content without ever reading
-``messages``.
+construct_langchain_messages reads the user's content from messages[-1];
+request.message is only passed along as query= for memory retrieval. A
+caller that fills message but leaves messages empty (no selected
+workflow/tool/calendar event either) produces empty content and the run
+raises before the model is called — which every agent-path tracked todo
+(no workflow_id) did, burning its three retries. Unit tests never saw it
+because they mock call_agent_silent. workflow_tasks looks the same shape but
+passes selectedWorkflow and never reads messages.
 """
 
 from unittest.mock import AsyncMock, patch
@@ -63,11 +57,7 @@ class TestTheRequestCarriesItsPrompt:
         assert "Chase Acme about invoice 4021" in request.messages[-1]["content"]
 
     async def test_the_real_message_construction_accepts_it(self) -> None:
-        """The end-to-end contract: no ValueError, and the prompt reaches the model.
-
-        Asserting the request shape alone would only pin our own opinion of it.
-        This runs the real constructor, which is what actually rejected it.
-        """
+        """Run the real constructor: no ValueError, and the prompt reaches the model."""
         request = await _captured_request()
 
         with (

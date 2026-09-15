@@ -1,19 +1,11 @@
 import { defaultLocale } from "./config";
 
 /**
- * Load translated JSON for a feature module.
+ * Load translated JSON for a feature module: build-time Node reads
+ * `public/data/i18n/{feature}/{locale}.json` off disk; Cloudflare Workers
+ * fetch via the `ASSETS` binding; anything else falls back to HTTP.
  *
- * Strategy:
- *   - At build time (Node), read from `public/data/i18n/{feature}/{locale}.json`
- *     directly off disk. No bundling, no HTTP.
- *   - At Cloudflare Workers runtime, fetch through the `ASSETS` binding —
- *     OpenNext for Cloudflare exposes static assets via that binding and
- *     edge-caches them globally.
- *   - Last-resort HTTP fallback (for non-CF non-Node runtimes, e.g. local
- *     `next dev` server-component fetch).
- *
- * Returns empty object for `defaultLocale` (the source strings) or if the file
- * is missing — same contract as the original importer.
+ * Returns empty object for `defaultLocale` or a missing file.
  */
 
 const SOURCE_LOCALE_RETURNS_EMPTY = true;

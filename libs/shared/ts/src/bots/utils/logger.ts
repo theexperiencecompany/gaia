@@ -114,14 +114,11 @@ const RESERVED_LOG_KEYS: ReadonlySet<string> = new Set(ENVELOPE_KEYS);
 const COLLIDING_KEY_PREFIX = "ctx_";
 
 /**
- * The `service` value stamped on every log line. Must match the Promtail label
- * for the container the line is emitted from (the Docker Compose service names:
- * `discord-bot`, `slack-bot`, `telegram-bot`, `whatsapp-bot` — see
- * infra/docker/observability/promtail-config.yaml), so
- * `{service="discord-bot"} | json | service="discord-bot"` agrees with itself.
- * Loggers created with the "shared" platform (module-scope loggers in shared
- * code) resolve via the container's `BOT_NAME` env (set in apps/bots/Dockerfile),
- * falling back to "gaia-bots" outside a bot container.
+ * The `service` value stamped on every log line. Must match the Promtail label for the
+ * container it's emitted from (the Docker Compose service names: discord-bot, slack-bot,
+ * telegram-bot, whatsapp-bot — see infra/docker/observability/promtail-config.yaml), so a
+ * `{service=...}` query agrees with itself. The "shared" platform resolves via the container's
+ * `BOT_NAME` env (apps/bots/Dockerfile), falling back to "gaia-bots" outside a bot container.
  */
 function resolveServiceName(platform: PlatformName | "shared"): string {
   if (platform !== "shared") return `${platform}-bot`;
@@ -187,16 +184,13 @@ export function getErrorReason(error: unknown): Record<string, unknown> {
 }
 
 /**
- * Describe a thrown value with the two flat scalars every GAIA surface uses:
- * `error_type` (the exception's class/name) and `error` (its message).
+ * Describes a thrown value with the two flat scalars every GAIA surface uses: `error_type`
+ * (the exception's class/name) and `error` (its message) — the same vocabulary as Python's
+ * `log.error(..., error=str(exc), error_type=...)`, used by ~900 call sites, the wide-events
+ * lint, and the observability scanner.
  *
- * These names are the contract, not a preference. Python's `log.error(...,
- * error=str(exc), error_type=type(exc).__name__)` is the vocabulary of ~900 call
- * sites, the wide-events lint and the observability scanner. Nesting the pair
- * under a single `error: {...}` object — as this used to — put a string on one
- * surface and an object on the other under the SAME key, which is the one shape
- * `| json` cannot cope with: the label is dropped and the line silently falls
- * out of every error dashboard.
+ * Nesting the pair under one `error: {...}` object (as this used to) put a string on one surface
+ * and an object on the other under the same key, the one shape `| json` can't parse — silently dropping the line from every error dashboard.
  */
 export function sanitizeErrorForLog(error: unknown): BotLogFields {
   if (error instanceof Error) {
@@ -302,10 +296,9 @@ function buildRecord(
     message: event,
   };
 
-  // Derived-from-the-throwable first, caller fields second: an explicit
-  // `error_type` passed by the call site describes the failure better than the
-  // JS `Error.name` it would otherwise be overwritten by, and Python — where
-  // every one of these fields is explicit — has no derived value to lose.
+  // Derived-from-the-throwable fields go first, caller fields second: an explicit `error_type`
+  // from the call site describes the failure better than the JS `Error.name` it would otherwise
+  // overwrite, and Python (where every field is explicit) has no derived value to lose.
   if (error !== undefined) {
     for (const [key, value] of Object.entries(sanitizeErrorForLog(error))) {
       record[key] = toJsonValue(value);
@@ -348,14 +341,12 @@ function capLineSize(record: Record<string, JsonValue>, line: string): string {
 }
 
 /**
- * Serializes and writes one canonical JSON log line. The single low-level
- * emitter shared by {@link createBotLogger} and the wide-event runtime
- * (`wide-events.ts`), so every line carries the same envelope
- * (time/level/env/service/logger/platform/component/message).
+ * Serializes and writes one canonical JSON log line — the single low-level emitter shared by
+ * {@link createBotLogger} and the wide-event runtime (`wide-events.ts`), so every line carries
+ * the same envelope (time/level/env/service/logger/platform/component/message).
  *
- * The same line goes to stdout (scraped by Promtail's Docker service-discovery
- * job) and to the local structured file sink (scraped by Promtail's file job
- * when the bot runs outside Docker) — see `log-file-sink.ts`.
+ * Goes to both stdout (Promtail's Docker service-discovery job) and the local file sink
+ * (Promtail's file job when the bot runs outside Docker) — see `log-file-sink.ts`.
  */
 export function emitBotLogLine(
   level: BotLogLevel,

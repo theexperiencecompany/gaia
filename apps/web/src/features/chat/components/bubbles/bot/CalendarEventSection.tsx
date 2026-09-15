@@ -23,10 +23,9 @@ import { EventContent } from "./CalendarEventContent";
 
 type EventStatus = "idle" | "loading" | "completed";
 
-// Built once at module scope; identical output to calling
-// date.toLocaleTimeString("en-US", …) per render. The explicit timeZone keeps
-// formatting deterministic across server and browser (off-screen it resolves
-// to the browser's own zone, matching implicit local formatting).
+// Built once at module scope — same output as calling
+// date.toLocaleTimeString("en-US", …) per render. Explicit timeZone keeps
+// it deterministic server/browser (resolves to the browser's own zone client-side).
 const SINGLE_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
   hour: "numeric",
   minute: "2-digit",
@@ -191,9 +190,8 @@ export default function CalendarEventSection({
 
   const handleAdd = async (event: CalendarEvent, index: number) => {
     // Index-assign (not slice-splice): slice() drops leading gaps, so an
-    // out-of-order first click would append at the wrong position and
-    // permanently misalign statuses with events. Pure-expression updater —
-    // no statements inside the state setter.
+    // out-of-order first click would misalign statuses with events
+    // permanently. Pure-expression updater — no statements in the setter.
     const setStatusAt = (status: EventStatus) =>
       setEventStatuses((prev) =>
         Object.assign([...prev], { [index]: status as EventStatus }),
@@ -230,11 +228,9 @@ export default function CalendarEventSection({
     }
   };
 
-  // Statuses are only recorded for indexes inside calendar_events, so equal
-  // counts imply every event reached "completed". The length pre-checks also
-  // bail out before .every()/.some() walk the events.
-  // js-length-check-first: array comparison must lead with the shared length
-  // equality so mismatched sizes bail out before item-by-item .every().
+  // Statuses are recorded only for indexes in calendar_events, so equal
+  // counts imply every event completed. Length pre-check first, so
+  // mismatched sizes bail before .every()/.some() walks the events.
   const allCompleted =
     calendarEvents.length === eventStatuses.length &&
     calendarEvents.every((_, index) => eventStatuses[index] === "completed");

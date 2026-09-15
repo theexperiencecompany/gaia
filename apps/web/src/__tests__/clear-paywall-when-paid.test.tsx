@@ -60,10 +60,9 @@ describe("useClearPaywallWhenPaid", () => {
   });
 
   it("keeps asking the server while the wall stands", () => {
-    // The wall outlives the checkout that lifts it: the desktop popup sends
-    // the user to subscribe in their browser, and nothing in that window
-    // would ever re-read the plan — the query is a minute stale and never
-    // refetches on focus. Without this the wall survives until a restart.
+    // The wall outlives the checkout that lifts it: desktop sends the user to
+    // a browser to subscribe, and the plan query (a minute stale, no refetch
+    // on focus) never re-reads — without this the wall survives a restart.
     useUpgradeModalStore
       .getState()
       .openModal({ discountCode: null }, { source: "api_402" });

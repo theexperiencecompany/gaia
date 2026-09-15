@@ -121,7 +121,7 @@ class TestConfigureLoguru:
             assert owned.level == logging.getLevelName(LOG_CONFIG["level"])
 
     def test_no_access_log_is_honored(self, mock_logger: MagicMock):
-        """uvicorn --no-access-log clears the logger; re-attaching would undo the flag."""
+        """Uvicorn --no-access-log clears the logger; re-attaching would undo the flag."""
         access = logging.getLogger("uvicorn.access")
         access.handlers.clear()
         access.propagate = False

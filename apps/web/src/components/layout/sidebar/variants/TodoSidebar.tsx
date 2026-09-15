@@ -193,13 +193,6 @@ export default function TodoSidebar() {
     router.push(href);
   };
 
-  // const handleSearch = (e: React.FormEvent) => {
-  //   e.preventDefault();
-  //   if (searchQuery.trim()) {
-  //     router.push(`/todos/search?q=${encodeURIComponent(searchQuery)}`);
-  //   }
-  // };
-
   const mainMenuItems: MenuItem[] = useMemo(
     () => [
       {

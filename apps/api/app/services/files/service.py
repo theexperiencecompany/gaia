@@ -1,7 +1,7 @@
 """FileService — the single entry point for user-uploaded-file operations.
 
-Each public method orchestrates the concern-specific helpers (`store`, `sandbox`,
-`summaries`) into one readable flow. Durable storage (Cloudinary) and metadata
+Each public method orchestrates the concern-specific helpers (store, sandbox,
+summaries) into one readable flow. Durable storage (Cloudinary) and metadata
 (Mongo) are authoritative; vector indexing and the sandbox mirror are best-effort.
 """
 
@@ -138,7 +138,7 @@ class FileService:
         """Validate, store, summarize, and mirror an upload into the session.
 
         Cloudinary (blob) + Mongo (metadata) always persist. The summary, the
-        vector index, and the sandbox copy + `.summary.md` sidecar are layered on
+        vector index, and the sandbox copy + .summary.md sidecar are layered on
         top; the latter two need JuiceFS and degrade gracefully without it.
         """
         content, content_type, resource_type = await validate_upload(
@@ -237,7 +237,7 @@ class FileService:
 
     @staticmethod
     async def get_descriptions(file_ids: list[str], user_id: str) -> dict[str, str]:
-        """Return `{file_id: description}` for the user's files, in one batched query.
+        """Return {file_id: description} for the user's files, in one batched query.
 
         Authoritative source for the agent's file context — never trust the
         client request for this. Files without a stored summary are omitted.
@@ -252,7 +252,7 @@ class FileService:
 
     @staticmethod
     async def list_conversation_files(conversation_id: str, user_id: str) -> list[MessageFileData]:
-        """Every file uploaded in a conversation, as ``FileData`` carrying its summary.
+        """Every file uploaded in a conversation, as FileData carrying its summary.
 
         Lets the executor surface the conversation's uploads from only the
         conversation id (it never sees the request payload).
@@ -386,8 +386,8 @@ class FileService:
         """Associate pre-conversation uploads with a freshly created session.
 
         Files attached before a conversation existed landed in Cloudinary only.
-        Once the session exists, mirror each into `user-uploaded/`, write its
-        summary sidecar, and stamp `conversation_id` on its Mongo record so
+        Once the session exists, mirror each into user-uploaded/, write its
+        summary sidecar, and stamp conversation_id on its Mongo record so
         conversation-scoped search can find it.
         """
         if not file_data:
@@ -417,7 +417,7 @@ class FileService:
     ) -> str | None:
         """Mirror an upload + its summary sidecar into the session workspace (best-effort).
 
-        Returns the `/workspace/...` path the file was mirrored to, or None when
+        Returns the /workspace/... path the file was mirrored to, or None when
         the filename is unsafe or JuiceFS is unavailable.
         """
         try:

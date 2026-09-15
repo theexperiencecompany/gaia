@@ -181,9 +181,7 @@ class TestCreateSubscription:
     async def test_create_subscription_attributes_the_redirect_path_to_its_source(
         self, client: AsyncClient
     ):
-        """The legacy redirect path emits the same event name as the overlay, so
-        the funnel reads one event with a `source`/`surface` split rather than
-        two rival events."""
+        """The legacy redirect path emits the same event name as the overlay, so the funnel reads one event with a source/surface split."""
         with patch(
             "app.services.payments.payment_service.payment_service.create_subscription",
             new_callable=AsyncMock,
@@ -250,9 +248,7 @@ class TestCreateSubscription:
         assert response.status_code == 500
 
     async def test_create_subscription_propagates_http_errors(self, client: AsyncClient):
-        """The service's 409 ("Active subscription exists") reached the client
-        as a 500: the blanket handler re-wrapped it, so a second checkout from
-        a paying user looked like an outage instead of the conflict it is."""
+        """The service's 409 ("Active subscription exists") used to reach the client as a 500 via the blanket handler re-wrapping it."""
         from fastapi import HTTPException
 
         with patch(
@@ -272,8 +268,7 @@ class TestCreateSubscription:
 
 
 class TestCreateCheckoutSession:
-    """The overlay's session endpoint: authenticated, never paywalled (a
-    non-subscriber calling it is the entire point)."""
+    """The overlay's session endpoint: authenticated, never paywalled (a non-subscriber calling it is the entire point)."""
 
     async def test_returns_the_checkout_url_for_the_requested_cycle(self, client: AsyncClient):
         checkout = CreateSubscriptionResponse(
@@ -302,9 +297,7 @@ class TestCreateCheckoutSession:
         )
 
     async def test_attributes_the_overlay_checkout_to_its_source(self, client: AsyncClient):
-        """The server is the single emitter of `payment:checkout_started`; the
-        client no longer fires its own rival event, so the attribution the
-        funnel reads has to arrive on this call."""
+        """The server is the single emitter of payment:checkout_started, so the funnel's attribution has to arrive on this call."""
         with patch(
             "app.services.payments.payment_service.payment_service.create_pro_checkout",
             new_callable=AsyncMock,
@@ -333,8 +326,7 @@ class TestCreateCheckoutSession:
         )
 
     async def test_rejects_a_checkout_with_no_source(self, client: AsyncClient):
-        """Attribution is not optional on the path that replaced the client
-        emitter — an unattributed checkout would silently vanish from the funnel."""
+        """Attribution is not optional on the path that replaced the client emitter — an unattributed checkout would silently vanish from the funnel."""
         response = await client.post(CHECKOUT_SESSION_URL, json={"billing_cycle": "monthly"})
         assert response.status_code == 422
 
@@ -376,8 +368,7 @@ class TestCreateCheckoutSession:
     async def test_wide_event_carries_the_checkout_request_before_dodo_is_called(
         self, client: AsyncClient
     ):
-        """The request context is stamped up front, so a checkout that fails
-        inside Dodo still shows who asked for which cycle from where."""
+        """The request context is stamped up front, so a checkout that fails inside Dodo still shows who asked for which cycle from where."""
         with (
             patch("app.api.v1.endpoints.payments.log") as mock_log,
             patch(
@@ -411,8 +402,7 @@ class TestCreateCheckoutSession:
     async def test_audits_the_minted_session_against_the_plan_it_was_priced_from(
         self, client: AsyncClient
     ):
-        """Money moves here: the audit trail has to name the caller, the Dodo
-        product they were charged for, and the session id support can look up."""
+        """Money moves here: the audit trail must name the caller, the Dodo product charged, and the session id support can look up."""
         with (
             patch("app.api.v1.endpoints.payments.log") as mock_log,
             patch(
@@ -549,8 +539,7 @@ class TestVerifyPayment:
     async def test_verify_payment_hands_the_returned_subscription_to_its_own_user(
         self, client: AsyncClient
     ):
-        """The id off Dodo's return URL is forwarded for reconciliation, scoped
-        to the authenticated caller — never to whoever the id belongs to."""
+        """The id off Dodo's return URL is forwarded for reconciliation scoped to the authenticated caller, never to whoever the id belongs to."""
         with patch(
             "app.services.payments.payment_service.payment_service.verify_payment_completion",
             new_callable=AsyncMock,
@@ -570,8 +559,7 @@ class TestVerifyPayment:
         )
 
     async def test_verify_payment_without_a_body_reconciles_nothing(self, client: AsyncClient):
-        """A poll with no returned id is the plain webhook-landed check — the
-        service is still told there is nothing to reconcile against."""
+        """A poll with no returned id is the plain webhook-landed check — the service is still told there is nothing to reconcile against."""
         with patch(
             "app.services.payments.payment_service.payment_service.verify_payment_completion",
             new_callable=AsyncMock,
@@ -684,9 +672,7 @@ class TestDodoWebhook:
     async def test_a_failed_result_asks_dodo_to_retry_instead_of_acknowledging(
         self, client: AsyncClient
     ):
-        """A handler that could not complete leaves the state change owed. A 200
-        tells Dodo the delivery landed, so it never resends and the event is
-        lost for good — the user who paid is never activated."""
+        """A 200 tells Dodo the delivery landed and it never resends, so a handler that could not complete must not return one — the event is lost for good."""
         mock_result = MagicMock(
             event_type="subscription.active",
             status="failed",
@@ -718,9 +704,7 @@ class TestDodoWebhook:
         assert "User not found" in response.json()["message"]
 
     async def test_a_refused_delivery_is_not_narrated_as_processed(self, client: AsyncClient):
-        """It used to log "Webhook processed" at info on the way to refusing the
-        delivery, so a failure read as a success on every dashboard counting
-        them."""
+        """It used to log "Webhook processed" at info on the way to refusing the delivery, so a failure read as a success on every dashboard."""
         mock_result = MagicMock(
             event_type="subscription.active",
             status="failed",
@@ -749,11 +733,8 @@ class TestDodoWebhook:
                 },
             )
 
-        # Every field, not just the message. This entry is the only record that
-        # a delivery was refused, and it is what a human reads when Dodo stops
-        # retrying: which event, what the handler decided, and why. Blanking any
-        # one of them left the line looking fine and said nothing — four mutants
-        # lived exactly there, under an assertion that only read args[0].
+        # This entry is the only record a delivery was refused. Four mutants
+        # survived under an assertion that only read args[0].
         mock_log.error.assert_called_once_with(
             f"{LogTag.PAYMENT} Webhook not acknowledged; asking Dodo to redeliver",
             event_type="subscription.active",
@@ -767,10 +748,7 @@ class TestDodoWebhook:
     async def test_an_ownerless_activation_is_abandoned_and_its_claim_released(
         self, client: AsyncClient
     ):
-        """The whole path, not the two halves: a real ``subscription.active``
-        whose owner GAIA cannot resolve is acknowledged (a retry finds the
-        same missing user) but left re-drivable by hand — claim released — so
-        the user who paid can still be activated once the cause is fixed."""
+        """A subscription.active whose owner GAIA cannot resolve is acknowledged but left re-drivable by hand — claim released — once the cause is fixed."""
         # No user id in the metadata, so ownership falls to the customer email.
         ownerless = {**SUBSCRIPTION_DATA_PAYLOAD, "metadata": {}}
         payload = json.dumps(_make_webhook_event("subscription.active", ownerless))
@@ -814,11 +792,7 @@ class TestDodoWebhook:
     async def test_an_abandoned_delivery_is_acknowledged_and_logged_as_an_error(
         self, client: AsyncClient
     ):
-        """A permanent failure — no GAIA user behind the subscription, or a
-        lifecycle event for a row that never arrived — must not be answered
-        with a 503: Dodo would redeliver it on its retry schedule and every
-        redelivery would fail identically. It is acknowledged, and the failure
-        is on the wide event at error level, which is what pages someone."""
+        """A permanent failure (no GAIA user, or a lifecycle event for a row that never arrived) is acknowledged, not 503'd, with the failure at error level."""
         mock_result = MagicMock(
             event_type="subscription.active",
             status="abandoned",

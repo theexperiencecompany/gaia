@@ -1,8 +1,8 @@
 """Tests for the Composio CustomTool monkey patch.
 
-Composio 1.0.0 dispatches custom tools via ``CustomTool.invoke_trusted`` and
-deliberately keeps ``user_id`` out of ``auth_credentials``. The patch re-injects
-``user_id`` at ``CustomTool.__get_auth_credentials`` (the private method both
+Composio 1.0.0 dispatches custom tools via CustomTool.invoke_trusted and
+deliberately keeps user_id out of auth_credentials. The patch re-injects
+user_id at CustomTool.__get_auth_credentials (the private method both
 dispatch paths funnel through), so GAIA's custom tools can keep reading it.
 """
 

@@ -103,10 +103,9 @@ function DownloadSectionLayout({
   );
 }
 
-// One download control for a desktop OS. Renders an arch chooser (x64 / ARM)
-// when more than one binary is published, a single button when only one is, a
-// loading state while the release resolves, and a releases-page fallback if the
-// lookup failed entirely — so a click always does something sensible.
+// One download control for a desktop OS: an arch chooser (x64/ARM) when more
+// than one binary is published, a single button when only one is, a loading
+// state while resolving, and a releases-page fallback if the lookup fails.
 function DesktopDownloadButton({
   os,
   isPrimary = false,

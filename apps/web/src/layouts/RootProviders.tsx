@@ -18,19 +18,11 @@ const LoginModal = dynamic(
 
 /**
  * Root-level client providers shared by every route under [locale].
- *
- * HeroUIProvider lives here so HeroUI components work in any route group
- * without each subtree re-mounting it. QueryProvider lives here because the
- * query cache is app-global state: the signed-in user is a cache entry
- * (`useCurrentUser`) read by every route group and by hooks that render
- * above the route-group layouts, so the provider has to sit above all of
- * them. LoginModal also lives here — it's
- * a singleton driven by a Zustand store, so one mount is enough for the
- * whole app; lazy-loaded so it stays out of the initial bundle.
- *
- * The modal must sit OUTSIDE any LazyMotionProvider (HeroUI's Modal
- * imports the full `motion` API and throws under LazyMotion strict).
- * Root layout has no LazyMotionProvider, so this is naturally safe.
+ * HeroUIProvider avoids remounting per subtree; QueryProvider sits here
+ * because the query cache is app-global (`useCurrentUser` reads it above the
+ * route-group layouts); LoginModal is a lazy-loaded Zustand-driven singleton.
+ * The modal must stay outside any LazyMotionProvider (HeroUI's Modal throws
+ * under LazyMotion strict) — root layout has none, so this is safe.
  */
 export default function RootProviders({ children }: { children: ReactNode }) {
   return (

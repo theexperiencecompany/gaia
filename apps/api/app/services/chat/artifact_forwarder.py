@@ -1,22 +1,17 @@
 """Per-turn forwarding of a conversation's artifact events to the chat SSE stream.
 
-One :class:`ArtifactForwarder` runs per chat turn. It subscribes to
-``artifacts:{user_id}`` (published by the coding tools and the upload pipeline),
-keeps only this conversation's events, and runs each through a fixed pipeline:
-
-    show it live  →  save it (registry + message ref)  →  deliver to bot  →  warm cache
-
-"Show it live" streams the full file data so the web client populates its map
+One ArtifactForwarder runs per chat turn, subscribed to artifacts:{user_id}
+and filtered to this conversation. Each event runs through show it live ->
+save it (registry + message ref) -> deliver to bot -> warm cache. "Show it
+live" streams the full file data so the web client populates its map
 immediately; "save it" writes the conversation-level registry (the source of
-truth) plus a lightweight ``{session_id, path, event}`` reference on the bot
-message so the card re-renders on reload. A per-turn ``mtime`` map, loaded once,
-makes whole-dir re-emits idempotent: an unchanged file is skipped entirely.
+truth) plus a lightweight {session_id, path, event} reference on the bot
+message so the card re-renders on reload. A per-turn mtime map, loaded once,
+makes whole-dir re-emits idempotent.
 
-The event payload itself stays ``dict[str, Any]`` here on purpose (Type Safety
-item 14): its wire contract is owned by :mod:`app.services.artifact_events`
-(the ``upsert``/``remove``/``upload`` builders) and consumed by
-``app.utils.artifact_utils``, which both declare it as a plain dict — naming
-the shape belongs in those modules, not in a rival type declared here.
+The event payload stays dict[str, Any] on purpose: its wire contract is
+owned by app.services.artifact_events and consumed by
+app.utils.artifact_utils, which both declare it as a plain dict.
 """
 
 import asyncio
@@ -71,7 +66,7 @@ async def forward_artifact_events(
 ) -> None:
     """Bridge this conversation's artifact events to its chat SSE stream.
 
-    ``subscribed`` is set once the pub/sub subscription is live (or will never
+    subscribed is set once the pub/sub subscription is live (or will never
     be), so callers can order their own publishes after it — pubsub has no
     replay, so anything published earlier is lost.
     """
@@ -81,7 +76,7 @@ async def forward_artifact_events(
 
 
 class _TurnStatsEvent(TypedDict):
-    """The ``artifacts`` field of the turn's canonical log line."""
+    """The artifacts field of the turn's canonical log line."""
 
     conversation_id: str
     upserts: int
@@ -112,10 +107,10 @@ class _TurnStats:
 class ArtifactForwarder:
     """Forwards one turn's artifact events: live SSE + registry + bot delivery.
 
-    All per-turn mutable state lives on the instance: ``registry_mtimes`` dedups
-    re-emits, ``published_files`` caps bot delivery at once per file, and
-    ``stats`` tallies the turn. The public entry point is
-    :func:`forward_artifact_events`.
+    All per-turn mutable state lives on the instance: registry_mtimes dedups
+    re-emits, published_files caps bot delivery at once per file, and
+    stats tallies the turn. The public entry point is
+    :func:forward_artifact_events.
     """
 
     def __init__(
@@ -180,7 +175,7 @@ class ArtifactForwarder:
             self.subscribed.set()
 
     async def _load_registry(self) -> None:
-        """Seed the per-turn ``path → mtime`` map so re-emits dedup against it."""
+        """Seed the per-turn path → mtime map so re-emits dedup against it."""
         # @Cacheable erases its wrapped function's return type, so name it here.
         registry: list[ArtifactRegistryEntry] = await get_conversation_artifacts(
             self.user_id, self.conversation_id
@@ -226,7 +221,7 @@ class ArtifactForwarder:
     async def _apply_upsert(
         self, payload: dict[str, Any], path: str | None, event: str | None
     ) -> None:
-        """A new or changed file — the main pipeline."""
+        """Run the main pipeline for a new or changed file."""
         if not path:
             return
         # Optimistic dedup: the live card is the user-facing truth; the Mongo
@@ -245,7 +240,7 @@ class ArtifactForwarder:
         self._maybe_warm_cache(payload, path, event)  # 5. warm JuiceFS cache
 
     async def _apply_remove(self, path: str | None) -> None:
-        """A deleted file — drop from the registry and tell the client to drop it."""
+        """Drop a deleted file from the registry and tell the client to drop it."""
         if not path:
             return
         self.registry_mtimes.pop(path, None)
@@ -258,16 +253,16 @@ class ArtifactForwarder:
     # ── Pipeline steps ─────────────────────────────────────────────────────
 
     async def _stream_entry(self, entry: ArtifactDataEntry) -> None:
-        """Publish one ``artifact_data`` chunk to the live SSE stream."""
+        """Publish one artifact_data chunk to the live SSE stream."""
         chunk = "data: " + json.dumps({"tool_data": entry}) + "\n\n"
         await stream_manager.publish_chunk(self.stream_id, chunk)
 
     async def _persist_entry(self, entry: ArtifactDataEntry) -> None:
-        """``$push`` one ``artifact_data`` reference onto the turn's bot message.
+        """$push one artifact_data reference onto the turn's bot message.
 
         Best-effort: the live stream already delivered the card, so a failed
         persist only costs the reload re-render. A not-yet-saved bot message (an
-        early-turn artifact racing ``_persist_turn``) is retried with a short
+        early-turn artifact racing _persist_turn) is retried with a short
         backoff so the entry isn't dropped before the row exists.
         """
         if not self.bot_message_id:
@@ -300,7 +295,7 @@ class ArtifactForwarder:
     def _maybe_deliver_to_bot(self, payload: dict[str, Any], path: str, event: str | None) -> None:
         """Push an agent-generated artifact to a bot user's outbound queue, once.
 
-        User uploads (``event == "upload"``) are skipped — the user already has
+        User uploads (event == "upload") are skipped — the user already has
         them; the web SSE card isn't visible to a bot user, hence this path.
         """
         if not (
@@ -321,15 +316,17 @@ class ArtifactForwarder:
         )
 
     def _maybe_warm_cache(self, payload: dict[str, Any], path: str, event: str | None) -> None:
-        """Warm the JuiceFS cache for follow-up-fetch files (those with no inline
-        body); inlined files carry their body and never hit the file endpoint."""
+        """Warm the JuiceFS cache for follow-up-fetch files.
+
+        Files with no inline body hit the file endpoint later; inlined files
+        carry their body and never do.
+        """
         if event != "upsert" or payload.get("body"):
             return
         spawn_background_task(self._warm_cache(path))
 
     async def _warm_cache(self, path: str) -> None:
-        """Pre-read a freshly written artifact into the host JuiceFS cache so the
-        user's first open is served warm (local cache) instead of cold (from R2).
+        """Pre-read a freshly written artifact into the JuiceFS cache so it's warm on first open.
 
         Best-effort: a failure (mount absent, file not yet flushed, deleted) just
         means the on-demand read pays the cold cost as it did before.
@@ -363,8 +360,10 @@ class ArtifactForwarder:
 
 
 def _bot_source(source: str | None) -> ConversationSource | None:
-    """Return the bot ``ConversationSource`` for ``source`` if it has an outbound
-    queue (whatsapp/telegram/discord/slack), else None (web/mobile/unknown)."""
+    """Return the bot ConversationSource for source, or None if it has no outbound queue.
+
+    whatsapp/telegram/discord/slack have queues; web/mobile/unknown do not.
+    """
     if not source:
         return None
     try:
@@ -377,7 +376,7 @@ def _bot_source(source: str | None) -> ConversationSource | None:
 def _parse_artifact_message(message: dict[str, Any], conversation_id: str) -> dict[str, Any] | None:
     """Decode a pub/sub message into an artifact payload for this conversation.
 
-    Returns ``None`` when the message isn't a data frame, can't be parsed, or
+    Returns None when the message isn't a data frame, can't be parsed, or
     belongs to a different conversation.
     """
     if message.get("type") != "message":
@@ -400,8 +399,10 @@ async def _close_pubsub(pubsub: PubSub, channel: str) -> None:
 
 
 def _warm_artifact_blocks(host_path: Path) -> None:
-    """Read a file through the FUSE mount to pull its blocks into the JuiceFS
-    local cache. Constant memory: chunks are read and discarded."""
+    """Read a file through the FUSE mount to pull its blocks into the JuiceFS local cache.
+
+    Constant memory: chunks are read and discarded.
+    """
     with host_path.open("rb") as fh:
         # Drain the file in fixed-size chunks, discarding each: the read is the
         # side effect (it pulls blocks into the cache), the bytes aren't kept.

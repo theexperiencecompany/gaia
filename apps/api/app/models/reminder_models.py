@@ -1,6 +1,4 @@
-"""
-Reminder models for task scheduling system.
-"""
+"""Reminder models for task scheduling system."""
 
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -237,7 +235,7 @@ class CreateReminderToolRequest(BaseModel):
     @field_validator("timezone_offset", "stop_after_timezone_offset")
     @classmethod
     def validate_timezone_offset(cls, v: str | None) -> str | None:
-        """Validate timezone offset format (+|-)HH:MM"""
+        """Validate timezone offset format (+|-)HH:MM."""
         if v is not None:
             import re  # noqa: PLC0415 -- stdlib import kept local to this validator branch
 
@@ -249,7 +247,7 @@ class CreateReminderToolRequest(BaseModel):
     def _parse_local_datetime(
         raw: str, offset: str | None, home_tz: Timezone, field_name: str
     ) -> datetime:
-        """Parse an absolute clock time, localizing to ``offset`` or the home zone.
+        """Parse an absolute clock time, localizing to offset or the home zone.
 
         A value carrying its own offset is converted to that zone; a naive value
         is stamped with the explicit offset if given, else the user's home zone.
@@ -355,9 +353,9 @@ class UpdateReminderRequest(BaseModel):
 
     @field_serializer("scheduled_at", "stop_after", when_used="json")
     def serialize_datetime(self, value: datetime | None) -> str | None:
-        """ISO strings for JSON only; python mode (the Mongo `$set` update path
+        """ISO strings for JSON only; python mode (the Mongo $set update path
         in update_reminder) keeps native datetimes so the persisted scheduled_at
-        stays a BSON date the `$lte` recovery scan can match."""
+        stays a BSON date the $lte recovery scan can match."""
         if value is not None:
             return value.isoformat()
         return None
@@ -418,15 +416,14 @@ class CronValidationResponse(BaseModel):
 class ReminderDocument(ReminderModel, MongoDocument):
     """A reminder as stored in MongoDB.
 
-    Identity is Mongo's ``ObjectId`` ``_id`` (stringified into ``id`` on read).
-    Extends ``ReminderModel`` so it doubles as the read model. ``extra="ignore"``
-    (from ``MongoDocument``) tolerates legacy stray fields.
+    Identity is Mongo's ObjectId _id (stringified into id on read).
+    Extends ReminderModel so it doubles as the read model. extra="ignore"
+    (from MongoDocument) tolerates legacy stray fields.
     """
 
-    # Resolve the ``ReminderModel.id`` (``str | None``, alias ``_id``) vs
-    # ``MongoDocument.id`` (``str``) diamond: the repository stringifies the
-    # ObjectId ``_id`` into ``id`` on every read, so a loaded document always
-    # carries a non-optional id.
+    # Resolve the ReminderModel.id (str | None, alias _id) vs MongoDocument.id
+    # (str) diamond: the repository stringifies ObjectId _id into id on every
+    # read, so a loaded document always carries a non-optional id.
     id: str = ""
 
 

@@ -6,12 +6,11 @@ import { createContext, useContext } from "react";
 /**
  * Persists a HIL approval decision back into the OWNING message's `tool_data`.
  *
- * The resolved frame is published on the resumed run's stream (a different
+ * The resolved frame publishes on the resumed run's stream (a different
  * message), so it never reaches the original card. Without this, a decision
- * lived only in component-local state: the "Waiting for approval" pill (derived
- * from `tool_data`) never cleared and, on reload, the settled card re-rendered as
- * a fresh actionable one. `TextBubble` owns `message_id` + `tool_data`, so it
- * provides the resolver; the approval card consumes it.
+ * lived only in local state — the "Waiting for approval" pill never cleared,
+ * and reload re-rendered a settled card as fresh. `TextBubble` owns
+ * `message_id`+`tool_data` and provides this resolver.
  */
 export type ApprovalResolver = (
   approvalId: string,

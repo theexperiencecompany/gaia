@@ -42,15 +42,9 @@ def create_system_message(
 ) -> SystemMessage:
     """Return the STATIC main system prompt for the given agent.
 
-    The content is byte-identical across every user on the same channel so
-    the provider's implicit prompt cache can match across users — the first
-    web user of the day warms the cache, every subsequent web user hits it
-    on turn 1. For comms, the per-channel variants embed the output-format
-    addendum (OpenUI on web/mobile/desktop; text-only restrictions on
-    messaging platforms). The executor prompt is single-variant.
-
-    All user, time, and memory context is assembled by ``app.agents.context``
-    and delivered in its own messages — never in this static prefix.
+    Byte-identical across users on the same channel so the provider's
+    implicit prompt cache matches across users. All user/time/memory context
+    is assembled by app.agents.context and delivered separately, never here.
     """
     del user_id, user_name  # intentionally unused — static prefix only
     if agent_type == "executor":
@@ -63,15 +57,9 @@ def build_current_time_message(
 ) -> HumanMessage:
     """Return a tiny HumanMessage carrying the current UTC + local time.
 
-    We keep the clock OUT of ``system_instruction`` and put it in
-    ``contents`` instead. Reason: Gemini's implicit cache matches the
-    longest common prefix. Any byte in ``system_instruction`` that ticks
-    every minute would push the cache boundary back to just before that
-    byte, so a call at 00:59 and a call at 01:01 would share less prefix
-    than they need to. Since ``contents`` already differ per turn anyway
-    (the user's actual message differs), attaching the clock to contents
-    costs us nothing on the cache budget but keeps ``system_instruction``
-    fully stable.
+    Kept out of system_instruction and put in contents instead: Gemini's
+    implicit cache matches the longest common prefix, and a per-minute-ticking
+    byte in system_instruction would push the cache boundary back every call.
     """
     utc_now = datetime.now(UTC).strftime("%A, %B %d, %Y, %H:%M UTC")
     parts = [f"[Current UTC Time: {utc_now}]"]
@@ -177,11 +165,9 @@ async def format_workflow_execution_message(
             tracked_todos_context=tracked_todos_ctx
         )
 
-    # Background workflow runs (workflow_id in trigger_context) send an automatic
-    # completion notification unless the workflow opted out — tell the agent which
-    # mode it's in so it neither double-notifies nor stays silent when the
-    # workflow's own instructions ask for an alert. Interactive runs get neither
-    # section: no automatic notification exists there.
+    # Background workflow runs send an automatic completion notification unless
+    # opted out; tell the agent which mode it's in so it neither double-notifies
+    # nor stays silent. Interactive runs get neither section.
     notification_section = ""
     if trigger_context and trigger_context.get("workflow_id"):
         notify_on_completion = (
@@ -201,10 +187,8 @@ async def format_workflow_execution_message(
         "notification_section": notification_section,
     }
 
-    # This run already replayed the workflow's playbook and it stopped partway,
-    # so some of the steps below have ALREADY happened. Appended rather than
-    # folded into the templates because it is per-run evidence, not part of the
-    # workflow's standing instructions.
+    # This run already replayed the playbook and stopped partway; appended
+    # rather than folded into the templates since it's per-run evidence.
     fallback_section = (trigger_context or {}).get(PLAYBOOK_FALLBACK_CONTEXT_KEY) or ""
 
     # Email-triggered workflows get enhanced context
@@ -278,7 +262,7 @@ async def get_onboarding_system_prompt_if_applicable(
     conversation_id: str,
     latest_user_message: str | None = None,
 ) -> str | None:
-    """Return the onboarding system prompt for a run-now demo turn, else ``None``."""
+    """Return the onboarding system prompt for a run-now demo turn, else None."""
     try:
         is_run_now_demo = bool(
             latest_user_message and latest_user_message.lstrip().startswith(_RUN_NOW_DEMO_PREFIX)
@@ -326,7 +310,7 @@ async def get_onboarding_system_prompt_if_applicable(
 def _uploaded_file_lines(
     file: FileData, conversation_id: str | None, include_processing_guide: bool
 ) -> tuple[list[str], bool] | None:
-    """One file's lines and whether it is on disk; ``None`` for an unsafe filename."""
+    """One file's lines and whether it is on disk; None for an unsafe filename."""
     try:
         on_disk = safe_upload_filename(file.filename)
     except ValueError:
@@ -335,11 +319,9 @@ def _uploaded_file_lines(
         path = f"/workspace/sessions/{conversation_id}/user-uploaded/{on_disk}"
     else:
         path = f"./user-uploaded/{on_disk}"
-    # Only advertise the path when the file really reached the workspace.
-    # The mirror is best-effort (it needs JuiceFS), so on a native API — or
-    # any deployment where it failed — this path does not exist, and naming
-    # it anyway sends the executor into read/bash attempts that can only
-    # fail. `search_uploaded_files` needs no mount and is the honest route.
+    # Only advertise the path when the file really reached the workspace (the
+    # mirror needs JuiceFS); naming a path that doesn't exist sends the
+    # executor into read/bash attempts that can only fail.
     on_disk_available = file.sandbox_path is not None
     lines: list[str] = []
     # The id is shown because `search_uploaded_files(file_id=...)` needs one;
@@ -368,19 +350,11 @@ def format_files_list(
     *,
     include_processing_guide: bool = True,
 ) -> str:
-    """Surface uploaded files to an agent with path and summary.
+    """Surface uploaded files to an agent with path and summary. Pure — no DB/FS access.
 
-    Each attachment is shown with its on-disk path and a truncated summary (so
-    the reader knows what the file is without a tool call). The summary text is
-    enriched server-side by the caller; this helper only formats. Pure — no
-    DB/FS access.
-
-    ``include_processing_guide`` controls the audience:
-    - ``True`` (executor): adds the `full summary` sidecar pointer and the full
-      read/bash/scratch/artifacts how-to — the executor holds those tools.
-    - ``False`` (comms): a lean block — name, path, summary, and a single line
-      telling it to delegate real file work. Comms has no file tools; the
-      executor-voice how-to only baits it into over-delegating.
+    include_processing_guide=True (executor) adds the full read/bash/scratch
+    how-to; False (comms, which has no file tools) is a lean block that tells
+    it to delegate real file work instead.
     """
     if not files_data or (file_ids is not None and not file_ids):
         return ""

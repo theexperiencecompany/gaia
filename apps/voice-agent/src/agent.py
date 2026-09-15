@@ -95,10 +95,10 @@ def prewarm(proc: JobProcess) -> None:
 class _SessionStats:
     """Per-session counters accumulated by the AgentSession lifecycle callbacks.
 
-    Those callbacks fire after ``entrypoint`` has returned — i.e. after its
-    wide event has already been emitted — so a ``log.set()`` from them reaches
+    Those callbacks fire after entrypoint has returned — i.e. after its
+    wide event has already been emitted — so a log.set() from them reaches
     nothing. They accumulate here instead, and the shutdown callback reports
-    the whole aggregate as one ``voice_session_end`` event.
+    the whole aggregate as one voice_session_end event.
 
     Transcript *content* stays out of the aggregate on purpose: only lengths
     and counts are carried into the queryable event.
@@ -128,11 +128,11 @@ def _register_session_logging(
 ) -> None:
     """Wire per-session lifecycle logging: user/agent state, STT, metrics, usage.
 
-    ``identity`` carries the room/user/job fields onto every event so one Loki
+    identity carries the room/user/job fields onto every event so one Loki
     filter reconstructs the session timeline; these callbacks fire outside the
     entrypoint's context, so the fields are passed explicitly rather than bound.
-    ``trace_id`` is the entrypoint's, so the session-end event joins its
-    ``voice_session_start`` counterpart.
+    trace_id is the entrypoint's, so the session-end event joins its
+    voice_session_start counterpart.
     """
     stats = _SessionStats()
 
@@ -209,11 +209,11 @@ def _register_session_logging(
     async def log_session_end(reason: str) -> None:
         """Emit the session's aggregated turn stats and STT/TTS/LLM usage.
 
-        The boundary lives here, not in ``entrypoint``: LiveKit runs shutdown
+        The boundary lives here, not in entrypoint: LiveKit runs shutdown
         callbacks only after the entrypoint task has returned and the
         AgentSession has closed, so this is the first moment the whole session
-        is knowable. It reuses the entrypoint's ``trace_id`` so this event and
-        its ``voice_session_start`` counterpart join on it.
+        is knowable. It reuses the entrypoint's trace_id so this event and
+        its voice_session_start counterpart join on it.
         """
         summary = usage_collector.get_summary()
         async with log_context("voice_session_end", trace_id=trace_id or None, **identity):
@@ -327,13 +327,13 @@ def _spawn_credential_task(
     identity: dict[str, Any],
     trace_id: str,
 ) -> None:
-    """Run a credential coroutine in its own wide event, kept alive in `tasks`.
+    """Run a credential coroutine in its own wide event, kept alive in tasks.
 
     This work applies the session's agent token, backend URL, TTS voice and
     conversation id — if it fails the session talks to the wrong backend or
     none at all — and it is spawned from room callbacks that fire long after
     the entrypoint's event emitted. Its own boundary (carrying the
-    entrypoint's ``trace_id``) makes a credential failure one queryable event
+    entrypoint's trace_id) makes a credential failure one queryable event
     instead of a lone real-time line.
     """
 
@@ -548,7 +548,7 @@ def download_files() -> None:
     """Pre-download plugin model files (turn detector, etc.) into the local cache.
 
     Required before the worker can run turn detection: the MultilingualModel loads
-    with ``local_files_only=True`` at inference time and never fetches at runtime.
+    with local_files_only=True at inference time and never fetches at runtime.
     No secrets needed — this only fetches public model files — so Infisical is not
     injected, which lets it run at Docker-build time.
     """

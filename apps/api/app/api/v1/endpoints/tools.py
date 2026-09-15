@@ -1,6 +1,4 @@
-"""
-Tools API router for retrieving available tools and their metadata.
-"""
+"""Tools API router for retrieving available tools and their metadata."""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 

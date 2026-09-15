@@ -1,8 +1,8 @@
 """Artifact + user-uploaded listing, stat, path resolution, pinning.
 
-Covers the read paths driving ``GET /sessions/<id>/artifacts`` and the
-artifact watcher's resync. Path resolution goes through ``_contained`` from
-the juicefs primitives so a malicious ``rel_path`` cannot escape the
+Covers the read paths driving GET /sessions/<id>/artifacts and the
+artifact watcher's resync. Path resolution goes through _contained from
+the juicefs primitives so a malicious rel_path cannot escape the
 session root.
 """
 
@@ -44,20 +44,12 @@ class ArtifactInfo:
 
 
 def _list_files(base: Path) -> list[ArtifactInfo]:
-    """List regular files under ``base``.
+    """List regular files under base.
 
-    Walks with ``os.scandir`` instead of ``Path.rglob``: every path here lives on
-    JuiceFS, where each ``stat``/``lstat``/``resolve`` is a metadata-DB round-trip.
-    A ``DirEntry`` carries the directory's ``d_type`` and caches its own ``stat``,
-    so ``is_symlink``/``is_dir``/``is_file``/``stat`` cost at most one op per entry
-    (often zero — served from ``d_type``). The old ``rglob`` path paid ~3+depth ops
-    per file: a separate ``lstat`` + ``is_file`` stat + a redundant second ``stat``
-    + a full ``resolve()`` that walks every path component.
-
-    Symlinks are skipped and never followed into directories, so the walk can't be
-    redirected outside ``base`` — the same escape protection the old per-file
-    ``resolve()`` gave, without its cost. Per-entry errors are skipped so a racing
-    or hostile entry under the agent-writable tree can't 500 the whole listing.
+    Walks with os.scandir, not Path.rglob: on JuiceFS every stat/lstat/resolve
+    is a metadata-DB round-trip, and a DirEntry's cached d_type/stat costs at
+    most one op per entry versus rglob's ~3+depth. Symlinks are skipped and
+    never followed; per-entry errors are skipped so a hostile entry can't 500.
     """
     if not base.is_dir():
         return []
@@ -70,10 +62,10 @@ def _list_files(base: Path) -> list[ArtifactInfo]:
 
 
 def _scan_one_dir(dir_path: str, base: Path, stack: list[str], out: list[ArtifactInfo]) -> None:
-    """Scan a single directory: queue subdirs onto ``stack``, append files to ``out``.
+    """Scan a single directory: queue subdirs onto stack, append files to out.
 
     Symlinks are skipped and never followed into directories, so the walk can't be
-    redirected outside ``base``. Per-entry and per-directory errors are swallowed so
+    redirected outside base. Per-entry and per-directory errors are swallowed so
     a racing or hostile entry can't 500 the whole listing.
     """
     try:
@@ -104,7 +96,7 @@ def _scan_one_dir(dir_path: str, base: Path, stack: list[str], out: list[Artifac
 
 
 async def list_artifacts(user_id: str, conv_id: str) -> list[ArtifactInfo]:
-    """Recursive scan of a session's ``artifacts/``."""
+    """Recursive scan of a session's artifacts/."""
 
     def _go() -> list[ArtifactInfo]:
         return _list_files(session_base(user_id, conv_id) / ARTIFACTS_DIRNAME)
@@ -114,7 +106,7 @@ async def list_artifacts(user_id: str, conv_id: str) -> list[ArtifactInfo]:
 
 
 async def list_user_uploaded(user_id: str, conv_id: str) -> list[ArtifactInfo]:
-    """Recursive scan of a session's ``user-uploaded/``."""
+    """Recursive scan of a session's user-uploaded/."""
 
     def _go() -> list[ArtifactInfo]:
         return _list_files(session_base(user_id, conv_id) / USER_UPLOADED_DIRNAME)
@@ -131,10 +123,10 @@ def _safe_inode(path: Path) -> int | None:
 
 
 async def session_dir_inodes(user_id: str, conv_id: str) -> tuple[int | None, int | None]:
-    """``(conv_dir_inode, artifacts_dir_inode)`` for the watcher's scope index.
+    """(conv_dir_inode, artifacts_dir_inode) for the watcher's scope index.
 
     Lets a mutating-op inode from the FUSE accesslog (a create/unlink under
-    ``artifacts/``, or the session dir itself) resolve back to this conversation.
+    artifacts/, or the session dir itself) resolve back to this conversation.
     """
 
     def _go() -> tuple[int | None, int | None]:
@@ -145,15 +137,13 @@ async def session_dir_inodes(user_id: str, conv_id: str) -> tuple[int | None, in
 
 
 async def stat_artifact(user_id: str, conv_id: str, rel_path: str) -> ArtifactInfo | None:
-    """Stat a single file under ``artifacts/``. Returns ``None`` if not a file."""
+    """Stat a single file under artifacts/. Returns None if not a file."""
 
     def _stat() -> ArtifactInfo | None:
         base = session_base(user_id, conv_id) / ARTIFACTS_DIRNAME
-        # `_contained` already resolves + containment-checks the path (one walk).
-        # Then a SINGLE stat — the old `is_file()` + `.stat()` pair stat'd the
-        # same inode twice, doubling the JuiceFS metadata round-trips on the
-        # watcher's hottest per-event path. Reject non-regular files via the
-        # mode bits from that one stat.
+        # _contained already resolves + containment-checks (one walk); a single
+        # stat avoids the old is_file()+stat() double round-trip on the
+        # watcher's hottest per-event path.
         target = _contained(base, rel_path)
         try:
             st = target.stat()
@@ -181,8 +171,8 @@ async def resolve_session_path(
 ) -> Path:
     """Resolve a request path under a session's artifacts/ or user-uploaded/ root.
 
-    Raises ``JuiceFSUnavailable`` if the mount is missing, ``ValueError`` if
-    ``rel_path`` escapes the root. Existence is the caller's concern (so it
+    Raises JuiceFSUnavailable if the mount is missing, ValueError if
+    rel_path escapes the root. Existence is the caller's concern (so it
     can distinguish 404 from 400).
     """
 
@@ -197,9 +187,9 @@ async def resolve_session_path(
 async def pin_session_artifact(
     user_id: str, conv_id: str, rel_path: str, target_name: str | None = None
 ) -> str:
-    """Copy an artifact into the user's cross-session ``pinned/`` dir.
+    """Copy an artifact into the user's cross-session pinned/ dir.
 
-    Returns the ``/workspace/...`` path of the pinned copy.
+    Returns the /workspace/... path of the pinned copy.
     """
 
     def _pin() -> str:

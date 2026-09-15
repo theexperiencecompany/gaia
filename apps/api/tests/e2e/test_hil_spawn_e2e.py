@@ -1,20 +1,17 @@
-"""Service tests: a gated tool inside ``spawn_subagent``, end to end on live infra.
+"""Service tests: a gated tool inside spawn_subagent, end to end on live infra.
 
 A gated call inside a spawn used to fail closed — refused with the unpausable
-denial and the user never asked. These drive the real production path against real
-Postgres (so the interrupt, the checkpoint and the node replay are genuine), real
-MongoDB (approval records, preferences) and real Redis.
+denial and the user never asked. Drives the real path against real Postgres
+(genuine interrupt/checkpoint/replay), MongoDB (approvals/preferences) and Redis.
 
-Real: the compiled spawn graph (``spawn_agent._build_spawn_graph``), the real
-``SubagentMiddleware._run_spawn``/``_drive``, the real middleware stack, and the
-real HIL gate. Substituted, and only these: the LLM (deterministic, message-driven
-so a replay behaves identically) and the gated tool's side effect (a counter,
-because "it happened exactly once" is the claim under test).
+Real: the compiled spawn graph, SubagentMiddleware._run_spawn/_drive, the
+middleware stack, the HIL gate. Substituted, only: the LLM (deterministic, so
+a replay behaves identically) and the gated tool's side effect (a counter,
+since "exactly once" is the claim under test).
 
 The sibling-replay case here is the live counterpart of
-``tests/integration/agents/test_spawn_sibling_replay.py``: that one proves the
-recovery against an in-memory saver with a hand-made pause, this one proves it
-with the real gate and a real Postgres checkpoint.
+test_spawn_sibling_replay.py — that proves recovery with an in-memory saver
+and hand-made pause; this proves it with the real gate and Postgres checkpoint.
 """
 
 from __future__ import annotations
@@ -117,10 +114,10 @@ def spawn_tools(side_effects: dict[str, int]) -> dict[str, Any]:
 
 @pytest.fixture
 async def gated_user(mongo_db):
-    """A user with HIL on: ``send_slack`` always asks, ``record_note`` never does.
+    """Create a user with HIL on: send_slack always asks, record_note never does.
 
     Explicit per-tool overrides so gating is decided without the classifier's LLM
-    call. Written through ``mongo_db`` — the database the repository layer is
+    call. Written through mongo_db — the database the repository layer is
     patched at, and therefore the one the gate reads.
     """
     user_oid = ObjectId()
@@ -157,7 +154,7 @@ def interrupts(events: list) -> list:
 
 
 def approval_id_of(events: list) -> str:
-    """The approval_id carried by the single interrupt in ``events``."""
+    """Return the approval_id carried by the single interrupt in events."""
     raw = interrupts(events)[0]
     items = raw if isinstance(raw, list | tuple) else (raw,)
     value = getattr(items[0], "value", items[0])
@@ -212,10 +209,9 @@ class SpawnDriver:
     async def _settle(self, conv: str, decision: dict[str, Any]) -> None:
         """File the decision on its record, the way the resolution layer does.
 
-        The gate reads its verdict from the record and treats the resume payload as
-        nothing but a wake-up, so a decision that was never filed leaves the call
-        pending and the replay refuses it. An explicit ``approval_id`` settles that one
-        approval and leaves a gated sibling still pending, which is how a turn holding
+        The gate reads its verdict from the record, so an unfiled decision leaves the
+        call pending and the replay refuses it. An explicit approval_id settles only
+        that approval, leaving a gated sibling pending — which is how a turn holding
         two approvals can decide them differently.
         """
         approval_id = decision.get("approval_id")
@@ -234,7 +230,7 @@ class SpawnDriver:
             )
 
     async def run(self, conv: str, tasks: list[tuple[str, str]], resume: Any | None = None) -> list:
-        """Drive ``tasks`` as [(task, tool_call_id), ...] in ONE parent node."""
+        """Drive tasks as [(task, tool_call_id), ...] in ONE parent node."""
         middleware = self._middleware()
         if resume is not None:
             await self._settle(conv, resume)
@@ -286,9 +282,8 @@ class SpawnDriver:
 @pytest.fixture
 async def driver(gated_user, stub_llm, spawn_tools, real_redis, postgres_url: str):
     # Register ONLY the provider the gate resolves through (has_pausing_sibling ->
-    # get_tool_registry). register_lazy_providers() would also register the whole
-    # app, and init_langfuse there blocks ~120s on a network reachability check
-    # despite that function documenting itself as I/O-free.
+    # get_tool_registry) — register_lazy_providers() also registers the whole app,
+    # and init_langfuse blocks ~120s on a network check despite claiming I/O-free.
     init_tool_registry()
     async with AsyncPostgresSaver.from_conn_string(postgres_url) as saver:
         await saver.setup()
@@ -372,10 +367,7 @@ class TestSiblingReplay:
     async def test_a_finished_sibling_spawn_is_recovered_not_rerun(
         self, driver, stub_llm: TaskDrivenStubLLM, side_effects: dict[str, int]
     ) -> None:
-        """Two spawns in one AI message: A finishes, B pauses, the node replays.
-
-        A's retained checkpoint is what stops its side effect happening twice.
-        """
+        """A's retained checkpoint is what stops its side effect from running twice."""
         spawn_driver, saver = driver
         conv = f"spawn-hil-{ObjectId()}"
         tasks = [(NOTE_TASK, "tc-sib-a"), (SLACK_TASK, "tc-sib-b")]
@@ -406,15 +398,7 @@ class TestConcurrentGatedSiblings:
     async def test_each_sibling_gets_its_own_decision_not_the_first(
         self, driver, side_effects: dict[str, int]
     ) -> None:
-        """Two GATED siblings in one parent turn, decided DIFFERENTLY.
-
-        The node serializes them, so each bubbles up to the parent's ``_drive`` as its
-        own pause — but on recovery the executor replays its interrupt() resume list
-        positionally from zero, so the second gate would otherwise be handed the FIRST
-        gate's decision. Approve A, deny B: the fix routes each decision to its own gate
-        by ``approval_id``, so send_slack runs exactly once (A), never for the denied B.
-        Without the fix B replays A's approval and send_slack runs twice.
-        """
+        """Each decision routes by approval_id — a naive positional resume replay would hand the second gate the FIRST gate's decision and run the approved action twice."""
         spawn_driver, _saver = driver
         conv = f"spawn-hil-{ObjectId()}"
         tasks = [(SLACK_TASK, "tc-sib-a"), (SLACK_TASK_2, "tc-sib-b")]

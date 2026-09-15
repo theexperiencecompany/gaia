@@ -1,7 +1,7 @@
-"""CRUD for the canonical ``memories`` table.
+"""CRUD for the canonical memories table.
 
 Purely storage: no LLM calls, no embedding calls. Lineage rules live here
-(supersession chains, soft forgetting, the read-time ``forget_after``
+(supersession chains, soft forgetting, the read-time forget_after
 filter); everything semantic happens upstream in the engine.
 """
 
@@ -29,7 +29,7 @@ _EXPIRY_FORGET_REASON = "expired"
 
 
 def _not_expired_clause() -> ColumnElement[bool]:
-    """Read-time expiry filter, belt to ``sweep_expired_memories``' braces.
+    """Read-time expiry filter, belt to sweep_expired_memories' braces.
 
     The nightly sweep is what actually retires an expired row; this clause
     keeps one from being read in the window between expiring and being swept.
@@ -38,7 +38,7 @@ def _not_expired_clause() -> ColumnElement[bool]:
 
 
 def _active_memories_query(user_id: str) -> Select[tuple[MemoryRecord]]:
-    """Base query for live memories: latest, not forgotten, not expired."""
+    """Return the base query for live memories: latest, not forgotten, not expired."""
     return select(MemoryRecord).where(
         MemoryRecord.user_id == user_id,
         MemoryRecord.is_latest.is_(True),
@@ -81,7 +81,7 @@ async def get_memory(memory_id: str, user_id: str) -> MemoryRecord | None:
 async def get_chain(memory_id: str, user_id: str) -> list[MemoryRecord]:
     """Return every version in a memory's supersession chain, newest first.
 
-    Resolves the chain root (a chain head has ``root_id IS NULL``; later
+    Resolves the chain root (a chain head has root_id IS NULL; later
     versions point at it) then fetches all rows sharing that root, including
     superseded ones. Empty when the memory does not exist for this user.
     """
@@ -123,9 +123,9 @@ async def supersede_memory(
 ) -> MemoryRecord | None:
     """Chain a new version onto an existing memory, transactionally.
 
-    Inserts ``new_record`` with lineage derived from the old row
+    Inserts new_record with lineage derived from the old row
     (version+1, parent, root, relation) and flips the old row's
-    ``is_latest`` to False. Returns the new row, or None when the old
+    is_latest to False. Returns the new row, or None when the old
     memory does not exist for this user.
     """
     async with memory_session() as session:
@@ -175,8 +175,8 @@ async def list_memories(
 ) -> tuple[list[MemoryRecord], int]:
     """One page of a user's memories, newest first, with the total count.
 
-    ``category`` matches the folder exactly (tree expansion shows only a
-    folder's own memories); ``include_subfolders=True`` widens it to a
+    category matches the folder exactly (tree expansion shows only a
+    folder's own memories); include_subfolders=True widens it to a
     prefix match over the whole subtree.
     """
     filters: list[ColumnElement[bool]] = [
@@ -211,9 +211,9 @@ async def list_memories(
 async def fts_search(user_id: str, query: str, limit: int) -> list[tuple[MemoryRecord, float]]:
     """Weighted full-text search over live memories, best match first.
 
-    Uses ``websearch_to_tsquery`` so user-style queries (quoted phrases,
-    ``-exclusions``) work, ranked by ``ts_rank_cd`` over the weighted
-    ``search_tsv`` column.
+    Uses websearch_to_tsquery so user-style queries (quoted phrases,
+    -exclusions) work, ranked by ts_rank_cd over the weighted
+    search_tsv column.
     """
     tsquery = func.websearch_to_tsquery("english", query)
     rank = func.ts_rank_cd(MemoryRecord.search_tsv, tsquery)
@@ -246,7 +246,7 @@ async def get_memories_for_entities(
 
     Powers 1-hop graph expansion in recall: the entities on the top results
     pull in sibling memories that mention the same people/places/projects.
-    ``kinds`` and ``category_prefix`` mirror the filters applied to the base
+    kinds and category_prefix mirror the filters applied to the base
     results so siblings never bypass the caller's search scope.
     """
     if not entity_ids:
@@ -296,11 +296,9 @@ async def get_facts_for_consolidation(
 ) -> list[MemoryRecord]:
     """Live memories feeding one core-document rewrite, newest first.
 
-    ``category_prefixes`` match a folder exactly or as a subtree prefix
-    ('work' covers both 'work' and 'work/gaia'); ``shelf_life`` narrows to
-    durable rows, which is what keeps a value that was only true "as of" a
-    moment out of an always-injected document. Both filters optional and
-    AND-combined.
+    category_prefixes match a folder exactly or as a subtree prefix ('work'
+    covers 'work/gaia' too); shelf_life narrows to durable rows. Both filters
+    are optional and AND-combined.
     """
     query = _active_memories_query(user_id)
     if shelf_life is not None:
@@ -332,14 +330,11 @@ async def get_agenda_memories(user_id: str, limit: int) -> list[MemoryRecord]:
 
 
 async def backfill_agenda_expiry() -> int:
-    """Stamp ``forget_after`` on live agenda rows that never got one; returns count.
+    """Stamp forget_after on live agenda rows that never got one, returning the count.
 
-    Agenda rows written before the task shelf-life shipped were stored durable
-    with no expiry, so the sweep could never retire them — production carried
-    year-old interviews and long-closed follow-ups in the always-injected
-    agenda block. Stamping ``created_at + AGENDA_ITEM_TTL_DAYS`` gives legacy
-    rows the exact window a new agenda item gets; already-overdue ones are
-    retired by the sweep that runs right after.
+    Legacy rows (stored durable, before the task shelf-life shipped) never
+    expired; stamping created_at + AGENDA_ITEM_TTL_DAYS gives them the same
+    window a new item gets, and overdue ones retire on the next sweep.
     """
     async with memory_session() as session:
         result = await session.execute(
@@ -364,16 +359,12 @@ class SweptMemory:
 
 
 async def sweep_expired_memories(user_id: str | None = None) -> list[SweptMemory]:
-    """Forget every row whose ``forget_after`` has passed; returns the swept rows.
+    """Forget every row whose forget_after has passed; returns the swept rows.
 
-    Expiry was enforced only at read time, so an expired row stayed live in the
-    folder tree, the free-plan cap count, the ``/workspace/memory`` projection
-    and every rendered document forever. Each swept row comes back as
-    ``(owner, id)`` so the caller can repair exactly those users' derived state
-    and retire the same rows' Chroma flags — Postgres alone flipping
-    ``is_forgotten`` leaves the vector matchable, and reconciliation would keep
-    swallowing identical restatements as DUPLICATE. ``user_id`` scopes the
-    sweep for the repair script; the nightly task sweeps everyone.
+    Each row comes back as (owner, id) so the caller can repair those users'
+    derived state and retire the matching Chroma vectors (Postgres alone
+    flipping is_forgotten leaves them matchable). user_id scopes the sweep
+    for the repair script; the nightly task sweeps everyone.
     """
     filters: list[ColumnElement[bool]] = [
         MemoryRecord.is_forgotten.is_(False),

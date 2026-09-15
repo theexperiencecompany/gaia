@@ -33,10 +33,10 @@ class DeviceServerStatus(str, Enum):
 
 
 class Device(Base):
-    """A user's paired machine running the ``gaia bridge`` daemon.
+    """A user's paired machine running the gaia bridge daemon.
 
-    ``refresh_token_hash`` holds the SHA-256 of the current long-lived refresh
-    credential (never the plaintext). ``previous_refresh_token_hash`` retains the
+    refresh_token_hash holds the SHA-256 of the current long-lived refresh
+    credential (never the plaintext). previous_refresh_token_hash retains the
     just-rotated value so a replay of an already-rotated token is detectable and
     triggers revocation (refresh-token reuse detection).
     """
@@ -72,10 +72,10 @@ class Device(Base):
 class DeviceMCPServer(Base):
     """One MCP server a device exposes to the cloud over its tunnel.
 
-    Each row is surfaced to the user as a custom integration (``managed_by="mcp"``,
-    ``category="device"``, ``mcp_config.transport="device"``) so the existing
+    Each row is surfaced to the user as a custom integration (managed_by="mcp",
+    category="device", mcp_config.transport="device") so the existing
     per-user subagent / namespace machinery exposes its tools to the agent.
-    ``integration_id`` is that integration's id.
+    integration_id is that integration's id.
     """
 
     __tablename__ = "bridge_device_mcp_servers"

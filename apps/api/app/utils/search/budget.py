@@ -1,7 +1,7 @@
 """Redis-backed monthly free-tier budgets for paid search providers.
 
 Each budget-capped provider gets a per-calendar-month counter. The engine checks
-``has_headroom`` before calling a provider and records the call after a successful
+has_headroom before calling a provider and records the call after a successful
 upstream request, so a provider is never used beyond its free allowance — the
 self-hosted floor (SearXNG/DuckDuckGo) carries everything past that point.
 """
@@ -24,7 +24,7 @@ class FreeTierBudget:
         return f"search_budget:{provider}:{datetime.now(UTC):%Y%m}"
 
     async def has_headroom(self, provider: str) -> bool:
-        """True if the provider still has free-tier calls left this month (or is uncapped)."""
+        """Return True if the provider still has free-tier calls left this month (or is uncapped)."""
         limit = self._limits.get(provider)
         if not limit:
             return True

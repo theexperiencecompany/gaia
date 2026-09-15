@@ -17,19 +17,11 @@ import { usePathname } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 
 /**
- * Floating bottom-right version of the checklist, mounted once in the main
- * layout. It overlays the app, so unlike the dashboard card it carries a
- * collapse control — that is what the persisted `collapsed` flag is about.
- *
- * The progress bar belongs to the collapsed state only. Expanded, the rows are
- * the progress and a bar would just say the same thing twice; collapsed, it is
- * the only thing left saying how far along you are, so it rides in the header
- * beside the title.
- *
- * Desktop only. A floating corner panel needs a corner to float in: at phone
- * widths it spans the viewport and sits on top of the composer, so the first
- * thing the checklist asks you to do is the one thing it blocks. Phones get the
- * checklist as a card on the dashboard instead.
+ * Floating bottom-right checklist, mounted once in the main layout, with a
+ * collapse control (persisted `collapsed` flag) since it overlays the app.
+ * The progress bar shows only when collapsed — expanded, the rows already say
+ * it. Desktop only: phone widths would cover the composer, so phones get a
+ * dashboard card instead.
  */
 export function FirstStepsWidget() {
   const pathname = usePathname();

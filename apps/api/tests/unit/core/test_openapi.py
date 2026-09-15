@@ -1,4 +1,4 @@
-"""``api_operation_id``: ``<slug(tag)>_<slug(name)>``, and nothing from the path."""
+"""api_operation_id: <slug(tag)>_<slug(name)>, and nothing from the path."""
 
 from enum import Enum
 

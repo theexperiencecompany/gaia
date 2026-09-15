@@ -41,11 +41,9 @@ export function fixSessionCookies(): void {
       if (headers["set-cookie"]) {
         headers["set-cookie"] = headers["set-cookie"].map((c: string) => {
           if (!c.includes(WOS_SESSION_COOKIE)) return c;
-          // SameSite=None is only valid WITH Secure — without it Chromium
-          // silently drops the cookie. In dev the API omits Secure (http),
-          // so rotated sessions were being lost and the stale cookie kept
-          // 401-ing. localhost is a trustworthy origin, so Secure cookies
-          // are accepted over http there.
+          // SameSite=None needs Secure or Chromium drops the cookie; the dev
+          // API omits Secure over http, which lost rotated sessions to stale
+          // 401s. localhost accepts Secure cookies over http, so we add it.
           let patched = c.replace(/SameSite=\w+/i, "SameSite=None");
           if (!/;\s*Secure/i.test(patched)) patched += "; Secure";
           return patched;

@@ -13,15 +13,12 @@ import { getTodoCanvas } from "@/features/todo/api/todoApi";
 import { Priority, type Todo } from "@/types/features/todoTypes";
 
 /**
- * Regression test: switching the selected todo must show the newly selected
- * todo's canvas.md, not the previously opened one.
+ * Regression test: switching the selected todo must show its own canvas.md.
  *
- * The sidebar reuses one CanvasViewer instance across todo selections (only the
- * props change). CanvasViewer previously cached the fetched markdown and guarded
- * the fetch with `if (content !== null) return`, so todo A's cached content
- * survived a switch to todo B — the guard short-circuited the refetch and B's
- * viewer showed A's canvas until a full page refresh. CanvasViewer now fetches
- * on every open; reintroduce the cache guard and this fails.
+ * The sidebar reuses one CanvasViewer across selections; it used to cache
+ * fetched markdown and guard with `if (content !== null) return`, so todo
+ * A's content survived a switch to B until a full refresh. It now fetches
+ * on every open — reintroduce the cache guard and this fails.
  */
 
 vi.mock("@/features/auth/hooks/useCurrentUser", () => ({

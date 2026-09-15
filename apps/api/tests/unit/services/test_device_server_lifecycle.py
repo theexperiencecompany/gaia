@@ -1,4 +1,4 @@
-"""Unit tests for the device MCP-server lifecycle in ``device_service``.
+"""Unit tests for the device MCP-server lifecycle in device_service.
 
 Covers registration, integration-mirror create/remove, daemon notify frames,
 deregistration (both entry points), HELLO reconcile, warm-connect recording,
@@ -47,8 +47,7 @@ class _Result:
 
 
 class _FakeSession:
-    """Answers one scalar query and records mutations, so a test can assert the
-    real function added/deleted/committed exactly what it should."""
+    """Answers one scalar query and records mutations so a test can assert exact writes."""
 
     def __init__(self, scalar: object = None) -> None:
         self._scalar = scalar
@@ -85,15 +84,12 @@ def _session_cm(session: _FakeSession):
 
 @pytest.fixture
 async def sqlite_session():
-    """A real in-memory SQLite session bound in for device_service.get_db_session.
+    """Bind a real in-memory SQLite session for device_service.get_db_session.
 
-    A fake session returns a fixed row regardless of the query, so it cannot prove
-    a WHERE predicate is right — every query mutant survives. This runs the real
-    SELECT/DELETE against SQLite (the models use only portable column types), so
-    seeding a target + a decoy row makes ``where(None)`` (selects all ->
-    MultipleResultsFound) and ``== -> !=`` (picks the decoy) observably fail.
-    StaticPool keeps one in-memory connection so seeded rows persist across the
-    separate sessions the fixture and the function under test each open.
+    A fake session returns a fixed row regardless of the query, so it can't prove a WHERE
+    predicate is right; this runs the real SELECT/DELETE so seeding a target + decoy row
+    makes where(None) and == vs != mutants observably fail. StaticPool keeps one connection
+    so seeded rows persist across the fixture's and the function's separate sessions.
     """
     engine = create_async_engine(
         "sqlite+aiosqlite://",
@@ -119,7 +115,7 @@ async def sqlite_session():
 
 
 def _server(device_id: str, server_key: str, integration_id: str, **kw: object) -> DeviceMCPServer:
-    """A DeviceMCPServer row with sane defaults for seeding."""
+    """Build a DeviceMCPServer row with sane defaults for seeding."""
     return DeviceMCPServer(
         device_id=device_id,
         user_id=kw.pop("user_id", "u1"),
@@ -476,10 +472,9 @@ class TestRecordDeviceServerSync:
         assert rows["int-2"].status == DeviceServerStatus.ERROR  # untouched by the predicate
 
     async def test_success_stamp_is_timezone_aware_utc(self, sqlite_session) -> None:
-        # SQLite does not round-trip tzinfo, so the read-back row cannot prove
-        # it — spy on the clock instead: now() must be called with UTC, since
-        # Postgres stores what it's given and a naive stamp breaks every
-        # timezone-aware comparison downstream.
+        # SQLite doesn't round-trip tzinfo, so spy on the clock instead: now() must be
+        # called with UTC, since Postgres stores what it's given and a naive stamp breaks
+        # every timezone-aware comparison downstream.
         seen: list[object] = []
         real_datetime = datetime
 
@@ -532,10 +527,9 @@ class TestCreateDeviceCapQueries:
         )
 
     async def test_cap_counts_only_this_users_active_devices(self, sqlite_session) -> None:
-        # 20 ACTIVE for someone else + a full cap's worth of REVOKED decoys for
-        # self: the cap must see neither. A dropped user_id predicate counts
-        # strangers; a dropped ACTIVE predicate counts the revoked rows —
-        # both wrongly reject a user who owns nothing active.
+        # 20 ACTIVE for someone else + a full cap's worth of REVOKED decoys for self: the
+        # cap must see neither. A dropped user_id predicate counts strangers; a dropped
+        # ACTIVE predicate counts the revoked rows — both wrongly reject this user.
         async with sqlite_session() as s:
             await self._seed(
                 s,
@@ -645,10 +639,9 @@ class TestDeregisterScopesToDevice:
         )
 
     async def test_burst_shares_one_job_id_regardless_of_key_order(self) -> None:
-        # Registration storms enqueue the same set repeatedly — one deterministic
-        # id lets ARQ collapse the burst instead of running overlapping jobs.
-        # The id pins the exact scope hash: a changed joiner/sort would fork
-        # identical bursts into distinct jobs.
+        # Registration storms enqueue the same set repeatedly — one deterministic id lets
+        # ARQ collapse the burst instead of running overlapping jobs. The id pins the exact
+        # scope hash: a changed joiner/sort would fork identical bursts into distinct jobs.
         pool = object()
         enqueue_mock = AsyncMock()
         rpm = Mock()

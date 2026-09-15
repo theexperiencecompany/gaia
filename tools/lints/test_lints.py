@@ -323,9 +323,7 @@ def test_raw_redis_cache_client_import_is_not_flagged(tmp_path: Path) -> None:
 def test_rule_crash_reports_rule_and_file_and_remaining_rules_still_run(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A rule whose ``ast.parse`` explodes (e.g. a pre-3.10 interpreter on 3.10
-    syntax) must be reported with its rule name and the file it died on, every
-    other rule must still run and report, and the exit code must stay non-zero."""
+    """Report a crashed rule with its file, keep running the rest, and still exit non-zero."""
     _write(
         tmp_path,
         f"{_ENDPOINT_DIR}/x.py",
@@ -443,8 +441,7 @@ def test_allowlisted_function_at_audited_count_is_clean(tmp_path: Path) -> None:
 
 
 def test_new_bare_dump_in_allowlisted_function_is_flagged(tmp_path: Path) -> None:
-    """The grandfathered count caps the exemption: a NEW bare dump in an
-    allowlisted function pushes the count past the audited number."""
+    """Flag a new bare dump that pushes an allowlisted function past its audited count."""
     src = (
         "async def generate_image(prompt):\n"
         "    result = await api_generate_image(prompt)\n"

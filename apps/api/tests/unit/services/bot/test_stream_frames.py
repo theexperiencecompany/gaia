@@ -1,7 +1,7 @@
 """Unit tests for the bot SSE frame builders.
 
 The point of this module is byte identity: every builder is pinned against the
-literal it replaced in ``app/api/v1/endpoints/bot.py``, character for
+literal it replaced in app/api/v1/endpoints/bot.py, character for
 character. A bot adapter parses these bytes, so a stray space or a reordered
 key is a production break that no route test would notice.
 """

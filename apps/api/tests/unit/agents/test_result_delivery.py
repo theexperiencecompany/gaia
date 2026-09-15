@@ -1,5 +1,4 @@
-"""Unit tests for the run-free proactive-delivery primitive
-(app.agents.core.background.result_delivery.deliver_message_to_conversation).
+"""Unit tests for deliver_message_to_conversation, the run-free proactive-delivery primitive.
 
 Pins the surface-aware routing (bot platform vs web WebSocket), the checkpoint
 record that lets a later turn remember what was delivered, and the guards
@@ -115,11 +114,8 @@ async def test_deleted_conversation_returns_none_and_skips_record() -> None:
 
 
 async def test_websocket_path_builds_exact_target_message_and_verdict() -> None:
-    # Pin the argument contract deliver_message_to_conversation hands to its
-    # collaborators on the web path: the saved MessageModel, the delivery target
-    # (all the client-keying fields it must leave off for a proactive message),
-    # and the verdict it logs. Spying the seams catches value drift the rendered
-    # WebSocket event can't — a target flag behind a skipped branch still differs.
+    # Pins the saved MessageModel, the delivery target (client-keying fields left
+    # off for a proactive message), and the logged verdict.
     convo_repo = MagicMock()
     convo_repo.get_source = AsyncMock(return_value=ConversationSource.WEB)
     with (

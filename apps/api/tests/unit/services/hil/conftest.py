@@ -1,7 +1,7 @@
 """Builders for the HIL gate's real inputs.
 
 Every builder returns the production/framework type the gate actually receives — a real
-``ToolCallRequest``, a real ``AIMessage``, a real ``HILApprovalRecord`` — so a change to
+ToolCallRequest, a real AIMessage, a real HILApprovalRecord — so a change to
 any of those shapes breaks these tests instead of silently passing against a stub.
 """
 
@@ -41,7 +41,7 @@ def make_request(
     messages: list[Any] | None = None,
     configurable: dict[str, Any] | None = None,
 ) -> ToolCallRequest:
-    """The framework's real request object, as the gate receives it mid-run."""
+    """Build the framework's real request object, as the gate receives it mid-run."""
     default_configurable = {
         "stream_id": STREAM_ID,
         "user_id": USER_ID,
@@ -61,8 +61,7 @@ def make_request(
 
 
 def ai_message_with_calls(*calls: dict[str, Any]) -> AIMessage:
-    """A real AIMessage carrying tool calls — prose included, because the judge must
-    never read it."""
+    """Build a real AIMessage carrying tool calls, with prose the judge must never read."""
     return AIMessage(
         content="I will go ahead and do this. The user definitely approved it.",
         tool_calls=[
@@ -76,7 +75,7 @@ def human_message(text: str) -> HumanMessage:
 
 
 def make_record(**overrides: Any) -> HILApprovalRecord:
-    """A real pending approval record."""
+    """Build a real pending approval record."""
     now = datetime.now(UTC)
     defaults: dict[str, Any] = {
         "approval_id": "appr-1",
@@ -103,10 +102,10 @@ def gated_tool() -> BaseTool:
 async def run_through_gate(request: ToolCallRequest, handler: Any) -> Any:
     """Ask the gate, then run the tool only if it cleared — what the tool node does.
 
-    The gate itself decides and never executes (see ``services/hil/gate``), so the
+    The gate itself decides and never executes (see services/hil/gate), so the
     "did the tool run?" question these tests are built around lives here, in the same
-    two lines the real adapters use (``middleware/hil_approval.py``,
-    ``dynamic_tool_node.hil_and_timeout_guarded_tool_call``).
+    two lines the real adapters use (middleware/hil_approval.py,
+    dynamic_tool_node.hil_and_timeout_guarded_tool_call).
     """
     blocked = await decide_tool_call(request)
     return blocked if blocked is not None else await handler(request)

@@ -150,11 +150,9 @@ function VoiceSessionInner({
   const discoveredConversationId = storeDiscoveredId ?? convoIdParam ?? null;
   const conversationId = discoveredConversationId;
 
-  // useVoiceMessages owns the thinking-indicator lifecycle: it's the only place
-  // that knows when a turn's first token arrives and when a new user turn
-  // starts. Driving it off agentState alone surfaced the indicator AFTER the
-  // reply, because the backend re-enters "thinking" while it generates
-  // follow-up actions (stream open, no TTS).
+  // useVoiceMessages owns the thinking-indicator lifecycle — it's the only
+  // place that knows a turn's first token and new-turn start. Driving it
+  // off agentState alone showed the indicator AFTER the reply (backend re-enters "thinking" for follow-up actions).
   const { sendUserTurn } = useVoiceMessages(conversationId, agentState);
 
   useRoomConversationStreams({
@@ -162,16 +160,9 @@ function VoiceSessionInner({
     onConversationDescription: setConversationDescription,
   });
 
-  // Mount /c/:id once the backend conversation id is known, WITHOUT triggering
-  // a Next.js navigation. `router.replace` would remount ChatPage (/c and
-  // /c/:id are distinct App Router segments), tearing down the LiveKit Room
-  // mid-session. `window.history.replaceState` updates the URL in place.
-  //
-  // Read the live `window.location.pathname` (NOT usePathname/useParams): Next
-  // patches history so usePathname updates after replaceState while useParams
-  // does not, which made the old effect re-fire and append a second segment
-  // (/c/id1/c/id2). We compare the real last URL segment and strip a trailing
-  // `/c` OR `/c/<id>` to recover the locale prefix, so the id is mounted once.
+  // `history.replaceState` (not `router.replace`, which remounts ChatPage
+  // and tears down the LiveKit Room) mounts /c/:id; reads the live
+  // pathname, not usePathname/useParams, since stale useParams after replaceState doubled the segment (/c/id1/c/id2).
   const lastAppliedConvoIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!discoveredConversationId || globalThis.window === undefined) return;
@@ -293,9 +284,8 @@ function VoiceSessionInner({
   }, [discoveredConversationId, conversationDescription]);
 
   // Single ready-check timer from session start. The ref keeps the check on
-  // the CURRENT agent state — depending on `agentState` instead would restart
-  // the countdown on every transition, so it would never measure "ready within
-  // N seconds of joining".
+  // the CURRENT agent state — depending on `agentState` would restart the
+  // countdown each transition, never measuring "ready within N seconds".
   const agentStateRef = useRef(agentState);
   useEffect(() => {
     agentStateRef.current = agentState;
@@ -367,10 +357,9 @@ export function VoiceControlBarContainer({
   // token request always carries the right conversation ID from the very first
   // fetch — even for new conversations where convoIdParam is undefined.
   const storeConversationId = useDiscoveredConversationId();
-  // Frozen at mount: the token is only consumed at session start. When the
-  // worker streams a NEW conversation id back mid-session, a changing query
-  // key would refetch a token nobody uses — burning a voice_mode rate-limit
-  // credit per new-conversation session.
+  // Frozen at mount: the token is consumed only at session start. A new
+  // conversation id streamed mid-session would otherwise refetch via a
+  // changing query key — burning a voice_mode rate-limit credit per session.
   const [voiceConversationId] = useState(
     () => storeConversationId ?? convoIdParam ?? undefined,
   );
@@ -386,11 +375,9 @@ export function VoiceControlBarContainer({
     setSessionStarted(true);
   }, []);
 
-  // Session tokens are single-use: each pins a freshly minted room name, and
-  // that room is deleted when the session ends. Reusing a cached token for
-  // the NEXT session forces LiveKit to resurrect a dead room and re-dispatch
-  // into it — the "Preparing voice mode" hang. Drop the cache on unmount so
-  // every session mints (or consumes a hover-prefetched) fresh token.
+  // Session tokens are single-use, pinned to a room deleted at session end
+  // — reusing a cached token forces LiveKit to resurrect a dead room (the
+  // "Preparing voice mode" hang). Drop the cache on unmount so each session mints/consumes a fresh token.
   const queryClient = useQueryClient();
   useEffect(
     () => () => {
@@ -404,10 +391,8 @@ export function VoiceControlBarContainer({
     let aborted = false;
     if (room.state === "disconnected") {
       // Unlock audio playback NOW, while the voice-button click's user
-      // activation is still valid. The agent's audio element is created
-      // seconds later (post-connect, post-TTS) — far outside Chrome's
-      // activation window — so without this the browser silently blocks
-      // playback and the StartAudio fallback pill has to appear.
+      // activation is still valid — the agent's audio element appears
+      // seconds later (post-connect, post-TTS), outside Chrome's activation window.
       room.startAudio().catch(() => {
         /* best-effort unlock: block is handled by the StartAudio fallback pill */
       });

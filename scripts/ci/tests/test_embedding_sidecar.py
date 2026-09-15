@@ -57,7 +57,7 @@ time.sleep(300)
 
 
 def free_port() -> int:
-    """A port in our own range that nothing currently holds."""
+    """Return a port in our own range that nothing currently holds."""
     for port in range(PORT_BASE, PORT_BASE + 400, 10):
         with socket.socket() as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -176,11 +176,7 @@ def test_a_free_port_is_not_second_guessed(tmp_path: Path, port: int) -> None:
 
 
 def test_a_sidecar_killed_by_signal_says_which(tmp_path: Path, port: int) -> None:
-    """The log said only "Loaded memory embedding model" and the lane said only
-    "exited during startup" (run 34595538117): a process the kernel SIGKILLs
-    writes nothing, so the exit status is the one fact left, and the script
-    was discarding it. 137 is the OOM killer or a hygiene hook, not a bug in
-    the sidecar — the two are debugged in different places."""
+    """Report the exit status — a SIGKILL (137, run 34595538117) writes nothing else."""
     proc = run(
         tmp_path, port, "start", uv_stub=KILLED_STUB, GAIA_SIDECAR_LOG=str(tmp_path / "s.log")
     )

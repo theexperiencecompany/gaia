@@ -4,10 +4,9 @@ import asyncio
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-# ``asyncio.create_task`` holds only a WEAK reference to the task it returns, so
-# an otherwise-unreferenced fire-and-forget task can be garbage-collected before
-# it finishes. Strong-referencing every task here until it completes is what
-# keeps it alive; the done-callback discards it so the set stays bounded.
+# asyncio.create_task holds only a weak reference, so an unreferenced
+# fire-and-forget task can be GC'd before it finishes; this set strong-refs
+# each task until its done-callback discards it.
 _background_tasks: set[asyncio.Task[Any]] = set()
 
 
@@ -17,24 +16,15 @@ def spawn_background_task(
     name: str | None = None,
     on_done: Callable[[asyncio.Task[Any]], None] | None = None,
 ) -> asyncio.Task[Any]:
-    """Schedule ``coro`` as a fire-and-forget task kept alive until it finishes.
+    """Schedule coro as a fire-and-forget task kept alive until it finishes; the single canonical way to run a detached coroutine.
 
-    The single canonical way to run a coroutine detached from its caller. The
-    returned task is strong-referenced in a module-level set until it completes,
-    then discarded — without that reference the event loop can collect a still-
-    running task (see the module docstring). Requires a running event loop;
-    raises ``RuntimeError`` otherwise, exactly like ``asyncio.create_task``.
-
-    ``on_done`` runs as an additional done-callback once the task finishes — use
-    it to log the task's outcome, which a detached task cannot surface otherwise.
+    Requires a running event loop (raises RuntimeError otherwise, like asyncio.create_task). on_done runs as an additional done-callback, e.g. to log the task's outcome since a detached task can't surface it otherwise.
     """
     try:
         task = asyncio.create_task(coro, name=name)
     except RuntimeError:
-        # No running loop: create_task never took ownership of ``coro``, so it
-        # would leak as an un-awaited coroutine. Close it before re-raising so
-        # callers still see the RuntimeError but get no "coroutine was never
-        # awaited" warning.
+        # create_task never took ownership without a loop, so coro would leak as
+        # un-awaited; close it before re-raising to avoid that warning.
         coro.close()
         raise
     guard_task(task)
@@ -44,13 +34,9 @@ def spawn_background_task(
 
 
 def guard_task(task: asyncio.Task[Any]) -> asyncio.Task[Any]:
-    """Strong-reference an already-created ``task`` until it finishes, then release it.
+    """Strong-reference an already-created task until it finishes, then release it.
 
-    For a task the caller built and may await, but which must survive if it
-    outlives the awaiting scope — the module-level set is the strong reference the
-    event loop needs to not collect it mid-flight (see the module docstring), and
-    the done-callback discards it so the set stays bounded. Use
-    ``spawn_background_task`` instead when you have a coroutine rather than a task.
+    For a task the caller built and may await but which must survive beyond the awaiting scope; use spawn_background_task instead when starting from a coroutine.
     """
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)

@@ -196,10 +196,9 @@ export const workflowApi = {
   // silent: non-critical metadata; UI falls back to the slug, never toast.
   getTriggerSchemas: () => api.get("/api/v1/triggers/schema", { silent: true }),
 
-  // Get dynamic options for trigger configuration field; `parentValues` are
-  // the ids of the parent selection for cascading fields (sheets of a
-  // spreadsheet), sent comma-separated as the route reads them. `page` and
-  // `search` are honoured by the handlers that page/filter (GitHub repos).
+  // Dynamic options for trigger config fields; `parentValues` are the parent
+  // selection ids for cascading fields (sheets of a spreadsheet), sent
+  // comma-separated. `page`/`search` are honoured by paging/filtering handlers (GitHub repos).
   getTriggerOptions: async (
     integrationId: string,
     triggerSlug: string,

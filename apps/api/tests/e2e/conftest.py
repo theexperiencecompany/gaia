@@ -1,24 +1,13 @@
 """E2E test fixtures for GAIA agent graph scenarios.
 
-Uses REAL GAIA production nodes and graph builder infrastructure:
-- filter_messages_node: from app.agents.core.nodes.filter_messages
-- manage_system_prompts_node: from app.agents.core.nodes.manage_system_prompts
-- create_agent: from app.override.langgraph_bigtool.create_agent
-- State: from app.override.langgraph_bigtool.utils (the real agent state schema)
-
-Mocks only:
-- LLM: BindableToolsFakeModel (no real LLM calls; supports bind_tools())
-
-When USE_REAL_SERVICES=1 (Dagger CI):
-- Checkpointer: AsyncPostgresSaver against real Postgres
-- Store: AsyncPostgresStore against real Postgres
-
-When USE_REAL_SERVICES=0 (opt-out, local run without Docker):
-- Checkpointer: MemorySaver (in-process fallback)
-- Store: InMemoryStore (in-process fallback)
+Uses real GAIA nodes (filter_messages_node, manage_system_prompts_node) and the
+real create_agent/State from app.override.langgraph_bigtool — only the LLM
+(BindableToolsFakeModel) is mocked. USE_REAL_SERVICES=1 (Dagger CI) backs the
+checkpointer/store with AsyncPostgresSaver/AsyncPostgresStore against real
+Postgres; USE_REAL_SERVICES=0 falls back to MemorySaver/InMemoryStore.
 
 If filter_messages_node or manage_system_prompts_node are deleted or
-mis-imported, these fixtures (and every test using them) will fail.
+mis-imported, every fixture here — and every test using them — fails.
 """
 
 from __future__ import annotations
@@ -70,7 +59,7 @@ _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Some e2e files need real Mongo/Redis; skip them at collection otherwise.
+    """Skip the e2e files that need real Mongo/Redis at collection otherwise.
 
     These are the only e2e files that request the real-infra fixtures from
     tests/integration/real/db_fixtures (verified by grep): the HIL journeys and
@@ -101,20 +90,10 @@ def build_gaia_test_graph(
     checkpointer: MemorySaver | None = None,
     store: InMemoryStore | None = None,
 ):
-    """Build a real GAIA agent graph for E2E testing.
+    """Build a real GAIA agent graph: real create_agent and pre-model hooks, fake LLM/checkpointer/store.
 
-    Uses the real ``create_agent`` from ``app.override.langgraph_bigtool.create_agent``
-    and wires in the real GAIA pre-model hooks:
-    - filter_messages_node
-    - manage_system_prompts_node
-
-    The LLM, checkpointer, and store are replaced with in-memory test doubles
-    so no external services are required.
-
-    If ``app.agents.core.nodes.filter_messages.filter_messages_node`` or
-    ``app.agents.core.nodes.manage_system_prompts.manage_system_prompts_node``
-    are removed, this function will raise an ImportError and ALL e2e tests
-    will fail — which is the desired sentinel behaviour.
+    Deleting filter_messages_node or manage_system_prompts_node raises ImportError
+    here — the intended sentinel for every e2e test.
     """
     pre_model_hooks: list[HookType] = [
         cast(HookType, filter_messages_node),
@@ -186,17 +165,12 @@ async def in_memory_store():
 
 @pytest.fixture
 def real_tool_registry():
-    """Register the real global ToolRegistry provider.
+    """Register the real global ToolRegistry provider (in-process only, no ChromaDB/network).
 
-    ``format_tool_call_entry`` resolves every streamed tool call's category
-    through ``get_tool_registry()``; without the provider registered that lookup
-    raises, so any test asserting on a ``tool_data`` frame needs this. Setup is
-    in-process only (``_initialize_categories`` imports the tool modules and
-    indexes them by name) — no ChromaDB, no network.
-
-    The provider registry is a process-wide singleton with no reset between
-    tests, so registration happens once and the built instance is then reused
-    exactly as it is in a running app.
+    format_tool_call_entry needs get_tool_registry() registered to resolve a
+    streamed tool call's category. The provider registry is a process-wide
+    singleton with no reset between tests, so registration happens once and is
+    reused exactly as in a running app.
     """
     from app.agents.tools.core.registry import init_tool_registry
 
@@ -207,7 +181,7 @@ def real_tool_registry():
 
 @pytest.fixture
 def thread_config() -> dict[str, Any]:
-    """Unique thread config per test, includes user_id required by GAIA nodes."""
+    """Build a unique thread config per test, including the user_id GAIA nodes require."""
     return {
         "configurable": {
             "thread_id": str(uuid4()),
@@ -220,7 +194,7 @@ def make_gaia_state(**overrides) -> dict[str, Any]:
     """Build a minimal GAIA State dict for direct node testing.
 
     Uses the real State fields from app.override.langgraph_bigtool.utils
-    (which extends langgraph_bigtool State with the ``todos`` channel).
+    (which extends langgraph_bigtool State with the todos channel).
     """
     defaults: dict[str, Any] = {
         "messages": [],

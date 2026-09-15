@@ -543,8 +543,7 @@ class TestGetRetrieveToolsFunction:
 class TestRetrieveToolsBinding:
     @pytest.mark.asyncio
     async def test_binding_mode_stamps_the_wide_event(self):
-        """The binding counts are how an operator tells 'model asked for the
-        wrong names' from 'registry lost tools' in production events."""
+        """The binding counts are how an operator tells "model asked for the wrong names" from "registry lost tools" in production events."""
         from app.agents.tools.core.retrieval import get_retrieve_tools_function
         from shared.py.wide_events import log
 
@@ -586,10 +585,9 @@ class TestRetrieveToolsBinding:
             "app.agents.tools.core.retrieval.get_tool_registry",
             new_callable=AsyncMock,
         ):
-            # The real no-usable-argument call the LLM makes is an empty list
-            # (a plain-array schema can't send null); it returns corrective
-            # guidance instead of raising, so a recoverable model slip doesn't
-            # abort the executor turn.
+            # The real no-usable-argument call is an empty list (a plain-array schema can't send
+            # null); it returns corrective guidance instead of raising, so a recoverable model
+            # slip doesn't abort the executor turn.
             result = await fn(store=store, config=config, exact_tool_names=[])
 
         assert result["tools_to_bind"] == []
@@ -676,8 +674,7 @@ class TestRetrieveToolsBinding:
 class TestRetrieveToolsDiscovery:
     @pytest.mark.asyncio
     async def test_discovery_mode_stamps_the_wide_event(self):
-        """Discovery telemetry answers 'did the index have anything?' vs 'did
-        the filter drop it?' — pinned field by field, counts included."""
+        """Discovery telemetry answers "did the index have anything?" vs "did the filter drop it?" — pinned field by field, counts included."""
         from types import SimpleNamespace
 
         from app.agents.tools.core.retrieval import get_retrieve_tools_function

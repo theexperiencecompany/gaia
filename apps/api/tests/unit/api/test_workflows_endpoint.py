@@ -1,26 +1,4 @@
-"""Unit tests for the workflows API endpoints.
-
-Tests cover:
-- POST   /api/v1/workflows
-- GET    /api/v1/workflows
-- POST   /api/v1/workflows/{id}/execute
-- GET    /api/v1/workflows/{id}/executions
-- GET    /api/v1/workflows/{id}/status
-- POST   /api/v1/workflows/{id}/activate
-- POST   /api/v1/workflows/{id}/deactivate
-- POST   /api/v1/workflows/{id}/regenerate-steps
-- POST   /api/v1/workflows/from-todo
-- POST   /api/v1/workflows/{id}/publish
-- POST   /api/v1/workflows/{id}/unpublish
-- GET    /api/v1/workflows/explore
-- GET    /api/v1/workflows/community
-- GET    /api/v1/workflows/public/{ref}
-- POST   /api/v1/workflows/generate-prompt
-- GET    /api/v1/workflows/{id}
-- PUT    /api/v1/workflows/{id}
-- POST   /api/v1/workflows/{id}/reset-to-default
-- DELETE /api/v1/workflows/{id}
-"""
+"""Unit tests for the workflows API endpoints (CRUD, execute/status, activate/publish, explore/community, regenerate-steps, generate-prompt)."""
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -59,11 +37,9 @@ _GET_EXECUTIONS = "app.api.v1.endpoints.workflows.get_executions"
 _GEN_SLUG = "app.api.v1.endpoints.workflows.generate_unique_workflow_slug"
 _RESET_DEFAULT = "app.api.v1.endpoints.workflows.reset_system_workflow_to_default"
 
-# The `client` fixture's user is FREE by default (root conftest patches
-# get_user_subscription_status to FREE) — GAIA is paid-only, so create/
-# execute/activate/from-todo now 402 before the handler runs. Classes that
-# exercise handler behavior (not the paywall itself) opt into PRO here, the
-# same seam `payment_service.get_cached_plan_type` reads through.
+# The `client` fixture's user is FREE by default, so create/execute/activate/
+# from-todo 402 before the handler runs; classes exercising handler behavior
+# opt into PRO through the same seam payment_service.get_cached_plan_type reads.
 _GET_SUBSCRIPTION_STATUS = (
     "app.services.payments.payment_service.payment_service.get_user_subscription_status"
 )
@@ -77,13 +53,7 @@ def _subscription_mock(plan_type: PlanType = PlanType.PRO) -> MagicMock:
 
 @pytest.fixture(autouse=True)
 def _no_real_redis_plan_cache():
-    """``get_cached_plan_type`` reads ``subscription_plan:<user_id>`` from Redis
-    before consulting ``get_user_subscription_status``, and every test in this
-    file shares FAKE_USER's id. The test env's REDIS_URL points at a real
-    local Redis (``tests/conftest.py``) — without this, a plan tier cached by
-    one test leaks into a later test that patches a different tier, which is
-    the "stray local Redis singleton" flake noted in ``apps/api/CLAUDE.md``.
-    """
+    """Every test here shares FAKE_USER's id; without this a plan tier cached by one test leaks into the next via the local-Redis singleton."""
     with (
         patch(
             "app.services.payments.payment_service.redis_cache.get",
@@ -128,8 +98,7 @@ def _make_workflow(**overrides) -> Workflow:
 
 
 def _make_workflow_doc(**overrides) -> WorkflowDocument:
-    """Build a WorkflowDocument stand-in for repository mock returns (the typed
-    seam the endpoints read from)."""
+    """Build a WorkflowDocument stand-in for repository mock returns."""
     wf = _make_workflow(**overrides)
     return WorkflowDocument(**wf.model_dump())
 
@@ -144,12 +113,8 @@ def _create_workflow_payload(**overrides) -> dict:
     return base
 
 
-# ---------------------------------------------------------------------------
-# Paid-only gate — GAIA is paid-only, so create/execute/activate/from-todo
-# must 402 for a FREE-plan user before the service layer ever runs, and let a
-# PRO-plan user through untouched. The `client` fixture is FREE by default
-# (root conftest), so these need no extra patching for the free-user half.
-# ---------------------------------------------------------------------------
+# create/execute/activate/from-todo must 402 for a FREE-plan user before the
+# service layer ever runs, and let a PRO-plan user through untouched.
 
 
 class TestWorkflowPaidOnlyGate:
@@ -742,8 +707,7 @@ class TestRegenerateSteps:
         assert response.json()["message"] == "Workflow regeneration started"
 
     async def test_regenerate_steps_not_found_returns_404(self, client: AsyncClient):
-        """A missing workflow is a 404, not a 500: the endpoint re-raises its own
-        HTTPException instead of letting the bare ``except Exception`` wrap it."""
+        """A missing workflow is a 404, not a 500: the endpoint re-raises its own HTTPException instead of letting the bare except wrap it."""
         with patch(
             f"{_WF_SERVICE}.regenerate_workflow_steps",
             new_callable=AsyncMock,
@@ -760,8 +724,7 @@ class TestRegenerateSteps:
     async def test_regenerate_steps_generation_failure_returns_actionable_detail(
         self, client: AsyncClient
     ):
-        """A model-lane failure must reach the modal as a readable reason, not as
-        the opaque "Failed to regenerate workflow steps"."""
+        """A model-lane failure must reach the modal as a readable reason, not the opaque "Failed to regenerate workflow steps"."""
         with patch(
             f"{_WF_SERVICE}.regenerate_workflow_steps",
             new_callable=AsyncMock,
@@ -783,8 +746,7 @@ class TestRegenerateSteps:
     async def test_regenerate_steps_generation_failure_logs_workflow_user_and_reason(
         self, client: AsyncClient, fake_user: dict
     ):
-        """The 502 is only actionable in support if the log names which workflow,
-        which user and which provider reason produced it."""
+        """The 502 is only actionable in support if the log names which workflow, user, and provider reason produced it."""
         recorded: list[tuple[str, dict]] = []
         with (
             patch(
@@ -1167,9 +1129,7 @@ class TestGeneratePrompt:
     async def test_generate_prompt_forwards_every_request_field(
         self, client: AsyncClient, fake_user: dict
     ):
-        """Every field the editor posts has to reach ``WorkflowPromptRequest``:
-        a dropped one silently degrades the generated instructions (wrong
-        trigger, unmentioned integrations) instead of failing loudly."""
+        """A dropped field silently degrades the generated instructions (wrong trigger, unmentioned integrations) instead of failing loudly."""
         with patch(
             f"{_WF_GEN_SERVICE}.generate_workflow_prompt",
             new_callable=AsyncMock,

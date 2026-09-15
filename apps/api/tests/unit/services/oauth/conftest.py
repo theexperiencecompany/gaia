@@ -1,5 +1,4 @@
-"""Fixtures shared by the oauth service tests: every collaborator the service
-reaches, patched at the module seam."""
+"""Fixtures shared by the oauth service tests: every collaborator the service reaches, patched at the module seam."""
 
 from unittest.mock import AsyncMock, patch
 

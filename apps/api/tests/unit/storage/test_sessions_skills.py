@@ -2,14 +2,14 @@
 
 This module is what the agent actually reads at inference time. A wrong write here
 is invisible in logs: a skill body that never lands means the agent silently loses
-a capability, a stale `.connected` marker means it claims an integration the user
+a capability, a stale .connected marker means it claims an integration the user
 disconnected, and a prune that is too eager deletes the system-file symlinks the
 linker owns. All of those are caught here.
 
-The functions take a `user_root: Path` — there is no mount lookup inside them — so
-`tmp_path` IS the boundary and the real filesystem logic (`matches_text`,
-`rglob` pruning, `ensure_safe_path_id`) runs unmocked. The only stub is the
-in-memory skill registry (`skills_by_subagent`), which reads the repo's builtin
+The functions take a user_root: Path — there is no mount lookup inside them — so
+tmp_path IS the boundary and the real filesystem logic (matches_text,
+rglob pruning, ensure_safe_path_id) runs unmocked. The only stub is the
+in-memory skill registry (skills_by_subagent), which reads the repo's builtin
 SKILL.md library off disk.
 """
 
@@ -57,7 +57,7 @@ def make_skill(
 def registry(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[BuiltinSkill]]:
     """Drive materialize_skills from an in-test catalog.
 
-    The real ``skills_by_subagent`` walks the repo's builtin SKILL.md library, so
+    The real skills_by_subagent walks the repo's builtin SKILL.md library, so
     every assertion would otherwise depend on whichever skills happen to be
     checked in today.
     """
@@ -78,10 +78,8 @@ def test_a_marker_that_was_never_written_reads_as_none(tmp_path: Path) -> None:
 
 
 def test_an_empty_marker_reads_as_an_empty_string_rather_than_none(tmp_path: Path) -> None:
-    # Load-bearing asymmetry with read_skills_marker: the connected-set signature
-    # for a user with zero connected integrations IS "". If this collapsed "" to
-    # None the staleness gate would never match, and every session bootstrap
-    # would re-materialize the whole catalog for every unconnected user.
+    # read_skills_marker's connected-set signature for zero integrations is "" — collapsing it to
+    # None would break the staleness gate and force a full catalog re-materialize for every unconnected user.
     marker = tmp_path / "connected.v"
     marker.write_text("", encoding="utf-8")
     assert read_text_or_none(marker) == ""

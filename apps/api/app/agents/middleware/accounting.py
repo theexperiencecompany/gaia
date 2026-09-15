@@ -1,23 +1,15 @@
-"""
-LLM Call Accounting Middleware.
+"""LLM Call Accounting Middleware.
 
-Emits a structured ``llm_call`` wide event after every model invocation with
-input/cached/output tokens, credits charged, step index, and agent name. Also
-emits ``recursion_high_water_mark`` when a run has consumed ≥80% of its
-recursion limit so we can tune the cap from real data.
+Emits a structured llm_call wide event after every model invocation
+(tokens, credits, step index, agent name), and recursion_high_water_mark
+at ≥80% of the recursion limit. Also the budget enforcement seam: every
+call records USD cost into the user's day/month budget windows, and
+awrap_model_call short-circuits with a stop message when the daily budget
+or per-request token ceiling is exhausted — self-sufficient on every path
+(chat, workflows, bots, voice, subagents) since get_budget_stop_reason
+derives plan_type from the cached tier if a path never stamped it.
 
-Also the budget enforcement seam: every model call records its USD cost into
-the user's day/month budget windows and its tokens into the request tree's
-aggregate counter (``app.services.cost_budget``), and ``awrap_model_call``
-short-circuits the invocation with a user-facing stop message when the daily
-cost budget or the per-request token ceiling is exhausted. This hook runs on
-every execution path (chat, workflows, bots, voice, subagents), and the wall is
-self-sufficient — when a path never stamped ``plan_type`` onto the configurable,
-``get_budget_stop_reason`` derives it from the cached tier — so no entry point
-can bypass the walls. The endpoint-level 429 gates are the nice UX, this is the
-law.
-
-Runs as a LangChain :class:`AgentMiddleware` via `create_agent(middleware=...)`.
+Runs as a LangChain :class:AgentMiddleware via create_agent(middleware=...).
 """
 
 from collections.abc import Awaitable, Callable
@@ -83,36 +75,20 @@ def _latest_ai_message(messages: list[AnyMessage]) -> AIMessage | None:
 class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
     """Track LLM usage + emit wide events after every model call.
 
-    Responsibilities:
-
-    - ``@after_model``: read ``usage_metadata`` from the most recent AIMessage,
-      compute USD credits via :func:`calculate_token_cost`, emit a
-      ``llm_call`` wide event.
-    - High-water-mark emission: when the run's step counter passes
-      ``RECURSION_HWM_FRACTION * AGENT_RECURSION_LIMIT``, emit
-      ``recursion_high_water_mark`` exactly once per thread.
-    - ``@awrap_model_call``: the budget wall — short-circuits the model call
-      with a stop message when the daily cost budget or per-request token
-      ceiling is exhausted (see :func:`get_budget_stop_reason`); below that,
-      injects a one-time-per-thread wrap-up notice once spend crosses
-      ``BUDGET_WRAPUP_REMAINING_FRACTION``.
+    after_model computes USD credits and emits llm_call; high-water-mark
+    fires recursion_high_water_mark once per thread past
+    RECURSION_HWM_FRACTION; awrap_model_call is the budget wall, short-
+    circuiting the call when budget/token ceilings are exhausted (see
+    :func:get_budget_stop_reason) and injecting a wrap-up notice near the limit.
     """
 
     def __init__(self, agent_name: str, recursion_limit: int = AGENT_RECURSION_LIMIT) -> None:
         super().__init__()
         self.agent_name = agent_name
         self.recursion_limit = recursion_limit
-        # Thread-local step counter, HWM-emitted flag, and before-model
-        # monotonic timestamp. Keyed by thread_id so concurrent users don't
-        # clobber each other.
-        #
-        # **Why in-memory (not Redis)?** A single run is bounded to ONE worker
-        # — LangGraph drives all steps for a thread on the same process during
-        # a run. The counters exist purely to drive per-run signals (step
-        # index for the ``llm_call`` event, HWM "emit once per run" guard,
-        # before/after timing delta). Crossing workers would over-emit HWM on
-        # resume after a crash, and Redis round-trips would add non-trivial
-        # overhead to every model step without improving correctness.
+        # Thread-local, keyed by thread_id. In-memory not Redis: a single run
+        # is bounded to ONE worker, and Redis round-trips would add overhead
+        # to every model step without improving correctness.
         self._step_counts: dict[str, int] = {}
         self._hwm_emitted: set[str] = set()
         self._budget_wrapup_emitted: set[str] = set()
@@ -120,11 +96,9 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         # sync hook writing while an async run is in flight), and a scalar
         # lets the later stamp clobber the earlier one. LIFO matches nesting.
         self._start_ts: dict[str, list[float]] = {}
-        # Wall time of the last provider call on each thread, measured around
-        # the invocation itself in ``awrap_model_call``. ``_start_ts`` cannot
-        # stand in: it spans before_model -> after_model, so it also carries
-        # every other middleware in the stack. Consumed (popped) by the
-        # ``aafter_model`` that meters that same call.
+        # Wall time of each provider call, measured in ``awrap_model_call``
+        # (``_start_ts`` spans before/after_model, carrying other middleware
+        # too). Consumed (popped) by the ``aafter_model`` that meters it.
         self._invoke_ms: dict[str, list[float]] = {}
 
     # --- helpers ---------------------------------------------------------
@@ -155,10 +129,10 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         return value
 
     def _emit_budget_stop_card(self, stop_reason: str, plan_type: PlanType) -> None:
-        """Stream a ``rate_limit_data`` frame so the frontend renders RateLimitCard
-        instead of the bare stop text. Same helper ``with_rate_limiting`` uses in
-        ``app.decorators.rate_limiting``; a missing stream writer (workflows, bots)
-        is normal and logged at debug, never raised.
+        """Stream a rate_limit_data frame so the frontend renders RateLimitCard instead of bare text.
+
+        Same helper with_rate_limiting uses; a missing stream writer
+        (workflows, bots) is normal and logged at debug, never raised.
         """
         try:
             writer = get_stream_writer()
@@ -189,8 +163,8 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
 
         Budget GATING does not live here — a before_model return can only
         merge state; the custom graph loop (create_agent.acall_model) never
-        routes on ``jump_to``, so it would not stop the call. Enforcement is
-        in :meth:`awrap_model_call`, which can short-circuit the invocation.
+        routes on jump_to, so it would not stop the call. Enforcement is
+        in :meth:awrap_model_call, which can short-circuit the invocation.
         """
         del state, runtime  # state not consulted in this pre-call hook yet
         config = current_run_config()
@@ -205,23 +179,9 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
     ) -> ModelResponse:
         """Budget wall: stop the run BEFORE the model is invoked when a limit binds.
 
-        Runs on every model call in every execution path (chat, workflows,
-        bots, voice, subagents) — the endpoint gates are UX; this is the
-        backstop no entry point can route around. Checks, in order:
-
-        1. Daily USD cost budget (free = usage wall, pro = abuse guard).
-        2. Per-request aggregate token ceiling across the whole agent tree
-           (keyed by the inherited ``root_request_id``).
-
-        On a hit, returns the user-facing stop text as the final AIMessage —
-        no tool calls, so the graph ends naturally. Fail-open on infra errors:
-        a Redis hiccup must never take down the turn.
-
-        Below the hard wall, when spend has crossed
-        ``BUDGET_WRAPUP_REMAINING_FRACTION`` of the daily budget, injects a
-        one-time-per-thread wrap-up notice (mirrors the recursion wrap-up in
-        ``create_agent._maybe_inject_wrapup``) so the model lands the plane
-        with what it has instead of dying mid-tool-call on the hard stop.
+        Checks daily USD cost budget then per-request token ceiling; on a
+        hit, returns the stop text as the final AIMessage. Fail-open on
+        infra errors. Below the wall, injects a wrap-up notice near the limit.
         """
         config = current_run_config()
         configurable = agent_configurable(config)
@@ -288,10 +248,8 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 messages=[*request.messages, HumanMessage(content=BUDGET_WRAPUP_NOTICE)]
             )
 
-        # The one seam that can see the provider call start and finish, so it
-        # is the only place a real latency number exists. Measured across the
-        # retry/fallback chain the handler owns, i.e. what the turn actually
-        # waited for, and stashed for the ``aafter_model`` that meters it.
+        # The one seam that sees the provider call start and finish, across
+        # the retry/fallback chain — stashed for the ``aafter_model`` that meters it.
         invoke_start = time.monotonic()
         try:
             response = await handler(request)
@@ -311,7 +269,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         state: AgentState[Any],
         runtime: Runtime[Any],
     ) -> dict[str, Any] | None:
-        """Emit ``llm_call`` wide event after the model produces a response."""
+        """Emit llm_call wide event after the model produces a response."""
         del runtime  # unused — config is fetched from the graph context var
         messages = (
             state.get("messages") if isinstance(state, dict) else getattr(state, "messages", [])
@@ -327,10 +285,8 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         model_name = (lane.model if lane else None) or UNKNOWN_MODEL_NAME
         provider = lane.provider if lane else UNKNOWN_MODEL_NAME
         if lane is None:
-            # Priced as "unknown", which cannot match a real pricing entry, so the
-            # call undercharges the budget. Loud rather than silent, matching
-            # cost_budget's fail-open-but-visible convention — and reachable for a
-            # deploy window by any bag written before lanes existed.
+            # Priced as "unknown", which undercharges the budget — loud
+            # rather than silent, matching cost_budget's fail-open convention.
             log.warning(
                 f"{LogTag.AGENT} No lane on the configurable — the call is priced as "
                 "'unknown' and undercharges the budget (pre-lane queue item or HIL resume?)",
@@ -339,14 +295,9 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             )
         user_id = configurable.get("user_id")
 
-        # Price the call (full input_tokens + cached_tokens, so the cached subset
-        # is billed at the discounted rate rather than free) and record it into
-        # the day/month budget windows plus the request tree's aggregate token
-        # counter. This hook runs for every model call on every agent execution
-        # path (chat, workflows, bots, voice, subagents) — all work the user
-        # actively asked for, so it charges the budget. Auxiliary one-shot calls
-        # reach the same helper via ``ainvoke_structured`` with
-        # ``charge_to_budget=False`` (COGS observability only).
+        # Price the call into the day/month budget windows plus the request
+        # tree's aggregate counter. Auxiliary calls use
+        # ``charge_to_budget=False`` (COGS observability only) instead.
         usage = extract_message_usage(ai_msg)
         input_tokens = usage["input_tokens"]
         output_tokens = usage["output_tokens"]
@@ -397,12 +348,8 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         handoff_latency_ms = (
             round((time.monotonic() - start) * 1000, 2) if start is not None else 0.0
         )
-        # Aggregate per-step counts into the wide event so the end-of-stream
-        # ``worker_task`` rollup reflects totals across the whole run, not just
-        # the last step. ``log.set(model=...)`` does a shallow merge — without
-        # reading the prior totals first, every step would overwrite the dict
-        # and the final event would carry only the last step's numbers (which
-        # is how ``cached_tokens`` / ``cache_hit_rate`` came back null).
+        # Aggregate per-step counts so the rollup reflects run totals.
+        # ``log.set`` shallow-merges, so prior totals must be read first.
         prior = log.get().get("model") or {}
         prior_input = int(prior.get("input_tokens") or 0)
         prior_output = int(prior.get("output_tokens") or 0)
@@ -451,12 +398,8 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             # coverage of the reported price is worth being able to measure.
             cost_source="provider" if provider_cost is not None else "table",
             step_index=step_index,
-            # Which UPSTREAM served this call. ``provider`` above is the lane's
-            # configured provider (always "openrouter"), which cannot answer the
-            # question a zero-cache call raises: did the request land on a
-            # different upstream that holds no warm prefix, or did the prefix
-            # break? This id resolves to the serving provider through
-            # OpenRouter's generation-metadata endpoint, spending no model call.
+            # Which UPSTREAM served this call — resolved via OpenRouter's
+            # generation-metadata endpoint, spending no model call.
             generation_id=generation_id,
         )
 

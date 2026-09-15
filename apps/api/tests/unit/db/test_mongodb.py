@@ -340,8 +340,7 @@ class TestCollectionsLazyLoading:
 
 
 class TestGetAsyncCollection:
-    """The single supported accessor — the named per-collection module
-    attributes were removed once every domain moved behind a repository."""
+    """The single supported accessor; named per-collection module attributes were removed once every domain moved behind a repository."""
 
     def test_resolves_by_mongo_name(self) -> None:
         with patch("app.db.mongodb.collections._get_collection") as mock_get:
@@ -403,8 +402,7 @@ class TestCreatePlaybookIndexes:
     async def test_one_playbook_per_workflow_is_a_unique_index(
         self, mock_get_collection: MagicMock
     ) -> None:
-        """The repository's atomic upsert relies on the (workflow_id, user_id)
-        unique index to reject the loser of two concurrent first authorings."""
+        """The repository's atomic upsert relies on the (workflow_id, user_id) unique index to reject the loser of a concurrent race."""
         collection = MagicMock()
         collection.create_index = AsyncMock()
         mock_get_collection.return_value = collection
@@ -422,9 +420,7 @@ class TestCreatePaymentIndexes:
     async def test_checkout_sessions_indexes_back_the_webhook_race_lookups(
         self, mock_get_collection: MagicMock
     ) -> None:
-        """A checkout session is looked up by its provider session_id (which must be
-        unique, so a replayed webhook cannot create a second row) and listed per user
-        newest-first."""
+        """A checkout session is looked up by its unique provider session_id and listed per user newest-first."""
         collections: dict[str, MagicMock] = {}
 
         def collection_for(name: str) -> MagicMock:

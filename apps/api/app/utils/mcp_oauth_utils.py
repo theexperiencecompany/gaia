@@ -56,9 +56,7 @@ _CONTENT_TYPE_JSON = "application/json"
 _ACCEPT_JSON_SSE = f"{_CONTENT_TYPE_JSON}, text/event-stream"
 
 # Minimal MCP `initialize` request used to probe a server's auth requirement.
-# Per the MCP Authorization spec the 401 + WWW-Authenticate challenge is returned
-# in response to an actual MCP request, so the probe POSTs this rather than
-# issuing a bare GET — a GET only opens the optional server->client SSE stream
+# POSTed rather than a bare GET — a GET only opens the optional SSE stream
 # and may be rejected (405/406) before auth is ever evaluated.
 _MCP_INITIALIZE_PROBE_REQUEST: dict[str, Any] = JSONRPCRequest(
     jsonrpc="2.0",
@@ -73,10 +71,10 @@ _MCP_INITIALIZE_PROBE_REQUEST: dict[str, Any] = JSONRPCRequest(
 
 
 def oauth_token_expiry(expires_in: int | None) -> datetime | None:
-    """Absolute tz-aware UTC expiry for an OAuth token's ``expires_in`` seconds.
+    """Absolute tz-aware UTC expiry for an OAuth token's expires_in seconds.
 
     Single source of truth for token-expiry so the callback and refresh paths
-    can't drift. Returns None when the server omits ``expires_in``.
+    can't drift. Returns None when the server omits expires_in.
     """
     if not expires_in:
         return None
@@ -143,7 +141,7 @@ def is_localhost_url(url: str) -> bool:
 
 
 def validate_oauth_endpoints(as_metadata: OAuthMetadata, allow_localhost: bool = True) -> None:
-    """Validate that every OAuth endpoint in ``as_metadata`` uses HTTPS."""
+    """Validate that every OAuth endpoint in as_metadata uses HTTPS."""
     endpoints = {
         "authorization_endpoint": as_metadata.authorization_endpoint,
         "token_endpoint": as_metadata.token_endpoint,
@@ -162,10 +160,10 @@ def validate_oauth_endpoints(as_metadata: OAuthMetadata, allow_localhost: bool =
 
 
 def parse_rejected_scopes(error_description: str | None) -> set[str]:
-    """Extract the scope names an auth server rejected with ``invalid_scope``.
+    """Extract the scope names an auth server rejected with invalid_scope.
 
     OAuth servers are inconsistent in how they report the offending scope, so we
-    prefer quoted tokens (e.g. ``... not allowed to request scope 'user:org:read'``)
+    prefer quoted tokens (e.g. ... not allowed to request scope 'user:org:read')
     and fall back to the single scope-like token following the word "scope".
     Returns an empty set when nothing parseable is found.
     """
@@ -179,21 +177,13 @@ def parse_rejected_scopes(error_description: str | None) -> set[str]:
 
 
 async def extract_auth_challenge(server_url: str) -> McpAuthChallenge:
-    """
-    Probe MCP server and parse full WWW-Authenticate challenge per MCP spec.
+    """Probe the MCP server and parse its WWW-Authenticate challenge (MCP spec Phase 1).
 
-    Per MCP Authorization spec Phase 1:
-    - Client issues an MCP `initialize` POST to the server
-    - Server returns 401 with WWW-Authenticate header when auth is required
-    - Header may contain: resource_metadata, scope, error, error_description
-
-    Returns dict with extracted fields (empty dict if no 401 or parse fails).
+    An initialize POST that 401s carries resource_metadata/scope/error in
+    the header. Returns the extracted fields, or {} if no 401 or parse fails.
     """
-    # Per the MCP Authorization spec, the 401 + WWW-Authenticate challenge is
-    # returned in response to an MCP request (an `initialize` POST). A bare GET
-    # only opens the optional server->client SSE stream, which spec-compliant
-    # servers may reject with 405/406 before evaluating auth — making a GET probe
-    # miss the auth requirement entirely (e.g. granola returns 405 to a GET but
+    # A bare GET only opens the optional SSE stream and may be rejected with
+    # 405/406 before auth is evaluated (e.g. granola returns 405 to a GET but
     # 401 + resource_metadata to the initialize POST).
     headers = {
         "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
@@ -287,15 +277,10 @@ async def extract_auth_challenge(server_url: str) -> McpAuthChallenge:
 
 
 async def find_protected_resource_metadata(server_url: str) -> str | None:
-    """
-    Find Protected Resource Metadata via well-known URIs per RFC 9728 Section 5.2.
+    """Find Protected Resource Metadata via well-known URIs (RFC 9728 Section 5.2).
 
-    Per MCP spec Phase 2b, when no resource_metadata in WWW-Authenticate header,
-    try well-known URIs in order:
-    1. Path-aware: {origin}/.well-known/oauth-protected-resource{path}
-    2. Root: {origin}/.well-known/oauth-protected-resource
-
-    Returns the URL that responds with valid JSON, or None.
+    Tries path-aware then root well-known URIs (MCP spec Phase 2b). Returns
+    the URL that responds with valid JSON, or None.
     """
     candidates = build_protected_resource_metadata_discovery_urls(None, server_url)
 
@@ -334,7 +319,7 @@ async def fetch_protected_resource_metadata(prm_url: str) -> ProtectedResourceMe
     """
     Fetch and parse Protected Resource Metadata (RFC 9728).
 
-    Returns the validated :class:`ProtectedResourceMetadata` model.
+    Returns the validated :class:ProtectedResourceMetadata model.
     """
     # Include MCP protocol version header per MCP spec
     headers = {"MCP-Protocol-Version": MCP_PROTOCOL_VERSION}
@@ -349,19 +334,11 @@ async def fetch_protected_resource_metadata(prm_url: str) -> ProtectedResourceMe
 
 
 async def fetch_auth_server_metadata(auth_server_url: str) -> OAuthMetadata:
-    """
-    Fetch Authorization Server Metadata (RFC 8414).
+    """Fetch Authorization Server Metadata (RFC 8414).
 
-    Per RFC 8414, for an issuer URL like https://auth.example.com/tenant1:
-    - Path-aware: https://auth.example.com/.well-known/oauth-authorization-server/tenant1
-    - Root: https://auth.example.com/.well-known/oauth-authorization-server
-
-    Tries multiple discovery patterns and both OAuth and OIDC endpoints.
-
-    Per MCP spec, if metadata discovery fails, falls back to default URLs:
-    - {base}/authorize
-    - {base}/token
-    - {base}/register
+    Tries path-aware and root discovery URLs, both OAuth and OIDC endpoints;
+    falls back to default {base}/authorize, /token, /register (MCP spec) if
+    discovery fails.
     """
     parsed = urlparse(auth_server_url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
@@ -392,16 +369,9 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> OAuthMetadata:
                     error_type=type(e).__name__,
                 )
 
-    # MCP Spec Fallback: If metadata discovery fails, use default URL pattern
-    # Per MCP Authorization spec (2025-03-26): fallback URLs use the
-    # "authorization base URL" which is the server URL with path removed.
-    # Per MCP draft spec: fallback endpoints are removed entirely.
-    #
-    # We use origin-only (no path) per the 2025-03-26 spec since the auth
-    # server URL represents the authorization server, and its authorization/
-    # token/registration endpoints are typically at the root, not nested
-    # under the MCP resource path (e.g., /excalidraw/token is wrong,
-    # /token is correct for server.smithery.ai/excalidraw).
+    # Fallback per MCP spec (2025-03-26): origin-only (no path), since auth
+    # endpoints are typically at the root, not nested under the resource
+    # path (e.g. /token, not /excalidraw/token).
     elapsed_ms = (time.perf_counter() - start_time) * 1000
     log.info(
         f"{LogTag.MCP} Metadata discovery failed for after ms, using MCP spec fallback URLs (origin-only, per spec)",
@@ -468,10 +438,7 @@ async def revoke_token(
                 timeout=timeout,
             )
 
-            # Per RFC 7009 Section 2.2:
-            # - 200: Token revoked successfully (or was already invalid)
-            # - 400: Invalid request (e.g., unsupported token_type_hint)
-            # - 503: Service unavailable
+            # RFC 7009 Section 2.2: 200 means revoked (or already invalid).
             if response.status_code == 200:
                 log.info(
                     f"{LogTag.MCP} Token revoked successfully at",
@@ -509,9 +476,9 @@ async def introspect_token(
 ) -> dict[str, Any] | None:
     """Introspect an OAuth token per RFC 7662.
 
-    Returns the introspection response dict (with an ``active`` field), or None
-    if introspection failed. Stays ``dict[str, Any]``: RFC 7662 fixes only
-    ``active`` and lets the authorization server add any claims it likes, so the
+    Returns the introspection response dict (with an active field), or None
+    if introspection failed. Stays dict[str, Any]: RFC 7662 fixes only
+    active and lets the authorization server add any claims it likes, so the
     body is an unmodelled provider payload (Type Safety item 8).
     """
     log.set(
@@ -615,7 +582,7 @@ def parse_oauth_error_response(response: httpx.Response) -> OAuthErrorResponse:
 
 
 def get_client_metadata_document_url(base_url: str) -> str:
-    """Build the client metadata document URL from ``base_url``.
+    """Build the client metadata document URL from base_url.
 
     Per draft-ietf-oauth-client-id-metadata-document, the client_id can be a
     URL pointing to this document.
@@ -709,11 +676,7 @@ def validate_jwt_issuer(
 
 
 def select_authorization_server(servers: list[str]) -> str:
-    """Select an authorization server.
-
-    Per MCP spec, Protected Resource Metadata may list multiple
-    authorization_servers; defaults to the first.
-    """
+    """Return the first of Protected Resource Metadata's authorization_servers (MCP spec default)."""
     if not servers:
         raise OAuthDiscoveryError("No authorization servers available")
 

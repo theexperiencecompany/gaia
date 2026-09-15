@@ -2,17 +2,10 @@
 /**
  * `/payment/success` — the page every off-page payment rail lands on.
  *
- * Two things are pinned here, both observed broken in a live run:
- *
- * 1. The verification resolves exactly once and always leaves the spinner.
- *    The page ran its verify effect under a `hasVerified` ref while the
- *    effect's cleanup cancelled the only run — so React's StrictMode
- *    double-invoke (the app sets `reactStrictMode: true`) discarded run #1's
- *    result and short-circuited run #2, stranding the user on
- *    "Verifying payment" forever with an active subscription.
- * 2. A user whose onboarding is not finished is sent back into the flow,
- *    where the persisted stage machine resumes at the payment stage — not
- *    dumped into chat with half an onboarding behind them.
+ * Two bugs pinned here: StrictMode's double-invoke discarded run #1 under a
+ * `hasVerified` ref whose cleanup cancelled it, stranding an active
+ * subscriber on "Verifying payment" forever; and unfinished onboarding must
+ * resume at the payment stage, not dump the user into chat.
  */
 
 import { render, screen, waitFor } from "@testing-library/react";
@@ -139,10 +132,8 @@ describe("PaymentSuccessPage", () => {
   });
 
   it("counts a payment that never confirmed", async () => {
-    // This is the moment a paying customer finds out whether their money did
-    // anything, and until now the only trace of it going wrong was a console
-    // line. Nothing server-side sees it either: a webhook that never lands
-    // produces no event at all.
+    // The only trace of this failure was a console line — nothing
+    // server-side sees it either, since a webhook that never lands produces no event.
     verifyPayment.mockResolvedValue({ payment_completed: false });
     render(
       <StrictMode>

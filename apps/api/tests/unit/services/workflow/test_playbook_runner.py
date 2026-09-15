@@ -7,7 +7,7 @@ which is the only way to tell that a replay still gates every call now that the
 runner no longer calls the gate itself.
 
 A replay makes one model call when the playbook has no asks (the end-of-run
-result and verdict), plus one ask fill for each step that carries ``$ask`` slots,
+result and verdict), plus one ask fill for each step that carries $ask slots,
 made immediately before that step so the slots are written from what has actually
 run. The scripted model's turns are not model calls and never reach a provider.
 """
@@ -117,10 +117,9 @@ def _tools(
     @tool
     async def list_events(calendar_id: Annotated[str, "Calendar"], config: RunnableConfig) -> str:
         """List calendar events."""
-        # Both reads are the point: a tool inside a graph resolves its user
-        # through metadata and streams through the pregel runtime, and a replay
-        # that supplies neither comes back with an error string that looks like
-        # a result. Calling them here makes that a failure, not a silent empty.
+        # Both calls matter: a replay lacking user metadata or a stream writer
+        # must fail loudly here, not return an error string that reads like
+        # a normal result.
         get_stream_writer()({"progress": "listing"})
         recorder.calls.append(
             (
@@ -221,9 +220,9 @@ def _narration(result: str = "Twelve events, mail sent.") -> PlaybookNarration:
 
 
 def _slot(prompt: str, max_tokens: int | None = None) -> dict[str, Any]:
-    """An ask slot as it is authored: the instruction, standing in the argument.
+    """Build an ask slot as it is authored: the instruction standing in for the argument.
 
-    Written as a plain dict rather than through ``AskSlot`` because that is what
+    Written as a plain dict rather than through AskSlot because that is what
     a stored playbook holds and what the runner has to recognise.
     """
     slot: dict[str, Any] = {"$ask": prompt}
@@ -233,19 +232,19 @@ def _slot(prompt: str, max_tokens: int | None = None) -> dict[str, Any]:
 
 
 def _ask_fill(asks: dict[str, str] | None = None) -> PlaybookAskFill:
-    """What one ask call answers, keyed by each slot's ``<step>.<arg>`` key."""
+    """Return what one ask call answers, keyed by each slot's <step>.<arg> key."""
     return PlaybookAskFill(
         asks=[PlaybookAskAnswer(name=name, text=text) for name, text in (asks or {}).items()]
     )
 
 
 def _ask_prompt(llm: AsyncMock, index: int = 0) -> str:
-    """The prompt an ask call was given; the ask calls come before the end-of-run one."""
+    """Return the prompt an ask call was given; ask calls come before the end-of-run one."""
     return str(llm.await_args_list[index].args[1])
 
 
 def _result_prompt(llm: AsyncMock) -> str:
-    """The prompt the end-of-run call was given: always the LAST model call."""
+    """Return the prompt the end-of-run call was given: always the LAST model call."""
     return str(llm.await_args.args[1])
 
 
@@ -253,7 +252,7 @@ def _result_prompt(llm: AsyncMock) -> str:
 def _gate_policy(policy: str) -> Iterator[AsyncMock]:
     """Run the REAL HIL gate with only its preference lookup replaced.
 
-    ``resolve_policy`` is the gate's one I/O dependency (the user's HIL
+    resolve_policy is the gate's one I/O dependency (the user's HIL
     preferences and the tool's destructive classification). Everything after it
     — the pausability check, the refusal message, the fail-closed behaviour of a
     background run — is the production gate.
@@ -265,7 +264,7 @@ def _gate_policy(policy: str) -> Iterator[AsyncMock]:
 
 @dataclass(frozen=True)
 class _Seams:
-    """The mocked seams a test may hold on to; see ``_run``."""
+    """The mocked seams a test may hold on to; see _run."""
 
     subagent: _FakeSubagent | None = None
     runnable: MagicMock | None = None
@@ -281,16 +280,11 @@ async def _run(
     policy: str = "allow",
     seams: _Seams | None = None,
 ) -> tuple[PlaybookRunResult, AsyncMock]:
-    """Run the playbook with mocked seams; hands back the result and the LLM mock.
+    """Run the playbook with mocked seams; hand back the result and the LLM mock.
 
-    ``narration`` is what the end-of-run call returns; ``ask_fill`` is what the
-    ask call returns, and giving one makes the model answer the ask call first
-    and the narration second, in that order — so it fits a playbook whose slots
-    all sit on one step. A playbook with slots on several steps makes an ask
-    call per step and scripts them through ``seams.llm`` instead. ``runnable``,
-    ``find_previous`` and ``llm`` let a test hold on to the seam it is asserting
-    about: how a model call is built, what the previous execution's trace was
-    looked up with, and what the model calls do.
+    ask_fill is answered before narration, for a playbook whose slots sit on
+    one step; slots across several steps script a per-step ask through
+    seams.llm instead. seams lets a test hold on to the mock it asserts on.
     """
     seams = seams or _Seams()
     subagent, runnable, find_previous, llm = (
@@ -412,13 +406,7 @@ async def test_resolved_arguments_reach_the_tool() -> None:
 
 
 async def test_a_replayed_tool_resolves_the_run_user() -> None:
-    """Regression: the runner used to hand-build the tool config and got it wrong.
-
-    A replayed ``list_todos`` came back "User authentication required" with zero
-    items while the agent path returned 38, because ``get_user_id_from_config``
-    reads ``config["metadata"]`` and only ``configurable`` was set. The graph is
-    what copies one into the other, so running inside one is the fix.
-    """
+    """Regression: get_user_id_from_config reads config["metadata"], not configurable, so a hand-built config returned 0 items instead of 38."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
 
@@ -479,12 +467,7 @@ async def test_one_ask_call_covers_two_asks_and_one_result_call_follows() -> Non
 
 
 async def test_a_playbook_with_no_slots_makes_exactly_one_model_call() -> None:
-    """A playbook with nothing to write pays for the narration and nothing else.
-
-    The ask fill is the replay's one optional cost. A second call on a playbook
-    that has no slot to fill is a model call bought for nothing, on every fire
-    of every workflow that never needed one.
-    """
+    """A playbook with no slots must not pay for a second (ask fill) model call it never needed."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
 
@@ -610,7 +593,7 @@ async def test_a_handoff_child_runs_in_the_subagents_scoped_tool_space() -> None
 
 
 async def test_a_handoff_child_calling_a_tool_outside_that_scope_fails_the_step() -> None:
-    """``send_email`` exists at top level and is not in the calendar subagent's space."""
+    """send_email exists at top level and is not in the calendar subagent's space."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
     playbook = _playbook(
@@ -642,18 +625,14 @@ async def test_an_unknown_handoff_target_stops_the_run() -> None:
 
 
 class _FakeMcpSubagent(_FakeSubagent):
-    """The calendar subagent as an MCP integration: its live tools come from the
-    user's client and are nowhere in the registry's category."""
+    """The calendar subagent as an MCP integration: its live tools live on the user's client, not the registry."""
 
     managed_by = "mcp"
     mcp_config = object()
 
 
 async def test_a_handoff_child_may_run_a_tool_the_users_mcp_client_provides() -> None:
-    """The validator accepted this step because the MCP tool is in the space.
-    The replay then refused it as "outside the bound tool set" because the ids
-    the handoff bound were only the registry ones — the same step, accepted at
-    write time and rejected at run time."""
+    """Regression: a step accepted at write time (MCP tool in the space) was refused at replay as "outside the bound tool set" because the handoff bound only registry ids."""
     recorder = _Recorder()
     tools = _tools(recorder)
     registry = _FakeRegistry(tools, spaces={"calendar": ["list_events"]})
@@ -690,10 +669,7 @@ async def test_a_handoff_child_may_run_a_tool_the_users_mcp_client_provides() ->
 
 
 async def test_a_step_that_raises_stops_the_run_with_the_completed_steps_on_record() -> None:
-    """An exception out of the step's graph used to escape ``run_playbook``
-    before any result existed, so the worker never saw ``ok=False`` and the
-    trace of the steps that had already run — with their side effects — was
-    lost with it."""
+    """Regression: an exception from a step's graph escaped run_playbook before ok=False was set, losing the trace of steps that had already run."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
 
@@ -742,13 +718,7 @@ async def test_a_step_that_raises_is_logged_with_its_error_type() -> None:
 
 
 async def test_a_narration_that_raises_after_every_step_is_still_a_completed_run() -> None:
-    """The steps ARE the workflow; the narration is the sentence about them.
-
-    Prod: 13 of 15 failed replays had every tool step complete and only this
-    call raise. Reported as a stopped run, the user got nothing and the next
-    fire spent a full heal run on a sequence that had just worked. A run that
-    ran everything is a run that finished, and it delivers what it did.
-    """
+    """Prod: 13 of 15 failed replays had every step complete and only the narration call raise; report it as finished, not stopped."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
     playbook = _playbook(AGENDA_STEPS)
@@ -787,8 +757,7 @@ async def test_a_narration_that_raises_after_every_step_is_still_a_completed_run
 
 
 async def test_a_narration_failure_still_counts_the_ask_call_that_did_return() -> None:
-    """``llm_calls`` is the replay's cost line: the ask fill was billed, the
-    narration that raised was not."""
+    """llm_calls must count the ask fill that succeeded even when the narration call after it raises."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
     playbook = _playbook(
@@ -818,8 +787,7 @@ async def test_a_narration_failure_still_counts_the_ask_call_that_did_return() -
 
 
 async def test_a_mid_run_ask_fill_that_raises_stops_before_the_step_that_needed_it() -> None:
-    """A step addressing ``$ask`` triggers the ask fill first. If that raises,
-    the step must not run with the ask unfilled, and no result call follows."""
+    """A step needing $ask must not run with it unfilled if the ask fill raises, and no result call follows."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
     playbook = _playbook(
@@ -858,14 +826,7 @@ def test_the_scripted_model_never_reaches_a_provider() -> None:
 
 
 async def test_the_narration_sees_the_whole_result_not_a_snippet_of_it() -> None:
-    """The narration writes the user's result, so it must see the actual data.
-
-    Regression: the failure report and the narration prompt shared one 120-char
-    bound. A list result reached the model cut mid-token, so it described the run
-    as truncated and reported one item out of many. It was summarising the bound
-    rather than the data, and the run looked broken to the user while every tool
-    call had in fact succeeded.
-    """
+    """Regression: the narration prompt shared the 120-char failure-report bound, so a truncated list read as one item instead of many."""
     payload = json.dumps({"todos": [{"title": f"Todo {i}"} for i in range(30)]})
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder, events_result=payload))
@@ -879,12 +840,7 @@ async def test_the_narration_sees_the_whole_result_not_a_snippet_of_it() -> None
 
 
 async def test_the_narration_sees_every_item_even_when_the_record_keeps_fewer() -> None:
-    """The record digest is bounded so history stops growing; the narration is not
-    history. Seen live: an inbox fetch of five emails with bodies overran the
-    4000-char record bound, the narration was handed the record's three, and
-    the user's triage said "5 pulled, only 3 included" over a run in which every
-    call had succeeded.
-    """
+    """Seen live: a 5-email fetch overran the 4000-char record bound, so the narration saw the record's 3 and reported "5 pulled, only 3 included"."""
     payload = json.dumps(
         {
             "fetched_count": 5,
@@ -917,9 +873,7 @@ class TestNarrationCall:
     """
 
     async def test_the_ask_call_is_a_structured_call_for_the_asks_only(self) -> None:
-        """The mid-run call returns the ask schema, not the narration's: a call
-        that could carry a result or a verdict mid-run is the bug this split
-        removed."""
+        """The mid-run ask call returns only the ask schema; the bug this split fixed let it also carry a result or verdict mid-run."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         runnable = MagicMock()
@@ -993,12 +947,7 @@ class TestNarrationCall:
         assert "<still_to_run>" not in prompt
 
     async def test_the_end_call_is_given_the_result_brief_as_the_brief_to_write_to(self) -> None:
-        """The brief is the only instruction on HOW to write the user's result.
-
-        It is where classification, judgement and summarising live now that a
-        playbook has no ask table to hide them in, so a narration prompt that
-        drops it produces a competent summary of the wrong thing on every fire.
-        """
+        """The result brief is the only instruction on how to write the user's result; omitting it summarises the wrong thing."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         playbook = _playbook(AGENDA_STEPS)
@@ -1011,12 +960,7 @@ class TestNarrationCall:
         )
 
     async def test_a_mid_run_ask_fill_is_told_what_has_not_happened_yet(self) -> None:
-        """An ask written before the last step has to know what it is for.
-
-        The ask fill fires as soon as a step needs a ``$ask``, which can be the
-        first step. Without the steps still to come in the prompt, the model
-        writes the field as if the run ended there.
-        """
+        """An ask fill can fire as early as the first step, so the prompt must list the steps still to come."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         playbook = _playbook(
@@ -1042,10 +986,7 @@ class TestNarrationCall:
         assert _prompt_block(prompt, "ran") == "nothing yet"
 
     async def test_the_prompt_states_every_slot_and_its_budget(self) -> None:
-        """One call fills every slot, so the per-slot instruction and its budget
-        can only travel in this prompt. The budget is the slot's own, not the
-        default: a slot that asks for a line and is shown the 1024-token default
-        gets a page, and the argument that carries it is the one that grows."""
+        """Each slot's own budget must reach the prompt; shown the 1024-token default instead, a one-line slot's argument grows to a page."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         playbook = _playbook(
@@ -1069,12 +1010,7 @@ class TestNarrationCall:
         assert "budget: about 256 tokens" in prompt
 
     async def test_a_slot_the_model_ignored_is_named_on_the_wide_event(self) -> None:
-        """A silently unwritten slot produces a run that reads as fine and is not.
-
-        The step carrying it fails when its arguments are filled, far from the
-        cause, so the only way to see that the model skipped a slot it was
-        listed is this warning, which names the slot by its key.
-        """
+        """A silently unwritten slot fails far from the cause; the wide-event warning is the only place that names the ignored slot's key."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         playbook = _playbook(
@@ -1112,12 +1048,7 @@ class TestRunContext:
     """
 
     async def test_the_previous_runs_results_are_addressable_by_tool_name(self) -> None:
-        """``$last_run`` is how a cursor survives between fires.
-
-        It is looked up for this workflow and this user; a lookup that drifts off
-        either one silently resolves the placeholder to nothing and the run
-        starts over from the beginning of whatever it was paging through.
-        """
+        """$last_run must be looked up scoped to this workflow and user; a drift on either silently resolves to nothing and restarts pagination."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         previous = MagicMock()
@@ -1144,11 +1075,7 @@ class TestRunContext:
         assert recorder.calls[0][1]["body"] == "Last time 7"
 
     async def test_the_user_and_the_users_clock_reach_the_step(self) -> None:
-        """``$now`` is the workflow's own zone, not the worker's.
-
-        A worker in UTC resolving a Berlin workflow's ``$now`` sends a digest
-        stamped an hour off, or on the wrong day either side of midnight.
-        """
+        """$now must resolve in the workflow's own timezone, not the worker's, or a digest lands stamped an hour or a day off."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         playbook = _playbook(
@@ -1167,11 +1094,7 @@ class TestRunContext:
 
 
 async def test_a_finished_run_reports_every_step_it_completed() -> None:
-    """``completed`` is what a fallback agent is told it must not do again.
-
-    An empty list on a run that really did send the mail is how a workflow sends
-    twice.
-    """
+    """An empty completed-steps list on a run that already sent mail is how a workflow sends twice."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
 
@@ -1185,13 +1108,7 @@ async def test_a_finished_run_reports_every_step_it_completed() -> None:
 
 
 async def test_a_run_that_stops_after_the_ask_fill_still_reports_the_call_it_made() -> None:
-    """The ask fill is spent whether or not the run finished.
-
-    ``llm_calls`` is the replay's cost line. A stopped run that already filled
-    its asks and reports zero makes the replay look free exactly when it was
-    not. The result call does not follow: a stopped run reports through
-    ``failure``, not through a result.
-    """
+    """A stopped run must still report the ask fill's llm_calls; it reports through failure, not a result."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder, failing="list_events"))
     playbook = _playbook(
@@ -1312,7 +1229,7 @@ class TestReplayGraphContract:
 
 
 def _prompt_block(prompt: str, tag: str) -> str:
-    """The text inside one ``<tag>`` section of a model call's prompt."""
+    """Extract the text inside one <tag> section of a model call's prompt."""
     return prompt.split(f"<{tag}>\n", 1)[1].split(f"\n</{tag}>", 1)[0]
 
 
@@ -1351,8 +1268,7 @@ class TestNarrationSections:
         )
 
         assert result.ok is True, result.failure
-        # The ask fill fires at step 2, so steps 2 onward are still to come and
-        # step 1 is not: it already ran and is listed as such.
+        # The ask fill fires at step 2, so step 1 already ran and stays listed.
         assert _prompt_block(_ask_prompt(llm), "still_to_run") == (
             "mail (send_email)\nhandoff to calendar_agent\nmore (list_events)"
         )
@@ -1367,14 +1283,7 @@ class TestNarrationSections:
         assert _prompt_block(str(llm.await_args.args[1]), "asks") == "none"
 
     async def test_a_slot_is_listed_with_its_budget_and_nothing_it_cannot_have(self) -> None:
-        """A slot is two lines and no more.
-
-        It has no set of steps to read: it is written from everything listed as
-        already run, because an inline slot has no way to name a subset of it.
-        The block is pinned whole, so a third line reappearing — a works-from
-        naming steps the slot cannot address — fails here rather than silently
-        narrowing what the model writes from.
-        """
+        """An inline slot is exactly two lines with no works-from steps list, since it has no way to name a subset of what already ran."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         playbook = _playbook(
@@ -1408,12 +1317,7 @@ class TestNarrationSections:
         )
 
     async def test_a_slot_inside_a_list_argument_still_triggers_the_ask_fill(self) -> None:
-        """Slots are found wherever they are, not only at the top level.
-
-        A step whose slot sits inside a list would otherwise run before the
-        model ever wrote it, and send the slot's own dict as the argument. The
-        key names the position: the list index is part of the address.
-        """
+        """A slot nested inside a list argument must still be found and filled; its key encodes the list index."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         playbook = _playbook(
@@ -1490,8 +1394,7 @@ class TestCallOrder:
     async def test_the_result_call_lists_nothing_as_still_to_run_when_the_run_completed(
         self,
     ) -> None:
-        """A completed run has nothing outstanding, and a section that says
-        otherwise is what the verdict judged against."""
+        """A completed run's still_to_run section must be empty; the verdict is judged against it."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
 
@@ -1507,8 +1410,7 @@ class TestCallOrder:
         assert _prompt_block(_ask_prompt(llm), "still_to_run") == "mail (send_email)"
 
     async def test_the_ask_calls_answers_resolve_the_later_steps_arguments(self) -> None:
-        """A slot's text is read from the ask call, not from the result call,
-        which writes no slots at all."""
+        """A slot's text comes from the ask call; the result call writes no slots at all."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
 
@@ -1570,12 +1472,7 @@ class TestFailureReport:
         )
 
     async def test_a_tool_outside_a_handoffs_bound_set_is_refused_by_position(self) -> None:
-        """A handoff that cannot retrieve may only run the tools it bound at startup.
-
-        Its space also holds the always-available tools, so "in the space" is not
-        the same question as "this delegation could have called it". A replay
-        that conflates them runs a call the recorded delegation never could.
-        """
+        """A non-retrieving handoff may only run tools bound at startup; an always-available tool being 'in the space' is not the same as being bound."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
         playbook = _playbook(
@@ -1662,7 +1559,7 @@ class TestTrace:
     """What lands on the durable record, and under what identity.
 
     The trace is what stops the fallback agent from repeating a side effect and
-    what a later run's ``$last_run`` reads. A call recorded under the wrong
+    what a later run's $last_run reads. A call recorded under the wrong
     category, without its arguments, or with the handoff's identity missing is a
     record that cannot be replayed or audited afterwards.
     """
@@ -1699,11 +1596,7 @@ class TestTrace:
         assert result.trace[0].args == {"subagent_id": "calendar_agent"}
 
     async def test_a_failing_call_is_recorded_with_its_error_and_its_subagent(self) -> None:
-        """A side effect that failed inside a handoff still has to be on the record.
-
-        Attributed to the subagent that ran it, because a trace flattened to the
-        executor level cannot tell a later run which space the call came from.
-        """
+        """A failed handoff-child call is recorded attributed to the subagent that ran it, not flattened to the executor level."""
         recorder = _Recorder()
         registry = _FakeRegistry(
             _tools(recorder, failing="list_events"), spaces={"calendar": ["list_events"]}
@@ -1721,9 +1614,7 @@ class TestTrace:
     async def test_a_result_that_cannot_be_recorded_stops_the_run_with_the_steps_before_it(
         self,
     ) -> None:
-        """The record was built outside the step's guard, so a digest the model
-        refused raised out of ``run_playbook`` and the steps already on the
-        trace were lost with it. The run always comes back as a result."""
+        """Regression: a digest the model refused used to raise out of run_playbook and lose the steps already on the trace."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         playbook = _playbook(AGENDA_STEPS)
@@ -1763,11 +1654,7 @@ class TestCallIdentity:
     async def test_a_top_level_step_runs_untagged_and_a_handoff_child_runs_as_the_subagent(
         self,
     ) -> None:
-        """Tools branch on the subagent they are running for, so the tag is behaviour.
-
-        A handoff child running untagged reaches the integration as the executor,
-        which is not the boundary the recorded delegation had.
-        """
+        """The subagent tag is behavioral: an untagged handoff child would reach the integration as the executor, not the recorded delegation."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
         playbook = _playbook(
@@ -1891,12 +1778,7 @@ class TestNonStringResults:
         assert recorder.calls[1][1]["body"] == "/workspace/report.jsonl"
 
     async def test_a_call_that_produced_no_result_stops_the_run_and_says_so(self) -> None:
-        """A tool that only updates state answers nothing, and the run must not guess.
-
-        Treating "no result" as an empty success records a call that returned
-        nothing as if it had returned something, and every later ``$steps``
-        reference resolves against a hole.
-        """
+        """A state-only tool answers nothing; treating that as an empty success would let every later $steps reference resolve against a hole."""
         recorder = _Recorder()
         registry = _FakeRegistry(_special_tools(recorder))
         playbook = _playbook([ToolStep(id="s", tool="stash", args={"note": "later"})])
@@ -1922,13 +1804,7 @@ class TestNonStringResults:
 
 
 async def test_a_handoff_child_can_carry_a_slot() -> None:
-    """The ask fill a child triggers is the parent playbook's, not the handoff's.
-
-    A handoff's children are run against the same playbook, so a child that
-    carries a slot fills it from the whole playbook. Filling it from anything
-    else has nothing to write from. The key is the CHILD's id, not the
-    handoff's: a key built from the handoff would name a step with no arguments.
-    """
+    """A handoff child's slot fills from the whole parent playbook, keyed by the child's own id, not the handoff's."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
     playbook = _playbook(
@@ -1959,14 +1835,7 @@ async def test_a_handoff_child_can_carry_a_slot() -> None:
 
 
 def test_a_scripted_turn_is_a_bare_tool_call_and_nothing_else() -> None:
-    """The exact shape of the turn the agent loop is handed.
-
-    ``content`` must be empty: a scripted turn is a call, not an answer, and any
-    text on it is prose the run never produced that still reaches the message
-    history and the user-facing stream. The call's ``type`` is what LangChain
-    routes on, so a tool call carrying anything else is dropped on the floor and
-    the step silently never runs.
-    """
+    """A scripted turn's content must be empty: LangChain routes on the call's type, so any text gets dropped and the step silently never runs."""
     model = ScriptedModel(
         script=[ScriptedCall(name="list_events", args={"calendar_id": "primary"})]
     )
@@ -1986,15 +1855,14 @@ def test_a_scripted_turn_is_a_bare_tool_call_and_nothing_else() -> None:
 
 
 def _previous_run(*calls: RecordedCall) -> AsyncMock:
-    """One previous execution's trace, as ``find_recent_with_trace`` hands it back."""
+    """One previous execution's trace, as find_recent_with_trace hands it back."""
     previous = MagicMock()
     previous.trace = list(calls)
     return AsyncMock(return_value=[previous])
 
 
 class TestErrorEnvelope:
-    """A tool that catches its own failure answers with a success-status message
-    whose body says it failed. That is a failed step: recorded, then stopped."""
+    """A tool that catches its own failure and answers success-status with a failure message is still a failed step."""
 
     async def test_a_success_false_envelope_stops_the_step_with_its_message(self) -> None:
         recorder = _Recorder()
@@ -2039,11 +1907,7 @@ class TestErrorEnvelope:
         assert "rate limited" in (result.failure or "")
 
     async def test_a_bare_success_false_still_names_a_reason(self) -> None:
-        """An envelope that says only ``success: false`` has no words of its own.
-
-        The report is the whole handover, so the runner supplies the one fact it
-        does have rather than passing an empty reason to the agent.
-        """
+        """An envelope with only success: false gets the runner's own fallback reason rather than an empty one reaching the agent."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"success": false}'))
 
@@ -2081,9 +1945,7 @@ class TestErrorEnvelope:
 
 
 class TestSuspectVerdict:
-    """A run that completes can still be wrong. ``suspect`` says why, without
-    stopping anything: every step runs, the result is written, and the worker
-    decides what a distrusted result is worth."""
+    """A run that completes can still be wrong: suspect says why without stopping it, and the worker judges the result."""
 
     PREVIOUS_HAD_THREE = RecordedCall(
         replayed=True,
@@ -2092,9 +1954,7 @@ class TestSuspectVerdict:
     )
 
     async def test_empty_where_the_previous_replay_had_items_stops_the_run_there(self) -> None:
-        """The record's verdict is known the moment the step returns, so the steps
-        after it (the send) do not run on data nobody trusts. No narration
-        either: there is nothing to deliver, the agent finishes this fire."""
+        """The record's verdict is known the moment the step returns, so later steps must not run on distrusted data, and no narration follows."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
 
@@ -2131,13 +1991,7 @@ class TestSuspectVerdict:
         assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
 
     async def test_a_run_stopped_on_the_records_word_still_reports_what_it_did(self) -> None:
-        """That early return is a full result, not a stub.
-
-        The agent finishes this fire from it: without the trace it repeats the
-        send whose side effect already happened, without ``completed`` it does
-        not know which steps those were, and without ``llm_calls`` the ask fill
-        the run already paid for reads as free.
-        """
+        """An early-return result is a full result: without its trace a stopped run would repeat a side effect that already happened."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
         playbook = _playbook(
@@ -2169,8 +2023,7 @@ class TestSuspectVerdict:
         assert llm.await_count == 1
 
     async def test_a_suspect_narration_with_no_reason_still_says_why(self) -> None:
-        """The verdict is acted on by the worker, so "suspect, no reason" would
-        distrust a run and tell nobody what to look at."""
+        """A 'suspect, no reason' verdict is acted on by the worker; the run must supply a fallback reason."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         narration = PlaybookNarration(result="Twelve events.", outcome="suspect", reason="")
@@ -2181,8 +2034,7 @@ class TestSuspectVerdict:
         assert result.suspect_source == "narration"
 
     async def test_a_previous_agent_runs_call_is_not_what_the_replay_is_compared_with(self) -> None:
-        """An authoring or heal run probes the same tool broadly; its full result
-        says nothing about what the frozen call should return."""
+        """An authoring or heal run's full probe result says nothing about what the frozen replayed call should return."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
         previous = _previous_run(
@@ -2197,9 +2049,7 @@ class TestSuspectVerdict:
         assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
 
     async def test_an_empty_list_inside_a_result_envelope_counts_as_empty(self) -> None:
-        """GAIA tools answer in envelopes: the list is at ``data.messages``, not
-        at the top. Seen live: a Gmail fetch of nothing is
-        ``{"data": {"fetched_count": 0, "messages": []}}``."""
+        """GAIA tool envelopes nest the list at data.messages, not the top: {"data": {"fetched_count": 0, "messages": []}}."""
         recorder = _Recorder()
         registry = _FakeRegistry(
             _tools(recorder, events_result='{"data": {"fetched_count": 0, "messages": []}}')
@@ -2262,9 +2112,7 @@ class TestSuspectVerdict:
         )
 
     async def test_the_previous_runs_last_call_of_the_tool_is_the_one_compared(self) -> None:
-        """``$last_run`` resolves a tool called twice to its LAST result (the
-        attempt that worked); the empty-result check read the FIRST, so a retry
-        that had items after an empty first attempt was never compared."""
+        """$last_run resolves a twice-called tool to its LAST result; the empty-result check used to read the FIRST and miss a successful retry."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
         previous = _previous_run(
@@ -2327,8 +2175,7 @@ class TestSuspectVerdict:
         )
 
     async def test_a_record_verdict_names_the_record_as_its_source(self) -> None:
-        """The worker treats a deterministic verdict and the model's own opinion
-        differently, so the result has to say which one spoke."""
+        """The result must say whether the verdict came from a deterministic record check or the model's own opinion."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
 
@@ -2412,8 +2259,7 @@ class TestSuspectVerdict:
     async def test_a_suspect_verdict_from_the_end_call_names_the_narration_as_its_source(
         self,
     ) -> None:
-        """With asks, the verdict comes from the SECOND call. It still propagates
-        as the narration's, and the ask call has no say in it."""
+        """With asks, the verdict comes from the second (end) call and still propagates as the narration's; the ask call has no say in it."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         playbook = _playbook(
@@ -2448,9 +2294,7 @@ class TestSuspectVerdict:
 
 class TestTheNarrationSeesTheArguments:
     async def test_each_ran_line_carries_the_arguments_the_call_ran_with(self) -> None:
-        """Seen live: told only the tool name and twenty results, the verdict
-        called a month of read mail "unread, last 24 hours". The arguments are
-        what it has to judge against."""
+        """Seen live: given only the tool name and results, the verdict called a month of read mail "unread, last 24 hours"."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
 
@@ -2493,12 +2337,7 @@ TWO_SLOTTED_STEPS = [
 
 
 async def test_each_slotted_step_gets_its_own_ask_call_listing_only_its_slots() -> None:
-    """Two steps carrying slots, two ask calls, and neither is shown the other's.
-
-    The keys are what say which step a call is answering for, so a call listed
-    both steps' keys is a call being asked to write an argument for a step that
-    is still several results away.
-    """
+    """Two slotted steps get two ask calls, and neither call is shown the other step's keys."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
     fills = AsyncMock(
@@ -2525,13 +2364,7 @@ async def test_each_slotted_step_gets_its_own_ask_call_listing_only_its_slots() 
 
 
 async def test_a_later_steps_slot_is_written_from_the_steps_that_already_ran() -> None:
-    """The bug this split fixes: a slot answered before the run reached it.
-
-    One call at the first slotted step wrote every slot in the playbook, so the
-    note's "what the mail said" was answered with nothing listed under ran — the
-    mail had not gone out yet — and that text reached a real tool. Its call now
-    fires at its own step, with the fetch and the mail both listed as run.
-    """
+    """Bug fixed: one call used to write every playbook slot at the first slotted step; each slot's call now fires at its own step."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
     fills = AsyncMock(
@@ -2555,13 +2388,7 @@ async def test_a_later_steps_slot_is_written_from_the_steps_that_already_ran() -
 
 
 async def test_a_fill_that_omits_a_later_steps_key_stops_the_run_at_that_step() -> None:
-    """Each call is checked against its own step's slots, not the playbook's.
-
-    A step whose call came back without its key must not run: the argument would
-    still hold the slot's own dict. Checked at the later step because that is
-    where the earlier fill's answers no longer stand in for it — the run has
-    already spent a call, so "some slot was written" says nothing about this one.
-    """
+    """A step whose ask call omits its own key must not run, checked at that later step since an earlier fill says nothing about it."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
     fills = AsyncMock(side_effect=[_ask_fill({"mail.body": "Twelve today."}), _ask_fill({})])
@@ -2585,13 +2412,7 @@ async def test_a_fill_that_omits_a_later_steps_key_stops_the_run_at_that_step() 
 
 
 async def test_a_handoff_childs_slot_is_filled_by_its_own_call_like_any_other() -> None:
-    """A child inside a handoff is a step, so it gets a step's ask call.
-
-    Its slot is not swept up by the call the first top-level slot triggered:
-    the child runs last, and a fill made before the two steps ahead of it would
-    write its argument from a run that had not reached it. The keys stay the
-    child's own, so the answers still land where the evaluator looks for them.
-    """
+    """A handoff child's slot fill is not swept up by an earlier top-level fill; it fires at the child's own (last) step."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
     playbook = _playbook(
@@ -2652,13 +2473,7 @@ async def test_a_handoff_childs_slot_is_filled_by_its_own_call_like_any_other() 
 
 
 async def test_each_fill_fires_at_its_own_step_and_no_earlier() -> None:
-    """A run whose first and third steps carry slots makes one fill at each.
-
-    The first fires before anything has run, which is all its step can be
-    written from. The second fires after the two steps in front of it, which is
-    the whole point: written at the first one it would answer from a run that
-    had not fetched anything yet.
-    """
+    """Slots on steps 1 and 3 each fire their own fill, the second only after the two steps ahead of it have run."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
     playbook = _playbook(
@@ -2701,13 +2516,7 @@ async def test_each_fill_fires_at_its_own_step_and_no_earlier() -> None:
 
 
 async def test_a_slot_is_filled_before_the_placeholder_beside_it_is_resolved() -> None:
-    """Filling runs first, so a slot and a ``$steps`` reference in one argument
-    both arrive resolved.
-
-    The order is load-bearing in both directions: resolution first would meet the
-    slot's own dict and stop the run, and a fill that did not leave an ordinary
-    string behind would send the placeholder next to it as literal text.
-    """
+    """Filling must run before $steps resolution: reversed order meets the slot's own dict, or leaks the placeholder as literal text."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
     playbook = _playbook(
@@ -2732,12 +2541,7 @@ async def test_a_slot_is_filled_before_the_placeholder_beside_it_is_resolved() -
 
 
 async def test_a_fill_that_omits_a_slot_stops_the_run_at_that_step_naming_the_key() -> None:
-    """A slot with no text is a hole in a real tool call, so the step must not run.
-
-    The report names the key the model was listed, which is the only thing that
-    says which of the slots came back empty, and it lists the steps that DID run
-    so the agent finishing the fire does not repeat their side effects.
-    """
+    """A slot with no text must stop the step; the report names the empty key and lists the steps that DID run."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
     playbook = _playbook(
@@ -2764,11 +2568,7 @@ async def test_a_fill_that_omits_a_slot_stops_the_run_at_that_step_naming_the_ke
 
 
 async def test_a_refusal_carrying_content_blocks_is_quoted_rather_than_lost() -> None:
-    """The gate's verdict IS the step's result, and it is not always a string.
-
-    A refusal flattened to nothing comes back as "refused by the approval gate:"
-    with no reason after it, which is the one thing the report exists to carry.
-    """
+    """A gate refusal is the step's result and not always a string; flattening it drops the reason after "refused by the approval gate:"."""
     recorder = _Recorder()
     registry = _FakeRegistry(_special_tools(recorder))
     playbook = _playbook([ToolStep(id="ask", tool="needs_approval", args={"topic": "today"})])
@@ -2857,7 +2657,7 @@ class TestTheStepGraphInvocation:
 
 
 class TestTheArgumentsTheNarrationSees:
-    """The rendered arguments on each ``completed`` line.
+    """The rendered arguments on each completed line.
 
     They are the model's only view of what a call actually ran with, and the
     line is built AFTER the call, so a renderer that raises loses a run whose
@@ -2890,11 +2690,7 @@ class TestTheArgumentsTheNarrationSees:
         assert result.completed == [f"mail (send_email {rendered}) -> sent"]
 
     async def test_arguments_past_the_bound_are_cut_and_say_so(self) -> None:
-        """One character over, and the line is cut with the mark that says it was.
-
-        Unmarked, the model reads a truncated argument as the whole argument and
-        judges the call against a filter it never ran with.
-        """
+        """A cut argument must carry the mark that it was cut, or the model judges the call against a filter it never ran with."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         args: dict[str, Any] = {"to": "team@example.com", "body": "y" * 366}
@@ -2909,12 +2705,7 @@ class TestTheArgumentsTheNarrationSees:
 
 
 async def test_the_narration_reads_the_result_uncut_where_the_record_trims_it() -> None:
-    """The record trims long strings and marks them; the narration must not see that.
-
-    Seen live at the record's bound: the model was handed bodies cut to 200
-    characters with a marker on the end and reported the run as truncated. The
-    two bounds are separate for exactly this reason.
-    """
+    """Seen live: the model was handed bodies cut to 200 chars from the record's bound and reported the run as truncated; the two bounds are separate."""
     payload = json.dumps({"messages": [{"id": f"msg_{i}", "body": "x" * 1200} for i in range(5)]})
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder, events_result=payload))
@@ -2932,8 +2723,7 @@ async def test_the_narration_reads_the_result_uncut_where_the_record_trims_it() 
 
 
 async def test_the_ask_fill_adds_to_the_runs_llm_count_rather_than_resetting_it() -> None:
-    """The counter is a running total across the replay's model calls; the fill
-    must add its one call, not restart the tally."""
+    """The llm_calls counter is a running total; the ask fill adds its one call rather than resetting the tally."""
     run = _bare_run()
     run.llm_calls = 5
     playbook = _playbook([ToolStep(id="mail", tool="list_events", args={})])
@@ -2953,7 +2743,7 @@ async def test_the_ask_fill_adds_to_the_runs_llm_count_rather_than_resetting_it(
 
 
 def _bare_run(registry: Any = None) -> _Run:
-    """A ``_Run`` at the first position, for calling one internal directly."""
+    """Build a _Run for calling one internal tool directly."""
     return _Run(
         registry=registry or _FakeRegistry({}),
         base=RunContext(
@@ -2977,7 +2767,7 @@ def _bare_run(registry: Any = None) -> _Run:
 class TestGuardsOnStatesTheModelsRuleOut:
     """Branches a valid document cannot currently reach, asserted directly.
 
-    ``PlaybookStep`` enforces exactly one of ``tool``/``handoff``, a playbook
+    PlaybookStep enforces exactly one of tool/handoff, a playbook
     carries at least one step, and a run the record already distrusted returns
     before the narration is ever written. Each guard below is what happens when
     one of those stops holding — a document written by an older schema, a
@@ -3015,8 +2805,7 @@ class TestGuardsOnStatesTheModelsRuleOut:
         assert _suspect_verdict(run, _narration()) == (run.suspect, "record")
 
     async def test_a_narration_written_from_nothing_says_nothing_ran(self) -> None:
-        """An empty section reads as a run whose steps are missing from the list,
-        which is the verdict this prompt spends a paragraph forbidding."""
+        """An empty steps section reads as steps missing from the list, the exact verdict this prompt forbids."""
         run = _bare_run()
 
         with (
@@ -3064,8 +2853,7 @@ class TestForEach:
         assert sent == ["a@x.com", "b@x.com"], "$item must address the element, per call"
 
     async def test_max_items_caps_the_fan_out(self) -> None:
-        """The ceiling is the whole reason repetition is allowed at all: a busy
-        morning must not turn one replay into an unbounded fan-out."""
+        """The max_items ceiling exists so a busy morning cannot turn one replay into an unbounded fan-out."""
         recorder = _Recorder()
         registry = _FakeRegistry(
             _tools(recorder, events_result='{"ids": ["a", "b", "c", "d", "e"]}')
@@ -3077,8 +2865,7 @@ class TestForEach:
         assert [args["to"] for name, args in recorder.calls if name == "send_email"] == ["a", "b"]
 
     async def test_the_run_reports_how_many_elements_the_source_held_not_how_many_ran(self) -> None:
-        """Seen live: a source of six under a cap of one logged ``items: 1``, so
-        the cap was invisible and a for_each looked like a one-item day."""
+        """Seen live: a source of six under a cap of one logged 'items: 1', hiding the cap and reading as a one-item day."""
         recorder = _Recorder()
         registry = _FakeRegistry(
             _tools(recorder, events_result='{"ids": ["a", "b", "c", "d", "e"]}')
@@ -3095,9 +2882,7 @@ class TestForEach:
         assert reported == [{"step": "mails", "items": 5, "ran": 2}]
 
     async def test_an_id_less_step_still_reports_how_many_times_it_ran(self) -> None:
-        """Seen on the real model: it writes for_each steps without ids, and
-        ``ran`` was counted off the id-keyed results, so a loop that ran once
-        logged ``ran: 0`` and read as a quiet day."""
+        """Seen on the real model: id-less for_each steps had 'ran' counted off id-keyed results, so a loop that ran once logged ran: 0."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
         steps = [
@@ -3119,8 +2904,7 @@ class TestForEach:
         assert reported == [{"step": "send_email", "items": 2, "ran": 2}]
 
     async def test_a_pick_that_is_not_in_any_result_stops_the_step_naming_it(self) -> None:
-        """Seen live: the pick came back with an id one character off and the
-        tool errored mid-loop. A pick is a copy from the results above."""
+        """Seen live: a pick id one character off errored mid-loop; a pick must be an exact copy from the results above."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a1b2", "c3d4"]}'))
         steps = [
@@ -3168,8 +2952,7 @@ class TestForEach:
         assert [args["to"] for name, args in recorder.calls if name == "send_email"] == ["c3d4"]
 
     async def test_no_elements_is_a_completed_run_not_a_failure(self) -> None:
-        """An inbox with nothing that wants a reply is a quiet Tuesday. Treating
-        it as a failure would re-author the playbook away from the right shape."""
+        """An inbox with nothing to reply to is a completed run, not a failure."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": []}'))
 
@@ -3251,8 +3034,7 @@ class TestForEach:
         assert [args["to"] for name, args in recorder.calls if name == "send_email"] == ["a"]
 
     async def test_an_element_whose_replay_raises_is_logged_against_the_playbook(self) -> None:
-        """A raise out of the graph mid-loop is the same report as on a plain
-        step, attributed to the playbook it broke."""
+        """A raise mid-loop out of the graph is reported the same as on a plain step, attributed to the playbook it broke."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
         playbook = _playbook(_fan_out())
@@ -3276,8 +3058,7 @@ class TestForEach:
         assert [name for name, _ in recorder.calls] == ["list_events"]
 
     async def test_one_element_failing_stops_the_run(self) -> None:
-        """The steps after a fan-out read its results; running them on a partial
-        list would hand the user a gap dressed as a complete answer."""
+        """One fan-out element failing must stop the run rather than hand the user a partial list dressed as complete."""
         recorder = _Recorder()
         registry = _FakeRegistry(
             _tools(recorder, failing="send_email", events_result='{"ids": ["a", "b"]}')
@@ -3290,9 +3071,7 @@ class TestForEach:
 
 
 class TestForEachShape:
-    """A loop whose cost cannot be known before it runs is unrepresentable on the
-    stored step, and refused with a named message at the authoring input, which
-    is the only place a model can send one."""
+    """A loop whose cost is unknown before it runs is unrepresentable on the stored step, refused at authoring instead."""
 
     def test_the_stored_step_cannot_lack_a_ceiling(self) -> None:
         with pytest.raises(ValidationError):
@@ -3303,8 +3082,7 @@ class TestForEachShape:
             ToolStep(id="s", tool="send_email", args={}, max_items=5)
 
     def test_the_stored_handoff_cannot_repeat(self) -> None:
-        """for_each repeats one call; a handoff is a subagent's whole recorded
-        sequence, and repeating that is a different feature."""
+        """for_each repeats one call; a stored handoff is a subagent's whole recorded sequence, a different feature entirely."""
         with pytest.raises(ValidationError):
             HandoffStep(
                 id="h",
@@ -3338,11 +3116,10 @@ class TestForEachShape:
 
 
 class TestAskAnswerShape:
-    """``text`` had to become optional so a for_each source could answer with
-    ``items``. That opened a hole: an answer with neither landed in the answers
-    table as an empty string, the missing-slot warning could not see it, and
-    the empty string went into a real tool argument. The model rejects it now,
-    so the ask call raises and the run stops instead of calling a tool blind.
+    """text is optional so a for_each source can answer with items instead.
+
+    An answer with neither used to slip an empty string past the missing-slot
+    warning into a real tool argument; the model now rejects it instead.
     """
 
     def test_an_answer_with_neither_text_nor_items_is_refused(self) -> None:
@@ -3360,9 +3137,7 @@ class TestAskAnswerShape:
         assert PlaybookAskAnswer(name="mails.$for_each", items=["a", "b"]).items == ["a", "b"]
 
     async def test_a_skipped_slot_never_reaches_the_tool_as_an_empty_string(self) -> None:
-        """The failure the validator exists to prevent, end to end: an ask call
-        that answers a DIFFERENT slot than the one asked must leave the asked
-        slot missing, so resolution fails loudly rather than sending ''."""
+        """An ask call answering a different slot than the one asked must leave the asked slot missing, failing loudly rather than sending ''."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         steps = [
@@ -3386,9 +3161,7 @@ class TestAskAnswerShape:
 
 
 class TestNarrationSeesTheSelection:
-    """The narration is shown every element's call in ``completed``. It also has
-    to be told those calls were a SELECTION, and what was picked, or it writes
-    the result as if the loop had covered everything the fetch returned."""
+    """The narration must be told a for_each's calls were a SELECTION, or it writes the result as if the loop covered everything fetched."""
 
     def test_picked_items_are_rendered_beside_the_text_answers(self) -> None:
         answers = AskAnswers()
@@ -3425,10 +3198,7 @@ class TestNarrationSeesTheSelection:
 
 
 async def test_a_narration_that_answers_without_the_schema_falls_back_to_the_record() -> None:
-    """The structured runnable hands back ``None`` when the model writes prose
-    instead of the schema. That used to surface as a RuntimeError out of
-    ``run_playbook`` after every step had run, failing the fire and sending the
-    next one to a heal run against a sequence that had just done its job."""
+    """Regression: the structured runnable returning None used to raise a RuntimeError out of run_playbook after every step had run."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
 
@@ -3466,12 +3236,7 @@ async def test_an_ask_fill_that_answers_without_the_schema_stops_at_that_step() 
 async def test_an_empty_replay_is_measured_against_the_last_replay_with_results_not_the_last_fire() -> (
     None
 ):
-    """After a suspect replay the next fires are heal runs: agent runs that
-    replay nothing. The body replayed again after them used to be compared with
-    the fire right before it, find no replayed call there, and pass an empty
-    result as clean — so the streak limit could never be reached through the
-    record. The baseline is the newest replay of the tool that carried data,
-    however many agent runs sit between."""
+    """Bug fixed: comparing against the immediately prior heal fire instead of the last replay with data let an empty result always pass as clean."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
     heal_run = MagicMock()
@@ -3513,10 +3278,7 @@ async def test_the_baseline_lookup_asks_for_the_whole_window() -> None:
 
 
 class TestAnEmptySelectionIsAnAnswer:
-    """Seen on a scheduled fire with the real model: it answered the for_each
-    $ask with ``items: []`` because nothing qualified that day, and the answer
-    was refused as neither text nor items. A quiet day became a stopped replay
-    and spent a heal attempt on a body that was right."""
+    """Seen live: an empty for_each selection (items: []) was refused as neither text nor items, stopping a replay that was right."""
 
     def test_the_answer_model_accepts_an_empty_selection(self) -> None:
         answer = PlaybookAskAnswer(name="mails.$for_each", items=[])
@@ -3555,10 +3317,7 @@ class TestAnEmptySelectionIsAnAnswer:
 
 
 class TestForEachRecord:
-    """Every element's call is recorded on its own, labelled by its position,
-    the step's own result is the list of what its elements returned, and the
-    telemetry counts what the source held against what ran. Each is asserted
-    exactly, because the drive reads them as data."""
+    """Each element's call is recorded by position, the step's result is the list of what ran, and telemetry counts source size against ran count."""
 
     async def test_each_element_is_labelled_by_its_position_and_the_step_holds_the_list(
         self,

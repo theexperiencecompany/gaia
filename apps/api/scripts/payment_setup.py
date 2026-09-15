@@ -1,40 +1,16 @@
 #!/usr/bin/env python3
-"""
-Complete Payment setup script for GAIA.
-This script sets up subscription plans in the database using Dodo product IDs.
+"""Set up GAIA subscription plans in the database using Dodo product IDs.
 
-IMPORTANT: Run this script from the correct directory!
+Run from apps/api/: python scripts/payment_setup.py --monthly-product-id
+<id> --yearly-product-id <id> (also works via PYTHONPATH=/app, or
+python -m scripts.payment_setup). Pass --dry-run first to print the
+per-field diff without writing anything.
 
-1. If running locally:
-    cd /path/to/your/gaia/apps/api
-    python scripts/payment_setup.py --monthly-product-id <id> --yearly-product-id <id>
+docker exec skips the image entrypoint, so Infisical's machine-identity
+vars from Docker Swarm secrets are missing in an exec shell; export them
+from /run/secrets/gaia_infisical_* first, like docker-entrypoint.sh does.
 
-2. If running inside Docker container:
-    cd /app
-    python scripts/payment_setup.py --monthly-product-id <id> --yearly-product-id <id>
-
-3. Alternative Docker approach (set PYTHONPATH):
-    PYTHONPATH=/app python scripts/payment_setup.py --monthly-product-id <id> --yearly-product-id <id>
-
-4. Run as module (from app directory):
-    python -m scripts.payment_setup --monthly-product-id <id> --yearly-product-id <id>
-
-`docker exec` does not run the image entrypoint, so the Infisical machine-identity
-variables it exports from the Docker Swarm secrets are absent in an exec shell and
-settings import fails. Export them from /run/secrets/gaia_infisical_* first, the
-same way scripts/docker-entrypoint.sh does.
-
-Prerequisites:
-- DODO_PAYMENTS_API_KEY must be available in Infisical secrets or as an environment variable.
-  - The script will first attempt to fetch DODO_PAYMENTS_API_KEY from Infisical (if configured),
-     and fallback to the environment variable or settings if not found.
-- MongoDB connection string (MONGO_DB) must be configured
-- Have your Dodo product IDs ready from your Dodo Payments dashboard
-
-Usage:
-     python payment_setup.py --monthly-product-id <product_id> --yearly-product-id <product_id>
-
-Pass --dry-run first to print the per-field diff without writing anything.
+Needs DODO_PAYMENTS_API_KEY (Infisical or env var) and MONGO_DB configured.
 """
 
 import argparse
@@ -78,7 +54,7 @@ Outcome = Literal["created", "updated", "unchanged"]
 
 
 def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> list[PlanDocument]:
-    """The subscription plans GAIA offers, as they should exist in the database."""
+    """Return the subscription plans GAIA offers, as they should exist in the database."""
     now = datetime.now(UTC)
     # GAIA is paid-only: these read as what Pro includes, never as a step up
     # from a free tier. Re-run this script after editing so the live rows match.
@@ -146,11 +122,11 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
 async def deactivate_free_plan(
     collection: AsyncIOMotorCollection[dict[str, Any]], dry_run: bool
 ) -> bool:
-    """GAIA is paid-only — the catalogue no longer seeds a Free row. A Free row
-    left over from before the paid-only cutover must not keep serving as an
-    active plan, so mark it inactive rather than deleting it (keeps the
-    historical record for anyone still on it). Idempotent: a no-op once the
-    row is already inactive or was never seeded."""
+    """Mark a leftover Free plan row inactive rather than deleting it, keeping the historical record.
+
+    GAIA is paid-only and the catalogue no longer seeds a Free row.
+    Idempotent: a no-op once the row is already inactive or never seeded.
+    """
     existing = await collection.find_one({"name": "Free", "is_active": True})
     if existing is None:
         return False
@@ -186,7 +162,7 @@ async def cleanup_old_indexes(collection: AsyncIOMotorCollection[dict[str, Any]]
 
 
 def catalogue_fields(plan: PlanDocument) -> dict[str, Any]:
-    """The plan's content, without the id and the timestamps that always move."""
+    """Return the plan's content, without the id and the timestamps that always move."""
     return plan.model_dump(by_alias=True, exclude={"id"} | _TIMESTAMP_FIELDS)
 
 
@@ -237,7 +213,7 @@ async def reconcile_plan(
 
 
 def print_plan_details(plan: PlanDocument) -> None:
-    """The human-readable summary printed under each processed plan."""
+    """Print the human-readable summary under each processed plan."""
     print(f"   💰 Amount: ${plan.amount / 100:.2f} {plan.currency}")
     print(f"   📅 Duration: {plan.duration.capitalize()}")
     print(f"   👥 Max Users: {plan.max_users}")
@@ -247,7 +223,7 @@ def print_plan_details(plan: PlanDocument) -> None:
 
 
 def print_summary(outcomes: list[Outcome], dry_run: bool) -> None:
-    """Counts per outcome, worded for whichever mode the run was in."""
+    """Print counts per outcome, worded for whichever mode the run was in."""
     print("=" * 50)
     print("📈 Setup Summary:")
     print(f"   • {'Would create' if dry_run else 'Created'}: {outcomes.count('created')} plans")
@@ -339,7 +315,7 @@ async def setup_payment_plans(
 
 
 async def main() -> None:
-    """Main entry point."""
+    """Run the payment setup script."""
     parser = argparse.ArgumentParser(description="Setup Payment plans for GAIA")
     parser.add_argument(
         "--monthly-product-id",

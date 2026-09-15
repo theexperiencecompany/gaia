@@ -1,7 +1,9 @@
-"""Regression: onboarding completion must win after the wizard's early
-preferences write. Kept apart from ``test_users_repository.py`` so this file
-imports only symbols that exist on the base revision — the regression-proof
-lane runs it there and expects it to fail."""
+"""Regression: onboarding completion must win after the wizard's early preferences write.
+
+Kept apart from test_users_repository.py so this file imports only symbols
+that exist on the base revision — the regression-proof lane runs it there
+and expects it to fail.
+"""
 
 import pytest
 
@@ -21,10 +23,7 @@ def repo(raw_collection) -> UserRepository:
 
 @pytest.mark.regression
 async def test_preferences_saved_before_completion_do_not_block_it(repo):
-    """The wizard PATCHes the answers before payment, which creates the
-    ``onboarding`` subdocument early. Completion must still win afterwards —
-    gating on the subdocument's absence parked every new user on
-    "Getting your chat ready" forever."""
+    """Regression: gating completion on the onboarding subdocument's absence parked every new user on "Getting your chat ready" forever."""
     created = await repo.create(UserDocument.model_validate({"email": "gate@b.com", "name": "A"}))
     await repo.update_onboarding_preferences(
         created.id, OnboardingPreferences(profession="eng", needs=["inbox"])

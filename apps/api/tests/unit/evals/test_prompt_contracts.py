@@ -1,14 +1,14 @@
 """Eval rubrics must break when the prompt they grade changes.
 
 Every judge rubric in this harness used to be hand-written prose — a paraphrase
-of `COMMS_AGENT_PROMPT` frozen at the moment someone typed it. You could soften a
+of COMMS_AGENT_PROMPT frozen at the moment someone typed it. You could soften a
 rule, rename a section, or delete it outright and no eval would notice; the suite
 kept grading a spec the product had stopped shipping and reported green.
 
-`scripts/evals/core/prompt_contracts.py` anchors rubrics to the live prompt text.
+scripts/evals/core/prompt_contracts.py anchors rubrics to the live prompt text.
 This file is the gate that makes the anchoring real:
 
-* :func:`test_every_registered_clause_resolves` fails CI when a prompt edit
+* :func:test_every_registered_clause_resolves fails CI when a prompt edit
   orphans a clause, naming the clause and the evals that depend on it.
 * the rest prove resolution FAILS LOUD rather than degrading — no stale copy, no
   default, no first-of-several match. A silent fallback would restore the exact
@@ -39,7 +39,7 @@ EMOJI_REF = "comms.emoji_discipline"
 
 @pytest.fixture(autouse=True)
 def _clear_prompt_cache() -> Iterator[None]:
-    """``prompt_text`` is cached; a test that edits a prompt must not leak."""
+    """prompt_text is cached; a test that edits a prompt must not leak."""
     prompt_contracts.prompt_text.cache_clear()
     yield
     prompt_contracts.prompt_text.cache_clear()
@@ -62,12 +62,7 @@ def _edit(monkeypatch: pytest.MonkeyPatch, edit: Callable[[str], str]) -> None:
 
 
 def test_every_registered_clause_resolves() -> None:
-    """A prompt edit that orphans a clause fails here, loudly and by name.
-
-    This assertion IS the deliverable. Watched red by deleting the emoji rule
-    from ``COMMS_AGENT_PROMPT``: it reported the clause ref, the anchor, and
-    ``gate:emoji_discipline`` as the dependent eval.
-    """
+    """A prompt edit that orphans a clause fails here, loudly and by name."""
     failures = contract_failures()
 
     assert not failures, "prompt contract(s) no longer resolve:\n\n" + "\n\n".join(failures)
@@ -87,11 +82,7 @@ def test_every_clause_names_what_it_governs_and_what_depends_on_it() -> None:
 
 
 def test_a_deleted_rule_raises_and_names_its_dependents(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Delete the emoji rule from the prompt: resolution must raise, not fall back.
-
-    The message has to carry enough to act on — which clause, which anchor,
-    which prompt constant, and which evals just went stale.
-    """
+    """Delete the emoji rule from the prompt: resolution must raise, not fall back."""
     _edit(monkeypatch, lambda text: text.replace(EMOJI_RULE, "- Emojis are fine whenever,"))
 
     with pytest.raises(ClauseResolutionError) as caught:
@@ -108,12 +99,7 @@ def test_a_deleted_rule_raises_and_names_its_dependents(monkeypatch: pytest.Monk
 def test_a_deleted_rule_does_not_fall_back_to_a_cached_copy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The failure mode this module exists to prevent, asserted directly.
-
-    Resolving the clause once (warming any cache) and THEN deleting the rule
-    must still raise. A returned string here would mean rubrics keep quoting a
-    rule the product no longer ships — invisibly, forever.
-    """
+    """Resolving the clause once (warming any cache) and then deleting the rule must still raise."""
     assert "Emojis EXTREMELY RARE" in resolve(EMOJI_REF)
 
     _edit(monkeypatch, lambda text: text.replace(EMOJI_RULE, "- Emojis are fine whenever,"))
@@ -125,11 +111,7 @@ def test_a_deleted_rule_does_not_fall_back_to_a_cached_copy(
 def test_a_duplicated_anchor_is_a_failure_not_a_first_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Two matches means the anchor stopped identifying one rule.
-
-    Picking the first would silently freeze the extract on whichever copy came
-    first in the file, and drift the next time either is edited.
-    """
+    """Two matches means the anchor stopped identifying one rule; picking the first would silently freeze on whichever came first."""
     _edit(monkeypatch, lambda text: text.replace(EMOJI_RULE, EMOJI_RULE + "\n" + EMOJI_RULE, 1))
 
     with pytest.raises(ClauseResolutionError, match="appears 2 times"):
@@ -194,10 +176,7 @@ def test_resolve_returns_the_shipped_text_not_a_paraphrase() -> None:
 def test_an_edited_rule_flows_through_without_touching_any_eval(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The positive half of the contract: change the prompt, the rubric changes.
-
-    A hand-written YAML criterion would still say the old thing here.
-    """
+    """Change the prompt, the rubric changes; a hand-written YAML criterion would still say the old thing here."""
     before = resolve(TONE_REF)
     assert "mirror their punctuation" not in before
 

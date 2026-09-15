@@ -95,9 +95,7 @@ def _stored_workflow(**overrides: object) -> WorkflowDocument:
 
 
 class TestThePlaybookDiscardAWorkflowRemembers:
-    """The discard record is the only durable answer to "where did my shortcut
-    go" — the worker's warning line ages out of log retention long before the
-    question is asked."""
+    """The discard record is the only durable answer to "where did my shortcut go" — the worker's warning line ages out of log retention first."""
 
     DISCARD = PlaybookDiscard(
         playbook_id="pb_1",
@@ -118,8 +116,7 @@ class TestThePlaybookDiscardAWorkflowRemembers:
         assert _stored_workflow().last_playbook_discard is None
 
     def test_the_update_carries_it_as_a_set_field(self) -> None:
-        """``$set`` is built from the fields the caller actually set, so a discard
-        written through anything but this field never reaches Mongo."""
+        """$set is built from the fields the caller actually set, so a discard written elsewhere never reaches Mongo."""
         update = WorkflowUpdate(last_playbook_discard=self.DISCARD)
 
         assert update.model_dump(exclude_unset=True) == {

@@ -1,8 +1,8 @@
 """Embedding + reranking sidecar service (FastAPI).
 
 Loads the fastembed models ONCE for the whole deployment and exposes them over
-HTTP. It reuses the exact ``_embed_sync`` / ``_embed_query_sync`` /
-``_rerank_sync`` helpers from ``app.memory.embeddings``, so the vectors and
+HTTP. It reuses the exact _embed_sync / _embed_query_sync /
+_rerank_sync helpers from app.memory.embeddings, so the vectors and
 rerank scores are byte-for-byte identical to the in-process path — the tuned
 retrieval thresholds keep working unchanged.
 
@@ -11,7 +11,7 @@ uses the local models:
 
     uv run uvicorn app.services.embedding_sidecar.server:app --host 0.0.0.0 --port 8200
 
-The API and worker then set ``MEMORY_EMBEDDING_SIDECAR_URL`` to its address and
+The API and worker then set MEMORY_EMBEDDING_SIDECAR_URL to its address and
 call it instead of loading their own copy.
 """
 
@@ -31,12 +31,9 @@ from app.constants.memory import (
 from app.memory.embeddings import _embed_query_sync, _embed_sync, _rerank_sync
 from shared.py.wide_events import log
 
-# fastembed is sync and CPU-bound. Running it directly in these async handlers
-# would block the single uvicorn event loop, so one batch embed would freeze
-# every other request AND the /health check — which is what made Swarm kill the
-# container as unhealthy under load. Offload to a thread (like the in-process
-# path in app.memory.embeddings) and bound concurrency so the CPU isn't
-# oversubscribed. /health deliberately takes neither, so it always responds.
+# fastembed is sync and CPU-bound; running it directly here would freeze /health
+# too, which made Swarm kill the container as unhealthy under load. Offload to a
+# thread and bound concurrency; /health deliberately takes neither slot.
 _inference_slots = asyncio.Semaphore(EMBEDDING_SIDECAR_MAX_CONCURRENCY)
 _slot_wait_seconds = EMBEDDING_SIDECAR_SLOT_WAIT_SECONDS
 
@@ -74,9 +71,11 @@ _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 
 def _reject_oversized(texts: list[str]) -> None:
-    """A text beyond EMBEDDING_SIDECAR_MAX_TEXT_CHARS is always a caller bug:
-    it truncates to the model's 512-token window anyway while its JSON body,
-    tokenization, and validation still cost real memory and CPU."""
+    """Reject a text beyond EMBEDDING_SIDECAR_MAX_TEXT_CHARS instead of truncating.
+
+    It would truncate to the model's 512-token window anyway while its JSON body,
+    tokenization, and validation still cost real memory and CPU.
+    """
     for text in texts:
         if len(text) > EMBEDDING_SIDECAR_MAX_TEXT_CHARS:
             raise HTTPException(

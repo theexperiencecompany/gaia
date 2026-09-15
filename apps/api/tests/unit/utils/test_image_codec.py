@@ -35,7 +35,7 @@ def _encode(fmt: str, size: tuple[int, int] = (32, 32), color: str = "red", **kw
 
 
 def _sniff(inline: InlineImage) -> str | None:
-    """The format Pillow reads back out of the block's actual payload."""
+    """Return the format Pillow reads back from the block's actual payload."""
     return Image.open(io.BytesIO(base64.b64decode(inline.base64))).format
 
 
@@ -46,12 +46,7 @@ def _sniff(inline: InlineImage) -> str | None:
 
 class TestMimeIsSniffedNotDeclared:
     async def test_png_bytes_are_labelled_png_regardless_of_file_extension(self) -> None:
-        """A PNG saved as `photo.jpg` must not be labelled image/jpeg.
-
-        This is the bug: the extension said JPEG, the payload was PNG, and the
-        block went to Gemini as inline_data(mime_type=image/jpeg) with PNG bytes.
-        Gemini 400s on that, which kills the whole turn — not just the tool.
-        """
+        """Regression: PNG saved as photo.jpg was labelled image/jpeg, which 400s the whole turn on Gemini."""
         assert ImageCodec.mime_for_path("/workspace/photo.jpg") == JPEG_MIME
 
         inline = await ImageCodec.from_bytes(_encode("PNG"))
@@ -60,12 +55,7 @@ class TestMimeIsSniffedNotDeclared:
         assert _sniff(inline) == "PNG"
 
     async def test_declared_mime_cannot_smuggle_a_gif_past_the_provider_safe_set(self) -> None:
-        """A lying MCP server declaring a GIF as image/png must still transcode.
-
-        GIF is not in PROVIDER_SAFE_IMAGE_MIMES (Gemini 400s on it). If the
-        declared MIME were trusted, `image/png` would wave the GIF straight
-        through untouched.
-        """
+        """A GIF declared as image/png must still transcode — GIF isn't in PROVIDER_SAFE_IMAGE_MIMES."""
         inline = await ImageCodec.from_base64(base64.b64encode(_encode("GIF")).decode())
 
         assert inline.mime_type == JPEG_MIME
@@ -101,12 +91,7 @@ class TestMimeIsSniffedNotDeclared:
 
 class TestDecodeFailuresAreTyped:
     async def test_truncated_image_on_the_transcode_path_raises_invalid_image(self) -> None:
-        """verify() only reads the header; the full decode in _transcode is what fails.
-
-        Callers guard with `except InvalidImageError`. A raw OSError escaping here
-        propagates out of the `read` tool and fails the turn. The transcode path
-        is the common one — every GIF, and every image over the size/edge budget.
-        """
+        """The full decode in _transcode (hit by every GIF and oversized image) must raise InvalidImageError, not a raw OSError."""
         full = _encode("JPEG", size=(3000, 3000), quality=95)  # oversized -> transcodes
         truncated = full[: len(full) // 2]
 
@@ -137,10 +122,7 @@ class TestDecodeFailuresAreTyped:
 
 class TestBudgets:
     async def test_oversized_pixels_are_downscaled_even_when_bytes_are_tiny(self) -> None:
-        """A flat 4000x4000 PNG compresses to almost nothing but bills as huge.
-
-        Providers charge by pixel area, so bytes alone is not a sufficient gate.
-        """
+        """Providers bill by pixel area, so a tiny-byte 4000x4000 PNG must still be downscaled."""
         data = _encode("PNG", size=(4000, 4000), color="white")
         assert len(data) <= TARGET_INLINE_IMAGE_BYTES, "fixture must be small in bytes"
 
@@ -150,7 +132,7 @@ class TestBudgets:
         assert max(width, height) <= DOWNSCALE_LONGEST_EDGE
 
     async def test_an_image_exactly_at_the_edge_limit_is_not_downscaled(self) -> None:
-        """Boundary: `<=` not `<`. Exactly-at-the-limit must pass through."""
+        """Boundary: <= not <. Exactly-at-the-limit must pass through."""
         data = _encode("PNG", size=(DOWNSCALE_LONGEST_EDGE, 100), color="white")
         inline = await ImageCodec.from_bytes(data)
 
@@ -171,17 +153,14 @@ class TestBudgets:
             await ImageCodec.from_bytes(b"\x89PNG" + b"\x00" * MAX_IMAGE_FILE_BYTES)
 
     async def test_oversized_base64_is_refused_without_materializing_the_payload(self) -> None:
-        """The encoded length is checked first, so a hostile MCP server can't
-        make us allocate the decoded copy of a 200 MB payload."""
+        """Checks encoded length first, so a hostile MCP server can't force allocating a 200 MB decode."""
         huge_b64 = "A" * (int(MAX_IMAGE_FILE_BYTES * 4 / 3) + 8)
 
         with pytest.raises(InvalidImageError, match="exceeds"):
             await ImageCodec.from_base64(huge_b64)
 
     async def test_oversized_bytes_transcode_even_when_the_dimensions_are_in_spec(self) -> None:
-        """Bytes and pixels are independent budgets. A 1000x1000 noise PNG is well
-        inside the edge limit but ~2.5 MB — it must still be re-encoded, or every
-        Postgres checkpoint persists that payload."""
+        """Bytes and pixels are independent budgets — a ~2.5MB in-spec-dimension PNG must still be re-encoded."""
         buf = io.BytesIO()
         Image.effect_noise((1000, 1000), 64).convert("RGB").save(buf, format="PNG")
         data = buf.getvalue()
@@ -218,9 +197,7 @@ class TestMimeForPathAndBlock:
         assert ImageCodec.mime_for_path(path) == expected
 
     async def test_to_block_emits_the_canonical_v1_data_content_block(self) -> None:
-        """The block shape is a provider contract — langchain_openrouter converts
-        `{"type": "image", "base64": ...}` in a user message to an image_url data
-        URL, and Gemini reads it as inline_data. A renamed key breaks both."""
+        """The block shape is a provider contract: langchain_openrouter and Gemini both key off type/base64."""
         inline = await ImageCodec.from_bytes(_encode("PNG"))
         block = inline.to_block()
 

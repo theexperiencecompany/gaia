@@ -1,27 +1,13 @@
 """Unified startup/shutdown for FastAPI and the ARQ worker.
 
-This module does two distinct things:
+Registers lazy providers (fast, every process start), then initializes
+services: blocking during startup when hot reloading is enabled, or
+scheduled in the background otherwise so the server can start serving quickly.
 
-1) Registers lazy providers.
-   Provider registration is always fast and should happen on every process start.
-
-2) Initializes services.
-
-   - When hot reloading is enabled, we initialize services during startup so
-     problems surface immediately and reload cycles are predictable.
-
-   - When hot reloading is disabled (FastAPI only), we intentionally *do not
-     block startup* on initialization. Instead, we schedule the same
-     initialization coroutines in the background so the server can begin
-     accepting traffic quickly.
-
-Gotchas:
-- Background warmup failures do not crash the server; they are logged.
-- While warmup is running, request handlers may still call `providers.aget(...)`.
-  This is safe: `LazyLoader` uses per-provider locks so concurrent calls join
-  the same initialization work rather than double-initializing.
-- Always use `providers.aget(...)` for async providers; `providers.get(...)`
-  is only for sync providers.
+Background warmup failures are logged, not fatal. LazyLoader's per-provider
+locks let a request handler safely call providers.aget(...) concurrently with
+warmup instead of double-initializing. Use providers.aget(...) for async
+providers; providers.get(...) is sync-only.
 """
 
 import asyncio
@@ -161,15 +147,10 @@ def _spawn_background_services(
 def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
     """Register all lazy providers (dormant until first access).
 
-    Always fast — no I/O, just decorator bookkeeping — so it's safe to call on
-    every process start. Split out from `unified_startup` so callers that only
-    need the provider registry populated (e.g. a test harness exercising one
-    feature that doesn't want the full eager-service startup, which requires
-    RabbitMQ/Mongo/etc. to be live) can do so without the rest of startup.
-
-    Gotcha: many providers are authored as `async def` and decorated with
-    `@lazy_provider(...)`. The decorator replaces the async function with a
-    sync registration function, so these calls are intentionally NOT awaited.
+    Fast, no I/O — safe on every process start. Split out from unified_startup
+    so a test harness can populate the registry without full eager-service
+    startup. Many providers are async def, but @lazy_provider wraps them in a
+    sync registration function, so these calls aren't awaited.
     """
     log.info(f"{LogTag.STARTUP} Registering lazy providers for ...", context=context)
 
@@ -201,19 +182,10 @@ def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
 
 
 async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
-    """
-    Unified startup function for both FastAPI and ARQ worker contexts.
+    """Run the unified startup flow for FastAPI and the ARQ worker.
 
-    Handles complete initialization flow:
-    1. Lazy provider registration (databases, AI models, tools)
-    2. Context-specific eager service initialization
-    3. Parallel execution with error handling
-
-    Args:
-        context: "main_app" for FastAPI, "arq_worker" for background tasks
-
-    Raises:
-        RuntimeError: If any critical service fails to initialize
+    Registers lazy providers, then initializes context-specific services in
+    parallel; raises RuntimeError if a required service fails.
     """
     # Record the process role (main_app vs arq_worker) as observable config,
     # derived from the declared startup context so it can't drift from reality:
@@ -229,10 +201,8 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
 
     register_lazy_providers(context)
 
-    # Services we typically want running in-process.
-    #
-    # In development and in the ARQ worker we initialize these during startup.
-    # In production FastAPI we schedule them to initialize in the background.
+    # In development and in the ARQ worker these initialize during startup;
+    # in production FastAPI they're scheduled to initialize in the background.
     eager_services = [
         StartupService(init_mongodb_async, "mongodb", required=True),
         StartupService(redis_cache.verify_connection, "redis", required=True),
@@ -270,14 +240,9 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     startup_services: list[StartupService] = list(eager_services)
     startup_services.append(
         StartupService(
-            # strict=True honors each provider's declared strategy: only an
-            # ERROR-strategy provider that fails to initialize propagates (WARN/SILENT
-            # return None and degrade), so a provider declared ERROR to fail loud —
-            # e.g. tool_registry — aborts a blocking boot instead of coming up broken
-            # and 500ing the first request. required=True is what lets that abort
-            # reach _process_results; without it the failure would be logged and
-            # swallowed. The background warmup path (warmup_all below) stays lenient:
-            # the server is already serving, so a warmup failure must not crash it.
+            # strict=True + required=True let an ERROR-strategy provider (e.g.
+            # tool_registry) abort a blocking boot instead of coming up broken;
+            # warmup_all below stays lenient since the server is already serving.
             lambda: providers.initialize_auto_providers(
                 concurrency=AUTO_PROVIDER_CONCURRENCY,
                 strict=True,
@@ -331,16 +296,10 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
 
 
 async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
-    """
-    Unified shutdown function for both FastAPI and ARQ worker contexts.
+    """Run the unified shutdown flow for FastAPI and the ARQ worker.
 
-    Performs graceful cleanup:
-    1. Context-specific service selection
-    2. Parallel cleanup execution
-    3. Isolated error handling (one failure doesn't stop others)
-
-    Args:
-        context: "main_app" for FastAPI, "arq_worker" for background tasks
+    Cleans up context-specific services in parallel; one failure doesn't stop
+    the others.
     """
     log.info(f"{LogTag.STARTUP} Shutting down ...", context=context)
 

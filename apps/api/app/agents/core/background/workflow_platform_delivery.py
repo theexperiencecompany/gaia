@@ -1,7 +1,7 @@
 """Deliver a proactively-produced result into the user's linked messaging platforms.
 
 A result GAIA produces with no user watching — a finished workflow run, a fired
-reminder — is pushed by :func:`deliver_result_to_platforms` into the user's real
+reminder — is pushed by :func:deliver_result_to_platforms into the user's real
 Telegram/WhatsApp/Discord/Slack chats as natural GAIA messages (GAIA's voice, no
 notification chrome) so the thread can be continued there, AND recorded into that
 conversation's langgraph thread so a later turn remembers it. This is deliberately
@@ -44,17 +44,12 @@ async def deliver_result_to_platforms(
     origin: str,
     exclude_source: ConversationSource | None = None,
 ) -> None:
-    """Deliver a proactive result to the user's ONE preferred messaging platform as
-    a real, persisted bot message, split into natural bubbles, and record it in
-    that platform conversation's langgraph thread.
+    """Deliver a proactive result to the user's ONE preferred messaging platform.
 
-    The platform is the first in the user's chat-channel order that is linked
-    and left enabled (``resolve_chat_channel``); the web app always has the
-    result too. ``origin`` names what produced the result (workflow, reminder,
-    …) so the langgraph record can backtrack to the source. ``exclude_source``
-    names a platform that already received the result in its own conversation,
-    so the same platform is never pinged twice. Best-effort: a failure here
-    never propagates to the caller.
+    Sent as a real, persisted bot message split into natural bubbles, and
+    recorded in that platform conversation's langgraph thread. The platform
+    is the first in the user's chat-channel order that is linked and enabled;
+    exclude_source skips a platform that already received the result. Best-effort.
     """
     if not notification_text.strip():
         return
@@ -84,10 +79,11 @@ async def _post_workflow_message(
     response: str,
     origin: str,
 ) -> None:
-    """Persist the result into the platform's session conversation and deliver it
-    as ordered bubbles, then record it in that conversation's langgraph thread —
-    framed with the platform and origin so a later turn can backtrack to the
-    source. Best-effort: logs and swallows a failure."""
+    """Persist the result into the platform's session conversation and deliver it.
+
+    Sent as ordered bubbles, then recorded in that conversation's langgraph
+    thread. Best-effort: logs and swallows a failure.
+    """
     source, platform_user_id = channel.source, channel.platform_user_id
     # Comms splits its reply into bubbles with the break sentinel; the outbound
     # publish and the provenance record below both need the split, not the raw
@@ -129,11 +125,9 @@ async def _post_workflow_message(
             )
             return
         if result is OutboundResult.PUBLISHED:
-            # The Mongo save above never reaches the langgraph thread this
-            # session's next turn reads its history from. Record what was
-            # actually delivered — the outbound path strips the sentinel and
-            # blank bubbles, so join the nonblank bubbles rather than the raw
-            # response (which still contains control tokens).
+            # The Mongo save above never reaches the langgraph thread; record
+            # the nonblank bubbles (outbound path strips sentinel/blanks)
+            # rather than the raw response, which still has control tokens.
             delivered_text = "\n\n".join(b.strip() for b in bubbles if b.strip())
             display = PLATFORM_DISPLAY_NAMES.get(source, source.value.capitalize())
             await record_platform_delivery(

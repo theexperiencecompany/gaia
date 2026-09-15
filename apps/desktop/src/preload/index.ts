@@ -116,15 +116,10 @@ const api = {
     ipcRenderer.send(IPC.popupResize, height),
 
   /**
-   * Subscribe to popup activation events.
-   *
-   * Fired when the assistant popup is shown so the renderer can play
-   * its entrance animation. The payload carries how it was summoned
-   * ("wake-word" | "shortcut") — the acknowledgment sound is scoped to
-   * voice activations.
-   *
-   * @param callback - Handler invoked with the activation payload.
-   * @returns A cleanup function that removes the listener.
+   * Subscribe to popup activation events, fired when the assistant popup is shown
+   * so the renderer can play its entrance animation. Payload carries how it was
+   * summoned ("wake-word" | "shortcut") — the acknowledgment sound is scoped to
+   * voice activations. Returns a cleanup function that removes the listener.
    */
   onPopupActivate: (
     callback: (data: { trigger: "wake-word" | "shortcut" }) => void,

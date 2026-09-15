@@ -1,6 +1,4 @@
-"""
-FastAPI endpoints for reminder management.
-"""
+"""FastAPI endpoints for reminder management."""
 
 from typing import Annotated
 
@@ -39,11 +37,9 @@ router = APIRouter(prefix="/reminders", tags=["reminders"])
 def _reminder_context(operation: str, reminder: ReminderModel) -> ReminderContext:
     """Wide-event context for one reminder.
 
-    ``recurrence`` and ``next_run_time`` read ``repeat``/``scheduled_at`` — the
-    fields a reminder actually has. The previous
-    ``reminder.recurrence if hasattr(reminder, "recurrence") else None`` spelling
-    named attributes ``ReminderModel`` has never defined, so both fields were
-    logged as ``None`` on every request.
+    recurrence and next_run_time read repeat/scheduled_at — the fields a
+    reminder actually has; the previous spelling named attributes
+    ReminderModel never defined, so both logged as None on every request.
     """
     context = ReminderContext(operation=operation, id=str(reminder.id))
     if reminder.repeat:
@@ -90,7 +86,6 @@ async def create_reminder_endpoint(
         # — and the same default as workflows, regardless of current location.
         reminder_data.timezone = user_timezone
 
-        # Create the reminder
         reminder_id = await reminder_scheduler.create_reminder(
             reminder_data=reminder_data, user_id=user_id
         )
@@ -220,7 +215,6 @@ async def update_reminder_endpoint(
         # repository's `$set` only touches what the caller actually sent.
         update = ReminderUpdate(**request.model_dump(exclude_none=True))
 
-        # Update reminder
         success = await reminder_scheduler.update_reminder(
             reminder_id, user_id=user_id, update=update
         )
@@ -231,7 +225,6 @@ async def update_reminder_endpoint(
                 detail="Failed to update reminder",
             )
 
-        # Get updated reminder
         updated_reminder = await reminder_scheduler.get_reminder(reminder_id, user_id=user_id)
         if not updated_reminder:
             raise HTTPException(
@@ -415,7 +408,6 @@ async def pause_reminder_endpoint(
                 detail="Failed to pause reminder",
             )
 
-        # Get updated reminder
         updated_reminder = await reminder_scheduler.get_reminder(reminder_id, user_id=user_id)
         if not updated_reminder:
             raise HTTPException(
@@ -497,7 +489,6 @@ async def resume_reminder_endpoint(
                 detail="Failed to resume reminder",
             )
 
-        # Get updated reminder
         updated_reminder = await reminder_scheduler.get_reminder(reminder_id, user_id=user_id)
         if not updated_reminder:
             raise HTTPException(

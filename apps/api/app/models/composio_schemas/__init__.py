@@ -1,5 +1,5 @@
 """
-Composio Schema Models
+Composio Schema Models.
 
 Pydantic models for Composio tool responses and trigger payloads.
 Reference: node_modules/@composio/core/generated/<toolkit>.ts

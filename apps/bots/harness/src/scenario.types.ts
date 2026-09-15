@@ -39,21 +39,16 @@ export interface ScenarioTurn {
 export interface Scenario {
   /** Human-readable scenario name (used in reporting). */
   name: string;
-  /** Platform to emulate. */
   emulate: PlatformName;
   /** Email of the dev user to mint + link (via the dev endpoints). */
   user: string;
   /** Ordered conversation turns. */
   turns: ScenarioTurn[];
   /**
-   * Default settle window for every turn, in milliseconds (0 = don't wait).
-   *
-   * A reply that hands off to the background executor closes its SSE stream
-   * as soon as the handoff preamble is sent; the real answer is narrated and
-   * published to the platform's outbound queue seconds LATER. Without a settle
-   * window the harness tears its consumer down in between, and the answer sits
-   * in the durable queue until some later `gaia-sim` boot drains it into an
-   * unrelated transcript — the turn looks like it silently dropped the reply.
+   * Default settle window for every turn, in milliseconds (0 = don't wait). A
+   * handoff reply closes its SSE stream on the preamble while the real answer
+   * publishes to the outbound queue seconds later; without settling, the answer
+   * lands in a later `gaia-sim` boot's unrelated transcript instead of this one.
    */
   settleMs?: number;
 }

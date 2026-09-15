@@ -1,8 +1,8 @@
 """Nurture email engine: one declarative sequence, one send per user per run.
 
 Driven hourly by the ARQ cron so each user is evaluated at 9am in their own
-timezone. Per-user state lives on the user document under ``nurture``:
-``completed_steps`` guarantees a step sends at most once ever, ``history``
+timezone. Per-user state lives on the user document under nurture:
+completed_steps guarantees a step sends at most once ever, history
 enforces the frequency caps.
 """
 

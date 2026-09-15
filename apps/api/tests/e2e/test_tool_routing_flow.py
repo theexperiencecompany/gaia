@@ -1,34 +1,4 @@
-"""E2E test: tool-call routing and filter_messages_node in a live GAIA graph.
-
-This file does NOT test email sending — the ``send_email`` tool below is a local
-stub standing in for "any tool". Real send-email coverage lives in
-``tests/e2e/test_send_email_flow.py``, which drives the Gmail send path through
-the real HTTP route and ``app.services.mail.mail_service``.
-
-
-WHAT THIS TESTS (REAL GAIA CODE):
-- ``filter_messages_node`` from ``app.agents.core.nodes.filter_messages``
-  is wired as a pre-model hook via ``create_agent`` from
-  ``app.override.langgraph_bigtool.create_agent``.
-- The GAIA ``State`` schema (``app.override.langgraph_bigtool.utils.State``)
-  is used throughout, not the generic ``MessagesState``.
-- The graph runs the real hook pipeline on every model invocation.
-
-HOW IT'S TESTED:
-We inject AI messages with dangling tool calls (no corresponding ToolMessage)
-into the graph state and assert that ``filter_messages_node`` strips them
-before the model is called again — which is what allows the fake LLM
-to respond correctly in turn 2 without being confused by stale tool calls.
-
-Mock surfaces:
-- LLM: FakeMessagesListChatModel
-- Store: InMemoryStore (no ChromaDB)
-- Checkpointer: MemorySaver (no PostgreSQL)
-- the routed tool itself: a @tool stub, but the graph infrastructure is real
-
-DELETE ``app/agents/core/nodes/filter_messages.py`` → these tests FAIL.
-DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
-"""
+"""E2E test: tool-call routing and filter_messages_node in a live GAIA graph."""
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
@@ -58,23 +28,10 @@ class TestToolRoutingFlow:
     exercised as part of the graph run — not just unit-tested in isolation.
     """
 
-    # -------------------------------------------------------------------------
-    # The four tests below call filter_messages_node directly (unit-test style).
-    # They belong here because they exercise the real production node that is
-    # wired into the E2E graph, acting as a contract check for the node's
-    # public interface. Comprehensive unit coverage lives in:
-    #   tests/unit/agents/nodes/test_filter_messages.py
-    # -------------------------------------------------------------------------
+    # Unit coverage lives in tests/unit/agents/nodes/test_filter_messages.py.
 
     def test_filter_messages_node_removes_dangling_tool_calls(self):
-        """filter_messages_node must strip AI tool_calls with no ToolMessage response.
-
-        Scenario: an AIMessage with a tool call for which no ToolMessage exists
-        is placed in state. After filter_messages_node runs, the tool_calls list
-        on that AI message should be empty.
-
-        This tests the real filter_messages_node function (not a mock) directly.
-        """
+        """filter_messages_node must strip AI tool_calls with no ToolMessage response."""
         ai_with_dangling_call = AIMessage(
             content="I'll send that email",
             tool_calls=[
@@ -132,13 +89,7 @@ class TestToolRoutingFlow:
     async def test_graph_runs_filter_messages_as_pre_model_hook(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """Build a real GAIA graph and verify a tool is called end-to-end.
-
-        The graph is built with create_agent (real production function) using
-        filter_messages_node and manage_system_prompts_node as pre-model hooks.
-        The tool execution path uses the real DynamicToolNode from the GAIA
-        override package.
-        """
+        """Build a real GAIA graph with create_agent and verify tool routing end-to-end."""
         fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(
@@ -186,12 +137,7 @@ class TestToolRoutingFlow:
     async def test_graph_state_uses_gaia_state_schema(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """The compiled graph must use GAIA State (with 'todos' channel), not MessagesState.
-
-        After invoking, the returned state should contain 'todos' (GAIA-specific)
-        in addition to 'messages'. This confirms the graph is using the real
-        GAIA State from app.override.langgraph_bigtool.utils, not a generic state.
-        """
+        """The compiled graph must use GAIA State (with 'todos' channel), not MessagesState."""
         fake_llm = BindableToolsFakeModel(responses=[AIMessage(content="No tool needed here.")])
 
         graph = build_gaia_test_graph(
@@ -231,12 +177,7 @@ class TestToolRoutingFlow:
         )
 
     async def test_multi_turn_conversation_filter_cleans_between_turns(self):
-        """filter_messages_node must clean unanswered tool calls across turns.
-
-        Simulates a conversation where turn 1 left a dangling tool call, and
-        turn 2 now has a different tool call with its response. After
-        filter_messages_node, only the answered call from turn 2 remains.
-        """
+        """filter_messages_node must clean unanswered tool calls across turns."""
         dangling_ai = AIMessage(
             content="",
             tool_calls=[
@@ -271,11 +212,7 @@ class TestToolRoutingFlow:
         assert result["messages"][1].tool_calls[0]["id"] == "live_002"
 
     async def test_filter_messages_preserves_ai_content_on_cleanup(self):
-        """filter_messages_node must preserve AI content even when tool_calls are removed.
-
-        An AIMessage with both content and a dangling tool call: after filtering,
-        the content must be intact even though tool_calls is cleared.
-        """
+        """filter_messages_node must preserve AI content even when tool_calls are removed."""
         ai = AIMessage(
             content="I will try to send an email for you",
             tool_calls=[{"id": "no_response_tc", "name": "send_email", "args": {}}],

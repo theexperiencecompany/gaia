@@ -76,7 +76,7 @@ async def search_messages_endpoint(
 
 
 def extract_emails(text: str) -> list[str]:
-    """Extract every email address appearing in ``text``."""
+    """Extract every email address appearing in text."""
     email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
     return re.findall(email_pattern, text)
 

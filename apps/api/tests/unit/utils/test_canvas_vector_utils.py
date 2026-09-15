@@ -53,8 +53,7 @@ async def test_store_canvas_embedding_indexes_content() -> None:
 
 
 async def test_store_canvas_embedding_omits_optional_metadata_when_absent() -> None:
-    """No labels / revision means the keys are absent, not blank — the
-    `if labels:` / `if revision is not None:` guards both matter."""
+    """Absent labels/revision means the keys are omitted, not blank — both guards matter."""
     collection = AsyncMock()
     with patch(
         "app.utils.canvas_vector_utils.ChromaClient.get_langchain_client",
@@ -208,9 +207,7 @@ async def test_update_writes_when_revision_newer_and_stores_it() -> None:
 
 
 async def test_update_canvas_embedding_stores_new_content_when_metadata_lookup_fails() -> None:
-    """A Chroma metadata-read failure (collection missing / offline) must not
-    skip the rebuild: with no stored revision there is nothing to compare
-    against, so the write proceeds and carries the new revision."""
+    """A Chroma metadata-read failure must not skip the rebuild — it proceeds and carries the new revision."""
     raw_client = MagicMock()
     raw_client.get_collection = AsyncMock(side_effect=RuntimeError("collection missing"))
     with (
@@ -242,8 +239,7 @@ async def test_update_canvas_embedding_stores_new_content_when_metadata_lookup_f
 
 
 async def test_update_canvas_embedding_forwards_title_and_labels() -> None:
-    """Every forwarded argument is pinned: title and labels reach the store
-    unchanged (dropping either was previously invisible)."""
+    """Title and labels reach the store unchanged — dropping either was previously invisible."""
     raw_client = MagicMock()
     raw_client.get_collection = AsyncMock(side_effect=RuntimeError("collection missing"))
     with (

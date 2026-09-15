@@ -52,11 +52,9 @@ TIMEFRAME_DEFAULT_MAX: dict[str, int] = {
     "1y": 500,
 }
 
-# When the serialized aggregate crosses this many chars (~30k tokens), we write
-# a JSONL file (messages only, one per line) and return a digest + read_plan.
-# GMAIL_FETCH_MESSAGES is excluded from the generic compaction middleware, so
-# this is the sole char-based offload trigger and its JSONL is the single
-# source of truth.
+# Crossing this many chars (~30k tokens) writes a JSONL file (one message per
+# line) and returns a digest + read_plan. GMAIL_FETCH_MESSAGES is excluded from
+# the generic compaction middleware, so this is the sole offload trigger.
 INLINE_LIMIT_CHARS = 120_000
 
 # Offload file naming + sandbox-visible path.
@@ -69,10 +67,9 @@ OFFLOAD_PREVIEW_SIZE = 10
 # INLINE_LIMIT_CHARS. Keeps large metadata-only scans out of the context window.
 OFFLOAD_MIN_MESSAGES = 50
 
-# Read-plan chunking: how an offloaded JSONL is split for parallel subagent
-# reads. The file is one message per line, so a chunk is a contiguous line
-# range a single subagent reads with `read(offset, limit)`. Chunk count is the
-# max of the by-message and by-byte estimates, capped at MAX_READ_SUBAGENTS.
+# Read-plan chunking: an offloaded JSONL (one message per line) is split into
+# contiguous line ranges each subagent reads via read(offset, limit). Chunk
+# count is the max of the by-message/by-byte estimates, capped at MAX_READ_SUBAGENTS.
 CHUNK_TARGET_MESSAGES = 25
 CHUNK_TARGET_BYTES = 50_000
 MAX_READ_SUBAGENTS = 4

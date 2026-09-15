@@ -1,8 +1,8 @@
 """Markdown section helpers for tracked-todo canvases.
 
-Canvases are `## Heading` sectioned markdown. These helpers locate a section
-by exact heading, and split legacy canvases (which carried activity inside
-the canvas) into the canvas.md / activity.md pair.
+Canvases are markdown split into sections by "## Heading" lines. These helpers
+locate a section by exact heading, and split legacy canvases (which carried
+activity inside the canvas) into the canvas.md / activity.md pair.
 """
 
 from datetime import UTC, datetime
@@ -18,7 +18,7 @@ _DATED_BLOCK_HEADER_RE = re.compile(r"### (\d{4}-\d{2}-\d{2})")
 
 
 def _section_span(text: str, heading: str) -> tuple[int, int, int] | None:
-    """(heading_start, body_start, section_end) for an exact `## {heading}` line."""
+    """(heading_start, body_start, section_end) for an exact "## {heading}" line."""
     pattern = re.compile(rf"(?:^|(?<=\n))## {re.escape(heading)}(?=\n|\Z)")
     match = pattern.search(text)
     if match is None:
@@ -30,7 +30,7 @@ def _section_span(text: str, heading: str) -> tuple[int, int, int] | None:
 
 
 def section_body(text: str, heading: str) -> str | None:
-    """Body of `## {heading}` (stripped), or None when the section is absent."""
+    """Body of "## {heading}" (stripped), or None when the section is absent."""
     span = _section_span(text, heading)
     if span is None:
         return None
@@ -69,7 +69,7 @@ def _rescue_dated_blocks_from_learnings(text: str) -> tuple[str, list[str]]:
 
 
 def _block_date(block: str) -> datetime | None:
-    """Midnight UTC of a `### YYYY-MM-DD` block header, else None."""
+    """Midnight UTC of a "### YYYY-MM-DD" block header, else None."""
     match = _DATED_BLOCK_HEADER_RE.match(block.strip())
     if match is None:
         return None
@@ -80,7 +80,7 @@ def _block_date(block: str) -> datetime | None:
 
 
 def _line_timestamp(line: str) -> datetime | None:
-    """Timestamp of a `- <iso timestamp> <text>` line, else None."""
+    """Timestamp of a "- <iso timestamp> <text>" line, else None."""
     match = _TIMELINE_LINE_RE.match(line)
     if match is None:
         return None
@@ -120,10 +120,12 @@ def _extract_entries(body: str) -> tuple[list[tuple[datetime, str]], list[str]]:
 
 
 def split_legacy_canvas(canvas: str) -> tuple[str, str | None]:
-    """Move `## Activity Log`, `## Timeline`, and dated blocks stranded under
-    `## Learnings` out of the canvas. Returns (new_canvas, activity or None).
-    Dated entries from all three sources merge oldest-first; undated lines
-    follow in original order. Idempotent: nothing to move comes back unchanged."""
+    """Move Activity Log, Timeline, and dated blocks stranded under Learnings out of the canvas.
+
+    Returns (new_canvas, activity or None). Dated entries from all three sources
+    merge oldest-first; undated lines follow in original order. Idempotent: nothing
+    to move comes back unchanged.
+    """
     text, activity = _remove_section(canvas, "Activity Log")
     text, rescued = _rescue_dated_blocks_from_learnings(text)
     text, timeline = _remove_section(text, "Timeline")

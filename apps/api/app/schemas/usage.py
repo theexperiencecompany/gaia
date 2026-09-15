@@ -1,7 +1,7 @@
 """Response schemas for the usage endpoints.
 
 The wire contract these describe is mirrored in TypeScript at
-``libs/shared/ts/src/types/usage.ts`` (``UsageSummary`` and friends) — change
+libs/shared/ts/src/types/usage.ts (UsageSummary and friends) — change
 both together.
 """
 
@@ -37,7 +37,7 @@ class FeatureUsageSummary(ResponseModel):
 
 class BudgetWindow(ResponseModel):
     """One cost-budget window: how much of the allowance is used, and when it
-    resets. Deliberately no raw USD — see ``cost_budget.get_budget_status``."""
+    resets. Deliberately no raw USD — see cost_budget.get_budget_status."""
 
     percentage: float
     reset_time: str
@@ -57,8 +57,8 @@ class ActivityDay(ResponseModel):
     percentage is measured against — so background work (memory extraction,
     onboarding) never shows up as something the user did. Cached and reasoning
     tokens are broken out because they explain an otherwise surprising input
-    total; ``tokens`` is input + output, matching how the per-request ceiling
-    counts them (``cost_budget.record_model_call_usage``).
+    total; tokens is input + output, matching how the per-request ceiling
+    counts them (cost_budget.record_model_call_usage).
     """
 
     date: str

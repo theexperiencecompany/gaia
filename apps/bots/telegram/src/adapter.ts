@@ -114,14 +114,11 @@ export interface TelegramMedia {
 }
 
 /**
- * Maps a grammY {@link Message} onto a {@link TelegramMedia} descriptor, or
- * null when the message carries no media we recognise. Exported as a pure
- * function so the mapping is unit-testable without a live grammY context.
- *
- * Photos arrive as an ascending-size array, so the last entry is the highest
- * resolution. Voice notes (push-to-talk) are flagged separately from audio
- * files. Videos, video notes, animations (GIFs) and stickers map to the
- * unsupported kinds the shared pipeline rejects without a download.
+ * Map a grammY {@link Message} onto a {@link TelegramMedia} descriptor, or null
+ * when no recognised media is present. Exported pure for unit-testing without a
+ * live grammY context. Photos arrive ascending-size (last = highest resolution);
+ * voice notes are flagged separately from audio; video/video-notes/animations/
+ * stickers map to kinds the shared pipeline rejects without downloading.
  */
 export function extractTelegramMedia(msg: Message): TelegramMedia | null {
   if (msg.photo && msg.photo.length > 0) {
@@ -206,10 +203,9 @@ export class TelegramAdapter extends BaseBotAdapter {
     this.token = token;
 
     this.bot = new Bot(this.token);
-    // grammY's terminal error handler: anything a middleware throws and nobody
-    // caught ends here. It is a unit of work like any other — the update that
-    // blew up, who sent it, and why — so it gets its own canonical event
-    // instead of a lone error line with no trace_id.
+    // grammY's terminal error handler: anything an uncaught middleware throws ends
+    // here. Treated as its own unit of work so it gets a canonical event (update,
+    // sender, cause) instead of a lone error line with no trace_id.
     this.bot.catch((err) =>
       withWideEvent(
         "bot_runtime_error",
@@ -458,10 +454,9 @@ export class TelegramAdapter extends BaseBotAdapter {
     text: string,
     _isChannel: boolean,
   ): Promise<void> {
-    // grammY accepts a string chat_id; passing the id through avoids the NaN
-    // that Number() would produce for any non-numeric destination. A Telegram
-    // chat_id is polymorphic — a group/supergroup id routes to the group with no
-    // special handling, so _isChannel needs no branch here.
+    // grammY accepts a string chat_id, avoiding the NaN Number() would produce for
+    // a non-numeric destination. A Telegram chat_id is polymorphic — group/supergroup
+    // ids already route correctly, so _isChannel needs no branch here.
     await this.sendHtml(
       (t, opts) => this.bot.api.sendMessage(destinationId, t, opts),
       text,
@@ -499,20 +494,11 @@ export class TelegramAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Edits a message as Telegram HTML, recovering from the one failure a resend
-   * can actually fix.
-   *
-   * A "message is not modified" error (the new text equals the current text) is
-   * a no-op success. An HTML parse rejection retries the SAME message as
-   * stripped plain text — the same gate `sendHtml` uses. Everything else is
-   * rethrown for the caller to classify: retrying plain text on a 429 burned a
-   * second call against a rate limit that was already refusing us, and on a
-   * network failure it hammered a broken connection.
-   *
-   * A failure is reported via `onError` **and rethrown**. It used to be
-   * swallowed, which made a rejected edit look like a successful delivery: the
-   * stream logged `chat_stream_completed` while the user was still looking at
-   * stale text.
+   * Edit a message as Telegram HTML, recovering from the one resend-fixable failure.
+   * "message is not modified" is a no-op success; an HTML parse rejection retries as
+   * stripped plain text (same gate as `sendHtml`); anything else is reported via
+   * `onError` and rethrown — retrying on a 429/dead connection just burns another
+   * call, and swallowing used to log stream success while the user saw stale text.
    */
   private async editHtml(
     edit: (text: string, opts?: { parse_mode: "HTML" }) => Promise<unknown>,

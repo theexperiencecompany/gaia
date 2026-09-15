@@ -275,8 +275,7 @@ class TestPreInitializationAccess:
 
 @pytest.mark.integration
 class TestConcurrentInitialization:
-    """Multiple coroutines accessing the same provider simultaneously must
-    result in exactly one initialization."""
+    """Multiple coroutines accessing the same provider simultaneously must result in exactly one initialization."""
 
     async def test_concurrent_aget_initializes_once(self) -> None:
         """Fire N concurrent aget() calls. The loader must execute exactly once."""
@@ -484,8 +483,7 @@ class TestTeardownOrder:
 
 @pytest.mark.integration
 class TestInitializationFailure:
-    """When a provider's loader raises, the error must propagate and the
-    provider must NOT be marked as initialized."""
+    """When a provider's loader raises, the error must propagate and the provider must NOT be marked as initialized."""
 
     def test_sync_loader_error_propagates_with_error_strategy(self) -> None:
         """ERROR strategy: loader exception wraps in ConfigurationError."""
@@ -569,12 +567,9 @@ class TestInitializationFailure:
 
 @pytest.mark.integration
 class TestReInitializationAfterFailure:
-    """After a provider fails to initialize, a subsequent attempt with a
-    fixed loader should succeed."""
+    """After a provider fails to initialize, a subsequent attempt with a fixed loader should succeed."""
 
     def test_retry_after_sync_failure_succeeds(self) -> None:
-        """Register a failing provider, observe failure, re-register with
-        working loader, verify success."""
         registry = ProviderRegistry()
 
         # First registration: broken loader
@@ -631,8 +626,6 @@ class TestReInitializationAfterFailure:
         assert registry.is_initialized("flaky_async")
 
     def test_error_strategy_retry_after_reset(self) -> None:
-        """With ERROR strategy, after failure and reset, retry should work if
-        we re-register a working loader."""
         call_count = {"n": 0}
 
         def sometimes_fails() -> FakeClient:

@@ -143,14 +143,9 @@ function SidebarNav() {
 }
 
 /**
- * Shared app sidebar.
- *
- * Layout (top → bottom):
- *   - Branding + new chat icon + conversation search
- *   - Main nav (Chats / Tasks / Integrations / Workflows)
- *   - Feature-specific section: only on /todos (Projects / Priorities / Labels)
- *   - Chat history: only on chat pages (/ and /c/:id)
- *   - Profile footer
+ * Shared app sidebar. Layout top-to-bottom: branding + new chat + search; main
+ * nav (Chats/Tasks/Integrations/Workflows); feature section (only on /todos:
+ * Projects/Priorities/Labels); chat history (only on / and /c/:id); profile footer.
  */
 export function SidebarContent() {
   const router = useRouter();

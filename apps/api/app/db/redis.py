@@ -1,22 +1,7 @@
-"""
-Redis caching infrastructure with type-safe Pydantic model support.
+"""Redis caching infrastructure with type-safe Pydantic model support.
 
-Features:
-- Type-safe model serialization/deserialization
-- Generic JSON caching for any Python objects
-- TTL support and pattern-based cache invalidation
-- Graceful fallback when Redis is unavailable
-
-Basic Usage:
-    await set_cache("key", data)
-    data = await get_cache("key")
-
-Type-safe Usage:
-    await set_cache("user:123", user_obj, model=User)
-    user = await get_cache("user:123", model=User)  # Returns User instance
-
-Pattern deletion:
-    await delete_cache("user:*")  # Delete all user keys
+Supports generic JSON caching, TTL, pattern-based invalidation, and graceful fallback when
+Redis is unavailable.
 """
 
 from collections.abc import Mapping
@@ -39,46 +24,17 @@ from shared.py.wide_events import log
 # Re-export for backwards compatibility
 CACHE_TTL = DEFAULT_CACHE_TTL
 
-# The cached value's type, carried from the ``model=`` argument through to the
-# return type: ``get_cache(key, model=User)`` is ``User | None``, not ``Any``.
-# Without it a caller's annotation on the result is unchecked — mypy accepts any
-# annotation on an ``Any`` — so a mismatched model went unnoticed.
+# Carries the ``model=`` argument through to the return type: ``get_cache(key, model=User)``
+# is ``User | None``, not ``Any`` — without it a mismatched model goes unnoticed.
 T = TypeVar("T")
 
-# The four remaining ``Any`` returns are the *no-model* overload stubs
-# (deserialize_any / RedisCache.get / get_cache / get_and_delete_cache). Measured,
-# don't re-litigate: narrowing them to ``object`` produced **31 new mypy errors
-# across 14 files** — stream_manager, bot_auth_middleware, tiered_rate_limiter,
-# payment_service, mcp_token_store and memory/consolidation all subscript,
-# ``.get()`` or ``int()`` the untyped cache read directly. Callers that want a
-# real type already pass ``model=`` and get it; the model-less overload is the
-# genuinely dynamic one. The three input params (serialize_any's ``data``,
-# ``set``/``set_cache``'s ``value``) and the overload *implementation* returns do
-# narrow to ``object`` at zero cost — a follow-up, not an ANN401 unblock.
+# The four remaining ``Any`` returns are the no-model overload stubs (deserialize_any,
+# RedisCache.get, get_cache, get_and_delete_cache). Measured: narrowing them to ``object``
+# produced 31 new mypy errors across 14 files — do not re-litigate without re-measuring.
 
 
 def serialize_any(data: object, model: type[Any] | None = None) -> str:
-    """
-    Serialize Python objects to JSON string using Pydantic TypeAdapter.
-
-    Supports type-safe serialization when model is provided, ensuring data
-    conforms to the expected structure before serialization.
-
-    Args:
-        data: Any Python object to serialize (Pydantic models, dicts, lists, etc.)
-        model: Optional Pydantic model class for type-specific serialization
-
-    Returns:
-        JSON string representation of the data
-
-    Examples:
-        # Generic serialization
-        json_str = serialize_any({"name": "John", "age": 30})
-
-        # Type-safe serialization
-        user = User(name="John", email="john@example.com")
-        json_str = serialize_any(user, model=User)
-    """
+    """Serialize a Python object to a JSON string, validating against model if provided."""
     adapter: TypeAdapterType[Any] = TypeAdapter(model or Any)
     return adapter.dump_json(data).decode()
 
@@ -92,51 +48,17 @@ def deserialize_any(json_str: str, model: type[Any] | None = None) -> Any: ...
 
 
 def deserialize_any(json_str: str, model: type[T] | None = None) -> Any:
-    """
-    Deserialize JSON string back to Python objects with optional type validation.
-
-    When model is provided, validates the deserialized data against the model
-    schema and returns a properly typed instance. Without model, returns
-    generic Python objects (dict, list, etc.).
-
-    Args:
-        json_str: JSON string to deserialize
-        model: Optional Pydantic model class for type validation
-
-    Returns:
-        Deserialized and optionally validated Python object
-
-    Raises:
-        ValidationError: If data doesn't match the provided model schema
-        ValueError: If JSON string is invalid
-
-    Examples:
-        # Generic deserialization
-        data = deserialize_any('{"name": "John", "age": 30}')
-
-        # Type-safe deserialization
-        user = deserialize_any(json_str, model=User)  # Returns User instance
-    """
+    """Deserialize a JSON string, validating against model if provided."""
     adapter: TypeAdapterType[Any] = TypeAdapter(model or Any)
     return adapter.validate_json(json_str)
 
 
 class AsyncRedisCommands(Protocol):
-    """The Redis commands this codebase issues, typed as the async client returns them.
+    """The Redis commands this codebase issues, typed as the async client actually returns them.
 
-    redis-py declares each command once, on a mixin shared by the sync and async
-    clients, annotated ``Awaitable[T] | T``. That union is honest for the pair but
-    wrong for ``redis.asyncio.Redis``, where every command returns an awaitable —
-    so ``await client.llen(key)`` does not type-check against the library's own
-    annotations, and the ones declared ``ResponseT`` (an alias containing bare
-    ``Any``) type-check but return ``Any`` and check nothing downstream.
-
-    Restating the commands we actually use fixes both: awaits resolve, and results
-    arrive as real types (``hgetall`` is a ``dict[str, str]``, not ``dict[Any, Any]``).
-    Values are ``str`` rather than ``bytes`` because the client is constructed with
-    ``decode_responses=True``.
-
-    Adding a command here is the cost of using a new one — mypy will name it.
+    redis-py's shared mixin annotates each command Awaitable[T] | T, which doesn't
+    type-check awaiting on the async client. Values are str, not bytes, since
+    decode_responses=True.
     """
 
     async def ping(self) -> bool:
@@ -150,7 +72,7 @@ class AsyncRedisCommands(Protocol):
     async def set(
         self, name: str, value: str, *, ex: int | None = None, nx: bool = False
     ) -> bool | None:
-        """SET — with ``nx`` returns None when the key already existed."""
+        """SET — with nx returns None when the key already existed."""
         ...
 
     async def setex(self, name: str, time: int, value: str) -> bool:
@@ -245,7 +167,7 @@ class AsyncRedisCommands(Protocol):
         ...
 
     def pubsub(self) -> PubSub:
-        """A pub/sub interface bound to this client."""
+        """Return a pub/sub interface bound to this client."""
         ...
 
     def lock(
@@ -258,11 +180,11 @@ class AsyncRedisCommands(Protocol):
         blocking_timeout: float | None = None,
         thread_local: bool = True,
     ) -> Lock:
-        """A distributed mutex — SET NX lease with a token-checked Lua release."""
+        """Return a distributed mutex — SET NX lease with a token-checked Lua release."""
         ...
 
     def pipeline(self, transaction: bool = True) -> Pipeline:
-        """A command pipeline; ``transaction=True`` wraps it in MULTI/EXEC."""
+        """Return a command pipeline; transaction=True wraps it in MULTI/EXEC."""
         ...
 
 
@@ -270,8 +192,8 @@ def _new_client(redis_url: str) -> AsyncRedisCommands:
     """Build the async client, described by what it really returns.
 
     The cast is the one place the library's sync/async-shared annotations are
-    traded for the async-accurate ones in ``AsyncRedisCommands``; see that
-    protocol for why they differ. ``from_url`` is lazy — this does not connect.
+    traded for the async-accurate ones in AsyncRedisCommands; see that
+    protocol for why they differ. from_url is lazy — this does not connect.
     """
     return cast(AsyncRedisCommands, redis.from_url(redis_url, decode_responses=True))
 
@@ -279,8 +201,8 @@ def _new_client(redis_url: str) -> AsyncRedisCommands:
 class RedisCache:
     """Async Redis wrapper with type-safe (de)serialization and graceful degradation.
 
-    The client is created lazily (``redis.from_url`` does not connect on
-    construction); call ``verify_connection`` at startup to assert reachability.
+    The client is created lazily (redis.from_url does not connect on
+    construction); call verify_connection at startup to assert reachability.
     When Redis is unavailable, read/write helpers no-op instead of raising.
     """
 
@@ -309,13 +231,10 @@ class RedisCache:
             log.warning(f"{LogTag.STORAGE} REDIS_URL is not set. Caching will be disabled.")
 
     async def verify_connection(self) -> None:
-        """Assert Redis is actually reachable, and scream if it is not.
+        """Assert Redis is reachable, failing fast in production and logging loudly elsewhere.
 
-        Redis backs caching, SSE streaming, rate limiting and stream
-        cancellation, so an unavailable Redis is a real outage — surface it
-        loudly instead of silently degrading (the prior behavior optimistically
-        reported "connected" because ``from_url`` connects lazily). Fails fast
-        in production; logs loudly elsewhere so local dev still runs.
+        from_url connects lazily, so without this check an unavailable Redis silently
+        looked "connected".
         """
         if self.redis is None:
             message = "Redis is UNAVAILABLE: REDIS_URL is not configured."
@@ -345,24 +264,7 @@ class RedisCache:
     async def get(self, key: str, model: type[Any] | None = None) -> Any: ...
 
     async def get(self, key: str, model: type[T] | None = None) -> Any:
-        """
-        Retrieve cached value by key with optional type validation.
-
-        Args:
-            key: Cache key to retrieve
-            model: Optional Pydantic model for type-safe deserialization
-
-        Returns:
-            Cached value (typed if model provided, generic dict/list otherwise)
-            None if key doesn't exist or Redis unavailable
-
-        Examples:
-            # Generic retrieval
-            data = await cache.get("user:123")
-
-            # Type-safe retrieval
-            user = await cache.get("user:123", model=User)
-        """
+        """Retrieve a cached value by key, deserialized against model if provided."""
         if not self.redis:
             log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping get operation.")
             return None
@@ -386,26 +288,10 @@ class RedisCache:
     async def set(
         self, key: str, value: object, ttl: int = 3600, model: type[Any] | None = None
     ) -> bool:
-        """
-        Store value in cache with TTL and optional type validation.
+        """Store a value with a TTL, serialized against model if provided.
 
-        Args:
-            key: Cache key to store under
-            value: Data to cache (any serializable Python object)
-            ttl: Time-to-live in seconds (default: 3600/1 hour)
-            model: Optional Pydantic model for type-safe serialization
-
-        Returns:
-            True if the value was written, False if Redis was unavailable or the
-            write failed. Callers that must not act on an unstored value (e.g.
-            single-use tokens) should check this.
-
-        Examples:
-            # Generic caching
-            await cache.set("user:123", {"name": "John"}, ttl=1800)
-
-            # Type-safe caching
-            await cache.set("user:123", user_obj, model=User, ttl=3600)
+        Returns False (not raised) if Redis was unavailable or the write failed — callers
+        that must not act on an unstored value (e.g. single-use tokens) should check this.
         """
         if not self.redis:
             log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping set operation.")
@@ -429,9 +315,7 @@ class RedisCache:
             return False
 
     async def delete(self, key: str) -> None:
-        """
-        Delete a cached key.
-        """
+        """Delete a cached key."""
         if not self.redis:
             log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping delete operation.")
             return
@@ -450,9 +334,7 @@ class RedisCache:
 
     @property
     def client(self) -> AsyncRedisCommands:
-        """
-        Get the Redis client instance.
-        """
+        """Get the Redis client instance."""
         if not self.redis:
             self.redis = _new_client(self.redis_url)
             log.info(f"{LogTag.STORAGE} Re-initialized Redis connection.")
@@ -474,47 +356,19 @@ async def get_cache(key: str, model: type[Any] | None = None) -> Any: ...
 
 
 async def get_cache(key: str, model: type[T] | None = None) -> Any:
-    """
-    Convenience wrapper for retrieving cached values.
-
-    Args:
-        key: Cache key to retrieve
-        model: Optional Pydantic model for type validation
-
-    Returns:
-        Cached value or None if not found
-
-    Example:
-        user = await get_cache("user:123", model=User)
-    """
+    """Retrieve a cached value, or None if not found."""
     return await redis_cache.get(key, model)
 
 
 async def set_cache(
     key: str, value: object, ttl: int = ONE_YEAR_TTL, model: type[Any] | None = None
 ) -> bool:
-    """
-    Convenience wrapper for storing cached values.
-
-    Args:
-        key: Cache key to store under
-        value: Data to cache
-        ttl: Time-to-live in seconds (default: 1 year)
-        model: Optional Pydantic model for type validation
-
-    Returns:
-        True if the value was written, False if Redis was unavailable/failed.
-
-    Example:
-        await set_cache("user:123", user, ttl=3600, model=User)
-    """
+    """Store a value with a TTL, returning False if Redis was unavailable/failed."""
     return await redis_cache.set(key, value, ttl, model)
 
 
 async def delete_cache(key: str) -> None:
-    """
-    Delete a cached key.
-    """
+    """Delete a cached key."""
     # TODO: Optimize this
     if key.endswith("*"):
         await delete_cache_by_pattern(key)
@@ -532,22 +386,7 @@ async def get_and_delete_cache(key: str, model: type[Any] | None = None) -> Any:
 
 
 async def get_and_delete_cache(key: str, model: type[T] | None = None) -> Any:
-    """
-    Atomically get and delete a cached value using Redis GETDEL.
-
-    Used for one-time use tokens like OAuth state to prevent replay attacks.
-    This is atomic - if two requests come in, only one will get the value.
-
-    Args:
-        key: Cache key to get and delete
-        model: Optional type to validate the stored value into. Passing it makes
-            the return type that model rather than ``Any``; omitting it keeps the
-            untyped behaviour, since the one-time payloads here have no single
-            shape.
-
-    Returns:
-        Cached value (deserialized from JSON) or None if not found
-    """
+    """Atomically get and delete a value (GETDEL) so a replayed one-time token can't also read it."""
     if not redis_cache.redis:
         log.warning(
             f"{LogTag.STORAGE} Redis is not initialized. Skipping get_and_delete operation."
@@ -570,22 +409,9 @@ async def get_and_delete_cache(key: str, model: type[T] | None = None) -> Any:
 
 
 async def delete_cache_by_pattern(pattern: str) -> None:
-    """
-    Delete multiple cache keys matching a pattern.
+    """Delete cache keys matching a glob pattern, using KEYS then deleting each one.
 
-    Uses Redis KEYS command to find matching keys, then deletes each one.
-    Useful for bulk cache invalidation (e.g., clearing all user data).
-
-    Args:
-        pattern: Redis glob pattern (e.g., "user:*", "session:abc*")
-
-    Warning:
-        KEYS command can be slow on large Redis instances. Use sparingly
-        in production or during low-traffic periods.
-
-    Examples:
-        await delete_cache_by_pattern("user:*")  # Delete all user cache
-        await delete_cache_by_pattern("temp:*")  # Delete temporary data
+    KEYS can be slow on large Redis instances — use sparingly in production.
     """
     if not redis_cache.redis:
         log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping delete operation.")

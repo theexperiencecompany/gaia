@@ -4,7 +4,7 @@ Composio webhook endpoint.
 Handles incoming webhooks from Composio and routes them to the appropriate handlers.
 Uses the trigger registry for extensible event handling.
 
-Each trigger handler implements its own `process_event()` method which handles:
+Each trigger handler implements its own process_event() method which handles:
 - Finding matching workflows
 - Queuing workflow execution via WorkflowQueueService
 
@@ -49,10 +49,8 @@ async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWe
             handler.process_event(
                 event_type=event_data.type,
                 # Handlers match against trigger_config.composio_trigger_ids, which
-                # stores the trigger NANO id (ti_...) returned by triggers.create().
-                # Composio's webhook puts that nano id in `trigger_nano_id` and the
-                # trigger's internal UUID in `trigger_id` — matching against the UUID
-                # never hits, so forward the nano id (falling back to the UUID).
+                # stores the trigger NANO id (ti_...); matching against `trigger_id`
+                # (the internal UUID) never hits, so forward the nano id.
                 trigger_id=event_data.trigger_nano_id or event_data.trigger_id,
                 user_id=event_data.user_id,
                 data=event_data.data,
@@ -81,7 +79,7 @@ async def _expire_connection(
 ) -> None:
     """Background task: pause the dependent workflows, then run the expiry transition.
 
-    Pausing is the caller's job because ``integration_expiry`` cannot import the
+    Pausing is the caller's job because integration_expiry cannot import the
     workflow layer without closing an import cycle (see its module docstring).
     Both steps share one timeout budget.
     """
@@ -199,20 +197,18 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
 
     body = await request.json()
 
-    # Branch on the RAW type. ComposioWebhookEvent's validator uppercases `type`,
-    # so a parsed model can never match the SDK's lowercase event-name literal —
-    # and connection events carry none of the trigger identifiers that model
-    # requires as `str`, so constructing it first would raise before routing.
+    # Branch on the RAW type: ComposioWebhookEvent's validator uppercases `type`
+    # and requires trigger identifiers connection events don't carry, so
+    # constructing it first would raise before routing.
     if is_connection_expired_event(body):
         # The SDK type guard narrows to its ConnectionExpiredEvent TypedDict; the
         # handler re-validates the payload itself rather than trusting that shape.
         return _handle_connection_event(cast(dict[str, Any], body))
 
     if not isinstance(body, dict):
-        # Composio only ever sends an object, so this is a malformed delivery.
-        # Ack anyway: the dedupe key above is already claimed, so raising here
-        # would have Composio redeliver a body it can never parse — and that
-        # redelivery would then be swallowed as a duplicate.
+        # Composio only ever sends an object, so this is malformed. Ack anyway:
+        # the dedupe key is already claimed, so raising would have Composio
+        # redeliver a body it can never parse.
         log.error(
             f"{LogTag.COMPOSIO} Webhook body is not a JSON object — dropped",
             body_type=type(body).__name__,

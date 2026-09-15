@@ -1,6 +1,4 @@
-"""
-ARQ worker startup functionality.
-"""
+"""ARQ worker startup functionality."""
 
 import asyncio
 import os
@@ -8,17 +6,13 @@ from typing import Any
 
 from shared.py.logging import configure_file_logging
 
-# Rotating log files for local development; a no-op under LOG_FORMAT=json,
-# where stdout NDJSON is shipped to Loki instead (see configure_file_logging).
-# Must be called before any app imports — provider_registration transitively
-# imports app.api.v1.middleware.__init__ → loggers.py, which calls
-# configure_file_logging("./logs") and sets _FILE_LOGGING_CONFIGURED=True,
-# making any subsequent call with a different path a no-op.
-# This process is the ARQ worker, not the API. GAIA_SERVICE_NAME must equal
-# its Promtail label so the in-event `service` field and {service="arq_worker"}
-# agree; setdefault so an explicit env var still wins.
+# This is the ARQ worker, not the API — GAIA_SERVICE_NAME must match its
+# Promtail label so {service="arq_worker"} agrees with the event field.
 os.environ.setdefault("GAIA_SERVICE_NAME", "arq_worker")
 
+# Rotating log files for local dev (no-op under LOG_FORMAT=json). Must run
+# before any app import: provider_registration calls this first with a
+# different path, and _FILE_LOGGING_CONFIGURED locks in whichever ran first.
 configure_file_logging("./logs/worker")
 
 from app.constants.log_tags import LogTag
@@ -40,7 +34,7 @@ async def startup(ctx: dict[str, Any]) -> None:
 
     ARQ runs this outside any task boundary, so it gets its own: a worker that
     fails to boot (or comes up without its metrics server) is then one
-    queryable ``worker_startup`` event instead of a discarded ``log.set``.
+    queryable worker_startup event instead of a discarded log.set.
     """
 
     async with log_context("worker_startup", component="arq_lifecycle"):
@@ -60,12 +54,9 @@ async def startup(ctx: dict[str, Any]) -> None:
         # Use unified startup function - handles provider registration, eager init, and auto-init
         await unified_startup("arq_worker")
 
-        # The warm_device_servers task opens MCP-over-bridge sessions from this
-        # process. The device socket is owned by the API pod, so the daemon's
-        # reply frames are routed back to THIS process's per-pod up-channel — the
-        # up-listener must be subscribed here too, or every device warm-connect
-        # times out waiting for mcp.opened. (The API starts its own in lifespan;
-        # the worker needs its own because it has a distinct POD_ID.)
+        # Device socket is owned by the API pod; reply frames route back to
+        # THIS process's per-pod up-channel, so the worker needs its own
+        # up-listener (distinct POD_ID) or warm-connect times out on mcp.opened.
         start_up_listener()
 
         # Reap any crawl4ai browser drivers that escape teardown (worker crawl

@@ -1,7 +1,7 @@
 """Global MCP tool metadata: Redis-cached roll-up over the integrations repository.
 
 The repository owns the Mongo access (typed); this service adds the aggregate cache
-(``MCP_TOOLS_CACHE_KEY``) and the dict-shaped views its callers consume. Writes bust
+(MCP_TOOLS_CACHE_KEY) and the dict-shaped views its callers consume. Writes bust
 the roll-up cache so a freshly stored tool set is reflected on the next read.
 """
 
@@ -15,10 +15,9 @@ from app.db.repositories.integrations import integration_repository
 from app.models.integration_models import StoredIntegrationTool
 from shared.py.wide_events import log, spawn_logged_task
 
-# One raw tool entry as the callers build it — ``{"name": ..., "description": ...}``
-# assembled from LangChain/Composio tool objects. It stays a mapping rather than a
-# model because ``_format_tools`` is the validation boundary (Type Safety item 8):
-# it drops nameless entries and returns real ``StoredIntegrationTool`` models.
+# One raw tool entry as callers build it — a mapping rather than a model because
+# _format_tools is the validation boundary: it drops nameless entries and
+# returns real StoredIntegrationTool models.
 RawToolMetadata = Mapping[str, Any]
 
 
@@ -92,7 +91,7 @@ async def store_mcp_tools_batch(items: Sequence[tuple[str, Sequence[RawToolMetad
 
 
 async def get_integration_tools(integration_id: str) -> list[dict[str, Any]]:
-    """Stored tools for an integration as plain dicts (frontend/display consumers)."""
+    """Return stored tools for an integration as plain dicts (frontend/display consumers)."""
     try:
         tools = await integration_repository.get_tools(integration_id)
         return [t.model_dump() for t in tools]

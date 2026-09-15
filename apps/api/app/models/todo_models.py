@@ -31,7 +31,7 @@ class SubTask(ResponseModel):
 
 # Base model with all shared todo fields
 class TodoBase(BaseModel):
-    """Base model with shared fields for todos"""
+    """Base model with shared fields for todos."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -81,7 +81,7 @@ class TodoBase(BaseModel):
 
 # For creating new todos
 class TodoModel(TodoBase):
-    """Model for creating todos"""
+    """Model for creating todos."""
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -89,7 +89,7 @@ class TodoModel(TodoBase):
 
 # For updating todos - all fields optional
 class TodoUpdateRequest(BaseModel):
-    """Model for updating todos - all fields optional for partial updates"""
+    """Model for updating todos - all fields optional for partial updates."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -111,7 +111,7 @@ class TodoUpdateRequest(BaseModel):
 
 # For responses with ID and user_id
 class TodoResponse(TodoBase, ResponseModel):
-    """Complete todo response with all fields"""
+    """Complete todo response with all fields."""
 
     id: str = Field(..., description="Unique identifier")
     user_id: str = Field(..., description="User ID who owns the todo")
@@ -133,9 +133,9 @@ class TodoResponse(TodoBase, ResponseModel):
     def from_document(
         cls, doc: "TodoDocument", *, workflow_categories: list[str] | None = None
     ) -> "TodoResponse":
-        """Project a stored ``TodoDocument`` onto the API response shape. The
+        """Project a stored TodoDocument onto the API response shape. The
         tracked-only fields (canvas/log content, retry state) are dropped by
-        ``extra="ignore"``; ``workflow_categories`` is enrichment, not stored."""
+        extra="ignore"; workflow_categories is enrichment, not stored."""
         return cls.model_validate(
             {**doc.model_dump(), "workflow_categories": workflow_categories or []}
         )
@@ -143,7 +143,7 @@ class TodoResponse(TodoBase, ResponseModel):
 
 # Project models
 class ProjectBase(BaseModel):
-    """Base model for project fields"""
+    """Base model for project fields."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -159,11 +159,11 @@ class ProjectBase(BaseModel):
 
 
 class ProjectCreate(ProjectBase):
-    """Model for creating projects"""
+    """Model for creating projects."""
 
 
 class UpdateProjectRequest(BaseModel):
-    """Model for updating projects - all fields optional"""
+    """Model for updating projects - all fields optional."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -173,7 +173,7 @@ class UpdateProjectRequest(BaseModel):
 
 
 class ProjectResponse(ProjectBase):
-    """Complete project response"""
+    """Complete project response."""
 
     id: str = Field(..., description="Unique identifier")
     user_id: str = Field(..., description="User ID who owns the project")
@@ -184,9 +184,9 @@ class ProjectResponse(ProjectBase):
 
     @classmethod
     def from_document(cls, doc: "ProjectDocument", *, todo_count: int = 0) -> "ProjectResponse":
-        """Project a stored ``ProjectDocument`` onto the API response shape.
+        """Project a stored ProjectDocument onto the API response shape.
 
-        ``ProjectWithCount`` already carries its ``todo_count``; pass it through so
+        ProjectWithCount already carries its todo_count; pass it through so
         the aggregation's count is not silently dropped."""
         return cls.model_validate(
             {**doc.model_dump(), "todo_count": getattr(doc, "todo_count", todo_count)}
@@ -352,12 +352,9 @@ class TodoWorkflowStatusResponse(BaseModel):
     workflow: WorkflowWithIntegrations | None = None
 
 
-# Repository layer — persisted documents, typed updates, and aggregation results.
-# ``TodoDocument`` is the full stored shape (a superset of ``TodoResponse``): it
-# also carries the tracked-todo fields (canvas/log content, scheduling, retry
-# state) that the executor and maintenance sweep read and write. Dormant legacy
-# fields (goal/offer experiments) are dropped on read via ``extra="ignore"`` and
-# preserved on write because updates are ``$set``-only.
+# TodoDocument (superset of TodoResponse) adds tracked-todo fields (canvas/log,
+# scheduling, retry) the executor reads/writes; dormant legacy fields drop on
+# read via extra="ignore" but persist on write, since updates are $set-only.
 
 
 class TodoDocument(UserScopedDocument):

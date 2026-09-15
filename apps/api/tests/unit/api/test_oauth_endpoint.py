@@ -20,7 +20,7 @@ FRONTEND = settings.FRONTEND_URL
 
 
 def _oauth_ns(log_mock: MagicMock) -> dict:
-    """Fields folded onto the `oauth` wide-event namespace."""
+    """Fields folded onto the oauth wide-event namespace."""
     fields: dict = {}
     for c in log_mock.set_ns.call_args_list:
         if c.args and c.args[0] == "oauth":
@@ -67,7 +67,7 @@ def stubbed_oauth_side_effects():
 
 
 class TestClientMetadata:
-    """GET /api/v1/oauth/client-metadata.json"""
+    """GET /api/v1/oauth/client-metadata.json."""
 
     @patch(
         "app.api.v1.endpoints.oauth.get_api_base_url",
@@ -89,7 +89,7 @@ class TestClientMetadata:
 
 
 class TestLoginWorkOS:
-    """GET /api/v1/oauth/login/workos"""
+    """GET /api/v1/oauth/login/workos."""
 
     @patch("app.api.v1.endpoints.oauth.redis_cache")
     @patch("app.api.v1.endpoints.oauth.workos")
@@ -133,7 +133,7 @@ class TestLoginWorkOS:
 
 
 class TestLoginWorkOSMobile:
-    """GET /api/v1/oauth/login/workos/mobile"""
+    """GET /api/v1/oauth/login/workos/mobile."""
 
     @patch("app.api.v1.endpoints.oauth.workos")
     @patch("app.api.v1.endpoints.oauth._store_mobile_redirect", new_callable=AsyncMock)
@@ -159,7 +159,7 @@ class TestLoginWorkOSMobile:
 
 
 class TestWorkOSMobileCallback:
-    """GET /api/v1/oauth/workos/mobile/callback"""
+    """GET /api/v1/oauth/workos/mobile/callback."""
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.oauth.workos")
@@ -230,7 +230,7 @@ class TestWorkOSMobileCallback:
 
 
 class TestLoginWorkOSDesktop:
-    """GET /api/v1/oauth/login/workos/desktop"""
+    """GET /api/v1/oauth/login/workos/desktop."""
 
     @patch("app.api.v1.endpoints.oauth.workos")
     async def test_login_desktop_redirect(
@@ -251,7 +251,7 @@ class TestLoginWorkOSDesktop:
 
 
 class TestWorkOSDesktopCallback:
-    """GET /api/v1/oauth/workos/desktop/callback"""
+    """GET /api/v1/oauth/workos/desktop/callback."""
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.oauth.workos")
@@ -301,7 +301,7 @@ class TestWorkOSDesktopCallback:
 
 
 class TestWorkOSCallback:
-    """GET /api/v1/oauth/workos/callback"""
+    """GET /api/v1/oauth/workos/callback."""
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.oauth.workos")
@@ -380,7 +380,7 @@ class TestWorkOSCallback:
 
 
 class TestComposioCallback:
-    """GET /api/v1/oauth/composio/callback"""
+    """GET /api/v1/oauth/composio/callback."""
 
     @pytest.fixture
     def composio_state(self):
@@ -465,10 +465,7 @@ class TestComposioCallback:
         mock_config: MagicMock,
         client: AsyncClient,
     ):
-        """Composio's hosted Connect Link redirects back WITHOUT `connectedAccountId`
-        — the parameter the retired initiate() flow appended and that is documented
-        nowhere. Failing on its absence rejected connections that had succeeded, so
-        the user saw "failed" after authorising the provider."""
+        """Composio's hosted Connect Link redirects back without connectedAccountId; failing on its absence rejected connections that had succeeded."""
         mock_state.return_value = {
             "redirect_path": "/integrations",
             "user_id": "uid1",
@@ -515,8 +512,7 @@ class TestComposioCallback:
         mock_repo: MagicMock,
         client: AsyncClient,
     ):
-        """With nothing minted and nothing in the callback there is no account to
-        resolve — that must still fail rather than proceed on a None."""
+        """With nothing minted and nothing in the callback there is no account to resolve; that must still fail rather than proceed on a None."""
         mock_state.return_value = {
             "redirect_path": "/integrations",
             "user_id": "uid1",
@@ -667,9 +663,7 @@ class TestComposioCallback:
         route_log: MagicMock,
         client: AsyncClient,
     ):
-        """An account that cannot be resolved at all has no integration to return
-        to, so it lands on the generic page; a known integration whose config or
-        owner does not line up goes back where the user started."""
+        """Send an unresolvable account to the generic page, and a known integration's mismatch back home."""
         completed_connection.return_value = ConnectionRejected(reason=reason)
 
         response = await client.get(

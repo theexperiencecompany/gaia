@@ -1,6 +1,7 @@
-"""Link completion's side effects: whatever GAIA says after a link is sent
-from here. A one-tap onboarding link hands over its composed first contact;
-any other new link gets the generic connected text."""
+"""Link completion's side effects: whatever GAIA says after a link is sent from here.
+
+A one-tap onboarding link hands over its composed first contact; any other new link gets the generic connected text.
+"""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -78,8 +79,7 @@ class TestPostLinkMessage:
     async def test_a_link_with_nothing_to_say_reports_first_contact_as_delivered(
         self, side_effects
     ) -> None:
-        """No first contact means nothing failed to arrive; a False here would
-        make the caller resend a message that was never composed."""
+        """No first contact means nothing failed to arrive; a False here would make the caller resend it."""
         result = await complete_platform_link("u1", "whatsapp", "wa-1")
         assert result.first_contact_delivered is True
 
@@ -143,7 +143,7 @@ class TestPostCommitFailures:
 
 
 class TestLinkAnalytics:
-    """``integration_connected`` counts connections, not taps."""
+    """integration_connected counts connections, not taps."""
 
     async def test_a_new_link_is_captured_once(self, side_effects) -> None:
         with patch(f"{MODULE}.capture_event") as capture:
@@ -155,11 +155,7 @@ class TestLinkAnalytics:
         )
 
     async def test_a_repeat_link_is_not_captured_again(self, side_effects) -> None:
-        """Re-tapping a link the user already has is not a new connection.
-
-        Every idempotent re-link counted as one more ``integration_connected``,
-        so the connection count rose with the number of taps.
-        """
+        """A re-link used to count as a fresh integration_connected, inflating the connection count with every tap."""
         _, _, link = side_effects
         link.return_value = _linked(is_new_link=False)
         with patch(f"{MODULE}.capture_event") as capture:
@@ -170,11 +166,11 @@ class TestLinkAnalytics:
 class TestLinkConflicts:
     """The two 409s are not interchangeable.
 
-    ``PlatformAccountTakenError`` is proved end to end through the route in
-    ``tests/unit/api/test_platform_links_endpoint.py::test_link_conflict``; this
+    PlatformAccountTakenError is proved end to end through the route in
+    tests/unit/api/test_platform_links_endpoint.py::test_link_conflict; this
     is its sibling, where the conflict is on the GAIA side and the fix is the
-    opposite one. The bots pick the message they show from ``code`` alone
-    (``libs/shared/ts/src/bots/link-codes.ts::classifyLinkFailure``), so the
+    opposite one. The bots pick the message they show from code alone
+    (libs/shared/ts/src/bots/link-codes.ts::classifyLinkFailure), so the
     exact body is a cross-language contract, not a message anyone may reword.
     """
 

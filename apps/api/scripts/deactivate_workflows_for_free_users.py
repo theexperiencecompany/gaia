@@ -6,7 +6,7 @@ This is the backfill for the cutover: every user who already has an activated
 workflow but no active Dodo subscription gets those workflows turned off, the
 same way the webhook handler now does it live for a subscription that lapses.
 
-Goes through the same ``deactivate_workflows_for_lapsed_subscription`` service
+Goes through the same deactivate_workflows_for_lapsed_subscription service
 function as the webhook path, so triggers are unregistered upstream exactly
 like a real cancellation — not a bulk repository write that would leave a
 Composio webhook armed.
@@ -64,10 +64,10 @@ class MigrationResult:
 async def find_free_user_candidates() -> list[FreeUserWorkflows]:
     """Every user with at least one activated workflow and no active subscription.
 
-    Never touched: the ``system`` template owner, public template workflows, and
-    anyone whose subscription is ``active``. This mirrors Dodo exactly: a failed
+    Never touched: the system template owner, public template workflows, and
+    anyone whose subscription is active. This mirrors Dodo exactly: a failed
     renewal inside Dodo's grace period leaves the subscription active (we do not
-    process the interim update), and ``on_hold`` means Dodo has already revoked
+    process the interim update), and on_hold means Dodo has already revoked
     access, so those workflows are paused like any other lapsed subscriber's.
     """
     candidates: list[FreeUserWorkflows] = []

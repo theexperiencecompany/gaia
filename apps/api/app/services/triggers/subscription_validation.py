@@ -86,12 +86,12 @@ class ValidationOutcome(BaseModel):
 
 
 def _normalize(name: str) -> str:
-    """``threadId``, ``thread-id`` and ``Thread Id`` all collapse to ``threadid``."""
+    """threadId, thread-id and Thread Id all collapse to threadid."""
     return "".join(ch for ch in name.lower() if ch.isalnum())
 
 
 def _resolve_field(entry: MatchableTrigger, name: str) -> tuple[MatchableField | None, str | None]:
-    """The catalog field ``name`` refers to, plus a reason when it had to be repaired."""
+    """Return the catalog field name refers to, plus a reason when it had to be repaired."""
     exact = entry.field(name)
     if exact is not None:
         return exact, None
@@ -112,7 +112,7 @@ def _resolve_field(entry: MatchableTrigger, name: str) -> tuple[MatchableField |
 def _coerce_value(
     value: str | int | float, field: MatchableField
 ) -> tuple[str | int | float | None, str | None]:
-    """Fit ``value`` to the field's type, or return None when it cannot be."""
+    """Fit value to the field's type, or return None when it cannot be."""
     if field.type is MatchableFieldType.INTEGER:
         if isinstance(value, int):
             return value, None
@@ -187,7 +187,7 @@ def _validate_one(
 def validate_conditions(
     trigger_name: str, conditions: list[SubscriptionCondition]
 ) -> ValidationOutcome:
-    """Check ``conditions`` against ``trigger_name``'s catalog, repairing what is safe.
+    """Check conditions against trigger_name's catalog, repairing what is safe.
 
     A subscription with no conditions is valid — it fires on every event for that
     trigger, which is the right default for a narrowly-scoped per-resource trigger.

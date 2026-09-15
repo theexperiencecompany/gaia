@@ -29,12 +29,9 @@ export function useUpgradeModal() {
 
   useClearPaywallWhenPaid();
 
-  // The impression: one per wall that actually reached the screen. The server
-  // already captures the 402 behind it; whether it was rendered is the one
-  // thing only the browser knows — so it must not fire for the route that
-  // renders nothing, and must not re-fire when another 402 arrives (the store
-  // leaves an open wall alone, and the offer is read here rather than
-  // tracked, so neither can inflate it).
+  // The impression: one per wall that actually reached the screen — whether it
+  // rendered is the one thing only the browser knows. Must not fire for the
+  // onboarding route (renders nothing) or re-fire on another 402 while a wall is open.
   useEffect(() => {
     if (!open || isOnboardingRoute) return;
     const {

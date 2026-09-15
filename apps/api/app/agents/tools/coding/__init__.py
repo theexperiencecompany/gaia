@@ -1,9 +1,9 @@
 """Persistent coding tools: bash, read, write, edit, query_json, grep.
 
-`bash` runs inside the user's persistent E2B sandbox (`/workspace` backed by
-Cloudflare R2 via JuiceFS). `read`/`write`/`edit`/`query_json`/`grep` go straight
-to the host JuiceFS mount (no sandbox spin-up). `query_json` is an in-process
-structured query over offloaded JSON/JSONL records; `grep` is read-only free-text
+bash runs inside the user's persistent E2B sandbox (/workspace backed by
+Cloudflare R2 via JuiceFS). read/write/edit/query_json/grep go straight
+to the host JuiceFS mount (no sandbox spin-up). query_json is an in-process
+structured query over offloaded JSON/JSONL records; grep is read-only free-text
 search. State survives across conversations.
 """
 

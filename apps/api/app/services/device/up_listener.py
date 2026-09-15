@@ -2,11 +2,11 @@
 
 A worker running an MCP session over a paired device used to hold one Redis
 pub/sub subscription per session — one dedicated Redis connection per concurrent
-session, the axis that scales with agent activity and hits Redis ``maxclients``
+session, the axis that scales with agent activity and hits Redis maxclients
 first. Instead, each pod subscribes ONCE to its own up-channel
-(``device:up:pod:<POD_ID>``). The device's owning pod addresses each reply frame
-to the consumer pod (the daemon echoes the ``pod`` id it received on ``mcp.open``),
-and this listener dispatches by ``sid`` to the waiting connector's in-memory inbox.
+(device:up:pod:<POD_ID>). The device's owning pod addresses each reply frame
+to the consumer pod (the daemon echoes the pod id it received on mcp.open),
+and this listener dispatches by sid to the waiting connector's in-memory inbox.
 
 Per-session ordering and isolation are preserved by giving each session its own
 inbox queue, drained by its own task: a slow or wedged session backs up only its

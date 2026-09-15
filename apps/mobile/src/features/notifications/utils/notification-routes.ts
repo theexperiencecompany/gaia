@@ -1,15 +1,10 @@
 import type { InAppNotification } from "../types/inapp-notification-types";
 
 /**
- * Returns an Expo Router path for the given in-app notification, or null if
- * no specific route can be determined. The caller is responsible for pushing
- * the route via `router.push`.
- *
- * Routing rules:
- *  - todo / task notifications  → /(app)/(tabs)/todos
- *  - workflow notifications      → /(app)/workflows/:id  (if id present in data)
- *  - chat / conversation notices → /(app)/(tabs)  (root conversation screen)
- *  - explicit redirect actions   → the redirect URL (if it starts with "/")
+ * Return an Expo Router path for the notification, or null if none applies
+ * (caller pushes via `router.push`). Rules: todo/task → todos tab; workflow →
+ * /(app)/workflows/:id (if id present); chat/conversation → root chat tab;
+ * explicit redirect action → its URL (if it starts with "/").
  */
 export function getNotificationRoute(
   notification: InAppNotification,

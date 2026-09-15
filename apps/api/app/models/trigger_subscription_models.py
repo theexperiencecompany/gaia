@@ -1,6 +1,6 @@
 """Trigger subscriptions: the vocabulary a tracked todo uses to watch an event.
 
-Split from ``todo_models`` because none of it is todo-specific — the matchable-field
+Split from todo_models because none of it is todo-specific — the matchable-field
 catalog, the operator table, and the condition shape all describe triggers, and the
 dispatch path needs them without importing the todo domain.
 """
@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class MatchableFieldType(StrEnum):
     """The payload types a condition can be written against.
 
-    ``INTEGER`` and ``NUMBER`` share an operator set but stay distinct so the
+    INTEGER and NUMBER share an operator set but stay distinct so the
     catalog can be checked against the payload model's real annotation.
     """
 
@@ -137,9 +137,9 @@ class SubscriptionResolution(StrEnum):
 class ConditionMatch(StrEnum):
     """How a subscription's conditions combine.
 
-    ``ALL`` is the AND-chain default. ``ANY`` is a flat OR — one true condition
+    ALL is the AND-chain default. ANY is a flat OR — one true condition
     fires it. There is deliberately no nesting: an OR-of-ANDs is expressed as
-    several ``ALL`` subscriptions on the same todo, which already covers every
+    several ALL subscriptions on the same todo, which already covers every
     boolean shape these payloads need without an expression language in the hot
     path that evaluates every webhook for every subscriber.
     """
@@ -196,12 +196,9 @@ class TriggerSubscription(BaseModel):
     def _persist_defaults(self) -> "TriggerSubscription":
         """Mark every field as explicitly set, so a stored subscription is whole.
 
-        Todo updates serialize with ``model_dump(exclude_unset=True)``, which
-        recurses: a nested field left at its default is dropped before it reaches
-        Mongo. That silently stored subscriptions with no ``id``, no ``status``
-        and no ``created_at`` — and dispatch matches on ``status``, so every one
-        of them was unfindable and the watch never fired. Nothing failed; the
-        subscription simply did not exist as far as the query was concerned.
+        model_dump(exclude_unset=True) recurses, dropping a nested field left at
+        default — silently stored subscriptions with no id/status/created_at,
+        unfindable by dispatch's status match, so the watch never fired.
         """
         self.__pydantic_fields_set__.update(type(self).model_fields.keys())
         return self

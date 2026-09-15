@@ -2,7 +2,7 @@
 
 The class exists to satisfy ChromaDB's EmbeddingFunction protocol so
 collections never trigger the default ONNX model download. ChromaDB 1.x
-requires ``name()``/``get_config()`` — a missing implementation is a hard
+requires name()/get_config() — a missing implementation is a hard
 deprecation error — so the contract is pinned here.
 """
 

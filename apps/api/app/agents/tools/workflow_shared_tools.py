@@ -1,7 +1,7 @@
 """Workflow tools for the executor and the workflow assistant.
 
-`search_triggers` and `list_workflows` are shared with the executor. The
-`get_my_integrations`, `search_integrations`, and `search_integration_tools`
+search_triggers and list_workflows are shared with the executor. The
+get_my_integrations, search_integrations, and search_integration_tools
 discovery tools are workflow-assistant only: they let it ground a draft in what
 THIS user actually has (built-in + their own custom integrations, with
 connection status), what they could add (the public marketplace), and in real

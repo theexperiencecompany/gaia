@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Format JuiceFS shards against R2.
 
-Runs `juicefs format` once per shard, pointing each at its own metadata engine
+Runs juicefs format once per shard, pointing each at its own metadata engine
 (Redis DB in prod, PostgreSQL database elsewhere) via JUICEFS_META_URL_TEMPLATE.
 The R2 bucket is shared across shards; JuiceFS distributes objects via its own
-chunk-hash prefix scheme, which is why `--shards 16` below needs no `%d` in the
+chunk-hash prefix scheme, which is why --shards 16 below needs no %d in the
 bucket name.
 
 Usage:
@@ -13,15 +13,15 @@ Usage:
     uv run python scripts/format_juicefs_shards.py --shards 16 --dry-run
 
 Secrets come from Infisical (same bootstrap as payment_setup.py), so no env
-plumbing is needed to run this locally — only the `juicefs` binary on PATH.
-Values already in the environment take precedence, so a local `.env` or an
+plumbing is needed to run this locally — only the juicefs binary on PATH.
+Values already in the environment take precedence, so a local .env or an
 explicit export still wins.
 
 Required env (mirrors apps/api/app/config/settings.py):
     R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY, R2_SECRET_KEY
-    JUICEFS_META_URL_TEMPLATE     (must contain `{shard}`)
+    JUICEFS_META_URL_TEMPLATE     (must contain {shard})
     JFS_ENCRYPTION_KEY            (optional — full RSA-4096 PEM; if set, written
-                                   to a temp file and passed to `juicefs format`)
+                                   to a temp file and passed to juicefs format)
 """
 
 from __future__ import annotations

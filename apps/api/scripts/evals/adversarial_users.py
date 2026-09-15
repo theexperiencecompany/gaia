@@ -7,7 +7,7 @@ Not a test: it drives a REAL running API and a REAL model, so it goes red when t
 provider or the local stack is down, which is a useless CI signal. It exists to
 answer one question a scripted eval cannot: *would this person come back tomorrow?*
 
-The difference from ``chat_quality.py`` is the second model call per turn. There is
+The difference from chat_quality.py is the second model call per turn. There is
 no fixed script. A persona card (a goal, a temperament, a stop condition) is handed
 to a simulated user who READS GAIA's actual last reply and writes the next message
 in character: they correct her, lose patience, switch language, go quiet, or leave
@@ -15,10 +15,10 @@ early and say why. A scripted turn cannot catch "she answered the question I alr
 answered", because a script asks it anyway.
 
 Persona cards come from two places:
-  * ``.agents/prod-convos/hard_scenarios.json`` (25 shapes paraphrased from real prod
+  * .agents/prod-convos/hard_scenarios.json (25 shapes paraphrased from real prod
     usage). They are LOADED AT RUNTIME, never copied into this file, so the prod
     paraphrase lives in one place and this script stays free of user text.
-  * ``EXTRA_PERSONAS`` below: 10 shapes that corpus under-covers (honesty tester,
+  * EXTRA_PERSONAS below: 10 shapes that corpus under-covers (honesty tester,
     "no, the other one", the "I just connected it" liar, the thanks-ender).
 
 Usage (from apps/api/, with the worktree API already running):
@@ -83,10 +83,9 @@ MIN_TURNS = 4
 MAX_TURNS = 8
 WORST_TURN_COUNT = 10
 REPLY_PREVIEW_WORDS = 30
-#: Differs from the shared default in three ways, all of them reported on: the
-#: frame kinds feed the report, a delegated turn whose stream carried no prose is
-#: just the answer (not the sentinel plus the answer), and the delivered text is
-#: joined bare because the judge reads the whole thing as one reply.
+#: Differs from the shared default in three ways: frame kinds feed the report,
+#: a delegated turn with no prose is just the answer (no sentinel), and text
+#: is joined bare since the judge reads the whole reply as one.
 TURN_OPTIONS = TurnOptions(
     timeout=TURN_TIMEOUT_SECONDS,
     collect_frame_kinds=True,
@@ -316,11 +315,10 @@ def _slug(label: str) -> str:
 def load_prod_personas() -> list[Persona]:
     """Turn the paraphrased prod scenario file into persona cards, at runtime.
 
-    The file's ``turns`` are a SCRIPT; we take only the first user message as the
-    opener and let the simulated user improvise the rest, because the whole point
-    of this harness is that turn 2 reacts to what GAIA actually said. The rest of
-    the script becomes the persona's goal, so the intent survives without the
-    turn-by-turn rails.
+    The file's turns are a SCRIPT; only the first user message becomes the
+    opener, and the simulated user improvises the rest, since turn 2 must
+    react to what GAIA actually said. The remaining script becomes the
+    persona's goal.
     """
     if not PROD_SCENARIOS_PATH.exists():
         print(f"[warn] prod scenarios not found at {PROD_SCENARIOS_PATH}; using extras only")
@@ -366,10 +364,8 @@ def all_personas() -> list[Persona]:
 # --------------------------------------------------------------------------------------
 
 #: Ported from libs/shared/ts/src/utils/openui-parser.ts (parseOpenUISegments).
-#: The fence semantics matter: the close is "\n:::" and a ":::" immediately followed
-#: by "openui" RE-OPENS a nested block rather than closing this one. Reimplemented
-#: here rather than shelling out to node because the TS ships as extensionless-ESM
-#: and building it would make this script depend on a frontend toolchain.
+#: Close is "\n:::"; ":::" immediately followed by "openui" RE-OPENS a nested
+#: block. Reimplemented here since the TS ships as extensionless-ESM.
 _OPENUI_OPEN = ":::openui"
 _OPENUI_CLOSE = "\n:::"
 
@@ -420,7 +416,7 @@ def _structural_errors(code: str) -> tuple[list[str], list[str]]:
     """Cheap parse check: would this code plausibly evaluate, and what does it use?
 
     Not a full OpenUI interpreter. It catches the failures that actually reach
-    users: an unbalanced call, a stray quote, no ``root``, and a component name
+    users: an unbalanced call, a stray quote, no root, and a component name
     that does not exist in the shipped library.
     """
     errors: list[str] = []
@@ -498,7 +494,7 @@ async def _send_turn(
 
 
 async def _provision(api_url: str, email: str, persona: Persona) -> None:
-    """A fresh Pro dev user carrying an onboarding profile that matches the persona."""
+    """Provision a fresh Pro dev user carrying an onboarding profile that matches the persona."""
     await provision(
         api_url,
         email,
@@ -593,11 +589,9 @@ async def _next_user_message(
 # The judge
 # --------------------------------------------------------------------------------------
 
-#: Failure name -> what the judge must look for. Each one is a FAILURE: true means
-#: the reply is broken in that way, so a clean turn is all-false. Framed as failures
-#: rather than 0/1 criteria because the report is a histogram of causes, and because
-#: "did this specific bad thing happen" is a sharper question for a judge than "was
-#: this good".
+#: Failure name -> what the judge must look for; true means the reply is
+#: broken that way, so a clean turn is all-false. Framed as failures rather
+#: than 0/1 since "did this specific bad thing happen" is sharper than "was this good".
 FAILURES: dict[str, str] = {
     "claimed_undone_work": (
         "Claims to have done, sent, created, scheduled, deleted, or checked something that "
@@ -688,14 +682,9 @@ FAILURES: dict[str, str] = {
 }
 
 
-#: A hard fail checked in CODE rather than by the judge: it is a character test,
-#: and evals/CLAUDE.md is explicit that a rule stated as an absolute belongs in a
-#: mechanical gate. A judge reading for tone missed these sitting in plain text.
-#:
-#: The characters themselves are NOT listed here. ``banned_dashes()`` reads them
-#: out of the live prompt clause that names them, so a dash added to (or dropped
-#: from) the rule changes this gate with no eval edit — which is the difference
-#: between a gate that tracks the prompt and a copy that silently stops matching it.
+#: A hard fail checked in CODE, not by the judge (character test; evals/CLAUDE.md
+#: puts absolute rules in a mechanical gate). Characters aren't listed here —
+#: banned_dashes() reads them from the live prompt clause, so the gate tracks it.
 DASH_FAILURE = "dash_characters"
 
 
@@ -980,8 +969,11 @@ async def run(api_url: str, only: str | None) -> None:
 
 
 async def _grade_all(collected: list[Graded], conversations: list[Conversation]) -> None:
-    """A judge that fails leaves the verdict None: a provider blip is not a
-    behavioural miss, and counting it as a failure would slander the prompt."""
+    """Leave a failed judge's verdict as None, not a behavioural-failure verdict.
+
+    A provider blip is not a behavioural miss, and counting it as a failure
+    would slander the prompt.
+    """
     semaphore = asyncio.Semaphore(JUDGE_CONCURRENCY)
 
     async def grade_turn(row: Graded) -> None:

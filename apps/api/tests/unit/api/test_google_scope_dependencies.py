@@ -13,7 +13,7 @@ _MODULE = "app.api.v1.dependencies.google_scope_dependencies"
 
 class TestRequireIntegration:
     async def test_a_missing_connection_is_a_403_with_the_envelope_fields(self) -> None:
-        """The web narrows on `code` and `toolkit` to offer the connect card."""
+        """The web narrows on code and toolkit to offer the connect card."""
         dependency = require_integration("gmail")
 
         with (

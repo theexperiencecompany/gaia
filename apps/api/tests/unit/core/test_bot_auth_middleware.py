@@ -150,15 +150,7 @@ class TestAlreadyAuthenticated:
         mock_set_cache: AsyncMock,
         mock_get_cache: AsyncMock,
     ) -> None:
-        """The short circuit must actually skip re-authentication, not just
-        happen to leave the same answer in place.
-
-        A valid ``Authorization`` header for a DIFFERENT user rides along on
-        this request. If the ``if getattr(request.state, "authenticated",
-        False):`` guard is bypassed (wrong object, wrong attribute name, or
-        wrong default), the middleware runs its own JWT verification and
-        clobbers the pre-authenticated identity with this one.
-        """
+        """A valid Authorization header for a different user must not be re-verified once request.state.authenticated is already true, or it clobbers the pre-authenticated identity."""
         mock_verify.return_value = FAKE_JWT_PAYLOAD  # resolves to "user_abc123"
         mock_get_cache.return_value = None
         mock_platform.return_value = FAKE_USER_DATA
@@ -221,8 +213,7 @@ class TestJWTAuth:
         mock_get_cache: AsyncMock,
         app: FastAPI,
     ) -> None:
-        """``"Bearer "`` is 7 characters — the verifier must receive the token
-        with none of its own characters eaten."""
+        """The Bearer prefix is 7 characters — the verifier must receive the token with none of its own characters eaten."""
         mock_verify.return_value = FAKE_JWT_PAYLOAD
         mock_get_cache.return_value = None
         mock_platform.return_value = FAKE_USER_DATA
@@ -478,12 +469,7 @@ class TestAPIKeyAuth:
         mock_get_cache: AsyncMock,
         app: FastAPI,
     ) -> None:
-        """Two linked users on one platform must not resolve to each other.
-
-        Every other test here hands the lookup a single canned user, so the id
-        the middleware passed down was never checked — and authenticating one
-        person's request as another is the worst failure this file has.
-        """
+        """Two linked users on one platform must not resolve to each other; every other test hands the lookup a single canned user, so the id was never checked here before."""
         mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
         mock_get_cache.return_value = None
         linked = {
@@ -734,14 +720,7 @@ class TestAuthPrecedence:
         mock_set_cache: AsyncMock,
         mock_get_cache: AsyncMock,
     ) -> None:
-        """A valid JWT must not hide a valid API key.
-
-        The key authorises the bot ROUTE (``require_bot_api_key``); the JWT only
-        identifies the user. Verifying the key only when the JWT failed left
-        every fast-path request with ``bot_api_key_valid`` unset, so ``/bot/*``
-        answered 401 and the bot threw its session token away and retried —
-        a wasted round trip on almost every turn.
-        """
+        """A valid JWT must not hide a valid API key: verifying the key only when the JWT failed left bot_api_key_valid unset on the fast path, spuriously 401ing /bot/* and wasting a retry."""
         mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
         mock_verify.return_value = FAKE_JWT_PAYLOAD
         mock_get_cache.return_value = None
@@ -773,8 +752,7 @@ class TestAuthPrecedence:
         mock_settings: MagicMock,
         mock_verify: MagicMock,
     ) -> None:
-        """The key is verified, not assumed — a wrong key stays rejected even
-        when the JWT authenticated the user."""
+        """The key is verified, not assumed — a wrong key stays rejected even when the JWT authenticated the user."""
         mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
         mock_verify.return_value = FAKE_JWT_PAYLOAD
 

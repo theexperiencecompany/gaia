@@ -1,8 +1,8 @@
 """Describes tool-result media for lanes that cannot see it.
 
-A thin wrapper around ``describe_tool_media``; the spawned-subagent loop calls
+A thin wrapper around describe_tool_media; the spawned-subagent loop calls
 that helper directly, because it runs outside the middleware stack. Same split as
-``compact_tool_output``, and for the same reason.
+compact_tool_output, and for the same reason.
 """
 
 from collections.abc import Awaitable, Callable

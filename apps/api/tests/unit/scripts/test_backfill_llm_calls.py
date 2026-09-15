@@ -1,4 +1,4 @@
-"""Rebuilding the ``llm_calls`` ledger from log history.
+"""Rebuilding the llm_calls ledger from log history.
 
 The backfill writes rows that look exactly like live ones and are summed
 alongside them, so its transform is billing-adjacent: a doubled row inflates
@@ -66,15 +66,13 @@ class TestParsing:
 
     @pytest.mark.parametrize("poison", ["NaN", "Infinity", "-Infinity", "-0.5"])
     def test_a_cost_that_is_not_a_real_number_drops_the_line(self, poison: str) -> None:
-        """``json.loads`` accepts NaN and Infinity, and either one poisons every
-        sum it reaches — including the total this script reports."""
+        """NaN/Infinity in cost_usd poisons every sum downstream, including the reported total."""
         line = _line().replace('"cost_usd": 0.004', f'"cost_usd": {poison}')
 
         assert parse_event(line) is None
 
     def test_a_sticky_flip_replay_is_background_even_without_the_flag(self) -> None:
-        """Replay events predate the ``background`` field, so the older marker is
-        the only signal those rows carry — and they were never charged."""
+        """Replay events predate the background field; the sticky-flip marker alone shows they were never charged."""
         event = _event(sticky_flip_discarded=True)
 
         assert event.background is True
@@ -83,19 +81,13 @@ class TestParsing:
 
 class TestModelNormalisation:
     def test_a_model_id_doubled_with_no_separator_collapses(self) -> None:
-        """The shape that actually occurs. Verified on live Loki, 2026-08-14:
-        the alias was concatenated onto itself with NO separator, so a
-        slash-based rule never fires — and 9,209 rows fell through to the
-        unknown-model branch, preserving dead pre-Aug-24 table prices."""
+        """Verified on live Loki, 2026-08-14: no separator between the doubled halves, so a slash-based rule misses it (9,209 rows fell to unknown-model)."""
         doubled = "deepseek/deepseek-v4-flash-0731deepseek/deepseek-v4-flash-0731"
 
         assert normalise_model(doubled) == "deepseek/deepseek-v4-flash-0731"
 
     def test_a_doubled_id_is_priced_from_the_table_not_kept_at_its_logged_cost(self) -> None:
-        """The consequence of the miss: an id the table cannot match falls to
-        "unknown model, keep logged cost", which silently preserves whatever the
-        table said back then. Normalising first is what makes the unknown-model
-        branch mean what it says."""
+        """Without normalising first, a doubled id falls to unknown-model and keeps its stale logged cost."""
         doubled = "deepseek/deepseek-v4-flash-0731deepseek/deepseek-v4-flash-0731"
         event = _event(model=doubled, cost_usd=0.99)
 
@@ -103,9 +95,7 @@ class TestModelNormalisation:
         assert price_event(event, None).source == "table"
 
     def test_a_doubled_model_id_collapses_to_one(self) -> None:
-        """A lane that applied its alias on top of an already-aliased id logged
-        the vendor/name twice. Left alone it is a second row in every group-by
-        and matches no pricing entry."""
+        """A doubled id is a second row in every group-by and matches no pricing entry."""
         assert normalise_model("deepseek/v4/deepseek/v4") == "deepseek/v4"
 
     def test_a_normal_model_id_is_left_alone(self) -> None:
@@ -118,15 +108,13 @@ class TestModelNormalisation:
 
 class TestSelection:
     def test_an_echo_with_neither_tokens_nor_cost_is_not_a_row(self) -> None:
-        """A metering hook that fired on a call the provider never billed. Kept,
-        it inflates the row count with rows that answer no question."""
+        """An echo with no tokens or cost is a metering artifact, not a billed call."""
         echo = _event(input_tokens=0, output_tokens=0, cached_tokens=0, cost_usd=0)
 
         assert select_events([echo]) == []
 
     def test_the_same_call_logged_twice_becomes_one_row(self) -> None:
-        """Exact duplicates exist in the history; counted twice they double that
-        call's cost in every total the ledger feeds."""
+        """Exact duplicates exist in the history; counting them twice doubles the cost in every total."""
         event = _event(generation_id="gen-1")
 
         assert len(select_events([event, event])) == 1
@@ -149,24 +137,21 @@ class TestPricing:
         assert priced.source == "generation"
 
     def test_a_provider_priced_event_is_trusted_when_the_generation_is_gone(self) -> None:
-        """OpenRouter drops old generations. The figure captured live is the next
-        best thing and is still a real provider price."""
+        """OpenRouter drops old generations; the cost captured live is still a real provider price."""
         priced = price_event(_event(cost_usd=0.004, cost_source="provider"), None)
 
         assert priced.cost == 0.004
         assert priced.source == "provider"
 
     def test_a_table_priced_event_is_recomputed_at_todays_rates(self) -> None:
-        """The rate in the table when the call ran is gone; today's is the best
-        estimate available, and recomputing keeps the whole month consistent."""
+        """The historical rate is gone, so table-priced events recompute at today's rate for month-wide consistency."""
         priced = price_event(_event(cost_source="table"), None)
 
         assert priced.source == "table"
         assert priced.cost >= 0.0
 
     def test_an_unknown_model_keeps_its_logged_cost(self) -> None:
-        """A missing rate is not a free call. The logged number is kept and
-        counted separately so the fallback's share stays visible."""
+        """An unknown model is not a free call — its logged cost is kept and counted separately."""
         priced = price_event(_event(model="a-model-nobody-priced", cost_usd=0.0031), None)
 
         assert priced.cost == 0.0031
@@ -181,8 +166,7 @@ class TestDocument:
         assert doc.backfill_key
 
     def test_the_key_is_the_same_every_run_for_the_same_event(self) -> None:
-        """This is what makes ``--apply`` re-runnable: the unique index can only
-        absorb a repeat if the key is derived, not generated."""
+        """The backfill key is derived, not generated, which is what makes --apply re-runnable."""
         line = _line(generation_id="gen-1")
         first, second = parse_event(line), parse_event(line)
 
@@ -195,8 +179,7 @@ class TestDocument:
         )
 
     def test_calls_without_a_generation_id_are_keyed_by_their_own_shape(self) -> None:
-        """Most background calls have no generation id. Falling back to a
-        constant would collapse them all into one row."""
+        """Calls without a generation id are keyed by their own shape, not a shared constant."""
         assert _event(input_tokens=100).backfill_key != _event(input_tokens=101).backfill_key
 
     def test_the_upstream_is_recorded_when_the_generation_named_one(self) -> None:
@@ -212,9 +195,7 @@ class TestDocument:
         assert doc.lane_thread == f"executor_{conv}"
 
     def test_what_the_log_never_carried_is_left_unset(self) -> None:
-        """The wide event never logged latency, the ARQ job or the workflow
-        execution. Inventing them would make backfilled rows look more precise
-        than they are — which is why the rows are marked."""
+        """Fields the wide event never logged (duration, job id, workflow execution) are left unset, not invented."""
         doc = build_document(_event(), None)
 
         assert doc.duration_ms is None
@@ -224,8 +205,7 @@ class TestDocument:
 
 class TestWindow:
     def test_the_window_never_reaches_before_the_events_carried_costs(self) -> None:
-        """Older events have no cost fields, so rows built from them would be
-        fiction rather than recovered history."""
+        """The window never reaches before EARLIEST_DAY, where events carry no cost fields to recover."""
         assert all(day >= EARLIEST_DAY for day in wanted_days(365))
 
     def test_a_short_window_is_still_bounded_by_today(self) -> None:
@@ -236,10 +216,7 @@ class TestWindow:
 
 
 class TestDryRunReport:
-    """The dry run is the only thing anyone reads before deciding to --apply, so
-    its per-day raw -> docs -> $ table has to reconcile: the docs column must be
-    what would actually be written, and the dollars what would actually be
-    booked."""
+    """The dry-run table must reconcile: docs and dollars shown must match what --apply would actually write."""
 
     def test_the_table_reports_what_would_be_written(self, capsys: pytest.CaptureFixture) -> None:
         events = select_events(
@@ -310,9 +287,7 @@ class TestAnomalyReport:
         assert anomalies.unknown_model_rows == 1
 
     def test_generation_lookups_are_split_into_resolved_and_missing(self) -> None:
-        """A 404 is OpenRouter having dropped an old generation — unverifiable,
-        not an error. The two must be countable apart or a run that resolved
-        nothing looks the same as one that resolved everything."""
+        """A 404 is a dropped generation, not an error — resolved and missing must be counted separately."""
         anomalies = Anomalies()
 
         anomalies.count_lookups({"gen-1": GenerationRecord(total_cost=0.01), "gen-2": None})

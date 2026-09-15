@@ -1,20 +1,17 @@
-"""Repository for the ``conversations`` collection (the chat hot path).
+"""Repository for the conversations collection (the chat hot path).
 
-Identity is the business key ``conversation_id`` scoped to ``user_id`` — never
-Mongo's incidental ``ObjectId`` ``_id``. Documents embed the full ``messages``
-array, so most writes are array mutations expressed through the raw-update seam.
+Identity is the business key conversation_id scoped to user_id, never Mongo's
+ObjectId _id. Most writes are array mutations via the raw-update seam.
 
-Caching is disabled (``cache_policy = None``): a conversation document carries its
-entire message history (up to MongoDB's 16MB limit) and is written on every chat
-turn, so an entity/query cache would store megabytes and bump its generation
-constantly — a pessimisation, not a win. The generation bumps in the write paths
-below still run (harmlessly no-op while the policy is None) so enabling a policy
-later needs no call-site changes.
+Caching is disabled (cache_policy = None): a conversation document carries its
+full message history (up to MongoDB's 16MB limit) and is written on every chat
+turn, so an entity/query cache would store megabytes and bump constantly. The
+no-op generation bumps below let a policy be enabled later with no call-site
+changes.
 
-``createdAt`` (ISO string, set at insert) and ``updatedAt`` (BSON date, bumped via
-``$currentDate``) are the legacy camelCase timestamp pair; the base's snake_case
-auto-stamp does not apply, so each mutating method that must advance the sync
-clock bumps ``updatedAt`` explicitly.
+createdAt (ISO string) and updatedAt (BSON date, via $currentDate) are a
+legacy camelCase pair; each mutating method that must advance the sync clock
+bumps updatedAt explicitly.
 """
 
 from __future__ import annotations
@@ -64,9 +61,9 @@ _SUMMARY_PROJECTION: dict[str, object] = {
 
 
 class ConversationRepository(UserScopedRepository[ConversationDocument, ConversationUpdate]):
-    """The ``conversations`` collection repository (the chat hot path).
+    """The conversations collection repository (the chat hot path).
 
-    Identity is the business key ``conversation_id``; caching is disabled
+    Identity is the business key conversation_id; caching is disabled
     (see the module docstring for why)."""
 
     collection_name = "conversations"
@@ -79,7 +76,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     # ---- conversation-list reads (projected: no messages) ----
 
     async def list_starred_summaries(self, user_id: str) -> list[ConversationSummary]:
-        """The user's starred conversations (projected summaries, newest first)."""
+        """Return the user's starred conversations (projected summaries, newest first)."""
         return await self._aggregate(
             [
                 {"$match": {"user_id": user_id, "starred": True, **self._non_bot()}},
@@ -120,29 +117,20 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
 
     async def has_activity_since(self, user_id: str, since: datetime) -> bool:
-        """Whether the user touched any conversation at or after ``since``.
+        """Whether the user touched any conversation at or after since.
 
-        The transport-agnostic usage signal. Every chat turn appends messages,
-        which stamps ``updatedAt``, whether it arrived from the web app or a bot
-        — unlike ``users.last_active_at``, which only a WorkOS web login bumps.
-        ``createdAt`` covers conversations created but never appended to.
-
-        The two are compared differently ON PURPOSE, per this module's timestamp
-        contract: ``updatedAt`` is a BSON date, ``createdAt`` an ISO string. Mongo
-        does not compare across BSON types, so a date ``$gte`` against
-        ``createdAt`` matches NOTHING — silently, which is how it read as "this
-        user has no activity". ISO-8601 sorts lexicographically in time order, so
-        the string form is a real comparison, not a workaround.
+        The transport-agnostic usage signal (unlike users.last_active_at,
+        which only a WorkOS web login bumps). updatedAt is a BSON date and
+        createdAt an ISO string; Mongo does not compare across BSON types, so
+        each is compared against its own type rather than one shared filter.
         """
         return (
             await self._count(
                 {
                     "user_id": user_id,
-                    # A workflow execution appends to its system conversation and
-                    # stamps updatedAt, so counting those would let a user's own
-                    # automation vouch for them as "active" forever — the
-                    # circularity that kept the dormancy sweep from ever pausing
-                    # an armed workflow. Only human-touched conversations count.
+                    # Excludes system-generated conversations: counting a workflow's
+                    # own updatedAt bumps would let a user's automation vouch for
+                    # them as "active" forever, defeating the dormancy sweep.
                     "is_system_generated": {"$ne": True},
                     "$or": [
                         {"updatedAt": {"$gte": since}},
@@ -156,7 +144,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def has_sent_message(self, user_id: str) -> bool:
         """Whether the user has ever sent a message, from any surface.
 
-        Workflow-execution threads also carry ``user`` messages (the workflow's
+        Workflow-execution threads also carry user messages (the workflow's
         own prompt), so system-generated conversations are excluded — the
         signal is a human typing, not an automation running.
         """
@@ -194,8 +182,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def set_workflow_binding(
         self, conversation_id: str, *, user_id: str, workflow_id: str, workflow_title: str
     ) -> bool:
-        """Bind an existing conversation to a workflow (source + metadata). Matches
-        the legacy write, which does not advance ``updatedAt``."""
+        """Bind an existing conversation to a workflow (source + metadata); does not advance updatedAt."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id},
             {
@@ -224,9 +211,11 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         messages: list[MessageModel],
         max_messages: int | None = None,
     ) -> list[str] | None:
-        """Append messages to a conversation, returning their ids (``None`` if the
-        conversation does not exist). ``max_messages`` caps stored history via a
-        negative ``$slice`` so per-workflow threads stay under the 16MB limit."""
+        """Append messages to a conversation, returning their ids (None if it does not exist).
+
+        max_messages caps stored history via a negative $slice so
+        per-workflow threads stay under the 16MB limit.
+        """
         docs: list[dict[str, object]] = []
         message_ids: list[str] = []
         for message in messages:
@@ -266,7 +255,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def update_artifact(
         self, conversation_id: str, *, user_id: str, path: str, fields: Mapping[str, object]
     ) -> bool:
-        """Patch the registry entry at ``path``; False when no entry exists yet."""
+        """Patch the registry entry at path; False when no entry exists yet."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "artifacts.path": path},
             {
@@ -282,9 +271,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def push_artifact(
         self, conversation_id: str, *, user_id: str, path: str, element: Mapping[str, object]
     ) -> None:
-        """Append a registry entry, but only when ``path`` is not already present.
+        """Append a registry entry, but only when path is not already present.
 
-        The ``$ne`` guard is what makes concurrent inserts idempotent: of two
+        The $ne guard is what makes concurrent inserts idempotent: of two
         racing pushes for the same path, only one can match the filter.
         """
         await self._apply_raw_update_unfetched(
@@ -308,7 +297,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def list_artifacts(
         self, conversation_id: str, *, user_id: str
     ) -> list[ArtifactRegistryEntry]:
-        """The conversation's artifact registry, or an empty list when it has none."""
+        """Return the conversation's artifact registry, or an empty list when it has none."""
         document = await self._find_one({"conversation_id": conversation_id, "user_id": user_id})
         return list(document.artifacts) if document else []
 
@@ -320,8 +309,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         message_id: str,
         entries: Sequence[Mapping[str, object]],
     ) -> bool:
-        """Append tool-data entries onto one message. Does not advance ``updatedAt``
-        (matches the legacy executor/artifact writes)."""
+        """Append tool-data entries onto one message; does not advance updatedAt."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$push": {"messages.$.tool_data": {"$each": entries}}},
@@ -334,8 +322,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def set_message_response(
         self, conversation_id: str, *, user_id: str, message_id: str, response: str
     ) -> bool:
-        """Set a message's response text in place. Does not advance ``updatedAt``
-        (matches the legacy delivery write)."""
+        """Set a message's response text in place; does not advance updatedAt."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$set": {"messages.$.response": response}},
@@ -348,8 +335,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def set_message_tool_data(
         self, conversation_id: str, *, user_id: str, message_id: str, entries: list[ToolDataEntry]
     ) -> bool:
-        """Replace a message's tool_data wholesale. Does not advance ``updatedAt``
-        (matches the legacy delivery write)."""
+        """Replace a message's tool_data wholesale; does not advance updatedAt."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$set": {"messages.$.tool_data": entries}},
@@ -362,14 +348,14 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def set_message_approval_status(
         self, conversation_id: str, *, user_id: str, approval_id: str, status: str
     ) -> bool:
-        """Settle a persisted approval_request frame's status wherever it lives in
-        the messages array. Returns whether the frame was there to settle. Does not
-        advance ``updatedAt``."""
+        """Settle a persisted approval_request frame's status wherever it lives in the array.
+
+        Returns whether the frame was there to settle. Does not advance updatedAt.
+        """
         matched = await self._apply_raw_update_unfetched(
-            # The approval belongs in the match, not only in the array filters:
-            # those pick which element is written but never narrow `matched`, so
-            # filtering on the conversation alone reported success for any
-            # approval_id the document never held.
+            # The approval must also be in the match: array filters alone pick which
+            # element to write but don't narrow `matched`, so matching on the
+            # conversation alone reported success for any approval_id never held.
             {
                 "conversation_id": conversation_id,
                 "messages.tool_data.data.approval_id": approval_id,
@@ -390,8 +376,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def set_message_follow_up_actions(
         self, conversation_id: str, *, user_id: str, message_id: str, actions: list[str]
     ) -> bool:
-        """Set a message's follow-up actions. Does not advance ``updatedAt`` (matches
-        the legacy delivery write)."""
+        """Set a message's follow-up actions; does not advance updatedAt."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$set": {"messages.$.follow_up_actions": actions}},
@@ -406,8 +391,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def get_message(
         self, conversation_id: str, message_id: str, *, user_id: str
     ) -> MessageModel | None:
-        """Read one embedded message by id via a positional projection, without
-        loading the whole array."""
+        """Read one embedded message by id via a positional projection, without loading the whole array."""
         row = await self._find_one_projected(
             {
                 "conversation_id": conversation_id,
@@ -422,7 +406,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return row.messages[0]
 
     async def get_source(self, conversation_id: str, *, user_id: str) -> ConversationSource | None:
-        """The conversation's source enum, or None when it doesn't exist."""
+        """Return the conversation's source enum, or None when it doesn't exist."""
         row = await self._find_one_projected(
             {"conversation_id": conversation_id, "user_id": user_id},
             {"_id": 0, "source": 1},
@@ -447,7 +431,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def is_workflow_execution(self, conversation_id: str) -> bool:
         """Whether this is the conversation a workflow's runs execute in.
 
-        Narrower than ``is_system_generated``: email and reminder runs are
+        Narrower than is_system_generated: email and reminder runs are
         system-generated too, and the workflow thread reset must not touch them.
         """
         row = await self._find_one_projected(
@@ -464,7 +448,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def find_owner_of_message(
         self, user_id: str, message_id: str, *, message_type: str = "bot"
     ) -> str | None:
-        """The conversation id owning a message of ``message_type`` with this id."""
+        """Return the conversation id owning a message of message_type with this id."""
         row = await self._find_one_projected(
             {
                 "user_id": user_id,
@@ -478,7 +462,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def find_workflow_conversation(
         self, user_id: str, workflow_id: str
     ) -> ConversationDocument | None:
-        """The system-generated conversation bound to a workflow execution."""
+        """Return the system-generated conversation bound to a workflow execution."""
         return await self._find_one(
             {
                 "user_id": user_id,
@@ -489,15 +473,16 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
 
     async def recent_for_user(self, user_id: str, *, limit: int) -> list[ConversationDocument]:
-        """The user's most recent conversations."""
+        """Return the user's most recent conversations."""
         return await self._find({"user_id": user_id}, sort=[("createdAt", -1)], limit=limit)
 
     async def find_updated_since(
         self, user_id: str, items: list[ConversationSyncItem]
     ) -> list[ConversationDocument]:
-        """Batch-fetch the named conversations whose ``updatedAt`` is newer than the
-        client's last-seen timestamp (or which have none) — the client-sync read.
-        A missing/unparseable timestamp includes the conversation unconditionally."""
+        """Batch-fetch conversations updated since each item's last-seen timestamp (the client-sync read).
+
+        A missing/unparseable timestamp includes that conversation unconditionally.
+        """
         conditions: list[dict[str, object]] = []
         for item in items:
             condition: dict[str, object] = {
@@ -534,7 +519,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     async def search(self, user_id: str, *, pattern: str) -> ConversationSearchResults:
         """Regex search across message responses and conversation descriptions.
-        ``pattern`` is treated as a literal — the caller passes an escaped query."""
+
+        pattern is treated as a literal — the caller passes an escaped query.
+        """
         rows = await self._aggregate(
             [
                 {"$match": {"user_id": user_id}},
@@ -559,8 +546,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     # ---- bulk deletes / maintenance sweeps ----
 
     async def delete_all_for_user(self, user_id: str) -> list[str]:
-        """Delete every conversation for a user, returning the deleted ids so the
-        caller can clean up their (non-user-scoped) checkpoint threads."""
+        """Delete every conversation for a user, returning the deleted ids.
+
+        Callers use the ids to clean up the (non-user-scoped) checkpoint threads.
+        """
         ids = await self._distinct("conversation_id", {"user_id": user_id})
         await self._delete_many({"user_id": user_id}, scope=user_id)
         return ids
@@ -572,13 +561,17 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
 
     async def all_conversation_ids(self) -> list[str]:
-        """Every live conversation id across all users — the checkpoint orphan
-        sweep's source of truth. Intentionally unscoped (a maintenance sweep)."""
+        """Every live conversation id across all users — the checkpoint orphan sweep's source of truth.
+
+        Intentionally unscoped (a maintenance sweep).
+        """
         return await self._distinct("conversation_id")
 
     async def active_user_ids_since(self, cutoff: datetime) -> list[str]:
-        """User ids with a conversation updated since ``cutoff`` — the workspace
-        sync sweep's active-user set. Intentionally unscoped (a maintenance sweep)."""
+        """User ids with a conversation updated since cutoff — the workspace sync sweep's active-user set.
+
+        Intentionally unscoped (a maintenance sweep).
+        """
         return await self._distinct("user_id", {"updatedAt": {"$gte": cutoff}})
 
     # ---- internal helpers ----

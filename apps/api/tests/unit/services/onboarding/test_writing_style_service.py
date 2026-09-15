@@ -1,6 +1,6 @@
 """Unit tests for app.services.onboarding.writing_style_service.
 
-The sent folder is read through ``search_messages`` and the style is learned
+The sent folder is read through search_messages and the style is learned
 by one structured LLM call; both seams are faked, everything between them
 (sample filtering, thresholds, the profile shape) runs for real.
 """

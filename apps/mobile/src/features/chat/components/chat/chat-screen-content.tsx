@@ -275,10 +275,9 @@ export function ChatScreenContent({
 
   const displayMessage = progress || thinkingMessage;
 
-  // Follow the stream: tokens grow the last item WITHOUT changing the list
-  // length, so keying on messages (any change) is required. Throttled so a
-  // fast token rate doesn't flood scrollToEnd calls, and only while the user
-  // is parked at the bottom — scrolling up pauses follow, like web.
+  // Follow the stream: tokens grow the last item without changing list length,
+  // so keying on messages is required; throttled to 60ms and only while parked
+  // at the bottom (scrolling up pauses follow, like web).
   const lastFollowTsRef = useRef(0);
   useEffect(() => {
     if (!isAtBottomRef.current) return;

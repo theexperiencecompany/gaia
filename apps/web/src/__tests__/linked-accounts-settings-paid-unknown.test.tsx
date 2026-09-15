@@ -90,10 +90,9 @@ describe("LinkedAccountsSettings — iMessage (premium) gate vs. plan status unk
     render(<LinkedAccountsSettings />);
     const row = await findPlatformRow("iMessage");
 
-    // Before the fix, `subscriptionStatus?.is_subscribed` read as
-    // `undefined` in this exact window — falsy — so the badge showed and
-    // the connect attempt below would have opened the pricing modal for a
-    // possibly-paid user.
+    // Before the fix `subscriptionStatus?.is_subscribed` read `undefined`
+    // here — falsy — so the badge showed and connect opened the pricing
+    // modal for a possibly-paid user.
     expect(row.queryByText("Pro")).toBeNull();
     fireEvent.click(row.getByRole("button", { name: "Connect" }));
     expect(openUpgradeModal).not.toHaveBeenCalled();

@@ -55,11 +55,9 @@ async def resolve_provider_error(
         oauth_error=error,
         oauth_error_description=error_description,
     )
-    # Some servers advertise scopes in their metadata that a dynamically
-    # registered client cannot request (e.g. agentmail's "user:org:read").
-    # Drop the rejected scope(s) and retry the authorization.
-    # Best-effort recovery — a Redis/discovery failure here must not turn the
-    # error response into a 500. Fall through to the normal error redirect.
+    # Some servers advertise scopes a dynamically registered client can't request
+    # (e.g. agentmail's "user:org:read"); drop the rejected scope and retry.
+    # Best-effort: a Redis/discovery failure here must not turn this into a 500.
     if error == "invalid_scope":
         try:
             retry_url = await client.build_scope_retry_url(
@@ -89,7 +87,7 @@ async def resolve_provider_error(
 
 
 def sanitized_error_code(exc: Exception) -> str:
-    """A generic code for the redirect instead of the raw exception message."""
+    """Return a generic code for the redirect instead of the raw exception message."""
     message = str(exc).lower()
     if "state" in message:
         return "invalid_state"
@@ -110,10 +108,9 @@ async def complete_oauth(
     redirect_uri: str,
 ) -> None:
     """Exchange the code, then dispatch the full connect to the background."""
-    # handle_oauth_callback stores tokens, flips status to connected, and
-    # dispatches the full MCP connect (handshake + tools/list + schema
-    # conversion + Chroma indexing) as a background task. Returns immediately —
-    # the callback fires the redirect in ~1-2s instead of 8-29s.
+    # handle_oauth_callback stores tokens, flips status, and dispatches the full
+    # connect (handshake + tools/list + schema conversion + indexing) in the
+    # background — the redirect fires in ~1-2s instead of 8-29s.
     await client.handle_oauth_callback(
         integration_id=integration_id,
         code=code,

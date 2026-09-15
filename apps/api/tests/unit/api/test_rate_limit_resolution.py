@@ -1,10 +1,10 @@
 """@tiered_rate_limit must enforce regardless of what the auth param is named.
 
 Regression cover for a silent failure: the decorator used to resolve the caller
-by looking for a kwarg literally named ``user``, so an endpoint that named it
-``current_user``/``user_id``/``_user`` skipped rate limiting entirely — no log,
+by looking for a kwarg literally named user, so an endpoint that named it
+current_user/user_id/_user skipped rate limiting entirely — no log,
 no error, just unlimited access. These tests drive real routes through the real
-``WorkOSAuthMiddleware`` and assert the limiter actually fired.
+WorkOSAuthMiddleware and assert the limiter actually fired.
 """
 
 from collections.abc import Awaitable, Callable
@@ -125,13 +125,7 @@ def test_no_duplicate_decorator_remains() -> None:
 
 @pytest.mark.asyncio
 async def test_route_without_an_auth_dependency_is_still_limited() -> None:
-    """Auth comes from the middleware, not the handler's signature.
-
-    ``search_email_endpoint`` takes only ``query: str`` — no auth dependency at
-    all — yet it sits behind the global auth middleware and carries a
-    ``web_search`` limit. Resolving the caller from the request context (rather
-    than the handler's kwargs) is what lets that route be billed.
-    """
+    """search_email_endpoint takes only query: str, no auth dependency, yet resolving the caller from request context still lets it be billed."""
     app = FastAPI()
 
     @app.middleware("http")

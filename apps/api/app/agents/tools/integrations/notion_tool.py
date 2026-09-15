@@ -4,7 +4,7 @@ These tools wrap existing Composio Notion tools and add markdown conversion:
 - FETCH_PAGE_AS_MARKDOWN: Calls NOTION_FETCH_ALL_BLOCK_CONTENTS → converts to markdown
 - INSERT_MARKDOWN: Converts markdown → calls NOTION_ADD_MULTIPLE_PAGE_CONTENT
 - MOVE_PAGE / FETCH_DATA : route through Composio's
-  proxy via `proxy_request_sync` (no existing Composio equivalent)
+  proxy via proxy_request_sync (no existing Composio equivalent)
 
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
@@ -105,11 +105,9 @@ def _fetch_page_title(
             status_code=502,
         )
 
-    # ToolExecutionResponse.data is typed as a plain Dict, but real
-    # Notion API responses aren't guaranteed to match — widen via
-    # annotation so the isinstance narrowing below is meaningful.
-    # (A runtime cast("object", …) here is a no-op the interpreter
-    # discards; an annotation widens without executable code.)
+    # ToolExecutionResponse.data is typed as a plain Dict, but real Notion API
+    # responses aren't guaranteed to match — widen via annotation so the
+    # isinstance narrowing below is meaningful.
     title_data: object = title_response["data"]
     # No .get default: a missing key yields None, and isinstance(None, list)
     # below already routes it to the no-title path — same as any non-list value.

@@ -1,8 +1,8 @@
-"""Repository for the ``pending_platform_registrations`` collection.
+"""Repository for the pending_platform_registrations collection.
 
 Global, one record per (user, platform): the handle a user registered upstream
-but has not yet linked. A unique index on ``(platform, platform_user_id)`` keeps
-two accounts from claiming the same handle; ``created_at`` anchors the sweep
+but has not yet linked. A unique index on (platform, platform_user_id) keeps
+two accounts from claiming the same handle; created_at anchors the sweep
 that releases abandoned registrations.
 """
 

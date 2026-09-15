@@ -1,7 +1,7 @@
 """Unit tests for app.memory.embeddings batching/chunking behavior (#918).
 
 The sidecar OOM-killed on large batches because fastembed's default internal
-``batch_size=256`` materializes gigabytes of ONNX activations in one forward
+batch_size=256 materializes gigabytes of ONNX activations in one forward
 pass. The fix bounds every fastembed call with an explicit small batch size
 and splits oversized client requests into bounded HTTP calls. These tests pin
 the chunking contract and that the sync helpers never invoke fastembed with
@@ -74,8 +74,7 @@ class TestEmbedBatchSplitsRequests:
     def recorder(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> tuple[list[dict], list[tuple[str, str, int]]]:
-        """Strict sidecar stand-in: unexpected paths/payloads fail loudly, and
-        every _observed(operation, backend, count) annotation is captured."""
+        """Sidecar stand-in that fails loudly on an unexpected path/payload and records every _observed() call."""
         calls: list[dict] = []
         observed: list[tuple[str, str, int]] = []
 
@@ -172,9 +171,7 @@ class TestEmbedBatchSplitsRequests:
         recorder: tuple[list[dict], list[tuple[str, str, int]]],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """The query rides with every chunk, so it must shrink the document
-        allowance — a 10-char query against a 50-char budget caps chunks at
-        40 chars."""
+        """A 10-char query against a 50-char budget caps chunks at 40 chars."""
         calls, observed = recorder
         monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_MAX_BATCH_TEXTS", 99)
         monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_MAX_BATCH_CHARS", 50)
@@ -220,8 +217,7 @@ class TestSharedHttpClient:
 
 
 class TestTransientRetry:
-    """A 503 means the sidecar was briefly overloaded; memory operations must
-    survive that blip instead of being dropped."""
+    """A 503 means the sidecar was briefly overloaded; memory operations must survive that blip."""
 
     def _client(
         self, monkeypatch: pytest.MonkeyPatch, responses: list[httpx.Response]
@@ -332,9 +328,7 @@ class TestTransientRetry:
     async def test_transport_budget_is_consumed_per_failure(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Two connection errors must consume exactly two budget units: a third
-        error would exceed the budget and fail loudly, while the retry that
-        follows still succeeds. This pins the countdown, not just 'it retried'."""
+        """Pins the retry countdown: two connection errors consume exactly two budget units, then it succeeds."""
         sleeps: list[float] = []
         failures_left = 2
 
@@ -367,9 +361,7 @@ class TestTransientRetry:
     async def test_transport_budget_exhaustion_fails_loud(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Three consecutive connection errors exhaust the default budget of
-        two retries: the original connection error propagates instead of the
-        operation being silently dropped."""
+        """Three connection errors exhaust the default two-retry budget, so the original error propagates."""
         failures_left = 99
 
         async def fake_sleep(delay: float) -> None:
@@ -398,9 +390,7 @@ class TestPooledClientThroughPublicApi:
     async def test_embed_query_reuses_one_pooled_client(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The public path must go through the shared pool: one client for
-        repeated calls, our configured timeout, and a fresh client when the
-        previous one was closed."""
+        """The public path reuses one pooled client with our timeout, and opens a fresh one once closed."""
         embeddings._http_client = None
         made: list[httpx.AsyncClient] = []
         calls = {"n": 0}

@@ -4,7 +4,7 @@ One task remains: the Gmail personalization pipeline, enqueued when a user
 connects Gmail. It owns exactly one thing beyond calling the pipeline:
 reporting the outcome. It deliberately owns neither the onboarding phase
 (completion is written when the form is submitted) nor the
-``onboarding:completed`` analytics event (captured by ``complete_onboarding``).
+onboarding:completed analytics event (captured by complete_onboarding).
 """
 
 from unittest.mock import AsyncMock, patch
@@ -35,8 +35,7 @@ class TestTheTaskRunsThePipeline:
         assert result == f"Gmail personalization completed for user {USER}"
 
     async def test_a_pipeline_failure_is_reported_not_raised(self, pipeline: AsyncMock) -> None:
-        """ARQ retries on an exception; this pipeline is not idempotent enough to
-        be retried blindly, so the failure comes back as a job result string."""
+        """The pipeline isn't idempotent enough for blind ARQ retries, so failure returns as a job result string."""
         pipeline.side_effect = RuntimeError("LLM timeout")
 
         result = await process_onboarding_intelligence_task({}, USER)
@@ -48,8 +47,7 @@ class TestTheTaskOwnsNeitherThePhaseNorTheEvent:
     async def test_a_crashed_pipeline_does_not_rescue_the_onboarding_phase(
         self, pipeline: AsyncMock
     ) -> None:
-        """Onboarding is already complete before this job ever runs, so a rescue
-        write here would silently overwrite whatever phase the user is really in."""
+        """Onboarding is already complete before this job runs; a rescue write here would overwrite the real phase."""
         pipeline.side_effect = RuntimeError("boom")
         repo = AsyncMock()
 
@@ -60,8 +58,7 @@ class TestTheTaskOwnsNeitherThePhaseNorTheEvent:
         repo.complete_onboarding.assert_not_awaited()
 
     async def test_no_completion_event_is_captured_here(self, pipeline: AsyncMock) -> None:
-        """``complete_onboarding`` emits the milestone. A second emitter would
-        count every Gmail connect as another onboarding completion."""
+        """complete_onboarding emits the milestone; a second emitter would double-count Gmail connects."""
         with patch("app.services.analytics_service.capture_event") as capture:
             await process_onboarding_intelligence_task({}, USER)
 

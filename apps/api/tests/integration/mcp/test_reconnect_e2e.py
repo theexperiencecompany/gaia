@@ -1,19 +1,14 @@
 """End-to-end test for the MCP transparent-reconnect flow.
 
 Spins up a real FastMCP streamable-HTTP server on a random localhost port,
-points an MCPClient at it, then proves the production reconnect path:
+points an MCPClient at it, then proves: cold connect works; forcing the
+connector dead (mirrors what MCPClientPool eviction did before the
+resilience rewrite) does not break the next tool call, which transparently
+reconnects via MCPClient.reconnect_and_call without surfacing "MCP client
+is not connected" — the symptom this fixes.
 
-1. Cold connect → tool call works.
-2. Force the connector dead (mirrors what MCPClientPool eviction did before
-   the resilience rewrite).
-3. Call the tool again. The wrapper must transparently reconnect via
-   MCPClient.reconnect_and_call and return the result. The error
-   "MCP client is not connected" — the symptom we set out to eliminate —
-   must not surface.
-
-The test uses a real HTTP server with real MCP wire protocol, not mocks,
-so a regression in the connector lifecycle or the reconnect wrapper would
-fail this immediately.
+Uses a real HTTP server with the real MCP wire protocol, not mocks, so a
+regression in the connector lifecycle or reconnect wrapper fails this test.
 """
 
 from __future__ import annotations
@@ -39,7 +34,7 @@ def _pick_free_port() -> int:
 
 
 def _build_mcp_app():
-    """A FastMCP server with a single deterministic echo tool."""
+    """Build a FastMCP server with a single deterministic echo tool."""
     mcp = FastMCP("reconnect-test-server", stateless_http=True)
 
     @mcp.tool()
@@ -105,13 +100,7 @@ def _patch_resolver(server_url: str):
 
 
 def _patch_post_connect_side_effects():
-    """Stub the database side effects in _do_connect so the test doesn't need
-    Mongo/Postgres/Chroma/Redis.
-
-    The reconnect path itself is what we're testing — the post-connect tasks
-    are unrelated side effects and would otherwise require a full
-    infrastructure stack just to validate connector lifecycle.
-    """
+    """Stub the database side effects in _do_connect (Mongo/Postgres/Chroma/Redis) so only the reconnect path under test needs no real infra."""
     return [
         patch(
             "app.services.mcp.mcp_client.update_user_integration_status",
@@ -139,9 +128,7 @@ def _make_unauth_token_store():
 
 @pytest.mark.integration
 class TestReconnectFlowE2E:
-    """End-to-end coverage of the bug we set out to fix:
-    'MCP client is not connected' after a connector is torn down.
-    """
+    """End-to-end coverage of the bug we set out to fix: 'MCP client is not connected' after a connector is torn down."""
 
     async def test_cold_connect_calls_tool_successfully(self, fastmcp_server):
         """Baseline: a fresh MCPClient connects and calls a tool over real HTTP."""
@@ -165,15 +152,7 @@ class TestReconnectFlowE2E:
                     p.stop()
 
     async def test_dead_connector_triggers_transparent_reconnect(self, fastmcp_server):
-        """The headline regression test.
-
-        Reproduces the 2026-05-26 17:50 production failure shape: a connector
-        is torn down (mirroring MCPClientPool's old TTL eviction), then a
-        tool call fires. With the resilience rewrite, the wrapper detects
-        the dead connector, reconnects through MCPClient.reconnect_and_call,
-        retries the call, and returns the result. The user never sees
-        'MCP client is not connected'.
-        """
+        """Regression test for the 2026-05-26 17:50 production failure: a reconnect must not surface 'MCP client is not connected'."""
         client = MCPClient(user_id="test-user")
         client.token_store = _make_unauth_token_store()
 
@@ -191,10 +170,7 @@ class TestReconnectFlowE2E:
                 first = await echo_tool._arun(text="warm")
                 assert "echo:warm" in str(first)
 
-                # Kill the connector to simulate pool eviction / network blip.
-                # close_all_client_sessions used to be called on every TTL tick;
-                # we're invoking it directly so the test doesn't depend on
-                # timing.
+                # Simulate pool eviction/network blip; invoked directly so the test doesn't depend on TTL timing.
                 await client._clients["test-integration"].close_all_sessions()
 
                 # Second call: connector is dead. The wrapper must catch the

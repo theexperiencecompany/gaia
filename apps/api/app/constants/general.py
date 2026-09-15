@@ -10,18 +10,13 @@ ORCHESTRATOR_MAX_ITERATIONS = 10
 # is ``app.utils.message_breaks`` — this is only the token we ask for.
 NEW_MESSAGE_BREAKER = "<NEW_MESSAGE_BREAK>"
 
-# Upper bound for every 1-based `page` query parameter. Paginated endpoints turn
-# `page` into a Mongo `skip` of `(page - 1) * page_size`; unbounded, a large
-# enough `page` produces a value BSON cannot encode as an int64, and the driver
-# error surfaces as a 500. int32 max is the largest bound that cannot overflow
-# for any page size we accept (2^31 * 100 is still ~9 orders of magnitude below
-# int64 max), so it rejects the absurd without capping legitimate paging.
+# Upper bound for every 1-based `page` query parameter. Unbounded, `page`
+# converted to a Mongo skip can overflow BSON's int64 and 500. int32 max is the
+# largest bound that cannot overflow for any page size we accept.
 MAX_PAGE_NUMBER = 2_147_483_647
 
-# Name of the explicit "this is my final answer" tool subagents call to
-# return a result to their parent. Routing logic in the bigtool override
-# and the subagent runner both key off this — keep them in sync via this
-# single constant.
+# Name of the explicit "this is my final answer" tool subagents call. The
+# bigtool override and the subagent runner both key off this constant.
 FINISH_TASK_NAME = "finish_task"
 
 # Comms tool that hands the turn off to the background executor. The
@@ -44,22 +39,17 @@ SPAWN_AGENT_NAME = "spawned_subagent"
 # on them — a drift between the two would silently strand every spawn thread.
 SPAWN_THREAD_PREFIX = "spawn_"
 
-# Thread-id prefix for the executor's checkpoint thread (`executor_<conversation>`),
-# which a handoff subagent further wraps as `<namespace>_executor_<conversation>`.
+# Thread-id prefix for the executor's checkpoint thread (`executor_<conversation>`).
 # Shared because prepare_executor_execution mints these and the workflow thread
-# reset selects on them — a drift between the two would leave a workflow replaying
-# its whole history out of a thread the reset failed to recognize.
+# reset selects on them — a drift would replay a workflow's whole history.
 EXECUTOR_THREAD_PREFIX = "executor_"
 
 MAX_EMAILS_PER_PLATFORM = 20
 DEDUPLICATION_SIMILARITY_THRESHOLD = 0.9
 
-# --- LangGraph checkpoint retention -----------------------------------------
-# The DeltaChannel-backed state key (see app/override/langgraph_bigtool/utils.py).
-# Its persistence is what makes checkpoint pruning non-trivial: most checkpoints
-# store only a per-step delta, with a full snapshot every MESSAGES_SNAPSHOT_FREQUENCY
-# updates, so reconstruction of the head walks the parent chain back to the
-# nearest snapshot. Pruning must never sever that chain.
+# The DeltaChannel-backed state key (app/override/langgraph_bigtool/utils.py).
+# Most checkpoints store only a per-step delta with a full snapshot every
+# MESSAGES_SNAPSHOT_FREQUENCY updates; pruning must never sever that parent chain.
 CHECKPOINT_MESSAGES_CHANNEL = "messages"
 
 # Blob `type` written by the Postgres saver when a channel has no value at a

@@ -47,10 +47,9 @@ export type ChatStreamEvent =
   | { type: "error"; error: string }
   | { type: "model_fallback"; model?: string }
   | { type: "response"; chunk: string }
-  // End of one assistant message. `discarded` means that message turned out to
-  // carry tool calls, so the text it streamed was a handoff preamble and the
-  // real reply is the NEXT message — the wire hands over the text before the
-  // tool call, so the client has already rendered it and has to take it back.
+  // End of one assistant message. `discarded` means it turned out to carry tool calls, so the
+  // streamed text was a handoff preamble and the real reply is the NEXT message — the wire sends
+  // text before the tool call, so the client has already rendered it and must take it back.
   | { type: "message_boundary"; messageId: string; discarded: boolean }
   | {
       type: "conversation_initialized";

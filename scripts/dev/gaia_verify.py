@@ -103,7 +103,7 @@ def run(
 
 
 def pick_base(root: Path, explicit: str | None) -> str:
-    """--base flag > $GH_BASE > current PR's base via gh > origin/master."""
+    """Resolve the base ref: --base flag > $GH_BASE > current PR's base via gh > origin/master."""
     if explicit:
         return explicit
     env_base = os.environ.get("GH_BASE")

@@ -159,11 +159,9 @@ async function streamChatOnce(
   onNotice?: NoticeHandler,
 ): Promise<string> {
   let fullText = "";
-  // Text streamed since the last message boundary. It only joins `fullText`
-  // once the backend confirms the message it belongs to was a real reply —
-  // a handoff preamble is streamed first and retracted afterwards, and
-  // `fullText` is the whole reply on platforms that render nothing until the
-  // stream ends (Discord, WhatsApp, iMessage).
+  // Text streamed since the last message boundary; joins `fullText` only once the backend
+  // confirms the message was a real reply (a handoff preamble streams first and can be
+  // retracted). `fullText` is the whole reply on render-at-end platforms (Discord/WhatsApp/iMessage).
   let pendingText = "";
   let conversationId = "";
   let streamError: Error | null = null;
@@ -268,10 +266,9 @@ async function streamChatOnce(
           } else {
             keepPendingText();
           }
-          // Both halves are announced. A kept boundary is what tells a
-          // streaming platform its message is final and may now be split into
-          // bubbles — do it any earlier and a retraction arriving next has
-          // nothing left it can take back.
+          // A kept boundary tells a streaming platform its message is final and may now be
+          // split into bubbles — announcing any earlier would leave nothing for a retraction
+          // arriving next to take back.
           await onMessageBoundary?.(discarded);
         }
       };
@@ -327,13 +324,9 @@ async function streamChatOnce(
         }
       };
 
-      // Frames already received but not yet applied. Processing a chunk is
-      // async (every handler may await), so it yields — and `end` fires on the
-      // very next tick when the response arrives in one piece, which is the
-      // normal case for a short reply. Without something to wait on, `end`
-      // flipped `finished` mid-loop and every frame after the first `await` was
-      // silently dropped: an approval prompt, a rate-limit notice or a message
-      // boundary sharing a TCP chunk with the text before it simply vanished.
+      // Frames already received but not yet applied. Chunk processing is async (handlers may
+      // await), so `end` can fire on the next tick before it finishes — without something to
+      // wait on, `finished` flipped mid-loop and every frame after the first `await` was dropped.
       let draining: Promise<void> = Promise.resolve();
 
       const drainChunk = async (rawChunk: Buffer): Promise<void> => {
@@ -411,11 +404,9 @@ async function streamChatOnce(
               // No content received yet — store for re-throw so streamChat can retry
               streamError = err;
             } else if (fullText) {
-              // The connection died, but the answer is already assembled here.
-              // Deliver it exactly as the `end` handler does — replacing real
-              // content with an error card loses a reply the user had earned,
-              // and on a non-streaming platform (Discord/WhatsApp render only
-              // at onDone) it means they see nothing at all.
+              // The connection died but the answer is already assembled — deliver it exactly as
+              // the `end` handler does. An error card here would lose an earned reply, and on a
+              // non-streaming platform (Discord/WhatsApp render only at onDone) show nothing at all.
               await onDone(fullText, conversationId);
             } else {
               await onError(new Error(toStreamErrorMessage(err.message)));

@@ -93,8 +93,7 @@ def test_parse_ordered_multi_directive():
 
 
 def test_a_quoted_script_is_text_to_the_end_of_its_string():
-    """The previous run's recorded task quotes its own script back, escaped:
-    the tool, the say and any bare directive inside that string are text."""
+    """A recorded task quoting its own script back, escaped, is text — not a real directive."""
     quoted = (
         'earlier: "[[tool:create_todo {\\"title\\": \\"sim\\"}]] [[tool:list_todos]] '
         '[[say:old]]" then [[say:new]]'
@@ -149,7 +148,7 @@ def test_parse_json_string_may_contain_literal_close_delimiter():
 
 
 def test_parse_nested_directive_one_level():
-    """comms → executor → subagent: handoff carries the subagent's script."""
+    """Comms → executor → subagent: handoff carries the subagent's script."""
     inner = _tool_directive("fetch_emails", {"max_results": 5})
     script = _tool_directive("handoff", {"subagent_id": "gmail", "task": inner})
     assert parse_directives(script) == [
@@ -218,8 +217,7 @@ def test_nested_handoff_script_resolves_through_all_three_tiers():
 
 
 def test_trailing_context_user_message_does_not_hide_script():
-    """The graph injects context slots as trailing user-role messages; the stub
-    must script from the newest user message that carries directives."""
+    """The stub must script from the newest user message that carries directives."""
     messages = [
         _user("[[say:SCRIPTED]]"),
         _user("=== dynamic context ===\ncurrent todos: none"),
@@ -228,8 +226,7 @@ def test_trailing_context_user_message_does_not_hide_script():
 
 
 def test_bigtool_executor_retrieves_then_calls():
-    """Unbound scripted tool + retrieve_tools available → bind first, call second,
-    and the retrieval turn never advances the script cursor."""
+    """Bind first, call second; the retrieval turn never advances the script cursor."""
     script = '[[tool:create_todo {"title": "x"}]] [[say:Done]]'
     bigtool = frozenset({"retrieve_tools"})
 
@@ -445,9 +442,7 @@ def test_stream_chunks_content_assembly():
 
 
 def test_a_quoted_copy_of_a_directive_in_the_same_message_is_plain_text():
-    """The previous run's recorded calls are rendered into the next run's task,
-    script included, with the quotes escaped. That copy must neither run nor
-    fail the message that also carries the real script."""
+    """A quoted, escaped copy of prior calls must neither run nor fail a message with a real script."""
     quoted = 'Last run: call_executor({"task": "[[tool:create_todo {\\"title\\": \\"sim\\"}]]"})'
     script = '[[tool:create_todo {"title": "sim"}]] [[say:done]]'
     directives = parse_directives(f"{quoted}\n\n{script}")

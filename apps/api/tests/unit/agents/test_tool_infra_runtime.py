@@ -107,7 +107,7 @@ class _FakeLLM(PassthroughFakeLLM):
 
 
 def _dummy_retrieve_tools(**_kwargs: Any) -> dict[str, list[str]]:
-    """Dummy retrieve_tools for create_agent flow test."""
+    """Stand in for retrieve_tools in the create_agent flow test."""
     return {
         "tools_to_bind": ["subagent:gmail", "normal_tool"],
         "response": ["subagent:gmail", "normal_tool"],
@@ -262,11 +262,7 @@ async def _run_provider_subagent_factory(
 
 @pytest.mark.asyncio
 async def test_the_subagent_stack_is_wired_with_the_parents_llm_registry_and_space():
-    """SubagentMiddleware is what a spawned sub-subagent inherits from. It gets
-    the parent's llm, the FULL tool dict (not the provider's scoped one — a
-    spawned child still needs read/bash/web_search) and the parent's tool space.
-    Losing any of the three leaves a child with no model, or reachable tools it
-    cannot see."""
+    """A spawned sub-subagent inherits the parent's llm, its FULL tool dict (not the provider's scoped one), and its tool space."""
     llm = BindableToolsFakeModel(responses=[], profile={"max_input_tokens": 1_000_000})
     full_tools = {
         "normal_tool": normal_tool,
@@ -373,9 +369,7 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
 
 
 def test_build_create_agent_tool_kwargs_hands_retrieval_scoping_through_verbatim():
-    """tool_space, the subagent-discovery toggle and the bindable set reach
-    get_retrieve_tools_function exactly as given — nulling or dropping any of
-    them silently widens what a spawned subagent can discover."""
+    """Nulling or dropping tool_space, the discovery toggle, or the bindable set silently widens what a subagent can discover."""
     sentinel = AsyncMock()
     config = ToolRuntimeConfig(
         initial_tool_names=["read"],
@@ -409,10 +403,10 @@ async def _spawn_graph_agent_kwargs(
     runtime: ToolRuntimeConfig,
     llm: Any = None,
 ) -> dict[str, Any]:
-    """The kwargs ``_build_spawn_graph`` hands to ``create_agent`` for this config.
+    """Capture the kwargs _build_spawn_graph hands to create_agent for this config.
 
-    Store, checkpointer and agent builder are stubbed because they are the
-    boundaries; the scoping under test is the real production code between them.
+    Store, checkpointer and agent builder are stubbed as the boundaries; the
+    scoping under test is the real production code between them.
     """
     llm = llm or _FakeLLM()
     captured: dict[str, Any] = {}
@@ -475,11 +469,7 @@ async def test_spawn_graph_disables_retrieve_when_the_parent_did():
 
 @pytest.mark.asyncio
 async def test_spawn_graph_wires_identity_middleware_and_hooks_into_create_agent():
-    """The spawn's identity and guardrails ride on these exact kwargs: the agent
-    name keys threads/logs, the middleware list is what gives a spawn the HIL
-    gate, and the pre-model chain is the executor's minus the todo hook.
-    create_agent selects behavior purely by these kwarg names, so a renamed key
-    or dropped value silently falls back to its own default."""
+    """create_agent selects behavior purely by kwarg names; a renamed key or dropped value silently falls back to a default."""
     llm = _FakeLLM()
     captured = await _spawn_graph_agent_kwargs(
         registry={"vfs_read": vfs_read},
@@ -768,20 +758,13 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
     assert captured_kwargs["tools_config"].retrieve_tools_coroutine is None
     assert "read" in captured_kwargs["tools_config"].initial_tool_ids
     assert "normal_tool" in captured_kwargs["tools_config"].initial_tool_ids
-    # A subagent runs no end-graph hook, and the kwarg has to say so under
-    # exactly this name — anything else and create_agent silently falls back to
-    # its own default. The memory hook is the one that matters: a subagent sees
-    # the thread comms already ingested, so hooking it here re-extracts one
-    # conversation once per subagent per turn and bills for every pass.
+    # Hooking the memory extractor here would re-extract a thread comms already ingested, billing every pass.
     assert captured_kwargs["hooks_config"].end_graph_hooks == []
 
 
 @pytest.mark.asyncio
 async def test_base_subagent_hands_create_agent_the_exact_agent_config():
-    # create_agent receives **common_kwargs, so a renamed key silently drops the
-    # wiring instead of erroring: assert every key by name, plus the identity
-    # values inside AgentConfig — the subagent's own name and the middleware
-    # list built for it.
+    # create_agent receives **common_kwargs, so a renamed key silently drops the wiring instead of erroring.
     captured_kwargs, mw = await _run_provider_subagent_factory(
         use_direct_tools=False,
         disable_retrieve_tools=False,
@@ -803,9 +786,7 @@ async def test_base_subagent_hands_create_agent_the_exact_agent_config():
 
 @pytest.mark.asyncio
 async def test_provider_subagent_defaults_tool_space_to_general():
-    """``tool_space`` defaults to "general" — the literal string, not "GENERAL"
-    or any other spelling — and that default must actually reach the
-    middleware that scopes what the subagent (and anything it spawns) may call."""
+    """tool_space defaults to "general" (the literal string), and it must actually reach the scoping middleware."""
     provider_tool = normal_tool
     full_tools = {"normal_tool": normal_tool, "vfs_read": vfs_read, "search_memory": normal_tool}
     dummy_registry = _DummyRegistry([provider_tool], full_tools)
@@ -887,17 +868,16 @@ async def test_base_subagent_direct_mode_propagates_child_direct_runtime():
 
 
 # ---------------------------------------------------------------------------
-# create_provider_subagent wiring pins — todo tools, hooks, middleware toggle,
-# and the declaration labels on the missing-tools warning
+# create_provider_subagent wiring pins
 # ---------------------------------------------------------------------------
 
 
 async def _run_factory_recording_wiring(*, config: SubAgentToolConfig) -> dict[str, Any]:
     """Run the factory with every collaborator recorded.
 
-    Returns a dict with: create_agent kwargs (``agent_kwargs``), the middleware
-    factory kwargs (``middleware_kwargs``), the todo-tool/hook factory calls
-    (``todo_calls``), and the worker_pre_model_hooks stand-in (``worker``).
+    Returns a dict with: create_agent kwargs (agent_kwargs), the middleware
+    factory kwargs (middleware_kwargs), the todo-tool/hook factory calls
+    (todo_calls), and the worker_pre_model_hooks stand-in (worker).
     """
     full_tools = {"normal_tool": normal_tool, "vfs_read": vfs_read}
     dummy_registry = _DummyRegistry([normal_tool], full_tools)
@@ -973,9 +953,7 @@ async def _run_factory_recording_wiring(*, config: SubAgentToolConfig) -> dict[s
 
 @pytest.mark.asyncio
 async def test_a_non_authoring_subagent_keeps_spawn_enabled():
-    """The middleware toggle is the NEGATION of authoring_only: an ordinary
-    provider subagent must be able to spawn sub-subagents; inverting the flag
-    silently strips that ability from every integration agent."""
+    """The middleware toggle is the NEGATION of authoring_only; inverting the flag silently strips spawn ability."""
     captured = await _run_factory_recording_wiring(config=SubAgentToolConfig())
 
     assert captured["middleware_kwargs"]["subagent"].enabled is True
@@ -983,8 +961,7 @@ async def test_a_non_authoring_subagent_keeps_spawn_enabled():
 
 @pytest.mark.asyncio
 async def test_todo_factories_receive_the_provider_identity_exactly():
-    """source/source_label key the todo tools' progress events to the right
-    integration; a dropped kwarg falls back to a generic label."""
+    """source/source_label key the todo tools' progress events; a dropped kwarg falls back to a generic label."""
     captured = await _run_factory_recording_wiring(config=SubAgentToolConfig(source_label="Gmail"))
 
     assert captured["todo_calls"]["tools"] == {"source": "provider", "source_label": "Gmail"}
@@ -993,9 +970,7 @@ async def test_todo_factories_receive_the_provider_identity_exactly():
 
 @pytest.mark.asyncio
 async def test_the_todo_hook_reaches_hooks_config_through_worker_pre_model_hooks():
-    """The chain is exact end to end: the created hook feeds
-    worker_pre_model_hooks, whose result lands in hooks_config.pre_model_hooks.
-    A None in either position silently un-hooks the subagent's pre-model pass."""
+    """A None in either position silently un-hooks the subagent's pre-model pass."""
     captured = await _run_factory_recording_wiring(config=SubAgentToolConfig())
 
     worker = captured["worker"]
@@ -1008,9 +983,7 @@ async def test_the_todo_hook_reaches_hooks_config_through_worker_pre_model_hooks
 
 @pytest.mark.asyncio
 async def test_missing_declared_tools_warn_under_their_exact_declaration_kind():
-    """The warning's ``declaration`` label is how an operator tells an
-    auto_bind gap from an extra_initial gap; a mangled kind reads as the other
-    config surface's fault."""
+    """The declaration label is how an operator tells an auto_bind gap from an extra_initial gap."""
     with patch("app.agents.core.subagents.base_subagent.log") as log:
         await _run_factory_recording_wiring(
             config=SubAgentToolConfig(
@@ -1067,7 +1040,7 @@ def _render_text(
     options: _DiscoveryOptions | None = None,
     query: str | None = None,
 ) -> str:
-    """The raw string the model receives, formatting and all."""
+    """Return the raw string the model receives, formatting and all."""
     opts = options or _DiscoveryOptions()
     return _render_discovery_response(
         final_tools,
@@ -1100,17 +1073,12 @@ class TestSplitSubagentEntry:
         assert _split_subagent_entry("subagent:x (A (B))") == ("x", "A (B)")
 
     def test_an_unclosed_bracket_is_not_treated_as_a_name(self) -> None:
-        """Both halves of the guard are load-bearing: an opening bracket alone
-        would otherwise split a malformed id and hand back a truncated name."""
+        """An opening bracket alone would otherwise split a malformed id and hand back a truncated name."""
         assert _split_subagent_entry("subagent:foo (bar") == ("foo (bar", None)
 
 
 class TestDiscoveryResponseIsIndentedJson:
-    """Every other test here parses the payload, which throws the formatting away.
-
-    The model receives the STRING, so the indentation is part of what discovery
-    delivers, and nothing was asserting it.
-    """
+    """The model receives the raw STRING, so its indentation is part of what discovery delivers."""
 
     def test_the_model_receives_indented_json_not_one_compact_line(self) -> None:
         text = _render_text(
@@ -1128,12 +1096,10 @@ class TestDiscoveryResponseIsIndentedJson:
 
 
 class TestDiscoveryAvailabilityBuckets:
-    """Availability is the axis that decides what the model may do next: bind it,
-    hand off to it, or ask the user to connect it first."""
+    """Availability decides what the model may do next: bind it, hand off to it, or ask the user to connect it."""
 
     def test_a_builtin_subagent_is_never_reported_as_needing_a_connection(self) -> None:
-        """The bug this argument exists for — without internal_subagents every
-        built-in was listed as needing a connection it has none of."""
+        """Without internal_subagents, every built-in was listed as needing a connection it has none of."""
         payload = _render(
             ["subagent:gaia_knowledge_guide (Guide)"],
             options=_DiscoveryOptions(internal={"gaia_knowledge_guide"}),
@@ -1160,8 +1126,7 @@ class TestDiscoveryAvailabilityBuckets:
         assert payload["subagents_builtin"] == []
 
     def test_a_builtin_wins_over_a_connection_record(self) -> None:
-        """Built-in and connected are not mutually exclusive in the inputs; a
-        built-in must not also be advertised as an integration."""
+        """Built-in and connected are not mutually exclusive in the inputs; built-in must win."""
         payload = _render(
             ["subagent:gmail (Gmail)"],
             options=_DiscoveryOptions(connected={"gmail": "me@example.com"}, internal={"gmail"}),
@@ -1228,8 +1193,7 @@ class TestDiscoveryToolEntries:
         assert payload["tools_to_bind"][0]["needs_approval"] is True
 
     def test_a_safe_tool_carries_no_approval_flag(self) -> None:
-        """The key's presence is the signal, so an explicit False would read as
-        'approval considered and required' to a client checking for the key."""
+        """The key's presence is the signal; an explicit False would read as approval being required."""
         payload = _render(
             ["web_search_tool"], options=_DiscoveryOptions(categories={"web_search_tool": "search"})
         )
@@ -1238,9 +1202,7 @@ class TestDiscoveryToolEntries:
 
 
 class TestDiscoveryZeroMatchSignal:
-    """Built-in subagents are injected unconditionally, so a search that matched
-    nothing still returns entries. Reporting that as a find is what sent the
-    model re-querying the same dead index."""
+    """Built-in subagents are injected unconditionally, so a zero-match search still returns entries."""
 
     def test_a_zero_match_search_says_so_even_though_builtins_are_listed(self) -> None:
         payload = _render(
@@ -1272,9 +1234,7 @@ class TestDiscoveryZeroMatchSignal:
         assert empty != hits
 
     def test_the_zero_match_instruction_survives_verbatim(self) -> None:
-        """This block is the contract with the model, not commentary: each
-        clause closes one of the loops a dead search sent it into (re-query the
-        same words, guess a tool name, keep going instead of telling the user)."""
+        """A contract with the model: each clause closes a loop a dead search sent it into."""
         assert _render([], options=_DiscoveryOptions(total_candidates=0))["next"] == (
             "The search matched NOTHING; anything listed above is a built-in that is "
             "always offered, not a hit. Retry ONCE with a broader query naming the "
@@ -1285,8 +1245,7 @@ class TestDiscoveryZeroMatchSignal:
         )
 
     def test_the_found_instruction_survives_verbatim(self) -> None:
-        """Two of these clauses exist because the model got them wrong: binding
-        a subagent, and offering an unconnected integration as if it worked."""
+        """Two clauses exist because the model got them wrong: binding a subagent, and offering an unconnected integration."""
         assert _render(["x"], options=_DiscoveryOptions(total_candidates=1))["next"] == (
             "Bind with retrieve_tools(exact_tool_names=[...]) then call the tool. "
             'Subagents are NOT bindable: use handoff(subagent_id="<id>", task="..."). '
@@ -1350,8 +1309,7 @@ async def test_binding_announces_what_the_model_may_now_call():
 
 @pytest.mark.asyncio
 async def test_a_hyphenated_alias_binds_its_canonical_tool():
-    """Models routinely emit a hyphenated spelling. Dropping it would report the
-    tool as missing while it sits in the registry under an underscore."""
+    """Models routinely emit a hyphenated spelling; dropping this would report the tool as missing."""
     result = await _bind(["normal-tool"], ["normal_tool"])
 
     assert result["tools_to_bind"] == ["normal_tool"]
@@ -1359,8 +1317,7 @@ async def test_a_hyphenated_alias_binds_its_canonical_tool():
 
 @pytest.mark.asyncio
 async def test_a_resolved_alias_is_named_back_so_the_model_stops_using_it():
-    """Binding silently would leave the model calling the alias every turn and
-    relying on the same rescue each time."""
+    """Binding silently would leave the model calling the alias every turn, relying on the same rescue."""
     result = await _bind(["normal-tool"], ["normal_tool"])
 
     assert (
@@ -1378,8 +1335,7 @@ async def test_a_name_that_needed_no_resolving_is_not_reported_as_renamed():
 
 @pytest.mark.asyncio
 async def test_an_unknown_name_is_named_back_with_a_do_not_retry():
-    """An empty answer reads the same as 'the search found nothing', so the
-    model retypes the name until it runs out of steps."""
+    """An empty answer reads the same as "found nothing", so the model retypes the name until it runs out of steps."""
     result = await _bind(["no_such_tool_xyz"], ["normal_tool"])
 
     assert result["tools_to_bind"] == []
@@ -1417,8 +1373,7 @@ async def test_several_resolved_aliases_are_listed_separately():
 
 @pytest.mark.asyncio
 async def test_a_query_that_matches_nothing_says_so_and_echoes_the_query():
-    """The zero-hit path is the one that degrades silently: built-ins are always
-    injected, so without this signal an empty index looks like a result set."""
+    """Built-ins are always injected, so without this signal an empty index looks like a result set."""
     retrieve_tools = get_retrieve_tools_function(tool_space="general", include_subagents=False)
     with (
         patch(
@@ -1480,9 +1435,7 @@ async def _query(store, *, tool_space: str = "general"):
 
 @pytest.mark.asyncio
 async def test_a_dead_index_warns_operators_even_in_the_general_namespace():
-    """This dropped its `and tool_space != "general"` guard. General is the
-    namespace every executor searches, so an index that wrote no docs there was
-    the outage the warning exists for — and the one case it stayed silent for."""
+    """Regression: the warning used to skip tool_space == "general", the one namespace every executor searches."""
     _result, log = await _query(_FakeStore({}))
 
     dead_index = _zero_hit_warnings(log)

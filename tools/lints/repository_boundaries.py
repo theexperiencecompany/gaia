@@ -170,7 +170,7 @@ def _bson_imports(tree: ast.Module) -> list[tuple[int, str]]:
 
 
 def _cache_imports(tree: ast.Module) -> list[tuple[int, str]]:
-    """Imports of the banned entity-cache helpers from ``app.db.redis``."""
+    """Return imports of the banned entity-cache helpers from ``app.db.redis``."""
     hits: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == _CACHE_MODULE:

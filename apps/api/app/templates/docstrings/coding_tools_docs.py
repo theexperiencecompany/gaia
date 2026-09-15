@@ -1,7 +1,7 @@
 """Docstrings for the persistent coding tools (bash / read / write / edit).
 
 All four tools operate inside the user's persistent E2B sandbox. The
-sandbox's `/workspace` is backed by Cloudflare R2 via JuiceFS, so files,
+sandbox's /workspace is backed by Cloudflare R2 via JuiceFS, so files,
 installed packages, and any state created by the agent survive across
 conversations.
 """

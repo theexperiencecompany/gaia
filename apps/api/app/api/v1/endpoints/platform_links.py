@@ -187,11 +187,9 @@ async def link_platform(
     completion = await complete_platform_link(
         user_id, platform, platform_user_id, profile=profile or None
     )
-    # Spent only now, after the link is written — the mirror of
-    # ``discard_platform_link_code``. Consuming it on the way in made the 409
-    # ("disconnect the other account, then link this one") unactionable: the
-    # retry it asks for arrives with the same token and is answered "Invalid or
-    # expired link token".
+    # Spent only now, after the link is written. Consuming it on the way in
+    # made the 409 ("disconnect the other account, then link this one")
+    # unactionable: the retry it asks for is answered "Invalid or expired link token".
     await redis_client.delete(token_key)
     log.set(outcome="success")
     # is_new_link is an internal signal for the greeting, not part of the

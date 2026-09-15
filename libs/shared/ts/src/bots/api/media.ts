@@ -30,11 +30,9 @@ export async function uploadFileRequest(
   },
 ): Promise<BotFileData> {
   const form = new FormData();
-  // A File (carrying name + type) preserves the mime type for FastAPI's
-  // UploadFile content_type, which file_service.py uses to dispatch
-  // image/PDF/text summarisation. A File with a 2-arg append (vs a Blob with a
-  // 3-arg append) keeps the typings consistent under lib:ESNext, where the
-  // 3-arg FormData.append overload isn't resolved.
+  // A File (not a Blob) preserves the mime type for FastAPI's UploadFile.content_type, which
+  // file_service.py uses to dispatch image/PDF/text summarisation; File's 2-arg append also
+  // keeps typings consistent under lib:ESNext, where the 3-arg FormData.append overload doesn't resolve.
   const file = new File([new Uint8Array(input.data)], input.filename, {
     type: input.mimeType,
   });
@@ -46,10 +44,9 @@ export async function uploadFileRequest(
   const { data } = await client.post("/api/v1/upload", form, {
     headers: {
       ...headers,
-      // The axios instance defaults Content-Type to application/json, which
-      // makes axios JSON-encode FormData instead of sending multipart (the
-      // backend then sees no `file` field and returns 422). Force multipart
-      // here — axios fills in the boundary from the FormData.
+      // The axios instance defaults Content-Type to application/json, which makes it JSON-encode
+      // FormData instead of multipart (backend then sees no `file` field, returns 422). Force
+      // multipart here — axios fills in the boundary from the FormData.
       "Content-Type": "multipart/form-data",
     },
     // Allow uploads up to the backend's 10 MB cap plus multipart overhead.

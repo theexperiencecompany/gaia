@@ -1,10 +1,10 @@
 """Structured-output schemas for the memory extraction and reconcile LLM calls.
 
-These models are internal to the write path (``app.memory.extraction``).
+These models are internal to the write path (app.memory.extraction).
 Their Field descriptions are part of the prompt — the LLM reads them when
 filling the schema, so they are written to steer extraction quality, not
 just to document the code. The public API contract lives in
-``app.models.memory_models``.
+app.models.memory_models.
 """
 
 from datetime import datetime

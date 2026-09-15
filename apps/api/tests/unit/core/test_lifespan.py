@@ -47,8 +47,7 @@ async def test_missing_posthog_config_logs_loudly_but_boots(
     host: str | None,
     expected_missing: str,
 ) -> None:
-    """Any missing piece of the PostHog config is a loud startup log line,
-    never a boot failure — no matter the ENV."""
+    """Any missing piece of the PostHog config is a loud startup log line, never a boot failure — no matter the ENV."""
     _set_posthog(mocker, token, host)
     _boot_patches(mocker)
     log_error = mocker.patch("app.core.lifespan.log.error")
@@ -67,12 +66,7 @@ async def test_missing_posthog_config_logs_loudly_but_boots(
 async def test_full_posthog_config_initialises_client_and_shuts_it_down(
     mocker: MockerFixture,
 ) -> None:
-    """With both keys present the client is fetched by provider name and closed
-    when the lifespan ends.
-
-    ``shutdown()``, not ``flush()``: flush only drains the queue, leaving the
-    consumer threads, the flag poller, and exception capture alive.
-    """
+    """With both keys present the client is fetched by provider name and closed via shutdown(), not flush(), which would leave consumer threads alive."""
     _set_posthog(mocker, "phc_test", "https://ph.example.com")
     _boot_patches(mocker)
     log_error = mocker.patch("app.core.lifespan.log.error")
@@ -92,8 +86,7 @@ async def test_full_posthog_config_initialises_client_and_shuts_it_down(
 async def test_client_is_shut_down_even_when_the_app_body_raises(
     mocker: MockerFixture,
 ) -> None:
-    """A crash inside the running app must still close the client — otherwise a
-    failing pod drops every event still sitting in the queue."""
+    """A crash inside the running app must still close the client — otherwise a failing pod drops every event still sitting in the queue."""
     _set_posthog(mocker, "phc_test", "https://ph.example.com")
     _boot_patches(mocker)
     mocker.patch("app.core.lifespan.log.error")
@@ -111,8 +104,7 @@ async def test_client_is_shut_down_even_when_the_app_body_raises(
 async def test_full_config_with_unregistered_provider_skips_shutdown(
     mocker: MockerFixture,
 ) -> None:
-    """A missing provider registration (client None) must not attempt to shut
-    down None."""
+    """A missing provider registration (client None) must not attempt to shut down None."""
     _set_posthog(mocker, "phc_test", "https://ph.example.com")
     _boot_patches(mocker)
     providers_get = mocker.patch("app.core.lifespan.providers.get", return_value=None)
@@ -125,8 +117,7 @@ async def test_full_config_with_unregistered_provider_skips_shutdown(
 
 @pytest.mark.asyncio
 async def test_partial_config_never_initialises_client(mocker: MockerFixture) -> None:
-    """One missing key means no client — the init guard is an AND, not an OR
-    (a single key must not half-arm analytics)."""
+    """One missing key means no client — the init guard is an AND, not an OR (a single key must not half-arm analytics)."""
     _set_posthog(mocker, "phc_test", None)
     _boot_patches(mocker)
     providers_get = mocker.patch("app.core.lifespan.providers.get")

@@ -15,29 +15,9 @@
 import type { RichMessage } from "../types";
 
 /**
- * Renders a {@link RichMessage} as a CommonMark string.
- *
- * Layout:
- * ```
- * authorName
- *
- * **Title**
- *
- * Description
- *
- * **Field 1**
- * value 1
- *
- * **Field 2**
- * value 2
- *
- * [Link 1](url) | [Link 2](url)
- *
- * _footer text_
- * ```
- *
- * @param msg - The rich message to render.
- * @returns A CommonMark string, ready to be passed through `renderForPlatform`.
+ * Renders a {@link RichMessage} as CommonMark — authorName, **Title**, description, per-field
+ * name/value pairs, links joined by " | ", then _footer_ — ready to pass through
+ * `renderForPlatform`.
  */
 export function richMessageToMarkdown(msg: RichMessage): string {
   const parts: string[] = [];

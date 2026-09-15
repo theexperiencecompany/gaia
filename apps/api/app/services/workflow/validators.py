@@ -8,7 +8,7 @@ class WorkflowValidator:
 
     @staticmethod
     def validate_for_execution(workflow: Workflow) -> None:
-        """Basic validation for workflow execution."""
+        """Validate a workflow is executable."""
         errors = []
 
         if not workflow.activated:

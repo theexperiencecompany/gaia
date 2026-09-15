@@ -1,10 +1,10 @@
 """Base repository verification against real Mongo + Redis.
 
-A test-only ``_FixtureRepository`` (its own tiny document/update models and a
+A test-only _FixtureRepository (its own tiny document/update models and a
 throwaway collection) drives the whole base:
-- ``TestFixtureRepository`` runs the full ``UserScopedRepositoryContract``.
-- ``TestBasePrimitives`` covers the subclass-only primitives.
-- ``TestGlobalRepository`` proves the non-user-scoped ``MongoRepository`` surface.
+- TestFixtureRepository runs the full UserScopedRepositoryContract.
+- TestBasePrimitives covers the subclass-only primitives.
+- TestGlobalRepository proves the non-user-scoped MongoRepository surface.
 """
 
 from __future__ import annotations
@@ -257,7 +257,7 @@ class _KeyedUpdate(BaseModel):
 
 
 class _KeyedRepository(MongoRepository[_KeyedDocument, _KeyedUpdate]):
-    """Identity is a business field (``ref``), not ``_id`` — the Wave-D shape."""
+    """Identity is a business field (ref), not _id — the Wave-D shape."""
 
     collection_name = "contract_fixture"
     document_model = _KeyedDocument

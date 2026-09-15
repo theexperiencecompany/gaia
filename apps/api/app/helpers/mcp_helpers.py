@@ -24,16 +24,8 @@ def get_frontend_url() -> str:
 def get_tool_namespace_from_url(server_url: str, fallback: str = "") -> str:
     """Extract a consistent tool namespace from a server URL.
 
-    Uses netloc + path to differentiate endpoints like:
-    - domain.com/v1 -> "domain.com/v1"
-    - domain.com/v2 -> "domain.com/v2"
-
-    Args:
-        server_url: The MCP server URL
-        fallback: Value to return if URL can't be parsed
-
-    Returns:
-        Namespace string (e.g., "api.example.com/v1")
+    Uses netloc + path so distinct endpoints (e.g. domain.com/v1 vs.
+    domain.com/v2) don't collide into one namespace.
     """
     # Deferred import: stdlib import kept local to this single-use URL helper
     from urllib.parse import urlparse  # noqa: PLC0415 -- stdlib import kept local to

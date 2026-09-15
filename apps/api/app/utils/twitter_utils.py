@@ -1,7 +1,7 @@
 """Twitter API utility functions for custom tools.
 
 These helpers wrap Twitter API v2 calls behind Composio's proxy. The proxy
-attaches the user's OAuth token server-side; callers only supply `user_id`.
+attaches the user's OAuth token server-side; callers only supply user_id.
 """
 
 from typing import Any
@@ -80,7 +80,6 @@ def lookup_user_by_username(user_id: str, username: str) -> dict[str, Any] | Non
 
 
 def follow_user(user_id: str, my_user_id: str, target_user_id: str) -> dict[str, Any]:
-    """Follow a user by ID."""
     try:
         data = _proxy(
             user_id,
@@ -99,7 +98,6 @@ def follow_user(user_id: str, my_user_id: str, target_user_id: str) -> dict[str,
 
 
 def unfollow_user(user_id: str, my_user_id: str, target_user_id: str) -> dict[str, Any]:
-    """Unfollow a user by ID."""
     try:
         data = _proxy(
             user_id,
@@ -123,7 +121,6 @@ def create_tweet(
     media_ids: list[str] | None = None,
     quote_tweet_id: str | None = None,
 ) -> dict[str, Any]:
-    """Create a tweet."""
     try:
         body: dict[str, Any] = {"text": text}
         if reply_to_tweet_id:

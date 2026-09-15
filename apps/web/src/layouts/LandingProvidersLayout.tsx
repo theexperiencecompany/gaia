@@ -7,24 +7,11 @@ import GlobalAuth from "@/hooks/providers/GlobalAuth";
 import GlobalInterceptor from "@/hooks/providers/GlobalInterceptor";
 
 /**
- * Lightweight provider tree for landing/marketing pages.
- *
- * HeroUIProvider, QueryProvider and LoginModal are mounted once at the
- * locale root (see RootProviders) and are available on every route, so this
- * tree only sets up the bits unique to landing pages.
- *
- * Includes:
- * - GlobalAuth: fetches the current user so isAuthenticated works
- * - GlobalInterceptor: route-agnostic post-redirect listeners (OAuth toast)
- * - Toaster: toast notifications on interactive landing pages
- *
- * Intentionally excludes (app-only concerns):
- * - useAxiosInterceptor (no background-fetch error toasts for anonymous
- *   visitors — see ProvidersLayout)
- * - useNotifications / useNotificationWebSocket / useWebSocketConnection
- * - GlobalIntegrationModal
- * - ElectronRouteGuard
- * - KeyboardShortcutsProvider
+ * Lightweight provider tree for landing/marketing pages — HeroUIProvider,
+ * QueryProvider and LoginModal are already mounted once at the locale root
+ * (RootProviders), so this only adds GlobalAuth, GlobalInterceptor, and
+ * Toaster. Intentionally excludes app-only concerns: interceptor toasts,
+ * notifications/websocket, GlobalIntegrationModal, ElectronRouteGuard, KeyboardShortcutsProvider.
  */
 export default function LandingProvidersLayout({
   children,

@@ -95,7 +95,7 @@ def _create_payload(
 
 
 class TestCreateReminder:
-    """POST /api/v1/reminders"""
+    """POST /api/v1/reminders."""
 
     async def test_create_reminder_success(self, client: AsyncClient) -> None:
         mock_reminder = _reminder_model("rem_new")
@@ -209,7 +209,7 @@ class TestReminderAnalytics:
 
 
 class TestGetReminder:
-    """GET /api/v1/reminders/{reminder_id}"""
+    """GET /api/v1/reminders/{reminder_id}."""
 
     async def test_get_reminder_success(self, client: AsyncClient) -> None:
         mock_reminder = _reminder_model("rem_1")
@@ -254,7 +254,7 @@ class TestGetReminder:
 
 
 class TestUpdateReminder:
-    """PUT /api/v1/reminders/{reminder_id}"""
+    """PUT /api/v1/reminders/{reminder_id}."""
 
     async def test_update_reminder_success(self, client: AsyncClient) -> None:
         mock_reminder = _reminder_model("rem_1")
@@ -314,7 +314,7 @@ class TestUpdateReminder:
 
 
 class TestCancelReminder:
-    """DELETE /api/v1/reminders/{reminder_id}"""
+    """DELETE /api/v1/reminders/{reminder_id}."""
 
     async def test_cancel_reminder_success(self, client: AsyncClient) -> None:
         with patch(
@@ -356,7 +356,7 @@ class TestCancelReminder:
 
 
 class TestListReminders:
-    """GET /api/v1/reminders"""
+    """GET /api/v1/reminders."""
 
     async def test_list_reminders_success(self, client: AsyncClient) -> None:
         reminders = [_reminder_model("r1"), _reminder_model("r2")]
@@ -413,7 +413,7 @@ class TestListReminders:
 
 
 class TestPauseReminder:
-    """POST /api/v1/reminders/{reminder_id}/pause"""
+    """POST /api/v1/reminders/{reminder_id}/pause."""
 
     async def test_pause_success(self, client: AsyncClient) -> None:
         mock_reminder = _reminder_model("rem_1", status="paused")
@@ -462,7 +462,7 @@ class TestPauseReminder:
 
 
 class TestResumeReminder:
-    """POST /api/v1/reminders/{reminder_id}/resume"""
+    """POST /api/v1/reminders/{reminder_id}/resume."""
 
     async def test_resume_success(self, client: AsyncClient) -> None:
         paused_reminder = _reminder_model("rem_1", status="paused")
@@ -518,7 +518,7 @@ class TestResumeReminder:
 
 
 class TestCronValidate:
-    """GET /api/v1/reminders/cron/validate"""
+    """GET /api/v1/reminders/cron/validate."""
 
     async def test_valid_cron_expression(self, client: AsyncClient) -> None:
         with patch(

@@ -1,26 +1,18 @@
 #!/usr/bin/env python3
 """Give back the playbook chances that blocked runs spent.
 
-``decline_playbook`` used to count every decline against the workflow, including
-the ones where the run never reached the work. In production roughly 80% of
-declines said the same thing: the workflow needs an integration the user has
-never connected. A workflow firing twice a day burns all three of its chances in
-under two days that way, and ``PLAYBOOK_DECLINE_LIMIT`` then stops the check
-being asked at all. Only an edit to the workflow resets the tally, so those
-workflows can never earn a playbook again, not even after the user connects the
-integration.
+decline_playbook used to count every decline, including runs that never
+reached the work — in production ~80% of declines were "needs an integration
+the user hasn't connected." A workflow firing twice a day burned all three
+chances in under two days, and PLAYBOOK_DECLINE_LIMIT then locked it out for
+good: only an edit to the workflow resets the tally, so it could never earn a
+playbook again even after the user connected the integration.
 
-The blocked kinds no longer count, but the tallies they already ran up are still
-on the workflows. This clears them, so the next run is asked again.
+Blocked declines no longer count going forward, but existing tallies still
+carry them; this clears those tallies so the next run is asked again.
 
-Dry run by default. Nothing is written without ``--apply``.
-
-Usage::
-
-    cd apps/api
-    uv run python -m app.scripts.reset_playbook_declines            # report only
-    uv run python -m app.scripts.reset_playbook_declines --apply
-    uv run python -m app.scripts.reset_playbook_declines --apply --at-limit-only
+Dry run by default; nothing writes without --apply. Usage: uv run python -m
+app.scripts.reset_playbook_declines [--apply] [--at-limit-only].
 """
 
 from __future__ import annotations

@@ -242,8 +242,7 @@ class TestAppendCallRecord:
 @pytest.mark.unit
 class TestRenderingOneRecordedValue:
     def test_a_value_json_cannot_encode_is_recorded_as_its_text_form(self) -> None:
-        """The record is built from whatever a tool was called with — a datetime, an
-        enum, a model. Raising here loses the whole record for one odd argument."""
+        """A tool arg can be any type (datetime, enum, model); raising here would lose the whole record."""
         assert _compact_json({"when": datetime(2026, 8, 27, 9, 0, tzinfo=UTC)}) == (
             '{"when":"2026-08-27 09:00:00+00:00"}'
         )
@@ -272,8 +271,7 @@ class TestCallsAreSkippedNotStoppedAt:
         assert successful_call_lines(messages) == ['GMAIL_SEND_EMAIL({"to":"a@b.c"})']
 
     def test_a_skipped_call_does_not_end_the_message_it_sits_in(self) -> None:
-        """finish_task is usually emitted alongside the real work in one message.
-        Stopping at it instead of stepping over it records an empty run."""
+        """finish_task often shares a message with real work; stopping at it instead of stepping over it records an empty run."""
         messages: list[AnyMessage] = [
             _ai(
                 _call(FINISH_TASK_NAME, {"result": "done"}, "tc1"),
@@ -312,10 +310,7 @@ class TestTheRecordBlockIsExact:
 
 @pytest.mark.unit
 async def test_an_empty_result_is_still_marked_empty_when_a_middleware_appended_a_note() -> None:
-    """The loop guard appends its repeat warning to the tool message in band.
-    Read as a whole the content is no longer JSON, the recorder could not say
-    whether the call returned anything, and an empty fetch was frozen into a
-    playbook. The result is the JSON document the content starts with."""
+    """The loop guard appends its warning in-band; the result is the JSON document the content starts with."""
     messages = [
         AIMessage(content="", tool_calls=[{"name": "list_todos", "args": {}, "id": "c1"}]),
         ToolMessage(

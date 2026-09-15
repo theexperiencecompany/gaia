@@ -1,6 +1,6 @@
 """Self-hosted SearXNG metasearch — the unlimited, free floor of the waterfall.
 
-Requires ``SEARXNG_BASE_URL`` and an instance with the JSON format enabled.
+Requires SEARXNG_BASE_URL and an instance with the JSON format enabled.
 Because it runs on our own infrastructure it has no per-query cost and is never
 budget-capped, so search can never incur a bill while it is reachable.
 """
@@ -21,7 +21,7 @@ class SearxngProvider(SearchProvider):
     monthly_free_limit = None
 
     def is_configured(self) -> bool:
-        """True when a SearXNG base URL is configured."""
+        """Return True when a SearXNG base URL is configured."""
         return bool(settings.SEARXNG_BASE_URL)
 
     async def search(self, query: str, count: int) -> SearchResponse:

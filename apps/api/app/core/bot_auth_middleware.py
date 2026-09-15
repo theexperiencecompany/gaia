@@ -1,5 +1,5 @@
 """
-Bot Authentication Middleware
+Bot Authentication Middleware.
 
 Handles authentication for bot platforms (Discord, Slack, Telegram).
 Supports two authentication methods:
@@ -91,13 +91,9 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
                     error_type=type(e).__name__,
                 )
 
-        # 2. The API key is verified INDEPENDENTLY of the JWT outcome. The two
-        # answer different questions: the key authorises the bot ROUTE
-        # (require_bot_api_key), the JWT identifies the USER. Verifying the key
-        # only when the JWT had failed left every successful fast-path request
-        # with bot_api_key_valid unset, so /bot/* answered 401, the bot threw
-        # its cached session token away and retried with the key — a wasted
-        # round trip on nearly every turn.
+        # Verified independently of the JWT outcome: the key authorises the bot
+        # route, the JWT identifies the user. Gating it on JWT failure left
+        # successful fast-path requests with bot_api_key_valid unset, causing 401s.
         api_key = request.headers.get("X-Bot-API-Key")
         platform = request.headers.get("X-Bot-Platform")
         platform_user_id = request.headers.get("X-Bot-Platform-User-Id")
@@ -121,10 +117,9 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
     def _verify_api_key(self, api_key: str) -> bool:
         bot_api_key = getattr(settings, "GAIA_BOT_API_KEY", None)
         if not bot_api_key:
-            # The API has no bot key configured at all — every bot request is
-            # silently rejected today. That is exactly the "Authentication
-            # required" dead-end the harness hits when the API was booted
-            # before GAIA_BOT_API_KEY was set. Fail loud instead.
+            # No bot key configured — every bot request is silently rejected,
+            # the same "Authentication required" dead-end hit when the API boots
+            # without GAIA_BOT_API_KEY set. Fail loud instead.
             log.warning(
                 f"{LogTag.API} Bot API key rejected: GAIA_BOT_API_KEY is not configured",
                 bot_auth_reason="server_key_unset",

@@ -1,8 +1,8 @@
-"""Shared helper for asserting ``$regex`` escaping in MongoDB aggregation pipelines."""
+"""Shared helper for asserting $regex escaping in MongoDB aggregation pipelines."""
 
 
 def collect_regex_values(node: object) -> list[str]:
-    """Recursively pull every ``$regex`` value out of an aggregation pipeline."""
+    """Recursively pull every $regex value out of an aggregation pipeline."""
     found: list[str] = []
     if isinstance(node, dict):
         for key, value in node.items():

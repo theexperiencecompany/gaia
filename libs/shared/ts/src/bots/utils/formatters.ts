@@ -123,14 +123,10 @@ function applyOutsideCodeBlocks(
 }
 
 /**
- * Escapes the three characters that are special in Telegram HTML body text:
- * `&`, `<`, `>`. Everything else (`_`, `*`, `(`, `)`, `.`, `-`, …) is literal
- * in HTML mode — which is exactly why HTML is immune to the legacy-Markdown
- * breakage where an underscore in a URL or a snake_case token gets parsed as
- * an emphasis marker.
- *
- * Slack's mrkdwn control-character escaping happens to require the same three
- * entities, so {@link convertToSlackMrkdwn} reuses this helper.
+ * Escapes the three characters special in Telegram HTML body text: `&`, `<`, `>`. Everything
+ * else is literal in HTML mode, which is why it's immune to legacy-Markdown's underscore/URL
+ * breakage. Slack's mrkdwn control-character escaping needs the same three entities, so
+ * {@link convertToSlackMrkdwn} reuses this helper.
  */
 export function escapeHtml(text: string): string {
   return text
@@ -262,21 +258,13 @@ function wrapTelegramBlockquotes(text: string): string {
 }
 
 /**
- * Converts the CommonMark the agent emits for Telegram into Telegram's **HTML**
- * parse mode (https://core.telegram.org/bots/api#html-style).
+ * Converts the CommonMark the agent emits for Telegram into Telegram's **HTML** parse mode
+ * (https://core.telegram.org/bots/api#html-style), chosen because its only special characters
+ * are `&`, `<`, `>` — legacy Markdown italicized `..._x_...` inside auth-token URLs and
+ * silently dropped the underscores (see the formatter tests).
  *
- * HTML is used instead of legacy `Markdown`/`MarkdownV2` because it is the only
- * mode where URLs and prose never collide with formatting markers: the sole
- * special characters are `&`, `<`, `>`, so underscores in tokens/URLs,
- * snake_case identifiers and stray `*` can never trigger a parse error or eat
- * characters. (Legacy Markdown italicized `..._x_...` inside auth-token URLs and
- * silently dropped the underscores — see the formatter tests.)
- *
- * Strategy: pull code spans, code blocks and links out into placeholders so
- * their contents are never treated as markup, HTML-escape the remaining
- * narrative, translate the markdown that survives into Telegram tags, then
- * splice the placeholders back in. Telegram HTML has no heading or list tags,
- * so headings become bold and bullets become `•`.
+ * Strategy: stash code spans/blocks/links as placeholders, HTML-escape the rest, translate
+ * surviving markdown to Telegram tags (no heading/list tags, so headings→bold, bullets→•), then splice placeholders back.
  */
 export function convertToTelegramHtml(text: string): string {
   const stash: string[] = [];
@@ -328,11 +316,9 @@ export function convertToTelegramHtml(text: string): string {
     .replaceAll(/(?<!\w)_([^_\n]+?)_(?!\w)/g, "<i>$1</i>") // _x_ (skips snake_case)
     .replaceAll(/~~([^~\n]+?)~~/g, "<s>$1</s>"); // ~~x~~
 
-  // Resolve placeholders, looping so a stashed table that contains a stashed
-  // link (a nested placeholder) is fully spliced back in. Loop only while a
-  // real placeholder token remains AND each pass makes progress, so a stray
-  // U+E000 in the source text (not a valid \uE000<index>\uE000 token) can never
-  // spin the loop forever and wedge the bot's event loop.
+  // Loop resolving placeholders so a stashed table containing a stashed link (nested) is fully
+  // spliced back in; loop only while a real placeholder remains AND each pass makes progress,
+  // so a stray U+E000 in source text (not a valid token) can never spin forever and wedge the event loop.
   let result = out;
   let previous = "";
   while (result !== previous && /\uE000\d+\uE000/.test(result)) {
@@ -346,15 +332,11 @@ export function convertToTelegramHtml(text: string): string {
 }
 
 /**
- * Converts standard CommonMark Markdown to Slack mrkdwn via the maintained
- * `slackify-markdown` library (Unified/Remark based).
- *
- * Replaces the previous hand-rolled regex converter: the library correctly
- * handles `**bold**` -> `*bold*`, `~~strike~~` -> `~strike~`,
- * `[label](url)` -> `<url|label>`, headings, lists, blockquotes, fenced code,
- * tables, and escaping of Slack control characters -- including the edge cases
- * (escaped backticks, nested emphasis, pipes in prose) the regex version got
- * wrong. An empty string is passed through untouched so incremental streaming
+ * Converts standard CommonMark Markdown to Slack mrkdwn via the maintained `slackify-markdown`
+ * library (Unified/Remark based), replacing the previous hand-rolled regex converter — it
+ * correctly handles bold/strike/links/headings/lists/blockquotes/code/tables and Slack
+ * control-character escaping, including edge cases (escaped backticks, nested emphasis, pipes
+ * in prose) the regex version got wrong. An empty string passes through untouched so streaming
  * chunks never throw.
  */
 export function convertToSlackMrkdwn(text: string): string {
@@ -377,17 +359,13 @@ export function convertToWhatsAppMarkdown(text: string): string {
     text,
     (segment) =>
       segment
-        // Headings FIRST so the content gets wrapped in ``*`` before the
-        // bold rule sees it. Otherwise the model's ``### **Heading**`` would
-        // become ``### *Heading*`` (after bold) and then ``**Heading**`` once
-        // the heading rule wraps the already-emphasised content in ``*`` —
-        // re-introducing the double asterisks we tried to remove.
+        // Headings FIRST so content is wrapped in `*` before the bold rule sees it — otherwise
+        // `### **Heading**` becomes `### *Heading*` after bold, then `**Heading**` once heading
+        // wraps the already-emphasised content, re-introducing the double asterisks we removed.
         .replaceAll(/^#{1,6}[ \t]+(\S[^\n]*)$/gm, "*$1*") // # Heading → *Heading*
-        // Horizontal-rule remover MUST run before the bold rule. Otherwise
-        // ``***`` on its own line followed by ``**Heading**`` lets the bold
-        // regex's ``[^*]`` greedy-match the inter-line newlines and pair
-        // chars across the ``***`` boundary into ``**X**``, splitting the
-        // ``**Heading**`` and leaving stray ``**`` glyphs in the output.
+        // Horizontal-rule remover MUST run before the bold rule — otherwise `***` on its own
+        // line followed by `**Heading**` lets the bold regex's `[^*]` greedy-match across the
+        // `***` boundary into `**X**`, splitting the heading and leaving stray `**` glyphs.
         .replaceAll(/^[-_*]{3,}$/gm, "") // --- / ___ / *** → remove
         // Bold rules: keep ``[^*\n]`` (no newlines) so a single ``**`` opener
         // cannot reach across blank lines and accidentally pair with the
@@ -468,23 +446,13 @@ export function renderForPlatform(
 }
 
 /**
- * The single canonical "link your account" prompt.
+ * The single canonical "link your account" prompt, used by both `/auth` and every adapter's
+ * streaming `onAuthError` path on all four platforms, replacing each adapter's previously
+ * divergent copy.
  *
- * Used BOTH by the `/auth` command and by every adapter's streaming
- * `onAuthError` path, on all four platforms — so an unlinked user sees the
- * exact same message whether they type `/auth` or just send "hi". Previously
- * each adapter hardcoded its own divergent copy, which is the inconsistency
- * this removes.
- *
- * The URL is shown **bare** (not a masked link) on purpose: a bare URL stays
- * visible and copy-pasteable, and every platform auto-links it once it points
- * at a real public domain (the production `GAIA_FRONTEND_URL`). A masked
- * `[label](url)` would hide the URL, and Telegram refuses to linkify or accept
- * `<a href>` entities for non-public hosts like `localhost`, so in dev it would
- * render as dead plain text with no URL at all.
- *
- * Callers still send it through `renderForPlatform` (and `parse_mode: HTML` on
- * Telegram) so the `**bold**` heading renders consistently.
+ * Shown as a **bare** URL on purpose — copy-pasteable and auto-linked on a real public domain,
+ * whereas Telegram won't linkify `<a href>` for non-public hosts like `localhost`, so a masked
+ * link would render as dead text in dev. Send it through `renderForPlatform` for the heading bold.
  */
 export function buildAuthLinkMessage(authUrl: string): string {
   return (
@@ -576,11 +544,9 @@ export function formatBotError(error: unknown): string {
   }
 
   if (status === 429) {
-    // Three different walls return 429 — flat anti-spam, the plan's message
-    // quota, and the daily AI-usage budget — and only the body says which.
-    // Collapsing them all to "you're sending messages too fast" told a user who
-    // is out of allowance to slow down, which is not what happened and not
-    // something waiting fixes.
+    // Three different walls return 429 (flat anti-spam, plan message quota, daily AI-usage
+    // budget) and only the body says which. Collapsing them all to "you're sending too fast"
+    // told an out-of-allowance user to slow down, which waiting never fixes.
     const fromServer = serverMessage(error);
     return fromServer
       ? `⏳ ${fromServer}`

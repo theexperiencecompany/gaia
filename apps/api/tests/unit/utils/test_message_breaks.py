@@ -62,8 +62,7 @@ class TestStripPartialMessageBreak:
         assert strip_partial_message_break("a<NEW_MESSAGE_BREAK>") == "a<NEW_MESSAGE_BREAK>"
 
     def test_keeps_a_lone_trailing_bracket(self) -> None:
-        """A bare ``<`` carries no sentinel evidence — eating it would corrupt
-        ordinary text (a code snippet ending in ``<``)."""
+        """A bare < carries no sentinel evidence; eating it would corrupt ordinary text like code ending in <."""
         assert strip_partial_message_break("if a <") == "if a <"
 
     def test_keeps_unrelated_trailing_tag(self) -> None:
@@ -91,10 +90,7 @@ class TestSplitMessageBubbles:
 
 
 class TestPrefixBuilders:
-    """``_word_prefixes`` and ``_partial_sequence`` run only at import time, to
-    build the module-level compiled constants — no test exercises them through
-    any public function, so a mutation of either can only be observed by
-    calling them directly and asserting on what they return."""
+    """_word_prefixes/_partial_sequence build module-level constants at import time, so only direct calls catch a mutation."""
 
     def test_word_prefixes_matches_every_non_empty_prefix(self) -> None:
         pattern = re.compile(_word_prefixes("NEW"))
@@ -136,10 +132,7 @@ class TestPrefixBuilders:
     def test_partial_sequence_emits_only_single_character_literals(
         self, words: tuple[str, ...]
     ) -> None:
-        """The builder assembles one character at a time (see its docstring); a
-        run of two or more literal letters means a placeholder or a stray
-        ``None``/``str(None)`` leaked into the generated pattern instead of a
-        real per-character prefix."""
+        """Two or more consecutive literal letters would mean a stray None/str(None) leaked into the pattern."""
         pattern_source = _partial_sequence(words)
         assert re.findall(r"(?<!\\)[A-Za-z]{2,}", pattern_source) == []
 
@@ -147,8 +140,7 @@ class TestPrefixBuilders:
         assert re.findall(r"(?<!\\)[A-Za-z]{2,}", _word_prefixes("MESSAGE")) == []
 
     def test_partial_message_break_re_rebuilds_to_the_same_meaning(self) -> None:
-        """Rebuild the alternation from the live helpers and re-run the strip
-        table through it, pinning the end-to-end meaning at test time too."""
+        """Rebuilds the alternation from the live helpers to pin the end-to-end meaning at test time too."""
         rebuilt = re.compile(
             _OPEN
             + "(?:"

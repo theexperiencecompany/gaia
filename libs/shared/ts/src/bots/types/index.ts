@@ -91,7 +91,6 @@ export interface BotConfig {
 export interface AuthStatus {
   /** Whether the user is authenticated/linked. */
   authenticated: boolean;
-  /** The platform name. */
   platform: string;
   /**
    * The user ID on the platform.

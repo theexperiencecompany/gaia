@@ -1,6 +1,6 @@
-"""Stable OpenAPI operation ids: ``<router_tag>_<function_name>``.
+"""Stable OpenAPI operation ids: <router_tag>_<function_name>.
 
-FastAPI's default id embeds the path (``get_todos_api_v1_todos_get``), so
+FastAPI's default id embeds the path (get_todos_api_v1_todos_get), so
 moving a route renames every generated client type that hangs off it. The
 tag and the handler name are what a reader already knows the operation by.
 """
@@ -17,10 +17,10 @@ def _slug(text: str | Enum) -> str:
 
 
 def api_operation_id(route: APIRoute) -> str:
-    """Operation id for ``route``; the first tag is the router's, per ``include_router``.
+    """Operation id for route; the first tag is the router's, per include_router.
 
-    An untagged route (only the hidden ``/metrics`` mount today) gets its bare
-    name; ``tests/meta/test_route_contract.py`` requires a tag on every
+    An untagged route (only the hidden /metrics mount today) gets its bare
+    name; tests/meta/test_route_contract.py requires a tag on every
     documented route so the id never degrades to that.
     """
     if not route.tags:

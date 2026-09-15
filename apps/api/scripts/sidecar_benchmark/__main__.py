@@ -1,21 +1,16 @@
 """Resource + concurrency benchmark for the embedding sidecar (#918).
 
-Spawns the real sidecar (``app.services.embedding_sidecar.server:app``) as a
-uvicorn subprocess under configurable ``MEMORY_ONNX_THREADS`` /
-``MEMORY_EMBEDDING_SIDECAR_CONCURRENCY``, polls its RSS with psutil, drives
-HTTP load with httpx, and writes one JSON file per scenario under
-``results/<tag>/``.
+Spawns the real sidecar (embedding_sidecar.server:app) as a uvicorn
+subprocess under configurable MEMORY_ONNX_THREADS /
+MEMORY_EMBEDDING_SIDECAR_CONCURRENCY, polls RSS with psutil, drives HTTP
+load with httpx, and writes one JSON file per scenario under results/<tag>/.
 
-Scenarios:
-- batch_sweep        peak RSS + latency vs request batch size (OOM cliff)
-- concurrency_sweep  throughput/latency vs client concurrency × ONNX threads
-- rerank_sweep       latency vs document count for /rerank
-- soak               mixed realistic load; RSS drift over time
-- equivalence        chunked-vs-whole vector identity (quality gate)
+Scenarios: batch_sweep (peak RSS + latency vs batch size), concurrency_sweep
+(throughput/latency vs concurrency x threads), rerank_sweep (latency vs doc
+count), soak (mixed load, RSS drift), equivalence (chunked-vs-whole vector
+identity).
 
-Run from ``apps/api``::
-
-    uv run python -m scripts.sidecar_benchmark --tag baseline
+Run from apps/api: uv run python -m scripts.sidecar_benchmark --tag baseline
 """
 
 from __future__ import annotations
@@ -44,8 +39,7 @@ BASE_URL = f"http://127.0.0.1:{PORT}"
 
 
 def _free_port() -> int:
-    """A currently-free loopback port, so concurrent benchmark runs never
-    fight over a fixed one."""
+    """Return a currently-free loopback port, so concurrent benchmark runs never fight over a fixed one."""
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
@@ -116,7 +110,7 @@ _WORDS = [
 
 
 def make_text(target_chars: int, rng: random.Random) -> str:
-    """A deterministic-ish pseudo sentence blob of ~target_chars characters."""
+    """Build a deterministic-ish pseudo sentence blob of ~target_chars characters."""
     parts: list[str] = []
     size = 0
     while size < target_chars:
@@ -359,7 +353,7 @@ async def scenario_batch_sweep(sidecar: Sidecar) -> dict:
 
 
 async def scenario_concurrency_sweep(tag: str) -> dict:
-    """Fixed total work at increasing client concurrency × ONNX thread budgets."""
+    """Run fixed total work at increasing client concurrency x ONNX thread budgets."""
     grid_threads = (
         [int(t) for t in os.getenv("BENCH_THREADS").split(",")]
         if os.getenv("BENCH_THREADS")

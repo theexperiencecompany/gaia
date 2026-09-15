@@ -2,7 +2,7 @@
 
 Each function validates typed input, applies through the owning repository or
 service, and returns an agent-facing confirmation string. Invalid input raises
-``AppError``; nothing here writes to JuiceFS (the projection refresh is the
+AppError; nothing here writes to JuiceFS (the projection refresh is the
 tool wrapper's job).
 """
 

@@ -2,7 +2,7 @@
 
 Pairing follows RFC 8628 (device authorization grant): the daemon starts a
 request and polls; the user approves it in a signed-in browser by its short
-``user_code``. On approval a :class:`Device` row is created and a long-lived
+user_code. On approval a :class:Device row is created and a long-lived
 refresh credential is issued. The daemon exchanges that credential (rotating it
 each time) for short-lived connect JWTs.
 """
@@ -131,15 +131,16 @@ async def start_pairing(
 
 
 def build_device_approve_url(user_code: str) -> str:
-    """The signed-in approval page URL with the pairing code prefilled - the
-    trusted surface where the user (not the agent) confirms linking the device.
-    Same shape as ``start_pairing``'s ``verification_url``."""
+    """Build the signed-in approval page URL with the pairing code prefilled.
+
+    The user, not the agent, must be signed in to confirm linking the device.
+    """
     base = get_frontend_url().rstrip("/")
     return f"{base}{PAIRING_VERIFICATION_PATH}?code={quote(user_code.strip().upper())}"
 
 
 async def lookup_pending_by_user_code(user_code: str) -> dict | None:
-    """Resolve a browser-typed ``user_code`` to its pending pairing record."""
+    """Resolve a browser-typed user_code to its pending pairing record."""
     mapping = await get_cache(_user_code_key(user_code.strip().upper()))
     if not isinstance(mapping, dict):
         return None
@@ -159,11 +160,11 @@ async def _create_device(
     daemon_version: str | None,
     client: str | None,
 ) -> tuple[str, str]:
-    """Create an ACTIVE device for ``user_id`` and mint its refresh credential.
+    """Create an ACTIVE device for user_id and mint its refresh credential.
 
     The one place a device row is inserted, shared by the browser-approval and
     desktop self-pair flows, so the per-user active-device cap is enforced once
-    for both. Returns ``(device_id, refresh_token)``; the caller captures these
+    for both. Returns (device_id, refresh_token); the caller captures these
     before the session closes rather than reading them off the expired row.
     """
     device_id = str(uuid.uuid4())
@@ -199,14 +200,11 @@ async def _create_device(
 
 
 async def approve_pairing(user_id: str, user_code: str) -> tuple[str, str]:
-    """Approve a pending pairing for ``user_id``; create the device + refresh token.
+    """Approve a pending pairing for user_id; create the device + refresh token.
 
-    Returns ``(device_id, name)`` rather than the ``Device`` row itself: both
-    values are already known locally (they're what we just inserted), and the
-    row would come back detached — accessing its attributes after the session
-    below closes raises ``DetachedInstanceError`` (``session.commit()``
-    expires every mapped attribute; see ``rotate_refresh_token``'s identical
-    capture-before-return pattern).
+    Returns (device_id, name) rather than the Device row itself, since the row
+    comes back detached after the session below closes (session.commit()
+    expires every mapped attribute, so accessing it raises DetachedInstanceError).
     """
     normalized = user_code.strip().upper()
     pending = await lookup_pending_by_user_code(normalized)
@@ -244,9 +242,9 @@ async def self_pair_device(
     """Pair a device for an already-authenticated user in one call.
 
     A UX collapse of the browser start→approve→poll flow for a host that already
-    holds the user's session (the desktop app): no ``user_code`` round-trip. The
+    holds the user's session (the desktop app): no user_code round-trip. The
     refresh token is returned inline, since the same caller both pairs and stores
-    it. Returns ``(device_id, refresh_token)``.
+    it. Returns (device_id, refresh_token).
     """
     device_id, refresh_token = await _create_device(
         user_id, name, platform, daemon_version, client=client
@@ -256,7 +254,7 @@ async def self_pair_device(
 
 
 async def poll_pairing(device_code: str) -> PollPairingResponse:
-    """Daemon poll. On ``approved`` the pairing is consumed and won't poll again."""
+    """Daemon poll. On approved the pairing is consumed and won't poll again."""
     record = await get_cache(_pairing_key(device_code))
     if not isinstance(record, dict):
         return PollPairingResponse(status="expired")
@@ -275,23 +273,17 @@ async def poll_pairing(device_code: str) -> PollPairingResponse:
 
 
 async def rotate_refresh_token(refresh_token: str) -> tuple[str, str, str]:
-    """Validate + rotate a refresh credential. Returns ``(device_id, user_id, new_refresh_token)``.
+    """Validate + rotate a refresh credential. Returns (device_id, user_id, new_refresh_token).
 
-    Reuse detection: a token matching ``previous_refresh_token_hash`` (already
-    rotated away) means it was captured and replayed — the device is revoked and
-    the exchange rejected. A brief post-rotation grace window (see
-    ``REFRESH_TOKEN_RETRY_GRACE_SECONDS``) exempts the common lost-response case:
-    the daemon exchanges on every dial and persists the new token only after the
-    HTTP response lands, so a dropped response (or a crash before persist) leaves
-    it holding the old token. Within the window the just-consumed credential is
-    replayed its *same* replacement instead of bricking a healthy device.
+    A token matching previous_refresh_token_hash means it was captured and
+    replayed — the device is revoked and the exchange rejected. Within a brief
+    post-rotation grace window (REFRESH_TOKEN_RETRY_GRACE_SECONDS), a lost HTTP
+    response is instead handed the same replacement rather than bricking the device.
     """
     token_hash = hash_refresh_token(refresh_token)
 
-    # Lost-response retry: hand back the identical replacement so the daemon and
-    # server stay in sync. Keyed by the consumed token's hash; expires after the
-    # grace window, after which a match on ``previous_refresh_token_hash`` below
-    # is treated as genuine reuse.
+    # Lost-response retry, keyed by the consumed token's hash; expires after the
+    # grace window, after which a match below is treated as genuine reuse.
     cached = await get_cache(_refresh_retry_key(token_hash))
     if isinstance(cached, dict) and cached.get("new_token"):
         device_id = str(cached["device_id"])
@@ -313,11 +305,9 @@ async def rotate_refresh_token(refresh_token: str) -> tuple[str, str, str]:
                 )
             ).scalar_one_or_none()
             if replayed is not None and replayed.status == DeviceStatus.ACTIVE:
-                # Capture before commit: AsyncSession forbids the implicit
-                # lazy-load a post-commit attribute access on `replayed` would
-                # otherwise trigger (session.commit() expires every mapped
-                # attribute, including the primary key) — it raises
-                # MissingGreenlet instead of transparently refetching.
+                # Capture before commit: session.commit() expires every mapped
+                # attribute, and a post-commit access would raise MissingGreenlet
+                # rather than transparently refetch.
                 replayed_id = replayed.id
                 replayed_user_id = replayed.user_id
                 replayed.status = DeviceStatus.REVOKED
@@ -429,8 +419,7 @@ def _device_server_url(device_id: str, server_key: str) -> str:
 
 
 async def _device_display_name(device_id: str) -> str:
-    """The paired device's name, for user- and agent-facing text. Falls back to a
-    generic phrase if the row is gone (self-heal races)."""
+    """Return the paired device's name, or a fallback if the row is gone (self-heal races)."""
     async with get_db_session() as session:
         name = (
             await session.execute(select(Device.name).where(Device.id == device_id))
@@ -448,10 +437,9 @@ async def _create_server_integration(
     integration = Integration(
         integration_id=integration_id,
         name=display_name,
-        # The subagent's discovery description inherits this, so it is where the
-        # agent learns the server is hosted on the user's own machine (and reaches
-        # it via these tools, not run_on_device). Names the device so it lines up
-        # with the connected-devices manifest.
+        # The subagent's discovery description inherits this: it's how the agent
+        # learns the server is on the user's machine, reached via these tools
+        # (not run_on_device). Names the device to match the manifest.
         description=(
             f'MCP server hosted on your device "{device_name}" — its tools run '
             f"locally on that machine, not the cloud sandbox."
@@ -494,8 +482,10 @@ async def _ensure_server_integration(user_id: str, server: DeviceMCPServer) -> N
 
 
 async def _remove_server_cloud_mirror(user_id: str, integration_id: str) -> None:
-    """Drop a device server's cloud-side mirror: the Mongo integration doc, the
-    user link, and the integration caches. The Postgres row is deleted by callers."""
+    """Drop a device server's cloud-side mirror: the integration doc, user link, and caches.
+
+    The Postgres row is deleted by callers, not here.
+    """
     await integration_repository.delete(integration_id)
     await remove_user_integration(user_id, integration_id)
     await invalidate_user_integration_caches(user_id)
@@ -522,9 +512,11 @@ async def _send_server_remove(device_id: str, server_key: str) -> None:
 async def deregister_device_server(
     user_id: str, device_id: str, server_key: str, *, notify_device: bool
 ) -> bool:
-    """Fully remove one device MCP server — Postgres row + cloud mirror. Deleting
-    the Postgres row is what stops ``_ensure_server_integration`` from resurrecting
-    the doc. Returns False if the server was already gone."""
+    """Fully remove one device MCP server: Postgres row plus cloud mirror.
+
+    Deleting the Postgres row is what stops _ensure_server_integration from
+    resurrecting the doc. Returns False if the server was already gone.
+    """
     async with get_db_session() as session:
         server = (
             await session.execute(
@@ -549,10 +541,12 @@ async def deregister_device_server(
 async def deregister_device_server_for_integration(
     integration_id: str, *, notify_device: bool
 ) -> bool:
-    """Delete the Postgres server row behind an integration (its Mongo mirror is
-    torn down by the integration-delete path that calls this). Used when a device
-    integration is deleted from the integrations page. Returns False if not a
-    device server."""
+    """Delete the Postgres server row behind an integration.
+
+    Its Mongo mirror is torn down by the integration-delete path that calls
+    this; used when a device integration is deleted from the integrations page.
+    Returns False if not a device server.
+    """
     async with get_db_session() as session:
         server = (
             await session.execute(
@@ -571,8 +565,11 @@ async def deregister_device_server_for_integration(
 
 
 async def reconcile_device_servers(user_id: str, device_id: str, reported_keys: list[str]) -> None:
-    """Prune server rows the daemon no longer exposes — the device's local config is
-    the source of truth. Driven by the HELLO frame the daemon sends on connect."""
+    """Prune server rows the daemon no longer exposes.
+
+    The device's local config is the source of truth. Driven by the HELLO
+    frame the daemon sends on connect.
+    """
     reported = set(reported_keys)
     servers = (await list_device_servers([device_id])).get(device_id, [])
     stale = [s for s in servers if s.server_key not in reported]
@@ -634,12 +631,10 @@ async def enqueue_device_server_warmup(
 ) -> None:
     """Queue a background warm-connect so a device's MCP tools become discoverable.
 
-    Bursts collapse into one job: N registrations plus the online transition for
-    one server share a deterministic ARQ ``_job_id``. Repeats of identical work
-    past the job record's life (ARQ frees it on completion — ``keep_result=0``)
-    are skipped by a short-TTL SETNX marker instead. Best-effort like every
-    other enqueue on this path: a Redis outage raises, and the caller falls back
-    to the next connect re-driving the warmup.
+    Bursts collapse into one job via a deterministic ARQ job id; repeats past
+    the job's life are skipped by a short-TTL SETNX marker instead. Best-effort:
+    a Redis outage raises, and the caller falls back to the next connect
+    re-driving the warmup.
     """
     scope = ",".join(sorted(server_keys)) if server_keys is not None else "all"
     work_key = hashlib.sha256(scope.encode()).hexdigest()
@@ -671,8 +666,7 @@ async def _device_server_integration_ids(session: AsyncSession, device_id: str) 
 async def _teardown_revoked_device(
     user_id: str, device_id: str, integration_ids: list[str]
 ) -> None:
-    """Post-revocation cleanup: drop the device's server integrations and fan out a
-    revoke so whichever pod owns the live socket closes it immediately."""
+    """Drop the device's server integrations and fan out a revoke to close its live socket."""
     for integration_id in integration_ids:
         await integration_repository.delete(integration_id)
         await remove_user_integration(user_id, integration_id)

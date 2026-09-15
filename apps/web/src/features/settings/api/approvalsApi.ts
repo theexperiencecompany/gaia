@@ -3,10 +3,9 @@ import { api } from "@/lib/api/typed";
 
 export type { HilPreferences };
 
-// `silent: true` on the mutations suppresses the generic toast, NOT the failure:
-// each already has a specific one — the mode caller catches setMode ("Failed to
-// update approval mode"), and overrideMutation.onError covers the per-tool save.
-// Without it a failed save toasts twice.
+// `silent: true` on mutations suppresses the generic toast, NOT the failure —
+// each already has a specific one (setMode's caller, overrideMutation.onError)
+// — without it a failed save toasts twice.
 export const approvalsApi = {
   getHilPreferences: () =>
     api.get("/api/v1/approvals/preferences", { silent: true }),

@@ -1,8 +1,8 @@
 """Nightly sweep that retires expired memories.
 
-``forget_after`` used to be a read-time filter only. Nothing ever wrote the
+forget_after used to be a read-time filter only. Nothing ever wrote the
 expiry back, so an expired row stayed in the folder tree, in the free-plan
-live count, in the ``/workspace/memory`` projection and in the rendered
+live count, in the /workspace/memory projection and in the rendered
 agenda — visible everywhere except recall. This task is what makes an expiry
 actually happen, and repairs the derived state of the users it touched.
 """
@@ -26,10 +26,9 @@ async def sweep_expired_memories(_ctx: dict[str, Any]) -> str:
     if backfilled:
         log.info(f"{LogTag.WORKER} legacy agenda rows stamped", backfilled=backfilled)
     swept = await pg_store.sweep_expired_memories()
-    # Postgres flipping is_forgotten is not enough: the vector keeps
-    # is_latest=True/is_forgotten=False in Chroma, so reconciliation would
-    # still match the retired row and drop identical restatements as
-    # DUPLICATE. Retire the same rows' Chroma flags in the same run.
+    # Postgres alone isn't enough: Chroma still has is_latest=True/is_forgotten=
+    # False, so reconciliation would match the retired row and drop identical
+    # restatements as DUPLICATE. Retire the same rows' Chroma flags here too.
     for row in swept:
         await chroma_store.set_memory_flags(row.memory_id, is_latest=False, is_forgotten=True)
     affected = sorted({row.user_id for row in swept})

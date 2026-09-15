@@ -8,7 +8,7 @@ class TestState:
     """Tests for the override State used by the compiled agent graph.
 
     State inherits from langgraph_bigtool.graph.State (which extends
-    langgraph.graph.MessagesState) and adds a `todos` channel. It is a
+    langgraph.graph.MessagesState) and adds a todos channel. It is a
     TypedDict with exactly three fields: messages, selected_tool_ids, todos.
     """
 
@@ -64,9 +64,9 @@ class TestState:
 class TestMessagesDeltaReducer:
     """Tests for the messages channel reducer.
 
-    ``SummarizationMiddleware`` clears history by writing a ``RemoveMessage``
-    carrying the ``REMOVE_ALL_MESSAGES`` sentinel. LangGraph's stock
-    ``_messages_delta_reducer`` documents that it does NOT implement that
+    SummarizationMiddleware clears history by writing a RemoveMessage
+    carrying the REMOVE_ALL_MESSAGES sentinel. LangGraph's stock
+    _messages_delta_reducer documents that it does NOT implement that
     sentinel, so it would silently pass the tombstone through as a message —
     the exact object that crashed the Gemini serializer in production
     ("Unexpected message with type RemoveMessage at the position 0").
@@ -101,11 +101,7 @@ class TestMessagesDeltaReducer:
         assert [m.id for m in result] == ["s1", "a2"]
 
     def test_remove_all_sentinel_is_batching_invariant(self):
-        """DeltaChannel replays writes in arbitrary batch sizes and requires
-        ``reducer(reducer(s, xs), ys) == reducer(s, xs + ys)``. A REMOVE_ALL
-        write that is not applied in stream order breaks that invariant, and the
-        channel then reconstructs a different history on replay than it had live.
-        """
+        """DeltaChannel requires reducer(reducer(s, xs), ys) == reducer(s, xs + ys); out-of-order REMOVE_ALL breaks it."""
         state = [HumanMessage(content="old", id="h1")]
         xs = [[RemoveMessage(id=REMOVE_ALL_MESSAGES), HumanMessage(content="summary", id="s1")]]
         ys = [[AIMessage(content="new", id="a1")]]

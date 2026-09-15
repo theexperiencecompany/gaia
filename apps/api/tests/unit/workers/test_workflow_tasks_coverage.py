@@ -84,8 +84,8 @@ class TestLedgerAttribution:
     """Which run a workflow's model spend is attributed to.
 
     The execution id exists only inside this task — it never reaches
-    ``config.configurable``, so the ``llm_calls`` ledger reads it off the task's
-    wide event (``llm_metering._ambient_worker_context``). Without the stamp,
+    config.configurable, so the llm_calls ledger reads it off the task's
+    wide event (llm_metering._ambient_worker_context). Without the stamp,
     every model call a workflow makes lands in the ledger with no execution to
     attribute it to, and "what did this run cost" comes back empty rather than
     wrong — which is far harder to notice.
@@ -132,9 +132,7 @@ class TestSystemRunGuards:
     async def test_the_budget_wall_runs_under_the_origin_the_trigger_implies(
         self, trigger_type: str, expected: LimitHitOrigin
     ) -> None:
-        """Which email a limit hit sends. Asserted at the wall rather than on the
-        call's arguments: the origin now reaches the seam through the run's
-        context, so the argument list cannot show whether it is right."""
+        """Asserted at the wall, not the call args: origin reaches the seam via context, not an argument."""
         seen: list[LimitHitOrigin] = []
 
         async def _record(*_args: object, **_kwargs: object) -> None:
@@ -180,11 +178,11 @@ def _profile(timezone: str | None) -> dict[str, Any]:
 class TestResolveWorkflowUser:
     """The clock a scheduled run executes on.
 
-    An ARQ worker has no request and no ``X-Timezone`` header, so this function
+    An ARQ worker has no request and no X-Timezone header, so this function
     is the only thing standing between a user's 8am digest and one that arrives
     at 8am UTC. Both run paths read the zone straight back off
-    ``user_data["timezone"]``: the agent through ``build_agent_config`` and the
-    replay through ``$now`` / ``$today``.
+    user_data["timezone"]: the agent through build_agent_config and the
+    replay through $now / $today.
     """
 
     async def _resolve(
@@ -203,8 +201,7 @@ class TestResolveWorkflowUser:
         return dict(user_data), log
 
     async def test_a_real_profile_zone_wins_over_the_schedule_zone(self) -> None:
-        """The user's own clock is the one they meant, wherever the schedule was
-        created from."""
+        """The user's own clock is the one they meant, wherever the schedule was created from."""
         user_data, log = await self._resolve(_profile("Asia/Kolkata"), "America/New_York")
 
         assert user_data["timezone"] == "Asia/Kolkata"
@@ -214,12 +211,7 @@ class TestResolveWorkflowUser:
         log.warning.assert_not_called()
 
     async def test_a_utc_profile_zone_defers_to_the_schedule_zone(self) -> None:
-        """UTC on a profile is the default nobody chose, so a schedule that names
-        a real zone is better information than it.
-
-        Trusting it would run every digest hours off for users who never opened
-        the timezone setting.
-        """
+        """UTC on a profile is the default nobody chose; a schedule naming a real zone wins instead."""
         for stored in ("UTC", "utc"):
             user_data, _ = await self._resolve(_profile(stored), "America/New_York")
             assert user_data["timezone"] == "America/New_York", stored
@@ -231,10 +223,7 @@ class TestResolveWorkflowUser:
             assert user_data["timezone"] == "America/New_York", stored
 
     async def test_no_zone_anywhere_falls_back_to_utc_and_says_so(self) -> None:
-        """UTC here is a real degradation, not a neutral default: the run lands
-        at the wrong hour for everyone outside UTC. It has to be visible in the
-        logs, with the workflow and user that hit it.
-        """
+        """UTC here is a real degradation, not a neutral default, so it must be logged with the workflow and user."""
         user_data, log = await self._resolve(_profile(None), None)
 
         assert user_data["timezone"] == "UTC"
@@ -249,21 +238,14 @@ class TestResolveWorkflowUser:
         assert user_data["timezone"] == "UTC"
 
     async def test_a_missing_profile_still_produces_a_usable_user_bag(self) -> None:
-        """A user row that has gone missing must not take the run down with it;
-        the schedule's own zone is still the right clock."""
+        """A missing user row must not take the run down; the schedule's own zone is still the right clock."""
         user_data, _ = await self._resolve(None, "America/New_York")
 
         assert user_data["user_id"] == "user-1"
         assert user_data["timezone"] == "America/New_York"
 
     async def test_a_failing_profile_lookup_still_returns_the_user_id(self) -> None:
-        """The caller runs the workflow with whatever comes back, so this has to
-        be a usable bag rather than an exception that kills the fire.
-
-        The failure is logged with the exception type and text, because a run
-        that silently switched to UTC is otherwise indistinguishable from one
-        that was always UTC.
-        """
+        """A failed lookup returns a usable bag, not an exception, with the failure logged (type and text)."""
         user_data, log = await self._resolve(RuntimeError("mongo down"), "America/New_York")
 
         assert user_data == {"user_id": "user-1"}

@@ -1,4 +1,4 @@
-"""Tests for app/helpers/message_helpers.py"""
+"""Tests for app/helpers/message_helpers.py."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -38,14 +38,10 @@ from tests.helpers import captured_wide_event
 
 
 class TestCreateSystemMessage:
-    """The main system prompt must be byte-identical across users/channels so
-    implicit LLM caching hits. No `{user_name}` interpolation lives here —
-    per-user context is assembled separately by ``app.agents.context``."""
+    """The main system prompt must be byte-identical across users/channels so implicit LLM caching hits."""
 
     def test_comms_agent_static_is_per_channel(self) -> None:
-        """Different user_name must produce identical content on the same
-        channel (byte-stable prefix). Different channels produce different
-        content (OpenUI on web, platform restrictions on WhatsApp)."""
+        """Different user_name must produce identical content on the same channel; different channels differ."""
         web_a = create_system_message(user_name="Foo", agent_type="comms", source="web")
         web_b = create_system_message(user_name="Bar", agent_type="comms", source="web")
         whatsapp = create_system_message(user_name="Foo", agent_type="comms", source="whatsapp")
@@ -264,12 +260,7 @@ class TestSignalMatchingSectionRenders:
     async def test_an_integration_fire_with_tracked_todos_renders_the_signal_section(
         self,
     ) -> None:
-        """Production: every ``calendar_event_starting_soon`` fire for a user with
-        tracked todos failed with ``KeyError: 'date'`` (54 in one day). The signal
-        matching instructions carry a literal example, ``"- {date} {what happened}"``,
-        and ``str.format`` read it as two placeholders. The example must reach the
-        agent verbatim, braces and all, and the section must render at all.
-        """
+        """Regression: str.format read the literal example "- {date} {what happened}" as real placeholders, causing KeyError: 'date' 54 times in one day in production."""
         selected = SelectedWorkflowData(
             id="wf_meeting",
             title="Meeting Reminder",
@@ -419,10 +410,7 @@ class TestFormatFilesList:
         result = format_files_list(files, conversation_id="conv123")
         assert "/workspace/sessions/conv123/user-uploaded/a.txt" in result
 
-    # The workspace mirror is best-effort — it needs JuiceFS, and `sandbox_path`
-    # is None whenever it was unavailable. Handing the agent a path anyway sent
-    # the executor into read/bash attempts that could only fail; it burned the
-    # recursion limit on a real GAIA .xlsx case doing exactly that.
+    # sandbox_path is None when the JuiceFS mirror was unavailable; handing the agent a path anyway burned the recursion limit on a real .xlsx case.
 
     def test_omits_the_path_when_the_file_never_reached_the_workspace(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="a.txt", sandbox_path=None)]
@@ -455,7 +443,7 @@ class TestFormatFilesList:
 
 
 class TestWorkflowExecutionMessageBranches:
-    """The branch choices and bounds inside ``format_workflow_execution_message``.
+    """The branch choices and bounds inside format_workflow_execution_message.
 
     The existing tests above assert a title survives into the output, which a
     great many wrong implementations also satisfy. These pin the decisions: which
@@ -582,9 +570,7 @@ class TestWorkflowExecutionMessageBranches:
 
     @pytest.mark.asyncio
     async def test_a_gmail_trigger_missing_every_field_renders_the_stated_defaults(self) -> None:
-        """A Gmail trigger can arrive with an unparsed header or no timestamp. The
-        prompt still has to read as a sentence, so each blank renders its own named
-        placeholder rather than the literal ``None`` a bare ``.get`` would leave."""
+        """Each missing field renders its own named placeholder, not the literal None a bare .get would leave."""
         with self._no_db_workflow():
             result = await format_workflow_execution_message(
                 self._selected(),
@@ -600,8 +586,7 @@ class TestWorkflowExecutionMessageBranches:
 
     @pytest.mark.asyncio
     async def test_an_email_body_at_the_preview_limit_is_not_marked_truncated(self) -> None:
-        """Exactly at the bound is a whole body, not a cut one — an ellipsis here
-        tells the agent to go fetch a rest that does not exist."""
+        """Exactly at the bound is a whole body, not a cut one — an ellipsis would imply a nonexistent rest."""
         with self._no_db_workflow():
             result = await format_workflow_execution_message(
                 self._selected(),
@@ -630,8 +615,7 @@ class TestWorkflowExecutionMessageBranches:
 
     @pytest.mark.asyncio
     async def test_a_manual_run_ends_with_the_users_own_message(self) -> None:
-        """The user's words are the last thing the prompt says, so the model reads
-        them as the instruction rather than as one more line of workflow boilerplate."""
+        """The user's words are the last thing the prompt says, so the model reads them as the instruction."""
         with self._no_db_workflow():
             result = await format_workflow_execution_message(
                 self._selected(), user_id="u1", existing_content="Run it now please"
@@ -655,8 +639,7 @@ class TestWorkflowExecutionMessageBranches:
 
 
 class TestUploadedFileLines:
-    """One attachment's rendered lines. ``format_files_list`` only joins these, so
-    the path, the id and the summary bound are all decided here."""
+    """One attachment's rendered lines; format_files_list only joins these."""
 
     @staticmethod
     def _file(**overrides: object) -> FileData:
@@ -696,8 +679,7 @@ class TestUploadedFileLines:
         )
 
     def test_an_over_long_summary_is_cut_at_the_limit_with_no_dangling_space(self) -> None:
-        """The cut lands mid-sentence, so the character before it is often a space.
-        Leaving it in puts the ellipsis adrift from the last word it belongs to."""
+        """The cut often lands right after a space; leaving it in strands the ellipsis from the last word."""
         body = "s" * (UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS - 1)
         entry = _uploaded_file_lines(
             self._file(description=f"{body} tail-past-the-limit"), "conv1", True
@@ -722,8 +704,7 @@ class TestUploadedFileLines:
 
 
 class TestGetOnboardingSystemPromptIfApplicable:
-    """The prompt is scoped to a RevealTodos "Run Now" demo turn: a tagged
-    onboarding conversation on its own no longer earns it."""
+    """The prompt is scoped to a RevealTodos "Run Now" demo turn, not any tagged onboarding conversation."""
 
     @staticmethod
     def _user(onboarding: OnboardingSubdocument | None, name: str = "Ada") -> UserDocument:
@@ -761,8 +742,7 @@ class TestGetOnboardingSystemPromptIfApplicable:
     async def test_a_demo_turn_renders_the_profession_and_only_the_triage_summary_line(
         self,
     ) -> None:
-        """``triage_summary`` is the persisted dump of the triage model, so keying
-        off it wholesale would leak the rest of that dump into the prompt."""
+        """triage_summary is the persisted dump of the triage model; keying off it wholesale would leak it."""
         onboarding = OnboardingSubdocument(
             preferences=OnboardingPreferences(profession="doctor"),
             triage_summary={
@@ -784,8 +764,7 @@ class TestGetOnboardingSystemPromptIfApplicable:
         repository.get.assert_awaited_once_with("u1")
 
     async def test_a_triage_dump_without_a_summary_line_renders_no_inbox_line(self) -> None:
-        """Older personalization runs stored a dump with no ``summary`` key; the
-        prompt must then carry the profession alone, not a placeholder line."""
+        """A dump with no summary key must render the profession alone, not a placeholder line."""
         onboarding = OnboardingSubdocument(
             preferences=OnboardingPreferences(profession="doctor"),
             triage_summary={"categories": ["billing"], "email_count": 12},

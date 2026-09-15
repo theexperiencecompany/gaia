@@ -277,13 +277,9 @@ async def handle_dodo_webhook(
             processing_status=result.status,
         )
         if result.status == WebhookProcessingStatus.FAILED:
-            # The state change this event carried never landed, and the claim
-            # has been handed back. Acknowledging would tell Dodo the delivery
-            # is done and it would never resend — for subscription.active that
-            # is a user who paid and is never activated. Ask for the retry, and
-            # say so at the level the outcome deserves: a "webhook processed"
-            # line at info for a delivery that was refused is how a failure
-            # reads as a success on every dashboard that counts them.
+            # The state change never landed. Acknowledging would tell Dodo the delivery is
+            # done and stop retries — for subscription.active, a paid user never activates.
+            # Logged at error, not info, or this reads as a success on every dashboard.
             log.error(
                 f"{LogTag.PAYMENT} Webhook not acknowledged; asking Dodo to redeliver",
                 event_type=result.event_type,

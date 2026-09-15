@@ -1,20 +1,7 @@
-"""
-Rate limiting configuration for all features.
-Single source of truth for rate limits.
+"""Rate limiting configuration for all features — the single source of truth.
 
-Rate limits are enforced across two time periods:
-- Daily: Medium-term usage control
-- Monthly: Long-term subscription limits
-
-Both limits are checked on each request. If any limit is exceeded,
-the request is rejected with a 429 status code.
-
-Usage:
-    @tiered_rate_limit("generate_image")
-    async def generate_image(user: dict = Depends(get_current_user)):
-        # This endpoint will be limited by daily (50/1000) and monthly (1000/25000)
-        # limits based on user's plan
-        pass
+Limits are enforced across daily and monthly periods; either being exceeded
+rejects the request with a 429.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -59,10 +46,9 @@ class TieredRateLimits(BaseModel):
     free: RateLimitConfig = RateLimitConfig()
     pro: RateLimitConfig = RateLimitConfig()
     info: FeatureInfo
-    # Whether a successful call is a deliberate user action that shows on the
-    # activity heatmap. False for infra/polling endpoints (artifact fetches,
-    # agent file reads, system notifications) that would otherwise drown it out
-    # and distort the cross-user percentile thresholds.
+    # False for infra/polling endpoints (artifact fetches, agent file reads,
+    # system notifications) that would otherwise drown out the activity
+    # heatmap and distort the cross-user percentile thresholds.
     counts_as_activity: bool = True
 
 
@@ -70,17 +56,12 @@ class TieredRateLimits(BaseModel):
 FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     # CORE COMMUNICATION
     "chat_messages": TieredRateLimits(
-        # Free has NO daily message count either: the rolling daily COST budget
-        # (FREE_DAILY_COST_BUDGET_USD) is the real wall, so a message tally
-        # would just double-wall the same thing less honestly. The monthly count
-        # stays only as an extreme abuse backstop a human can't reach before the
-        # cost wall stops them (day=0 = counted but not enforced, so day-by-day
-        # usage charts still get data).
+        # No daily count: FREE_DAILY_COST_BUDGET_USD is the real wall. Monthly
+        # is only an abuse backstop (day=0 = counted, not enforced, so usage
+        # charts still get data).
         free=RateLimitConfig(day=0, month=2000),  # TUNE — abuse backstop, not a wall
-        # Pro has NO daily message count: usage is priced by the cost budgets
-        # (daily abuse guard + monthly economic guard), not by counting
-        # messages. The monthly count stays only as an extreme abuse backstop
-        # a human can never hit.
+        # No daily count: priced by the cost budgets instead. Monthly count is
+        # only an extreme abuse backstop a human can never hit.
         pro=RateLimitConfig(day=0, month=60000),
         info=FeatureInfo(title="Chat Messages", description="Send messages to AI assistants"),
     ),
@@ -459,7 +440,7 @@ def get_per_request_token_ceiling(plan_type: PlanType) -> int:
 
 
 def get_daily_cost_budget_usd(plan_type: PlanType) -> float:
-    """Rolling daily USD cost budget, by plan. Free = usage wall, pro = abuse guard."""
+    """Return the rolling daily USD cost budget for plan_type (free = usage wall, pro = abuse guard)."""
     return FREE_DAILY_COST_BUDGET_USD if plan_type == PlanType.FREE else PRO_DAILY_COST_BUDGET_USD
 
 
@@ -474,10 +455,10 @@ def get_feature_info(feature_key: str) -> FeatureInfo:
 
 
 def _is_cost_walled(limits: TieredRateLimits) -> bool:
-    """A feature whose daily use is gated by the rolling cost budget, not a
-    message count: day == 0 on BOTH tiers (so the count never caps daily use)
-    while free still has monthly access. Chat is the canonical case — its free
-    wall is FREE_DAILY_COST_BUDGET_USD, not a per-day message tally.
+    """Return True when daily use is gated by the cost budget, not a message count.
+
+    True when day == 0 on both tiers while free still has monthly access
+    (chat is the canonical case).
     """
     return limits.free.day == 0 and limits.pro.day == 0 and limits.free.month > 0
 
@@ -489,11 +470,9 @@ def _free_pro_delta(feature_key: str) -> dict[str, str] | None:
     strongest possible pitch.
     """
     limits = FEATURE_LIMITS[feature_key]
-    # Cost-walled feature (chat): daily use is capped by the rolling cost budget,
-    # never a message count, so the pitch stays qualitative and count-free.
-    # Naming a per-month number ("60,000 instead of 2,000") would be dishonest
-    # (the month is only an abuse backstop, not the wall a user feels) and
-    # off-strategy — Pro's real chat win is far more daily AI usage.
+    # Cost-walled feature (chat): naming a per-month number would be dishonest
+    # (month is only an abuse backstop, not the wall a user feels), so the
+    # pitch stays qualitative.
     if _is_cost_walled(limits):
         return {"title": limits.info.title, "detail": "unlimited daily messages"}
     if limits.free.day > 0:
@@ -567,13 +546,10 @@ def _largest_multiplier_benefits(seen: set[str], max_other: int) -> list[dict[st
 
 
 def derive_pro_benefits(hit_feature: str, max_other: int = 3) -> list[dict[str, str]]:
-    """Build upsell bullets from FEATURE_LIMITS — the same config that enforces
-    the limits, so the promised benefits can never drift from reality.
+    """Build upsell bullets from FEATURE_LIMITS, so benefits can't drift from the enforced limits.
 
-    Order: (1) the feature the user just hit, (2) Pro-only features (no free
-    access at all), (3) features whose daily use is not count-capped on Pro —
-    either free-capped daily with no pro cap, or cost-walled (day 0 on both
-    tiers, e.g. chat messages), (4) the largest free->pro daily multipliers.
+    Order: (1) the feature just hit, (2) Pro-only features, (3) features not
+    count-capped on Pro, (4) the largest free->pro daily multipliers.
     """
     seen: set[str] = set()
     return [

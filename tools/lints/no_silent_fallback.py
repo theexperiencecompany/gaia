@@ -80,7 +80,7 @@ def _is_broad(handler: ast.ExceptHandler) -> bool:
 
 
 def _reports_or_reraises(handler: ast.ExceptHandler) -> bool:
-    """True when the handler makes the failure observable to someone."""
+    """Return True when the handler makes the failure observable to someone."""
     for node in ast.walk(handler):
         if isinstance(node, ast.Raise):
             return True

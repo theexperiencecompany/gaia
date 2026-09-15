@@ -1,6 +1,4 @@
-"""
-Router module for image generation and image-to-text endpoints.
-"""
+"""Router module for image generation and image-to-text endpoints."""
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import StreamingResponse

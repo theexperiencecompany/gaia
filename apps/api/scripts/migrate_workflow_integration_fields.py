@@ -1,33 +1,16 @@
-"""
-One-time, idempotent migration: collapse ``selected_integrations`` into
-``integration_ids`` on workflow documents.
+"""Collapse selected_integrations into integration_ids on workflow documents, one-time and idempotent.
 
-The two fields grew independently on separate branches and ended up meaning the
-same thing — which integrations a workflow uses:
+selected_integrations was UI-picked (scoping step generation);
+integration_ids was assistant-derived from intent. They are now one field;
+connection state is derived from steps at read time, not stored.
 
-- ``selected_integrations`` — the ids the user picked in the UI, used to scope
-  step generation.
-- ``integration_ids`` — the ids the workflow assistant identified from intent.
+Merges the two lists (integration_ids first, then new selected_integrations
+ids), de-duped and order-preserving, lowercases ids to match the create
+path, then drops the legacy key. Ids are NOT validated against the OAuth
+catalog since custom integrations use an opaque uuid. Idempotent: a
+document with no legacy key is skipped.
 
-They are now a single field, ``integration_ids``. Connection state is never
-stored: required/missing integrations are derived from the workflow's steps at
-read time, so connecting an integration clears the warning with nothing to
-clean up.
-
-For every document still carrying ``selected_integrations`` this merges the two
-lists (``integration_ids`` first, then any new ids from
-``selected_integrations``), de-duped and order-preserving, then drops the legacy
-key. Ids are lowercased to match what the create path persists. Ids are NOT
-validated against the OAuth catalog — custom integrations are keyed by an opaque
-uuid and would be discarded by such a filter.
-
-Idempotent: once the legacy key is unset a document is skipped, so re-running is
-safe.
-
-Run from repo root (dry run prints what would change):
-    cd apps/api && uv run python scripts/migrate_workflow_integration_fields.py
-Apply the changes:
-    cd apps/api && uv run python scripts/migrate_workflow_integration_fields.py --apply
+Run: cd apps/api && uv run python scripts/migrate_workflow_integration_fields.py [--apply]
 """
 
 import asyncio

@@ -48,10 +48,8 @@ DEFAULT_SUMMARY_FIELDS: list[MessageFieldLiteral] = [
 UNKNOWN_SENDER = "[Unknown]"
 NO_SUBJECT = "[No Subject]"
 
-# Email attachment resolution (app/services/composio/attachments.py): observability
-# and user-facing error prose. Kept as single-line constants so mutation testing
-# can suppress them (it cannot suppress interior lines of a multi-line
-# log/error call); the tests assert behaviour, not this wording.
+# Kept as single-line constants so mutation testing can suppress them (it
+# cannot suppress interior lines of a multi-line log/error call).
 EMAIL_ATTACHMENT_FAIL_LOG = "File attachment could not be resolved"  # pragma: no mutate
 EMAIL_ATTACHMENT_FAIL_WHY = "The file could not be read or uploaded."  # pragma: no mutate
 EMAIL_ATTACHMENT_FAIL_FIX = (
@@ -108,11 +106,11 @@ FOUNDER_MEETING_URL = "https://cal.com/aryanranderiya"
 class SignupDelivery(StrEnum):
     """The outbound effects a signup owes a new user, one per ESP round-trip.
 
-    Each member's value is BOTH the ``users`` field stamped when that delivery
-    lands and the matching ``UserDocument`` attribute, so the job, the
+    Each member's value is BOTH the users field stamped when that delivery
+    lands and the matching UserDocument attribute, so the job, the
     repository and the recovery sweep name the field exactly once. Absence of
     the stamp is the durable record that the delivery is still owed — it is what
-    ``find_undelivered_signup_ids`` selects on and what stops a re-run of a job
+    find_undelivered_signup_ids selects on and what stops a re-run of a job
     whose worker died mid-send from mailing the same person twice.
     """
 

@@ -1,6 +1,4 @@
-"""
-Startup validation for GAIA.
-"""
+"""Startup validation for GAIA."""
 
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.db.repositories.plans import plan_repository
@@ -28,11 +26,10 @@ async def is_payment_setup() -> bool:
 async def validate_startup_requirements() -> None:
     """Halt startup when payment plans are not seeded.
 
-    Registered ``strategy=ERROR``, so raising here aborts a blocking boot (see
-    ``provider_registration.unified_startup``) with an actionable message instead
-    of letting the app come up misconfigured. A prior broad ``except`` caught this
-    very ``RuntimeError`` and only logged it, so the check never actually halted —
-    the raise must propagate.
+    Registered strategy=ERROR, so raising here aborts a blocking boot with an
+    actionable message. A prior broad except swallowed this RuntimeError and
+    only logged it, so the check never actually halted — the raise must
+    propagate.
     """
     log.set(component="startup_validation", phase="startup")
     log.info("Starting startup scripts validation...")

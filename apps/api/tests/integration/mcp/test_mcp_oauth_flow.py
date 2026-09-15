@@ -478,12 +478,7 @@ class TestTokenExchange:
     """Test handle_oauth_callback: code-for-token exchange with PKCE."""
 
     async def test_successful_token_exchange_stores_tokens(self):
-        """After successful code exchange, tokens are stored and connect is dispatched.
-
-        handle_oauth_callback now backgrounds the MCP connect to keep the
-        OAuth redirect under ~1.5s. It returns [] immediately; the connect
-        completes on a fire-and-forget task that the test doesn't await.
-        """
+        """Backgrounds the MCP connect to keep the OAuth redirect under ~1.5s; returns [] immediately without awaiting it."""
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
 
@@ -618,14 +613,7 @@ class TestTokenExchange:
                 )
 
     async def test_token_exchange_validates_token_type(self):
-        """Token response with non-Bearer type is rejected by OAuthToken validation.
-
-        Production parses the token response via OAuthToken.model_validate, whose
-        token_type is Literal["Bearer"]. A non-Bearer type (e.g. MAC) fails SDK
-        validation and surfaces as a pydantic ValidationError out of
-        handle_oauth_callback — the OAuth 2.1 "reject unsupported token_type"
-        contract now enforced by the SDK model rather than hand-rolled code.
-        """
+        """OAuthToken.model_validate's token_type is Literal["Bearer"], so a non-Bearer response fails as a pydantic ValidationError."""
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
         client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "verifier"))

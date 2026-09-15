@@ -220,8 +220,7 @@ class TestStreamMetadata:
         assert await StreamManager.get_active_stream_id(user_id, conv_id) == sid
 
     async def test_update_progress_appends_message(self, real_redis):
-        """update_progress accumulates chunks into the message being streamed,
-        which becomes part of the reply only once its boundary keeps it."""
+        """update_progress accumulates chunks into the message being streamed."""
         sid = _stream_id()
         await StreamManager.start_stream(sid, "conv-prog", "user-prog")
 
@@ -292,7 +291,7 @@ class TestStreamMetadata:
         assert error_data["error"] == "LLM rate limit exceeded"
 
     async def test_cleanup_removes_redis_keys(self, real_redis):
-        """cleanup deletes progress/signal/active keys but keeps the replay log."""
+        """Cleanup deletes progress/signal/active keys but keeps the replay log."""
         sid = _stream_id()
         await StreamManager.start_stream(sid, "conv-clean", "user-clean")
 

@@ -1,6 +1,4 @@
-"""
-ARQ worker settings configuration.
-"""
+"""ARQ worker settings configuration."""
 
 from collections.abc import Callable, Coroutine
 import socket
@@ -19,20 +17,13 @@ WORKER_JOB_TIMEOUT_SECONDS = 1800  # 30 minutes
 
 
 class WorkerSettings:
-    """
-    ARQ worker settings configuration.
-    This class defines the settings for the ARQ worker, including Redis connection,
-    task functions, scheduled jobs, and performance settings.
-    """
+    """ARQ worker settings: Redis connection, task functions, scheduled jobs, and performance settings."""
 
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
 
-    # Task functions will be populated from the main worker file. ``...`` because
-    # the registry is heterogeneous by design — each task takes the ARQ context
-    # plus its own enqueue arguments. Not ARQ's ``WorkerCoroutine`` protocol: these
-    # arrive already wrapped by ``instrument_task``, and a ``Callable`` value never
-    # structurally matches that protocol's ``(ctx, *args, **kwargs)``. The return
-    # type is the real contract every task shares and stays checked.
+    # Populated from the main worker file. Not ARQ's WorkerCoroutine protocol:
+    # tasks arrive wrapped by instrument_task, and a Callable never
+    # structurally matches (ctx, *args, **kwargs) — only the return type stays checked.
     functions: ClassVar[list[Function | Callable[..., Coroutine[Any, Any, str]]]] = []
 
     # Cron jobs will be populated from the main worker file
@@ -42,29 +33,16 @@ class WorkerSettings:
     on_startup: StartupShutdown | None = None
     on_shutdown: StartupShutdown | None = None
 
-    # Performance settings
-    # Sized from measured load, not guessed: mean task duration 10.9s at
-    # 0.72 tasks/s needs ~8 concurrent (Little's Law), peaking near 16. Below
-    # ~8 the queue grows without bound. Bursts above 10 are meant to queue.
-    # Concurrency here is bounded by worker memory — each job holds agent
-    # graphs and LLM contexts — so raise the container limit before raising it.
-    #
-    # PER PROCESS. Running M workers multiplies the fleet ceiling to 10 x M
-    # without serving more load, so scaling out means lowering ARQ_MAX_JOBS —
-    # see the setting for the Postgres connection ceiling that bounds it.
+    # Performance settings — sized from measured load: 10.9s mean duration at
+    # 0.72 tasks/s needs ~8 concurrent (Little's Law, peaks ~16); below ~8 the
+    # queue grows unbounded. PER PROCESS: scale via ARQ_MAX_JOBS, not more workers.
     max_jobs = settings.ARQ_MAX_JOBS
     job_timeout = WORKER_JOB_TIMEOUT_SECONDS
     keep_result = 0  # Don't keep results in Redis
     log_results = True
     health_check_interval = 30  # seconds
-    # Per-worker, not fleet-wide. arq's ``record_health`` PSETEXes this key from
-    # the poll loop, and ``scripts/arq_healthcheck.py`` — which runs inside each
-    # worker container — is just EXISTS on it. A shared key therefore answers
-    # "is ANY worker alive", so a wedged worker's own probe stays green as long
-    # as a sibling is refreshing it: the container is never restarted, it holds a
-    # replica slot doing nothing, and the queue backs up silently. The container
-    # hostname is the natural per-worker identity because the probe runs in that
-    # same container; arq's own default (queue name + suffix) is still shared
-    # across workers on one queue, so it does not solve this either.
+    # Per-worker, not fleet-wide: a shared key would answer "is ANY worker
+    # alive", letting a wedged worker hide behind a healthy sibling while its
+    # queue backs up silently. Hostname gives each worker its own key.
     health_check_key = f"arq:health:{socket.gethostname()}"
     allow_abort_jobs = True

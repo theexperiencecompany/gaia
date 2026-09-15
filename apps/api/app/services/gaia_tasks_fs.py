@@ -1,13 +1,13 @@
-"""Mongo → VFS glue for ``/workspace/gaia-tasks/``.
+"""Mongo → VFS glue for /workspace/gaia-tasks/.
 
-The Mongo side: ``todos`` collection, ``gaia-tracked`` label, 30-day
+The Mongo side: todos collection, gaia-tracked label, 30-day
 completion window.
 
-The VFS side: :mod:`app.services.storage.gaia_tasks_vfs`.
+The VFS side: :mod:app.services.storage.gaia_tasks_vfs.
 
 The shared orchestration (mount check, hash gate, fire-and-forget
 scheduler, structured logging) lives in
-:mod:`app.services._vfs_scheduler`.
+:mod:app.services._vfs_scheduler.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ ACTIVE_WINDOW_DAYS = 30
 async def sync_user_gaia_tasks(user_id: str) -> int:
     """Materialize the user's active gaia-tasks to JuiceFS.
 
-    Returns the number of task bodies rewritten. ``0`` means either the
+    Returns the number of task bodies rewritten. 0 means either the
     mount is missing (native dev) or the on-disk catalog signature
     already matched Mongo — both are no-ops from the caller's POV.
     """
@@ -58,7 +58,7 @@ schedule_gaia_tasks_sync = make_scheduler(sync_user_gaia_tasks, log_name="gaia_t
 async def fetch_active_projections(user_id: str) -> list[GaiaTaskProjection]:
     """Pull the user's active gaia-tasks from Mongo.
 
-    Filter: carries the ``gaia-tracked`` label AND (open OR completed
+    Filter: carries the gaia-tracked label AND (open OR completed
     within the last 30 days).
     """
     cutoff = datetime.now(UTC) - timedelta(days=ACTIVE_WINDOW_DAYS)
@@ -67,7 +67,7 @@ async def fetch_active_projections(user_id: str) -> list[GaiaTaskProjection]:
 
 
 def project_gaia_task(doc: TodoDocument) -> GaiaTaskProjection:
-    """``TodoDocument`` → ``GaiaTaskProjection`` (preserve every field the agent uses)."""
+    """Project a TodoDocument into a GaiaTaskProjection, preserving every field the agent uses."""
     return {
         "id": doc.id,
         "canvas": doc.canvas_content or "",

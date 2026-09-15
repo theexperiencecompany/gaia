@@ -32,9 +32,7 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 
 @pytest.fixture
 def mock_repo():
-    """Patch the reminder_repository seam the scheduler delegates to. Mongo shape,
-    ObjectId codec and $set/filter details are the repository's contract (proven in
-    tests/contracts/test_reminders_repository.py); here we assert delegation."""
+    """Patch the reminder_repository seam; Mongo shape and $set/filter details are proven in tests/contracts/test_reminders_repository.py."""
     with (
         patch(
             "app.services.reminder_service.reminder_repository.create", new_callable=AsyncMock
@@ -170,8 +168,7 @@ class TestCreateReminder:
     async def test_recurring_reminder_persists_timezone(
         self, scheduler, mock_repo, mock_scheduler_base, future_time, sample_payload
     ):
-        """A recurring reminder persists its schedule timezone so the re-arm path
-        (handle_recurring_task) computes the next occurrence in that zone, not UTC."""
+        """The schedule timezone is persisted so handle_recurring_task computes the next occurrence in that zone, not UTC."""
         mock_repo.create.return_value = _reminder_document()
         request = CreateReminderRequest(
             agent=AgentType.STATIC,
@@ -491,10 +488,7 @@ class TestUpdateTaskStatus:
 
 
 class TestGetPendingTask:
-    """The due-scan (and its ObjectId->string mapping) now lives on
-    ``reminder_repository.find_pending_before`` — contract-tested against real Mongo
-    in tests/contracts/test_reminders_repository.py. Here we verify the scheduler
-    delegates to it and passes the scan time through."""
+    """The due-scan lives on reminder_repository.find_pending_before (contract-tested); here we verify delegation and the scan time."""
 
     async def test_returns_pending_reminders(self, scheduler, future_time, sample_payload):
         reminder = ReminderModel(

@@ -1,8 +1,8 @@
 """Reap leaked headless-browser subprocesses.
 
-crawl4ai launches one Playwright driver process (``playwright/driver/node``)
-per ``AsyncWebCrawler``; the driver owns the Chromium tree. Teardown is
-shielded against cancellation in ``crawl4ai_utils.managed_crawler``, but any
+crawl4ai launches one Playwright driver process (playwright/driver/node)
+per AsyncWebCrawler; the driver owns the Chromium tree. Teardown is
+shielded against cancellation in crawl4ai_utils.managed_crawler, but any
 path that still orphans a driver (library bugs, crashes mid-launch) leaks
 ~50-130 MB per process with no in-heap trace — observed in prod as 31 browser
 processes (2.5 GB) accumulating for days until the node swapped.
@@ -37,7 +37,7 @@ _reaper_task: asyncio.Task[None] | None = None
 
 
 def _is_leaked_driver(proc: psutil.Process, now: float) -> bool:
-    """True when proc is a browser driver older than the reaper age gate."""
+    """Return True when proc is a browser driver older than the reaper age gate."""
     try:
         if now - proc.create_time() < BROWSER_REAPER_MAX_AGE_SECONDS:
             return False
@@ -50,7 +50,7 @@ def _is_leaked_driver(proc: psutil.Process, now: float) -> bool:
 def reap_leaked_browsers() -> int:
     """Terminate leaked driver children; return how many were reaped.
 
-    Blocking (uses ``psutil.wait_procs``) — call via ``asyncio.to_thread``.
+    Blocking (uses psutil.wait_procs) — call via asyncio.to_thread.
     """
     now = time.time()
     leaked = [child for child in psutil.Process().children() if _is_leaked_driver(child, now)]

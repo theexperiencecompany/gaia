@@ -11,10 +11,9 @@ import { useWindowOrigin } from "@/hooks/ui/useWindowOrigin";
 import { isAppLink } from "@/lib/url-safety";
 import { cn } from "@/lib/utils";
 
-// Link chip styling. The bot bubble is dark (bg-zinc-800), so the brand-blue
-// `text-primary` link reads fine there. The user bubble is `#00bbff` (the same
-// value as `--color-primary`), so blue-on-blue is invisible — there we switch
-// to the bubble's black-text treatment with a translucent-black chip.
+// Link chip styling: the bot bubble is dark (bg-zinc-800), where brand-blue
+// `text-primary` reads fine. The user bubble is `#00bbff` (same as
+// --color-primary), so we switch to a black-text/translucent-black chip there.
 const DARK_BUBBLE_LINK =
   "bg-primary/20 text-primary hover:text-white hover:underline";
 const LIGHT_BUBBLE_LINK = "bg-black/10 text-black underline hover:bg-black/20";

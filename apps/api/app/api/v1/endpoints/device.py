@@ -1,10 +1,10 @@
 """Device bridge REST: pairing, token exchange, server registration, management.
 
 Auth contexts differ per route:
-  * ``/device/pair/start|poll`` and ``/device/token`` — no user session (the
+  * /device/pair/start|poll and /device/token — no user session (the
     daemon isn't logged in); they self-authenticate via the pairing/refresh
     credential. Excluded from WorkOS middleware.
-  * ``/device/servers`` — authenticated by the device connect JWT (the daemon).
+  * /device/servers — authenticated by the device connect JWT (the daemon).
   * everything else — a signed-in user session.
 """
 
@@ -106,12 +106,9 @@ async def pair_poll(payload: PollPairingRequest) -> PollPairingResponse:
     log.set(device={"operation": "pair_poll"})
     result = await poll_pairing(payload.device_code)
     log.set_ns("device", pairing_status=result.status)
-    # Audited on the terminal transition only. `approved` is where the pairing is
-    # consumed and the refresh credential is handed over, exactly once; the other
-    # statuses are the daemon's PAIRING_POLL_INTERVAL_SECONDS heartbeat, up to
-    # ~180 of them per pairing. Auditing those would bury the one real credential
-    # issuance under no-ops — every poll already emits its own wide event
-    # carrying device.pairing_status, so the polling itself stays queryable.
+    # Audited on the terminal transition only: `approved` hands over the
+    # refresh credential exactly once, vs up to ~180 heartbeat polls per
+    # pairing that would bury it — polling stays queryable via the wide event.
     if result.status == "approved":
         log.audit(
             "device credential issued",

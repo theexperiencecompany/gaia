@@ -1,29 +1,18 @@
 """GAIA's whole first contact on a freshly linked platform, composed by the server.
 
-Deterministic and LLM-free, by decision. The first version handed the composed
-opener to the model as a normal turn and asked the prompt for the shape; live
-runs showed it skipping the per-pick lines, delegating to the executor, and
-sometimes never producing the connect links at all. The one message a user is
-guaranteed to read is not something to leave to sampling.
+Deterministic and LLM-free by decision: handing the composed opener to the
+model as a normal turn led to skipped per-pick lines, delegation to the
+executor, and sometimes no connect links at all — too important to leave to sampling.
 
-Three bubbles (two when they picked nothing):
+Three bubbles (two if they picked nothing): the hello; one sentence on what
+GAIA does for their picks; and the first move — connect links when the job is
+impossible without the account (inbox needs Gmail, brief needs the calendar),
+else one question they can answer in five words.
 
-1. the hello,
-2. one sentence that says what GAIA does from here for the things they
-   picked (their picks become clauses, not a list), with their typed words,
-3. the first move: either the connect links the picks cannot work without,
-   with the reason, or one question about their first pick that they can
-   answer in five words.
-
-A connect link is only asked for when the job is impossible without the
-account (the inbox needs Gmail, a meeting brief needs the calendar). Everything
-else is a question, and the answer's playbook offers a link later, in context.
-
-Links are written as markdown; every bot's ``send`` renders markdown for its
-platform (Telegram: a real hyperlink; WhatsApp and iMessage: ``label (url)``).
-
-The rules of the voice apply here as everywhere (``agents/prompts/comms_prompts``):
-short lines, plain words, no exclamation marks, no emoji, never a feature list.
+Links are markdown; every bot's send renders it for its platform (Telegram: a
+hyperlink; WhatsApp/iMessage: label (url)). Voice rules apply as everywhere
+(agents/prompts/comms_prompts): short lines, plain words, no exclamation
+marks, no emoji, never a feature list.
 """
 
 from app.config.oauth_config import get_integration_by_id
@@ -43,7 +32,7 @@ LINK_GREETING = "Hey, I'm with you on {platform} now."
 def compose_link_greeting(platform: str, name: str | None) -> str:
     """GAIA's hello on a freshly linked platform.
 
-    ``name`` is the GAIA user's full name; only the first token is used, because
+    name is the GAIA user's full name; only the first token is used, because
     a greeting that says the surname is an email, not a text.
     """
     from app.services.onboarding.first_conversation import (  # noqa: PLC0415 -- first_conversation imports the onboarding package for its phrases; a top-level import back would be a cycle
@@ -57,13 +46,9 @@ def compose_link_greeting(platform: str, name: str | None) -> str:
     return LINK_GREETING.format(platform=label)
 
 
-#: What GAIA does about each pick, as a clause that follows "From here, ...".
-#: Present tense, second person, no full stop: the clauses are joined into one
-#: sentence in the order the user tapped.
-#:
-#: Every member of ``OnboardingNeed`` has an entry and a drift test enforces it:
-#: a need with no clause renders as a silently skipped pick, which is the one
-#: failure this whole module exists to stop.
+#: What GAIA does about each pick, as a clause following "From here, ...".
+#: Present tense, no full stop; a drift test enforces every OnboardingNeed
+#: has an entry (a missing one renders as a silently skipped pick).
 NEED_CLAUSES: dict[OnboardingNeed, str] = {
     OnboardingNeed.INBOX: "every morning your inbox comes sorted with replies drafted",
     OnboardingNeed.CALENDAR: "you get a brief before each meeting",
@@ -100,11 +85,8 @@ NEED_CLAUSES: dict[OnboardingNeed, str] = {
 OTHER_NEED_SENTENCE = 'You also said "{other_need}". That\'s mine too.'
 
 #: The first move when nothing needs connecting: one question about their
-#: first pick, with the reason it is being asked, answerable in a few words.
-#: For a pick that normally needs an account, this is the version for when the
-#: account is already connected.
-#:
-#: Every member of ``OnboardingNeed`` has an entry (drift test).
+#: first pick, answerable in a few words. Drift test enforces every
+#: OnboardingNeed has an entry.
 NEED_ASKS: dict[OnboardingNeed, str] = {
     OnboardingNeed.INBOX: (
         "Gmail's already on, so the inbox starts tomorrow morning. "
@@ -191,11 +173,9 @@ OTHER_NEED_ASK = "Tell me a bit more about that and I'll start on it."
 #: The first move when they picked nothing at all.
 NO_PICKS_ASK = "Tell me one thing off your plate and I'll start there."
 
-#: What each pick cannot work without, in ``OAUTH_INTEGRATIONS`` ids. Only the
-#: jobs that are impossible without the account: sorting an inbox needs Gmail,
-#: a meeting brief needs the calendar. Every other pick asks a question first
-#: and its playbook offers a link later, in context, once the answer says where
-#: the work lives.
+#: What each pick cannot work without, in OAUTH_INTEGRATIONS ids — only jobs
+#: impossible without the account (inbox needs Gmail, brief needs the
+#: calendar); other picks ask a question first and get a link later.
 NEED_INTEGRATIONS: dict[OnboardingNeed, tuple[str, ...]] = {
     OnboardingNeed.INBOX: ("gmail",),
     OnboardingNeed.CALENDAR: ("googlecalendar",),
@@ -213,10 +193,10 @@ _CONNECT_PHRASES: dict[str, tuple[str, str]] = {
 
 
 def needed_integration_ids(preferences: OnboardingPreferences) -> list[str]:
-    """The integrations this user's picks need, deduped, in the order they picked.
+    """Return the integrations this user's picks need, deduped, in the order they picked.
 
-    Pick order matters: the first thing they tapped is the thing they came for,
-    so its connect link is the first one they see.
+    Pick order matters: the first thing they tapped is the thing they came
+    for, so its connect link is the first one they see.
     """
     seen: list[str] = []
     for need in preferences.needs or []:
@@ -227,7 +207,7 @@ def needed_integration_ids(preferences: OnboardingPreferences) -> list[str]:
 
 
 def _integration_display_name(integration_id: str) -> str:
-    """The name the OAuth config gives this integration, for user-facing copy."""
+    """Return the name the OAuth config gives this integration, for user-facing copy."""
     integration = get_integration_by_id(integration_id)
     return integration.name if integration else integration_id
 
@@ -244,8 +224,7 @@ def _join_clauses(clauses: list[str]) -> str:
 def _opening_bubbles(
     platform: str, name: str | None, preferences: OnboardingPreferences
 ) -> list[str]:
-    """The hello, then the promise as its own bubble (with their typed words
-    folded in), so the message reads as a few texts, not one paragraph."""
+    """Build the hello, then the promise as its own bubble, so it reads as a few texts."""
     bubbles = [compose_link_greeting(platform, name)]
     clauses = [NEED_CLAUSES[need] for need in preferences.needs or [] if need in NEED_CLAUSES]
     promise: list[str] = []
@@ -296,16 +275,12 @@ def compose_first_contact(
     preferences: OnboardingPreferences,
     connect_links: list[tuple[str, str]],
 ) -> list[str]:
-    """Every bubble a bot sends right after a one-tap link, in order.
+    """Build every bubble a bot sends right after a one-tap link, in order.
 
-    ``connect_links`` are ``(integration_id, url)`` pairs already minted by the
-    caller for whatever :func:`needed_integration_ids` returned MINUS what the
-    user already has connected. Minting is I/O and this stays pure, so the copy
-    can be asserted without a Redis or a Mongo in the room.
-
-    With links, the second bubble is the connect ask: a tap does more than a
-    typed answer, so it wins over the question even for mixed picks. Without
-    links it is one question about the first pick.
+    connect_links are (integration_id, url) pairs already minted by the
+    caller, minus integrations the user already has connected. With links,
+    the second bubble is the connect ask (a tap beats a typed answer);
+    without, it is one question about the first pick.
     """
     first_move = _connect_bubble(connect_links) if connect_links else _ask_bubble(preferences)
     return [*_opening_bubbles(platform, name, preferences), first_move]
@@ -317,14 +292,11 @@ async def build_first_contact(
     name: str | None,
     preferences: OnboardingPreferences,
 ) -> list[str]:
-    """:func:`compose_first_contact` with the connect links resolved and minted.
+    """Resolve and mint connect links, then build the first-contact bubbles.
 
-    An integration the user already connected is dropped rather than re-offered:
-    the whole point of the links is that they are the first move, and a link to
-    something already on is a tap that does nothing.
-
-    A link that could not be minted (Redis down) is dropped too — an unusable
-    URL in a first message is worse than one fewer.
+    Drops an integration the user already connected (a link that does
+    nothing) and drops a link that could not be minted (Redis down) rather
+    than sending an unusable URL.
     """
     connect_links: list[tuple[str, str]] = []
     for integration_id in needed_integration_ids(preferences):

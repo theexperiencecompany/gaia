@@ -1,19 +1,11 @@
 """Integration tests for Tool Registry & Semantic Retrieval (ChromaDB).
 
-Tests exercise the end-to-end flow of tool indexing into ChromaDB and
-semantic retrieval back out. Uses an ephemeral in-memory ChromaDB client
-with a deterministic embedding function to avoid external dependencies.
-
-Key production modules under test
-----------------------------------
-- app.db.chroma.chroma_store.ChromaStore
-- app.db.chroma.chroma_tools_store.index_tools_to_store
-- app.db.chroma.chroma_tools_store._compute_tool_diff
-- app.db.chroma.chroma_tools_store._build_put_operations
-- app.db.chroma.chroma_tools_store._get_existing_tools_from_chroma
-- app.agents.tools.core.registry.ToolRegistry
-- app.agents.tools.core.registry.ToolCategory
-- app.agents.tools.core.registry.Tool
+Exercises the end-to-end flow of tool indexing into ChromaDB and semantic
+retrieval back out, against app.db.chroma.chroma_store.ChromaStore,
+chroma_tools_store's indexing/diff functions, and
+app.agents.tools.core.registry (ToolRegistry, ToolCategory, Tool). Uses an
+ephemeral in-memory ChromaDB client with a deterministic embedding function
+to avoid external dependencies.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -267,13 +259,10 @@ class TestToolIndexing:
     def _bypass_seed_lock(self):
         """Run the seeding work directly instead of taking the real Redis lease.
 
-        ``index_tools_to_store`` serializes its read-diff-write under a
-        ``DistributedLock`` backed by the module-level ``redis_cache.redis``
-        singleton, whose connection binds to the event loop that first used it.
-        Under pytest's per-test loops that connection goes stale and the lock
-        raises ``RuntimeError: Event loop is closed``. These tests exercise the
-        indexing/diff logic the lock guards, not Redis — the lock itself is
-        proven in ``tests/integration/real/test_distributed_lock_real.py``.
+        The module-level redis_cache.redis singleton binds to the event loop
+        that first used it, which goes stale under pytest's per-test loops and
+        raises RuntimeError: Event loop is closed. The lock itself is proven
+        in tests/integration/real/test_distributed_lock_real.py.
         """
 
         async def _run(self, work):

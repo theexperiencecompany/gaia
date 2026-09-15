@@ -23,7 +23,7 @@ async def _generate_description_from_message(
     selectedTool: str | None,
     selectedWorkflow: SelectedWorkflowData | None,
 ) -> str:
-    """Helper to generate conversation description from message context."""
+    """Generate a conversation description from message context."""
     user_message = (
         last_message.get("content")
         if last_message and "content" in last_message
@@ -65,16 +65,11 @@ async def create_conversation(
     conversation_id: str | None = None,
     is_onboarding_demo: bool = False,
 ) -> ConversationModel:
-    """
-    Create a new conversation with optional description generation.
+    """Create a new conversation with optional description generation.
 
     Args:
-        last_message: The user's message to generate description from
-        user: User information
-        selectedTool: Optional tool selection
-        selectedWorkflow: Optional workflow selection
-        generate_description: If False, uses "New Chat" as placeholder
-        conversation_id: Optional pre-generated conversation ID (for background streaming)
+        generate_description: if False, uses "New Chat" as a placeholder instead of generating one
+        conversation_id: optional pre-generated id, for background streaming
     """
     log.set(user_id=user.get("user_id"), selected_tool=selectedTool)
     # Use provided ID or generate new one
@@ -105,19 +100,7 @@ async def generate_and_update_description(
     selectedTool: str | None | None,
     selectedWorkflow: SelectedWorkflowData | None | None = None,
 ) -> str:
-    """
-    Generate a description for an existing conversation and update it.
-
-    Args:
-        conversation_id: ID of the conversation to update
-        last_message: The user's message to generate description from
-        user: User information
-        selectedTool: Optional tool selection
-        selectedWorkflow: Optional workflow selection
-
-    Returns:
-        The generated description
-    """
+    """Generate a description for an existing conversation and update it."""
     description = await _generate_description_from_message(
         last_message, selectedTool, selectedWorkflow
     )
@@ -139,16 +122,7 @@ async def do_prompt_no_stream(
     prompt: str,
     system_prompt: str | None = None,
 ) -> dict[str, str]:
-    """
-    Execute a single LLM prompt without streaming.
-
-    Args:
-        prompt: The user prompt to send to the LLM
-        system_prompt: Optional system message
-
-    Returns:
-        dict with "response" key containing the AI's response content
-    """
+    """Execute a single LLM prompt without streaming; returns {"response": <AI reply text>}."""
     messages: list[AnyMessage] = [SystemMessage(content=system_prompt)] if system_prompt else []
     messages.append(HumanMessage(content=prompt))
 

@@ -196,9 +196,8 @@ def _build_gmail_query(filters: GmailSearchFilters) -> str:
 @router.get("/gmail/search", summary="Advanced search for Gmail messages")
 async def search_emails(
     # Bound as a dependency, not Query(): FastAPI 0.139 does not flatten
-    # query-models through include_router, so a Query()-bound model 422s every
-    # request expecting a JSON `filters=` param. Depends() binds each field
-    # as its own flattened query param.
+    # query-models through include_router, so Query() 422s every request;
+    # Depends() binds each field as its own flattened query param.
     filters: Annotated[GmailSearchFilters, Depends()],
     max_results: int = 20,
     page_token: str | None = None,

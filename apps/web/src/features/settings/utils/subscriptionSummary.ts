@@ -6,8 +6,7 @@ import {
 
 // Module-scope formatter: hoisting keeps locale resolution out of the render
 // path (js-hoist-intl); explicit locale+timeZone gives deterministic
-// server/browser text per no-locale-format-in-render. Billing days are
-// rendered as UTC calendar dates.
+// server/browser text. Billing days render as UTC calendar dates.
 const BILLING_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
   month: "long",

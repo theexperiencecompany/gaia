@@ -5,14 +5,14 @@ Two tools for agent self-organization during complex multi-step work:
 - plan_tasks: Create initial task list
 - update_tasks: Update task statuses and/or add new tasks in a single call
 
-Tools read/write the `todos` channel in graph state directly via
+Tools read/write the todos channel in graph state directly via
 InjectedState and Command(update=...). No middleware, no markers,
-no class — just pure functions with closures over `source`.
+no class — just pure functions with closures over source.
 
-Streaming: Each mutation emits a `todo_progress` event via
+Streaming: Each mutation emits a todo_progress event via
 get_stream_writer() so the frontend renders progress in real-time.
 
-Pre-model hook: `create_todo_pre_model_hook()` injects current task
+Pre-model hook: create_todo_pre_model_hook() injects current task
 context into the latest non-memory SystemMessage before each LLM call.
 """
 
@@ -74,8 +74,8 @@ class TaskUpdate(TypedDict, total=False):
 def _emit_todo_progress(todos: list[Todo], source: str, source_label: str | None = None) -> None:
     """Emit a todo_progress event via LangGraph stream_writer.
 
-    `source` is the stable grouping key (e.g. a custom MCP integration id);
-    `source_label` is its human-readable name, included so the frontend can
+    source is the stable grouping key (e.g. a custom MCP integration id);
+    source_label is its human-readable name, included so the frontend can
     show the integration's name instead of reverse-mapping the id.
     """
     snapshot: dict[str, Any] = {
@@ -114,19 +114,12 @@ def _format_todos(todos: list[Todo]) -> str:
 
 
 def create_todo_tools(source: str = "executor", source_label: str | None = None) -> list[BaseTool]:
-    """Create plan_tasks and update_tasks tools with `source` baked in.
-
-    Each tool reads current todos via InjectedState("todos"), mutates,
-    streams progress, and returns Command(update={"todos": ...}).
+    """Create plan_tasks and update_tasks tools with source baked in.
 
     Args:
-        source: Identifier for todo_progress events (e.g. "executor", "gmail")
-        source_label: Human-readable name for the source (e.g. a custom MCP
-            integration's display name). Streamed so the frontend shows the
-            name instead of the raw id.
-
-    Returns:
-        List of two BaseTool instances
+        source: Identifier for todo_progress events (e.g. "executor", "gmail").
+        source_label: Streamed so the frontend shows this name instead of
+            the raw id.
     """
 
     # TODO: Remove these tool calls from the conversation history, we are tracking
@@ -183,12 +176,9 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
         summary_parts: list[str] = []
         added: list[str] = []
 
-        # Validate the whole batch before applying any of it. Two reasons this is
-        # all-or-nothing rather than best-effort: a silently skipped entry told
-        # the model "no changes" while reporting success, so it moved on with a
-        # checklist that never advanced; and partial application makes the
-        # model's retry non-idempotent — the valid additions would land twice
-        # once it corrects the bad entry and resends the batch.
+        # Validate the whole batch before applying any of it: a partial apply
+        # would make the model's retry non-idempotent (valid additions landing
+        # twice once it resends the corrected batch).
         problems: list[str] = []
         if not updates:
             problems.append("the updates list was empty")
@@ -272,10 +262,10 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
 def create_todo_pre_model_hook(
     source: str = "executor",
 ) -> Callable[[State, RunnableConfig, BaseStore], State]:
-    """Pre-model hook that emits a fresh ``todo_context`` SystemMessage each step.
+    """Pre-model hook that emits a fresh todo_context SystemMessage each step.
 
     Appends and marks; where the message lands, and which older copy it replaces,
-    is ``manage_system_prompts_node``'s job — this hook runs before it. Placing
+    is manage_system_prompts_node's job — this hook runs before it. Placing
     the message itself is what used to make its position depend on which other
     slots happened to be occupied that turn.
     """

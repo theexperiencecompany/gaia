@@ -91,8 +91,7 @@ class TestAnswersFingerprint:
         ],
     )
     def test_changing_any_answer_changes_the_key(self, changed: dict) -> None:
-        """Re-answering Q2 must not read the question written for the old answers,
-        and nothing anywhere calls an invalidate that could be forgotten."""
+        """Re-answering must not read the question cached for the old answers."""
         assert first_question_cache_key("u1", _prefs(**changed)) != first_question_cache_key(
             "u1", _prefs()
         )
@@ -117,8 +116,7 @@ class TestResolveFirstQuestion:
         assert get.await_args.args[0] == first_question_cache_key("u1", _prefs())
 
     async def test_a_question_written_for_other_answers_is_not_read(self) -> None:
-        """The hash is the invalidation: the changed answers read a key nobody
-        wrote, so the miss path runs rather than the old question being served."""
+        """Changed answers read a key nobody wrote, so the miss path runs instead."""
         store = {first_question_cache_key("u1", _prefs()): "stale"}
         written = FirstQuestion(chips=GOOD_CHIPS)
 

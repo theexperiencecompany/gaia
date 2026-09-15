@@ -73,13 +73,11 @@ export function openPermissionSettings(pane: DesktopPermissionPane): void {
 
 /**
  * Trigger the one-time macOS TCC prompt for a protected folder by reading it.
- * The prompt uses the NS<Folder>FolderUsageDescription strings in the packaged
- * Info.plist. A grant lets the commands GAIA runs on this Mac (run_on_device)
- * reach the folder; a denial (or an already-denied grant) reads as not granted.
+ * Uses the NS<Folder>FolderUsageDescription strings in the packaged Info.plist.
  *
  * TCC attributes the grant to the app's code signature, so this only prompts
- * and persists reliably on a Developer-ID-signed build; in an unsigned dev
- * build the prompt may not appear or may attribute to the wrong app.
+ * and persists reliably on a Developer-ID-signed build; an unsigned dev build
+ * may not prompt, or may attribute the grant to the wrong app.
  */
 export async function requestFolderAccess(
   folder: ProtectedFolder,

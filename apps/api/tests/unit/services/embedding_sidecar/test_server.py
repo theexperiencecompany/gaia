@@ -1,14 +1,14 @@
 """Unit tests for the embedding sidecar service (app.services.embedding_sidecar.server).
 
 The sidecar is a standalone FastAPI app that reuses the in-process
-``_embed_sync`` / ``_embed_query_sync`` / ``_rerank_sync`` helpers from
-``app.memory.embeddings``. The server module binds those helpers into its own
+_embed_sync / _embed_query_sync / _rerank_sync helpers from
+app.memory.embeddings. The server module binds those helpers into its own
 namespace at import time, so the tests patch that binding — the exact seam the
 production code calls — and drive the app over ASGI to exercise the real
 routing, request validation, and response contract (the response keys
-``vectors`` / ``vector`` / ``scores`` are what the HTTP client in
-``app.memory.embeddings`` reads back). Model weights never load; the
-``/health``, happy-path, empty-input, validation, and error paths are all
+vectors / vector / scores are what the HTTP client in
+app.memory.embeddings reads back). Model weights never load; the
+/health, happy-path, empty-input, validation, and error paths are all
 covered hermetically.
 """
 
@@ -37,7 +37,7 @@ async def sidecar_client() -> AsyncGenerator[AsyncClient, None]:
 
     ASGITransport never runs the lifespan, so no model-warmup call happens
     here; the lifespan (and its failure mode) is covered by the direct
-    ``_lifespan`` tests below.
+    _lifespan tests below.
     """
     transport = ASGITransport(app=server.app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -257,8 +257,7 @@ class TestSaturationBackpressure:
     async def test_503_exception_carries_exact_backoff_contract(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The 503's shape is a contract clients rely on: exact status, detail
-        text, and Retry-After header name/value."""
+        """The 503's shape is a contract clients rely on: exact status, detail text, and Retry-After header."""
         monkeypatch.setattr(server, "_slot_wait_seconds", 0.0)
         monkeypatch.setattr(server, "_inference_slots", asyncio.Semaphore(1))
         async with server._inference_slots:
@@ -280,14 +279,12 @@ class TestSaturationBackpressure:
 
 
 class TestClientRetryContract:
-    """Pinned here as well as in tests/unit/memory/test_embeddings.py: the
-    retry budget is what keeps memory saves alive through a sidecar blip."""
+    """Pinned here as well as in tests/unit/memory/test_embeddings.py: the retry budget keeps memory saves alive through a blip."""
 
     async def test_rerank_splits_and_preserves_scores(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Second home for the chunked-rerank contract so the mutation lane
-        attributes it from both covering files."""
+        """Second home for the chunked-rerank contract so the mutation lane attributes it from both covering files."""
         calls: list[dict] = []
 
         async def fake_post(path: str, payload: dict, *, interactive: bool = False) -> dict:

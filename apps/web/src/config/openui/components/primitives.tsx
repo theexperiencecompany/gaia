@@ -4,14 +4,9 @@ import React from "react";
 import type { z } from "zod";
 import { avatarSchema, progressSchema } from "../promptSpecs";
 
-// ---------------------------------------------------------------------------
-// Views
-//
-// Views stay file-private on purpose: this module's public surface is the
-// `*Def` component registrations at the bottom (consumed by
-// ../genericLibrary). Exporting components alongside those defs breaks Fast
-// Refresh (react-refresh/only-export-components).
-// ---------------------------------------------------------------------------
+// Views stay file-private: this module's public surface is the `*Def`
+// component registrations at the bottom. Exporting components alongside
+// those defs breaks Fast Refresh (react-refresh/only-export-components).
 
 function ProgressView(props: z.infer<typeof progressSchema>) {
   const max = props.max && props.max > 0 ? props.max : 100;

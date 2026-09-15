@@ -34,7 +34,7 @@ from shared.py.wide_events import log
 
 
 def _warnings(message: str) -> list[dict[str, Any]]:
-    """The wide event's warnings whose message is the tagged ``message``."""
+    """Return the wide event's warnings whose message is the tagged message."""
     tagged = f"{LogTag.AGENT} {message}"
     return [w for w in log.get().get("warnings", []) if w.get("msg") == tagged]
 
@@ -83,7 +83,7 @@ async def _wrap(mw: LoopGuardMiddleware, request: ToolCallRequest, handler: Any)
 
 
 async def _run(mw: LoopGuardMiddleware, times: int, **kwargs: Any) -> list[ToolMessage]:
-    """Drive `times` identical failing calls and return every result."""
+    """Drive times identical failing calls and return every result."""
     return [await _wrap(mw, _request(**kwargs), _failing()) for _ in range(times)]
 
 
@@ -506,10 +506,7 @@ def test_fresh_run_counters_start_empty() -> None:
 
 
 # --- repeat detection: identical calls regardless of outcome ------------------ #
-#
-# Everything above tallies failures only. A call re-issued with identical
-# arguments that SUCCEEDS is still a loop — a re-sent handoff, the same search
-# fired twice — and is caught by its own counter.
+# A successful re-issued call (a re-sent handoff, the same search twice) is still a loop, caught by its own counter.
 
 
 async def test_identical_successful_calls_are_warned_at_the_repeat_threshold() -> None:
@@ -560,12 +557,7 @@ async def test_the_repeat_streak_is_per_thread() -> None:
 
 
 async def test_the_repeat_block_spells_out_the_count_the_limit_and_the_way_out() -> None:
-    """The blocked call's text is all the model gets — it never sees the guard.
-
-    Asserted verbatim rather than by keyword: a message that dropped the count,
-    the limit or the instruction would still contain "Loop guard" and still
-    read as a working stop, while telling the model nothing it can act on.
-    """
+    """Asserted verbatim: a message could still contain "Loop guard" while dropping the count, limit, or instruction the model needs."""
     log.reset()
     mw = LoopGuardMiddleware(hard_stop=True)
     blocked = [await _wrap(mw, _request(), _succeeding()) for _ in range(LOOP_GUARD_STOP_REPEAT)][

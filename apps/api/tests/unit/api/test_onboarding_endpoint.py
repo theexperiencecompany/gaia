@@ -144,12 +144,7 @@ class TestCompleteOnboarding:
         assert data["message"] == "Onboarding completed successfully"
 
     async def test_complete_onboarding_stores_the_callers_own_answers(self, client: AsyncClient):
-        """The submission is written for THIS user, carrying THIS body's answers.
-
-        Both arguments are load-bearing: a dropped user id writes the answers
-        nowhere (or onto a null row), and a dropped payload stores an empty
-        onboarding while still reporting success to the client.
-        """
+        """The submission is written for this user, carrying this body's answers — a dropped user id or payload would still report success to the client."""
         with patch(
             _COMPLETE_ONBOARDING,
             new_callable=AsyncMock,
@@ -169,12 +164,7 @@ class TestOnboardingAnalytics:
     """Analytics captures on onboarding endpoints."""
 
     async def test_complete_does_not_capture_completion_it_only_queues(self, client: AsyncClient):
-        """Submitting the form QUEUES the pipeline; it does not finish onboarding.
-
-        Capturing here counted the milestone at the wrong moment and counted
-        submissions whose pipeline later failed. The worker owns the event and
-        fires it once the phase actually reaches PERSONALIZATION_COMPLETE.
-        """
+        """Submitting the form queues the pipeline; the worker owns the completion event and fires it once the phase reaches PERSONALIZATION_COMPLETE."""
         with (
             patch(
                 _COMPLETE_ONBOARDING,
@@ -239,8 +229,7 @@ class TestOnboardingAnalytics:
     async def test_complete_onboarding_accepts_a_typed_job_written_as_a_sentence(
         self, client: AsyncClient
     ):
-        """Q1's "Other" field takes sentences; the completion rule must match the
-        preferences rule, or the wizard 422s on its last step (it did)."""
+        """Q1's "Other" field takes sentences; the completion rule must match the preferences rule, or the wizard 422s on its last step (it did)."""
         with patch(
             _COMPLETE_ONBOARDING,
             new_callable=AsyncMock,
@@ -661,8 +650,7 @@ class TestGetPersonalization:
     async def test_get_personalization_unknown_historical_phase_reads_as_unset(
         self, client: AsyncClient
     ):
-        """A phase outside today's enum (an old row) reads as unset: the endpoint
-        reports the initial phase and has_personalization=False, never a 500."""
+        """A phase outside today's enum (an old row) reads as unset: the endpoint reports the initial phase and has_personalization=False, never a 500."""
         user_doc = _make_user_doc(
             onboarding={"phase": "email_connected", "bio_status": "completed"}
         )
@@ -776,8 +764,7 @@ class TestGetPersonalizationPins:
         assert state_logs[0].kwargs["phase"] == "initial"
 
     async def test_full_document_passes_through_and_logs_exactly(self, client: AsyncClient):
-        """Every stored onboarding field reaches the response unchanged, and the
-        seams receive the authenticated user's id — not None or a wrong key."""
+        """Every stored onboarding field reaches the response unchanged, and the seams receive the authenticated user's id, not None or a wrong key."""
         uid = "507f1f77bcf86cd799439011"
         user_doc = _make_user_doc(
             onboarding={
@@ -952,11 +939,7 @@ class TestGetPersonalizationFullShape:
         )
 
 
-# ---------------------------------------------------------------------------
-# Paid-only gate — the two onboarding routes that make LLM calls. Onboarding
-# moves behind payment entirely in a later phase; these are the spend-incurring
-# routes that must not be free before then.
-# ---------------------------------------------------------------------------
+# Paid-only gate: the two onboarding routes that make LLM calls must not be free.
 
 REGENERATE_URL = f"{BASE_URL}/writing-style/regenerate-example"
 _REGENERATE_SERVICE = "app.api.v1.endpoints.onboarding.regenerate_example_for_style"

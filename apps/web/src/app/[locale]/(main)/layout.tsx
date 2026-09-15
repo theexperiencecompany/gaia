@@ -102,10 +102,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   // Get the current open state based on mobile/desktop
   const currentOpen = isMobile ? isMobileOpen : isOpen;
 
-  // When the sidebar collapses (offcanvas), its own traffic-light offset
-  // slides away with it and the content header takes over the top-left
-  // corner. On macOS desktop that corner belongs to the hiddenInset window
-  // controls, so the re-open trigger must clear them horizontally.
+  // On macOS desktop, the top-left corner belongs to the hiddenInset window
+  // controls once the sidebar collapses (offcanvas), so the re-open trigger
+  // must clear them horizontally.
   const clearTrafficLights = isElectron && isMac && !currentOpen;
 
   // @warning: Removing the `target` option from useDrag will cause the HeroUI Buttons to not work properly.

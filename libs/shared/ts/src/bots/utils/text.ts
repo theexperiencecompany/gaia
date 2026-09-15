@@ -124,17 +124,13 @@ function countSingleAsterisks(text: string): number {
 }
 
 /**
- * Returns true if cutting ``text`` at index ``idx`` would land inside an
- * unclosed markdown emphasis span. We check the markers that actually bite us
- * in WhatsApp output: ``**bold**``, single-asterisk ``*bold*`` (the
- * WhatsApp-native bold the platform context steers the model toward), and
- * `` `inline code` ``. ``_`` and ``~`` are skipped because they appear in
- * identifiers/URLs and the false-positive rate would shrink chunks
- * pointlessly.
+ * True if cutting ``text`` at ``idx`` would land inside an unclosed markdown emphasis span:
+ * ``**bold**``, single-asterisk ``*bold*`` (WhatsApp-native bold, which the platform context
+ * steers the model toward), or `` `inline code` ``. ``_`` and ``~`` are skipped — they appear
+ * in identifiers/URLs and would just shrink chunks on false positives.
  *
- * The check is symmetric: an odd number of a marker in the prefix AND a
- * closing marker somewhere in the suffix means the cut would orphan one
- * half of the pair.
+ * Symmetric check: an odd count of a marker in the prefix plus a closing marker in the suffix
+ * means the cut would orphan one half of the pair.
  */
 function cutsInsideEmphasisSpan(text: string, idx: number): boolean {
   const prefixNarrative = stripFencedBlocks(text.slice(0, idx));
@@ -222,19 +218,13 @@ export function isTableSeparator(line: string): boolean {
 }
 
 /**
- * Char-offset ranges ``[start, end)`` of every GFM table block in ``text`` (a
- * header row, a ``|---|`` separator, then contiguous body rows). Used by
- * {@link pickCutBoundary} to reject a cut that lands inside a table — the
- * per-chunk renderer needs the whole block contiguous, so a split table is
- * emitted to the user as raw ``| a | b |`` pipe rows.
+ * Char-offset ranges ``[start, end)`` of every GFM table block in ``text`` (header row,
+ * ``|---|`` separator, contiguous body rows). {@link pickCutBoundary} rejects a cut inside one,
+ * since the per-chunk renderer needs the whole block contiguous or it's emitted as raw pipe rows.
  *
- * Only table blocks whose header starts at or before ``maxHeaderStart`` are
- * returned — pickCutBoundary never cuts past that offset, so tables beyond it
- * are irrelevant. A block that starts within the window but extends past it is
- * still scanned to its true end (so a straddling table is fully fenced off).
- * Bounding the scan keeps each call O(window) instead of O(whole remaining),
- * which matters because chunkResponse calls this once per chunk (and per
- * render-aware retry) over a shrinking tail.
+ * Scan is bounded to headers starting at or before ``maxHeaderStart`` (a straddling table is
+ * still scanned to its true end) — keeps each call O(window) instead of O(remaining), since
+ * chunkResponse calls this once per chunk/retry over a shrinking tail.
  */
 function findTableRanges(
   text: string,
@@ -274,14 +264,12 @@ function findTableRanges(
 }
 
 /**
- * Picks the best cut index ≤ ``limit`` for a chunk of ``text``. Prefers
- * paragraph (`\n\n`), then sentence enders, then word boundary, then a hard
- * cut at ``limit`` as a last resort. Boundaries that would split a markdown
- * link or a GFM table block are skipped.
+ * Picks the best cut index ≤ ``limit`` for a chunk of ``text``: paragraph (`\n\n`), then sentence
+ * enders, then word boundary, then a hard cut at ``limit`` as a last resort. Skips boundaries
+ * that would split a markdown link or a GFM table block.
  *
- * The 50 %-of-limit floor avoids producing tiny fragments — if no decent
- * boundary exists in the second half of the window, we accept the hard cut
- * rather than emit a 200-char chunk on a 4000-char limit.
+ * The 50%-of-limit floor avoids tiny fragments — a hard cut is accepted over emitting a
+ * 200-char chunk on a 4000-char limit if no decent boundary exists in the second half.
  */
 function pickCutBoundary(text: string, limit: number): number {
   const window = text.slice(0, limit);
@@ -382,9 +370,8 @@ function splitAtBoundary(
     chunk = `${chunk}\n\`\`\``;
     next = `\`\`\`\n${next}`;
   } else {
-    // Cosmetic whitespace trim for narrative cuts only. We never trim when
-    // the cut lands inside a fenced block, because leading whitespace there
-    // is significant code indentation (Python, YAML) and trimming it would
+    // Cosmetic whitespace trim for narrative cuts only — never inside a fenced block, where
+    // leading whitespace is significant code indentation (Python, YAML) and trimming it would
     // produce broken code in the next bubble.
     chunk = chunk.trimEnd();
     next = next.trimStart();
@@ -398,28 +385,13 @@ const MIN_RENDER_RAW_LIMIT = 256;
 const MAX_RENDER_SHRINK_ITERS = 6;
 
 /**
- * Splits a long response into platform-sized chunks for delivery as multiple
- * messages instead of a single truncated bubble. Used by bot adapters so the
- * user receives the full content across as many bubbles as needed.
+ * Splits a long response into platform-sized chunks (``[text]`` when it already fits) for
+ * delivery as multiple messages. Boundaries prefer paragraph breaks, then sentence enders, then
+ * word boundaries, then a hard cut, skipping markdown links; an unclosed code fence at a cut is
+ * closed and reopened in the next chunk so markdown stays valid across bubbles.
  *
- * The boundary search prefers paragraph breaks, then sentence enders, then
- * word boundaries, then a hard cut. Boundaries that would land inside a
- * markdown link `[text](url)` are skipped. If a chunk would end with an
- * unclosed code fence (```), the chunk is closed and the next chunk reopens
- * with the same fence so the markdown stays valid across bubbles.
- *
- * The platform limit applies to the message the platform actually receives. If
- * ``render`` is supplied, the chunk is measured by its RENDERED length and the
- * raw cut is shrunk until the rendered output fits — without a renderer, e.g.
- * Telegram's markdown→HTML table padding can inflate a 4096-char raw chunk past
- * the 4096-char API limit and the send is rejected.
- *
- * @param text - The full message text.
- * @param platform - The target platform.
- * @param render - Optional platform renderer; when given, chunk sizes are
- *   measured against the rendered output rather than the raw markdown.
- * @returns An array of chunks (raw markdown, in order); each is ≤ the platform
- *   limit after rendering. Returns ``[text]`` when ``text`` already fits.
+ * When ``render`` is given, chunks are measured by RENDERED length and the raw cut shrunk until
+ * that fits — Telegram's markdown→HTML table padding, e.g., can push a 4096-char raw chunk past the 4096-char API limit otherwise.
  */
 export function chunkResponse(
   text: string,
@@ -438,18 +410,16 @@ export function chunkResponse(
   const chunks: string[] = [];
   let remaining = text;
 
-  // `remaining.length > 0` guards termination: each iteration consumes a
-  // non-empty prefix so `remaining` strictly shrinks. Looping on `measure()`
-  // alone would spin forever for a renderer whose fixed overhead keeps even an
-  // empty string over the limit.
+  // `remaining.length > 0` guards termination: each iteration shrinks `remaining` by a non-empty
+  // prefix. Looping on `measure()` alone would spin forever for a renderer whose fixed overhead
+  // keeps even an empty string over the limit.
   while (remaining.length > 0 && measure(remaining) > limit) {
     let rawLimit = cutLimit;
     let [chunk, next] = splitAtBoundary(remaining, rawLimit);
 
-    // Render-aware: if the rendered chunk overflows, shrink the raw cut
-    // proportionally to the overflow and re-split until it fits (or we hit the
-    // floor — a single oversized atom like one giant table row that can't be
-    // split further is sent best-effort).
+    // Render-aware: if the rendered chunk overflows, shrink the raw cut proportionally and
+    // re-split until it fits, or until the floor — a single oversized atom (e.g. one giant
+    // table row) that can't split further is sent best-effort.
     for (
       let i = 0;
       render &&

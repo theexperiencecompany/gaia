@@ -30,10 +30,8 @@ describe("PostPaymentReceipt money formatting", () => {
   });
 
   it("says so when the currency the webhook sent is not a currency", () => {
-    // A malformed code used to throw out of Intl and get swallowed whole, so
-    // a receipt that printed the wrong thing left no trace anywhere. It must
-    // still not take the payment screen down — it must just stop being
-    // silent about it.
+    // A malformed currency code used to throw out of Intl and get swallowed
+    // silently — it must not crash the payment screen, just stop being silent.
     render(
       <PostPaymentReceipt stage="complete" amount={AMOUNT} currency="US$" />,
     );

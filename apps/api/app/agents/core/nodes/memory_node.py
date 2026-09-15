@@ -1,22 +1,13 @@
 """Memory learning node — end_graph_hook for user memory ingestion.
 
 After a worth-learning comms turn ends, spawns a fire-and-forget background
-task that feeds the NEW part of the transcript through ``memory_engine.retain``
-(plan F2). The node returns immediately — zero added latency on the turn.
-
-Three things bound what the extractor is shown, because in production it was
-shown far too much:
-
-- **Roles.** Assistant text, tool calls and tool results were all labelled
-  "assistant", so the extractor could not tell what the user said from what
-  GAIA said from what an API returned — and stored all three as facts about
-  the user.
-- **Delta.** The whole thread was re-sent every turn: one 152-checkpoint
-  conversation re-extracted the same transcript ~76 times, paying for it each
-  time and re-proposing the same facts.
-- **Provenance.** A system-generated conversation (a workflow execution) is
-  GAIA talking to itself; its "user" turn is a generated instruction, not a
-  disclosure.
+task that feeds the NEW part of the transcript through memory_engine.retain.
+The node returns immediately — zero added latency. Three things bound what
+the extractor is shown: Roles (assistant/tool/user were all "assistant",
+confusing what the user said with GAIA's own words); Delta (a 152-checkpoint
+conversation once re-extracted the same transcript ~76 times); Provenance
+(a system-generated conversation's "user" turn is a generated instruction,
+not a disclosure).
 """
 
 import contextlib
@@ -59,16 +50,11 @@ _DELTA_MARKER = "--- new since the last extraction ---"
 
 
 def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
-    """Whether a turn carries any substantive user content worth extracting.
+    """Return whether a turn carries any substantive user content worth extracting.
 
-    No message-count or tool-call gating: a single-message disclosure ("my
-    name is Sam", "my girlfriend's birthday is March 12") must be learned.
-    We ingest whenever any user message has real text and let the extraction
-    LLM decide if anything durable is present — it returns an empty batch for
-    smalltalk, so only truly empty turns ("hi", "ok") are skipped here.
-
-    Returns:
-        Tuple of (should_learn, reason)
+    No message-count or tool-call gating: a single-message disclosure must
+    be learned. Ingests whenever any user message has real text and lets the
+    extraction LLM decide if anything durable is present.
     """
     for msg in messages:
         # slot_of filters graph plumbing that rides the thread as a
@@ -81,14 +67,12 @@ def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
 
 
 def _delta_worth_learning(delta: list[AnyMessage]) -> bool:
-    """Whether the NEW slice of a thread justifies an extraction call.
+    """Return whether the NEW slice of a thread justifies an extraction call.
 
-    The node's thread-level check passes on the strength of ANY substantive
-    user message, however old — so in a long thread every "ok"/"thanks" turn
-    bought a full extraction call for a delta with nothing in it (measured:
-    half of production extraction calls yielded zero facts and zero journal
-    entries). Substance is either real user text or tool activity: a short
-    "yes" that triggered actual work still journals what was done.
+    The node's thread-level check passes on ANY substantive user message,
+    however old, which once made half of production extraction calls yield
+    zero facts. Substance is real user text OR tool activity — a short "yes"
+    that triggered work still journals what was done.
     """
     worth, _ = _check_worth_learning(delta)
     if worth:
@@ -105,15 +89,10 @@ def _format_messages_for_user_memory(
 ) -> list[dict[str, str]]:
     """Convert messages to a role/content transcript for the extraction LLM.
 
-    Three roles, never one: ``user`` is the person, ``gaia`` is the assistant
-    (its own words are not evidence about the user), ``tool`` is raw tool
-    output. Tool INPUTS are kept intact — they carry entity info like ids,
-    names and emails — while tool OUTPUTS are truncated, since a large API
-    response rarely holds anything reusable past its first lines.
-
-    ``context_count`` is how many leading messages are prior context rather
-    than new material; they are fenced off so the extractor can read them
-    without re-extracting from them.
+    Three roles: user, gaia (its own words aren't evidence about the user),
+    tool. Tool INPUTS are kept intact (ids, names, emails); tool OUTPUTS are
+    truncated. context_count leading messages are prior context, fenced off
+    so the extractor reads them without re-extracting.
     """
     formatted: list[dict[str, str]] = []
     if context_count:
@@ -124,10 +103,8 @@ def _format_messages_for_user_memory(
             formatted.append({"role": _ROLE_MARKER, "content": _DELTA_MARKER})
 
         if isinstance(msg, HumanMessage):
-            # Non-conversation slots (the re-stamped current-time message) are
-            # graph plumbing: rendered as `user: ...` they polluted every
-            # transcript, and the extractor gets the date in its volatile
-            # context already.
+            # Non-conversation slots (the re-stamped current-time message)
+            # are graph plumbing that would pollute the transcript.
             if slot_of(msg) is not PromptSlot.CONVERSATION:
                 continue
             content = extract_text_content(msg.content)
@@ -159,13 +136,11 @@ def _format_messages_for_user_memory(
 async def _messages_to_ingest(
     user_id: str, thread_id: str | None, messages: list[AnyMessage]
 ) -> tuple[list[AnyMessage], int]:
-    """The slice of the thread to extract from, and how much of it is context.
+    """Return the slice of the thread to extract from, and how much of it is context.
 
-    Returns ``(messages, context_count)`` where the first ``context_count``
-    entries were already ingested and are carried only so the new ones read in
-    context. Falls back to the whole thread whenever the high-water mark is
-    missing or names a message that is no longer in the thread — a re-ingest is
-    wasteful, losing a disclosure is not.
+    Returns (messages, context_count): the first context_count entries were
+    already ingested. Falls back to the whole thread when the high-water
+    mark is missing or stale — a re-ingest is wasteful, losing a disclosure is not.
     """
     if not thread_id:
         return messages, 0
@@ -190,7 +165,7 @@ async def _messages_to_ingest(
 async def _mark_ingested(user_id: str, thread_id: str | None, messages: list[AnyMessage]) -> None:
     """Record the last message this thread has extracted from.
 
-    Written only after ``retain`` returns, so a failed ingestion is retried on
+    Written only after retain returns, so a failed ingestion is retried on
     the next turn instead of being silently skipped.
     """
     if not thread_id or not messages or not messages[-1].id or not redis_cache.client:
@@ -213,24 +188,18 @@ async def _store_user_memory_background(
 ) -> None:
     """Background task — ingests the new part of the conversation.
 
-    Integration-specific extraction prompts (Slack, GitHub, ...) ride along
-    as extraction hints so the engine pulls out entity IDs, contacts, and
-    preferences relevant to that integration. Memories are private per user.
-
-    Runs in its own ``wide_task`` scope: this is a fire-and-forget background
-    task outside any request middleware, so without an explicit task scope the
-    engine's structured logging (and any failure) would never be emitted.
+    Integration-specific extraction hints (Slack, GitHub, ...) let the
+    engine pull out entity IDs and preferences relevant to that integration.
+    Runs in its own wide_task scope since fire-and-forget work sits outside
+    any request middleware.
     """
-    # wide_task records any failure (error_type + outcome=failed) as an emitted
-    # wide event and a real-time error line; suppress the re-raised exception so
-    # this fire-and-forget task doesn't surface an un-retrieved-exception warning.
+    # wide_task already records any failure; suppress the re-raise so this
+    # fire-and-forget task doesn't surface an un-retrieved-exception warning.
     with contextlib.suppress(Exception):
         async with wide_task("memory_retain", user=UserContext(id=user_id)):
             log.set(subagent_id=subagent_id or "agent", session_id=session_id)
-            # A workflow/email/reminder run is GAIA driving itself: its "user"
-            # message is generated text, and learning from it wrote GAIA's own
-            # operational state into the user's memory. Checked here, not in
-            # the node, so the lookup never sits on the turn's critical path.
+            # A workflow/email/reminder run is GAIA driving itself. Checked
+            # here, not in the node, so it never sits on the turn's critical path.
             if conversation_id and await conversation_repository.is_system_generated(
                 conversation_id
             ):
@@ -278,7 +247,7 @@ async def memory_node(
 ) -> State:
     """End-graph hook that stores user memory from comms turns.
 
-    Spawns a background task (non-blocking) that runs ``memory_engine.retain``
+    Spawns a background task (non-blocking) that runs memory_engine.retain
     over the new part of the transcript with the integration-specific
     extraction prompt.
     """

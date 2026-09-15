@@ -20,8 +20,7 @@ from app.utils.general_utils import (
 
 
 class TestGetContextWindow:
-    """Tests for get_context_window — returns a substring of *text* centred
-    around *query* with configurable padding and ellipsis markers."""
+    """get_context_window returns a substring of text centered on query, with padding and ellipsis markers."""
 
     def test_query_found_in_middle_of_text(self) -> None:
         text = "The quick brown fox jumps over the lazy dog"
@@ -112,8 +111,7 @@ class TestGetContextWindow:
 
 
 class TestTransformGmailMessage:
-    """Tests for transform_gmail_message — normalises both Composio and
-    Gmail API message formats into a unified frontend-friendly dict."""
+    """Normalises Composio and Gmail API message formats into one frontend-friendly dict."""
 
     def test_composio_format_basic(self) -> None:
         msg: dict[str, Any] = {
@@ -310,8 +308,7 @@ class TestTransformGmailMessage:
 
     @pytest.mark.regression
     def test_composio_null_fields_become_empty_strings(self) -> None:
-        """Composio documents every header field as nullable; the derived keys stay
-        strings so the result validates as ``GmailMessageSummary``."""
+        """Nullable Composio header fields must still derive as strings to validate as GmailMessageSummary."""
         msg: dict[str, Any] = {
             "messageId": "msg-1",
             "messageText": "body",
@@ -506,8 +503,7 @@ class TestTransformGmailMessage:
 
 
 class TestDecodeMessageBody:
-    """Tests for decode_message_body — extracts and base64-decodes the body
-    from a Gmail API message payload."""
+    """Extracts and base64-decodes the body from a Gmail API message payload."""
 
     def test_single_part_with_data(self) -> None:
         text = "Hello, World!"
@@ -671,8 +667,7 @@ class TestDecodeMessageBody:
 
 
 class TestGetProjectInfo:
-    """Tests for get_project_info — reads pyproject.toml and returns
-    project metadata, falling back to defaults on error."""
+    """Reads pyproject.toml and returns project metadata, falling back to defaults on error."""
 
     def test_success_reads_pyproject_toml(self) -> None:
         toml_content = b"""
@@ -743,8 +738,7 @@ name = "custom-name"
 
 
 class TestDescribeStructure:
-    """Tests for describe_structure — recursively describes the shape of a
-    nested dict/list structure as a flat list of dotted-path strings."""
+    """Recursively describes a nested dict/list structure as a flat list of dotted-path strings."""
 
     def test_flat_dict(self) -> None:
         obj: dict[str, Any] = {"a": 1, "b": "two", "c": True}

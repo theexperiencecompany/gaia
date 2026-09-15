@@ -14,17 +14,12 @@ interface PopupCheckout {
 }
 
 /**
- * The popup's way out of the paid-only wall.
+ * The popup's way out of the paid-only wall: checkout can't happen in the
+ * frameless capsule itself, so a session is minted and opened in the user's
+ * browser instead.
  *
- * Checkout cannot happen in the popup itself — it is a frameless capsule with
- * no room for a payment sheet — so the session is minted here and opened in
- * the user's browser, where the overlay and its confirmation loop live.
- *
- * Minted on the click, never on the wall going up: a session per 402 is a
- * session per gated request, nearly all of them abandoned. If minting fails
- * the pricing page is still a way to subscribe — the failure itself already
- * surfaced as a toast from the API layer, so this is a fallback, not a
- * silence.
+ * Minted on click, not on the wall going up, to avoid a session per gated
+ * request; if minting fails, the pricing page is still a fallback.
  */
 export function usePopupCheckout(): PopupCheckout {
   const { openExternal } = useElectron();

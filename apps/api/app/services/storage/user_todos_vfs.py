@@ -1,27 +1,18 @@
-"""User-todos VFS catalog materialization for ``/workspace/todos/``.
+"""User-todos VFS catalog materialization for /workspace/todos/.
 
 This is the USER's own todo list (the one in the UI) — NOT GAIA's
-institutional memory (which lives at ``/workspace/gaia-tasks/``).
+institutional memory (which lives at /workspace/gaia-tasks/).
 
-Lighter than the gaia-tasks materializer:
+Lighter than the gaia-tasks materializer: only meta.json per todo (no
+canvas/log); a 7-day completion window (vs 30 for gaia-tasks, since user
+todos are high-churn and completed items rarely need re-reading); and
+index.md carries a due-date suffix + priority glyph for a quick "what's on
+the user's plate" view.
 
-* Only ``meta.json`` per todo (no canvas / log).
-* 7-day completion window (vs 30 for gaia-tasks) — user todos are
-  high-churn, completed items rarely need re-reading.
-* ``index.md`` carries a due-date suffix + a priority glyph because
-  the agent uses this view as a quick "what's on the user's plate".
-
-Layout under ``<user_root>/todos/``::
-
-    GUIDE.md                          hand-authored, mode 0644
-    index.md                          generated summary, mode 0644
-    <slug>-<shortid>/
-        meta.json                     mode 0444
-
-Marker scheme + folder naming mirror :mod:`gaia_tasks_vfs` — same
-``<slug>-<shortid>`` shape so the agent reads the two areas the same
-way. Shared FS / hashing / slug helpers live in
-:mod:`app.services.storage._vfs_common`.
+Layout under <user_root>/todos/: GUIDE.md and index.md (mode 0644), plus
+per-doc <slug>-<shortid>/ folders holding meta.json (mode 0444). Marker
+scheme and folder naming mirror gaia_tasks_vfs; shared FS/hashing/slug
+helpers live in _vfs_common.
 """
 
 from __future__ import annotations
@@ -138,7 +129,7 @@ def _index_lines(docs: list[UserTodoProjection]) -> str:
 
 
 def materialize_user_todos(user_root: Path, docs: list[UserTodoProjection], guide_md: str) -> int:
-    """Idempotently project ``docs`` into ``<user_root>/todos/``.
+    """Idempotently project docs into <user_root>/todos/.
 
     Returns the number of meta bodies rewritten (excluding GUIDE / index).
     """
@@ -177,15 +168,14 @@ def _write_changed_docs(
 
 
 def _remove_stale_folders(todos_root: Path, expected: set[str]) -> None:
-    """Remove subdirectories of ``todos_root`` not in ``expected``."""
+    """Remove subdirectories of todos_root not in expected."""
     for child in todos_root.iterdir():
         if child.is_dir() and child.name not in expected:
             remove_tree(child)
 
 
-# Public surface used by :mod:`app.services.user_todos_fs`. Generic
-# helpers live in ``_vfs_common`` — import them from there in the
-# Mongo glue, not via this module.
+# Public surface used by app.services.user_todos_fs. Generic helpers live
+# in _vfs_common — import them from there, not via this module.
 __all__ = [
     "USER_TODOS_DIRNAME",
     "USER_TODOS_MARKER",

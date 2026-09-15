@@ -1,6 +1,6 @@
 """Google Sheets tools using Composio custom tool infrastructure.
 
-Provider API calls go through Composio's proxy via `proxy_request_sync`.
+Provider API calls go through Composio's proxy via proxy_request_sync.
 Drive API is used for sharing; Sheets API for spreadsheet operations.
 
 Note: Errors are raised as exceptions - Composio wraps responses automatically.

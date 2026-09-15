@@ -4,7 +4,7 @@ The storage primitives funnel every read and write through the todos
 repository — a write only succeeds when the repository confirms the update
 matched. Branch-only primitives (atomic append, compare-and-set, the
 activity/log pair and the empty-body embedding delete) live in
-``test_canvas_storage_atomic.py``: the regression-proof lane overlays this
+test_canvas_storage_atomic.py: the regression-proof lane overlays this
 branch's tests onto the base revision, so this module must import only what the
 base also exports.
 """

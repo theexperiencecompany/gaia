@@ -47,11 +47,9 @@ function EmailBodyRenderer({
     ADD_TAGS: ["iframe"],
   });
 
-  // Injects the sanitized email into a shadow root directly from a ref
-  // callback. React re-runs the callback synchronously at commit whenever its
-  // identity changes (i.e. when sanitizedHtml changes), so content updates
-  // never go through a render → effect → setState round-trip and there is no
-  // intermediate "loading" paint to flash.
+  // Injects sanitized email into a shadow root via a ref callback — React
+  // re-runs it synchronously at commit when its identity changes
+  // (sanitizedHtml changes), skipping a render/effect/setState flash.
   const attachShadowContent = useCallback(
     (host: HTMLDivElement | null) => {
       if (!host) return;

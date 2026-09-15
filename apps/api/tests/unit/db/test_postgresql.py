@@ -29,8 +29,8 @@ from app.db.postgresql import (
 def _get_original_init_fn():
     """Extract the original async function wrapped by @lazy_provider.
 
-    The decorator replaces the function with ``register_provider`` — a closure
-    whose ``__wrapped__`` attribute is not set.  The original coroutine function
+    The decorator replaces the function with register_provider — a closure
+    whose __wrapped__ attribute is not set.  The original coroutine function
     is captured in the closure and can be retrieved from the providers registry
     after calling the registration helper once.
     """
@@ -304,10 +304,8 @@ class TestInitPostgresqlEngine:
 
             await _get_original_init_fn()()
 
-            # Named, not counted: _ensure_added_columns adds columns introduced
-            # after a table already existed (memories.shelf_life), and a startup
-            # that silently stopped running it would leave every such column
-            # missing on an existing database.
+            # Named, not counted: _ensure_added_columns backfills columns added
+            # after a table existed (memories.shelf_life) on existing databases.
             assert [call.args[0] for call in mock_conn.run_sync.await_args_list] == [
                 Base.metadata.create_all,
                 _ensure_added_columns,

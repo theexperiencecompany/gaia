@@ -1,6 +1,6 @@
 """Google Docs tools using Composio custom tool infrastructure.
 
-Provider API calls go through Composio's proxy via `proxy_request_sync`.
+Provider API calls go through Composio's proxy via proxy_request_sync.
 The Drive API is the GOOGLEDOCS toolkit's underlying surface.
 
 Note: Errors are raised as exceptions - Composio wraps responses automatically.

@@ -1,14 +1,14 @@
 """Unit tests for the fire-and-forget last-active touch (workspace.py).
 
-``schedule_last_active_touch`` spawns ``_touch()`` via ``spawn_background_task``.
+schedule_last_active_touch spawns _touch() via spawn_background_task.
 Its inner try/except must swallow a plain failure from
-``touch_session_last_active`` (log and move on) so an idle-prune bookkeeping
-error never surfaces to the chat turn that scheduled it. The ``JuiceFSUnavailable``
+touch_session_last_active (log and move on) so an idle-prune bookkeeping
+error never surfaces to the chat turn that scheduled it. The JuiceFSUnavailable
 branch (dev-mode no-op) is a separate, already-expected path and isn't the
 target here.
 
-``spawn_background_task`` is patched at the module's own binding so the test can
-capture and await the real ``_touch()`` coroutine directly, rather than letting
+spawn_background_task is patched at the module's own binding so the test can
+capture and await the real _touch() coroutine directly, rather than letting
 it run detached on the event loop where a raised exception would only surface as
 an "unhandled exception in task" warning instead of a test failure.
 """

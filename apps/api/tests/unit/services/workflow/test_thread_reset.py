@@ -22,7 +22,7 @@ OTHER_CONV = "9a9a9a9a-1111-2222-3333-444444444444"
 class _FakeCursor:
     """Evaluates the module's two queries against an in-memory thread table.
 
-    ``threads`` maps thread_id -> whether a write is parked on its head
+    threads maps thread_id -> whether a write is parked on its head
     checkpoint (an in-flight or interrupted run).
     """
 
@@ -277,8 +277,8 @@ class TestTheQueriesItSends:
     """The two statements, exactly as Postgres receives them.
 
     This function deletes checkpoint rows, so the predicate is the whole safety
-    argument: an anchored ``right()`` comparison rather than a LIKE (the ids are
-    full of underscores, and an unescaped ``_`` matches any character), and an
+    argument: an anchored right() comparison rather than a LIKE (the ids are
+    full of underscores, and an unescaped _ matches any character), and an
     in-flight check anchored to each thread's own head checkpoint. A predicate
     that drifts is silent in production and takes another conversation's history
     with it, so both statements are pinned character for character.
@@ -326,12 +326,7 @@ class TestTheQueriesItSends:
         )
 
     async def test_it_asks_the_repository_about_the_conversation_it_was_given(self) -> None:
-        """The workflow guard is only a guard if it is asked about the right conversation.
-
-        Asked about anything else it answers "not a workflow" for a workflow, or
-        worse, "workflow" for a chat, and this function deletes that chat's
-        checkpoint threads.
-        """
+        """The workflow guard must be asked about the right conversation, or it can say "workflow" for a chat and delete that chat's threads."""
         checkpointer = _checkpointer()
         threads = {CONV: False, f"executor_{CONV}": False}
 

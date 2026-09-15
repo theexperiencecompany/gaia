@@ -192,8 +192,7 @@ class TestGetAllIntegrationsStatus:
         mock_composio_service,
         mock_token_repository,
     ):
-        """A provider missing from the batch answer reads as not connected, never
-        as unknown: every requested integration gets a boolean."""
+        """A provider missing from the batch answer reads as not connected, never as unknown."""
         mock_composio_service.check_connection_status = AsyncMock(return_value={})
 
         integration = MagicMock()

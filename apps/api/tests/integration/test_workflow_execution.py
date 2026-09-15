@@ -1,7 +1,7 @@
 """
 Integration tests for Workflow Execution End-to-End.
 
-Sibling: ``tests/e2e/test_workflow_execution.py`` drives the real compiled
+Sibling: tests/e2e/test_workflow_execution.py drives the real compiled
 agent graphs end to end; this file pins the workflow service layer itself
 (mocked I/O boundaries only).
 
@@ -129,8 +129,7 @@ def _make_workflow(
 
 
 def _make_workflow_doc(**overrides) -> WorkflowDocument:
-    """Build a WorkflowDocument (the repository's return type) from the Workflow
-    factory — repository methods return typed models, not raw dicts."""
+    """Build a WorkflowDocument (the repository's return type) from the Workflow factory."""
     return WorkflowDocument(**_make_workflow(**overrides).model_dump())
 
 
@@ -791,13 +790,7 @@ class TestQueueService:
     """Enqueue workflow -> verify it appears in queue with correct params."""
 
     async def test_queue_workflow_generation(self):
-        """queue_workflow_generation enqueues with correct function name and args.
-
-        Production always enqueues from inside a wide-event boundary, so the run
-        happens in one here: enqueue_worker_job stamps the caller's trace id onto
-        the payload only when a trace is in scope. Asserting the exact call
-        outside a boundary would silently depend on whatever ran before it.
-        """
+        """Enqueue with correct function name and args, run inside a wide-event boundary so enqueue_worker_job stamps the trace id."""
         mock_pool = AsyncMock()
         mock_job = MagicMock()
         mock_job.job_id = "job_gen_123"
@@ -847,8 +840,7 @@ class TestQueueService:
         assert kwargs["_job_id"].startswith("execute_workflow_by_id:")
 
     async def test_queue_workflow_execution_deduped_enqueue_returns_true(self):
-        """A None from enqueue_job means the same _job_id is already queued — the
-        duplicate was deduped, which is success, not failure."""
+        """A None from enqueue_job means the same _job_id is already queued — deduped, which is success, not failure."""
         mock_pool = AsyncMock()
         mock_pool.enqueue_job = AsyncMock(return_value=None)
 

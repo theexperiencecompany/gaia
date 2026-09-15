@@ -30,8 +30,11 @@ sys.stdout.reconfigure(line_buffering=True)
 
 
 def _load_suites() -> None:
-    """Import every suite module so @register_suite fires (missing ones are
-    simply not available — e.g. when a suite's optional deps are absent)."""
+    """Import every suite module so @register_suite fires.
+
+    Missing ones are simply not available — e.g. when a suite's optional
+    deps are absent.
+    """
     load_opik_env()
     for _suite_module in (
         "smoke",
@@ -263,10 +266,9 @@ def _verify(cfg: object, only: str | None) -> int:
 
     print(format_report(verdicts))
     if unloadable:
-        # A suite that never loaded contributes zero cases, and zero cases look
-        # exactly like zero defects: this used to print an all-clear and exit 0.
-        # The checker's whole job is telling people their work is sound, so it
-        # must never report green on suites it did not actually check.
+        # A suite that never loaded contributes zero cases, which used to look
+        # like zero defects and print an all-clear; it must never report green
+        # on suites it did not actually check.
         print(
             f"\n!! {len(unloadable)} suite(s) NOT CHECKED: {', '.join(unloadable)}\n"
             f"!! Their cases are absent from every number above."
@@ -279,7 +281,7 @@ def _load_failure(error: Exception) -> str:
     """Say whether the run is misconfigured or the cases are broken.
 
     A settings failure reported as "could not load cases" sends the reader
-    hunting through YAML for an hour. Pydantic raises ``ValidationError`` for a
+    hunting through YAML for an hour. Pydantic raises ValidationError for a
     bad env var, and it may arrive wrapped, so the whole cause chain is checked.
     """
     chain: list[BaseException] = []

@@ -101,9 +101,9 @@ class RabbitMQPublisher:
         """Publish to the default exchange, reconnecting and retrying once.
 
         The reconnect path handles ARQ-worker idle timeouts (workers publish
-        sporadically). ``declare`` controls whether the queue is declared first:
+        sporadically). declare controls whether the queue is declared first:
         the WebSocket relay queue is declared on demand, while outbound work
-        queues are pre-declared by ``declare_outbound_topology`` and pass False.
+        queues are pre-declared by declare_outbound_topology and pass False.
         """
         message = Message(
             body, delivery_mode=aio_pika.DeliveryMode.PERSISTENT, expiration=expiration
@@ -145,14 +145,14 @@ class RabbitMQPublisher:
             )
 
     async def publish(self, queue_name: str, body: bytes) -> None:
-        """Publish to ``queue_name`` (declared on demand) with one retry."""
+        """Publish to queue_name (declared on demand) with one retry."""
         await self._publish_with_retry(queue_name, body, declare=True)
 
     async def declare_outbound_topology(self) -> None:
         """Idempotently declare the outbound DLX, work queues, and DLQs.
 
         Declaration arguments MUST match the bot consumer's (see
-        ``libs/shared/ts/src/bots/consumer/topology.ts``) or RabbitMQ rejects
+        libs/shared/ts/src/bots/consumer/topology.ts) or RabbitMQ rejects
         the redeclare with PRECONDITION_FAILED. Safe to call on every startup;
         the durable queues persist so messages survive while a bot is offline.
         """
@@ -180,34 +180,16 @@ class RabbitMQPublisher:
     ) -> None:
         """Publish to an outbound work queue with one retry.
 
-        ``expiration`` is the broker-side TTL in seconds: past it the message
-        dead-letters instead of delivering to a bot that comes back late.
-
-        Declares the outbound topology once (lazily) before the first publish so
-        a message can never outrun the startup declaration and be silently
-        dropped on the default exchange. The flag resets on reconnect so a fresh
-        channel re-declares.
+        expiration is the broker-side TTL in seconds; past it the message dead-letters. Topology
+        is declared lazily before the first publish and re-declared after reconnect.
         """
         if not self._outbound_topology_declared:
             try:
                 await self.declare_outbound_topology()
             except ChannelPreconditionFailed as e:
-                # A queue already exists with divergent arguments. The redeclare
-                # is rejected (and closes the channel), but the queue IS present,
-                # so publishing to it via the default exchange still works.
-                # Mark the topology declared so we stop re-attempting the failing
-                # redeclare on every publish (which would otherwise wedge all
-                # outbound delivery), and surface the drift loudly for an
-                # operator to reconcile.
-                #
-                # Residual: declare_outbound_topology declares the exchange then
-                # each queue in a loop, so if the FIRST declaration is the one
-                # that diverges, later queues in the same call are skipped and the
-                # flag still flips. That's acceptable here because
-                # declare_outbound_topology_on_startup eagerly declares the full
-                # topology at boot for both the API and the worker — this lazy
-                # path only runs as a post-reconnect fallback, by which point the
-                # durable queues already exist.
+                # Queue exists with divergent arguments; redeclare closes the channel but the
+                # queue still works via the default exchange. Mark declared, stop retrying, and
+                # log the drift for an operator to reconcile.
                 self._outbound_topology_declared = True
                 log.error(
                     f"{LogTag.STARTUP} Outbound topology redeclare rejected (divergent queue arguments); "
@@ -250,14 +232,10 @@ async def init_rabbitmq_publisher() -> RabbitMQPublisher:
 
 
 async def get_rabbitmq_publisher() -> RabbitMQPublisher:
-    """
-    Get the RabbitMQ publisher from lazy provider.
-
-    Returns:
-        RabbitMQPublisher: The RabbitMQ publisher instance
+    """Get the RabbitMQ publisher from the lazy provider.
 
     Raises:
-        RuntimeError: If RabbitMQ publisher is not available
+        RuntimeError: If the publisher is not available.
     """
     publisher_instance: RabbitMQPublisher | None = await providers.aget("rabbitmq_publisher")
     if publisher_instance is None:
@@ -274,10 +252,8 @@ async def declare_outbound_topology_on_startup() -> None:
         publisher = await get_rabbitmq_publisher()
         await publisher.declare_outbound_topology()
     except ChannelPreconditionFailed as e:
-        # A queue already exists with divergent arguments. Unlike a missing
-        # broker, the lazy first-publish re-declare CANNOT self-heal this —
-        # every outbound publish keeps failing until an operator deletes or
-        # migrates the queue, so surface it loudly instead of as a warning.
+        # Queue exists with divergent arguments; unlike a missing broker this can't self-heal,
+        # so surface it loudly instead of as a warning.
         log.error(
             f"{LogTag.STARTUP} Outbound topology rejected: a queue exists with divergent arguments. "
             "Delete or migrate it — outbound delivery will fail until resolved.",

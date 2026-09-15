@@ -11,11 +11,9 @@ from shared.py.wide_events import log
 def create_todo_content_for_embedding(todo_data: dict[str, Any]) -> str:
     """Build a text representation of a todo for embedding generation.
 
-    Takes a dict rather than the ``TodoResponse`` its callers dump, because
-    every field is read defensively: the indexers are expected to cope with a
-    partial todo (no title, no subtasks, a string ``created_at``) and still
-    produce something embeddable. Narrowing to the model would delete that
-    tolerance, not just describe it (Type Safety items 13/14).
+    Takes a dict rather than the TodoResponse its callers dump: every field
+    is read defensively so indexers can cope with a partial todo (no title,
+    no subtasks, a string created_at) and still produce something embeddable.
     """
     parts = []
 
@@ -59,10 +57,8 @@ async def store_todo_embedding(todo_id: str, todo_data: dict[str, Any], user_id:
     """Generate and store a todo's embedding in ChromaDB. Returns success."""
     log.set(operation="store_todo_embedding", todo_id=todo_id, user_id=user_id)
     try:
-        # Create content for embedding
         content = create_todo_content_for_embedding(todo_data)
 
-        # Get ChromaDB collection
         chroma_collection = await ChromaClient.get_langchain_client(
             collection_name="todos", create_if_not_exists=True
         )
@@ -180,7 +176,7 @@ async def semantic_search_todos(
     """Semantic-search todos via ChromaDB, with optional filters.
 
     Falls back to traditional search on error when
-    ``include_traditional_search`` is set.
+    include_traditional_search is set.
     """
     log.set(
         operation="semantic_search_todos",
@@ -267,7 +263,7 @@ async def hybrid_search_todos(
 ) -> list[TodoResponse]:
     """Hybrid search combining semantic and traditional results.
 
-    ``semantic_weight`` (0.0-1.0) weights the semantic ranking.
+    semantic_weight (0.0-1.0) weights the semantic ranking.
     """
     try:
         # Get semantic results

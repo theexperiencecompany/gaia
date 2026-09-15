@@ -29,7 +29,7 @@ _BLANK_STEP_MSG = "Value error, must not be blank"
 
 
 def _blank_step_errors(exc: ValidationError) -> list[tuple[tuple[Any, ...], str]]:
-    """``exc``'s value_error entries as (location, message) pairs, in order."""
+    """Exc's value_error entries as (location, message) pairs, in order."""
     return [(e["loc"], e["msg"]) for e in exc.errors() if e["type"] == "value_error"]
 
 
@@ -584,11 +584,7 @@ class TestSaveLearnedSkill:
 
 @pytest.mark.unit
 class TestLearnedSkillArtifactIsExact:
-    """SKILL.md is read back by an agent as its instructions, so its layout is the
-    contract — headings, fenced JSON, and the blank lines between steps all carry
-    meaning. The sibling tests assert with ``in``, which cannot see a heading
-    being renamed (mutmut's ``"XX## StepsXX"`` still *contains* ``"## Steps"``)
-    or the sections being reordered."""
+    """SKILL.md's layout is the contract an agent reads as instructions — headings, fenced JSON, and blank lines between steps all carry meaning; the sibling tests assert with in, which can't see a heading renamed or a section reordered."""
 
     def test_the_composed_body_is_exact(self) -> None:
         body = _compose_learned_skill_md(LearnedSkillSpec(**_learned_spec()))
@@ -622,8 +618,7 @@ class TestLearnedSkillArtifactIsExact:
         )
 
     def test_the_minimal_body_is_exact(self) -> None:
-        """No trigger section, no prerequisites, and a step that takes no arguments
-        — the shape a one-tool skill saves as."""
+        """No trigger section, no prerequisites, and a step with no arguments — the shape a one-tool skill saves as."""
         spec = _learned_spec(
             when_to_use="",
             integrations=[],
@@ -667,9 +662,7 @@ class TestLearnedSkillArtifactIsExact:
         )
 
     def test_non_ascii_step_args_stay_readable(self) -> None:
-        """The args block is instructions an agent reads back and re-sends. Escaping
-        non-ASCII to \\uXXXX turns a searchable subject line into something the
-        model has to decode before it can reuse it."""
+        """Escaping non-ASCII to \\uXXXX would turn a searchable subject line into something the model has to decode before it can reuse it."""
         spec = _learned_spec(
             steps=[
                 {
@@ -688,9 +681,7 @@ class TestLearnedSkillArtifactIsExact:
 
 @pytest.mark.unit
 class TestSaveLearnedSkillRecordsTheRun:
-    """What the executor is told, and what the wide event carries afterwards. The
-    tool's return value is the agent's only view of the outcome, and ``log.set``
-    is how a failed save is findable in production."""
+    """The tool's return value is the agent's only view of the outcome, and log.set is how a failed save is findable in production."""
 
     @pytest.fixture(autouse=True)
     def _fresh_wide_event(self) -> None:
@@ -741,8 +732,7 @@ class TestSaveLearnedSkillRecordsTheRun:
     async def test_the_spec_description_is_what_gets_installed(
         self, mock_install: AsyncMock
     ) -> None:
-        """The description is what the agent matches against when deciding whether
-        to activate the skill, so installing the wrong one makes it undiscoverable."""
+        """The description is what the agent matches against to decide whether to activate the skill, so installing the wrong one makes it undiscoverable."""
         mock_install.return_value = _installed_skill(name="triage-inbox")
 
         await _invoke_save_learned_skill(_cfg(), _learned_spec())
@@ -767,8 +757,7 @@ class TestSaveLearnedSkillRecordsTheRun:
     async def test_an_invalid_spec_is_findable_on_the_wide_event(
         self, mock_install: AsyncMock
     ) -> None:
-        """``error`` is what separates a rejected recipe from a storage failure when
-        someone asks why a user's skill never saved."""
+        """The "error" field is what separates a rejected recipe from a storage failure when someone asks why a user's skill never saved."""
         await _invoke_save_learned_skill(_cfg(), _learned_spec())
 
         assert log.get()["tool"] == {

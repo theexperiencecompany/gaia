@@ -78,16 +78,13 @@ describe("wideLog.set namespace merging", () => {
   });
 
   it("does not merge a Date into the namespace it replaces", async () => {
-    // `typeof new Date()` is "object", so a naive guard treats a Date as a
-    // namespace and spreads it — leaking the PREVIOUS value's keys through,
-    // because a Date has no own enumerable properties of its own to overwrite
-    // them with. Python's isinstance(x, dict) rejects a datetime outright, so
-    // admitting one here also splits the two runtimes on the same input.
-    //
-    // The Date still serializes to `{}` rather than an ISO string: toJsonValue
-    // in logger.ts rebuilds every object from Object.entries(). That is a
-    // separate, pre-existing serializer bug — what this test pins is that the
-    // stale `a` key does not survive.
+    // `typeof new Date()` is "object", so a naive guard would spread it as a namespace, leaking
+    // the PREVIOUS value's keys through (a Date has no own enumerable properties to overwrite
+    // them with) — and admitting one here would split from Python's isinstance(x, dict) reject.
+
+    // The Date still serializes to `{}` rather than an ISO string — a separate, pre-existing
+    // serializer bug in logger.ts's toJsonValue (rebuilds objects from Object.entries()). What
+    // this test pins is only that the stale `a` key does not survive.
     const event = await captureEvent(async () => {
       wideLog.set({ ctx: { a: 1 } });
       wideLog.set({
@@ -99,10 +96,9 @@ describe("wideLog.set namespace merging", () => {
   });
 
   it("replaces a class instance rather than merging into it", async () => {
-    // The preceding namespace carries a key the instance does NOT, so merging
-    // is observable: `stale` would survive a spread and must not survive a
-    // replace. Two instances of the same class would spread to the same result
-    // as replacing them, which proves nothing.
+    // The preceding namespace carries a key `stale` the instance does NOT, so merging is
+    // observable: `stale` would survive a spread but must not survive a replace. (Two instances
+    // of the same class would spread to the same result as replacing, proving nothing.)
     class Ctx {
       constructor(readonly label: string) {}
     }

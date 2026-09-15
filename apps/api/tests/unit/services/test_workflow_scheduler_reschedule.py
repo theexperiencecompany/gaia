@@ -3,12 +3,12 @@
 Editing a scheduled workflow's cron enqueues a NEW deferred ARQ job, but the
 old job (armed for the original time) is still sitting in Redis — ARQ has no
 cancellation. When it fires, the claim gate only checked liveness
-(``activated``) and run-state (``status="scheduled"``), both of which are true
+(activated) and run-state (status="scheduled"), both of which are true
 after a reschedule, so the workflow executed at the ORIGINAL time anyway.
 
 The fix stamps every scheduler-originated fire with the occurrence it was
-armed for (``scheduled_for``) and rejects a fire whose stamp no longer matches
-the workflow's current ``trigger_config.next_run``.
+armed for (scheduled_for) and rejects a fire whose stamp no longer matches
+the workflow's current trigger_config.next_run.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -35,8 +35,7 @@ def _no_real_analytics():
 
 @pytest.fixture(autouse=True)
 def _subscription_active_by_default():
-    """These tests are about the stale-fire gate, not the paid-only gate —
-    default the owner to an active subscription so it stays out of the way."""
+    """Default the owner to an active subscription so the paid-only gate stays out of the way of the stale-fire tests."""
     with patch(
         "app.workers.tasks.workflow_tasks.is_paid",
         AsyncMock(return_value=True),
@@ -46,8 +45,7 @@ def _subscription_active_by_default():
 
 @pytest.fixture(autouse=True)
 def _onboarded_user():
-    """Default every test's user to a finished-onboarding one so the
-    system-initiated-run gate stays out of the way."""
+    """Default every test's user to a finished-onboarding one so the system-initiated-run gate stays out of the way."""
     user = UserDocument.model_validate({"onboarding": {"completed": True}})
     with patch(
         "app.workers.tasks.workflow_tasks.user_repository.get",
@@ -72,8 +70,7 @@ class TestScheduledFireStamping:
     async def test_scheduler_jobs_carry_their_intended_fire_time(
         self, scheduler: WorkflowScheduler
     ):
-        """Every scheduler-originated ARQ job is stamped with the occurrence it
-        was armed for, so a stale job can be recognized after a reschedule."""
+        """Every scheduler-originated ARQ job is stamped with the occurrence it was armed for, so a stale job can be recognized."""
         armed_for = datetime.now(UTC) + timedelta(hours=5)
 
         args = scheduler._build_job_args("wf_1", armed_for)
@@ -84,8 +81,7 @@ class TestScheduledFireStamping:
         assert context["scheduled_for"] == int(armed_for.timestamp())
 
     async def test_enqueue_passes_armed_time_to_job_args(self, scheduler: WorkflowScheduler):
-        """_enqueue_task hands the armed time (not the past-due-shifted one) to
-        _build_job_args, so the stamp always matches what the DB holds."""
+        """_enqueue_task hands the armed time (not the past-due-shifted one) to _build_job_args, so the stamp always matches the DB."""
         past = datetime.now(UTC) - timedelta(hours=1)
         mock_job = MagicMock(job_id="j")
         captured: dict[str, Any] = {}
@@ -109,10 +105,7 @@ class TestScheduledFireStamping:
     async def test_naive_scheduled_at_stamp_is_normalized_to_utc(
         self, scheduler: WorkflowScheduler, monkeypatch: pytest.MonkeyPatch
     ):
-        """A naive scheduled_at is normalized to UTC BEFORE the stamp is built:
-        the stamp must reflect the UTC instant, not the wall clock read in the
-        process's local zone. Runs under a non-UTC zone so reading the naive
-        value un-normalized drifts the stamp by the zone offset and fails."""
+        """A naive scheduled_at is normalized to UTC before the stamp is built; run under a non-UTC zone so an un-normalized read drifts the stamp."""
         monkeypatch.setenv("TZ", "America/New_York")
         time.tzset()
         try:
@@ -141,9 +134,7 @@ class TestScheduledFireStamping:
 class TestStaleScheduledFireRejected:
     @pytest.mark.regression
     async def test_stale_fire_is_not_claimed(self) -> None:
-        """A job armed for 16:00 that fires after the workflow was rescheduled to
-        21:00 must be rejected by the claim gate — trigger_config.next_run no
-        longer matches the occurrence the job was armed for."""
+        """A job armed for 16:00 that fires after a reschedule to 21:00 must be rejected: trigger_config.next_run no longer matches."""
         from app.db.repositories.workflows import workflow_repository
 
         old_fire = datetime.now(UTC).replace(microsecond=0)
@@ -160,10 +151,9 @@ class TestStaleScheduledFireRejected:
             )
 
         assert claimed is False
-        # The whole atomic filter: liveness, run-state, and the occurrence pin
-        # must all hold together or the fire is not claimable.
-        # The pin is the one-second occurrence window, not an equality: the
-        # stamp the job carries only survives at second resolution.
+        # The whole atomic filter must hold together: liveness, run-state, and
+        # the occurrence pin. The pin is a one-second window, not equality —
+        # the stamp only survives at second resolution.
         assert captured_filters[0] == {
             "_id": "wf_1",
             "activated": True,
@@ -193,8 +183,7 @@ class TestStaleScheduledFireRejected:
         assert claimed is True
 
     async def test_legacy_job_without_stamp_claims_as_before(self) -> None:
-        """In-flight jobs enqueued before the stamp existed carry no expected
-        time and must keep claiming, so a deploy doesn't strand schedules."""
+        """In-flight jobs enqueued before the stamp existed carry no expected time and must keep claiming, so a deploy doesn't strand schedules."""
         from app.db.repositories.workflows import workflow_repository
 
         async def _fake_apply_update(filter_: dict[str, Any], ops: dict[str, Any], **kwargs: Any):
@@ -213,11 +202,7 @@ class TestStaleScheduledFireRejected:
 
 
 def _gate_claim(workflow: MagicMock, calls: list[tuple[str, datetime | None]]):
-    """A claim mock modeling the real gate semantics: it accepts only a fire
-    whose expected time matches the workflow's current next_run — exactly what
-    ``claim_for_execution(expected_next_run=...)`` enforces in Mongo. Records
-    (workflow_id, expected) pairs so tests assert the worker claimed the right
-    workflow for the right occurrence."""
+    """Model the real gate semantics, recording (workflow_id, expected) pairs: only a fire matching next_run is accepted."""
 
     async def _claim(workflow_id: str, expected_occurrence: datetime | None = None) -> bool:
         calls.append((workflow_id, expected_occurrence))
@@ -254,8 +239,7 @@ class TestWorkerRejectsStaleFire:
         str,
         MagicMock,
     ]:
-        """Drive one fire through execute_workflow_by_id with every seam
-        mocked; returns (workflow, scheduler, claim_calls, result)."""
+        """Drive one fire through execute_workflow_by_id with every seam mocked; returns (workflow, scheduler, claim_calls, result)."""
         workflow = TestWorkerRejectsStaleFire._scheduled_workflow(next_run or datetime.now(UTC))
         scheduler = AsyncMock()
         scheduler.get_task = AsyncMock(return_value=workflow)
@@ -285,10 +269,9 @@ class TestWorkerRejectsStaleFire:
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 AsyncMock(return_value=("conv_1", [])),
             ),
-            # These workflows have no playbook, so the fire takes the agent path.
-            # Stubbed rather than left to the mocked Mongo client, whose lookup
-            # raises and logs — which would put an unrelated warning in front of
-            # the scheduling warnings these tests assert on.
+            # These workflows have no playbook, so the fire takes the agent path,
+            # stubbed rather than left to the mocked Mongo client (whose lookup
+            # raises and logs a warning that would precede the ones asserted on).
             patch(
                 "app.workers.tasks.workflow_tasks.playbook_repository.get_for_workflow",
                 AsyncMock(return_value=None),
@@ -306,9 +289,7 @@ class TestWorkerRejectsStaleFire:
 
     @pytest.mark.regression
     async def test_execute_workflow_by_id_skips_stale_scheduled_fire(self) -> None:
-        """A scheduled fire armed for 16:00 that fires after the workflow was
-        rescheduled to 21:00 is rejected by the gate and skipped without
-        executing or re-arming."""
+        """A scheduled fire armed for 16:00 that fires after a reschedule to 21:00 is rejected and skipped without executing or re-arming."""
         old_fire = datetime.now(UTC).replace(microsecond=0)
         new_fire = old_fire + timedelta(hours=5)
 
@@ -347,8 +328,7 @@ class TestWorkerRejectsStaleFire:
 
     @pytest.mark.regression
     async def test_execute_workflow_by_id_runs_fresh_scheduled_fire(self) -> None:
-        """A scheduled fire whose stamp matches next_run passes the gate and
-        executes normally."""
+        """A scheduled fire whose stamp matches next_run passes the gate and executes normally."""
         fire = datetime.now(UTC).replace(microsecond=0)
         context = {"trigger_type": "schedule", "scheduled_for": int(fire.timestamp())}
 
@@ -358,8 +338,7 @@ class TestWorkerRejectsStaleFire:
         assert "executed successfully" in result
 
     async def test_unstamped_scheduled_fire_still_executes(self) -> None:
-        """Jobs enqueued before the stamp existed carry no scheduled_for key;
-        the worker must not gate them, so a deploy never strands a schedule."""
+        """Jobs enqueued before the stamp existed carry no scheduled_for key; the worker must not gate them, so a deploy never strands a schedule."""
         context = {"trigger_type": "schedule"}
 
         workflow, _, claim_calls, result, _ = await self._run_fire(context)
@@ -368,9 +347,7 @@ class TestWorkerRejectsStaleFire:
         assert "executed successfully" in result
 
     async def test_garbage_scheduled_for_is_ignored_not_crashed(self) -> None:
-        """A manual caller typing its own context (trigger_type=schedule with a
-        non-numeric stamp) must not crash fromtimestamp: the fire is treated as
-        unstamped, logged, and runs ungated — pre-change behavior."""
+        """A manual caller's non-numeric scheduled_for stamp must not crash fromtimestamp: treated as unstamped, logged, and run ungated."""
         garbage = "not-a-timestamp-" + "x" * 40  # >33 chars: pins log truncation
         context = {"trigger_type": "schedule", "scheduled_for": garbage}
 
@@ -385,8 +362,7 @@ class TestWorkerRejectsStaleFire:
         )
 
     async def test_overflowing_numeric_scheduled_for_is_ignored_not_crashed(self) -> None:
-        """A numeric stamp fromtimestamp cannot represent (year out of range)
-        takes the same discard path: ungated, logged with the truncated value."""
+        """A numeric stamp fromtimestamp cannot represent (year out of range) takes the same discard path: ungated, logged with the truncated value."""
         stamp = 10**40
         context = {"trigger_type": "schedule", "scheduled_for": stamp}
 

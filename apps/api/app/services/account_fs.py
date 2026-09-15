@@ -1,10 +1,10 @@
-"""Account-center workspace sync glue — ``/workspace/account/``.
+"""Account-center workspace sync glue — /workspace/account/.
 
 Materializes the user's account state (subscription, usage, notification
 channels, preferences, custom instructions, voice catalog/selection, linked
 platforms) as read-only JSON projections on JuiceFS. Each body is rewritten
 only when its content changed, so steady-state syncs do zero I/O. The GUIDE
-docs under ``account/`` are static system files and are NOT written here.
+docs under account/ are static system files and are NOT written here.
 
 One source failing (ElevenLabs unreachable, payment provider error) degrades to
 skipping THAT file group for the pass — the previous projection stays on disk,
@@ -46,12 +46,12 @@ from shared.py.wide_events import log
 async def build_account_projections(
     user_id: str,
 ) -> tuple[list[AccountFileProjection], set[str]]:
-    """Fetch every account view for ``user_id`` as serialized JSON bodies.
+    """Fetch every account view for user_id as serialized JSON bodies.
 
     Returns the projections plus the set of workspace-relative paths whose
     source failed this pass — callers must keep their previous on-disk
     projection instead of pruning it as stale (a stale view beats a missing
-    one, and the failure is logged loudly in ``_safe_body``).
+    one, and the failure is logged loudly in _safe_body).
     """
     groups: list[tuple[str, Callable[[str], Awaitable[str | None]]]] = [
         ("subscription", _subscription_body),
@@ -84,7 +84,7 @@ async def build_account_projections(
 async def sync_account_files(user_id: str) -> int:
     """Materialize the user's account projections to JuiceFS.
 
-    Returns the number of bodies rewritten; ``0`` means the mount is missing
+    Returns the number of bodies rewritten; 0 means the mount is missing
     (native dev) or nothing changed since the last pass.
     """
     if not _is_mounted():
@@ -100,10 +100,8 @@ schedule_account_sync = make_scheduler(sync_account_files, log_name="account_vfs
 
 
 # --- source builders --------------------------------------------------------
-#
-# Each body builder returns the serialized JSON for its file, or None when the
-# source has nothing to say yet. A raised error skips that group for the pass
-# (logged in _safe_body) without touching the other files.
+# Each builder returns JSON or None (nothing to report); a raised error skips
+# just that group this pass (logged in _safe_body).
 
 
 async def _safe_body(

@@ -115,40 +115,13 @@ export interface MCPAppData {
   tool_arguments?: Record<string, unknown>;
 }
 
-// Tool Registry
-// Single source of truth for tool names and their data payload types.
-// When you add a tool here, all downstream types (ToolName, ToolDataMap),
-// message schemas, and UI renderers can infer the correct types automatically.
-//
-// Why `null as unknown as T`?
-// - We want a value-level object (used at runtime for deriving keys) that also
-//   carries precise compile-time types for each key.
-// - Using `null` keeps runtime cost at zero; these values are never read.
-// - Casting `null as unknown as T` tells TypeScript: “treat this value as T”
-//   without needing to construct a real instance of T. The first cast to
-//   `unknown` is required to legally cast from `null` to any specific type.
-// - Result: strong static typing with no runtime overhead and a single place to
-//   author tool types.
-//
-// Single source of truth
-// - `TOOL_REGISTRY` defines all tool keys and their payload shapes.
-// - `ToolName` is derived from its keys.
-// - `ToolDataMap` maps each key to its payload type.
-// - `TOOLS_MESSAGE_SCHEMA` (below) composes tool data into message schemas.
-// - UI components (like renderers) can key off `ToolName` and get the exact
-//   payload type for each tool.
-//
-// How to add a new tool
-// 1) Add a new key here with its payload type using `null as unknown as YourType`.
-// 2) If you have a renderer, register it in your renderer map keyed by the new tool name.
-// 3) If you stream or store this tool’s data in messages, no extra typing is required;
-//    the message schema derives from this registry.
-// 4) Optionally, add tests and docs/examples demonstrating the new tool.
+// Single source of truth for tool names + payload types (ToolName,
+// ToolDataMap, message schemas, UI renderers all derive from this). Values
+// are `null as unknown as T`: zero runtime cost, precise compile-time types without constructing T.
 
-// The canonical RateLimitData / ToolCallEntry / SubagentGroupData shapes live
-// in @shared/chat (they're what the shared turn accumulator and backend
-// contract define); re-exported here so existing web imports keep one source
-// of truth instead of a drifting copy.
+// RateLimitData / ToolCallEntry / SubagentGroupData canonically live in
+// @shared/chat (shared turn accumulator + backend contract); re-exported
+// here so existing web imports keep one source of truth, not a drifting copy.
 export {
   type RateLimitData,
   REASONING_TOOL_NAME,

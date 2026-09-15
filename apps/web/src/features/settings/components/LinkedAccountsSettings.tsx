@@ -126,10 +126,9 @@ export default function LinkedAccountsSettings() {
   };
 
   const startConnect = (platform: PlatformConfig) => {
-    // While the subscription status is still unknown, let the connect
-    // attempt proceed instead of paywalling — the backend enforces the
-    // premium gate server-side, so a brief permissive window here is safe,
-    // but blocking a paying customer's connect attempt is not.
+    // While subscription status is unknown, let the connect attempt proceed
+    // instead of paywalling — the backend enforces the gate server-side, so a
+    // brief permissive window is safe, but blocking a paying customer is not.
     if (platform.premium && !isUnknown && !isPaid) {
       openUpgradeModal(undefined, {
         dismissible: true,

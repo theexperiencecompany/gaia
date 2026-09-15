@@ -27,16 +27,9 @@ export interface CLIState {
 }
 
 /**
- * Central state store for the CLI application.
- * Extends EventEmitter to notify React components of state changes.
- *
- * Uses a throttled emit for high-frequency updates (updateData, setStatus)
- * and immediate emit for user-facing changes (setStep, setError, waitForInput, submitInput).
- *
- * @example
- * const store = new CLIStore();
- * store.on('change', (state) => console.log(state));
- * store.setStep('Prerequisites');
+ * Central state store for the CLI application, extending EventEmitter to notify React
+ * components of state changes. Emits are throttled for high-frequency updates (updateData,
+ * setStatus) and immediate for user-facing changes (setStep, setError, waitForInput, submitInput).
  */
 export class CLIStore extends EventEmitter {
   private state: CLIState = {

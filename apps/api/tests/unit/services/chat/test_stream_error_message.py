@@ -1,15 +1,15 @@
 """A turn failure must always reach the client as a non-empty message.
 
 Found by driving a real failing turn: the OpenRouter SDK builds its exception
-message as ``str(data.error.message) or fallback`` and its ``__str__`` returns
-that message verbatim, so ``str(exc)`` is genuinely ``""`` when the provider
+message as str(data.error.message) or fallback and its __str__ returns
+that message verbatim, so str(exc) is genuinely "" when the provider
 sends an error body with an empty message. The stream then published
-``{"error": ""}``.
+{"error": ""}.
 
 An empty string is falsy on the client, which is worse than no error handling at
-all: ``hasError`` is false so no failed-response bubble renders, and
-``isBotMessageEmpty`` treats the turn as contentless, so
-``filterEmptyMessagePairs`` drops the bot message from the thread entirely. The
+all: hasError is false so no failed-response bubble renders, and
+isBotMessageEmpty treats the turn as contentless, so
+filterEmptyMessagePairs drops the bot message from the thread entirely. The
 user sees their own message, no answer, and no explanation — exactly the
 "sometimes the error just doesn't appear" report.
 """
@@ -57,7 +57,7 @@ def published(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 class _EmptyMessageError(Exception):
-    """Stands in for the SDK errors whose ``__str__`` is empty."""
+    """Stands in for the SDK errors whose __str__ is empty."""
 
     def __str__(self) -> str:
         return ""

@@ -9,13 +9,9 @@ Notes:
 - When adjusting concurrency, consider CPU, memory, and downstream rate limits.
 """
 
-# Production FastAPI: background warmup for all registered providers.
-#
-# Default: 5
-# Rationale: warmup runs after the server starts accepting requests, so we can
-# safely do more concurrent work than during blocking startup. Keep this number
-# modest to avoid CPU/memory spikes from compiling multiple agent graphs at
-# once.
+# Background warmup for all registered providers, run after the server starts
+# accepting requests; kept modest to avoid CPU/memory spikes from compiling
+# multiple agent graphs at once.
 PROD_PROVIDER_WARMUP_CONCURRENCY = 5
 
 

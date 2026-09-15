@@ -37,12 +37,9 @@ async def executor_status_hook(state: State, config: RunnableConfig, store: Base
             return state
 
         messages = state.get("messages", [])
-        # Skip during result narration. When comms is silently re-voicing a finished
-        # executor result (the trigger is a HumanMessage named BACKGROUND_EXECUTOR_NAME),
-        # that task's busy lock is still held — the runner frees it just AFTER delivery.
-        # Injecting "STILL RUNNING" here contradicts the very result being delivered,
-        # which can make the model return an empty narration that then falls back to
-        # the raw executor text leaking to the user.
+        # Skip during result narration: the busy lock is still held while comms
+        # re-voices a finished result, and injecting "STILL RUNNING" here can
+        # make the model return an empty narration that leaks the raw text.
         if messages and messages[-1].name == BACKGROUND_EXECUTOR_NAME:
             return state
 

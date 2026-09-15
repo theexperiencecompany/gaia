@@ -1,8 +1,8 @@
 """ToolCallCorrectness accepts a list of tool names as "any of these".
 
-Tracked-todo notes are files the agent edits with either ``edit`` or ``write``;
+Tracked-todo notes are files the agent edits with either edit or write;
 a case that pins one of them fails a correct run that picked the other. A list
-counts calls to any listed name towards ``min_calls``.
+counts calls to any listed name towards min_calls.
 """
 
 from __future__ import annotations

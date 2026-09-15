@@ -1,8 +1,8 @@
 """Contract tests for the HIL repositories (approval records + tool-risk cache).
 
 The behaviors that must survive any backend: once-only record creation under the
-deterministic ``approval_id`` (a resume replay's duplicate insert is a no-op that
-never resets a decided record), the one-time ``pending -> decided`` transition,
+deterministic approval_id (a resume replay's duplicate insert is a no-op that
+never resets a decided record), the one-time pending -> decided transition,
 and the sweep/join finders' exact filters.
 """
 
@@ -112,11 +112,9 @@ class TestHilApprovalRepository:
         assert [r.approval_id for r in parked] == ["parked"]
 
     async def test_parked_subagent_finder_is_scoped_to_one_conversation(self, repo):
-        # The join asks per conversation and RESUMES whatever comes back. Drop the
-        # conversation term and it collects a subagent parked in an unrelated conversation
-        # — running that user's gated action inside this run, and stamping it collected so
-        # its own join never sees it. Only a second conversation can observe the filter:
-        # with one, "scoped correctly" and "no filter at all" return the same row.
+        # Dropping the conversation term would collect a subagent parked in an
+        # unrelated conversation; only a second conversation can observe that
+        # filter, since with one, "scoped" and "unfiltered" return the same row.
         await repo.create_if_absent(_record("mine"))
         await repo.update(
             "mine", HILApprovalUpdate(subagent_thread_id="t-1", subagent_agent_name="gmail")

@@ -48,41 +48,6 @@ export default function ComposerLeft({
   );
 
   const dropdownItems: DropdownItemConfig[] = [
-    // {
-    //   id: "deep_research",
-    //   label: "Deep Research",
-    //   icon: (
-    //     <AiWebBrowsingIcon className="min-h-[20px] min-w-[20px] text-primary" />
-    //   ),
-    //   isMode: true,
-    //   description:
-    //     "Search the web and fetch content from those pages, extracting key information",
-    // },
-    // {
-    //   id: "web_search",
-    //   label: "Web search",
-    //   icon: (
-    //     <GlobalSearchIcon className="min-h-[20px] min-w-[20px] text-primary" />
-    //   ),
-    //   isMode: true,
-    //   description: "Search the web for the latest information",
-    // },
-    // {
-    //   id: "fetch_webpage",
-    //   label: "Fetch Webpage",
-    //   icon: <ArrowUpRight className="min-h-[20px] min-w-[20px] text-primary" />,
-    //   action: openPageFetchModal,
-    //   isMode: false,
-    //   description: "Retrieve and understand content from specific webpages",
-    // },
-    // {
-    //   id: "generate_image",
-    //   label: "Generate Image",
-    //   icon: <Image02Icon className="min-h-[20px] min-w-[20px] text-primary" />,
-    //   action: openGenerateImageModal,
-    //   isMode: false,
-    //   description: "Create AI-generated images from text",
-    // },
     {
       id: "upload_file",
       label: "Attach Files",

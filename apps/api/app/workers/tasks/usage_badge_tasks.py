@@ -8,10 +8,10 @@ from shared.py.wide_events import log, wide_task
 
 
 async def promote_usage_badges(_ctx: dict[str, Any]) -> str:
-    """Daily sweep: recompute every user's activity tier and email first-time
-    promotions. All semantics (thresholds, monotonic promotion, idempotency,
-    silent seeding) live in ``sync_activity_tiers`` — this is just the cron
-    entry point.
+    """Daily sweep: recompute every user's activity tier and email first-time promotions.
+
+    All semantics (thresholds, monotonic promotion, idempotency, silent
+    seeding) live in sync_activity_tiers — this is just the cron entry point.
     """
     async with wide_task("promote_usage_badges"):
         stats = await sync_activity_tiers(send_emails=True)

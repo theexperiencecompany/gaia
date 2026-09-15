@@ -1,10 +1,10 @@
 """HIL preferences service — the thin seam over the user repository.
 
 Preferences decide *which* tools are gated, so a misread here is a gate that
-silently stops asking. The write-shape guarantees (per-tool ``$setField`` writes,
+silently stops asking. The write-shape guarantees (per-tool $setField writes,
 dotted MCP names staying flat keys, partial updates leaving siblings alone) live
-on ``UserRepository`` now and are contract-tested against real Mongo in
-``tests/contracts/test_users_repository.py`` — what remains here is the service's
+on UserRepository now and are contract-tested against real Mongo in
+tests/contracts/test_users_repository.py — what remains here is the service's
 own behavior: default resolution and reading back after a write.
 """
 
@@ -44,7 +44,7 @@ def user_repo():
 def _neutralize_captures():
     """Silence analytics captures for tests not asserting on them.
 
-    ``capture_event`` resolves the PostHog provider at call time, which is not
+    capture_event resolves the PostHog provider at call time, which is not
     registered in this test module's import chain — capture-specific tests
     patch the call explicitly and assert on it.
     """

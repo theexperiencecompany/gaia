@@ -1,22 +1,16 @@
 #!/usr/bin/env python3
-"""
-Seed script for explore/discover workflows - outcome-first curated set.
+"""Seed explore/discover workflows — outcome-first curated set.
 
-The explore use cases behind /use-cases, curated to poke.com's bar:
-- Titles are everyday outcomes ("Assignment Tracker", not "Email to Task Converter")
-- Descriptions are one-line promises ("Never be surprised by a due date again")
-- Prompts are the real runnable instructions (shown on the detail page)
-- 1-3 steps, at most one external integration per flow; 14 of 28 need none
-- Run counts are curated display values (DISPLAY_RUN_COUNTS), not measured usage
+The explore use cases behind /use-cases, curated to poke.com's bar: everyday
+outcome titles, one-line promise descriptions, real runnable prompts, 1-3
+steps with at most one external integration (14 of 28 need none), and
+curated display run counts (DISPLAY_RUN_COUNTS, not measured usage).
 
 Categories: Study, Email, Meetings, Home admin, Content, Focus & planning,
-Dev, Health & habits. 8 workflows are flagged `featured` (impact-first).
+Dev, Health & habits. 8 workflows are flagged featured (impact-first).
 
-Usage:
-  cd apps/api
-  uv run python scripts/seed_explore_workflows.py              # seed (interactive)
-  uv run python scripts/seed_explore_workflows.py --dry-run    # report only
-  uv run python scripts/seed_explore_workflows.py --force --prune
+Usage: cd apps/api && uv run python scripts/seed_explore_workflows.py
+[--dry-run] [--force --prune]
 """
 
 import argparse
@@ -51,7 +45,7 @@ def create_step(
     category: str,
     description: str,
 ) -> dict[str, Any]:
-    """Helper to create a workflow step with the abstract schema."""
+    """Create a workflow step with the abstract schema."""
     return {
         "id": f"step_{step_number}",
         "title": title,
@@ -961,12 +955,11 @@ SYSTEM_WORKFLOW_PRESENTATION: dict[str, dict[str, Any]] = {
 
 
 def get_system_workflows() -> list[dict[str, Any]]:
-    """The auto-provisioned workflows, as explore cards.
+    """Return the auto-provisioned workflows, as explore cards.
 
-    Same definitions the provisioner uses, so the card shows exactly what a user
-    gets when they connect the integration. The ``system_workflow_key`` rides
-    along to the client, which is what stops "add this" from creating a second
-    copy of one the user already has.
+    Same definitions the provisioner uses, so the card matches what a user
+    gets on connecting the integration; system_workflow_key rides along so
+    "add this" can't create a second copy of one the user already has.
     """
     configs: list[dict[str, Any]] = []
     for key, factory in [*GMAIL_SYSTEM_WORKFLOWS, *CALENDAR_SYSTEM_WORKFLOWS]:
@@ -1274,7 +1267,7 @@ def parse_arguments():
 
 
 async def main():
-    """Main function."""
+    """Seed explore workflows."""
     args = parse_arguments()
 
     try:

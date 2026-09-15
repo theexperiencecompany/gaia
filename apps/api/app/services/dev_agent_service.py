@@ -3,10 +3,10 @@
 Runs the executor agent or any single subagent directly, skipping the comms
 front door, so tests and coding agents can exercise one layer in isolation
 instead of always driving the full comms → executor → handoff chain. Reuses
-the exact production preparation paths (``prepare_executor_execution``,
-``prepare_subagent_execution``) so a direct run can never drift from what the
+the exact production preparation paths (prepare_executor_execution,
+prepare_subagent_execution) so a direct run can never drift from what the
 real hand-off does. Mounted only in development behind the auth bypass — see
-``create_app``. Under ``GAIA_SIM_MODE`` the graphs already resolve to the
+create_app. Under GAIA_SIM_MODE the graphs already resolve to the
 scripted LLM stub, so directive-bearing tasks run deterministically.
 """
 
@@ -84,7 +84,7 @@ def _reject_pause(outcome: SubagentOutcome, agent_name: str) -> None:
     """Fail loud when a direct run parks on a HIL approval.
 
     A direct run has no stream and therefore no approval channel to answer the
-    interrupt on, so ``outcome.text`` is meaningless — returning it would hand
+    interrupt on, so outcome.text is meaningless — returning it would hand
     back an empty message as if it were the agent's answer.
     """
     if outcome.paused:

@@ -291,7 +291,7 @@ SCENARIOS: list[TestScenario] = [
 
 
 def _parse_sse_line(line: str) -> dict | None:
-    """Parse a single `data: ...` SSE line into an event dict; return None to skip."""
+    """Parse a single data: ... SSE line into an event dict; return None to skip."""
     if not line.startswith("data: "):
         return None
     raw = line[6:]
@@ -499,7 +499,7 @@ def _check_search_first(chat_results: list[ChatResult]) -> tuple[list[str], list
 
 
 def _check_recurring_fields(scenario: TestScenario, new_todos: list[dict]) -> list[str]:
-    """Validate recurring-todo fields for the recurring scenario (tagged ``recurring``)."""
+    """Validate recurring-todo fields for the recurring scenario (tagged recurring)."""
     if "recurring" not in scenario.tags or not new_todos:
         return []
     todo = new_todos[0]

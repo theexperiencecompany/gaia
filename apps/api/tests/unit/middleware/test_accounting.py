@@ -132,11 +132,7 @@ def test_latest_ai_message_tolerates_empty_and_none_histories() -> None:
 
 
 # --- the ledger row's identity ------------------------------------------------- #
-#
-# The graph lane is where the overwhelming majority of calls are metered, so
-# whatever it fails to state about a call is simply missing from the ledger for
-# most of GAIA's spend. Each field below answers a question that has no other
-# source once the log line has expired.
+# The graph lane meters most of GAIA's spend; each field below has no other source once the log line expires.
 
 
 _LEDGER_CONFIG: dict[str, Any] = {
@@ -179,9 +175,7 @@ async def test_the_metered_call_states_which_lane_and_whose_budget_it_is() -> No
 
 
 async def test_the_metered_call_carries_both_the_conversation_and_its_lane_thread() -> None:
-    """A child agent runs on ``executor_<conv>``. Recording only the wrapper
-    splits one turn across two ids; recording only the conversation loses which
-    lane spent the money."""
+    """Recording only the wrapper or only the conversation loses the other id."""
     context = await _ledger_context(_ai())
 
     assert context.conversation_id == "conv-1"
@@ -189,8 +183,7 @@ async def test_the_metered_call_carries_both_the_conversation_and_its_lane_threa
 
 
 async def test_a_run_with_no_conversation_id_states_its_absence() -> None:
-    """A bare checkpoint bag has no conversation. The ledger derives one from the
-    thread rather than the middleware inventing the string ``"None"``."""
+    """The ledger derives one from the thread rather than inventing the string "None"."""
     context = await _ledger_context(_ai(), CONFIG)
 
     assert context.conversation_id is None
@@ -208,17 +201,14 @@ async def test_the_metered_call_names_the_workflow_that_triggered_it() -> None:
 
 
 async def test_the_surface_the_turn_came_from_reaches_the_ledger() -> None:
-    """``conversation_source`` was already on the configurable and simply unread.
-    An executor call inherits it, so a child reports its root turn's surface."""
+    """conversation_source was already on the configurable and simply unread."""
     config = {"configurable": {**_LEDGER_CONFIG["configurable"], "conversation_source": "slack"}}
 
     assert (await _ledger_context(_ai(), config)).channel == "slack"
 
 
 async def test_a_graph_call_is_never_recorded_as_background_system_work() -> None:
-    """The graph lane IS the user's turn. Passing it as background would relabel
-    every chat call with no explicit source as ``system``, which is the bucket
-    that exists for work nobody asked for — and it is most of the spend."""
+    """Mislabeling it background would relabel most chat spend as system work nobody asked for."""
     bare = {
         "configurable": {
             "user_id": "user-1",
@@ -230,17 +220,14 @@ async def test_a_graph_call_is_never_recorded_as_background_system_work() -> Non
 
 
 async def test_why_the_provider_stopped_reaches_the_ledger() -> None:
-    """A run of ``length`` on one lane is a truncation bug that otherwise only
-    surfaces as users reporting answers that stop mid-sentence."""
+    """A run of length is a truncation bug that otherwise surfaces only as answers stopping mid-sentence."""
     message = _ai(response_metadata={"finish_reason": "length"})
 
     assert (await _ledger_context(message)).finish_reason == "length"
 
 
 async def test_the_metered_call_records_what_the_provider_actually_served() -> None:
-    """The lane says what we asked for; only the reply says what answered. On a
-    fallback or a provider substitution those differ, and the ledger has to be
-    able to show it."""
+    """On a fallback or provider substitution, only the reply says what actually served — not the configured lane."""
     message = _ai(
         response_metadata={
             "model_name": "served/model",
@@ -265,13 +252,7 @@ async def test_the_metered_call_carries_the_generation_id_for_spot_audits() -> N
 
 
 async def test_the_provider_calls_wall_time_reaches_the_ledger_in_milliseconds() -> None:
-    """Latency is measured around the invocation in ``awrap_model_call`` — the
-    only seam that sees the provider call start and finish — and consumed by the
-    ``aafter_model`` that meters that same call. We have no latency visibility on
-    model calls today, so the unit and the precision both matter: the clock is
-    pinned here rather than slept against, because a real elapsed time cannot
-    tell a millisecond from a second-scaled one within its own noise.
-    """
+    """Latency is measured in awrap_model_call and consumed by aafter_model; the clock is pinned, not slept, to prove the unit and precision."""
     config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
     mw = LLMAccountingMiddleware(agent_name="comms_agent")
 
@@ -300,16 +281,13 @@ async def test_the_provider_calls_wall_time_reaches_the_ledger_in_milliseconds()
 
 
 async def test_a_call_the_budget_wall_stopped_reports_no_latency() -> None:
-    """The wall short-circuits before the provider is invoked, so there is no
-    provider call to have timed. A zero would read as an instant reply."""
+    """A zero here would read as an instant reply, not "never called"."""
     context = await _ledger_context(_ai())
     assert context.duration_ms is None
 
 
 async def test_the_latency_is_consumed_by_the_call_it_measured() -> None:
-    """The measurement is popped, not read: leaving it behind would attribute one
-    call's wall time to the next step on the same thread, which on a multi-step
-    run makes every step after the first report a latency it never had."""
+    """The measurement is popped, not read, or a multi-step run reattributes one call's wall time to the next."""
     config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
     mw = LLMAccountingMiddleware(agent_name="comms_agent")
 
@@ -337,9 +315,7 @@ async def test_the_latency_is_consumed_by_the_call_it_measured() -> None:
 
 
 async def test_overlapping_stamps_do_not_clobber() -> None:
-    """Two in-flight stamps on one thread unwind LIFO: the second call's
-    ``aafter_model`` gets the second measurement, not the first — and the
-    first call's measurement is still there for its own ``aafter_model``."""
+    """Two in-flight stamps on one thread unwind LIFO, each aafter_model getting its own."""
     config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
     mw = LLMAccountingMiddleware(agent_name="comms_agent")
 
@@ -372,11 +348,7 @@ async def test_overlapping_stamps_do_not_clobber() -> None:
 
 
 async def test_a_raised_model_call_leaves_no_stamp_behind() -> None:
-    """When the provider call raises, the graph aborts and ``aafter_model`` never
-    runs — nothing consumes the stamps ``abefore_model``/``awrap_model_call``
-    pushed. Left in place they grow one entry per failure on a process-lifetime
-    instance, and the next successful call on the thread pops the stale one and
-    reports a latency that belongs to the failed call."""
+    """Unconsumed stamps would grow per failure and let the next call report the failed call's latency."""
     config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
     mw = LLMAccountingMiddleware(agent_name="comms_agent")
 
@@ -438,9 +410,7 @@ async def test_metered_call_observes_llm_call_histogram() -> None:
 
 
 async def test_metered_call_records_the_exact_provider_seconds() -> None:
-    """The recorded sample is the provider wall time in SECONDS. Pinning the
-    clock makes the value deterministic, so a wrong unit (ms recorded as s, or a
-    near-miss divisor) cannot hide behind a count-only assertion."""
+    """The sample is provider wall time in seconds, pinned so a wrong unit cannot hide behind a count."""
     config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
     mw = LLMAccountingMiddleware(agent_name="comms_agent")
     labels = {"model": "gemini-3-pro", "agent": "comms_agent"}
@@ -469,8 +439,7 @@ async def test_metered_call_records_the_exact_provider_seconds() -> None:
 
 
 async def test_the_metered_call_carries_the_request_tree_it_belongs_to() -> None:
-    """``root_request_id`` is what joins a comms turn to the executor calls it
-    spawned. Losing it makes a multi-agent turn look like unrelated spend."""
+    """root_request_id joins a comms turn to the executor calls it spawned."""
     config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
     mw = LLMAccountingMiddleware(agent_name="comms_agent")
     with (
@@ -514,13 +483,9 @@ async def test_cache_hit_rate_is_zero_when_nothing_was_sent() -> None:
 
 
 async def test_successive_calls_add_up_within_one_wide_event_scope() -> None:
-    # The middleware read-merges the previous totals out of the wide event before
-    # re-setting them, so the numbers accumulate rather than each step clobbering
-    # the last. NB: inside a compiled LangGraph graph this accumulation never
-    # actually happens — each superstep runs in a child copy_context() frame, so
-    # `log.get()` is empty every time. See the note in
-    # `app/services/chat/stream.py::_log_usage_summary`, which is why the chat
-    # rollup reads token totals from UsageMetadataCallback instead of from here.
+    # Read-merges previous totals before re-setting, so numbers accumulate here.
+    # In a real compiled graph this never happens (each superstep gets its own
+    # copy_context() frame) — see stream.py::_log_usage_summary; chat totals come from UsageMetadataCallback instead.
     mw = LLMAccountingMiddleware(agent_name="a")
     for step in (1, 2, 3):
         model = await _call(mw, _ai(input_tokens=100, output_tokens=20, cached=40, reasoning=5))
@@ -638,8 +603,7 @@ async def test_unknown_model_and_provider_when_the_config_is_bare() -> None:
 
 
 async def test_a_run_with_no_lane_reports_an_unknown_model_rather_than_guessing() -> None:
-    """A bag written before lanes existed (in-flight queue item, stored HIL
-    resume_item) has no lane. Accounting must say so, not invent a model name."""
+    """A bag written before lanes existed (in-flight queue item, stored HIL resume_item) has no lane."""
     mw = LLMAccountingMiddleware(agent_name="a")
     model = await _call(mw, _ai(), config={"configurable": {"user_id": "u1"}})
     assert model["name"] == "unknown"
@@ -931,15 +895,9 @@ async def test_a_missing_stream_writer_never_breaks_the_stop() -> None:
 
 
 def test_a_plan_with_no_configured_budget_never_reaches_the_wrapup_threshold() -> None:
-    # Both shipped plans carry a non-zero budget, so this guard is only
-    # reachable through the config seam — but without it a budget of 0 makes
-    # `spent >= 0` true from the very first request, and every run would be
-    # told to wrap up before it had done anything.
-    #
-    # Lives here rather than beside is_budget_wrapup_threshold's own tests
-    # because the mutation gate mutates cost_budget.py against THIS file:
-    # scripts/ci/lib/mutation_matrix.py picks the alphabetically first test file
-    # that references the module, and middleware/ sorts before services/.
+    # A budget of 0 makes `spent >= 0` true from the first request, telling every run to wrap up before it began.
+    # Lives here, not beside is_budget_wrapup_threshold, because mutation_matrix.py mutates cost_budget.py against
+    # the alphabetically first referencing test file, and middleware/ sorts before services/.
     with patch("app.services.cost_budget.get_daily_cost_budget_usd", return_value=0.0):
         assert is_budget_wrapup_threshold(0.0, PlanType.FREE) is False
         assert is_budget_wrapup_threshold(5.0, PlanType.FREE) is False
@@ -1114,10 +1072,7 @@ async def test_the_llm_call_event_carries_the_per_step_attribution() -> None:
 
 
 async def test_the_llm_call_event_says_whether_the_price_was_the_providers_or_ours() -> None:
-    """``cost_usd`` alone cannot be audited: a table guess and a provider
-    invoice look identical in the log. They disagree by more than 10x per
-    upstream, so the event has to name which one it carries — that flag is what
-    makes the coverage number in the true-cost backfill mean anything."""
+    """A table guess and a provider invoice can disagree by more than 10x per upstream and look identical without this flag."""
     emitted: list[tuple[str, dict[str, Any]]] = []
     mw = LLMAccountingMiddleware(agent_name="executor_agent")
     priced = _ai(input_tokens=100, output_tokens=20)
@@ -1141,12 +1096,9 @@ async def test_the_llm_call_event_says_whether_the_price_was_the_providers_or_ou
 
 
 async def test_the_llm_call_event_carries_the_upstream_generation_id() -> None:
-    # `model` above is the lane's CONFIGURED provider, which is always the
-    # aggregator — it cannot say which upstream actually served the request. A
-    # call reporting zero cached tokens is otherwise ambiguous between "routed to
-    # a different upstream holding no warm prefix" and "the prefix broke", and
-    # those have opposite fixes. This id resolves the serving provider without
-    # spending a model call.
+    # `model` above is the lane's configured provider (the aggregator), not the upstream that served it.
+    # Zero cached tokens is otherwise ambiguous between "different upstream, no warm prefix" and "prefix broke" —
+    # opposite fixes. This id resolves the serving provider without spending a model call.
     emitted: list[tuple[str, dict[str, Any]]] = []
     mw = LLMAccountingMiddleware(agent_name="comms_agent")
     config_patch, cost_patch, usage_patch = _accounting_env()
@@ -1175,10 +1127,7 @@ async def test_the_price_is_looked_up_for_the_lanes_model_and_provider() -> None
 
 
 async def test_a_bag_with_no_lane_says_so_instead_of_undercharging_silently() -> None:
-    """Priced as "unknown", which matches no pricing entry, so the call
-    undercharges the budget. Any bag written before lanes existed — an in-flight
-    queue item, a stored HIL resume_item — lands here for a deploy window, and the
-    warning is the only thing that makes the under-billing visible."""
+    """Priced as "unknown" matches no pricing entry, so the call silently undercharges the budget without this warning."""
     warned: list[tuple[str, dict[str, Any]]] = []
     config = {"configurable": {"thread_id": "conv-1", "user_id": "user-1"}}
     config_patch, cost_patch, usage_patch = _accounting_env(config)

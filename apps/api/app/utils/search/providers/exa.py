@@ -18,7 +18,7 @@ class ExaProvider(SearchProvider):
     monthly_free_limit = 20_000
 
     def is_configured(self) -> bool:
-        """True when an Exa API key is configured."""
+        """Return True when an Exa API key is configured."""
         return bool(settings.EXA_API_KEY)
 
     async def search(self, query: str, count: int) -> SearchResponse:

@@ -6,18 +6,12 @@ import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 import { usePopupCheckout } from "../hooks/usePopupCheckout";
 
 /**
- * The paid-only wall, as it appears in the desktop popup.
+ * The paid-only wall in the desktop popup. Can't use `UpgradeModal` — the
+ * composer window is a 420x48 frameless capsule too small for a full-viewport
+ * backdrop — so it renders inline in the feed window instead.
  *
- * The popup cannot use `UpgradeModal`: its composer window is a 420x48
- * frameless capsule, and a HeroUI `Modal` portals a full-viewport blurred
- * backdrop that would be clipped to that sliver. So the block renders inline
- * in the feed window instead — the popup's only content-sized surface, which
- * the main process grows to fit whatever this reports.
- *
- * State arrives over the popup's BroadcastChannel (`sync.ts`): the 402 lands
- * in the composer window, which owns sending, and is mirrored here. That is
- * also the window that takes this block down again — see
- * `useClearPaywallWhenPaid`, mounted in `AssistantPopup`.
+ * State arrives over the popup's BroadcastChannel (`sync.ts`) and is cleared
+ * by `useClearPaywallWhenPaid` in `AssistantPopup`.
  */
 export default function PopupPaywallNotice() {
   const open = useUpgradeModalStore((s) => s.open);

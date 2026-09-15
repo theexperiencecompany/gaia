@@ -1,18 +1,10 @@
 import type { OnboardingData } from "@/features/auth/api/authApi";
 /**
- * Linear stage cursor. The flow is a fixed queue — Q1/Q2, then payment,
- * then the receipt, the platform pick and finally the
- * handoff into chat. The user advances forward only, never sideways.
- *
- * `getStage` returns the first stage the user is not past. Payment is the
- * only stage whose "done" answer lives outside this state: it is done when
- * the backend says the user is subscribed, which is also why an already
- * subscribed user never sees it.
- *
- * `isPaid` must be the *definitive* answer — `useIsPaid().isPaid` is false
- * while the subscription status is still unknown, which parks the user on
- * the payment stage (where the stage itself renders a neutral loading
- * state) rather than advancing them past a gate that was never checked.
+ * Linear stage cursor over the fixed queue (Q1/Q2, payment, receipt, platform
+ * pick, chat handoff) — forward only, never sideways. `getStage` returns the
+ * first stage not yet past; payment's "done" lives outside this state (true
+ * when the backend reports the user subscribed). `isPaid` must be definitive —
+ * while unknown, `useIsPaid().isPaid` is false, parking the user on payment's neutral loading state rather than skipping an unchecked gate.
  */
 
 import {
@@ -47,15 +39,11 @@ export function canSubmitNeeds(s: OnboardingState): boolean {
 
 /**
  * The answers the account already gave, as a wizard draft — what a browser
- * with no cache of its own resumes from. Without it a second device (or a
- * cleared one) re-asks Q1 and Q2 of someone who has answered them, and
- * overwrites the stored answers with the new ones.
+ * with no cache resumes from, instead of re-asking Q1/Q2 and overwriting them.
  *
- * `null` means the account has answered nothing yet, which is also the signal
- * that a local draft claiming `preferencesPersisted` is stale. `GET /user/me`
- * reports an unset onboarding as `preferences: {}`, never as a missing field,
- * so presence of the object says nothing; a recorded profession is the first
- * thing the wizard saves.
+ * `null` means the account has answered nothing (also the signal a local
+ * draft's `preferencesPersisted` is stale). `GET /user/me` reports unset
+ * onboarding as `preferences: {}`, never a missing field, so presence alone says nothing — a recorded profession is the first thing saved.
  */
 export function draftFromServerPreferences(
   onboarding: OnboardingData | undefined,

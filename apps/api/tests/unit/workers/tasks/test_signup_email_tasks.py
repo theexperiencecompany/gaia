@@ -32,7 +32,7 @@ OTHER_USER_ID = "507f1f77bcf86cd799439012"
 
 
 def _user(**overrides) -> UserDocument:
-    """The stored signup row the job reads; no stamps means both are owed."""
+    """Build the stored signup row the job reads; no stamps means both deliveries are owed."""
     fields: dict = {
         "id": USER_ID,
         "email": "bob@test.com",
@@ -71,7 +71,7 @@ def mock_add_marketing_contact():
 
 @pytest.fixture
 def hung_esp_call():
-    """An ESP stub that accepts the call and never answers."""
+    """Return an ESP stub that accepts the call and never answers."""
 
     async def _hang(*_args: str, **_kwargs: str) -> None:
         await asyncio.Event().wait()
@@ -80,7 +80,7 @@ def hung_esp_call():
 
 
 def _stamps(mock_stamp: AsyncMock) -> list[tuple[str, SignupDelivery]]:
-    """Every ``(user, delivery)`` pair stamped across all calls, flattened.
+    """Every (user, delivery) pair stamped across all calls, flattened.
 
     The row being stamped matters as much as the delivery: a stamp written
     against the wrong user retires a debt that was never paid, and the real
@@ -92,8 +92,7 @@ def _stamps(mock_stamp: AsyncMock) -> list[tuple[str, SignupDelivery]]:
 
 
 class _DedupingPool:
-    """Stands in for ``ArqRedis`` enforcing the one rule this depends on: an
-    enqueue whose ``_job_id`` is already known is dropped and returns ``None``."""
+    """Stands in for ArqRedis: an enqueue whose _job_id is already known is dropped and returns None."""
 
     def __init__(self) -> None:
         self.job_ids: list[str] = []
@@ -108,9 +107,7 @@ class _DedupingPool:
 
 class TestEnqueueSignupEmails:
     async def test_a_second_enqueue_for_the_same_user_is_a_no_op(self):
-        """The whole point of the deterministic id: signup's own enqueue and a
-        later sweep (or a retried OAuth callback) must not produce two jobs,
-        because two jobs mean two welcome emails to the same person."""
+        """The deterministic job id must stop a later sweep or retried callback from producing a second job."""
         pool = _DedupingPool()
 
         first = await enqueue_signup_emails(pool, USER_ID)
@@ -145,8 +142,7 @@ class TestDeliverSignupEmails:
     async def test_each_landed_delivery_stamps_the_user(
         self, stored_user, mock_stamp, mock_send_welcome_email, mock_add_marketing_contact
     ):
-        """The stamp is the durable record that the delivery is no longer owed.
-        Without it a re-run double-sends and the sweep keeps re-selecting."""
+        """Without the durable stamp, a re-run double-sends and the sweep keeps re-selecting the user."""
         await deliver_signup_emails({}, USER_ID)
 
         assert sorted(_stamps(mock_stamp)) == sorted(
@@ -159,8 +155,7 @@ class TestDeliverSignupEmails:
     async def test_an_already_stamped_delivery_is_not_repeated(
         self, mock_stamp, mock_send_welcome_email, mock_add_marketing_contact
     ):
-        """A worker that died after sending leaves the job to be re-run. The
-        stamp is what stops that re-run from mailing the user a second time."""
+        """The stamp is what stops a re-run (after a worker died mid-send) from mailing the user twice."""
         already = _user(welcome_email_sent_at=datetime.now(UTC))
         with patch(f"{MODULE}.user_repository.get", AsyncMock(return_value=already)):
             await deliver_signup_emails({}, USER_ID)
@@ -236,9 +231,8 @@ class TestDeliverSignupEmails:
         self, stored_user, mock_stamp, mock_send_welcome_email, mock_add_marketing_contact
     ):
         """Both round-trips are in flight at once — neither waits on the other."""
-        # A two-party barrier only opens if both calls are running at the same
-        # time; awaited one after the other, the first waits for a partner that
-        # has not started and the rendezvous times out.
+        # A two-party barrier only opens if both calls run at the same time; run
+        # sequentially, the first waits on a partner that hasn't started and times out.
         barrier = asyncio.Barrier(2)
         rendezvous: set[str] = set()
 
@@ -265,9 +259,7 @@ class TestDeliverSignupEmails:
         mock_add_marketing_contact,
         hung_esp_call,
     ):
-        """An ESP that accepts the call and never answers is the failure the
-        bound exists for. Unbounded, the job waits on it for the worker's whole
-        30-minute timeout and the lost email is recorded nowhere at all."""
+        """Unbounded, a hung ESP call would block the job for the worker's whole 30-minute timeout."""
         mock_send_welcome_email.side_effect = hung_esp_call
 
         with patch(f"{MODULE}.SIGNUP_EMAIL_TIMEOUT_SECONDS", 0.01):
@@ -296,8 +288,7 @@ class TestDeliverSignupEmails:
         mock_add_marketing_contact,
         hung_esp_call,
     ):
-        """The audience call carries its own bound — sharing the welcome email's
-        would leave one of the two round-trips able to hang forever."""
+        """The audience call carries its own timeout, not a shared one that could leave it hanging forever."""
         mock_add_marketing_contact.side_effect = hung_esp_call
 
         with patch(f"{MODULE}.SIGNUP_EMAIL_TIMEOUT_SECONDS", 0.01):
@@ -318,8 +309,7 @@ class TestDeliverSignupEmails:
     async def test_a_welcome_email_failure_is_recorded_and_leaves_no_stamp(
         self, stored_user, mock_stamp, mock_send_welcome_email, mock_add_marketing_contact
     ):
-        """The missing stamp is what hands the delivery to the recovery sweep;
-        stamping a failure would retire the debt without ever paying it."""
+        """A missing stamp hands the delivery to the recovery sweep; stamping a failure would retire an unpaid debt."""
         mock_send_welcome_email.side_effect = RuntimeError("SMTP error")
 
         async with captured_wide_event() as event:
@@ -339,9 +329,7 @@ class TestDeliverSignupEmails:
     async def test_a_marketing_contact_failure_is_recorded_and_leaves_no_stamp(
         self, stored_user, mock_stamp, mock_send_welcome_email, mock_add_marketing_contact
     ):
-        """The audience provider raising is the case the wrapper's except branch
-        exists for — while the sender swallowed its own failure this was
-        unreachable and the wrapper logged success on a lost contact."""
+        """Before this the wrapper's except branch was unreachable, so a lost contact logged as success."""
         mock_add_marketing_contact.side_effect = RuntimeError("Resend API error")
 
         async with captured_wide_event() as event:
@@ -361,10 +349,7 @@ class TestDeliverSignupEmails:
     async def test_a_cancelled_delivery_does_not_strand_the_other_one(
         self, stored_user, mock_stamp, mock_send_welcome_email, mock_add_marketing_contact
     ):
-        """Cancellation is the one failure a delivery's own ``except Exception``
-        cannot catch, so it reaches the gather. Propagated, it ends the job on
-        the spot and the second round-trip is dropped mid-flight; collected,
-        both still finish and the job is not recorded as a casualty."""
+        """Cancellation escapes each delivery's except Exception and must not drop the other round-trip mid-flight."""
         delivered: list[str] = []
 
         async def _cancelled(*_args: str, **_kwargs: str) -> None:

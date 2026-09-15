@@ -1,7 +1,7 @@
 """Unit tests for my_integrations (the user's personalized integration catalog).
 
 The merge of platform config + connection status + custom integrations is
-the unit under test; `get_integration_tools` authorization is tested too.
+the unit under test; get_integration_tools authorization is tested too.
 """
 
 from datetime import UTC, datetime
@@ -118,8 +118,7 @@ def mock_deps():
 
 class TestGetMyIntegrations:
     async def test_platform_integration_with_registry_tool_count(self, mock_deps, mock_redis_cache):
-        """The registry tool-count fallback keys on the lowercased integration
-        id — a matching registry entry is used when the user has no record."""
+        """The registry tool-count fallback keys on the lowercased integration id."""
         mock_deps.categories.return_value = {"Github": 4}
 
         result = await get_my_integrations(USER_ID)
@@ -173,8 +172,7 @@ class TestGetMyIntegrations:
     async def test_expired_platform_integration_carries_expired_at(
         self, mock_deps, mock_redis_cache
     ):
-        """The UI renders "Disconnected <n> ago" from this — dropping it collapses
-        a connection that broke into one that was never set up."""
+        """Dropping expired_at collapses a connection that broke into one never set up."""
         died = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
         mock_deps.user.return_value = UserIntegrationsListResponse(
             integrations=[

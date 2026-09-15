@@ -9,9 +9,9 @@ from shared.py.wide_events import log
 async def sweep_dormant_user_workflows(_ctx: dict[str, Any]) -> str:
     """Pause every activated workflow owned by a user dormant past the threshold.
 
-    Idempotent: a workflow already paused is no longer ``activated``, so the next
+    Idempotent: a workflow already paused is no longer activated, so the next
     run does not see it. A user who returns has their pauses undone by
-    ``resume_dormancy_paused_workflows`` on login, not by this sweep.
+    resume_dormancy_paused_workflows on login, not by this sweep.
     """
     result = await sweep_dormant_workflows()
     log.set(

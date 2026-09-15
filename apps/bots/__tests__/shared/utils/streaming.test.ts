@@ -329,11 +329,9 @@ describe("handleStreamingChat delivery", () => {
   });
 
   it("does not overwrite an out-of-band approval prompt", async () => {
-    // The approval prompt is posted through the adapter's `sendNewMessage`,
-    // which on editing platforms moves that adapter's live-edit cursor onto the
-    // prompt. If the streamer keeps editing "the current message" afterwards it
-    // writes the rest of the reply over the question the user still has to
-    // answer.
+    // The approval prompt posts via the adapter's `sendNewMessage`, moving that
+    // adapter's live-edit cursor onto the prompt on editing platforms; if the
+    // streamer kept editing "the current message" it'd overwrite the question.
     const { bubbles } = await deliver(
       "telegram",
       ["Checking that first. ", "Now the rest of the answer."],
@@ -475,11 +473,9 @@ describe("handleStreamingChat delivery", () => {
   });
 
   it("retries a rate-limited edit instead of re-sending the whole reply", async () => {
-    // Any edit failure used to fall into one branch that posted the full text
-    // as a NEW message — so a 429, with the original bubble still on screen,
-    // delivered the reply twice.
-    // Discord streams nothing mid-flight, so the only edit is the final
-    // delivery — the one that used to double-post.
+    // Any edit failure used to post the full text as a NEW message, double-delivering
+    // on a 429 with the original bubble still on screen. Discord streams nothing
+    // mid-flight, so the final edit is the one that used to double-post.
     const { bubbles, newMessages } = await deliver(
       "discord",
       ["Here is the answer you asked for, in full."],
@@ -520,10 +516,9 @@ describe("handleStreamingChat delivery", () => {
   });
 
   it("replaces a retracted handoff preamble in place", async () => {
-    // The comms agent narrates its own handoff ("let me get the tasks
-    // created…") and the backend retracts that message once the tool call shows
-    // up. The user must end up with ONE message holding the real reply, not the
-    // preamble followed by a second message repeating it.
+    // The comms agent narrates its own handoff, and the backend retracts that
+    // message once the tool call shows up — the user must end with ONE message
+    // holding the real reply, not the preamble plus a repeat.
     const { bubbles, newMessages } = await deliver("telegram", [
       "yeah, i can set all that up. let me get the tasks created",
       DISCARDED,
@@ -537,11 +532,9 @@ describe("handleStreamingChat delivery", () => {
   });
 
   describe("a style-guard regeneration delivers only the rewrite", () => {
-    // Live on Telegram this shipped the reply TWICE. The draft's segments were
-    // sealed as their own messages while it was still streaming, so the
-    // retraction — which can only reopen the ONE bubble still being edited —
-    // left every sealed draft bubble on screen and the rewrite streamed into
-    // fresh ones underneath: 9 draft bubbles + 10 rewrite bubbles = 19 messages.
+    // Live on Telegram this shipped the reply twice: draft segments sealed as
+    // their own messages while streaming, so retraction (reopens only the ONE
+    // bubble being edited) left every draft bubble plus a fresh rewrite underneath (9+10=19 msgs).
     const DRAFT: StreamStep[] = [
       "Hey — I've gone ahead and looked at all of this for you.",
       BREAK,
@@ -625,11 +618,9 @@ describe("handleStreamingChat delivery", () => {
   });
 
   it("caps the live preview at the platform limit, then delivers the overflow", async () => {
-    // The preview holds a whole in-flight message now, so it can outgrow the
-    // 4096-char limit long before the boundary that splits it. An oversized
-    // edit is rejected outright, which would freeze the bubble on whatever it
-    // last showed — so the preview is capped, and the rest goes out at the
-    // boundary.
+    // The preview holds a whole in-flight message, so it can outgrow the 4096-char
+    // limit before the boundary splits it; an oversized edit is rejected outright
+    // (freezing the bubble), so the preview is capped and overflow goes out at the boundary.
     const text = body("Alpha", 200);
     const { bubbles, writes } = await deliver("telegram", [text, KEPT]);
 
@@ -674,10 +665,9 @@ describe("a stream that fails before it starts", () => {
   );
 
   it("tells the user once, not twice", async () => {
-    // `streamChat` reports a non-retryable failure through `onError` AND
-    // rethrows it, and the streamer's outer catch reported it a second time —
-    // so every rate limit and every dead backend arrived as two identical
-    // messages.
+    // `streamChat` reports a non-retryable failure via `onError` AND rethrows, and
+    // the streamer's outer catch reported it again — every rate limit/dead backend
+    // arrived as two identical messages.
     const { errors } = await deliver("telegram", [], {
       failStream: RATE_LIMITED,
     });

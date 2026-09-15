@@ -658,10 +658,6 @@ class TestEndToEndHookChain:
     """Test a complete before -> execute -> after pipeline."""
 
     def test_full_chain_transforms_input_and_output(self) -> None:
-        """
-        Simulate: user_id extraction (before) -> Composio execute (mocked) ->
-        response processing (after) -> verify transformed result.
-        """
         registry = ComposioHookRegistry()
 
         # Before hook: extract user_id and add a tracking field

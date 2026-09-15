@@ -26,7 +26,7 @@ class DuckDuckGoProvider(SearchProvider):
     monthly_free_limit = None
 
     def is_configured(self) -> bool:
-        """Always available — no credentials required."""
+        """Return True unconditionally — no credentials required."""
         return True
 
     async def search(self, query: str, count: int) -> SearchResponse:

@@ -7,10 +7,9 @@ import type { BlogContentPost } from "./blog.types";
 
 export type { BlogContentPost, BlogPostMeta } from "./blog.types";
 
-// Posts are generated from content/blog/*.mdx into public/data/blog/*.json by
-// scripts/extract-blog-data.mjs and loaded via the feature-data loader (fs at
-// build, the Cloudflare ASSETS binding at runtime) — never fs at request time,
-// which would fail on Cloudflare Workers.
+// Posts are generated from content/blog/*.mdx into public/data/blog/*.json
+// (scripts/extract-blog-data.mjs) and loaded via feature-data (fs at build,
+// the Cloudflare ASSETS binding at runtime — never fs at request time, which fails on Workers).
 const FEATURE = "blog";
 
 /**

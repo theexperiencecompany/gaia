@@ -186,10 +186,9 @@ async function resolveUseCase(slug: string): Promise<ResolvedUseCase> {
   try {
     const response = await workflowApi.getPublicWorkflow(slug);
     const workflow = response.workflow;
-    // A community workflow without a canonical slug has no valid use-case URL.
-    // Treat it as missing so the render path matches generateMetadata, which
-    // already returns "Not Found" for this case (avoids rendering a page whose
-    // canonical/breadcrumb would resolve to an empty slug).
+    // A workflow without a canonical slug has no valid use-case URL — treat
+    // it as missing so this matches generateMetadata's "Not Found" for this
+    // case, avoiding a page whose canonical/breadcrumb resolves to an empty slug.
     if (!workflow.slug) {
       return {
         useCase: null,

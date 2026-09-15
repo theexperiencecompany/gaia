@@ -36,13 +36,7 @@ export function LinkedAccountsSection() {
       await Linking.openURL(platform.botUrl);
       return;
     }
-    // OAuth flow — open in-app browser for OAuth
-    // const redirectUrl = Linking.createURL("settings/linked-accounts/callback");
-    // const authUrl = `${API_ORIGIN}/api/v1/auth/${platform.id}/connect?redirect=${encodeURIComponent(redirectUrl)}`;
-    // const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
-    // if (result.type === "success") {
-    //   setLinkedPlatforms(prev => ({ ...prev, [platform.id]: true }));
-    // }
+    // TODO: OAuth flow via in-app browser (WebBrowser.openAuthSessionAsync).
   };
 
   const handleDisconnect = (platformId: string) => {

@@ -80,10 +80,9 @@ async function resolveWithin(
       `Path is outside your approved folders: ${requested}`,
     );
   }
-  // `real` was null because the leaf does not resolve — but that includes a
-  // dangling symlink (target not created yet). Writing through it would let the
-  // OS follow the link and land outside the approved root, so refuse a symlink
-  // leaf. Only a genuinely-absent leaf is a safe new-file write.
+  // real is null because the leaf doesn't resolve, which includes a dangling
+  // symlink; writing through it could let the OS follow the link outside the
+  // approved root, so only a genuinely-absent leaf is a safe new-file write.
   if (await isSymlink(absolute)) {
     throw new PathDeniedError(
       `Refusing to write through a symlink: ${requested}`,

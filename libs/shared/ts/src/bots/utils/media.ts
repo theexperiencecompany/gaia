@@ -240,24 +240,13 @@ function rejectOversizeMedia(
 }
 
 /**
- * Turns an inbound media message into the next action for the adapter:
- * transcribe audio into a chat turn, upload an image/document and attach it,
- * reject an unsupported kind, or reject an oversize payload.
+ * Turns an inbound media message into the next action: transcribe audio, upload an image/document,
+ * or reject an unsupported/oversize payload.
  *
- * `downloadBytes` is a thunk so unsupported kinds (video, sticker) never incur
- * a download, and a platform that declares `sizeBytes` skips it for an
- * oversize payload too. It receives the largest number of bytes still worth
- * fetching — one past the cap, the fewest that prove it was exceeded — and an
- * adapter whose transport can stream must stop there rather than buffer an
- * untrusted attachment whole. The only side effects are the GAIA
- * upload/transcribe network calls, injected via {@link GaiaClient}; everything
- * else is pure, which keeps the routing logic testable with a fake client and
- * no platform SDK.
- *
- * Every exit records why it took the branch it did under the event's `media`
- * namespace (`BaseBotAdapter.resolveIncomingMedia` opens the boundary), so a
- * user whose attachment "did nothing" is answerable from the log instead of
- * from a guess.
+ * `downloadBytes` is a thunk so unsupported/oversize kinds never incur a download; it receives one
+ * byte past the cap (fewest that prove it was exceeded), so a streaming adapter can stop there
+ * instead of buffering an untrusted attachment whole. Every exit records why under the event's
+ * `media` namespace, so a "did nothing" attachment is answerable from the log, not a guess.
  */
 export async function processBotMedia(
   gaia: GaiaClient,

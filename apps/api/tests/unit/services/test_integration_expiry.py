@@ -1,4 +1,4 @@
-"""The shared `connected -> expired` transition (app/services/integrations/integration_expiry.py).
+"""The shared connected -> expired transition (app/services/integrations/integration_expiry.py).
 
 Two callers run it: the Composio connection webhook (notify=True) and the
 tool-execution reconciliation path (notify=False). Both need it to be a strict
@@ -6,7 +6,7 @@ no-op when there is nothing to expire, because a fabricated record or a repeat
 notification is worse than doing nothing.
 
 Pausing is the caller's job — the transition only receives the resulting titles
-as ``paused_workflows``, so that is what these tests hand it.
+as paused_workflows, so that is what these tests hand it.
 """
 
 from datetime import UTC, datetime
@@ -201,12 +201,9 @@ class TestUserFacingAnnouncement:
         assert action.config.redirect.url == f"/integrations?id={INTEGRATION_ID}"
 
     async def test_a_failed_notification_surfaces_and_leaves_the_transition_applied(self) -> None:
-        # The announcement is the last step, so the status write and the cache
-        # busts have already landed when it fails. Swallowing here would hide a
-        # broken notification path behind a state change that really happened;
-        # letting it out puts the failure on the caller's wide event (the webhook
-        # runs this under spawn_logged_task) with the record left expired, which
-        # a redelivery then treats as an idempotent no-op.
+        # The status write already landed when the notification fails; letting the
+        # error propagate surfaces it on the caller's wide event instead of hiding
+        # it, and a redelivery finds the record already expired (a no-op).
         with _Seams(record=_record("connected")) as s:
             s.mocks["notify"].create_notification.side_effect = RuntimeError("mongo down")
 
@@ -277,9 +274,11 @@ GENERIC_LEAD = "GAIA lost access to your Notion account and can no longer use it
 
 
 class TestTheBodySaysWhyTheConnectionDied:
-    """`expired_reason` is stored for every expiry; the user only ever sees it when
-    it is a reason we can state in plain language. Composio publishes no enum for
-    it, and the tool-execution path puts a raw error sentence in the same field."""
+    """expired_reason is stored for every expiry, but shown only when statable in plain language.
+
+    Composio publishes no enum for it, and the tool-execution path puts a raw
+    error sentence in the same field.
+    """
 
     def test_a_revoked_reason_names_the_cause_instead_of_the_generic_lead(self) -> None:
         body = _expiry_body("Notion", (), "refresh_token_revoked")
@@ -346,7 +345,7 @@ class TestTheBodySaysWhyTheConnectionDied:
 
 
 def _ns_fields(log_mock) -> dict[str, object]:
-    """Every field folded onto the ``integration_expiry`` wide-event namespace."""
+    """Every field folded onto the integration_expiry wide-event namespace."""
     fields: dict[str, object] = {}
     for c in log_mock.set_ns.call_args_list:
         assert c.args[0] == "integration_expiry", f"wrote to the wrong namespace: {c.args[0]}"
@@ -355,9 +354,7 @@ def _ns_fields(log_mock) -> dict[str, object]:
 
 
 class TestTheWideEvent:
-    """This transition is mostly invisible — it runs from a webhook or off a failed
-    tool call, with no user watching. The wide event is the only record of what
-    happened, so its fields are a contract, not decoration."""
+    """The wide event is the only record of this mostly-invisible transition, so its fields are a contract."""
 
     async def test_it_records_the_identity_and_the_escalation_it_ran_under(self) -> None:
         with _Seams(record=_record("connected")) as s:
@@ -435,8 +432,7 @@ class TestTheWideEvent:
 
 class TestTheLookupIsScopedToTheRightConnection:
     async def test_it_reads_the_record_of_this_user_and_this_integration(self) -> None:
-        """Reading another user's record would expire the wrong person's
-        integration; reading another integration's would expire the wrong one."""
+        """A wrong user or integration id here would expire the wrong record."""
         calls: list[tuple[str, str]] = []
 
         async def _get_for_user(user_id: str, integration_id: str):
@@ -459,8 +455,7 @@ class TestTheLookupIsScopedToTheRightConnection:
 
 
 class TestTheReconnectNotificationIsActionable:
-    """The notification is the only thing the user sees for a webhook-driven
-    expiry, so the pieces that make it visible and clickable are the contract."""
+    """The notification is the only thing the user sees for a webhook-driven expiry."""
 
     async def test_it_is_a_warning_delivered_in_app(self) -> None:
         with _Seams(record=_record("connected")) as s:
@@ -475,8 +470,7 @@ class TestTheReconnectNotificationIsActionable:
         assert [c.channel_type for c in request.channels] == [CHANNEL_TYPE_INAPP]
 
     async def test_the_reconnect_button_is_primary_and_opens_in_place(self) -> None:
-        """Opening a new tab or leaving the notification up after the click both
-        break the "click Reconnect, land on the integration" flow."""
+        """A new tab or a lingering notification breaks the click-to-reconnect flow."""
         with _Seams(record=_record("connected")) as s:
             await expire_user_integration(
                 USER_ID,

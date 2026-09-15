@@ -26,15 +26,7 @@ TRIGGERS_NAMESPACE = "workflow_triggers"
 
 
 def _compute_trigger_hash(integration_id: str, trigger: TriggerConfig) -> str:
-    """Compute hash for a trigger based on its configuration.
-
-    Args:
-        integration_id: ID of the parent integration
-        trigger: Trigger object with slug, name, description
-
-    Returns:
-        SHA256 hash string
-    """
+    """Compute a SHA256 hash of the trigger's configuration."""
     # Include all relevant trigger fields in the hash
     content_parts = [
         trigger.slug,
@@ -53,15 +45,7 @@ def _compute_trigger_hash(integration_id: str, trigger: TriggerConfig) -> str:
 
 
 def _build_trigger_description(integration: OAuthIntegration, trigger: TriggerConfig) -> str:
-    """Build description for semantic matching using native trigger info.
-
-    Args:
-        integration: OAuth integration config
-        trigger: Trigger object
-
-    Returns:
-        Description string for embedding
-    """
+    """Build the description string used for semantic embedding."""
     return (
         f"{trigger.name}. "
         f"{trigger.description or ''}. "
@@ -101,14 +85,7 @@ def _get_current_triggers_with_hashes() -> dict[str, dict]:
 
 
 async def _get_existing_triggers_from_chroma(collection: AsyncCollection) -> dict[str, dict]:
-    """Fetch existing triggers from ChromaDB collection.
-
-    Args:
-        collection: ChromaDB collection instance
-
-    Returns:
-        Dictionary mapping trigger slugs to their hash and metadata
-    """
+    """Fetch existing triggers (slug -> hash/metadata) from the ChromaDB collection."""
     existing_triggers = {}
 
     try:
@@ -141,15 +118,7 @@ async def _get_existing_triggers_from_chroma(collection: AsyncCollection) -> dic
 def _compute_trigger_diff(
     current_triggers: dict[str, dict], existing_triggers: dict[str, dict]
 ) -> tuple[list[tuple[str, dict]], list[str]]:
-    """Compute the difference between current and existing triggers.
-
-    Args:
-        current_triggers: Dictionary of current triggers with hashes
-        existing_triggers: Dictionary of existing trigger hashes
-
-    Returns:
-        Tuple of (triggers_to_upsert, triggers_to_delete)
-    """
+    """Diff current vs. existing triggers by hash into (to_upsert, to_delete)."""
     triggers_to_upsert = []
     triggers_to_delete = []
 
@@ -172,15 +141,7 @@ def _build_put_operations(
     triggers_to_upsert: list[tuple[str, dict]],
     triggers_to_delete: list[str],
 ) -> list[PutOp]:
-    """Build PutOp operations for upserting and deleting triggers.
-
-    Args:
-        triggers_to_upsert: List of (trigger_slug, trigger_data) tuples to upsert
-        triggers_to_delete: List of trigger slugs to delete
-
-    Returns:
-        List of PutOp operations
-    """
+    """Build PutOp operations for upserting and deleting triggers."""
     put_ops = []
 
     # Add upsert operations
@@ -250,16 +211,7 @@ async def _execute_batch_operations(
     auto_initialize=True,
 )
 async def initialize_chroma_triggers_store() -> ChromaStore:
-    """Initialize and return the ChromaDB-backed triggers store with incremental updates.
-
-    This function:
-    1. Creates a ChromaStore with embeddings for triggers
-    2. Compares current triggers with stored triggers using hashes
-    3. Only updates changed/new/deleted triggers
-
-    Returns:
-        ChromaStore instance for triggers
-    """
+    """Initialize the triggers store, updating only changed/new/deleted triggers."""
     chroma_client = await ChromaClient.get_client()
     embeddings = await providers.aget("google_embeddings")
 
@@ -313,11 +265,6 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
 
 
 async def get_triggers_store() -> ChromaStore:
-    """Get the triggers store instance.
-
-    Returns:
-        ChromaStore instance for triggers
-    """
     store = await providers.aget("chroma_triggers_store")
     if store is None:
         raise RuntimeError("Triggers store not initialized")

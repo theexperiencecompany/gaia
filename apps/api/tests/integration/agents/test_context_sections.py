@@ -1,15 +1,4 @@
-"""The two context sections with real behaviour behind them, un-mocked.
-
-The unit tier fakes every section's read, which is what makes those tests fast
-and deterministic — and also what makes them blind to the fake drifting from the
-real service. These two sections have the most logic between the store and the
-rendered text (a status filter plus a name resolution; a pin, a sort and a
-relative-time render), so they are where a fake is most likely to be wrong while
-staying green.
-
-Real production code from the section down; mocked only at the repository and
-catalog seams, one layer below the behaviour under test.
-"""
+"""The two context sections with real behaviour behind them, un-mocked."""
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
@@ -27,13 +16,10 @@ from app.models.todo_models import TodoDocument
 
 @pytest.fixture
 def user() -> str:
-    """A user nobody has cached anything for.
+    """Build a user nobody has cached anything for.
 
-    Both sections under test sit behind a per-user cache — the manifest under
-    ``@Cacheable``, the todo summary under its own Redis key — and these tests
-    mock the store one layer BELOW that. A fixed id would make the result
-    depend on whatever Redis happened to be holding, which is how this file
-    passed once and then failed against the same code.
+    Both sections sit behind a per-user cache; a fixed id would make the
+    result depend on whatever Redis happened to be holding.
     """
     return f"user-ctx-{uuid4()}"
 
@@ -48,8 +34,7 @@ def _section(section_id: str) -> Section:
 
 @pytest.mark.integration
 class TestConnectedIntegrationsManifest:
-    """Runs the real ``get_connected_integrations_named`` — the status filter and
-    the custom-MCP name resolution — over mocked integration records."""
+    """Runs the real get_connected_integrations_named over mocked integration records."""
 
     @staticmethod
     def _records(*records: dict[str, str]):
@@ -59,8 +44,7 @@ class TestConnectedIntegrationsManifest:
         )
 
     async def test_only_connected_integrations_reach_the_agent(self, user: str) -> None:
-        """A disconnected integration listed as available is worse than absent:
-        the executor hands off to it and the handoff fails."""
+        """A disconnected integration listed as available is worse than absent: its handoff fails."""
         with self._records(
             {"integration_id": "gmail", "status": "connected"},
             {"integration_id": "slack", "status": "disconnected"},
@@ -92,15 +76,13 @@ class TestConnectedIntegrationsManifest:
             assert await _section("integrations_manifest").fetch(_ctx(user)) == ""
 
     async def test_the_manifest_is_a_stable_section(self) -> None:
-        """It changes on connect/disconnect, never per turn — so it belongs in
-        the cacheable prefix, and a reclassification must be deliberate."""
+        """It changes on connect/disconnect, never per turn, so it belongs in the cacheable prefix."""
         assert _section("integrations_manifest").slot is PromptSlot.DYNAMIC_STABLE
 
 
 @pytest.mark.integration
 class TestTrackedTodosSummary:
-    """Runs the real ``get_active_tracked_summary`` — the pin, the ordering and
-    the line rendering — over mocked todo documents."""
+    """Runs the real get_active_tracked_summary over mocked todo documents."""
 
     @staticmethod
     def _todos(*docs: TodoDocument):
@@ -130,9 +112,7 @@ class TestTrackedTodosSummary:
         assert "Review the PR" in block
 
     async def test_the_bound_todo_is_pinned_to_the_top(self, user: str) -> None:
-        """The run is bound to it, so it has to be the one the agent sees first
-        — otherwise the canvas write-target directive names a todo buried in a
-        list of fifteen."""
+        """The bound todo must be the one the agent sees first, not buried in a longer list."""
         with self._todos(
             self._todo("t1", "Unrelated work", user), self._todo("t2", "The bound one", user)
         ):
@@ -151,9 +131,7 @@ class TestTrackedTodosSummary:
         assert block == ""
 
     async def test_a_pinned_view_bypasses_the_cache(self, user: str) -> None:
-        """The pin is per-run-binding, but the cache is keyed by user alone —
-        so serving a pinned view from it would show one run's bound todo on
-        every other turn for that user until the TTL expired."""
+        """The pin is per-run, but the cache is keyed by user; serving it from cache would leak."""
         cached = AsyncMock(return_value="STALE SUMMARY")
 
         with (

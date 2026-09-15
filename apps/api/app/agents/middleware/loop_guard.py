@@ -1,28 +1,15 @@
 """Tool-loop guardrail middleware.
 
 Detects a model stuck retrying a failing tool call and nudges it to change
-strategy. Two failure signals are tracked per run:
+strategy. Tracks identical failures (same tool + args returning
+status="error") and same-tool failures (one tool failing repeatedly
+regardless of args). Escalates: warn thresholds append an in-band note to
+the error ToolMessage; hard_stop mode (silent/workflow runs) stops executing
+the offending tool and returns a synthetic error once stop thresholds hit.
 
-- Identical failures: the same tool called with the same arguments keeps
-  returning ``status="error"``. Almost always a genuine dead end (bad URL,
-  missing permission) the model is blind to.
-- Same-tool failures: one tool fails repeatedly across the run regardless of
-  arguments — a weaker signal that the chosen approach isn't working.
-
-Behaviour is escalating:
-
-- At the warn thresholds, a short note is appended to the error ToolMessage so
-  the model sees, in-band, that it is looping and should change course.
-- In ``hard_stop`` mode (silent / workflow runs, where no human is watching to
-  interrupt a runaway), once the stop thresholds are hit the offending tool is
-  no longer executed at all — a synthetic error is returned instead, capping
-  wasted tool calls and cost.
-
-Counters are keyed by the run's ``thread_id`` (not the middleware instance),
-because the graph — and therefore this middleware — is a per-process singleton
-cached by the lazy provider; per-instance dicts would otherwise leak failures
-across unrelated runs and users. A bounded LRU over recent threads keeps memory
-flat.
+Counters are keyed by thread_id, not the middleware instance, since the graph
+is a per-process singleton cached by the lazy provider; a bounded LRU over
+recent threads keeps memory flat.
 """
 
 from __future__ import annotations
@@ -56,7 +43,7 @@ _UNKNOWN_RUN = "unknown"
 
 
 class _RunCounters:
-    """Failure tallies for a single run (one ``thread_id``)."""
+    """Failure tallies for a single run (one thread_id)."""
 
     __slots__ = ("identical", "last_call_key", "last_failure_key", "per_tool", "repeat")
 
@@ -69,16 +56,15 @@ class _RunCounters:
         self.last_failure_key: tuple[str, str] | None = None
         # tool_name -> total failures for this tool this run
         self.per_tool: dict[str, int] = {}
-        # The most recent call's (tool_name, args_hash), regardless of outcome,
-        # and how many times in a row it has been made. Counts redundant duplicate
-        # calls (a re-issued handoff, the exact same search) that a weak model
-        # loops on even when they *succeed* — the failure counters never see those.
+        # The most recent call's (tool_name, args_hash) and its repeat count.
+        # Counts redundant duplicate calls a weak model loops on even when
+        # they *succeed* — the failure counters never see those.
         self.last_call_key: tuple[str, str] | None = None
         self.repeat: int = 0
 
 
 class LoopGuardMiddleware(AgentMiddleware):
-    """Nudge (or, in ``hard_stop`` mode, halt) a model looping on a failing tool.
+    """Nudge (or, in hard_stop mode, halt) a model looping on a failing tool.
 
     Usage::
 
@@ -127,11 +113,9 @@ class LoopGuardMiddleware(AgentMiddleware):
         repeat = counters.repeat
 
         if self.hard_stop:
-            # The failure-specific stop is checked FIRST because it is the more
-            # specific diagnosis and says so ("already failed N times"). A run of
-            # identical FAILING calls trips both counters on the same call, so
-            # checking repeat first would shadow that message with the generic
-            # duplicate one and leave the model less to act on.
+            # Failure-specific stop is checked FIRST: it's the more specific
+            # diagnosis, and checking repeat first would shadow it with the
+            # generic duplicate message on a run of identical failing calls.
             stopped = self._hard_stop_message(
                 tool_name, tool_call_id, identical_before, same_tool_before
             )

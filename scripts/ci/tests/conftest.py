@@ -40,9 +40,7 @@ def _private_job_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 @pytest.fixture
 def flock() -> str:
-    """The semaphore's atomicity primitive. Absent on a stock macOS dev box,
-    where acquire fails open before it touches any pool — so a proof that
-    needs the pool to be used skips here and runs on every Linux runner."""
+    """Skip unless flock exists — absent on stock macOS, where acquire fails open before the pool."""
     path = shutil.which("flock")
     if path is None:
         pytest.skip("flock absent (governor is Linux-box-only)")

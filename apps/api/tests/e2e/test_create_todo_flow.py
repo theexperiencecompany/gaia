@@ -1,25 +1,4 @@
-"""E2E test: GAIA todo tools (plan_tasks, update_tasks) wired into a real graph.
-
-WHAT THIS TESTS (REAL GAIA CODE):
-- ``create_todo_tools`` from ``app.agents.tools.todo_tools`` — the real
-  plan_tasks and update_tasks tools used by the executor agent.
-- The ``todos`` channel in GAIA's ``State`` (via InjectedState) is updated
-  correctly when plan_tasks / update_tasks execute.
-- ``filter_messages_node`` and ``manage_system_prompts_node`` run as
-  pre-model hooks inside the compiled GAIA graph.
-- ``create_agent`` from ``app.override.langgraph_bigtool.create_agent``
-  compiles the graph.
-
-Mock surfaces:
-- LLM: FakeMessagesListChatModel
-- Store: InMemoryStore (no ChromaDB)
-- Checkpointer: MemorySaver (no PostgreSQL)
-- No real database or scheduler calls
-
-DELETE ``app/agents/tools/todo_tools.py`` → these tests FAIL.
-DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
-DELETE ``app/agents/core/nodes/filter_messages.py`` → these tests FAIL.
-"""
+"""E2E tests wiring the real plan_tasks/update_tasks tools into a compiled GAIA graph, with a fake LLM and in-memory store/checkpointer."""
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 import pytest
@@ -47,12 +26,7 @@ class TestCreateTodoFlow:
     async def test_plan_tasks_tool_updates_todos_state(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """plan_tasks must create todos in graph state via Command(update={'todos': ...}).
-
-        This tests the real plan_tasks tool from create_todo_tools(), which uses
-        InjectedState('todos') and returns a Command to update the 'todos' channel
-        in the GAIA State.
-        """
+        """plan_tasks must update graph state's 'todos' channel via Command(update=...), using InjectedState('todos')."""
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
@@ -105,10 +79,7 @@ class TestCreateTodoFlow:
     async def test_plan_tasks_sets_first_task_in_progress(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """plan_tasks must set the first task to 'in_progress' and rest to 'pending'.
-
-        This validates the real plan_tasks business logic from todo_tools.py.
-        """
+        """plan_tasks must set the first task to 'in_progress' and rest to 'pending'."""
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
@@ -154,10 +125,7 @@ class TestCreateTodoFlow:
     async def test_add_task_tool_appends_to_todos(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """update_tasks must append a new todo to existing todos in state.
-
-        Sequence: plan_tasks creates 1 task → update_tasks adds a second → verify 2 todos.
-        """
+        """update_tasks appends to existing todos: plan_tasks creates one, update_tasks adds a second, expect two total."""
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
@@ -214,27 +182,12 @@ class TestCreateTodoFlow:
     async def test_mark_task_tool_updates_status(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """update_tasks must update the status of an existing todo by ID.
-
-        Uses a SINGLE compiled graph with MemorySaver and the SAME thread_id for
-        both turns so that real LangGraph checkpoint continuity is exercised:
-          Turn 1: plan_tasks creates a task and persists it in checkpointed state.
-          Turn 2 (same graph, same thread): update_tasks reads the task ID from
-              checkpointed todos and marks it completed.
-
-        This ensures the test breaks if the graph loses state between invocations.
-        """
+        """update_tasks must update status by ID; uses one graph/thread across both turns so checkpoint continuity is actually exercised."""
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
-        # The fake LLM is pre-programmed with responses for BOTH turns.
-        # Turn 1 consumes the first two responses (plan_tasks call + final reply).
-        # Turn 2 consumes the next two (update_tasks call + final reply) — but
-        # update_tasks's task_id is a placeholder here; we patch it after Turn 1.
-        #
-        # Because BindableToolsFakeModel cycles through a fixed response list we
-        # supply all four responses up-front and use a sentinel task_id that we
-        # replace after inspecting Turn-1 output.
+        # BindableToolsFakeModel cycles through a fixed response list, so all four
+        # responses are supplied up front with a sentinel task_id patched in after Turn 1.
         SENTINEL_ID = "SENTINEL"
 
         fake_llm = BindableToolsFakeModel(
@@ -309,12 +262,7 @@ class TestCreateTodoFlow:
     async def test_update_tasks_surfaces_error_for_unknown_task_id(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """update_tasks must fail loud when asked to update a task_id that doesn't exist.
-
-        The failure mode being guarded: the agent marks a task done using a stale or
-        hallucinated id, nothing changes, and the tool still reports success — so the
-        model believes the work is tracked when it isn't.
-        """
+        """update_tasks must fail loud on an unknown task_id — silently succeeding would let the model believe untracked work is done."""
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
@@ -385,12 +333,7 @@ class TestCreateTodoFlow:
     async def test_update_tasks_rejects_whole_batch_when_one_entry_is_invalid(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """A batch containing an invalid entry must apply nothing at all.
-
-        Partial application would make the model's retry non-idempotent: the valid
-        `content` addition would land twice once the model fixes the bad task_id and
-        resends the batch.
-        """
+        """An invalid entry must fail the whole batch — partial application would double-apply the valid entry when the model retries."""
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
@@ -574,12 +517,7 @@ class TestCreateTodoFlow:
         )
 
     async def test_todo_tool_names_match_registry_constants(self):
-        """The tool names in create_todo_tools() must match TODO_TOOL_NAMES constant.
-
-        This test ensures the TODO_TOOL_NAMES set (used by middleware and other
-        production code to detect todo tools) stays in sync with what
-        create_todo_tools() actually creates.
-        """
+        """TODO_TOOL_NAMES (used by middleware to detect todo tools) must match the names create_todo_tools() actually creates."""
         todo_tools = create_todo_tools(source="test")
         created_names = {t.name for t in todo_tools}
         assert created_names == TODO_TOOL_NAMES, (
@@ -591,20 +529,7 @@ class TestCreateTodoFlow:
     async def test_todo_pre_model_hook_injects_task_context_into_system_message(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """create_todo_pre_model_hook must inject todo context into the system prompt.
-
-        Instead of calling the hook directly, this test invokes the real compiled
-        GAIA graph so that the hook is exercised through the official wiring path
-        (create_agent -> acall_model -> execute_hooks).
-
-        A capturing fake LLM records the exact messages list it receives from
-        acall_model.  We then assert that the SystemMessage seen by the model
-        contains the todo task context injected by create_todo_pre_model_hook.
-
-        This test breaks if:
-        - create_todo_pre_model_hook is removed from the pre_model_hooks list, OR
-        - the hook stops appending todo context to the SystemMessage.
-        """
+        """Exercises create_todo_pre_model_hook through the real graph wiring (create_agent -> acall_model -> execute_hooks), not by calling the hook directly."""
         from typing import Any
 
         from langchain_core.language_models.fake_chat_models import (

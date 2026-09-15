@@ -29,10 +29,9 @@ class FileData(BaseModel):
     # Server-owned summary of the file's content. Populated from MongoDB on the
     # agent path and on the upload response; never trusted from inbound requests.
     description: str | None = None
-    # Where the file actually landed in the session workspace, or None when the
-    # JuiceFS mirror was unavailable at upload time. Server-owned like
-    # `description`, and the difference between telling an agent a path it can
-    # read and telling it one that does not exist.
+    # Where the file landed in the session workspace, or None when the JuiceFS
+    # mirror was unavailable at upload. Server-owned like `description` — the
+    # difference between an agent-readable path and one that doesn't exist.
     sandbox_path: str | None = None
 
 
@@ -81,17 +80,14 @@ class MessageRequestWithHistory(BaseModel):
     selectedWorkflow: SelectedWorkflowData | None = None
     selectedCalendarEvent: SelectedCalendarEventData | None = None
     replyToMessage: ReplyToMessageData | None = None
-    # Client-generated id for this SEND, stable across retries. Two jobs: the
-    # idempotency key (a duplicate POST gets a 409) and the USER MESSAGE ID
-    # itself — single identity means the client's optimistic record and the
-    # persisted message share one key, so nothing needs reconciling after a
-    # reload or sync. Path-safe: message ids appear in URL paths (pin route).
+    # Client-generated id for this SEND, stable across retries: doubles as the
+    # idempotency key (duplicate POST -> 409) and the USER MESSAGE ID itself, so
+    # the optimistic and persisted records share one key. Path-safe (pin route).
     turn_id: SafePathId | None = None
     is_onboarding_demo: bool = False
-    # Voice sessions set this so the stream holds open until a delegated
-    # executor delivers its narrated answer (pushed as a `voice_tts` SSE frame
-    # for the voice agent to speak). Text clients leave it False — the executor
-    # result reaches them out-of-band over the WebSocket as today.
+    # Voice sessions set this so the stream holds open until a delegated executor
+    # delivers its narrated answer (a `voice_tts` SSE frame). Text clients leave
+    # it False — their executor result arrives out-of-band over the WebSocket.
     voice_mode: bool = False
     # DEV-ONLY (ENV=development): per-request model overrides from the chat-header
     # selector. `use_default_models` keeps the plan-routed default; otherwise these

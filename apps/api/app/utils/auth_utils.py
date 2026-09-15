@@ -15,22 +15,9 @@ from shared.py.wide_events import log
 async def resolve_dev_bypass_user(
     headers: Headers, cookies: Mapping[str, str] | None = None
 ) -> tuple[str, UserDocument | None]:
-    """Resolve the dev-bypass target to its Mongo user.
+    """Resolve the dev-bypass target to its Mongo user; the single definition of bypass semantics for both HTTP and WS.
 
-    The single definition of bypass semantics for BOTH the HTTP middleware and
-    the WebSocket dependency. Callers own their own failure handling (HTTP 401
-    vs WS close) but must not re-implement the resolution. Precedence:
-
-    1. ``X-Dev-User`` header — per-request impersonation, so one server can act
-       as many users. An explicit instruction from whoever drives the request.
-    2. ``dev_bypass_user`` cookie — ambient per-browser-profile override, so two
-       profiles (normal + incognito) act as different users against one API
-       instance. This is how free vs pro get tested side by side in a browser,
-       which cannot set a custom header.
-    3. ``DEV_AUTH_BYPASS_EMAIL`` — the configured default.
-
-    ``headers``/``cookies`` are any Mapping-like with ``.get`` (Starlette
-    ``Headers``/cookie dicts, for both HTTP and WS).
+    Precedence: X-Dev-User header (per-request impersonation) > dev_bypass_user cookie (per-browser-profile override) > DEV_AUTH_BYPASS_EMAIL default. Callers own their own failure handling (401 vs WS close).
     """
     target_email: str = (
         headers.get(DEV_USER_HEADER)
@@ -44,18 +31,9 @@ async def resolve_dev_bypass_user(
 def build_user_context(
     user_data: dict[str, Any], *, auth_provider: str, **extra: bool
 ) -> AuthenticatedUser:
-    """Build the canonical ``request.state.user`` dict from a Mongo user doc.
+    """Build the canonical request.state.user dict from a Mongo user doc; every auth path must go through this one function.
 
-    Every auth path (WorkOS session, agent token, bots) MUST construct the user
-    context through this one function. The full doc is spread so downstream
-    consumers — chiefly the agent's dynamic context, which reads ``timezone`` and
-    ``onboarding`` (custom instructions, preferences, writing style) — always see
-    the same fields. Hand-picking a subset is what caused voice mode and the bots
-    to silently drop the user's system instructions; defining the shape here once
-    means a new auth path physically can't reintroduce that drift.
-
-    ``_id`` is replaced by a string ``user_id``. ``extra`` carries path-specific
-    flags (e.g. ``impersonated=True``, ``bot_authenticated=True``).
+    The full doc is spread so downstream consumers (the agent's dynamic context: timezone, onboarding, custom instructions) always see the same fields — hand-picking a subset previously made voice mode and the bots silently drop the user's system instructions. _id becomes a string user_id; extra carries path-specific flags (e.g. impersonated=True).
     """
     context = {
         "auth_provider": auth_provider,
@@ -73,20 +51,9 @@ def build_user_context(
 async def authenticate_workos_session(
     session_token: str, workos_client: AsyncWorkOSClient | None = None
 ) -> tuple[AuthenticatedUser, str | None]:
-    """
-    Authenticate a WorkOS session and refresh if needed.
-    This is a shared utility function used by both HTTP middleware and WebSocket connections.
+    """Authenticate a WorkOS session and refresh it if needed; shared between HTTP middleware and WebSocket connections.
 
-    Args:
-        session_token: WorkOS sealed session token from cookie
-        workos_client: Optional WorkOS client instance to use
-
-    Returns:
-        tuple: (user_info, new_session_token) - user_info will be empty dict if auth fails
-
-    Note:
-        This function does not raise exceptions - it returns empty dict on failure
-        along with None for the session token.
+    Never raises: returns (user_info, new_session_token) with user_info as an empty dict on any failure.
     """
     # Initialize WorkOS client if not provided
     workos = workos_client or AsyncWorkOSClient(

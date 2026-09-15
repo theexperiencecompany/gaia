@@ -1,21 +1,6 @@
-"""
-Structured application errors with rich context for wide event logging.
+"""Structured application errors with rich context for wide event logging.
 
-Usage:
-    from app.utils.errors import AppError, create_error
-
-    # Raise with full context
-    raise create_error(
-        message="Payment failed",
-        why="Card declined by issuer",
-        fix="Try another card or contact your bank",
-        status_code=402,
-        provider="stripe",
-        charge_id="ch_abc123",
-    )
-
-    # The AppError exception handler in app_factory.py sets the structured
-    # error onto the wide event so it appears in the final log.
+The AppError exception handler in app_factory.py sets the structured error onto the wide event so it appears in the final log.
 """
 
 from dataclasses import dataclass, field

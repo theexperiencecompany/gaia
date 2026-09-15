@@ -1,16 +1,11 @@
-"""The vision fallback's own model must be able to see, and the fallback's
-behavior must degrade gracefully.
+"""describe_image, the vision fallback: its own model must see, and it must degrade gracefully.
 
-``describe_image`` is what a blind lane falls back to, and it fails SILENTLY —
-a failed call returns ``None`` and every caller degrades to "couldn't look". So
-pointing it at a text-only model does not raise anywhere; images simply stop
-being understood. These tests pin the invariant that makes the fallback work at
-all, separately from ``test_vision_tool_media``, which pins the other half (a
-lane that CAN see never pays for a description).
-
-Plus the call contract: the image is attached as an inline block, the text is
-flattened, and provider failure or an empty completion degrades to ``None``
-instead of failing the whole tool.
+describe_image fails SILENTLY — a failed call returns None, so a text-only
+VISION_MODEL_* would stop understanding images without ever raising. Separate
+from test_vision_tool_media, which pins the other half (a lane that CAN see
+never pays for a description). Also covers the call contract: image attached
+as an inline block, text flattened, provider failure or empty completion
+degrades to None instead of failing the whole tool.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -37,8 +32,7 @@ PROMPT = "Describe what is in this screenshot."
 @pytest.mark.unit
 class TestTheDescriberCanSee:
     async def test_the_vision_lane_is_one_that_takes_pixels(self) -> None:
-        """The whole point of the fallback. If VISION_MODEL_* is ever pointed at a
-        text-only model this fails here instead of silently blanking every image."""
+        """If VISION_MODEL_* is ever pointed at a text-only model, this fails here instead of silently."""
         config = {
             "configurable": {
                 "lane": {
@@ -52,9 +46,7 @@ class TestTheDescriberCanSee:
         assert await model_can_view_images(config) is True
 
     async def test_it_does_not_describe_with_the_default_chat_model(self) -> None:
-        """The default is chosen for cheap text and may be text-only; the describer
-        must not inherit it. Callers reach the fallback precisely BECAUSE the active
-        lane cannot see, so describing with that lane would return nothing."""
+        """The default chat model is chosen for cheap text and may be text-only; the describer must not inherit it."""
         with (
             patch(f"{_MOD}.get_vision_llm") as vision_llm,
             patch(

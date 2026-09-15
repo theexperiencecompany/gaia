@@ -1,23 +1,15 @@
 """Fold a bot DM's legacy session row onto its canonical session key.
 
-One DM can end up under two session keys. The first split was the literal
-``:dm`` suffix workflow delivery used to write; the second is Discord and
-Slack, whose DM *channel* ids differ from the user id, so an inbound DM keyed
-``platform:<user>:<dm-channel>`` while backend-originated delivery keyed
-``platform:<user>:<user>``. Either way the user's chat forks into a second
-conversation carrying none of the history.
+One DM can end up under two session keys: the old literal :dm suffix
+workflow delivery wrote, or (Discord/Slack) an inbound DM keyed by its
+channel id, which differs from the user id backend delivery keys by. Either
+way the chat forks into a second conversation carrying none of the history.
 
-This module owns the resolution — which row survives, which conversation the
-canonical key points at — and is shared by the offline migration
-(``app.scripts.merge_legacy_dm_bot_sessions``) and the lazy per-user merge the
-chat path runs when a bot flags an inbound message as a DM. The lazy path
-exists because a Discord or Slack DM-channel key is indistinguishable from a
-guild/channel key server-side: only at claim time, when the bot says "this is
-a DM" and names the channel, are both keys known.
-
-Message histories are NOT merged — the losing conversation stays in Mongo,
-unreferenced by any session; only which conversation the next message
-continues changes.
+Shared by the offline migration (merge_legacy_dm_bot_sessions) and the lazy
+per-user merge the chat path runs when a bot flags a message as a DM — a
+DM-channel key is indistinguishable from a guild/channel key until then.
+Message histories are NOT merged; the losing conversation stays in Mongo,
+unreferenced.
 """
 
 from __future__ import annotations
@@ -52,10 +44,10 @@ class SessionMerge:
 
 
 def last_used(session: BotSessionDocument) -> str:
-    """The row's recency marker for the newer-wins comparison.
+    """Return the row's recency marker for the newer-wins comparison.
 
-    ``updated_at``/``created_at`` are both written by ``datetime.now(UTC).isoformat()``
-    (see ``BotSessionsRepository.claim_session``), so the strings share one format
+    updated_at/created_at are both written by datetime.now(UTC).isoformat()
+    (see BotSessionsRepository.claim_session), so the strings share one format
     and one offset — lexicographic order is chronological order. A row missing
     both sorts oldest, which is the safe way for an unstamped row to lose.
     """
@@ -63,10 +55,10 @@ def last_used(session: BotSessionDocument) -> str:
 
 
 def dm_channel_of(canonical_key: str) -> str:
-    """The canonical key's channel component — everything after the last colon.
+    """Return the canonical key's channel component — everything after the last colon.
 
-    ``build_session_key`` lays the key out as ``platform:user:channel``, so the
-    channel is the final segment. No maxsplit: taking ``[-1]`` makes every split
+    build_session_key lays the key out as platform:user:channel, so the
+    channel is the final segment. No maxsplit: taking [-1] makes every split
     bound produce the same answer, and a bound that changes nothing reads as if
     it were load-bearing.
     """
@@ -76,7 +68,7 @@ def dm_channel_of(canonical_key: str) -> str:
 def plan_merge(
     legacy: BotSessionDocument, canonical: BotSessionDocument | None, canonical_key: str
 ) -> SessionMerge | None:
-    """What to do with one legacy row, or ``None`` when it is not actionable."""
+    """Decide what to do with one legacy row, or None when it is not actionable."""
     if not (legacy.session_key and legacy.platform and legacy.platform_user_id):
         return None
     if not legacy.conversation_id:
@@ -117,13 +109,9 @@ def plan_merge(
 async def apply_merge(merge: SessionMerge) -> bool:
     """Write one planned merge. False when the world moved between plan and write.
 
-    Both rows can change under the plan: a workflow delivery can claim the
-    canonical key while a RENAME onto it is in flight (the unique index turns
-    that into ``DuplicateKeyError``), and a REPOINT's canonical row can vanish
-    before the write lands. Either way the answer is False with nothing
-    deleted — the legacy row stays, and the next flagged message replans
-    against the world as it is then. Failing the user's message over a
-    once-per-user bookkeeping fold would be backwards.
+    A RENAME can hit DuplicateKeyError if something else claims the canonical
+    key first; a REPOINT's canonical row can vanish before the write lands.
+    Either way, nothing is deleted — the next flagged message just replans.
     """
     if merge.action is MergeAction.RENAME:
         try:

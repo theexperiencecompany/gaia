@@ -1,17 +1,17 @@
 """A stored profession today's input rules refuse must not fail the user read.
 
-``OnboardingPreferences`` is both the type of ``users.onboarding.preferences``
-and the request body of ``PATCH /preferences``, so tightening
-``clean_profession`` re-judges rows the older validator already accepted. The
-read path has no lenient guard for that — ``base.py`` only skips malformed
+OnboardingPreferences is both the type of users.onboarding.preferences
+and the request body of PATCH /preferences, so tightening
+clean_profession re-judges rows the older validator already accepted. The
+read path has no lenient guard for that — base.py only skips malformed
 documents on *list* reads — so a refused value raises inside the single-document
-read that ``authenticate_workos_session`` performs, and that broad handler turns
-it into an empty ``user_info``. The account is then 401'd on every request while
+read that authenticate_workos_session performs, and that broad handler turns
+it into an empty user_info. The account is then 401'd on every request while
 WorkOS keeps reporting a valid session: a silent, permanent logout with no
 self-service fix.
 
-The sibling guards (``unknown_enum_values_read_as_unset``,
-``a_non_mapping_preferences_blob_reads_as_unset``) exist for exactly this shape.
+The sibling guards (unknown_enum_values_read_as_unset,
+a_non_mapping_preferences_blob_reads_as_unset) exist for exactly this shape.
 """
 
 import pytest
@@ -70,14 +70,7 @@ class TestLegacyProfessionDoesNotBreakTheRead:
 
     @pytest.mark.parametrize("stored", ["", 12345, 3.14, [], {}])
     def test_a_profession_that_is_not_usable_text_reads_as_unset(self, stored: object) -> None:
-        """Empty and non-string stored values both read as unset.
-
-        Neither reaches ``clean_profession``: a number has no ``.strip()``, and
-        "" is read as unset by the field validator regardless of this guard, so
-        the guard hands both straight through. This pins that they end up unset
-        rather than raising — the mutation gate found the branch untested when it
-        was written as a special case, which is what showed the case was dead.
-        """
+        """Neither reaches clean_profession (a number has no .strip(); "" is already unset), so both end up unset rather than raising."""
         document = UserDocument.model_validate(_user_row(stored))
 
         assert document.onboarding is not None

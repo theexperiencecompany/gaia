@@ -21,25 +21,7 @@ def create_bot_session_token(
     platform_user_id: str,
     expires_minutes: int = BOT_SESSION_TOKEN_EXPIRY_MINUTES,
 ) -> str:
-    """Create JWT session token for bot authentication.
-
-    Args:
-        user_id: Internal user ID from database
-        platform: Bot platform (discord/slack/telegram)
-        platform_user_id: Platform-specific user ID
-        expires_minutes: Token expiry time in minutes (default: 15)
-
-    Returns:
-        JWT token string
-
-    Example:
-        token = create_bot_session_token(
-            user_id="user_123",
-            platform="discord",
-            platform_user_id="123456789",
-            expires_minutes=15
-        )
-    """
+    """Create a signed JWT session token for bot authentication."""
     secret = _get_bot_session_secret()
     expire = datetime.now(UTC) + timedelta(minutes=expires_minutes)
 
@@ -57,25 +39,9 @@ def create_bot_session_token(
 
 
 def verify_bot_session_token(token: str) -> dict:
-    """Verify and decode bot session token.
+    """Decode and verify a bot session token, returning user_id/platform/platform_user_id.
 
-    Args:
-        token: JWT token string
-
-    Returns:
-        dict: Decoded payload with user_id, platform, platform_user_id
-
-    Raises:
-        JWTError: If token is invalid, expired, or malformed
-
-    Example:
-        try:
-            payload = verify_bot_session_token(token)
-            user_id = payload["user_id"]
-            platform = payload["platform"]
-        except JWTError:
-            # Handle invalid token
-            pass
+    Raises JWTError if invalid, expired, malformed, or not a bot-role token.
     """
     secret = _get_bot_session_secret()
 
@@ -97,13 +63,9 @@ def verify_bot_session_token(token: str) -> dict:
 
 
 def _get_bot_session_secret() -> str:
-    """Get bot session token secret key. Requires dedicated secret.
+    """Return BOT_SESSION_TOKEN_SECRET, requiring at least 32 characters.
 
-    Returns:
-        Secret key for JWT signing
-
-    Raises:
-        ValueError: If BOT_SESSION_TOKEN_SECRET is not configured or too short
+    Raises ValueError if unset or too short.
     """
     secret: str | None = getattr(settings, "BOT_SESSION_TOKEN_SECRET", None)
 

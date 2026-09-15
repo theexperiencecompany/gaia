@@ -1,4 +1,4 @@
-"""Persistent `edit` tool — exact-string replacement on workspace files."""
+"""Persistent edit tool — exact-string replacement on workspace files."""
 
 from __future__ import annotations
 
@@ -121,10 +121,10 @@ async def edit(
 
 
 async def _read_editable_content(sbx: AsyncSandbox, abs_path: str) -> tuple[str | None, str]:
-    """Read a workspace file's UTF-8 content. Returns ``(content, error)``.
+    """Read a workspace file's UTF-8 content. Returns (content, error).
 
-    On success ``error`` is empty; on failure ``content`` is ``None`` and
-    ``error`` holds the user-facing message.
+    On success error is empty; on failure content is None and
+    error holds the user-facing message.
     """
     # Native filesystem read, binary-safe — no base64/quoting. A missing file
     # raises NotFoundException rather than returning a sentinel.
@@ -145,7 +145,7 @@ async def _read_editable_content(sbx: AsyncSandbox, abs_path: str) -> tuple[str 
 def _apply_replacement(
     content: str, old_string: str, new_string: str, replace_all: bool
 ) -> tuple[str, int] | str:
-    """``(new_content, replaced_count)`` or the user-facing error string."""
+    """Return (new_content, replaced_count), or the user-facing error string."""
     occurrences = content.count(old_string)
     if occurrences == 0:
         return "Error: old_string not found in file"
@@ -175,7 +175,7 @@ def _emit_edit(abs_path: str, size_bytes: int, replaced: int, session_id: str | 
 
 
 async def _maybe_edit_task_file(rel: str, target: EditTarget, patch: EditPatch) -> str | None:
-    """Edit the todo document when ``rel`` names a tracked-todo file.
+    """Edit the todo document when rel names a tracked-todo file.
 
     Returns the tool result when handled (including the resolve error), else
     None so the caller falls through to the sandbox path. A patch is

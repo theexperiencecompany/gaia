@@ -45,7 +45,7 @@ def make_user() -> Callable[..., UserDocument]:
 def local_time_offset_from_utc(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Move the process's local timezone off UTC for the test.
 
-    The suite pins TZ=UTC, which makes a naive ``datetime.now()`` numerically
+    The suite pins TZ=UTC, which makes a naive datetime.now() numerically
     identical to an aware UTC one — so a timestamp that forgot its timezone
     would look correct here and be hours wrong in production.
     """
@@ -172,8 +172,7 @@ class TestOnboardingWrites:
     async def test_complete_onboarding_writes_timezone_at_the_document_root(
         self, repo, make_user, raw_collection
     ):
-        """``user.timezone`` is the single source of truth — the wizard's answer
-        must land at the root under that exact key, not on the subdocument."""
+        """user.timezone is the single source of truth — the wizard's answer must land at the root, not on the subdocument."""
         created = await repo.create(make_user(email="tz@y.com"))
         completed = await repo.complete_onboarding(
             created.id,
@@ -451,9 +450,7 @@ class TestWorkerScans:
     async def test_mark_memory_backfilled_stamps_an_utc_instant(
         self, repo, make_user, local_time_offset_from_utc
     ):
-        """The marker is compared against a UTC cutoff by the daily cron, so a
-        naive local ``now()`` would land hours off and re-select (or hide) the
-        user."""
+        """The marker is compared against a UTC cutoff by the daily cron, so a naive local now() would re-select or hide the user."""
         created = await repo.create(make_user())
         before = datetime.now(UTC) - timedelta(milliseconds=1)  # BSON stores milliseconds
         await repo.mark_memory_backfilled(created.id)
@@ -463,27 +460,14 @@ class TestWorkerScans:
 
 
 class TestSignupDeliveryStamps:
-    """The pair the signup-delivery recovery sweep is built on.
-
-    A missing stamp is the only durable record that a new user is still owed a
-    welcome email and a place in the marketing audience, so the query that finds
-    those users and the write that retires them are the whole mechanism. Both
-    run against real Mongo here because both are pure query shape — an ``$or``
-    over ``{$exists: false}`` and a ``$set`` of named fields — which a stubbed
-    repository proves nothing about.
-    """
+    """The signup-delivery recovery sweep's find/retire pair; pure query shape a stubbed repository proves nothing about."""
 
     @staticmethod
     def _recent(ages_in_hours: int) -> datetime:
         return datetime.now(UTC) - timedelta(hours=ages_in_hours)
 
     async def test_only_recent_signups_missing_a_stamp_are_selected(self, repo, make_user):
-        """Both halves of this matter. Missing the un-stamped users means a lost
-        enqueue is never recovered; including the settled or the ancient ones
-        means re-mailing people who already got the email — and every account
-        predating these fields carries neither stamp, so the lookback is the
-        only thing standing between the sweep and the entire user base.
-        """
+        """Missing un-stamped users loses a lost enqueue; including settled/ancient ones re-mails people, since old accounts carry no stamp at all."""
         lookback = datetime.now(UTC) - timedelta(days=7)
         settled = datetime.now(UTC)
         # Inserted oldest-first, so Mongo's natural order is the reverse of the
@@ -523,8 +507,7 @@ class TestSignupDeliveryStamps:
         assert ids == [on_boundary.id]
 
     async def test_the_batch_is_capped_and_takes_the_newest(self, repo, make_user):
-        """The cap keeps one run from spiking the ESP; the stamps are what make
-        the next run resume with whoever is left."""
+        """The cap keeps one run from spiking the ESP; the stamps let the next run resume with whoever is left."""
         # Oldest inserted first. Natural order would hand back the two oldest,
         # which is exactly the batch a capped run must NOT take: the stalest
         # signups, whose welcome email is least worth sending.
@@ -539,13 +522,7 @@ class TestSignupDeliveryStamps:
     async def test_stamping_one_delivery_leaves_the_other_owed(
         self, repo, make_user, local_time_offset_from_utc
     ):
-        """The two deliveries fail independently, so they retire independently.
-        Stamping both when only one landed loses the other with no trace.
-
-        The instant is compared against a UTC cutoff by the sweep, so a naive
-        local ``now()`` would land hours off and either re-select the user or
-        hide them for good.
-        """
+        """The two deliveries fail independently, so stamping both when only one landed would lose the other with no trace."""
         created = await repo.create(make_user(created_at=self._recent(1)))
         # Warm the entity cache first: a stamp shadowed by a stale cached read
         # would let the job re-send a delivery it had already made.
@@ -574,8 +551,7 @@ class TestSignupDeliveryStamps:
         assert await repo.find_undelivered_signup_ids(self._recent(24), limit=10) == []
 
     async def test_stamping_a_user_that_no_longer_exists_touches_nobody(self, repo, make_user):
-        """A user deleted between the sweep's scan and the job's run. The write
-        matches nothing and must not spill onto whoever is left."""
+        """A user deleted between the sweep's scan and the job's run: the write matches nothing and must not spill onto whoever is left."""
         survivor = await repo.create(make_user(created_at=self._recent(1)))
 
         # Reported, not swallowed: a stamp that matched nobody means the job
@@ -607,9 +583,7 @@ class TestPlatformLinking:
 
 
 class TestHilPreferenceWrites:
-    """The concurrency-safe HIL preference writes. Each assertion maps to a way a
-    read-modify-write (or a dotted ``$set`` path) could silently drop or bury a
-    user's setting — verified against real Mongo, where the burying happens."""
+    """Concurrency-safe HIL preference writes, verified against real Mongo where a read-modify-write could silently bury a setting."""
 
     async def test_setting_an_override_touches_only_that_tools_key(self, repo, make_user):
         user = await repo.create(

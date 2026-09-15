@@ -1,6 +1,4 @@
-"""Model-onboarding tests bill real tokens by design — the root hermetic fence
-(tests/conftest.py) must leave the model keys they need untouched. Declared at
-import time, before the session fence runs."""
+"""Model-onboarding tests bill real tokens by design, so the root hermetic fence must leave the model keys they need untouched. Declared at import time, before the session fence runs."""
 
 import os
 

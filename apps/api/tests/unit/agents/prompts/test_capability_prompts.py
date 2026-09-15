@@ -1,5 +1,4 @@
-"""The capability block is generated from the registries, so what the comms
-agent says GAIA can do is exactly what the product ships."""
+"""The capability block is generated from the registries, so what comms says GAIA can do is exactly what ships."""
 
 import re
 
@@ -45,8 +44,7 @@ def _workflow(
 
 @pytest.mark.unit
 class TestDescribeCron:
-    """Cron is rendered as a clock, never handed to the model raw, and only for
-    the shapes the renderer understands."""
+    """Cron is rendered as a clock, never handed to the model raw, and only for shapes the renderer understands."""
 
     @pytest.mark.parametrize(
         ("cron", "expected"),
@@ -177,8 +175,7 @@ class TestCapabilityBlock:
 
 @pytest.mark.unit
 class TestGeneratedFacts:
-    """The counts and names come from the registries, so the block cannot drift
-    from what ships: add an integration or a bot and the prose follows."""
+    """The counts and names come from the registries, so add an integration or a bot and the prose follows."""
 
     def test_integration_count_matches_the_registry(self) -> None:
         from app.config.oauth_config import OAUTH_INTEGRATIONS

@@ -24,16 +24,13 @@ export const WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
 export const WEBHOOK_BODY_READ_TIMEOUT_MS = 10_000;
 
 /**
- * Reads a request body stream into a byte array, aborting as soon as the
- * accumulated bytes exceed {@link maxBytes} so an oversized body is never fully
- * buffered ({@link BODY_TOO_LARGE}), or once {@link timeoutMs} of wall-clock
- * time elapses ({@link BODY_READ_TIMEOUT}) so a slow-trickle or stalled client
- * cannot hold the reader open indefinitely (slowloris). On timeout the reader
- * is cancelled, which resolves the in-flight `read()` and unblocks the loop.
+ * Reads a request body stream into a byte array, aborting once accumulated bytes exceed
+ * {@link maxBytes} ({@link BODY_TOO_LARGE}) or {@link timeoutMs} of wall-clock time elapses
+ * ({@link BODY_READ_TIMEOUT}) — bounding a slow-trickle or stalled client (slowloris). On
+ * timeout the reader is cancelled, resolving the in-flight `read()` and unblocking the loop.
  *
- * The bytes are returned exactly as received — a requirement for HMAC
- * signature checks and protobuf decoding downstream. One byte past the cap is
- * read so that a body sitting exactly on the limit is still accepted.
+ * Bytes are returned exactly as received (required for HMAC checks and protobuf decoding
+ * downstream); one byte past the cap is read so a body sitting exactly on the limit is accepted.
  */
 export async function readBodyBytesBounded(
   request: Request,

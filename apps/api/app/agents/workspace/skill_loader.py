@@ -1,20 +1,13 @@
 """Read the built-in SKILL.md library from disk and group skills by target.
 
 Single source of truth for what gets materialized into the per-user
-integrations/ and skills/ trees on the JuiceFS workspace. The body the
-agent reads via `cat` is byte-identical to the SKILL.md authored in
-``apps/api/app/agents/skills/builtin/<slug>/``; the frontmatter is
-parsed once at load time so we know each skill's name, description,
-and target subagent.
+integrations/ and skills/ trees on the JuiceFS workspace. The body is
+byte-identical to the SKILL.md authored in
+apps/api/app/agents/skills/builtin/<slug>/; the frontmatter is parsed once
+at load time.
 
-Used by:
-  - ``system_docs.integration_skills_block`` to list available skills
-    in the subagent's dynamic context.
-  - ``storage.sessions.materialize_user_integrations`` to write the
-    actual skill.md bodies + per-integration prompt.md into the user's
-    workspace.
-  - ``scripts/materialize_user_workspace.py`` as a prod-callable CLI
-    that lays the same tree down for a given user, idempotently.
+Used by system_docs.integration_skills_block, storage.sessions
+.materialize_user_integrations, and scripts/materialize_user_workspace.py.
 """
 
 from __future__ import annotations
@@ -46,17 +39,10 @@ _BUILTIN_ROOT = (
 
 
 def target_to_subagent(agent_name: str) -> str:
-    """Resolve a subagent ``agent_name`` to the canonical subagent ``id`` used as
-    the ``skills_by_subagent`` key.
+    """Resolve a subagent agent_name to the canonical subagent id.
 
-    ``agent_name`` is the single handle the skill catalog is keyed on: every
-    builtin skill's frontmatter ``target`` is the owning subagent's ``agent_name``
-    (e.g. ``google_sheets_agent``), and the handoff path passes that same
-    ``agent_name`` when surfacing a subagent's skills. Resolution goes through the
-    subagent registry, the single source of truth for ``agent_name -> id``.
-    ``executor`` is the general bucket for skills not owned by a subagent and maps
-    to itself. An unknown ``agent_name`` is returned unchanged and logged so a
-    mis-targeted skill surfaces instead of being silently misfiled.
+    executor maps to itself. An unknown name is returned unchanged and
+    logged rather than silently misfiled.
     """
     agent_name = agent_name.strip()
     if agent_name == EXECUTOR_SUBAGENT_ID:
@@ -79,10 +65,8 @@ class BuiltinSkill:
     target: str  # frontmatter `target` (raw)
     subagent_id: str  # mapped subagent id (executor for general skills)
     body: str  # SKILL.md body without the frontmatter block
-    # Sibling files bundled with the skill (templates/, reference.md, scripts/…),
-    # as (path-relative-to-the-skill-dir, text-content) pairs. These ride the same
-    # _system + symlink + memory-read path as the body. Text only — a skill that
-    # needs a binary asset is out of scope for the in-memory model.
+    # (rel_path, content) pairs for files bundled with the skill. Text only —
+    # binary assets are out of scope for the in-memory model.
     resources: tuple[tuple[str, str], ...] = ()
 
 
@@ -102,10 +86,11 @@ def _parse_frontmatter(raw: str) -> tuple[dict[str, str], str]:
 
 
 def _load_resources(skill_dir: Path) -> tuple[tuple[str, str], ...]:
-    """Read every sibling text file in the skill dir (templates/, reference.md,
-    scripts/…) as ``(rel_path, content)`` pairs. ``SKILL.md`` is excluded — its
-    body is captured separately. Non-UTF-8 files are skipped (the in-memory
-    system-file model is text only)."""
+    """Read every sibling text file in the skill dir as (rel_path, content) pairs.
+
+    SKILL.md is excluded. Non-UTF-8 files are skipped (the in-memory
+    system-file model is text only).
+    """
     resources: list[tuple[str, str]] = []
     for path in sorted(skill_dir.rglob("*")):
         if not path.is_file() or path.name == SKILL_SOURCE_FILENAME:
@@ -158,14 +143,9 @@ def _load_one(skill_dir: Path) -> BuiltinSkill | None:
 def load_builtin_skills() -> tuple[BuiltinSkill, ...]:
     """Walk the SKILL.md library once and return parsed skills.
 
-    Cached because the directory contents don't change at runtime — a code
-    deploy is required to add/edit a builtin skill.
-
-    Scale note: these bodies live in process memory (one copy per API replica).
-    At the current scale (~30 builtin SKILL.md files, a few hundred KB) that is
-    negligible and the fastest possible read. If the library ever grows to
-    thousands of skills, switch to a Redis(TTL) -> Mongo/JuiceFS read-through
-    cache instead of holding every body in each replica's RAM.
+    Cached — the directory only changes on deploy. Bodies live in process
+    memory per replica (~30 skills, a few hundred KB); switch to a
+    Redis/Mongo read-through cache if that ever grows to thousands.
     """
     if not _BUILTIN_ROOT.is_dir():
         return ()
@@ -201,11 +181,8 @@ def integration_subagent_ids() -> Iterable[str]:
 def library_hash() -> str:
     """SHA-256 over every skill's (slug, target, body) — stable per deploy.
 
-    Materializers compare this against a per-user marker on disk to skip the
-    full rewrite when the library hasn't changed since the user last logged
-    in. The hash is hex-truncated to 32 chars — collisions on a corpus of
-    ~30 SKILL.md files are not a real concern, and the shorter hash keeps
-    the on-disk marker readable when debugging.
+    Materializers compare this to a per-user marker to skip an unchanged
+    rewrite. Truncated to 32 hex chars — plenty for a ~30-skill corpus.
     """
     digest = hashlib.sha256()
     for skill in load_builtin_skills():

@@ -146,7 +146,7 @@ def _make_custom_doc(
 
 
 def _make_custom_integration(**kwargs: Any) -> Integration:
-    """A custom integration as the repository returns it (typed model)."""
+    """Build a custom integration as the repository returns it (typed model)."""
     return Integration.model_validate(_make_custom_doc(**kwargs))
 
 
@@ -609,8 +609,7 @@ class TestFormatCommunityIntegrations:
 
 
 class TestUpdateUserIntegrationStatus:
-    """The service delegates to repo.set_status; the upsert/$set/connected_at
-    shape is the repository's concern (covered by its contract suite)."""
+    """The service delegates to repo.set_status; the upsert shape is the repository's concern."""
 
     @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
@@ -646,10 +645,9 @@ class TestUpdateUserIntegrationStatus:
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
     @patch("app.services.integrations.user_integration_status.user_integration_repository")
     async def test_connected_broadcast_failure_is_non_fatal(self, mock_repo, mock_sched, mock_ws):
-        # A live push is best-effort — the status is already persisted and the
-        # client recovers on its next catalog read, so a broadcast failure
-        # (Redis down) must not fail the connection. It must still be visible in
-        # the wide event: a silently-swallowed push is the whole risk here.
+        # Best-effort: status is already persisted, client recovers on next catalog
+        # read, so a broadcast failure (Redis down) mustn't fail the connection —
+        # but it must still show in the wide event; silent swallowing is the risk.
         mock_repo.set_status = AsyncMock(return_value=True)
         mock_ws.broadcast_to_user = AsyncMock(side_effect=RuntimeError("redis down"))
 
@@ -739,7 +737,7 @@ class TestUpdateUserIntegrationStatus:
 
 
 def _async_find_cursor(docs: list[dict]) -> MagicMock:
-    """Mock a ``collection.find(...)`` result iterated with ``async for``."""
+    """Mock a collection.find(...) result iterated with async for."""
 
     async def aiter_docs(*args, **kwargs):
         for doc in docs:
@@ -793,8 +791,7 @@ class TestGetUserIntegrations:
     async def test_expired_at_is_carried_from_the_stored_document(
         self, mock_repo, mock_int_repo, mock_users_col
     ):
-        """Dropping expired_at here is what leaves the UI unable to say how long
-        a connection has been dead."""
+        """Dropping expired_at here leaves the UI unable to say how long a connection has been dead."""
         died = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
         mock_repo.list_for_user_newest_first = AsyncMock(
             return_value=[_ui_doc("github", status="expired", connected=False, expired_at=died)]
@@ -1007,9 +1004,7 @@ class TestCheckUserHasIntegration:
 
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_the_question_is_scoped_to_this_user_and_this_integration(self, mock_repo):
-        """A fixed-answer stub cannot tell the real lookup from one that dropped or
-        swapped an argument — and answering for the wrong user is how a caller
-        concludes a stranger's integration is connected."""
+        """A fixed-answer stub can't catch a dropped or swapped user/integration argument."""
 
         async def _exists(user_id: str, integration_id: str) -> bool:
             return (user_id, integration_id) == (USER_ID, INTEGRATION_ID)
@@ -1040,10 +1035,11 @@ def _integration_response(integration_id: str, name: str, tools: list[StoredInte
 
 @pytest.mark.asyncio
 class TestCapabilitiesPayloadAndArguments:
-    """The suggestions the LLM turns into clickable follow-ups are built from this
-    payload, so its exact shape is the contract. The tests above stub with fixed
-    return values, which cannot tell a correct argument from a nulled one, and
-    never assert the per-integration entry at all."""
+    """The exact shape of this payload is the contract for the LLM's follow-up suggestions.
+
+    The tests above stub with fixed return values, which cannot tell a correct
+    argument from a nulled one, and never assert the per-integration entry at all.
+    """
 
     @staticmethod
     def _registry(*core_tool_names: str) -> MagicMock:
@@ -1061,8 +1057,7 @@ class TestCapabilitiesPayloadAndArguments:
         return registry
 
     async def test_it_reads_the_asking_users_integrations_and_looks_each_one_up(self) -> None:
-        """A nulled user id would build another user's follow-up suggestions; a
-        nulled integration id would look up the wrong integration's tools."""
+        """A nulled user or integration id would build the wrong follow-up suggestions."""
 
         async def _connected(user_id: str) -> set[str]:
             return {"github"} if user_id == USER_ID else set()
@@ -1098,8 +1093,7 @@ class TestCapabilitiesPayloadAndArguments:
         }
 
     async def test_a_tool_without_a_description_carries_an_empty_string(self) -> None:
-        """The follow-up prompt reads `description` off every entry — a None there
-        renders as the word "None" in the model's context."""
+        """A None description would render as the literal word "None" in the model's context."""
         with (
             patch(
                 f"{CAPABILITIES_MODULE}.get_tool_registry", AsyncMock(return_value=self._registry())
@@ -1126,8 +1120,7 @@ class TestCapabilitiesPayloadAndArguments:
         ]
 
     async def test_an_integration_that_no_longer_exists_does_not_end_the_scan(self) -> None:
-        """The deleted integration is FIRST: a loop that breaks instead of
-        continuing would drop every still-connected integration behind it."""
+        """The deleted integration is first: breaking instead of continuing would drop the rest."""
 
         async def _details(integration_id: str):
             if integration_id == "deleted":
@@ -3290,8 +3283,7 @@ class TestConnectProbeDetection:
 
 
 class TestConnectMorePaths:
-    """The remaining connect_mcp_integration branches: default is_platform
-    and the connect-time OAuth discovery."""
+    """The remaining connect_mcp_integration branches: default is_platform and connect-time OAuth discovery."""
 
     @patch(
         "app.services.integrations.integration_connection_service.update_user_integration_status",

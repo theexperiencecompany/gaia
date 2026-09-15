@@ -1,21 +1,9 @@
-"""
-MongoDB collection access, lazily initialized.
+"""MongoDB collection access, lazily initialized.
 
-``get_async_collection`` is the single supported way to reach a Motor
-collection. The per-collection module attributes it replaced (``users_collection``
-and friends) are gone: every domain is behind a typed repository in
-``app.db.repositories``, and application code goes through those, never through a
-raw handle. The repository layer resolves its own handle here; the boundary lint
-in ``tools/lints/repository_boundaries.py`` keeps it that way.
-
-Usage:
-    from app.db.mongodb.collections import get_async_collection
-
-    # Import is instant — the connection is opened on first resolution.
-    collection = get_async_collection("blog")
-
-Collections are created on demand and cached, so the MongoDB connection is
-deferred until a collection is actually used rather than paid at import time.
+get_async_collection is the only supported way to reach a Motor collection — every domain
+is behind a typed repository in app.db.repositories; application code never uses a raw
+handle. Collections are created on demand and cached, so the connection is deferred until
+a collection is actually used rather than paid at import time.
 """
 
 from typing import Any
@@ -59,8 +47,8 @@ def _get_collection(collection_name: str) -> AsyncIOMotorCollection[dict[str, An
 def get_async_collection(collection_name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
     """Resolve a Motor collection by its Mongo name — the only collection accessor.
 
-    Repositories declare a ``collection_name`` and resolve their handle through
-    this one function. Application code outside ``app/db/`` calls a repository,
+    Repositories declare a collection_name and resolve their handle through
+    this one function. Application code outside app/db/ calls a repository,
     not this.
     """
     return _get_collection(collection_name)

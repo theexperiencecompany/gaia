@@ -4,10 +4,10 @@ Three things sit between the agent deciding to call a tool and the result coming
 back, and each one exists because of a specific way a turn used to break:
 
 * a **timeout**, because a hung integration call hung the entire chat forever;
-* a **``GraphBubbleUp`` re-raise**, because a HIL approval is raised as control
+* a **GraphBubbleUp re-raise**, because a HIL approval is raised as control
   flow through the same path an error takes — convert it and the approval card
   never reaches the user and the gated action is silently dropped;
-* a **``Command`` passthrough**, because a state-mutating tool's whole effect is
+* a **Command passthrough**, because a state-mutating tool's whole effect is
   its graph update, and stringifying it loses the update while looking like
   success.
 
@@ -42,8 +42,7 @@ class TestTimeoutGuard:
     async def test_a_hung_tool_is_cut_short_with_an_actionable_error(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        """Before this guard a hung provider call hung the whole chat: no reply,
-        no error, the turn simply never ended."""
+        """Before this guard a hung provider call hung the whole chat: no reply, no error, the turn simply never ended."""
         monkeypatch.setattr(
             "app.override.langgraph_bigtool.dynamic_tool_node.TOOL_EXECUTION_TIMEOUT_SECONDS",
             0.01,
@@ -63,8 +62,7 @@ class TestTimeoutGuard:
     async def test_the_timeout_message_warns_the_side_effect_may_have_landed(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        """A timed-out send may still have sent. The model must be told to verify
-        rather than blindly retry, or a timeout becomes a duplicate email."""
+        """A timed-out send may still have sent; the model must verify rather than blindly retry, or a timeout becomes a duplicate email."""
         monkeypatch.setattr(
             "app.override.langgraph_bigtool.dynamic_tool_node.TOOL_EXECUTION_TIMEOUT_SECONDS",
             0.01,
@@ -91,8 +89,7 @@ class TestTimeoutGuard:
     async def test_an_exempt_tool_is_allowed_to_outlive_the_timeout(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        """Orchestration tools manage their own lifecycle — a handoff waits on a
-        whole subagent run. Timing those out would kill work in progress."""
+        """Orchestration tools manage their own lifecycle (a handoff waits on a whole subagent run); timing them out would kill work in progress."""
         monkeypatch.setattr(
             "app.override.langgraph_bigtool.dynamic_tool_node.TOOL_EXECUTION_TIMEOUT_SECONDS",
             0.01,
@@ -107,17 +104,13 @@ class TestTimeoutGuard:
         assert await timeout_guarded_tool_call(_request(exempt), slow) is expected
 
     def test_the_configured_timeout_is_long_enough_for_a_real_call(self):
-        """A guard set to a few seconds would abort legitimate provider calls;
-        this pins the value as a deliberate choice rather than a default."""
+        """A guard set to a few seconds would abort legitimate provider calls; this pins the value as a deliberate choice."""
         assert TOOL_EXECUTION_TIMEOUT_SECONDS >= 60
 
 
 class TestControlFlowPassesThrough:
     async def test_an_approval_interrupt_is_not_converted_into_an_error(self):
-        """A HIL approval is raised, not returned. If the guard caught it like a
-        failure the run would never checkpoint, the approval card would never
-        reach the user, and the gated action would be dropped while the model
-        was told the tool errored."""
+        """A HIL approval is raised, not returned; catching it like a failure would drop the checkpoint, the approval card, and the gated action."""
 
         async def gated(_request: Any) -> ToolMessage:
             raise GraphInterrupt(())
@@ -126,8 +119,7 @@ class TestControlFlowPassesThrough:
             await timeout_guarded_tool_call(_request(), gated)
 
     async def test_a_state_mutating_tools_command_comes_back_intact(self):
-        """The tool's entire effect is this object. Anything that turns it into
-        a message loses the state change while still looking like a result."""
+        """The tool's entire effect is this object; turning it into a message loses the state change while still looking like a result."""
         command = Command(update={"todos": [{"id": "a", "content": "one"}]})
 
         async def mutating(_request: Any) -> Command:
@@ -138,8 +130,7 @@ class TestControlFlowPassesThrough:
 
 class TestErrorText:
     def test_the_error_names_the_exception_type(self):
-        """The model uses the type to tell a transient network failure from a
-        permanently invalid request — one is worth retrying, the other is not."""
+        """The model uses the type to tell a transient network failure from a permanently invalid one — one is worth retrying, the other is not."""
         assert format_tool_error(TimeoutError("upstream slow")) == (
             "Error: TimeoutError: upstream slow"
         )

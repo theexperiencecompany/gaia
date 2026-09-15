@@ -82,10 +82,7 @@ class TestCreateSupportTicket:
     async def test_mixed_case_type_labels_correctly(
         self, mock_user_svc: MagicMock, mock_gsw: MagicMock
     ) -> None:
-        """Regression: the confirmation label must come from the normalized enum,
-        not the raw LLM-supplied string. 'Feature' streams a feature ticket but
-        used to be announced as a support ticket because the raw string never
-        equals SupportRequestType.FEATURE."""
+        """Regression: "Feature" used to be announced as a support ticket because the raw LLM string never equals SupportRequestType.FEATURE; the label must come from the normalized enum."""
         w = _writer()
         mock_gsw.return_value = w
         mock_user_svc.get_user_by_id = AsyncMock(

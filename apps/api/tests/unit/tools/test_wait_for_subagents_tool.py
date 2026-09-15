@@ -1,7 +1,7 @@
 """Behavior tests for app/agents/tools/wait_for_subagents_tool.py.
 
 Locks the executor-facing contract of the join: collected subagent results come
-back framed in ``<subagent_result agent="...">`` blocks, so the executor can tell
+back framed in <subagent_result agent="..."> blocks, so the executor can tell
 where one subagent's report ends and the next begins, and which agent produced
 each. The e2e barrier test drives the same path through real graphs, but only
 under live services — this tier runs on every commit.
@@ -21,8 +21,7 @@ CONFIG = {"configurable": {"stream_id": "stream-1", "conversation_id": "conv-1"}
 
 @pytest.fixture(autouse=True)
 def _no_live_work() -> Iterator[None]:
-    """Everything the join does before formatting: the dedup marker, the live-task
-    poll, the parked-approval loop. Only the collected results matter here."""
+    """Stub the dedup marker, the live-task poll, and the parked-approval loop so only the collected results matter here."""
     with (
         patch(f"{MODULE}.clear_collection_marker", AsyncMock()),
         patch(f"{MODULE}._poll_live_tasks", AsyncMock()),
@@ -38,8 +37,7 @@ def _collected(results: list[dict[str, str]]) -> object:
 @pytest.mark.unit
 class TestNoStreamToJoin:
     async def test_the_refusal_is_the_exact_sentence_the_executor_reads(self) -> None:
-        """This string IS the tool's answer — the executor has nothing else to go
-        on, so it is the contract, not a log line."""
+        """The refusal string is the tool's answer — the executor has nothing else to go on, so it is the contract, not a log line."""
         result = await wait_for_subagents.coroutine(config={"configurable": {}})
 
         assert result == "No active stream: cannot wait for subagents."
@@ -62,9 +60,7 @@ class TestCollectedResultFraming:
         )
 
     async def test_a_result_containing_the_old_separator_stays_one_block(self) -> None:
-        """Results used to be joined with a literal ``---``, so a subagent whose
-        report contained one split its own result in two as far as the executor
-        could tell. The closing tag is what makes the boundary real."""
+        """Results used to be joined with a literal ---, so a subagent whose report contained one split its own result in two; the closing tag is what makes the boundary real."""
         report = "found 2 issues\n\n---\n\nboth are stale"
 
         with _collected([{"agent": "github", "message": report}]):

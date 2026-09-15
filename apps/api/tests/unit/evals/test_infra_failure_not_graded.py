@@ -1,9 +1,9 @@
 """An unavailable backend must abort the run, never be graded as a wrong answer.
 
 Regression cover for the LongMemEval run in which PostgreSQL shut down mid-run:
-every remaining case raised ``RuntimeError: PostgreSQL engine not available`` in
-~0.01s, the run loop journaled each one as a ``failed`` case, and the report
-turned 64 never-asked questions into ``single-session-user 0/64``. An
+every remaining case raised RuntimeError: PostgreSQL engine not available in
+~0.01s, the run loop journaled each one as a failed case, and the report
+turned 64 never-asked questions into single-session-user 0/64. An
 infrastructure outage must never be published as a quality score.
 """
 
@@ -182,7 +182,7 @@ class _MixedSuite(_DeadBackendSuite):
     The two non-answers must not be averaged in with the wrong answer — only the
     wrong answer says anything about the agent's quality. The crash and the
     timeout reach the run loop by different routes (a raised exception vs a
-    CaseRun carrying ``error``), and both must land on ``errored``.
+    CaseRun carrying error), and both must land on errored.
     """
 
     name = "mixed"
@@ -264,11 +264,7 @@ async def test_errored_cases_are_retried_on_resume(
 async def test_longmemeval_reports_infra_error_when_postgres_is_down(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The suite must translate a dead datastore into InfraError, not a 0 score.
-
-    Without this the transport returns/raises a plain RuntimeError, which the run
-    loop grades as the agent answering wrongly.
-    """
+    """The suite must translate a dead datastore into InfraError, not a plain RuntimeError the run loop grades as a wrong answer."""
     from scripts.evals.suites import longmemeval as suite_mod
 
     from app.db import postgresql
@@ -289,10 +285,7 @@ async def test_longmemeval_reports_infra_error_when_postgres_is_down(
 
 
 def test_a_provider_disconnect_is_not_an_api_outage() -> None:
-    """httpx.RemoteProtocolError's TYPE cannot say which peer dropped: the
-    remote LLM gateway's hiccup looks identical to our API dying. Three
-    LongMemEval runs aborted on a healthy API before the accused backend was
-    probed. A transport fault with a healthy API is a retryable case error."""
+    """httpx.RemoteProtocolError's type cannot say which peer dropped; three LongMemEval runs aborted on a healthy API before this fix."""
     from unittest.mock import MagicMock, patch
 
     import httpx

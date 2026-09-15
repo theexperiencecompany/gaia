@@ -27,7 +27,7 @@ HARD_LIMIT = 1200
 
 
 def _repo(tmp_path: Path) -> Path:
-    """A throwaway git repo — `git ls-files` is the gate's full-scan source."""
+    """Return a throwaway git repo — `git ls-files` is the gate's full-scan source."""
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     return tmp_path
 
@@ -160,7 +160,7 @@ printf '%s' "$FAKE_TYPES" > libs/shared/ts/src/api/generated/schema.d.ts
 
 
 def _repo_beside_stubs(tmp_path: Path) -> Path:
-    """The sandbox repo, apart from the stub bin dir the same tmp_path holds."""
+    """Return the sandbox repo, apart from the stub bin dir the same tmp_path holds."""
     path = tmp_path / "repo"
     path.mkdir()
     return _repo(path)

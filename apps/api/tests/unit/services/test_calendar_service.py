@@ -1,9 +1,9 @@
 """Unit tests for the calendar service (app/services/calendar_service.py).
 
 Every Google Calendar API call routes through the async Composio
-``proxy_request``; preferences go through ``calendar_repository``. Tests mock
+proxy_request; preferences go through calendar_repository. Tests mock
 those two seams and assert the shape of each request. Pure helpers
-(``filter_events``/``format_event_for_frontend``) stay synchronous.
+(filter_events/format_event_for_frontend) stay synchronous.
 """
 
 from collections.abc import Iterator
@@ -87,8 +87,7 @@ class TestSelectedSearchCalendars:
     async def test_preferences_matching_no_listed_calendar_search_everything(
         self, mock_calendar_repo: AsyncMock
     ):
-        """Stored selections that reference calendars absent from Google's list
-        would otherwise search nothing — the fallback covers every calendar."""
+        """Stored selections referencing calendars absent from Google's list would otherwise search nothing."""
         mock_calendar_repo.get_for_user.return_value = _prefs(["deleted-cal"])
         calendars = [
             GoogleCalendarListEntry(id="cal-a", summary="A"),
@@ -273,8 +272,7 @@ class TestSearchEventsInCalendar:
 
 
 class _UTCOnlyDateTime(datetime):
-    """datetime stand-in whose local-time read lands on the previous day, so a
-    non-UTC clock in production code shows up as a wrong date, not a flake."""
+    """datetime stand-in whose local-time read lands on the previous day, exposing a non-UTC clock."""
 
     @classmethod
     def now(cls, tz: datetime | None = None) -> datetime:  # type: ignore[override]  # mirrors datetime.now's optional-tz signature deliberately
@@ -284,8 +282,7 @@ class _UTCOnlyDateTime(datetime):
 
 
 class TestAllDayBounds:
-    """The all-day defaulting rules: explicit bounds pass through, a missing end
-    becomes the next day, and a missing start defaults to today (UTC)."""
+    """Defaulting rules: explicit bounds pass through, a missing end is next day, missing start is UTC today."""
 
     def test_a_start_with_no_end_ends_the_next_day(self) -> None:
         # The Pydantic model requires both fields; the service still defends the
@@ -302,8 +299,7 @@ class TestAllDayBounds:
 
     @patch("app.services.calendar_service.datetime", _UTCOnlyDateTime)
     def test_a_missing_start_defaults_to_today_on_the_utc_calendar(self) -> None:
-        """Google's end date is exclusive; the default must follow the UTC
-        calendar — the fake clock's local read is the previous day."""
+        """The default must follow the UTC calendar; the fake clock's local read is the previous day."""
         event = EventCreateRequest(
             summary="Today",
             description="",
@@ -396,8 +392,7 @@ class TestCreateCalendarEvent:
 
     @pytest.mark.parametrize("missing", ["start", "end"])
     async def test_missing_single_bound_for_timed_event_raises(self, mock_proxy, missing):
-        """Both bounds are required individually — dropping either check lets a
-        half-bounded timed event reach Google."""
+        """Both bounds are required individually, or a half-bounded timed event would reach Google."""
         event = EventCreateRequest(
             summary="x",
             description="",
@@ -413,8 +408,7 @@ class TestCreateCalendarEvent:
         mock_proxy.assert_not_awaited()
 
     async def test_invalid_timezone_for_timed_event_raises(self, mock_proxy):
-        """A timezone that fails GoogleCalendarEventDateTime validation surfaces
-        as a 400 'Invalid datetime format' error."""
+        """A timezone that fails GoogleCalendarEventDateTime validation surfaces as a 400 error."""
         event = EventCreateRequest(
             summary="x",
             description="",
@@ -469,9 +463,7 @@ class TestDeleteCalendarEvent:
         assert exc.value.detail == "Event not found or already deleted"
 
     async def test_percent_encodes_calendar_id_with_reserved_chars(self, mock_proxy):
-        """Google calendar IDs like 'user@group.calendar.google.com' or
-        '#contacts@group.v.calendar.google.com' contain '@'/'#'. Unencoded,
-        those characters break the URL path (404s or a truncated path)."""
+        """Calendar IDs contain '@'/'#'; unencoded, those break the URL path (404s or a truncated path)."""
         mock_proxy.return_value = None
         await delete_calendar_event(
             EventDeleteRequest(
@@ -503,8 +495,7 @@ class TestUpdateCalendarEvent:
         assert mock_proxy.call_args_list[1].args[0].body["summary"] == "New"
 
     async def test_percent_encodes_calendar_id_with_reserved_chars(self, mock_proxy):
-        """Same bug as delete_calendar_event: the GET-existing + PUT-update
-        endpoint interpolates calendar_id/event_id unencoded."""
+        """Same bug as delete_calendar_event: the GET+PUT endpoint interpolates the id unencoded."""
         mock_proxy.side_effect = [
             {"summary": "Old", "description": "d", "start": {}, "end": {}},
             {"id": "evt", "summary": "New"},
@@ -792,8 +783,7 @@ class TestSearchCalendarEventsNativePins:
 
 
 class TestSearchArgumentPropagation:
-    """Every search input must arrive intact at each seam: the preference
-    lookup, the calendar listing, and both per-calendar search passes."""
+    """Every search input must arrive intact at each seam: preference lookup, listing, and each search pass."""
 
     async def test_first_pass_forwards_user_query_and_bounds_exactly(
         self, mock_proxy, mock_calendar_repo

@@ -72,10 +72,9 @@ def mock_deps():
         patch(f"{_MOD}.mark_canvas_completed", new_callable=AsyncMock) as m_mark,
         patch(f"{_MOD}.schedule_gaia_tasks_sync", new_callable=MagicMock) as m_sync,
         patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock) as m_pool,
-        # create=True: ``append_activity`` is imported into the service on this
-        # branch only. The regression lane runs these tests against the base
-        # revision, where the name is absent, and a fixture that errors there is
-        # not proof.
+        # create=True: append_activity is imported into the service only on
+        # this branch. The regression lane runs these tests against base,
+        # where the name is absent, and an erroring fixture is not proof.
         patch(f"{_MOD}.append_activity", new_callable=AsyncMock, create=True) as m_append_activity,
         patch(f"{_MOD}.append_log", new_callable=AsyncMock) as m_append_log,
         patch(f"{_MOD}.teardown_subscriptions", new_callable=AsyncMock) as m_teardown,
@@ -96,9 +95,7 @@ class TestCreateTrackedTodo:
     async def test_activity_in_the_initial_canvas_is_moved_to_activity_md(
         self, mock_repo, mock_deps
     ):
-        """Seen with a real model: it still composes an ``## Activity Log`` inside
-        ``initial_canvas``. The split at create time keeps canvas.md a recall doc
-        without waiting for the sweep."""
+        """Seen with a real model: it still composes an Activity Log section inside initial_canvas; the split at create time keeps canvas.md a recall doc without waiting for the sweep."""
         mock_deps.create.return_value = _todo_response()
         initial = (
             "# T\n\n## Key Details\n- Thread: NW-4471\n\n## Current State\nWaiting.\n\n"
@@ -117,9 +114,7 @@ class TestCreateTrackedTodo:
         assert "Tracked todo created" in mock_deps.store.await_args.kwargs["canvas_content"]
 
     async def test_activity_and_embedding_are_joined_with_a_blank_line(self, mock_repo, mock_deps):
-        """The moved activity, the creation marker, and the embedding text are
-        separate paragraphs joined by a blank line. Any other joiner welds them
-        into one line the append-only parser can no longer read."""
+        """The moved activity, creation marker, and embedding text are separate paragraphs joined by a blank line; any other joiner welds them into one line the append-only parser can no longer read."""
         mock_deps.create.return_value = _todo_response()
         fixed = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
         initial = "# T\n\n## Activity Log\n- did x\n\n## Learnings\n"
@@ -248,8 +243,7 @@ class TestCompleteTrackedTodo:
     async def test_missing_vfs_path_falls_back_to_derived_workspace_label(
         self, mock_repo: MagicMock, mock_deps: SimpleNamespace
     ) -> None:
-        """A doc with no stored label must get the derived /workspace-scoped one —
-        never None, and never a label derived from the wrong id."""
+        """A doc with no stored label must get the derived /workspace-scoped one — never None, never derived from the wrong id."""
         mock_repo.get.return_value = _todo_doc(vfs_path=None)
 
         ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
@@ -261,8 +255,7 @@ class TestCompleteTrackedTodo:
     async def test_legacy_user_scoped_label_is_healed_on_completion(
         self, mock_repo: MagicMock, mock_deps: SimpleNamespace
     ) -> None:
-        """A doc still storing the host-side /users/<uid> label must not have it
-        persisted back on completion — the derived archive label replaces it."""
+        """A doc still storing the host-side /users/<uid> label must not have it persisted back on completion."""
         mock_repo.get.return_value = _todo_doc(vfs_path=f"/users/{USER_ID}/todos/{TODO_ID}")
 
         ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
@@ -280,8 +273,7 @@ class TestGetActiveTrackedSummary:
     async def test_stored_user_scoped_vfs_path_never_leaks_into_agent_context(
         self, mock_repo: MagicMock, mock_deps: SimpleNamespace
     ) -> None:
-        """Old docs store vfs_path as /users/<uid>/todos/<id> — that host-side
-        path must never reach the LLM, which only knows /workspace-scoped paths."""
+        """Old docs store vfs_path as /users/<uid>/todos/<id> — that host-side path must never reach the LLM."""
         stale_doc = _todo_doc(vfs_path=f"/users/{USER_ID}/todos/{TODO_ID}")
         mock_repo.list_active_tracked.return_value = [stale_doc]
 
@@ -291,9 +283,7 @@ class TestGetActiveTrackedSummary:
         assert "/users/" not in summary
 
     async def test_summary_names_the_absolute_notes_folder(self, mock_repo):
-        """Relative paths resolve into the session scratch dir in the file tools;
-        a real model read `gaia-tasks/<folder>/canvas.md` from this line and got
-        "file not found" before retrying with the absolute path."""
+        """A real model read gaia-tasks/<folder>/canvas.md relative and got file not found before retrying with the absolute path."""
         mock_repo.list_active_tracked.return_value = [
             _todo_doc(id="66f838cc8829054e5f10e407", title="Fix the thing")
         ]
@@ -525,8 +515,7 @@ class TestMigrateLegacyCanvas:
         )
 
     async def test_fresh_doc_already_clean_skips_retry(self, mock_repo):
-        """When the re-read doc has no legacy sections, the migration gives up
-        instead of reporting a write it never made."""
+        """When the re-read doc has no legacy sections, the migration gives up instead of reporting a write it never made."""
         fresh = _todo_doc(
             canvas_content="# T\n\n## Key Details\nk\n\n## Learnings\n",
             updated_at=datetime.now(UTC),

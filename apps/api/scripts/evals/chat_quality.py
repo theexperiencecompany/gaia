@@ -1,23 +1,20 @@
 #!/usr/bin/env python3
 # mypy: ignore-errors -- dev eval script; typing not maintained here
-"""
-Read GAIA's chat quality on the messages an ordinary Pro user actually sends.
+"""Read GAIA's chat quality on the messages an ordinary Pro user actually sends.
 
-Not a test: it drives a REAL running API and a REAL model, so it goes red when
-the provider or the local stack is down, which is a useless CI signal. It exists
-to read the copy. Fourteen short multi-turn scripts (small talk, a factual
-question, a productivity ask with nothing connected, a vent, an out-of-scope
-request, a draft request, a dead-end "yes") run as real conversations on fresh
-dev users, and every reply is scored 0/1 by an LLM judge on the same dev lane.
+Not a test: it drives a REAL running API and a REAL model, so it goes red
+when the provider or the local stack is down. Fourteen short multi-turn
+scripts (small talk, a factual question, a vent, an out-of-scope request,
+a draft, a dead-end "yes", etc.) run as real conversations on fresh dev
+users, each scored 0/1 by an LLM judge on the same dev lane.
 
 Usage (from apps/api/, with the worktree API already running):
     export OPENROUTER_API_KEY=$(security find-generic-password -a "$USER" -s openrouter-api -w)
     export DEV_DEFAULT_MODEL=deepseek-v4-flash
     uv run python scripts/evals/chat_quality.py --api-url http://localhost:9330
 
-Each scenario gets its own minted dev user (a shared user leaks one scenario's
-thread into another's reply) with the same realistic onboarding profile, granted
-Pro so the paid-only gate lets the turn reach the agent.
+Each scenario gets its own minted dev user, granted Pro so the paid-only
+gate lets the turn reach the agent.
 """
 
 import argparse
@@ -383,8 +380,11 @@ async def run(api_url: str, only: str | None) -> None:
 
 
 async def _grade_all(collected: list[Graded]) -> None:
-    """A judge that fails leaves ``verdict`` None: a provider blip is not a
-    behavioural miss, and averaging it in as 0 would understate the prompt."""
+    """Leave a failed judge's verdict as None, not a behavioural-failure verdict.
+
+    A provider blip is not a behavioural miss, and averaging it in as 0
+    would understate the prompt.
+    """
     semaphore = asyncio.Semaphore(JUDGE_CONCURRENCY)
 
     async def grade(row: Graded) -> None:

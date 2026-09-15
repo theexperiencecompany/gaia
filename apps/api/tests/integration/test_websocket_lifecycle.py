@@ -1,5 +1,5 @@
 """
-TEST 8: WebSocket Connection Lifecycle
+TEST 8: WebSocket Connection Lifecycle.
 
 Integration tests for the WebSocketManager and the broadcast fan-out —
 connection registration, removal, message routing, multi-user isolation,

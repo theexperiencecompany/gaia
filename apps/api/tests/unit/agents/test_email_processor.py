@@ -759,8 +759,10 @@ class TestFetchEmailsForOnboardingScope:
 
 
 class TestFetchEmailsForOnboardingSentLabelSurvives:
-    """A SENT message fetched for social profiles must stay recognisably sent
-    all the way to the ownership signal — query, transform, and extraction."""
+    """A SENT message fetched for social profiles must stay recognisably sent.
+
+    All the way to the ownership signal — query, transform, and extraction.
+    """
 
     @staticmethod
     def _composio_message(message_id: str, label_ids: list[str], text: str) -> dict:
@@ -774,8 +776,7 @@ class TestFetchEmailsForOnboardingSentLabelSurvives:
         }
 
     async def _fetch_through_real_transform(self, raw_messages: list[dict]) -> list[dict]:
-        """Run the real search_messages + transform_gmail_message pipeline,
-        stubbing only the Composio network call."""
+        """Run the real search_messages + transform_gmail_message pipeline, stubbing only the Composio network call."""
         with patch(
             "app.services.mail.mail_service.invoke_gmail_tool",
             new_callable=AsyncMock,
@@ -918,8 +919,7 @@ class TestFetchEmailsForOnboardingPins:
     async def test_final_page_requests_only_the_remaining_allowance(
         self, mock_search: AsyncMock
     ) -> None:
-        """After 3 of 10 emails, the next batch asks for exactly 7 — not
-        max_total and not BATCH_SIZE."""
+        """After 3 of 10 emails, the next batch asks for exactly 7 — not max_total and not BATCH_SIZE."""
         mock_search.side_effect = [
             GmailMessagesResponse(
                 messages=[{"id": "1"}, {"id": "2"}, {"id": "3"}], next_page_token="tok"
@@ -1091,8 +1091,7 @@ class TestCollectStorageResultsDirect:
         assert complete[0].kwargs["failed_batches"] == 1
 
     async def test_two_failed_batches_count_two_with_each_tasks_error(self) -> None:
-        """storage_errors accumulates (+1 per failure) and each warning names
-        that task's own error message."""
+        """storage_errors accumulates (+1 per failure) and each warning names that task's own error message."""
 
         async def boom(message: str) -> None:
             raise RuntimeError(message)
@@ -1983,8 +1982,7 @@ class TestAwaitDiscoveryTasksDirect:
 
 
 class TestProcessGmailToMemoryForwardingPins:
-    """Every id and total the orchestrator computes must reach the stage
-    helpers intact."""
+    """Every id and total the orchestrator computes must reach the stage helpers intact."""
 
     async def test_ids_and_totals_flow_intact_through_every_stage(self) -> None:
         mock_users = MagicMock()

@@ -1,9 +1,9 @@
 """LinkedIn utility functions for API operations.
 
 These helpers wrap LinkedIn REST/v2 calls behind Composio's proxy. Composio
-attaches the user's OAuth token server-side; callers only supply `user_id`.
+attaches the user's OAuth token server-side; callers only supply user_id.
 
-Binary uploads (images, documents) use the proxy's `binary_body={"url": ...}`
+Binary uploads (images, documents) use the proxy's binary_body={"url": ...}
 shape: Composio fetches the source URL and forwards the bytes to LinkedIn's
 upload endpoint with the authenticated headers.
 """

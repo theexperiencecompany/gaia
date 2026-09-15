@@ -60,14 +60,12 @@ const GaiaOrbLazy = nextDynamic(() => import("@/components/ui/orb/GaiaOrb"), {
 });
 
 /**
- * Bubble keys that have already played their entrance. Module-level so
- * list remounts (conversation-id swap, optimistic→real id transitions)
- * don't replay the animation — replaying makes existing bubbles flash
- * invisible instead of calmly scrolling up.
+ * Bubble keys that already played their entrance. Module-level so list
+ * remounts (conversation-id swap, optimistic->real id transitions) don't
+ * replay it — replaying flashes existing bubbles invisible.
  *
- * Bounded with FIFO eviction so a long-lived session can't accumulate keys
- * indefinitely; the cap is far above any realistic single conversation, so
- * a visible bubble never gets evicted and re-animates.
+ * FIFO-bounded so a long session can't accumulate keys indefinitely; the
+ * cap is far above any realistic conversation, so a visible bubble never gets evicted.
  */
 const revealedBubbleKeys = new Set<string>();
 const MAX_REVEALED_BUBBLE_KEYS = 2000;
@@ -114,16 +112,11 @@ function CompactReveal({
 }
 
 /**
- * One message bubble, memoized so it only re-renders when its own message
- * (referentially stable for idle messages — see useConversation's conversion
- * cache + the dedup ref-preservation) or its grouping flags change. Without
- * this, every bubble in the thread re-rendered on every streaming token,
- * re-parsing its markdown each time — the dominant streaming cost. getMessageProps
- * runs inside, so its new-object-per-call doesn't break the memo.
- *
- * In `compact` mode (assistant popup) the bubble drops its avatar, goes
- * full-width, suppresses actions/follow-ups, and plays a one-time entrance
- * via CompactReveal.
+ * One message bubble, memoized on its own message (referentially stable
+ * for idle messages) and grouping flags — else every bubble re-parsed
+ * markdown on every streaming token. getMessageProps runs inside without
+ * breaking the memo. `compact` mode drops the avatar, goes full-width,
+ * suppresses actions/follow-ups, and plays a one-time CompactReveal entrance.
  */
 const ChatMessageItem = memo(function ChatMessageItem({
   message,
@@ -276,11 +269,9 @@ export default function ChatRenderer({
   const activeConversationId = useChatStore(
     (state) => state.activeConversationId,
   );
-  // While this conversation is "in progress", suppress follow-up actions and
-  // the hover action/timestamp row — they belong to a *finished* turn. A turn
-  // is in progress while its SSE stream runs (including the executor phase)
-  // AND, for turns that delegated to a background executor, until that
-  // executor's result message arrives via WebSocket.
+  // While "in progress", suppress follow-ups and the hover action/timestamp
+  // row (they belong to a *finished* turn) — in progress means its SSE
+  // stream runs, or (for background-executor turns) until the WebSocket result arrives.
   const isAwaitingExecutorResult = useIsAwaitingExecutor(activeConversationId);
   const isTurnOpen = useIsConversationStreaming(activeConversationId);
   const isConversationStreaming = isTurnOpen || isAwaitingExecutorResult;
@@ -303,30 +294,25 @@ export default function ChatRenderer({
     );
   }, [conversations, convoIdParam]);
 
-  // Handle retry callback. `retryMessage` gets a new identity on most renders
-  // (its deps chain up to an unstable `sendMessage`), so we read it through a
-  // ref to keep `handleRetry` — and therefore messagePropsOptions and the whole
-  // memoized message list — stable across streaming tokens.
+  // `retryMessage` gets a new identity on most renders (unstable
+  // `sendMessage` deps), so read it via ref to keep `handleRetry` (and the
+  // memoized message list) stable across streaming tokens.
   const retryMessageRef = useRef(retryMessage);
   useEffect(() => {
     retryMessageRef.current = retryMessage;
   });
   const handleRetry = useCallback((msgId: string) => {
-    // Use the store's active conversation id, NOT the route param. New
-    // conversations rewrite the URL via history.replaceState, which does not
-    // update Next's useParams — so convoIdParam stays undefined until a reload,
-    // which is why retry previously only worked after reloading. activeConversationId
-    // is always current. Reading it via getState keeps this callback dep-free.
+    // Use the store's active conversation id, not the route param: a new
+    // conversation rewrites the URL via history.replaceState without
+    // updating useParams, so retry only worked after reload before this. getState keeps this dep-free.
     const conversationId = useChatStore.getState().activeConversationId;
     if (!conversationId) return;
     retryMessageRef.current(conversationId, msgId);
   }, []);
 
-  // Create options object for getMessageProps. Depend on the primitive
-  // conversation fields, not the conversation object — the conversation list
-  // gets a new object reference on every streaming token (its preview/timestamp
-  // updates), which would otherwise make this options object change every token
-  // and defeat the per-message memoization downstream.
+  // Depend on primitive conversation fields, not the conversation object —
+  // the conversation list gets a new reference every streaming token
+  // (preview/timestamp updates), which would defeat the memoization downstream.
   const isSystemGenerated = conversation?.is_system_generated;
   const systemPurpose = conversation?.system_purpose ?? undefined;
   const messagePropsOptions = useMemo(
@@ -384,10 +370,9 @@ export default function ChatRenderer({
     }
   }, [messagesWithDeduplicatedToolCalls, scrollToMessage]);
 
-  // A bot message only renders a visible bubble when it is non-empty. Empty bot
-  // messages are skipped, so grouping must look ahead past them to the next
-  // *rendered* bot bubble — otherwise the last visible bubble wrongly loses its
-  // avatar/timestamp/follow-up actions when followed by an empty bot message.
+  // A bot message only renders when non-empty, so grouping must look ahead
+  // past empty ones to the next *rendered* bubble — otherwise the last
+  // visible bubble wrongly loses its avatar/timestamp/follow-ups.
   const rendersAsBotBubble = useCallback(
     (message: MessageType | undefined): boolean => {
       if (message?.type !== "bot") return false;
@@ -397,10 +382,9 @@ export default function ChatRenderer({
     [messagePropsOptions],
   );
 
-  // The busy/streaming suppression of follow-ups + the action row applies only
-  // to the turn that is *currently in progress* — i.e. the last rendered bubble,
-  // the one sitting directly above the loading indicator. Earlier, finished
-  // turns keep their follow-ups even after a new message starts streaming.
+  // Busy/streaming suppression of follow-ups + the action row applies only
+  // to the turn currently in progress — the last rendered bubble, sitting
+  // above the loading indicator. Earlier finished turns keep their follow-ups.
   const lastRenderedIndex = useMemo(() => {
     for (let i = messagesWithDeduplicatedToolCalls.length - 1; i >= 0; i--) {
       const candidate = messagesWithDeduplicatedToolCalls[i];
@@ -453,12 +437,9 @@ export default function ChatRenderer({
       />
       {messagesWithDeduplicatedToolCalls?.map(
         (message: MessageType, index: number) => {
-          // Consecutive bot bubble grouping (iMessage-style):
-          // - Only the LAST bot message in a consecutive group shows the avatar
-          // - No actions/timestamps/follow-ups on non-last messages
-          // - Tight spacing (no gap) between grouped messages
-          // Look ahead/behind past empty bot messages (which never render) so
-          // grouping reflects the actually-visible bubbles, not raw adjacency.
+          // Consecutive bot bubble grouping (iMessage-style): only the LAST
+          // shows the avatar/actions/timestamp; others sit tight with no
+          // gap. Looks past empty bot messages (never render) so grouping matches visible bubbles.
           const isFollowedByBot = hasRenderedBotInDirection(index, 1);
           const isPrecededByBot = hasRenderedBotInDirection(index, -1);
           // Only the active turn's bubble (the last rendered one) is suppressed
@@ -503,10 +484,9 @@ export default function ChatRenderer({
               // The orb replaces the wave spinner in the popup; the
               // loading text and tool info render exactly as on web.
               compact ? (
-                // Slow continuous rotation + breathing on top of the
-                // shader so the loading orb reads as clearly alive even
-                // at this small size. Negative margins tuck the text in
-                // close (the canvas is mostly transparent glow padding).
+                // Slow continuous rotation + breathing over the shader so
+                // the orb reads alive at this small size. Negative margins
+                // tuck the text close (canvas is mostly transparent glow padding).
                 <m.div
                   className="-my-3 -ml-2.5 -mr-2.5 shrink-0"
                   animate={{ rotate: 360, scale: [1, 1.08, 1] }}

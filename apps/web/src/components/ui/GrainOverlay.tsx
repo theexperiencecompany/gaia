@@ -1,31 +1,23 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Fractal-noise tile rendered by the browser's own SVG filter, inlined as a
- * data URI so it costs no request and no decode. `stitchTiles` makes the tile
- * seamless when it repeats, which is what keeps the grain from showing a grid
- * on large surfaces.
+ * Fractal-noise tile rendered via an inlined SVG filter — no request, no
+ * decode. `stitchTiles` keeps it seamless when repeated.
  *
- * A single octave at a high base frequency is what makes this read as film
- * grain — stacking octaves sums low-frequency noise on top and the result is
- * cloudy haze instead of per-pixel speckle. `feColorMatrix` desaturates it,
- * because raw feTurbulence writes independent R/G/B and the colored speckle
- * tints whatever it sits on.
+ * A single octave at high base frequency reads as film grain; stacking
+ * octaves sums to cloudy haze instead. `feColorMatrix` desaturates it since
+ * raw feTurbulence writes independent R/G/B that would tint whatever it sits on.
  */
 const GRAIN_TILE =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='1' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E\")";
 
 /**
- * How the grain is composited. The two surfaces we put grain on need different
- * treatment, and picking the wrong one makes it invisible:
+ * How the grain composites — picking the wrong blend makes it invisible.
  *
- * - `photo` — detailed, mostly dark artwork. Overlay blending degrades to
- *   multiply against dark pixels, so the grain disappears into exactly the
- *   shadows it is meant to break up. Composite it normally instead, at a low
- *   opacity, which is what actually reads as film grain on a photograph.
- * - `surface` — smooth gradients and flat color. These show grain readily, and
- *   overlay is right here: it ties the speckle to the underlying hue instead
- *   of greying it out, and a much lower opacity is enough.
+ * `photo` (dark, detailed art): overlay degrades to multiply against dark
+ * pixels and the grain vanishes into shadow, so composite normally at low
+ * opacity instead. `surface` (smooth gradients/flat color): overlay is
+ * right here — it ties speckle to the underlying hue at a lower opacity.
  */
 const VARIANT_CLASSES = {
   photo: "opacity-[0.24]",

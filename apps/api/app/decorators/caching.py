@@ -1,27 +1,8 @@
-"""
-Redis caching decorators with type-safe model support.
+"""Redis caching decorators with type-safe model support.
 
-Quick Start:
-    # Direct Cacheable usage with smart hashing
-    @Cacheable(smart_hash=True, ttl=300)  # 5 minutes
-    @Cacheable(smart_hash=True, ttl=1800)  # 30 minutes
-    @Cacheable(smart_hash=True, ttl=21600)  # 6 hours
-
-Advanced Usage:
-    @Cacheable(key_pattern="user:{user_id}", ttl=3600)
-    @Cacheable(key_pattern="user:{user_id}", model=User)  # Type-safe
-    @Cacheable(key_generator=custom_key_func, ttl=1800)
-    @Cacheable(smart_hash=True, ttl=300, namespace="metrics")  # Custom namespace
-
-Cache Invalidation:
-    @CacheInvalidator(key_patterns=["user:{user_id}:*"])
-
-Key Features:
-- Smart hash-based key generation
-- Pattern-based and custom key generation
-- Type-safe caching with Pydantic models
-- Automatic cache invalidation
-- Custom serialization/deserialization
+Cacheable: key_pattern/key_generator/smart_hash pick how the key is built;
+model gives typed serialization via Pydantic. CacheInvalidator:
+key_patterns/key_generator/key clear related entries after a write.
 """
 
 import asyncio
@@ -39,17 +20,14 @@ from shared.py.wide_events import log
 P = ParamSpec("P")
 R = TypeVar("R")
 
-# Both decorators accept a sync OR an async function and always hand back an
-# async one. A single `Callable[P, R]` would bind R to the *coroutine* for an
-# already-async callee, so every `await cached_fn()` would type as a Coroutine
-# instead of its value (measured: 105 errors across 45 files). The overload pair
-# splits the two cases so R is the awaited value in both.
+# A single Callable[P, R] would bind R to the *coroutine* for an already-async
+# callee (measured: 105 errors across 45 files), so the overload pair splits
+# sync/async cases to keep R the awaited value in both.
 _SyncOrAsync = Callable[P, Coroutine[Any, Any, R]] | Callable[P, R]
 
-# A key generator receives the wrapped function's name plus its call args/kwargs
-# (arbitrary per call site, see `_pattern_to_key`) and returns the cache key --
-# sync or async, matching the two real key generators in this codebase
-# (`_recall_cache_key` and the CacheInvalidator custom-key examples above).
+# A key generator receives the function's name plus its call args/kwargs and
+# returns the cache key, sync or async — matching the two real key generators
+# in this codebase (_recall_cache_key and CacheInvalidator's custom-key use).
 _KeyGenerator = Callable[..., str] | Callable[..., Coroutine[Any, Any, str]]
 
 # CacheInvalidator's generator may bust one key or several (e.g. a function
@@ -61,50 +39,10 @@ _InvalidationKeyGenerator = (
 
 
 class Cacheable:
-    """
-    Advanced caching decorator with full control over key generation and data handling.
+    """Caching decorator with three key-generation strategies: smart_hash, key_pattern, or key_generator.
 
-    Provides comprehensive caching functionality including:
-    - Multiple key generation strategies (pattern, generator, static, smart hash)
-    - Type-safe caching with Pydantic model support
-    - Flexible TTL management
-
-    Key Generation Strategies:
-        1. Smart hash: Automatic hash-based keys using function name and arguments
-        2. Pattern-based: Use function arguments in template strings (a literal
-           without placeholders acts as a static key)
-        3. Generator function: Custom logic for complex key generation
-
-    Type Safety Options:
-        model: Pydantic model class for automatic validation and typed instances
-           - Replaces TypeAdapter(Any) with TypeAdapter(model) for Redis operations
-           - Validates data integrity on cache retrieval
-           - Works with complex types: List[Model], Optional[Model], Dict[str, Model]
-
-    Examples:
-        # Smart hash-based caching (replaces cache_short/medium/long)
-        @Cacheable(smart_hash=True, ttl=300)  # 5 minutes
-        async def get_live_metrics():
-            return calculate_current_metrics()
-            # Key: "api:get_live_metrics:a1b2c3d4e5f6"
-
-        @Cacheable(smart_hash=True, ttl=1800, namespace="user")  # 30 minutes
-        async def get_user_stats(user_id: int):
-            return calculate_stats(user_id)
-            # Key: "user:get_user_stats:hash_of_args"
-
-        # Pattern-based with type safety
-        @Cacheable(key_pattern="user:{user_id}:profile", model=User, ttl=1800)
-        async def get_user(user_id: int) -> User:
-            return User.from_db(user_id)
-
-        # Custom key generator
-        def cache_key(func_name, *args, **kwargs):
-            return f"custom:{func_name}:{args[0]}:{datetime.now().hour}"
-
-        @Cacheable(key_generator=cache_key, ttl=3600)
-        async def time_sensitive_data(item_id: str):
-            return fetch_hourly_data(item_id)
+    model swaps TypeAdapter(Any) for TypeAdapter(model), validating and
+    typing cached data (works with List[Model], Optional[Model], etc.).
     """
 
     def __init__(
@@ -116,33 +54,11 @@ class Cacheable:
         smart_hash: bool = False,
         namespace: str = "api",
     ):
-        """
-        Initialize the cache decorator.
+        """Initialize the cache decorator.
 
-        Args:
-            key_pattern: Optional string template for the cache key (e.g. "{arg1}:{arg2}");
-                a literal without placeholders acts as a static key
-            key_generator: Optional custom function to generate cache keys
-            ttl: Time-to-live for cache entries in seconds
-            model: Optional Pydantic model class for type-specific serialization/deserialization.
-                   Uses Pydantic TypeAdapter(model) instead of TypeAdapter(Any) for:
-                   - Type-safe serialization: Validates data matches model schema before caching
-                   - Type-safe deserialization: Returns properly typed model instances from cache
-                   - Data integrity: Raises ValidationError if cached data doesn't match schema
-                   - Better performance: Model-specific adapters are more efficient than Any
-
-                   Examples:
-                   - model=User: For single User objects
-                   - model=List[User]: For lists of User objects
-                   - model=Optional[User]: For nullable User objects
-                   - model=Dict[str, User]: For user mappings
-
-                   When to use:
-                   - Always use for Pydantic model return types
-                   - Skip for simple types (dict, str, int, bool, List[str], etc.)
-                   - Use with List[Model] for paginated endpoints
-            smart_hash: Use automatic hash-based key generation with function name and arguments
-            namespace: Namespace prefix for smart hash keys (default: "api")
+        key_pattern: a literal without placeholders acts as a static key.
+        model: uses TypeAdapter(model) instead of TypeAdapter(Any) for typed
+        (de)serialization.
         """
         if not key_pattern and not key_generator and not smart_hash:
             raise ValueError("Either key_pattern, key_generator, or smart_hash must be provided.")
@@ -182,29 +98,18 @@ class Cacheable:
     def __call__(self, func: Callable[P, R]) -> Callable[P, Awaitable[R]]: ...
 
     def __call__(self, func: _SyncOrAsync[P, R]) -> Callable[P, Awaitable[R]]:
-        """
-        Apply the cache decorator to a function.
-
-        Args:
-            func: The function to be cached (sync or async)
-
-        Returns:
-            Wrapped function with caching behavior (always async)
-        """
+        """Wrap func with caching, always returning an async callable."""
 
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            # Generate the cache key
             cache_key = await self._cache_key(func.__name__, func, args, kwargs)
 
-            # Check if the value is already cached
             cached_value = await get_cache(cache_key, self.model)
             if cached_value is not None:
                 log.debug(f"{LogTag.API} Cache hit for key", cache_key=cache_key)
                 # What went into the cache came out of this same `func`.
                 return cast(R, cached_value)
 
-            # Call the original function - handle both sync and async
             result: R
             if asyncio.iscoroutinefunction(func):
                 result = await func(*args, **kwargs)
@@ -214,7 +119,6 @@ class Cacheable:
             log.debug(f"{LogTag.API} Cache miss for key", cache_key=cache_key)
             log.debug(f"{LogTag.API} Setting cache for key", cache_key=cache_key)
 
-            # Let set_cache handle Pydantic serialization
             await set_cache(key=cache_key, value=result, ttl=self.ttl, model=self.model)
 
             return result
@@ -223,46 +127,9 @@ class Cacheable:
 
 
 class CacheInvalidator:
-    """
-    Decorator for automatic cache invalidation when data changes.
+    """Clear related cache entries via key_patterns, key_generator, or a static key, before calling func.
 
-    Automatically clears related cache entries when functions that modify data
-    are called. Supports multiple invalidation patterns and custom key generation.
-
-    Use Cases:
-        - Clear user cache when profile is updated
-        - Invalidate search results when content changes
-        - Remove related cached data after bulk operations
-
-    Invalidation Strategies:
-        1. Pattern-based: List of key patterns to clear
-        2. Generator function: Custom logic for determining keys to clear
-        3. Static key: Simple fixed key invalidation
-
-    Examples:
-        # Clear specific user cache
-        @CacheInvalidator(key_patterns=["user:{user_id}:profile", "user:{user_id}:stats"])
-        async def update_user_profile(user_id: int, data: dict):
-            return save_user_profile(user_id, data)
-
-        # Pattern-based bulk invalidation (use with caution)
-        @CacheInvalidator(key_patterns=["search:*", "categories:*"])
-        async def rebuild_search_index():
-            return regenerate_search_data()
-
-        # Custom invalidation logic
-        def invalidation_keys(func_name, *args, **kwargs):
-            user_id = kwargs['user_id']
-            team_id = get_user_team(user_id)
-            return f"team:{team_id}:members"
-
-        @CacheInvalidator(key_generator=invalidation_keys)
-        async def remove_user_from_team(user_id: int, team_id: int):
-            return update_team_membership(user_id, team_id)
-
-    Warning:
-        Pattern-based invalidation using wildcards (*) can be expensive
-        on large Redis instances. Use specific keys when possible.
+    Wildcard patterns are expensive on large Redis instances — prefer specific keys.
     """
 
     def __init__(
@@ -271,15 +138,9 @@ class CacheInvalidator:
         key_generator: _InvalidationKeyGenerator | None = None,
         key: str | None = None,
     ):
-        """
-        Initialize the cache decorator.
+        """Initialize the cache invalidator.
 
-        Args:
-            key_pattern: Optional string template for the cache key (e.g. "{arg1}:{arg2}")
-            key_generator: Optional custom function returning one key, or several,
-                to invalidate
-            ttl: Time-to-live for cache entries in seconds. None means no expiration
-            key: Optional static key for caching
+        key_generator may return one key or several to invalidate.
         """
         self.key_patterns = key_patterns
         self.key_generator = key_generator
@@ -294,24 +155,14 @@ class CacheInvalidator:
     def __call__(self, func: Callable[P, R]) -> Callable[P, Awaitable[R]]: ...
 
     def __call__(self, func: _SyncOrAsync[P, R]) -> Callable[P, Awaitable[R]]:
-        """
-        Apply the cache invalidator to a function.
-
-        Args:
-            func: The function to be invalidated (sync or async)
-
-        Returns:
-            Wrapped function with cache invalidation behavior (always async)
-        """
+        """Wrap func with cache invalidation, always returning an async callable."""
 
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            # Generate the cache key
             cache_keys: list[str] = []
             if self.key:
                 cache_keys = [self.key]
             elif self.key_generator:
-                # Handle both sync and async key generators
                 if asyncio.iscoroutinefunction(self.key_generator):
                     generated = await self.key_generator(func.__name__, *args, **kwargs)
                 else:
@@ -325,7 +176,6 @@ class CacheInvalidator:
                 bound_args = func_signature.bind(*args, **kwargs)
                 bound_args.apply_defaults()
 
-                # Generate the cache key
                 cache_keys = [
                     _pattern_to_key(pattern, arguments=bound_args.arguments)
                     for pattern in self.key_patterns
@@ -333,10 +183,8 @@ class CacheInvalidator:
 
             log.debug(f"{LogTag.API} Cache invalidation for keys", cache_keys=cache_keys)
 
-            # Invalidate the cache
             await asyncio.gather(*[delete_cache(key) for key in cache_keys])
 
-            # Call the original function - handle both sync and async
             if asyncio.iscoroutinefunction(func):
                 return cast(R, await func(*args, **kwargs))
             return cast(R, func(*args, **kwargs))
@@ -345,30 +193,10 @@ class CacheInvalidator:
 
 
 def _pattern_to_key(pattern: str, arguments: dict[str, Any]) -> str:
-    """
-    Convert key pattern template to actual cache key using function arguments.
-
-    Replaces placeholders in pattern strings with actual values from function calls.
-    Supports standard Python string formatting with named placeholders.
-
-    Args:
-        pattern: Template string with placeholders (e.g., "user:{user_id}:data:{type}")
-        arguments: Function arguments dictionary from inspect.signature.bind()
-
-    Returns:
-        Formatted cache key string
+    """Fill a key pattern template's placeholders from bound function arguments.
 
     Raises:
-        ValueError: If pattern contains placeholders not found in arguments
-
-    Examples:
-        pattern = "user:{user_id}:profile:{version}"
-        arguments = {"user_id": 123, "version": "v2", "extra": "ignored"}
-        result = "user:123:profile:v2"
-
-    Note:
-        This is an internal utility function used by the Cacheable decorator.
-        Arguments must match the pattern placeholders exactly.
+        ValueError: If pattern contains placeholders not found in arguments.
     """
     try:
         return pattern.format(**arguments)

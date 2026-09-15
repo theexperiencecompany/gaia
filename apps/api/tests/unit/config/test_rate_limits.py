@@ -577,9 +577,7 @@ class TestGetFeatureInfo:
 @pytest.mark.unit
 class TestActivityPolicy:
     def test_trigger_workflow_executions_never_counts_as_activity(self) -> None:
-        """System-driven fires are not user actions: counting them let a user's
-        own automation keep them "active" forever (masking the dormancy sweep)
-        and inflated the activity heatmap with runs nobody performed."""
+        """System-driven fires are not user actions: counting them let automation keep a user "active" forever and inflated the activity heatmap."""
         assert FEATURE_LIMITS["trigger_workflow_executions"].counts_as_activity is False
 
 
@@ -594,9 +592,7 @@ def _tier(
 
 
 # One feature per branch of derive_pro_benefits, so every section and its
-# ordering is observable: the hit feature, a Pro-only feature, a daily-uncapped
-# one, a cost-walled one, three multiplier candidates with distinct ratios, and
-# a feature nobody can use on either tier.
+# ordering is observable.
 _UPSELL_TABLE = {
     "hit": _tier(10, 300, 100, 3_000, "Hit"),
     "gated": _tier(0, 0, 5, 100, "Gated"),
@@ -614,8 +610,7 @@ _UPSELL_TABLE = {
 
 @pytest.mark.unit
 class TestDeriveProBenefits:
-    """The upsell bullets come from the same table that enforces the limits, so
-    the section order and the numbers in them are the contract."""
+    """The upsell bullets come from the same table that enforces the limits, so the section order and the numbers in them are the contract."""
 
     @pytest.fixture(autouse=True)
     def upsell_table(self) -> Iterator[None]:

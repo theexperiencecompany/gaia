@@ -1,7 +1,7 @@
 """Unit tests for the bot platform-linking endpoints.
 
-Split out of ``test_bot_endpoint.py`` to match the route split: these cover
-``app/api/v1/endpoints/bot_links.py`` (create-link-token, redeem-link-code,
+Split out of test_bot_endpoint.py to match the route split: these cover
+app/api/v1/endpoints/bot_links.py (create-link-token, redeem-link-code,
 link-token-info). Assertions are unchanged from the original module — only the
 patch targets moved with the code.
 """
@@ -61,7 +61,7 @@ async def _create_link_token(
 ) -> tuple[CreateLinkTokenResponse | HTTPException, dict[str, object]]:
     """Run the handler inside a wide-event boundary.
 
-    Returns the response — or the ``HTTPException`` the header guard raised —
+    Returns the response — or the HTTPException the header guard raised —
     together with the wide event the call stamped, so a test can assert the
     refusal and its audit trail in one place.
     """
@@ -94,7 +94,7 @@ def _pro_plan_by_default():
 
 
 class TestCreateLinkToken:
-    """POST /api/v1/bot/create-link-token"""
+    """POST /api/v1/bot/create-link-token."""
 
     @patch("app.api.v1.endpoints.bot_links.redis_cache")
     @patch("app.api.v1.endpoints.bot_links.require_bot_api_key", new_callable=AsyncMock)
@@ -139,9 +139,7 @@ class TestCreateLinkToken:
         assert response.status_code == 401
 
     async def test_the_minted_token_is_the_one_stored_and_the_one_in_the_auth_url(self):
-        """The token is the whole link credential: the value handed to the bot,
-        the value the confirmation page looks up, and the Redis key must be the
-        same string, under the TTL that makes the link short-lived."""
+        """The token, the confirmation lookup, and the Redis key must all be the same string, under the TTL that keeps the link short-lived."""
         redis_client = AsyncMock()
         response, _ = await _create_link_token(_CREATE_BODY, redis_client)
 
@@ -159,10 +157,7 @@ class TestCreateLinkToken:
         )
 
     async def test_the_token_is_minted_with_the_full_32_bytes_of_entropy(self):
-        """``link-token-info`` is unauthenticated and the token in its path is the
-        whole credential, so the token's WIDTH is the only thing standing between
-        a probe and someone's pending link — and nothing about the response shape
-        changes when it shrinks."""
+        """link-token-info is unauthenticated, so the token's width alone stands between a probe and someone's pending link — the response shape never changes."""
         redis_client = AsyncMock()
 
         with patch(
@@ -181,8 +176,7 @@ class TestCreateLinkToken:
         assert first.token != second.token
 
     async def test_the_display_fields_are_stored_only_when_the_bot_sent_them(self):
-        """The confirmation page renders these; an absent one must stay absent
-        rather than be written as an empty string."""
+        """An absent display field must stay absent rather than be stored as an empty string."""
         redis_client = AsyncMock()
         body = CreateLinkTokenRequest(
             platform="discord",
@@ -201,9 +195,7 @@ class TestCreateLinkToken:
         assert response.token
 
     async def test_issuing_a_token_stamps_the_wide_event_and_the_audit_trail(self):
-        """Minting a link credential is auth-grade: the audit entry is the only
-        record of which platform account a token was minted for, and it must
-        never carry the token itself."""
+        """The audit entry is the only record of which platform account a token was minted for, and must never carry the token itself."""
         redis_client = AsyncMock()
         response, event = await _create_link_token(_CREATE_BODY, redis_client)
 
@@ -221,8 +213,7 @@ class TestCreateLinkToken:
         assert response.token not in str(event)
 
     async def test_a_platform_header_mismatch_is_refused_and_audited(self):
-        """An API-key holder must not mint a token for a platform it is not
-        authenticated as — the refusal names the mismatch and nothing is stored."""
+        """An API-key holder must not mint a token for a platform it is not authenticated as; the refusal names the mismatch and nothing is stored."""
         redis_client = AsyncMock()
         refusal, event = await _create_link_token(
             _CREATE_BODY, redis_client, bot_platform="telegram"
@@ -243,8 +234,7 @@ class TestCreateLinkToken:
         redis_client.hset.assert_not_awaited()
 
     async def test_a_platform_user_id_header_mismatch_is_refused_and_audited(self):
-        """The second half of the guard: the right platform, someone else's
-        handle. Its own reason is what separates it in the audit trail."""
+        """The second half of the guard (right platform, someone else's handle) carries its own reason in the audit trail."""
         redis_client = AsyncMock()
         refusal, event = await _create_link_token(
             _CREATE_BODY, redis_client, bot_platform_user_id="SOMEONE_ELSE"
@@ -267,8 +257,7 @@ class TestCreateLinkToken:
         redis_client.hset.assert_not_awaited()
 
     async def test_headers_that_match_the_body_mint_the_token(self):
-        """The guard compares for INEQUALITY: flipped to `==`, the ordinary case
-        where a bot's own headers match its body would refuse every mint."""
+        """The guard compares for inequality: flipped to ==, matching headers would refuse every mint."""
         redis_client = AsyncMock()
         response, event = await _create_link_token(
             _CREATE_BODY,
@@ -331,20 +320,18 @@ def _link_result(is_new_link: bool = True) -> PlatformLinkResult:
 
 
 def _completion(is_new_link: bool = True, delivered: bool = True) -> PlatformLinkCompletion:
-    """What the endpoint gets back from link completion."""
+    """Build what the endpoint gets back from link completion."""
     return PlatformLinkCompletion(link=_link_result(is_new_link), first_contact_delivered=delivered)
 
 
 class TestRedeemLinkCode:
-    """POST /api/v1/bot/redeem-link-code"""
+    """POST /api/v1/bot/redeem-link-code."""
 
     @pytest.fixture(autouse=True)
     def _linked_user(self):
-        """The greeting reads the linked user's name, which lives in Mongo.
+        """Stub the Mongo user lookup the greeting reads the linked user's name from.
 
-        Unit tests have no Mongo, so the lookup is stubbed for the whole class
-        and returns a user with no name; the tests that care about the name
-        override the return value.
+        Returns a user with no name by default; tests that care about the name override it.
         """
         with patch(USER_PATCH, new_callable=AsyncMock, return_value=None) as mock_get_user:
             yield mock_get_user
@@ -362,10 +349,7 @@ class TestRedeemLinkCode:
 
     @pytest.fixture(autouse=True)
     def _first_contact(self):
-        """Composing the bundle reads Mongo (connected integrations) and mints
-        Redis-backed connect links. Its copy is proven in
-        ``tests/unit/services/onboarding/test_first_contact.py``; here only the
-        fact that the endpoint returns whatever it composed matters."""
+        """Stub the bundle composer (its own copy is proven in test_first_contact.py); here only that the endpoint returns whatever it composed matters."""
         with (
             patch(CONTACT_PATCH, new_callable=AsyncMock, return_value=BUBBLES) as mock_contact,
             patch(PERSIST_PATCH, new_callable=AsyncMock),
@@ -419,9 +403,7 @@ class TestRedeemLinkCode:
         _linked_user: AsyncMock,
         _first_contact: AsyncMock,
     ):
-        """The greeting names the GAIA account the code linked and the connect
-        links are minted for it, so composing off the platform profile (or off
-        nobody) would greet the wrong person and hand out useless links."""
+        """The greeting and connect links are composed off the linked GAIA account, not the platform profile, or they'd greet the wrong person."""
         _linked_user.return_value = {"_id": "user1", "name": "Aryan Randeriya"}
         with (
             patch(
@@ -442,11 +424,7 @@ class TestRedeemLinkCode:
     async def test_the_exchange_is_persisted_so_the_next_turn_has_context(
         self, _auth: AsyncMock, client: AsyncClient, _linked_user: AsyncMock
     ):
-        """No chat turn ran, so nothing else writes this. Without it the user's
-        next message lands in an empty thread and GAIA has no idea it just
-        introduced itself. The request body and the linked user go through
-        as-is: the body names the platform thread to write into and the user
-        is the actor the write is scoped to."""
+        """No chat turn ran, so nothing else writes this; without it the user's next message lands in an empty thread."""
         linked_user = {"_id": "user1", "name": "Aryan Randeriya"}
         _linked_user.return_value = linked_user
         with (
@@ -470,12 +448,7 @@ class TestRedeemLinkCode:
     async def test_a_first_contact_the_queue_refused_comes_back_for_the_bot_to_send(
         self, _auth: AsyncMock, client: AsyncClient
     ):
-        """The link held, the one message a new user is guaranteed to read did not go out.
-
-        Nothing retries the outbound publish, so a silent failure left the user
-        on a linked platform that never said anything. The bubbles come back
-        with ``delivered=False`` and the bot sends them itself.
-        """
+        """Nothing retries the outbound publish, so a failed first message comes back with delivered=False for the bot to send itself."""
         with (
             patch(
                 CLAIM_PATCH,
@@ -604,11 +577,7 @@ class TestRedeemLinkCode:
         _already_linked: AsyncMock,
         _first_contact: AsyncMock,
     ):
-        """Tapping the deep link twice is the normal case on mobile, and the
-        second tap arrives with a code that is already spent. The state the code
-        asked for is the state we are in, so the answer is the success the first
-        tap gave -- being told "that link has expired" under a greeting that is
-        still on screen reads as a broken product."""
+        """A second tap with an already-spent code answers with the same success as the first tap, not an expiry message under a live greeting."""
         with (
             patch(CLAIM_PATCH, new_callable=AsyncMock, return_value=LinkCodeClaim()),
             patch(DISCARD_PATCH, new_callable=AsyncMock) as mock_discard,
@@ -623,10 +592,8 @@ class TestRedeemLinkCode:
         # the second owes nothing, so the bot is handed nothing to send.
         assert response.json() == {"linked": True, "delivered": True, "first_contact": []}
         _already_linked.assert_awaited_once_with("telegram", "TG42")
-        # Every side effect of a first link hangs off completion -- the outbound
-        # first-contact publish and the integration_connected capture both. Not
-        # calling it is what keeps the user from being greeted, counted and
-        # given a synthetic first message a second time.
+        # Every side effect of a first link (outbound first-contact publish,
+        # integration_connected capture) hangs off completion.
         mock_complete.assert_not_awaited()
         _first_contact.assert_not_awaited()
         mock_persist.assert_not_awaited()
@@ -764,9 +731,7 @@ class TestRedeemLinkCode:
     async def test_a_spent_code_presented_by_an_unlinked_account_still_expires(
         self, _auth: AsyncMock, client: AsyncClient, _already_linked: AsyncMock
     ):
-        """The idempotent answer is for the account the code already linked and
-        nobody else: a spent code replayed from a different handle is a bearer
-        credential being reused, and must stay a dead link."""
+        """The idempotent answer is only for the account the code already linked; a spent code replayed from a different handle must stay a dead link."""
         with (
             patch(CLAIM_PATCH, new_callable=AsyncMock, return_value=LinkCodeClaim()),
             patch(COMPLETE_PATCH, new_callable=AsyncMock) as mock_complete,
@@ -779,9 +744,7 @@ class TestRedeemLinkCode:
         mock_complete.assert_not_awaited()
 
     async def test_the_idempotent_answer_is_audited_as_a_link_that_already_held(self):
-        """A success that writes nothing still has to be findable: without its
-        own audit entry and outcome, a second tap is indistinguishable from a
-        fresh link in the trail, and from nothing at all in the wide event."""
+        """A success that writes nothing still needs its own audit entry and outcome, or a second tap is indistinguishable from a fresh link."""
         body = RedeemLinkCodeRequest(platform="telegram", platform_user_id="TG42", code="CODE123")
         request = MagicMock()
         request.state = _make_request()
@@ -881,9 +844,7 @@ class TestRedeemLinkCode:
     async def test_a_platform_mismatch_alone_is_enough_to_reject(
         self, _auth: AsyncMock, client: AsyncClient
     ):
-        """The two halves of the guard are independent: a Discord key redeeming a
-        Telegram code carries the SAME handle it is authenticated for, so only
-        the platform half can catch it."""
+        """The two halves of the guard are independent: a Discord key redeeming a Telegram code still carries the same handle it is authenticated for."""
 
         async def _wrong_platform(request):
             request.state.bot_platform = "discord"
@@ -905,8 +866,7 @@ class TestRedeemLinkCode:
     async def test_the_expired_code_body_tells_the_user_what_to_do_next(
         self, _auth: AsyncMock, client: AsyncClient
     ):
-        """This body is the whole reply a bot user sees when a one-tap link goes
-        stale — the why/fix pair is what turns a dead end into a retry."""
+        """The body is the whole reply a bot user sees for a stale link; the why/fix pair turns a dead end into a retry."""
         with (
             patch(CLAIM_PATCH, new_callable=AsyncMock, return_value=LinkCodeClaim()),
             patch(DISCARD_PATCH, new_callable=AsyncMock),
@@ -940,8 +900,7 @@ class TestRedeemLinkCode:
         }
 
     async def test_a_matching_header_is_not_treated_as_a_mismatch(self, client: AsyncClient):
-        """The guard compares for INEQUALITY: flipped to `==`, the ordinary case
-        where the bot's own headers match the body would 403 every redemption."""
+        """The guard compares for inequality: flipped to ==, matching headers would 403 every redemption."""
 
         async def _matching_request(request):
             request.state.bot_platform = "telegram"
@@ -967,8 +926,7 @@ class TestRedeemLinkCode:
     async def test_the_presented_code_is_the_one_redeemed_and_the_plan_is_checked(
         self, client: AsyncClient
     ):
-        """The code is the credential and the plan check is the paywall: a call
-        that loses either argument links the wrong person, or nobody's plan."""
+        """Losing either the code or the plan check would link the wrong person, or check nobody's plan."""
         with (
             patch("app.api.v1.endpoints.bot_links.require_bot_api_key", new=AsyncMock()),
             patch(
@@ -994,8 +952,7 @@ class TestRedeemLinkCode:
     async def test_a_plan_wall_leaves_the_code_live_for_the_retry(
         self, _auth: AsyncMock, client: AsyncClient
     ):
-        """A lapsed user who taps the link, subscribes, and taps again must not
-        be told the link expired: the wall refuses without spending the code."""
+        """A lapsed user who subscribes and taps again must not be told the link expired: the wall refuses without spending the code."""
         with (
             patch(
                 CLAIM_PATCH,
@@ -1018,9 +975,7 @@ class TestRedeemLinkCode:
         mock_discard.assert_not_awaited()
 
     async def test_a_successful_redemption_stamps_the_wide_event_and_the_audit_trail(self):
-        """Linking a platform account is an auth-grade event: the audit entry is
-        the only record of which GAIA user claimed which handle, and the wide
-        event is what makes the redemption findable at all."""
+        """The audit entry is the only record of which GAIA user claimed which handle; the wide event makes the redemption findable at all."""
         body = RedeemLinkCodeRequest(platform="telegram", platform_user_id="TG42", code="CODE123")
         request = MagicMock()
         request.state = _make_request()
@@ -1056,9 +1011,7 @@ class TestRedeemLinkCode:
         ]
 
     async def test_a_rejected_code_is_audited_with_its_reason_and_never_the_code(self):
-        """A probe hammering codes has to be findable, and the audit entry is the
-        only place that records it — never carrying the code, which is the
-        credential being guessed."""
+        """A probe hammering codes must be findable in the audit entry, which never carries the code being guessed."""
         body = RedeemLinkCodeRequest(platform="telegram", platform_user_id="TG42", code="CODE123")
         request = MagicMock()
         request.state = _make_request()
@@ -1086,9 +1039,7 @@ class TestRedeemLinkCode:
         assert "CODE123" not in str(event)
 
     async def test_a_header_mismatch_is_audited_as_a_mismatch_not_a_bad_code(self):
-        """Two rejections share one audit message, so `reason` is the only thing
-        separating an expired link from an API key reaching for someone else's
-        handle — the second is an attack, the first is a Tuesday."""
+        """Two rejections share one audit message, so reason alone separates an expired link from an API key reaching for someone else's handle."""
         body = RedeemLinkCodeRequest(platform="telegram", platform_user_id="TG42", code="CODE123")
         request = MagicMock()
         request.state = _make_request(bot_platform="telegram", bot_platform_user_id="SOMEONE_ELSE")
@@ -1125,16 +1076,10 @@ LOG_PATCH = "app.api.v1.endpoints.bot_links.log"
 
 
 class TestPersistFirstContact:
-    """The redeem endpoint stores the first contact as the bot thread's opening
-    turns, through the same write path the chat stream uses."""
+    """The redeem endpoint stores the first contact as the bot thread's opening turns, through the same write path the chat stream uses."""
 
     async def test_writes_the_opener_and_the_bundle_as_the_threads_first_turns(self):
-        """The opener is what the user actually sent, word for word.
-
-        On WhatsApp and iMessage the prefilled text is editable, so the message
-        that arrives is theirs; storing the canned line instead dropped their
-        real first question and put words in their mouth.
-        """
+        """The opener stored is the user's actual editable message, not the canned prefilled text."""
         body = RedeemLinkCodeRequest(**REDEEM_BODY, first_message=OWN_MESSAGE)
         user = {"_id": "user1", "name": "Aryan Randeriya"}
         with (
@@ -1162,12 +1107,7 @@ class TestPersistFirstContact:
         assert reply_at - opener_at == timedelta(milliseconds=100)
 
     async def test_a_link_that_carried_no_message_writes_no_user_turn(self):
-        """A Telegram deep link is a tap, not a sentence.
-
-        The canned opener used to be stored as the user's own turn, which is a
-        message they never sent — and it is what an activation checklist counts
-        when it asks whether they have said anything yet.
-        """
+        """A Telegram deep link is a tap, not a sentence; the canned opener must not be stored as a message the user never sent."""
         with (
             patch(SESSION_PATCH, new_callable=AsyncMock, return_value="conv-1"),
             patch(UPDATE_PATCH, new_callable=AsyncMock) as update,
@@ -1190,8 +1130,7 @@ class TestPersistFirstContact:
         assert session.await_args.args[3] == {"user_id": "user1"}
 
     async def test_a_failed_write_is_logged_and_never_raised(self):
-        """The link already succeeded and the code is spent; a transcript
-        failure must not turn that into an error the user cannot retry."""
+        """The link already succeeded and the code is spent; a transcript failure must not turn that into an unretryable error."""
         with (
             patch(SESSION_PATCH, new_callable=AsyncMock, side_effect=RuntimeError("mongo down")),
             patch(UPDATE_PATCH, new_callable=AsyncMock) as update,
@@ -1214,7 +1153,7 @@ class TestPersistFirstContact:
 
 
 class TestGetLinkTokenInfo:
-    """GET /api/v1/bot/link-token-info/{token}"""
+    """GET /api/v1/bot/link-token-info/{token}."""
 
     @patch("app.api.v1.endpoints.bot_links.redis_cache")
     async def test_link_token_info_success(
@@ -1249,8 +1188,7 @@ class TestGetLinkTokenInfo:
     async def test_the_record_is_read_under_the_token_key_and_only_display_fields_returned(
         self, mock_redis: MagicMock, client: AsyncClient
     ):
-        """The route is unauthenticated, so the response must carry nothing but
-        what the confirmation page shows — never the platform user id."""
+        """The unauthenticated route must return only what the confirmation page shows, never the platform user id."""
         mock_redis.client.hgetall = AsyncMock(
             return_value={
                 "platform": "discord",
@@ -1293,8 +1231,7 @@ class TestGetLinkTokenInfo:
         ]
 
     async def test_a_lookup_miss_is_audited_as_a_probe_and_never_carries_the_token(self):
-        """The token in the path IS the credential being guessed — the audit
-        entry records the probe, the reason, and nothing that was presented."""
+        """The audit entry for a lookup miss records the probe and reason, never the token being guessed."""
         with patch("app.api.v1.endpoints.bot_links.redis_cache") as mock_redis:
             mock_redis.client.hgetall = AsyncMock(return_value={})
             async with log_context("link_token_info_test"):

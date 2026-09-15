@@ -1,4 +1,4 @@
-"""Tests for app/api/v1/endpoints/integrations/community.py"""
+"""Tests for app/api/v1/endpoints/integrations/community.py."""
 
 from unittest.mock import AsyncMock, patch
 

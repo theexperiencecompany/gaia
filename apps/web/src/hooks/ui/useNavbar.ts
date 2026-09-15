@@ -41,14 +41,9 @@ export function useNavbar() {
       setStars(Math.round(repoData.stargazers_count));
       return;
     }
-    // Slot-machine flicker while the GitHub count loads — but BOUNDED. If the
-    // external GitHub API is slow or rate-limited, an unbounded 80ms interval
-    // spins the main thread forever: the page never goes idle, which both
-    // wastes battery and prevents Lighthouse from ever settling (massively
-    // inflating LCP/TBT/TTI). Cap the flicker; NumberFlow animates to the real
-    // value once it arrives.
-    // A fixed stride through 100..999 reads as a shuffle at 80ms; nothing
-    // here needs randomness, so no PRNG is involved.
+    // Slot-machine flicker while the GitHub count loads — BOUNDED (unbounded
+    // would spin the main thread forever if the API stalls, inflating
+    // LCP/TBT/TTI) and deterministic: a fixed stride through 100..999, no PRNG.
     const id = setInterval(() => {
       setStars((current) => 100 + ((current * 7 + 173) % 900));
     }, 80);

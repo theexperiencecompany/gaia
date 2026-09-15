@@ -85,7 +85,6 @@ export type WorkflowDraftData = {
   suggested_description: string;
   /** Detailed prompt/instructions for the workflow execution */
   prompt: string;
-  /** Trigger type: manual, schedule, or integration */
   trigger_type: "manual" | "schedule" | "integration";
   /** Trigger slug for integration triggers (e.g., GMAIL_NEW_GMAIL_MESSAGE) */
   trigger_slug?: string | null;

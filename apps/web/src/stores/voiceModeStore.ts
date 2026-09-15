@@ -19,10 +19,9 @@ const useVoiceModeStore = create<VoiceModeState>()(
       discoveredConversationId: null,
 
       enterVoiceMode: (existingConversationId?: string) => {
-        // voiceSessionId is a per-session UI key (forces a fresh gradient
-        // canvas) — NOT the conversation id. The conversation id is owned by
-        // the backend: for a new chat it arrives over the LiveKit
-        // `conversation-id` topic; for an existing chat it's the URL param.
+        // voiceSessionId is a per-session UI key (forces a fresh gradient canvas), not the
+        // conversation id — that's backend-owned: a new chat gets it over the LiveKit
+        // `conversation-id` topic, an existing chat reads it from the URL param.
         const newSessionId = crypto.randomUUID();
         set(
           {

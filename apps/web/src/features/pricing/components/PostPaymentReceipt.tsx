@@ -51,11 +51,9 @@ function moneyFormatter(code: string): Intl.NumberFormat {
 /** Formats minor-unit money with the currency it was actually charged in. */
 function formatMoney(amount: number, currency?: string): string {
   const code = currency || "USD";
-  // The currency arrives from webhook data, so a malformed code is possible
-  // and would take the payment screen down with a RangeError. It is checked
-  // rather than caught: catching the throw turned a receipt printing the
-  // wrong money into a receipt printing the wrong money in complete silence,
-  // which is the one thing a receipt must not do.
+  // The currency arrives from webhook data, so a malformed code is possible and
+  // would take the screen down with a RangeError; it's checked rather than
+  // caught, since silently swallowing it would print the wrong money silently.
   if (!WELL_FORMED_CURRENCY.test(code)) {
     console.error(
       `Receipt: subscription currency "${code}" is not a currency code; printing the bare amount`,

@@ -1,6 +1,4 @@
-"""
-Task modules for ARQ worker.
-"""
+"""Task modules for ARQ worker."""
 
 from .checkpoint_retention_tasks import prune_checkpoint_versions
 from .cleanup_tasks import cleanup_stuck_personalization

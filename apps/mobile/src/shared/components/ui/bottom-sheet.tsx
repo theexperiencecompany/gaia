@@ -76,13 +76,9 @@ function BottomSheetRoot({
   );
 }
 
-// ─── Portal (pass-through wrapper) ───────────────────────────────────────────
-//
-// BottomSheetModal portals its content through the BottomSheetModalProvider
-// mounted at the app root (see apps/mobile/src/app/_layout.tsx). This keeps
-// the sheet's gesture handler tree at root level — sibling to (not nested
-// inside) sibling DrawerLayout/Stack gesture trees. Portal here is a logical
-// no-op kept for API parity.
+// Portal (pass-through wrapper): BottomSheetModal portals content through the
+// BottomSheetModalProvider mounted at the app root, keeping the sheet's gesture
+// tree at root level, sibling to Drawer/Stack trees; Portal here is a no-op for API parity.
 
 interface PortalProps {
   children: ReactNode;

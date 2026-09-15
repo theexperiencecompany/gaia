@@ -28,7 +28,7 @@ def _make_stuck_user(
 
 
 def _logged_last_updates(mock_log: MagicMock) -> list[str]:
-    """The `last_update` field the task stamped on its wide-event log lines."""
+    """Return the last_update field the task stamped on its wide-event log lines."""
     return [
         c.kwargs["last_update"] for c in mock_log.info.call_args_list if "last_update" in c.kwargs
     ]
@@ -94,8 +94,7 @@ class TestCleanupStuckPersonalization:
     # ------------------------------------------------------------------
 
     async def test_finder_called_with_limit_50(self, ctx):
-        """The finder MUST be called with limit=50 — changing it to any other
-        value must cause this test to fail."""
+        """The finder must be called with limit=50, exactly."""
         with patch(_FIND, new_callable=AsyncMock, return_value=[]) as mock_find:
             await cleanup_stuck_personalization(ctx)
 

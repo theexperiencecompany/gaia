@@ -6,7 +6,7 @@ Composio trigger instance, so a teardown that counted only its own kind would
 delete the other's live trigger.
 
 Two registration shapes exist and the handler decides which (see
-``TriggerHandler.registers_instances``). Per-resource triggers return instance ids
+TriggerHandler.registers_instances). Per-resource triggers return instance ids
 we store and later refcount. Account-level triggers (Gmail) fire on the connected
 account itself: registration returns nothing, there is nothing to refcount, and
 dispatch finds the subscription by user and trigger name instead. Conflating the
@@ -47,11 +47,11 @@ class SubscriptionError(Exception):
 
 
 def build_trigger_config(trigger_name: str, trigger_data: dict[str, Any] | None) -> TriggerConfig:
-    """The ``TriggerConfig`` a handler expects, for a todo rather than a workflow.
+    """Build the TriggerConfig a handler expects, for a todo rather than a workflow.
 
-    ``trigger_data`` carries the registration-time knobs the payload cannot express
-    — a calendar's ``minutes_before_start``, a Slack channel id. The discriminated
-    union keys on ``trigger_name``, so it is stamped into both halves.
+    trigger_data carries the registration-time knobs the payload cannot express
+    — a calendar's minutes_before_start, a Slack channel id. The discriminated
+    union keys on trigger_name, so it is stamped into both halves.
     """
     return TriggerConfig.model_validate(
         {
@@ -73,10 +73,10 @@ async def register_subscription(
     cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS,
     trigger_data: dict[str, Any] | None = None,
 ) -> tuple[TriggerSubscription, ValidationOutcome]:
-    """Validate, register with Composio, and store one subscription on ``todo_id``.
+    """Validate, register with Composio, and store one subscription on todo_id.
 
     Returns the stored subscription and the validation outcome, so the caller can
-    surface what was mechanically repaired. Raises ``SubscriptionError`` when the
+    surface what was mechanically repaired. Raises SubscriptionError when the
     conditions cannot be made valid or the trigger cannot be registered — a
     subscription that cannot fire must never be stored.
     """
@@ -233,14 +233,12 @@ async def unregister_subscription(
 
 
 async def teardown_subscriptions(todo_id: str, user_id: str, *, reason: str) -> int:
-    """Unregister every subscription on ``todo_id`` and clear them from the document.
+    """Unregister every subscription on todo_id and clear them from the document.
 
-    Called on every path that ends a todo's life — completion, archival, failure and
-    deletion. Deletion matters most: once the document is gone nothing names the
-    Composio trigger any more, so it would leak with no way to find it.
-
-    Composio deletion is reference-counted, and this todo is excluded from its own
-    count so the last reference actually releases the trigger.
+    Called on every path that ends a todo's life — completion, archival, failure
+    and deletion — since once the document is gone nothing names the Composio
+    trigger any more. Composio deletion is reference-counted, and this todo is
+    excluded from its own count so the last reference actually releases the trigger.
     """
     todo = await todo_repository.get(todo_id, user_id=user_id)
     if todo is None or not todo.trigger_subscriptions:
@@ -278,13 +276,12 @@ async def teardown_subscriptions(todo_id: str, user_id: str, *, reason: str) -> 
 
 
 async def pause_subscriptions_for_trigger_names(user_id: str, trigger_names: set[str]) -> int:
-    """Mark subscriptions on ``trigger_names`` paused and flag their todos.
+    """Mark subscriptions on trigger_names paused and flag their todos.
 
-    Called when the integration behind them loses its connection. The subscription
-    keeps its stored Composio ids so the refcount still protects the trigger while
-    it is paused, and the todo gains the blocking label the maintenance sweep
-    already understands — a dead watch the user cannot see is the failure this
-    avoids.
+    Called when the integration behind them loses its connection. The
+    subscription keeps its stored Composio ids so the refcount still protects
+    the trigger while paused, and the todo gains the blocking label the
+    maintenance sweep already understands.
     """
     paused = 0
     for trigger_name in trigger_names:
@@ -315,7 +312,7 @@ async def resync_subscriptions_for_trigger_names(user_id: str, trigger_names: se
 
     A reconnect creates a fresh Composio connected account, so instance ids
     registered against the old one go permanently stale. Mirrors
-    ``resync_user_workflow_triggers``: failures are logged per todo so one broken
+    resync_user_workflow_triggers: failures are logged per todo so one broken
     subscription cannot block the rest, or the OAuth flow this runs behind.
     """
     resynced = 0
@@ -357,7 +354,7 @@ async def _resync_one(
     subscriptions: list[TriggerSubscription],
     trigger_name: str,
 ) -> list[TriggerSubscription]:
-    """Re-register every subscription on ``trigger_name`` and repoint its ids."""
+    """Re-register every subscription on trigger_name and repoint its ids."""
     refreshed: list[TriggerSubscription] = []
     for subscription in subscriptions:
         if subscription.trigger_name != trigger_name:

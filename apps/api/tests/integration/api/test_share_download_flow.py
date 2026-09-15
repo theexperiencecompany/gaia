@@ -1,10 +1,4 @@
-"""Share-download flow: real app on a real socket, Composio's real fetcher.
-
-Proves the composition no mock can: mint a grant against a seeded workspace,
-serve the app with uvicorn, and fetch with Composio's actual
-``_fetch_file_from_url`` over real HTTP — filename, bytes, and mimetype must
-all survive. Hermetic (localhost socket, fake mount, stubbed secret).
-"""
+"""Share-download flow: real app on a real socket, Composio's real fetcher."""
 
 from pathlib import Path
 import socket
@@ -35,7 +29,7 @@ def _serve(app: FastAPI) -> tuple[uvicorn.Server, threading.Thread, int]:
 
 @pytest.fixture
 def _workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    """Fake JuiceFS mount with one seeded file (the `mount` lie, hermetic)."""
+    """Fake JuiceFS mount with one seeded file (the mount lie, hermetic)."""
     from app.config.settings import settings
 
     user_dir = tmp_path / "users" / "u1"
@@ -80,12 +74,7 @@ def test_share_url_survives_real_fetch(
 
 
 async def test_auth_middleware_excludes_share_downloads() -> None:
-    """The token IS the credential: excluded paths reach the handler sessionless.
-
-    The middleware itself never 401s (route dependencies enforce); what the
-    exclusion buys is skipping session parsing/dev-bypass entirely, so an
-    unauthenticated Composio fetch is never mistaken for a user request.
-    """
+    """The token IS the credential: excluded paths reach the handler sessionless."""
     from app.api.v1.middleware.auth import WorkOSAuthMiddleware
 
     async def _handler(request: FastAPIRequest) -> Response:

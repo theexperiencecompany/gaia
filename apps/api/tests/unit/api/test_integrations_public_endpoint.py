@@ -1,4 +1,4 @@
-"""Tests for app/api/v1/endpoints/integrations/public.py"""
+"""Tests for app/api/v1/endpoints/integrations/public.py."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 

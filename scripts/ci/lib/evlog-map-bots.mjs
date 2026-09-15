@@ -66,11 +66,9 @@ const BOT_SRC_DIRS = [
   "apps/bots/telegram/src",
   "apps/bots/whatsapp/src",
   "apps/bots/imessage/src",
-  // The shared library is scanned for registrations too, not just for the
-  // named boundaries below: the process signal/fault handlers, the AMQP
-  // consumer and the shared HTTP routes all live here, and a scan that only
-  // knew about per-bot adapters would call that whole surface "not an entry
-  // point" and score a perfect 100 over it.
+  // The shared library is scanned too: the process signal/fault handlers, the
+  // AMQP consumer and the shared HTTP routes all live here, and a scan that
+  // only knew per-bot adapters would score a perfect 100 over that surface.
   "libs/shared/ts/src/bots",
 ];
 
@@ -79,16 +77,11 @@ const SCHEMA_FILE = "libs/shared/ts/src/bots/utils/wide-events.ts";
 const SCHEMA_INTERFACE = "BotWideEventFields";
 
 /**
- * Named shared boundaries: functions that are entry points in their own right
- * (a unit of work with several independent callers) rather than an SDK
- * registration a regex can find. Each is scored like any other entry, and the
- * set of them that PASSES the wide-event check becomes the cross-file
- * knowledge the per-file scan uses — a platform handler that calls one of these
- * is running inside a boundary with canonical context attached.
- *
- * That derivation is the point: nothing here is asserted to be instrumented.
- * Delete the boundary from `shutdown()` and it stops counting as one for the
- * signal handlers that call it, instead of silently vouching for them forever.
+ * Named shared boundaries: functions that are entry points in their own right,
+ * not SDK registrations a regex can find. Each is scored like any other entry;
+ * the ones that PASS become cross-file knowledge for the per-file scan.
+ * Derivation is the point — delete the boundary from `shutdown()` and it stops
+ * vouching for the signal handlers that call it, instead of doing so forever.
  */
 const SHARED_ENTRY_POINTS = [
   {
@@ -354,9 +347,8 @@ function discoverRegistrations(sf) {
       const receiver = sourceTextOf(sf, node.callee.object).replace(/^this\./, "");
       const label = registrationLabel(node.arguments[0], sf);
       // Everything registered on `process` is a process-level handler, never a
-      // platform "event". The map names the two classes apart; a registration
-      // the map cannot resolve — including one driven by a loop variable —
-      // still counts, because a loop must not be a way to leave the map.
+      // platform "event". A registration the map cannot resolve — including one
+      // driven by a loop variable — still counts, so a loop isn't a way out of the map.
       const kind =
         receiver === "process"
           ? (PROCESS_EVENT_KINDS.get(label) ?? "signal")
@@ -412,14 +404,9 @@ function classifySensitivity(entry, ownFacts) {
     return { level: "high", label, reasons };
   }
 
-  // PII tier — mirrors tools/evlog_map/sensitivity.py's `_PII_FIELDS`, so both
-  // scanners report one ordered ladder ("low" | "medium" | "high") and their
-  // maps stay comparable. Keep the two term lists in step.
-  //
-  // The Python side additionally requires a write call next to the PII field;
-  // the bots have no equivalent database-write signal, so this tier is
-  // term-only here. That makes it slightly broader, which is the right
-  // direction for a tier that only raises attention.
+  // PII tier mirrors tools/evlog_map/sensitivity.py's `_PII_FIELDS` — keep the
+  // two term lists in step. Python also requires a nearby write call; bots have
+  // no such signal, so this tier is term-only here (broader, which is fine for a warn-only tier).
   const piiTerms = [...words].filter((word) => PII_TERMS.has(word));
   if (piiTerms.length > 0) {
     return {
@@ -694,13 +681,10 @@ function findSharedEntryNode(sf, name) {
 
 /**
  * The subset of {@link SHARED_ENTRY_POINTS} that actually opens a wide-event
- * boundary today. Deliberately computed over the whole repo, ignoring
- * `--files-from`: a per-file scan still has to know that `dispatchCommand` is
- * instrumented, or every handler routing through it would read as dark.
- *
- * Suppressions are ignored on purpose — a waived boundary is a boundary the
- * scan agreed not to check, which is not the same as one that exists, and it
- * must not vouch for someone else.
+ * boundary today. Computed over the whole repo, ignoring `--files-from`: a
+ * per-file scan needs to know `dispatchCommand` is instrumented, or handlers
+ * routing through it read as dark. Suppressions are ignored — a waived
+ * boundary isn't one that exists, and must not vouch for someone else.
  */
 function verifiedSharedCalls(warnings) {
   const verified = new Set();

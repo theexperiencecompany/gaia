@@ -90,9 +90,7 @@ class TestGetUserId:
 
 @pytest.mark.unit
 class TestEditedTrigger:
-    """The assistant re-emits the FULL workflow on every edit, so this decides
-    what actually changed. Each of the three clauses is exercised alone: an
-    ``and`` in place of any ``or`` here silently drops a real trigger edit."""
+    """The assistant re-emits the FULL workflow on every edit, so this decides what actually changed."""
 
     def test_a_re_emitted_identical_trigger_is_not_reapplied(self) -> None:
         current = TriggerConfig(
@@ -161,8 +159,7 @@ class TestEditedTrigger:
 
 @pytest.mark.unit
 class TestRegeneratedAfterPromptEdit:
-    """The update already committed, so regeneration is best-effort — but the
-    call it makes and the warning it leaves behind are both load-bearing."""
+    """The update already committed, so regeneration is best-effort — the call and warning are load-bearing."""
 
     def _pieces(self) -> tuple[Workflow, Workflow]:
         current = TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
@@ -246,8 +243,7 @@ class TestApplyWorkflowEdit:
         assert request.trigger_config.timezone == "UTC"
 
     async def test_a_prompt_edit_regenerates_as_the_editing_user(self) -> None:
-        """The regeneration must run under the user who edited the prompt; a
-        dropped user_id would regenerate steps as nobody and fail auth checks."""
+        """A dropped user_id would regenerate steps as nobody and fail auth checks."""
         current = TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
         workflow = _workflow(current)
         draft = _draft(prompt="Summarize my inbox and my calendar")
@@ -294,9 +290,7 @@ class TestApplyWorkflowEdit:
 @pytest.mark.unit
 class TestCreateWorkflowDirectly:
     async def test_the_card_description_is_not_the_execution_prompt(self) -> None:
-        """description is card copy, prompt is the executor's goal. Writing the
-        prompt into both put the whole numbered instruction blob, schedule
-        preamble and all, on every chat-created workflow card."""
+        """Writing the prompt into both put the whole numbered instruction blob on every card."""
         draft = _draft(
             description="Priority-ordered digest of my unread Gmail",
             prompt=(
@@ -332,9 +326,7 @@ class TestCreateWorkflowDirectly:
         assert request.prompt == "Summarize my inbox"
 
     async def test_a_draft_with_no_prompt_falls_back_to_the_description(self) -> None:
-        """The description is the closest thing to instructions the assistant
-        produced, so it beats the title. Only a draft missing both lands on the
-        title."""
+        """The description beats the title; only a draft missing both lands on the title."""
         draft = _draft(description="Summarize my unread Gmail", prompt="")
         writer = MagicMock()
 

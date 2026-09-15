@@ -31,11 +31,9 @@ export const useDodoPayments = () => {
   );
   const { refetch: refetchSubscription } = useUserSubscriptionStatus();
 
-  // The store polls the raw endpoint; this is what pushes its answer into the
-  // shared `["subscription-status"]` cache every paid-only gate reads. Both
-  // endings matter: a checkout we gave up on hands the plans back, and a
-  // charge that landed just after we stopped asking must not be met with a
-  // Subscribe button by someone who has already paid.
+  // The store polls the raw endpoint; this pushes its answer into the shared
+  // `["subscription-status"]` cache every paid-only gate reads. Refetch on both
+  // endings: a given-up checkout hands the plans back, and a late charge must not show a Subscribe button to someone who already paid.
   useEffect(() => {
     if (checkoutPhase === "confirmed" || checkoutPhase === "unconfirmed")
       void refetchSubscription();

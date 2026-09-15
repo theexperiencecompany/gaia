@@ -88,10 +88,9 @@ export async function request<T = unknown>(
       });
     }
 
-    // A 402 the interceptor recognised is already `handled` — it opened the
-    // paywall, and a "subscribe" toast on top of it would be noise. One it
-    // deliberately left unhandled (a body that is not the subscription_required
-    // shape) belongs here, or the user's click does nothing at all.
+    // A 402 the interceptor recognised is already `handled` (it opened the
+    // paywall) — a "subscribe" toast on top would be noise. One it deliberately
+    // left unhandled (a non-subscription_required body) belongs here, or the click does nothing.
     if (!options.silent && !handledByInterceptor && !isAuthError) {
       // Try to extract error message from various response formats, falling
       // back to a method-specific default.
@@ -107,42 +106,7 @@ export async function request<T = unknown>(
   }
 }
 
-/**
- * Simple API service with consistent patterns
- *
- * @example
- * // Fetching data
- * const users = await apiService.get<User[]>('/users');
- *
- * // Fetching with error handling
- * const profile = await apiService.get<UserProfile>('/profile', {
- *   errorMessage: 'Failed to load profile'
- * });
- *
- * // Creating data with success message
- * const newPost = await apiService.post<Post>('/posts',
- *   { title: 'Hello', content: 'World' },
- *   { successMessage: 'Post created!', errorMessage: 'Failed to create post' }
- * );
- *
- * // Updating data
- * const updated = await apiService.put<Todo>(`/todos/${id}`,
- *   { completed: true },
- *   { successMessage: 'Task completed!' }
- * );
- *
- * // Deleting data
- * await apiService.delete(`/posts/${id}`, {
- *   successMessage: 'Post deleted',
- *   errorMessage: 'Failed to delete post'
- * });
- *
- * // Patching data
- * await apiService.patch('/users/profile',
- *   { avatar: 'new-url' },
- *   { silent: true } // No toasts
- * );
- */
+/** API service wrapping `request` with consistent toast/error options across verbs. */
 export const apiService = {
   get: <T = unknown>(url: string, options?: ApiOptions) =>
     request<T>("GET", url, undefined, options),

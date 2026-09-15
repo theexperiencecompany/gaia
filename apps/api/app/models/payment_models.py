@@ -1,6 +1,4 @@
-"""
-Payment and subscription related models for Dodo Payments integration.
-"""
+"""Payment and subscription related models for Dodo Payments integration."""
 
 from datetime import datetime
 from enum import Enum, StrEnum
@@ -22,8 +20,8 @@ class PlanDuration(StrEnum):
     """Billing cycle a plan is charged on.
 
     Closed and repository-owned: the catalogue is written by
-    ``scripts/payment_setup.py`` and the web already types the wire field as
-    ``"monthly" | "yearly"`` (``apps/web/src/features/pricing/api/pricingApi.ts``).
+    scripts/payment_setup.py and the web already types the wire field as
+    "monthly" | "yearly" (apps/web/src/features/pricing/api/pricingApi.ts).
     """
 
     MONTHLY = "monthly"
@@ -37,10 +35,10 @@ ONBOARDING_CHECKOUT_RETURN_PATH = "/onboarding?checkout=returned"
 class CheckoutSource(StrEnum):
     """Where in the product a checkout was started.
 
-    The server is the single emitter of ``payment:checkout_started``, so the
+    The server is the single emitter of payment:checkout_started, so the
     attribution the funnel reads has to arrive on the request. Closed and
-    repository-owned: it mirrors ``CheckoutSource`` in
-    ``apps/web/src/features/pricing/hooks/useDodoPayments.ts``, and a new
+    repository-owned: it mirrors CheckoutSource in
+    apps/web/src/features/pricing/hooks/useDodoPayments.ts, and a new
     surface adds a member on both sides in the same change.
     """
 
@@ -171,9 +169,9 @@ class UserSubscriptionStatus(ResponseModel):
 
 # Database Models (Internal)
 class PlanDocument(MongoDocument):
-    """A subscription plan as stored in the ``subscription_plans`` collection.
+    """A subscription plan as stored in the subscription_plans collection.
 
-    Global (not user-scoped); ``id`` is the stringified Mongo ``_id``. Seeded by
+    Global (not user-scoped); id is the stringified Mongo _id. Seeded by
     scripts and read-only in the app, so the base never stamps its timestamps.
     """
 
@@ -201,12 +199,12 @@ class PlanUpdate(BaseModel):
 
 
 class SubscriptionDocument(MongoDocument):
-    """A subscription as stored in the ``subscriptions`` collection.
+    """A subscription as stored in the subscriptions collection.
 
-    Global (webhook updates key on ``dodo_subscription_id`` with no user in scope);
-    ``user_id`` is a plain field. ``id`` is the stringified Mongo ``_id`` — kept so
+    Global (webhook updates key on dodo_subscription_id with no user in scope);
+    user_id is a plain field. id is the stringified Mongo _id — kept so
     the status endpoint returns the same id it did before the repository.
-    ``extra="allow"`` preserves the many Dodo billing fields verbatim in responses.
+    extra="allow" preserves the many Dodo billing fields verbatim in responses.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -264,7 +262,7 @@ class CheckoutSessionDocument(UserScopedDocument):
     """A Dodo checkout session created for a user, recorded at checkout time.
 
     The result page resolves what a user bought through this record when the
-    ``subscription.active`` webhook has not landed yet (the
+    subscription.active webhook has not landed yet (the
     webhook-vs-redirect race): the Dodo session id is the stable reference
     Dodo can answer for before a subscription row exists.
     """
@@ -275,10 +273,10 @@ class CheckoutSessionDocument(UserScopedDocument):
 
 
 class ProcessedWebhookDocument(MongoDocument):
-    """An idempotency record in the ``processed_webhooks`` collection.
+    """An idempotency record in the processed_webhooks collection.
 
-    Keyed by the business ``webhook_id`` (a unique index enforces
-    once-only processing). ``processed_at`` carries a 30-day TTL (see indexes).
+    Keyed by the business webhook_id (a unique index enforces
+    once-only processing). processed_at carries a 30-day TTL (see indexes).
     """
 
     model_config = ConfigDict(extra="ignore")

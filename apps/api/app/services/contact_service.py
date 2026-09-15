@@ -1,6 +1,4 @@
-"""
-Service functions for handling contact-related operations.
-"""
+"""Service functions for handling contact-related operations."""
 
 from email.utils import getaddresses
 from typing import Any
@@ -12,25 +10,10 @@ def build_contact_index(
 ) -> dict[str, Any]:
     """Extract unique contacts from already-fetched Gmail message payloads.
 
-    ``messages`` items are typed ``Any``, not ``dict``, because they come from
-    an external Gmail proxy response — the isinstance guard below is real:
-    a malformed upstream entry is skipped, not impossible.
-
-    Used by the Composio-proxy variant of GET_CONTACT_LIST: instead of relying
-    on `googleapiclient` to fetch messages, callers fetch via the proxy and
-    pass the resulting message dicts (with `payload.headers`) into this helper.
-
-    Args:
-        messages: Gmail message payload dicts as returned by
-            `users.messages.get` with format=metadata or full
-        filter_query: Optional substring to filter contacts by name or email.
-            Gmail's `q=` matches anywhere in a message (subject, body, etc.),
-            so a search for "john" can return threads with hundreds of
-            unrelated participants. Without this filter the caller would see
-            every From/To/Cc/Reply-To address on every matched thread.
-
-    Returns:
-        Dict with `success`, `contacts` (list of {name, email}), and `count`
+    messages is typed Any (an external Gmail proxy response), so the
+    isinstance guard below is real — malformed entries are skipped.
+    filter_query narrows a broad Gmail q= match (which returns every
+    participant on any matched thread) down to the contacts actually asked for.
     """
     contact_dict: dict[str, dict[str, str]] = {}
     query_lower = filter_query.lower() if filter_query else None

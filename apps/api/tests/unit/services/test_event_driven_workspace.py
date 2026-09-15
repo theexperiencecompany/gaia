@@ -1,12 +1,12 @@
 """Brutal unit tests for event-driven workspace materialization.
 
 Covers the pieces that moved per-user workspace work off the chat turn:
-- ``workspace_sync.sync_stale_user_workspaces`` (the startup/CLI bulk sync)
-- ``workspace_sync.init_system_subtree`` / ``resync_stale_user_workspaces``
-- ``integrations_fs.sync_user_integrations`` (connect/disconnect VFS sync)
-- ``user_integrations.get_connected_integration_ids`` (the shared filter)
-- the connect-path wiring in ``update_user_integration_status``
-- the registration-path wiring in ``oauth_service.store_user_info``
+- workspace_sync.sync_stale_user_workspaces (the startup/CLI bulk sync)
+- workspace_sync.init_system_subtree / resync_stale_user_workspaces
+- integrations_fs.sync_user_integrations (connect/disconnect VFS sync)
+- user_integrations.get_connected_integration_ids (the shared filter)
+- the connect-path wiring in update_user_integration_status
+- the registration-path wiring in oauth_service.store_user_info
 
 The JuiceFS + Mongo boundaries are mocked; these test decision logic to its
 limits (no mount, empty sets, stale vs current markers, force, partial
@@ -29,11 +29,9 @@ OAUTH = "app.services.oauth.oauth_service"
 JFS = "app.services.storage.juicefs"
 
 
-# ---------------------------------------------------------------------------
-# _is_mounted — must require a REAL mountpoint, not just an existing dir.
-# Guards the gap where a never-converged mount over a pre-created /mnt/jfs dir
-# would silently route writes to the container's local disk.
-# ---------------------------------------------------------------------------
+# _is_mounted must require a REAL mountpoint, not just an existing dir — a
+# never-converged mount over a pre-created /mnt/jfs would silently route
+# writes to local disk.
 
 
 def test_is_mounted_rejects_plain_existing_dir(tmp_path):

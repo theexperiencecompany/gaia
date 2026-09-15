@@ -89,13 +89,7 @@ class TestRedisCacheOperations:
     """Test RedisCache get/set/delete with mocked Redis."""
 
     async def test_set_and_get_cache(self):
-        """set() then get() should return the cached value.
-
-        Uses a capture-and-replay mock so that what set_cache serializes
-        and writes is exactly what get_cache reads and deserializes.
-        A bug in serialize_any or deserialize_any will cause the final
-        assertion to fail, making this a real serialization roundtrip.
-        """
+        """Uses a capture-and-replay mock, so a bug in serialize_any/deserialize_any fails the final assertion — a real roundtrip, not a mock echo."""
         stored: dict[str, str] = {}
 
         cache = RedisCache.__new__(RedisCache)

@@ -406,10 +406,9 @@ export const appConfig = {
   },
 };
 
-// Curated footer — hand-picked and hand-ordered, independent of the navbar
-// link pool. Programmatic SEO pages (glossary, alternatives, automation
-// combos, personas) are intentionally excluded; they are linked from their
-// hub pages and sitemaps instead.
+// Curated footer — hand-picked, independent of the navbar link pool.
+// Programmatic SEO pages (glossary, alternatives, automation combos,
+// personas) are excluded; they're linked from their hub pages and sitemaps.
 export const footerSections: LinkSection[] = [
   {
     title: "Product",

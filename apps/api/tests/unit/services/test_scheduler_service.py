@@ -238,13 +238,7 @@ class TestReapStaleExecuting:
     async def test_a_wedged_recurring_task_is_returned_to_scheduled_and_rearmed(
         self, service, recurring_task
     ):
-        """The claim flips SCHEDULED -> EXECUTING and nothing releases it.
-
-        If the worker is SIGKILLed mid-run (an ordinary rolling deploy), or arq
-        cancels the job and the retry finds the row already claimed, the row
-        stays EXECUTING. The due-scan filters on ``status="scheduled"``, so
-        nothing can ever see it again and the task simply never fires.
-        """
+        """A SIGKILLed worker or a cancelled-then-retried job leaves the row stuck EXECUTING, invisible to the status="scheduled" due-scan."""
         recurring_task.status = ScheduledTaskStatus.EXECUTING
         service.mock_find_stale_executing.return_value = [recurring_task]
         mock_job = MagicMock(job_id="rearmed")
@@ -261,8 +255,7 @@ class TestReapStaleExecuting:
         assert ScheduledTaskStatus.SCHEDULED in statuses
 
     async def test_a_wedged_one_shot_is_rearmed_at_its_original_time(self, service, sample_task):
-        """A one-shot has no next occurrence — it must go back to SCHEDULED at the
-        time it was armed for, not be dropped for want of a cron expression."""
+        """A one-shot has no next occurrence — it must go back to SCHEDULED at the time it was armed for."""
         sample_task.status = ScheduledTaskStatus.EXECUTING
         service.mock_find_stale_executing.return_value = [sample_task]
         service.arq_pool.enqueue_job = AsyncMock(return_value=MagicMock(job_id="j"))
@@ -300,18 +293,7 @@ class TestProcessTaskExecution:
     async def test_only_one_worker_executes_a_task_two_workers_picked_up(
         self, service, sample_task
     ):
-        """Two workers holding a job for the same task must not both execute it.
-
-        Two ARQ jobs for one reminder is the normal case, not a contrived race:
-        the startup scan runs in every replica and every worker, and its job id
-        is derived from each process's own ``now`` (past-due reminders get
-        shifted to ``now + 120s``), so the ids differ and ARQ does not dedup
-        them. Both jobs then read status=SCHEDULED and run — the user gets the
-        reminder twice and GAIA pays for two agent turns.
-
-        The claim has to be the atomic SCHEDULED -> EXECUTING transition itself,
-        the way ``workflow_repository.claim_for_execution`` already does it.
-        """
+        """Two ARQ jobs for one reminder is the normal case (per-replica startup scans get different job ids); the atomic SCHEDULED -> EXECUTING claim, not job dedup, must prevent a double run."""
         service.mock_get_task.return_value = sample_task
         claimed: list[str] = []
 
@@ -620,13 +602,7 @@ class TestEnqueueTask:
         assert defer_until > datetime.now(UTC)
 
     async def test_a_past_due_fire_keeps_its_own_job_key(self, service):
-        """Seen live: a workflow created on a cron boundary had next_run == now.
-        The enqueue shifted the fire 120 s out but keyed the ARQ job on the
-        SHIFTED time while stamping the context with the armed time. Activation
-        then armed the real next occurrence at that same shifted minute, and
-        ARQ deduped it against the past-due job. The one job that fired carried
-        the stale stamp, the claim rejected it, and the workflow never fired
-        again. The job key must name the occurrence the job was armed for."""
+        """Seen live: keying the ARQ job on the shifted fire time (not the armed time) let ARQ dedup it against the next real occurrence, and the workflow never fired again."""
         past = datetime.now(UTC) - timedelta(seconds=30)
         mock_job = MagicMock(job_id="job1")
         service.arq_pool.enqueue_job = AsyncMock(return_value=mock_job)

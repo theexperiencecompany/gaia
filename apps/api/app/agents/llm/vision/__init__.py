@@ -1,10 +1,9 @@
-"""Vision support: one canonical media shape in history, per-lane delivery at
-the request boundary, and a text description for models that can't see at all.
+"""Vision support: one canonical media shape in history, per-lane delivery.
 
-- `capability` — what the active (provider, model) lane can receive.
-- `adapter` — rewrites a request's messages to fit that lane, within budget.
-- `describe` — the fallback that turns an image into prose.
-- `tool_media` — applies that fallback to a tool result, once, at execution time.
+- capability — what the active (provider, model) lane can receive.
+- adapter — rewrites a request's messages to fit that lane, within budget.
+- describe — the fallback that turns an image into prose.
+- tool_media — applies that fallback to a tool result, once, at execution time.
 """
 
 from app.agents.llm.vision.adapter import MediaAdapter, adapt_media_for_model

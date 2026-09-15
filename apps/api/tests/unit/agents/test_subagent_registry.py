@@ -1,8 +1,8 @@
-"""Unit tests for the subagent registry (`app.agents.core.subagents.registry`).
+"""Unit tests for the subagent registry (app.agents.core.subagents.registry).
 
-These tests cover `all_subagents()` (OAuth-derived + builtins) and
-`get_subagent_by_id()`. Moved here from `test_subagent_runner.py` after the
-refactor that introduced the `Subagent` dataclass and centralized lookups in
+These tests cover all_subagents() (OAuth-derived + builtins) and
+get_subagent_by_id(). Moved here from test_subagent_runner.py after the
+refactor that introduced the Subagent dataclass and centralized lookups in
 the registry module.
 """
 
@@ -49,9 +49,9 @@ def _make_real_oauth_integration(
     provider: str = "github",
     mcp_config: MCPConfig | None = None,
 ) -> OAuthIntegration:
-    """Build a real `OAuthIntegration` instance (not a MagicMock).
+    """Build a real OAuthIntegration instance (not a MagicMock).
 
-    Used in `_from_oauth` and identity-check tests where a real Pydantic
+    Used in _from_oauth and identity-check tests where a real Pydantic
     model is required so attribute access goes through field validation.
     """
     return OAuthIntegration(
@@ -124,18 +124,13 @@ FAKE_INTEGRATIONS = [
 
 
 def _clear_registry_cache() -> None:
-    """`all_subagents()` is `@functools.cache`d, and so is everything derived
-    from it. Tests that patch OAUTH_INTEGRATIONS or BUILTIN_SUBAGENTS must clear
-    the caches first."""
+    """all_subagents() is @functools.cached; tests patching OAUTH_INTEGRATIONS/BUILTIN_SUBAGENTS must clear it first."""
     all_subagents.cache_clear()
 
 
 @pytest.fixture(autouse=True)
 def _restore_real_registry_after_each_test():
-    """Without this, a test that patches OAUTH_INTEGRATIONS/BUILTIN_SUBAGENTS and
-    populates the cache under the patch leaves that fake result cached for the
-    rest of the process — every other test in the suite that calls
-    all_subagents()/get_subagent_by_id() afterward would see the fake data."""
+    """Without this, a patched OAUTH_INTEGRATIONS/BUILTIN_SUBAGENTS test leaves its fake cache for the rest of the process."""
     yield
     _clear_registry_cache()
 
@@ -289,9 +284,7 @@ class TestFromOauth:
 
     def test_config_is_same_object_as_integration_subagent_config(self) -> None:
         # Identity check (not equality): the registry MUST pass through the
-        # integration's SubAgentConfig instance unchanged. Re-instantiating it
-        # would be a wasted allocation and make tests that mutate config
-        # behave inconsistently.
+        # integration's SubAgentConfig instance unchanged.
         integ = _make_real_oauth_integration(integration_id="github")
 
         result = _from_oauth(integ)
@@ -350,10 +343,8 @@ class TestAllSubagentsCachingAndOrdering:
         assert first is second
 
     def test_cache_clear_returns_fresh_tuple(self) -> None:
-        # Use both an OAuth-derived AND a builtin entry so the result is
-        # `tuple(...) + (builtin,)` — a freshly allocated tuple each call.
-        # CPython optimizes `() + non_empty_tuple` to return the non-empty
-        # tuple itself, which would break identity-inequality assertions.
+        # CPython optimizes `() + non_empty_tuple` to return the non-empty tuple
+        # itself, so include a builtin entry to keep this a fresh tuple each call.
         builtin = Subagent(
             id="builtin_for_cache_test",
             name="Builtin",

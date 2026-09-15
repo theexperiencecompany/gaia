@@ -20,15 +20,8 @@ interface ToneStyle {
 }
 
 /**
- * Map the shared `DueChipTone` enum onto NativeWind-friendly hex values.
- *
- * Spec §C.11 — "Date chip semantic colours":
- * - completed → bg-zinc-800/40 text-zinc-500
- * - overdue   → bg-red-500/15 text-red-300
- * - today     → bg-[#00bbff]/15 text-[#00bbff]
- * - tomorrow  → bg-zinc-800/60 text-zinc-200
- * - soon      → bg-yellow-500/15 text-yellow-300
- * - later     → bg-zinc-800/60 text-zinc-400
+ * Map the shared `DueChipTone` enum onto NativeWind-friendly hex values, per
+ * spec §C.11 "Date chip semantic colours" (values below).
  */
 const DUE_TONE_STYLE: Record<DueChipTone, ToneStyle> = {
   completed: { bg: "rgba(39,39,42,0.40)", fg: "#71717a" },

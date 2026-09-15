@@ -87,8 +87,6 @@ function filterUseCases(
   );
 }
 
-// Unique step categories, in order — one pass (dedupe via Set) instead of a
-// map→filter chain.
 // Static class strings per column count — Tailwind only emits classes it can
 // find literally in the source, so these can't be built by interpolation.
 const COLUMN_CLASSES: Record<number, string> = {

@@ -1,12 +1,12 @@
 """Repositories for the HIL collections — approval records and tool-risk cache.
 
-``hil_approvals`` is keyed by the deterministic ``approval_id`` stored as the
-string ``_id`` (see ``approval_id_for``): the gate's pre-``interrupt()`` code
-re-runs from the top of the node on every resume replay, and the unique ``_id``
+hil_approvals is keyed by the deterministic approval_id stored as the
+string _id (see approval_id_for): the gate's pre-interrupt() code
+re-runs from the top of the node on every resume replay, and the unique _id
 is what makes record creation naturally once-only — a replay's duplicate insert
 is the idempotency guarantee working, not an error.
 
-Uncached (``cache_policy = None``): approvals are decision state read at
+Uncached (cache_policy = None): approvals are decision state read at
 low volume around pauses, and the pending → decided transition is a conditional
 write the entity cache could only misrepresent.
 """
@@ -34,9 +34,9 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
     cache_policy = None
 
     async def create_if_absent(self, record: HILApprovalRecord) -> bool:
-        """Insert the record unless its ``approval_id`` already exists.
+        """Insert the record unless its approval_id already exists.
 
-        Returns ``True`` only when newly created — the caller publishes the
+        Returns True only when newly created — the caller publishes the
         approval card exactly once on that signal. A duplicate id is a resume
         replay re-running the gate's pre-pause code: the existing record (pending
         or already decided) must never be reset, so the duplicate is a no-op.
@@ -57,11 +57,11 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
         scope: str,
         decided_by: str | None,
     ) -> bool:
-        """Transition a ``pending`` record to a terminal status, exactly once.
+        """Transition a pending record to a terminal status, exactly once.
 
         Conditional on the current status so a duplicate or racing decision
         cannot double-resolve: only the call that performed the transition
-        returns ``True``.
+        returns True.
         """
         updated = await self._apply_raw_update(
             {"_id": approval_id, "status": HILApprovalStatus.PENDING},
@@ -82,8 +82,7 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
     async def list_parked_subagents_for_conversation(
         self, conversation_id: str
     ) -> list[HILApprovalRecord]:
-        """Records a detached background subagent parked on, oldest first,
-        that the ``wait_for_subagents`` join has not yet collected."""
+        """Return parked detached-subagent records not yet collected by wait_for_subagents, oldest first."""
         return await self._find(
             {
                 "conversation_id": conversation_id,
@@ -94,7 +93,7 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
         )
 
     async def list_expired_pending(self) -> list[HILApprovalRecord]:
-        """Pending approvals past ``expires_at`` — the timeout sweep's work list."""
+        """Pending approvals past expires_at — the timeout sweep's work list."""
         return await self._find(
             {"status": HILApprovalStatus.PENDING, "expires_at": {"$lt": datetime.now(UTC)}}
         )
@@ -102,8 +101,7 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
     async def list_decided_unresumed(
         self, statuses: list[str], grace_seconds: float
     ) -> list[HILApprovalRecord]:
-        """Decided records whose resume never dispatched (crash between the
-        decided transition and the run spawn) — the sweep re-dispatches them."""
+        """Decided records whose resume never dispatched (a crash after deciding but before the run spawn)."""
         cutoff = datetime.now(UTC) - timedelta(seconds=grace_seconds)
         return await self._find(
             {
@@ -132,13 +130,13 @@ class HilToolRiskRepository(MongoRepository[HILToolRiskRecord, HILToolRiskUpdate
     async def find_classification(
         self, tool_name: str, description_hash: str
     ) -> HILToolRiskRecord | None:
-        """The stored verdict for this exact tool+description, or ``None``."""
+        """Return the stored verdict for this exact tool+description, or None."""
         return await self._find_one({"tool_name": tool_name, "description_hash": description_hash})
 
     async def upsert_classification(self, record: HILToolRiskRecord) -> None:
         """Store (or refresh) the verdict, keyed by tool+description.
 
-        An upsert on the business key rather than ``create``: a changed
+        An upsert on the business key rather than create: a changed
         description re-classifies and must overwrite the old verdict in place.
         """
         await self._raw_collection().update_one(

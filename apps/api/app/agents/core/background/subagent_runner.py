@@ -39,10 +39,12 @@ from shared.py.wide_events import get_trace_id, log, wide_task
 
 @dataclass(frozen=True)
 class BackgroundHandoff:
-    """How a background subagent run presents itself and what it releases on exit:
-    the integration's icon/name metadata for tool events, the subagent and
-    integration ids, the display triple for the start/end cards, and whether
-    the run's successful calls are recorded (workflow runs only)."""
+    """How a background subagent run presents itself and what it releases on exit.
+
+    Icon/name metadata for tool events, the subagent and integration ids, the
+    display triple for start/end cards, and whether successful calls are
+    recorded (workflow runs only).
+    """
 
     integration_metadata: IntegrationMetadata | None = None
     subagent_id: str | None = None
@@ -60,22 +62,9 @@ async def run_subagent_background(
 ) -> None:
     """Run a provider subagent in the background and store its result.
 
-    Designed for asyncio.create_task(). Never raises — all exceptions
-    caught and stored as the subagent's result text.
-
-    A HIL pause is not an error: the subagent's graph is checkpointed, so this
-    stamps the approval record with the thread id and exits. The
-    wait_for_subagents join rediscovers it durably, pauses the executor for the
-    user's decision, and resumes the subagent when it lands.
-
-    Args:
-        ctx: Fully prepared SubagentExecutionContext.
-        stream_id: Active SSE stream ID for tool event publishing.
-        integration_metadata: Optional icon/name metadata for tool events.
-        integration_id: Releases this integration's background slot on exit.
-        record_calls: Workflow runs only — append the subagent's successful tool
-            calls to the stored result so the executor can transcribe them into
-            a playbook (see ``call_record``).
+    Designed for asyncio.create_task(). Never raises — exceptions are caught
+    and stored as the result text. A HIL pause stamps the approval record and
+    exits; wait_for_subagents rediscovers it durably and resumes on decision.
     """
     handoff = handoff or BackgroundHandoff()
     integration_metadata, subagent_id, integration_id = (
@@ -92,10 +81,8 @@ async def run_subagent_background(
 
     conversation_id = str(ctx.configurable.get("conversation_id", ""))
     # This task outlives the spawning executor turn, so it needs its own
-    # wide-event boundary or every log.set() in the run (LLM accounting
-    # included) is silently discarded. get_trace_id() reads the spawner's
-    # trace_id from the task's copied context, correlating this event with
-    # the run that dispatched it.
+    # wide-event boundary or every log.set() is silently discarded.
+    # get_trace_id() correlates this event with the run that dispatched it.
     async with wide_task(
         "subagent_run",
         trace_id=get_trace_id() or None,
@@ -175,13 +162,9 @@ async def run_subagent_background(
 async def _wake_if_executor_rested(conversation_id: str, configurable: AgentConfigurable) -> None:
     """Queue a collection turn when this landing has no live executor to collect it.
 
-    The executor may legitimately end its turn while background subagents run
-    ("dispatched — I'll report when it's done"). This is the notification that
-    makes that safe: the queued turn joins, gathers results, and pauses for any
-    approvals. Busy executor → it will collect itself; headless run → nothing to
-    wake (the gate denied any destructive work, results have no live audience).
-    Best-effort: a wake failure must not crash the task — the marker TTL and the
-    next landing retry it.
+    Busy executor -> it will collect itself; headless run -> nothing to wake
+    (results have no live audience). Best-effort: a wake failure must not
+    crash the task — the marker TTL and the next landing retry it.
     """
     if not conversation_id or str(configurable.get("execution_mode") or "") == "background":
         return

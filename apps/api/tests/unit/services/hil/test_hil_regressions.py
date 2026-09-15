@@ -52,10 +52,10 @@ STORE = "app.services.hil.approvals_store"
 
 
 def snapshot(next_nodes: tuple[str, ...] = (), messages: list[Any] | None = None) -> Any:
-    """A LangGraph StateSnapshot as ``aget_state`` returns it.
+    """Build a LangGraph StateSnapshot as aget_state returns it.
 
-    A thread that never ran has no checkpoint: empty ``next`` AND empty ``values``. A
-    thread that FINISHED looks identical in ``next`` alone — which is the bug below.
+    A thread that never ran has no checkpoint: empty next AND empty values. A
+    thread that FINISHED looks identical in next alone — which is the bug below.
     """
     return SimpleNamespace(
         next=next_nodes,
@@ -73,12 +73,12 @@ def ctx_with(snap: Any) -> Any:
 
 
 class TestFinishedSubagentIsNotDrivenTwice:
-    """Bug: ``_parked_interrupt`` returned ``None`` for a thread that had FINISHED as well
-    as one that had never run, so on an executor resume a completed blocking handoff was
-    re-invoked from scratch — repeating every side effect its subagent had already caused.
+    """Bug: _parked_interrupt returned None for both a finished and a never-run thread.
 
-    Trigger: one AI message with ``handoff(...)`` plus a gated tool. The handoff completes,
-    the gated tool pauses, and LangGraph re-runs the whole node on resume.
+    On an executor resume, a completed blocking handoff was re-invoked from scratch,
+    repeating every side effect its subagent had already caused. Trigger: one AI message
+    with handoff(...) plus a gated tool — the handoff completes, the gated tool pauses,
+    and LangGraph re-runs the whole node on resume.
     """
 
     async def test_a_finished_thread_returns_its_answer_instead_of_running_again(
@@ -134,10 +134,11 @@ class TestFinishedSubagentIsNotDrivenTwice:
 
 
 class TestJoinToolIsNeverGated:
-    """Bug: ``wait_for_subagents`` was absent from ``HIL_EXEMPT_TOOLS`` and is registered
-    directly into the executor's tool dict rather than the ToolRegistry — so the gate sent
-    it to the LLM destructive classifier, which fails CLOSED. A classifier outage would
-    gate the very join that collects parked approvals.
+    """Bug: wait_for_subagents was absent from HIL_EXEMPT_TOOLS.
+
+    It is registered directly into the executor's tool dict rather than the ToolRegistry,
+    so the gate sent it to the LLM destructive classifier, which fails CLOSED — a
+    classifier outage would gate the very join that collects parked approvals.
     """
 
     def test_the_join_tool_is_exempt(self) -> None:
@@ -165,9 +166,11 @@ class TestJoinToolIsNeverGated:
 
 
 class TestExemptSiblingsThatPauseSuppressAutoApproval:
-    """Bug: the sibling guard skipped every exempt tool, but ``handoff`` and
-    ``wait_for_subagents`` are exempt AND can pause. A gated tool sharing a message with
-    one of them auto-ran, then ran a SECOND time when the pause re-ran the whole node.
+    """Bug: the sibling guard skipped every exempt tool.
+
+    handoff and wait_for_subagents are exempt AND can pause, so a gated tool sharing a
+    message with one of them auto-ran, then ran a SECOND time when the pause re-ran the
+    whole node.
     """
 
     @pytest.fixture(autouse=True)
@@ -216,13 +219,9 @@ class TestExemptSiblingsThatPauseSuppressAutoApproval:
     async def test_the_gate_actually_consults_the_sibling_guard_before_auto_running(
         self,
     ) -> None:
-        # The guard above is only worth having if the gate CALLS it. Every other test of
-        # the whole-gate journeys patches has_pausing_sibling to a constant, so the seam
-        # between _judge and the guard was never exercised — a tested component behind an
-        # untested wire. Nothing is patched here but the I/O edges: the real guard runs,
-        # sees the pausing `handoff` sibling, and must veto auto-approval even though the
-        # judge says yes. If the wire is cut, the send happens now and AGAIN when the
-        # sibling's pause re-runs the whole node ("one send became two").
+        # Every other whole-gate test patches has_pausing_sibling to a constant, so this
+        # seam was never exercised. Only I/O edges are mocked here: the real guard runs and
+        # must veto auto-approval despite the judge saying yes, or "one send became two."
         handler = AsyncMock()
         request = make_request(
             call_id="call-1",
@@ -260,7 +259,7 @@ class TestExemptSiblingsThatPauseSuppressAutoApproval:
 
 
 class TestAnAutoApprovedRecordStillHasToRun:
-    """``auto_approved`` means the user was not ASKED. It never meant the call ran.
+    """auto_approved means the user was not ASKED. It never meant the call ran.
 
     It used to: auto mode approved and executed in one pass, so a replay finding the
     record had to refuse (the action was irreversible and already done). Approvals are
@@ -271,7 +270,7 @@ class TestAnAutoApprovedRecordStillHasToRun:
 
     @pytest.fixture
     def auto(self):
-        """The tool node, over a record auto mode decided without asking."""
+        """Patch the tool node, over a record auto mode decided without asking."""
         with (
             patch(f"{GATE}.log"),
             patch(f"{GATE}.resolve_policy", new=AsyncMock(return_value="auto")),
@@ -315,7 +314,7 @@ class TestAPendingRecordParksInsteadOfRunning:
     The call must neither run nor be refused: it parks, and the run resumes when the
     decision lands. Its siblings are unaffected — LangGraph persists the writes of the
     tasks that completed in the interrupting step (see
-    ``tests/unit/agents/test_pause_checkpointing.py``), which is what makes pausing
+    tests/unit/agents/test_pause_checkpointing.py), which is what makes pausing
     here safe rather than a source of double-execution.
     """
 
@@ -371,11 +370,11 @@ class TestAPendingRecordParksInsteadOfRunning:
 
 
 class TestAResumeWithNoDecisionFailsClosed:
-    """The one path where ``interrupt()`` RETURNS instead of exiting the run.
+    """The one path where interrupt() RETURNS instead of exiting the run.
 
     On a replay LangGraph hands the resume value back rather than raising, so execution
     continues past the pause. Normally the decision is already on the record and the
-    call never reaches the pause again — ``resolve_approval`` marks the record decided
+    call never reaches the pause again — resolve_approval marks the record decided
     before it dispatches the resume. But the gate must not assume that: the resume value
     is a wake-up, not a decision, and treating "we were woken" as "the user said yes"
     would run an irreversible action nobody approved.
@@ -441,8 +440,7 @@ async def drain_spawned_tasks() -> None:
 
 
 class _ApprovalStore:
-    """Stand-in for the approvals collection, keeping the one semantic that decides
-    this: ``pending -> decided`` is conditional, so it happens at most once."""
+    """Stand-in for the approvals collection: pending -> decided is conditional, so it happens once."""
 
     def __init__(self, *records: Any) -> None:
         self.records = {record.approval_id: record for record in records}
@@ -482,10 +480,10 @@ class _ApprovalStore:
 
 
 class TestCancelledRunIsNotResurrectedByItsApproval:
-    """cancel_executor stops the run and drops the busy lock, but neither reaches the
-    approval record. Left pending it is a live Approve button — and a user-free timeout
-    sweep — pointing at the run the user stopped, re-dispatched on a fresh stream that
-    the original cancel flag never covered.
+    """cancel_executor stops the run and drops the busy lock, but neither reaches the record.
+
+    Left pending, it is a live Approve button — and a timeout sweep — pointing at the
+    stopped run, re-dispatched on a fresh stream the original cancel flag never covered.
     """
 
     @staticmethod

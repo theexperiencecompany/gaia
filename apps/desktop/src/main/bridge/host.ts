@@ -149,14 +149,12 @@ export class BridgeHost {
     this.events.off(SERVERS_EVENT, listener);
   }
 
-  /** Start the supervised tunnel. Throws BridgeNotPairedError if unpaired. The
-   * tunnel is held in the background; this returns once it is running, not when
-   * it stops.
+  /** Start the supervised tunnel. Throws BridgeNotPairedError if unpaired;
+   * returns once running, not when it stops.
    *
-   * Enforces the R5 user binding first: if this device is bound to a different
-   * GAIA user than the current session (account switch) or the session is gone
-   * (logged out), the stored credential is torn down before anything starts, so
-   * the tunnel can never come up under the wrong identity. */
+   * Enforces R5: if this device is bound to a different GAIA user (account
+   * switch) or the session is gone, the credential is torn down first so the
+   * tunnel can never come up under the wrong identity. */
   async start(): Promise<void> {
     await this.init();
     await this.enforceUserBinding();
@@ -165,10 +163,9 @@ export class BridgeHost {
     this.intentionalStop = false;
     this.running = true;
     this.emitStatus();
-    // Register the configured servers with the cloud on every start (like
-    // `gaia bridge up`), so they appear as integrations and re-create their
-    // records if those were lost. Best-effort — a failure must not stop the
-    // tunnel from coming up.
+    // Register configured servers with the cloud on every start (like
+    // `gaia bridge up`) so lost integration records get re-created;
+    // best-effort, a failure must not stop the tunnel from coming up.
     void registerConfiguredServers().catch((err: unknown) =>
       this.logger.error(
         `[bridge] failed to register configured servers: ${err instanceof Error ? err.message : String(err)}`,
@@ -206,11 +203,9 @@ export class BridgeHost {
   }
 
   async addServer(config: ServerConfig): Promise<void> {
-    // Save immediately and report the server as "connecting"; the test +
-    // cloud-register runs in the background (connectServer) so the card returns
-    // at once and shows live state instead of blocking on a spinner. A bad
-    // command (e.g. `npm` for `npx`) surfaces as an "error" state with retry,
-    // not a modal that hangs until the spawn times out.
+    // Save immediately and mark "connecting"; test + cloud-register run in
+    // the background (connectServer) so the card returns at once. A bad
+    // command (e.g. `npm` for `npx`) surfaces as "error" with retry, not a hang.
     await this.init();
     upsertServer(config);
     this.setServerState(config.key, "connecting");
@@ -268,12 +263,9 @@ export class BridgeHost {
 
   /** Pair this Mac as its own device off the app's authenticated session.
    *
-   * Resolves the signed-in GAIA user, then POSTs `/device/self-pair` with the
-   * `wos_session` cookie (main-process fetch on `session.defaultSession` — the
-   * refresh token is minted and stored here, never handed to the renderer, R4).
-   * The returned token is written to userData/bridge/credentials.json (0600)
-   * bound to that user id (R5). Idempotent: already paired for the current user
-   * is a no-op; paired for a *different* user tears down first (account switch).
+   * Mints and stores the refresh token here, never handing it to the renderer
+   * (R4), at userData/bridge/credentials.json (0600) bound to the user id (R5).
+   * Idempotent for the same user; tears down first for a different one (switch).
    *
    * @throws BridgeNotAuthenticatedError when there is no signed-in session.
    */
@@ -398,17 +390,12 @@ export class BridgeHost {
       await this.unbindAndReset("account-switch");
   }
 
-  /** Run the tunnel until it stops, reconnecting only on an UNEXPECTED throw.
+  /** Run the tunnel until it stops, reconnecting only on an unexpected throw.
    *
-   * Tunnel.run() already loops internally over transient drops and returns only
-   * when it stopped: a definitive 401 sets its `stopped` flag and returns (R6
-   * auth exit), a REVOKE frame calls its stop() (same), and our own stop() sets
-   * it too. So a clean return means one of two things, disambiguated by
-   * intentionalStop:
-   *   - intentionalStop=true  → we called stop(); done.
-   *   - intentionalStop=false → the tunnel hit a 401/revoke; clear credentials,
-   *     go unpaired, and wait for a user gesture. NEVER reconnect-loop a 401.
-   * A throw is the only unexpected path; it gets a bounded backoff restart. */
+   * A clean return with intentionalStop=false means the tunnel hit a 401 or
+   * revoke (R6): clear credentials, go unpaired, and never reconnect-loop it.
+   * intentionalStop=true means we called stop(); an unexpected throw is the
+   * only path that gets a bounded backoff restart. */
   private async superviseLoop(): Promise<void> {
     let restartAttempts = 0;
 

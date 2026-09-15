@@ -321,8 +321,6 @@ export const TriggerPickerSheet = forwardRef<
     });
   }, [groupedIntegrations, search]);
 
-  // ---- Step transitions ----
-
   const handlePickBuiltin = (builtin: BuiltinTriggerMeta) => {
     setTriggerConfig(buildDefaultTriggerConfig(builtin.id));
     onSelect({
@@ -389,8 +387,6 @@ export const TriggerPickerSheet = forwardRef<
     setIsOpen(false);
     setStep({ kind: "integrations" });
   };
-
-  // ---- Renderers per step ----
 
   type IntegrationsListItem =
     | { kind: "builtin"; meta: BuiltinTriggerMeta }

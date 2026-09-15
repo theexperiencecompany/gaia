@@ -24,10 +24,9 @@ from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.agents.workspace.operational_docs import GAIA_CORE
 from app.constants.general import NEW_MESSAGE_BREAKER
 
-# Base comms prompt with the embedded OpenUI component-instructions section
-# stripped out, so the per-channel addendum below is the single source of
-# truth for output format. Pre-computed once at import so the bytes stay
-# stable per channel (cache-friendly).
+# Base comms prompt with the OpenUI section stripped, so the per-channel
+# addendum below is the single source of truth for output format.
+# Pre-computed once at import so the bytes stay stable (cache-friendly).
 _COMMS_AGENT_PROMPT_BASE: Final[str] = _strip_openui_section(COMMS_AGENT_PROMPT)
 
 
@@ -48,14 +47,9 @@ they are currently looking at, delegate to the executor and have it take a
 screenshot for visual context."""
 
 
-# Output-format addendum for each text-only channel. These strings are the
-# platform-specific formatting rules the LLM must stick to. We inline them
-# here so the addendum is byte-identical across every WhatsApp user, etc.
-#
-# This is the LAST thing the model reads, roughly 27k characters after the Chat
-# Bubbles section, so the bubble rule is restated here rather than relied on at
-# that distance. Belt and braces: the bot layer also splits paragraphs
-# deterministically, so a model that ignores the sentinel still gets split.
+# Output-format addendum per text-only channel, inlined for byte-identical
+# output. LAST thing the model reads (~27k chars after Chat Bubbles), so the
+# bubble rule is restated here as a backstop to the bot layer's own split.
 def _text_only_addendum(platform_name: str, formatting: str) -> str:
     return f"""
 
@@ -139,9 +133,7 @@ def get_comms_static_prompt(source: str | None) -> str:
 # ``get_comms_static_prompt``.
 COMMS_PROMPT_TEMPLATE: Final[str] = COMMS_PROMPT_DEFAULT
 
-# The executor's static prefix carries the always-on operating core (GAIA_CORE):
-# user-independent self-knowledge + the self-management capability menu + the
-# read_manual topic routing. It is appended here (not interpolated per user) so
-# the whole executor prompt stays byte-identical across users and rides the
-# provider's prompt cache.
+# Carries the always-on operating core (GAIA_CORE): self-knowledge, the
+# self-management menu, and read_manual routing. Appended here, not
+# interpolated per user, so the prompt stays byte-identical for caching.
 EXECUTOR_PROMPT_TEMPLATE: Final[str] = EXECUTOR_AGENT_PROMPT + "\n\n" + GAIA_CORE

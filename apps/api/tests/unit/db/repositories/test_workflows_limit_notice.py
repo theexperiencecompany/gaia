@@ -1,4 +1,4 @@
-"""``WorkflowsRepository.claim_limit_notice`` — the limit-notice dedup gate.
+"""WorkflowsRepository.claim_limit_notice — the limit-notice dedup gate.
 
 The gate exists because one production thread ended on six identical daily-limit
 notifications. It fails open on purpose: a user who hits a budget wall must be
@@ -33,14 +33,7 @@ async def test_the_first_notice_in_the_window_is_claimed() -> None:
 
 
 async def test_the_claim_is_a_per_workflow_key_set_once_for_one_window() -> None:
-    """The dedup IS this call's arguments, so they are what must be asserted.
-
-    Every other test here reads the return value, which the fake decides — so
-    the key, the NX and the TTL were all free to be anything. Drop ``nx`` and
-    every occurrence claims successfully and the six-notice incident is back;
-    drop ``ex`` and the key never expires, so the wall is announced once and
-    then never again; widen the key and two workflows share one claim.
-    """
+    """The dedup is this call's arguments: drop nx and every occurrence claims (the six-notice incident), drop ex and it never expires."""
     client = _redis(set_result=True)
     with patch(f"{MODULE}.redis_cache") as cache:
         cache.redis = client
@@ -76,13 +69,7 @@ async def test_a_second_notice_in_the_same_window_is_refused() -> None:
 
 
 async def test_a_redis_failure_sends_the_notice_and_says_so() -> None:
-    """Failing open is correct; failing open silently is the bug.
-
-    The log line is the only thing that will tell the next person why six
-    identical notices went out, so the fields it carries are asserted exactly:
-    without ``workflow_id``/``user_id`` the event cannot be joined to the
-    notifications the user actually received.
-    """
+    """Failing open is correct; failing open silently is the bug, so the log line's fields are asserted exactly."""
     client = _redis(set_error=ConnectionError("redis down"))
     with (
         patch(f"{MODULE}.redis_cache") as cache,
@@ -101,11 +88,7 @@ async def test_a_redis_failure_sends_the_notice_and_says_so() -> None:
 
 
 async def test_no_redis_at_all_sends_the_notice_without_a_warning() -> None:
-    """Redis not being wired up is a configuration state, not a degradation.
-
-    Logging here would fire on every notice in any deployment without Redis and
-    drown the line above, which is the one that matters.
-    """
+    """Redis not being wired up is a configuration state, not a degradation, so logging here would drown the line that matters."""
     with (
         patch(f"{MODULE}.redis_cache") as cache,
         patch(f"{MODULE}.log") as mock_log,

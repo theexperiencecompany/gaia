@@ -2,8 +2,8 @@
 
 Locks: a successful crawl returns markdown content under the concurrency
 semaphore, and every failure shape — crawler returning None, missing/empty
-markdown, provider exceptions — comes back as a ``ProfileCrawlResult`` with
-``content=None`` and a named error, never a raise.
+markdown, provider exceptions — comes back as a ProfileCrawlResult with
+content=None and a named error, never a raise.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch

@@ -123,9 +123,11 @@ def boundaries():
 
 
 class TestTheDoneSignalCarriesTheOutcome:
-    """The silent workflow path reads the executor's outcome off the session,
-    not off comms' prose: an error result marks the executor failed with its
-    text as the reason, and anything else marks it finished cleanly."""
+    """The silent workflow path reads the executor's outcome off the session, not off comms' prose.
+
+    An error result marks the executor failed with its text as the reason,
+    and anything else marks it finished cleanly.
+    """
 
     async def test_an_error_result_marks_the_executor_failed_with_its_text(
         self, boundaries
@@ -155,9 +157,11 @@ class TestTheDoneSignalCarriesTheOutcome:
 
 
 class TestAnAbandonedExecutorIsNotDelivered:
-    """The silent path waited, gave up, closed the fire as failed and tore the
-    session down. The executor's own finalize, when it finally comes, must not
-    answer that closed turn or queue work on it; the lock it holds is still owed."""
+    """The silent path waited, gave up, and closed the fire as failed.
+
+    The executor's own finalize, when it finally comes, must not answer that
+    closed turn or queue work on it; the lock it holds is still owed.
+    """
 
     async def test_a_result_after_the_waiter_gave_up_releases_the_lock_and_nothing_else(
         self, boundaries
@@ -219,8 +223,7 @@ class TestCancelledRouting:
         assert get_session("s1") is None
 
     async def test_cancelled_live_run_defers_to_comms_ownership(self, boundaries) -> None:
-        """Live cancel: the comms stream attaches the cards — the executor must
-        NOT persist them too, or every stopped turn would show duplicates."""
+        """Live cancel: the comms stream attaches the cards — the executor must NOT persist them too."""
         boundaries.stream_manager.is_cancelled.return_value = True
         run = _run(RunKind.LIVE)
         create_session("s1", RunKind.LIVE)
@@ -297,8 +300,7 @@ class TestCompletedRouting:
 class TestDoneSignalAndOrdering:
     @pytest.mark.parametrize("cancelled", [True, False])
     async def test_done_event_is_always_signalled(self, boundaries, cancelled) -> None:
-        """The chat stream blocks on this event — a missed signal hangs the SSE
-        until the wait timeout, regardless of how the run ended."""
+        """The chat stream blocks on this event — a missed signal hangs the SSE until the wait timeout."""
         boundaries.stream_manager.is_cancelled.return_value = cancelled
         session = create_session("s1", RunKind.LIVE)
 
@@ -307,8 +309,7 @@ class TestDoneSignalAndOrdering:
         assert session.done_event.is_set()
 
     async def test_returned_note_is_snapshotted_before_done_signal(self, boundaries) -> None:
-        """Once done_event fires, the chat stream drains + tears down the session
-        in parallel — reading the note after would race teardown."""
+        """Once done_event fires, the chat stream drains + tears down in parallel — reading the note after races it."""
         session = create_session("s1", RunKind.LIVE)
         done_state_at_note_time: list[bool] = []
         boundaries.note.side_effect = lambda _sid: (
@@ -325,11 +326,11 @@ class TestBackgroundRunCardsSurviveTheCommsDrain:
     """A scheduled workflow's tool cards must reach the bot message it saves.
 
     The comms silent path and the executor's delivery read the run's cards off
-    the SAME session. ``call_agent_silent`` waits on ``done_event``, drains, and
-    tears the session down in its ``finally`` — so a delivery that reads the
+    the SAME session. call_agent_silent waits on done_event, drains, and
+    tears the session down in its finally — so a delivery that reads the
     session AFTER signalling done finds nothing left. The symptom: a workflow
     run whose execution record listed every tool call saved a bot message with
-    an empty ``tool_data``, and the chat showed no "Used N tools" thread.
+    an empty tool_data, and the chat showed no "Used N tools" thread.
     """
 
     @staticmethod
@@ -366,7 +367,7 @@ class TestBackgroundRunCardsSurviveTheCommsDrain:
         run = _run(RunKind.LIVE, workflow_id="wf-1", source_category=SourceCategory.BG)
 
         async def comms_silent_path() -> None:
-            """What ``call_agent_silent`` does around a workflow's graph run."""
+            """Reproduce what call_agent_silent does around a workflow's graph run."""
             await await_executor_done("s1")
             drain_executor_tool_data("s1")
             teardown_executor_capture("s1")
@@ -391,10 +392,7 @@ class TestQueueLockBugs:
     """
 
     async def test_stop_does_not_strand_queued_tasks(self, boundaries) -> None:
-        """BUG B: user queues a second task while one runs, then presses Stop.
-        The cancelled run's finalize must still hand the queue off — otherwise
-        the acknowledged ('queued, I'll handle it right after') task silently
-        never runs and expires in Redis."""
+        """BUG B: a cancelled run's finalize must still hand the queue off, or the acknowledged next task never runs."""
         boundaries.stream_manager.is_cancelled.return_value = True
         create_session("s1", RunKind.QUEUED)
         next_run = _run(RunKind.QUEUED, stream_id="queued_next")
@@ -412,9 +410,7 @@ class TestQueueLockBugs:
         spawn.assert_awaited_once()
 
     async def test_a_stranded_queue_is_claimed_and_spawned(self, boundaries) -> None:
-        """BUG A: a task enqueued while the finished run still held the lock (or
-        left behind a cancel-freed lock) must be claimed and spawned, not left to
-        expire silently with the queue TTL."""
+        """BUG A: a task enqueued while the lock was still held must be claimed and spawned, not expire with the TTL."""
         create_session("s1", RunKind.QUEUED)
         next_run = _run(RunKind.QUEUED, stream_id="queued_next")
         boundaries.reclaim.return_value = PreparedQueuedTask(
@@ -432,11 +428,11 @@ class TestQueueLockBugs:
 
 
 class TestRecordPause:
-    """``_record_pause`` must fail the run, never the process, when the write fails.
+    """_record_pause must fail the run, never the process, when the write fails.
 
     A batch pause with no resumable context is worse than an error: it holds the
     busy lock for its full TTL waiting on a resume that can never come. The
-    caller (``run_executor_background``) treats a False return as "fail this
+    caller (run_executor_background) treats a False return as "fail this
     run" — so a write failure here must surface as False, not an exception.
     """
 
@@ -463,9 +459,11 @@ class TestRecordPause:
 
 
 class TestFinalizeDeliveryFailureDoesNotStrandQueue:
-    """A delivery/close failure inside finalize must not skip the queue handoff
-    below it — otherwise queued work strands and the busy lock leaks until its
-    TTL (see the comment on the guarding except in _finalize_executor_run)."""
+    """A delivery/close failure inside finalize must not skip the queue handoff below it.
+
+    Otherwise queued work strands and the busy lock leaks until its TTL
+    (see the comment on the guarding except in _finalize_executor_run).
+    """
 
     async def test_delivery_blowing_up_still_hands_off_the_queue(self, boundaries) -> None:
         run = _run(RunKind.QUEUED)
@@ -489,12 +487,7 @@ class TestFinalizeDeliveryFailureDoesNotStrandQueue:
     async def test_a_swallowed_delivery_failure_is_named_in_the_wide_event(
         self, boundaries
     ) -> None:
-        """Swallowing the exception is deliberate — losing it is not.
-
-        ``log.error`` is what puts the failure in the wide event's ``errors[]``;
-        without the cause in it, a user whose result never arrived leaves an
-        event that says the run finished cleanly.
-        """
+        """Swallowing the exception is deliberate — losing it from the wide event's errors[] is not."""
         create_session("s1", RunKind.QUEUED)
         boundaries.deliver.side_effect = RuntimeError("telegram rejected the message")
 
@@ -510,8 +503,7 @@ class TestFinalizeDeliveryFailureDoesNotStrandQueue:
     async def test_a_swallowed_lock_release_failure_is_named_in_the_wide_event(
         self, boundaries
     ) -> None:
-        """The other swallowing except in finalize. Its message is the only thing
-        separating a failed lock release from a failed delivery in the event."""
+        """The other swallowing except in finalize: its message is what separates a failed lock release from a failed delivery."""
         create_session("s1", RunKind.QUEUED)
         boundaries.release.side_effect = RuntimeError("redis went away")
 
@@ -587,8 +579,7 @@ class _FakeRedisCache:
 
 @contextmanager
 def _real_lock_lifecycle(cache: _FakeRedisCache):
-    """Drive finalize with the REAL lock functions over an in-memory Redis, so
-    what the status hook reads afterwards is what the lock actually says."""
+    """Drive finalize with the REAL lock functions over an in-memory Redis, so the status hook reads the true lock state."""
     with ExitStack() as stack:
         stack.enter_context(patch.object(eq, "redis_cache", cache))
         stack.enter_context(patch.object(executor_status, "redis_cache", cache))
@@ -613,11 +604,12 @@ async def _status_frames(thread_id: str) -> list[str]:
 
 
 class TestTheBusyLockDoesNotOutliveTheResult:
-    """The lock is what tells comms a task is in flight. Released only at the very
-    end of finalize, it was still held while the user read the result — comms'
-    next turn was handed "a background task is STILL RUNNING" about work it had
-    already delivered — and anything that raised on the way there left it held
-    for the full 30-minute TTL."""
+    """The lock tells comms a task is in flight, released only at the very end of finalize.
+
+    It was still held while the user read the result — comms' next turn was
+    handed "still running" about work already delivered — and anything that
+    raised on the way there left it held for the full 30-minute TTL.
+    """
 
     async def test_the_status_frame_is_gone_once_the_result_is_delivered(self) -> None:
         cache = _FakeRedisCache()
@@ -648,9 +640,7 @@ class TestTheBusyLockDoesNotOutliveTheResult:
         assert lock_key not in cache.client.store
 
     async def test_a_stale_finalize_never_frees_a_newer_runs_lock(self) -> None:
-        """cancel_executor frees the lock and a NEW run acquires it; the OLD
-        cancelled run's finalize firing later must leave that lock alone, or two
-        executors end up running on one conversation."""
+        """A stale finalize firing after a NEW run acquired the lock must leave that lock alone."""
         cache = _FakeRedisCache()
         lock_key = f"{EXECUTOR_BUSY_PREFIX}conv-1"
         cache.client.store[lock_key] = build_lock_value("newer-stream", "task-9")
@@ -663,10 +653,12 @@ class TestTheBusyLockDoesNotOutliveTheResult:
 
 
 class TestTheCardNoteOnlyGoesWhereCardsRender:
-    """``returned_to_frontend`` tells comms "these items are already on screen,
-    don't re-type them". On a bot conversation there is no screen — the reply is
-    plain text over the platform API — so the note suppresses the only copy of
-    the data the user would ever see."""
+    """returned_to_frontend tells comms "these items are already on screen, don't re-type them".
+
+    On a bot conversation there is no screen — the reply is plain text over
+    the platform API — so the note suppresses the only copy of the data the
+    user would ever see.
+    """
 
     async def test_a_telegram_run_gets_no_card_suppression_note(self, boundaries) -> None:
         run = _run(RunKind.QUEUED, source_category=SourceCategory.BOT)
@@ -686,8 +678,7 @@ class TestTheCardNoteOnlyGoesWhereCardsRender:
         assert boundaries.deliver.await_args.args[3] == CARD_NOTE
 
     async def test_a_scheduled_workflow_run_gets_no_note(self, boundaries) -> None:
-        """Its delivery is text-only too, and the narrator was already dropping
-        the note for it — building it was wasted work with one more way to leak."""
+        """Its delivery is text-only too; the narrator was already dropping the note, so building it was wasted work."""
         run = _run(RunKind.QUEUED, workflow_id="wf-1", source_category=SourceCategory.BG)
 
         await er._finalize_executor_run(run, TASK, "result", "final")
@@ -727,10 +718,11 @@ class TestExecutorRunSource:
 
 
 class TestBuildRunItem:
-    """The one serialized run-context shape, written by the queue and by the HIL
-    resume store and read back by ``prepare_run_from_item``. A renamed or dropped
-    key here is invisible on write and only shows when a resumed run silently
-    loses what a queued run kept."""
+    """The one serialized run-context shape, written by the queue and the HIL resume store, read by prepare_run_from_item.
+
+    A renamed or dropped key here is invisible on write and only shows when
+    a resumed run silently loses what a queued run kept.
+    """
 
     def test_every_field_survives_the_round_trip_shape(self) -> None:
         item = build_run_item(
@@ -753,8 +745,7 @@ class TestBuildRunItem:
         assert item["bot_message_id"] == "bot-msg-1"
 
     def test_a_plain_enqueue_carries_no_bot_message_id(self) -> None:
-        """Only a HIL pause sets it; a queued run must still carry the key, as
-        ``prepare_run_from_item`` reads it unconditionally."""
+        """Only a HIL pause sets it; a queued run must still carry the key since prepare_run_from_item reads it unconditionally."""
         item = build_run_item(
             task="t",
             configurable={"user_id": "user-1"},
@@ -779,18 +770,19 @@ def _sum(name: str, labels: dict[str, str]) -> float:
 
 
 def _counter(name: str, labels: dict[str, str]) -> float:
-    """A Counter's own sample is its base name, not ``<name>_count``."""
+    """Read a Counter's own sample, which is its base name and not <name>_count."""
     return REGISTRY.get_sample_value(name, labels) or 0.0
 
 
 class TestTerminalRunMetrics:
-    """The terminal labels and the e2e boundary. A run's end status drives alerts
-    and SLOs, so the exact literal on the collector is the contract."""
+    """The terminal labels and the e2e boundary.
+
+    A run's end status drives alerts and SLOs, so the exact literal on the
+    collector is the contract.
+    """
 
     async def test_error_run_records_error_status_and_a_zero_e2e_sample(self, boundaries) -> None:
-        """An error run is labelled ``error`` (not the mixed-case literal), and a
-        dispatch stamp equal to the finalize instant is a real 0.0 sample — the
-        ``>=`` boundary, not the strict ``>`` that would drop it."""
+        """Labelled lowercase error, and a stamp equal to the finalize instant is a real 0.0 sample."""
         boundaries.stream_manager.is_cancelled.return_value = False
         run = replace(_run(RunKind.QUEUED), t_dispatch_perf=1234.5, queued=True)
         create_session("s1", RunKind.QUEUED)
@@ -839,8 +831,11 @@ class TestTerminalRunMetrics:
 
 
 class TestFinalizePausedRun:
-    """A HIL pause holds the lock and signals the stream, but must not deliver or
-    drain the queue. ``observe_executor_run_total`` gets the pause's own label."""
+    """A HIL pause holds the lock and signals the stream.
+
+    It must not deliver or drain the queue, and observe_executor_run_total gets
+    the pause's own label.
+    """
 
     async def _pause(self, *, queued: bool):
         run = replace(_run(RunKind.QUEUED), queued=queued)
@@ -873,9 +868,7 @@ class TestFinalizePausedRun:
 
 class TestRecordPauseIdentityRewrite:
     async def test_the_resume_context_drops_the_stamp_and_the_queue_origin(self) -> None:
-        """A pause re-dispatch is a new incarnation: the stamp goes (so the
-        resume measures no queue wait for the user's decision time) and the queue
-        origin is cleared (it did not wait on the busy lock)."""
+        """The stamp goes (no queue wait for decision time) and the queue origin is cleared."""
         run = replace(_run(RunKind.QUEUED), t_dispatch_perf=1234.5, queued=True)
 
         with patch.object(er, "set_resume_item", new_callable=AsyncMock) as set_item:

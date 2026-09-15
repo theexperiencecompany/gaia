@@ -81,9 +81,9 @@ def _ensure_subtask_ids(subtasks: list[SubTask]) -> list[SubTask]:
 
 
 def _to_todo_update(updates: TodoUpdateRequest) -> TodoUpdate:
-    """Project a partial API update onto the repository's ``$set`` model.
+    """Project a partial API update onto the repository's $set model.
 
-    ``None`` means "not provided" on this API — no field can be cleared through
+    None means "not provided" on this API — no field can be cleared through
     it — so None-valued fields are dropped rather than written as nulls, and the
     resulting model's set fields are exactly what will be written.
     """
@@ -94,9 +94,9 @@ def _to_todo_update(updates: TodoUpdateRequest) -> TodoUpdate:
 
 
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
-    """Rebuild ``update`` without the completion fields.
+    """Rebuild update without the completion fields.
 
-    A ``TodoUpdate`` writes exactly the fields that are *set* on it, and a field
+    A TodoUpdate writes exactly the fields that are *set* on it, and a field
     cannot be un-set in place, so dropping one means rebuilding from the rest.
     """
     fields = update.model_dump(exclude_unset=True)
@@ -106,8 +106,7 @@ def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
 
 
 class TodoService:
-    """Service class for todo operations. Persistence + caching live in the
-    todos/projects repositories; this layer holds orchestration only."""
+    """Persistence + caching live in the todos/projects repositories; this layer holds orchestration only."""
 
     @staticmethod
     async def _get_inbox_id(user_id: str) -> str:
@@ -117,7 +116,7 @@ class TodoService:
 
     @staticmethod
     def _needs_inbox_default(params: TodoSearchParams) -> bool:
-        """The unfiltered main list scopes to Inbox; every filtered view does not."""
+        """Return True when the unfiltered main list should scope to Inbox; filtered views never do."""
         return not (
             params.project_id
             or params.q
@@ -277,7 +276,6 @@ class TodoService:
     async def update_todo(
         cls, todo_id: str, updates: TodoUpdateRequest, user_id: str
     ) -> TodoResponse:
-        """Update a todo."""
         log.set(
             component="todo_service",
             operation="update_todo",
@@ -300,11 +298,9 @@ class TodoService:
         if update.completed is not None:
             update.completed_at = datetime.now(UTC) if update.completed else None
 
-        # Completing a tracked todo (one with a VFS canvas) must run the tracked
-        # lifecycle FIRST — complete_tracked_todo archives the canvas and sets the
-        # completion fields itself. So route completion through the service, then
-        # strip the completion fields from this update so we don't re-trip the
-        # completion guard or clobber the archived vfs_path.
+        # A tracked todo (has a VFS canvas) must complete via tracked_todo_service first —
+        # it archives the canvas and sets the completion fields itself — then those fields
+        # are stripped here so this update doesn't re-trip the guard or clobber vfs_path.
         if update.completed is True:
             existing = await todo_repository.get(todo_id, user_id=user_id)
             if existing and existing.vfs_path:
@@ -365,7 +361,6 @@ class TodoService:
 
     @classmethod
     async def delete_todo(cls, todo_id: str, user_id: str) -> None:
-        """Delete a todo."""
         log.set(component="todo_service", operation="delete_todo", user_id=user_id, todo_id=todo_id)
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
@@ -536,7 +531,6 @@ class ProjectService:
 
     @staticmethod
     async def create_project(project: ProjectCreate, user_id: str) -> ProjectResponse:
-        """Create a new project."""
         log.set(
             component="todo_service",
             operation="create_project",
@@ -568,7 +562,6 @@ class ProjectService:
     async def update_project(
         project_id: str, updates: UpdateProjectRequest, user_id: str
     ) -> ProjectResponse:
-        """Update a project."""
         log.set(
             component="todo_service",
             operation="update_project",

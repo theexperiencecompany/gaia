@@ -323,17 +323,6 @@ export default function ViewEmail({
     return new Date(a.time).getTime() - new Date(b.time).getTime();
   });
 
-  // const getRecipients = (email: EmailData | null) => {
-  //   if (!email) return { to: "", cc: "", bcc: "" };
-
-  //   const headers = email.headers || {};
-  //   return {
-  //     to: headers["Reply-To"] || headers["From"] || email.from || "",
-  //     cc: "",
-  //     bcc: "",
-  //   };
-  // };
-
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -385,13 +374,7 @@ export default function ViewEmail({
         return;
       }
 
-      // TODO: Backend reply endpoint doesn't exist yet
-      // await mailApi.replyToEmail({
-      //   threadId: replyTo.threadId,
-      //   to: [recipient],
-      //   subject: `Re: ${replyTo.subject || ""}`,
-      //   body: content,
-      // });
+      // TODO: backend reply endpoint doesn't exist yet.
 
       toast.error("Reply functionality is not yet implemented");
       setShowReplyEditor(false);

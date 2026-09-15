@@ -1,40 +1,4 @@
-"""Comprehensive unit tests for the main WorkflowService (service.py).
-
-Covers:
-  - WorkflowService.create_workflow (success, validation errors, saga rollback,
-    trigger registration, scheduling, generation queueing, ChromaDB failures)
-  - WorkflowService.get_workflow (found, not found, transform error)
-  - WorkflowService.list_workflows (pagination, filtering, malformed docs)
-  - WorkflowService.update_workflow (success, not found, trigger re-registration,
-    schedule changes, DB failure compensation)
-  - WorkflowService.delete_workflow (success, not found, trigger cleanup)
-  - WorkflowService.execute_workflow (success, not found, validation failures,
-    queue failures)
-  - WorkflowService.get_workflow_status (success, not found)
-  - WorkflowService.activate_workflow (success, not found, trigger registration
-    failure, DB update failure rollback)
-  - WorkflowService.deactivate_workflow (success, not found, trigger unregistration)
-  - WorkflowService.regenerate_workflow_steps (success, not found, LLM failure)
-  - WorkflowService.increment_execution_count (success, not found, DB error)
-  - WorkflowService._generate_workflow_steps (success, LLM failure, error persistence)
-  - generate_unique_workflow_slug (unique, collision, empty title)
-
-Also covers:
-  - WorkflowGenerationService.generate_steps_with_llm (structured output,
-    regeneration, empty steps, max attempts, provider error propagation)
-  - WorkflowGenerationService.generate_workflow_prompt (success, parse failure)
-  - WorkflowScheduler (schedule, cancel, reschedule, get_task, get_pending_task,
-    update_task_status, get_workflow_status)
-  - WorkflowQueueService (queue_workflow_generation, queue_workflow_execution,
-    queue_todo_workflow_generation,
-    is_workflow_generating, clear_workflow_generating_flag)
-  - TriggerService (get_all_workflow_triggers,
-    register_triggers, unregister_triggers)
-  - WorkflowValidator (validate_for_execution: pass, deactivated, no steps,
-    no trigger config, multiple errors)
-  - generation_service helpers (enrich_steps, _build_trigger_hint,
-    _build_available_triggers)
-"""
+"""Unit tests for WorkflowService and its collaborators: generation, scheduling, queueing, triggers, and validation."""
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -381,9 +345,7 @@ class TestCreateWorkflow:
     async def test_create_returns_existing_system_workflow_instead_of_duplicate(
         self, mock_create, mock_find_system, mock_chroma, _mock_scheduler, _mock_missing
     ):
-        """A system workflow is one-per-user: reaching the same definition from the
-        explore card after the provisioner already made it must hand back that
-        workflow, not create a second copy."""
+        """A system workflow is one-per-user: reaching it again from the explore card must hand back the same workflow."""
         mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
         already_provisioned = _make_workflow()
         mock_find_system.return_value = already_provisioned
@@ -410,9 +372,7 @@ class TestCreateWorkflow:
     async def test_create_stays_inactive_when_steps_need_unconnected_integrations(
         self, _mock_create, mock_activate, mock_chroma, _mock_scheduler, mock_missing
     ):
-        """Supplied steps skip generation, so the generation-time gate never runs on
-        them. A workflow needing an app the user hasn't connected must still be
-        created switched off rather than firing and failing on its first run."""
+        """Supplied steps skip the generation-time gate, so a workflow needing an unconnected app is created switched off."""
         mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
         mock_missing.return_value = [IntegrationRef(id="gmail", name="Gmail")]
 
@@ -699,10 +659,8 @@ class TestListWorkflows:
 
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock)
     async def test_list_workflows_enriches_integration_requirements(self, mock_list):
-        # A step category mapped to the OAUTH catalog makes the workflow require
-        # that integration. The connection status is resolved in a single call
-        # keyed on the user id (not a broadened default) — pin both the enriched
-        # fields and the exact status-call argument.
+        # A step category mapped to the OAUTH catalog makes the workflow require that integration; connection
+        # status is resolved in a single call keyed on the user id — pin both the enriched fields and that call.
         workflow = _make_workflow(
             steps=[
                 WorkflowStep(
@@ -1023,8 +981,7 @@ class TestDeleteWorkflow:
     )
     @patch(f"{_REPO}.delete_for_user", new_callable=AsyncMock, return_value=True)
     async def test_delete_scheduled_workflow_no_scheduler_teardown(self, mock_delete, mock_get):
-        """A scheduled workflow deletes cleanly: liveness is governed by the claim
-        gate, so delete performs no scheduler teardown — just the row removal."""
+        """A scheduled workflow's liveness is governed by the claim gate, so delete does no scheduler teardown."""
         trigger = _make_trigger_config(
             trigger_type=TriggerType.SCHEDULE,
             cron_expression="0 9 * * *",
@@ -1841,9 +1798,7 @@ class TestGenerateStepsWithLLM:
     async def test_generate_llm_error_propagates(
         self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
     ) -> None:
-        """Provider errors surface as WorkflowStepGenerationError carrying the reason —
-        transient retry lives in ainvoke_llm, not the generation loop, so the loop does
-        not re-issue the request on an LLM failure."""
+        """Provider errors surface as WorkflowStepGenerationError; retry lives in ainvoke_llm, not the generation loop."""
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects.return_value = {}
         mock_registry.get_core_tools.return_value = []
@@ -2204,10 +2159,8 @@ class TestWorkflowScheduler:
         result = await scheduler.reschedule_workflow(WORKFLOW_ID, new_time)
         assert result is False
 
-    # The recurring-due scan (status=scheduled, scheduled_at<=now, activated,
-    # repeat) now lives on workflow_repository.find_pending_before — contract-tested
-    # against real Mongo in tests/contracts/test_workflows_repository.py. Here we
-    # verify the scheduler delegates to it and passes the scan time through.
+    # The recurring-due scan now lives on workflow_repository.find_pending_before, contract-tested against
+    # real Mongo in tests/contracts/test_workflows_repository.py; verify the scheduler delegates the scan time.
     @patch("app.services.workflow.scheduler.workflow_repository.find_pending_before")
     async def test_get_pending_task_returns_workflows(self, mock_find_pending):
         mock_find_pending.return_value = [_make_workflow()]
@@ -2266,8 +2219,7 @@ class TestWorkflowQueueService:
 
     @pytest.fixture(autouse=True)
     def _route_enqueue_through_pool(self, route_enqueue_via_pool):
-        """Shared conftest fixture routes the wide-event enqueue wrapper through
-        pool.enqueue_job so the tests' pool mocks stay authoritative."""
+        """Route the wide-event enqueue wrapper through pool.enqueue_job so the tests' pool mocks stay authoritative."""
         return
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
@@ -2446,12 +2398,9 @@ class TestTriggerService:
         result = await TriggerService.get_all_workflow_triggers()
         assert result == []
 
-    # Safe-to-delete filtering moved to
-    # tests/unit/services/workflow/test_trigger_service_refcount.py when the count
-    # became a sum over workflows AND todos: patching only workflow_repository here
-    # left the todo count hitting the real repository, so three of these five passed
-    # vacuously (the unpatched call raised, and the except branch returned the
-    # empty list the test expected).
+    # Safe-to-delete filtering moved to tests/unit/services/workflow/test_trigger_service_refcount.py when
+    # the count became a sum over workflows AND todos — patching only workflow_repository here left three
+    # of five tests passing vacuously (the unpatched todo call raised, caught, and returned an empty list).
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
     async def test_register_triggers_no_handler(self, mock_get_handler):

@@ -47,13 +47,11 @@ def get_user_id(config: RunnableConfig) -> str:
 def get_session_id(config: RunnableConfig) -> str | None:
     """Resolve the workspace session id from RunnableConfig.
 
-    Prefer `vfs_session_id`: subagent_runner pins it to the *parent*
-    conversation thread so artifacts written by one executor call are visible
-    to the next (`thread_id` is the `executor_<conv>` wrapper and differs from
-    the conversation_id that `ensure_session_dirs` and the
-    chat artifact forwarder key on — using it would split the session dir and
-    drop every artifact event). May be None for non-chat invocations
-    (workflows, background tasks)."""
+    Prefer vfs_session_id: subagent_runner pins it to the *parent*
+    conversation thread so artifacts are visible across executor calls
+    (thread_id differs and would split the session dir). May be None for
+    non-chat invocations (workflows, background tasks).
+    """
     configurable = agent_configurable(config)
     metadata = config.get("metadata", {}) if config else {}
     session_id = (
@@ -66,16 +64,10 @@ def get_session_id(config: RunnableConfig) -> str | None:
 
 
 def canonical_path(path: str, *, session_id: str | None) -> tuple[str, MountRole, str | None]:
-    """Resolve a tool-supplied path to an absolute `/workspace` path.
+    """Resolve a tool-supplied path to an absolute /workspace path.
 
-    - Relative paths join to the session root (when `session_id` is known)
-      else to `/workspace`. The session root is the base so that
-      `artifacts/`, `user-uploaded/`, and `scratch/` are all reachable
-      as plain `./X` and classify to the correct role (the artifact watcher
-      keys off the real on-disk path, so they must not be scratch-nested).
-    - Absolute paths must stay under `/workspace`.
-
-    Returns (abs_path, role, role_conv_id).
+    Relative paths join to the session root (or /workspace); absolute paths
+    must stay under /workspace. Returns (abs_path, role, role_conv_id).
     """
     if not path:
         raise ValueError("path is required")
@@ -90,12 +82,10 @@ def canonical_path(path: str, *, session_id: str | None) -> tuple[str, MountRole
 
 
 def canonical_rel(path: str, *, session_id: str | None) -> tuple[str, str]:
-    """Resolve a tool-supplied path to ``(abs_path, workspace_rel)``.
+    """Resolve a tool-supplied path to (abs_path, workspace_rel).
 
-    Rejects a path that resolves to the workspace root itself (``rel == ""``),
-    which is not a file. Raises ``ValueError`` on that or on any path that escapes
-    ``/workspace``. Shared by the file-mining tools so their path handling can't
-    drift.
+    Raises ValueError if the path resolves to the workspace root itself
+    (rel == "", not a file) or escapes /workspace.
     """
     abs_path, _, _ = canonical_path(path, session_id=session_id)
     rel = abs_path[len(WORKSPACE_ROOT) + 1 :] if abs_path != WORKSPACE_ROOT else ""
@@ -112,15 +102,9 @@ def sh_quote(s: str) -> str:
 async def atomic_write(sbx: AsyncSandbox, abs_path: str, data: bytes) -> float:
     """Write bytes into the sandbox atomically; return the file's mtime (epoch s).
 
-    Writes to a temp path then `rename`s into place — atomic on the same FS, so a
-    concurrent reader never sees a partial file (and the watcher ignores the temp
-    suffix). `rename` returns the new entry's metadata, giving the real mtime the
-    artifact-event dedup signature needs with no extra round-trip.
-
-    `EntryInfo.modified_time` is a NAIVE datetime in UTC (protobuf
-    `Timestamp.ToDatetime()`), so it MUST be tagged UTC before `.timestamp()` —
-    otherwise a non-UTC worker reinterprets it in local time and the epoch is off
-    by the UTC offset, breaking dedup against the host/bash mtimes.
+    Writes to a temp path then renames into place, atomic on the same FS.
+    EntryInfo.modified_time is a NAIVE UTC datetime, so it MUST be tagged UTC
+    before .timestamp() or a non-UTC worker's epoch is off, breaking dedup.
     """
     tmp_path = f"{abs_path}{WORKSPACE_TMP_SUFFIX}"
     await sbx.files.write(tmp_path, data)
@@ -140,11 +124,9 @@ async def atomic_write(sbx: AsyncSandbox, abs_path: str, data: bytes) -> float:
 def safe_emit(event: dict[str, Any], *, session_id: str | None = None) -> None:
     """Emit a custom stream event, swallowing 'no writer' errors silently.
 
-    Tools are invoked both during live chat (writer present) and during
-    silent/background runs (no writer). Don't fail the tool just because
-    nobody is listening. When `session_id` is given it is stamped into the
-    artifact/bash/file payloads so the frontend can route the event to the
-    right conversation.
+    Tools run both during live chat (writer present) and silent/background
+    runs (no writer). session_id, when given, is stamped into the payload
+    so the frontend can route the event to the right conversation.
     """
     if session_id is not None:
         for key in _SESSION_EVENT_KEYS:

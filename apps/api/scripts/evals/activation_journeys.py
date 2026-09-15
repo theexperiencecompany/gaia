@@ -403,8 +403,11 @@ RAW_DIR = RUNS_DIR
 
 
 def _save_raw(rows: list[GradedJourney]) -> Path:
-    """Transcripts survive a judge outage: judging is the step most likely to
-    die on credits, and the turns are the expensive part."""
+    """Save transcripts so they survive a judge outage.
+
+    Judging is the step most likely to die on credits, and the turns are
+    the expensive part.
+    """
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     path = RAW_DIR / f"journeys-{RUN_ID}.json"
     path.write_text(json.dumps([r.model_dump(mode="json") for r in rows], indent=1))

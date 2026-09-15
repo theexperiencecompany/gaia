@@ -2,34 +2,14 @@
 """
 Enhanced subscription data fixer for the AI platform.
 
-This script handles:
-- Finding subscriptions with invalid plan_ids (not present in plans collection)
-- Cleaning up (deleting) subscriptions with invalid plan_ids
-- Updating invalid subscriptions to valid plan_ids (GAIA Pro Monthly/Yearly)
-- Displaying plan and subscription details for review
-- Maintaining data integrity and providing detailed logging
+Finds subscriptions with invalid plan_ids, and can delete them or update
+them to a valid GAIA Pro Monthly/Yearly plan, with detailed logging.
 
-IMPORTANT: Run this script from the correct directory!
+Run from apps/api/: python scripts/fix_subscription_data.py (also works via
+PYTHONPATH=/app, or python -m scripts.fix_subscription_data from other cwds).
 
-1. If running locally:
-    cd /path/to/your/gaia/apps/api
-    python scripts/fix_subscription_data.py
-
-2. If running inside Docker container:
-    cd /app
-    python scripts/fix_subscription_data.py
-
-3. Alternative Docker approach (set PYTHONPATH):
-    PYTHONPATH=/app python scripts/fix_subscription_data.py
-
-4. Run as module (from app directory):
-    python -m scripts.fix_subscription_data
-
-Script options (interactive):
-1. Delete invalid subscriptions (cleanup)
-2. Update invalid subscriptions to GAIA Pro Monthly
-3. Update invalid subscriptions to GAIA Pro Yearly
-4. Show details and exit
+Script options (interactive): delete invalid subscriptions, update to GAIA
+Pro Monthly, update to GAIA Pro Yearly, or show details and exit.
 """
 
 import asyncio
@@ -162,7 +142,7 @@ async def show_plans():
 
 
 async def main():
-    """Main function to fix subscription data."""
+    """Fix subscription data."""
     print("🔧 Subscription Data Fixer")
     print("=" * 50)
 
@@ -172,7 +152,6 @@ async def main():
     # Show available plans
     await show_plans()
 
-    # Find invalid subscriptions
     invalid_subs, _valid_subs, valid_plan_ids = await find_invalid_subscriptions()
 
     if not invalid_subs:

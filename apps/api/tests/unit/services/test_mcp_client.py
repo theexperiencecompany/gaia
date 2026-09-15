@@ -1,9 +1,9 @@
-"""Comprehensive unit tests for MCP client, client pool, token store, token management,
-OAuth discovery, LangChain adapter, and resilient adapter.
+"""Unit tests for the MCP client, client pool, token store, and OAuth flows.
 
-Covers: connect, disconnect, execute tool, list tools, client pool get/evict/cleanup/shutdown,
-token store CRUD/encrypt/decrypt, token refresh/expiry, OAuth discovery, probe,
-LangChain adapter schema sanitization, and resilient adapter retry/skip logic.
+Covers connect/disconnect, tool execution/listing, client pool
+get/evict/cleanup/shutdown, token CRUD/encrypt/decrypt/refresh, OAuth
+discovery/probe, LangChain adapter sanitization, and resilient adapter
+retry/skip logic.
 """
 
 import asyncio
@@ -89,8 +89,8 @@ def _make_oauth_discovery(
 ) -> OAuthDiscovery:
     """Build an OAuthDiscovery (SDK-model based) for tests.
 
-    ``metadata_overrides`` tweak the wrapped ``as_metadata`` (e.g. drop the
-    authorization_endpoint); ``overrides`` tweak the OAuthDiscovery fields
+    metadata_overrides tweak the wrapped as_metadata (e.g. drop the
+    authorization_endpoint); overrides tweak the OAuthDiscovery fields
     (resource, initial_scope, discovery_method, prm).
     """
     as_metadata = _make_oauth_metadata(**(metadata_overrides or {}))
@@ -120,9 +120,9 @@ def _make_credential(**overrides: Any) -> MCPCredential:
 
 
 def _api_error(status_code: int) -> Exception:
-    """A connect failure that carries an HTTP response, the way the SDK raises.
+    """Build a connect failure that carries an HTTP response, the way the SDK raises.
 
-    Only the status matters here — the body has no OAuth error code, so the
+    Only the status matters — the body has no OAuth error code, so the
     terminal-vs-transient decision is made on the status alone.
     """
     err = RuntimeError(f"server returned {status_code}")
@@ -750,12 +750,7 @@ class TestMCPClientIsConnectedDb:
 
 class TestMCPClientEnsureConnected:
     async def test_returns_cached(self):
-        """The warm path still short-circuits — once the DB confirms it is live.
-
-        The status check comes first now: the in-memory map is a transport
-        cache, not the authorization record (a disconnect on another replica
-        never reaches this process's dicts).
-        """
+        """The warm path short-circuits only after the DB confirms it live — the in-memory map is a transport cache, not the authorization record."""
         client = MCPClient(user_id=USER_ID)
         tools = [_mock_tool()]
         client._tools[INTEGRATION_ID] = tools
@@ -881,8 +876,7 @@ class TestMCPClientCallToolOnServer:
         mock_session.call_tool.assert_awaited_once_with(name="test_tool", arguments={"arg": "val"})
 
     async def test_failed_call_stamps_latency_before_reraising(self):
-        """A raising tool call still stamps success=False and its latency: without
-        it the wide event has no record of the call that just ran."""
+        """A raising tool call still stamps success=False and its latency on the wide event."""
         log.reset()
         client = MCPClient(user_id=USER_ID)
         mock_base = MagicMock()
@@ -1617,10 +1611,9 @@ class TestTryRefreshToken:
         )
         assert result is False
 
-    # test_no_token_endpoint was deleted: token_endpoint is a required field on
-    # the SDK OAuthMetadata/OAuthDiscovery model, so a discovery result without a
-    # token_endpoint can no longer be constructed. The "missing token endpoint"
-    # case is now structurally impossible and enforced by the model, not this code.
+    # test_no_token_endpoint was deleted: token_endpoint is required by the SDK
+    # OAuthMetadata/OAuthDiscovery model, so a discovery result missing it can
+    # no longer be constructed — enforced by the model, not this code.
 
     async def test_no_client_id(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -2643,11 +2636,7 @@ class TestMCPClientReadUiResource:
 
 class TestMCPClientFindIntegrationIdByServerUrl:
     async def test_finds_from_active_clients(self):
-        """The warm fast path resolves — for an integration still connected.
-
-        Gated on the stored status like the slow path, so a session this
-        replica still holds cannot route to an integration revoked elsewhere.
-        """
+        """The fast path is gated on stored status like the slow path, so a session this replica holds can't route to a revoked integration."""
         client = MCPClient(user_id=USER_ID)
         client._clients[INTEGRATION_ID] = MagicMock()
 
@@ -2880,9 +2869,8 @@ class TestMCPClientListResourceTemplatesOnServer:
         mock_session.list_resource_templates.assert_awaited_once_with(cursor="page2")
 
     # test_list_templates_without_model_dump was deleted: _get_session_for_server
-    # now returns the underlying official SDK ClientSession, whose list ops always
-    # return typed *Result models with .model_dump(). The bare-dict fallback this
-    # test exercised was removed in the SDK migration, so the path no longer exists.
+    # now returns the SDK ClientSession, whose list ops always return typed
+    # *Result models with .model_dump() — the bare-dict fallback no longer exists.
 
 
 # ===========================================================================
@@ -2998,11 +2986,9 @@ class TestMCPClientBuildOauthAuthUrl:
 
         assert "client_id=dcr_id" in url
 
-    # test_raises_when_no_auth_endpoint was deleted: authorization_endpoint is a
-    # required field on the SDK OAuthMetadata model, so a discovery result lacking
-    # it can no longer be constructed. The "missing authorization_endpoint" guard
-    # was removed from build_oauth_auth_url; the constraint is now enforced by the
-    # model at discovery time.
+    # test_raises_when_no_auth_endpoint was deleted: authorization_endpoint is
+    # required by the SDK OAuthMetadata model, so a discovery result lacking it
+    # can no longer be constructed — enforced by the model, not build_oauth_auth_url.
 
     async def test_adds_nonce_for_openid_scope(self):
         client = MCPClient(user_id=USER_ID)
@@ -3101,10 +3087,9 @@ class TestMCPClientHandleOauthCallback:
                     INTEGRATION_ID, "code", "state", "https://callback.com"
                 )
 
-    # test_raises_when_no_token_endpoint was deleted: token_endpoint is a required
-    # field on the SDK OAuthMetadata model, so a discovery result without it can no
-    # longer be constructed. The "No token_endpoint" guard was removed from
-    # handle_oauth_callback; the constraint is now enforced by the model.
+    # test_raises_when_no_token_endpoint was deleted: token_endpoint is required
+    # by the SDK OAuthMetadata model, so a discovery result without it can no
+    # longer be constructed — enforced by the model, not handle_oauth_callback.
 
     async def test_raises_when_no_client_id_for_exchange(self):
         client = MCPClient(user_id=USER_ID)
@@ -3242,9 +3227,7 @@ class TestMCPClientHandleCustomIntegrationConnect:
             await client._handle_custom_integration_connect(INTEGRATION_ID, SERVER_URL, tools)
 
     async def test_the_indexed_request_carries_the_integrations_identity_verbatim(self):
-        """The subagent entry is what a handoff later resolves the integration by,
-        so every field of the request is pinned: a dropped server_url or tool list
-        indexes a subagent that ranks for nothing and routes nowhere."""
+        """A dropped server_url or tool list indexes a subagent that ranks for nothing and a handoff can never resolve."""
         from app.agents.core.subagents.handoff_tools import (
             CustomMcpIndexRequest,
         )
@@ -3286,8 +3269,7 @@ class TestMCPClientHandleCustomIntegrationConnect:
         )
 
     async def test_an_integration_with_no_description_indexes_an_empty_one(self):
-        """The request's description is a plain ``str``; a missing one becomes the
-        empty string rather than travelling as None into the embedded text."""
+        """A missing description becomes the empty string rather than travelling as None into the embedded text."""
         from app.agents.core.subagents.handoff_tools import (
             CustomMcpIndexRequest,
         )
@@ -3445,10 +3427,8 @@ class TestProbeMcpConnectionSSRF:
         mock_extract.assert_not_awaited()
 
 
-# ===========================================================================
 # Mutation-hardening: exact assertions on log writes, dict-key writes,
-# outbound HTTP args, and raised exceptions
-# ===========================================================================
+# outbound HTTP args, and raised exceptions.
 
 
 def _make_id_token(payload: dict[str, Any]) -> str:
@@ -3672,9 +3652,7 @@ class TestMakeCallbacksExact:
         mock_spawn.assert_not_called()
 
     async def test_evicting_an_integration_that_was_never_cached_is_a_no_op(self) -> None:
-        """The callback fires from a tool-call error, and a concurrent eviction
-        may already have emptied both caches — popping without a default would
-        turn the second one into a KeyError inside an error handler."""
+        """A concurrent eviction may have already emptied both caches; popping without a default would raise inside the error handler."""
         client = MCPClient(user_id=USER_ID)
 
         with (
@@ -3902,9 +3880,7 @@ class TestHandleConnectFailureExact:
 
 class TestSmallOauthHelpersExact:
     def test_the_metadata_document_candidate_is_computed_from_the_api_base(self) -> None:
-        """All three values describe the SAME base URL; computing the localhost
-        flag from anything else would publish a client_id the auth server cannot
-        fetch — or refuse to publish one it could."""
+        """All three values describe the same base URL; computing the localhost flag from anything else mismatches what the auth server can fetch."""
         with (
             patch(
                 "app.services.mcp.mcp_client.get_api_base_url", return_value="http://localhost:8000"
@@ -3926,8 +3902,7 @@ class TestSmallOauthHelpersExact:
         doc_url.assert_called_once_with("http://localhost:8000")
 
     def test_scopes_are_joined_by_a_single_space(self) -> None:
-        """RFC 6749 scope is space-delimited; any other separator makes the whole
-        string one unknown scope and the server rejects the authorization."""
+        """RFC 6749 scope is space-delimited; any other separator makes the whole string one unknown scope."""
         client = MCPClient(user_id=USER_ID)
         oauth_config = _make_oauth_discovery(
             metadata_overrides={"scopes_supported": ["read", "write", "offline_access"]}
@@ -3944,8 +3919,7 @@ class TestSmallOauthHelpersExact:
         assert scope_str == "read write offline_access"
 
     async def test_the_dcr_fallback_is_asked_for_this_integration_and_redirect(self) -> None:
-        """The registration is bound to both — a dropped redirect_uri registers a
-        client the auth server will then refuse to redirect back to."""
+        """A dropped redirect_uri registers a client the auth server will then refuse to redirect back to."""
         client = MCPClient(user_id=USER_ID)
         oauth_config = _make_oauth_discovery()
         client.token_store.get_dcr_client = AsyncMock(return_value=None)
@@ -3973,11 +3947,7 @@ class TestSmallOauthHelpersExact:
 
 
 class TestConnectFailureClassification:
-    """What counts as an auth failure worth one refresh, and what counts as
-    credentials being dead. Both decisions are string-matched against the
-    provider's error text, so each marker needs its own case: a marker that
-    stops matching silently turns a recoverable 401 into a dead integration,
-    or a dead one into an infinite reconnect."""
+    """Both decisions string-match the provider's error text; a marker that stops matching turns a recoverable 401 into a dead integration, or vice versa."""
 
     @staticmethod
     def _client() -> MCPClient:
@@ -4033,9 +4003,7 @@ class TestConnectFailureClassification:
         client._try_refresh_token.assert_not_awaited()
 
     async def test_the_retry_marker_stops_a_second_refresh_on_re_entry(self) -> None:
-        """The real loop: refresh succeeds, _do_connect retries, that connect
-        fails the same way and lands back here. Without the marker the two
-        refresh each other forever."""
+        """Without the marker, a retry that fails the same way would refresh forever against itself."""
         client = self._client()
         client._try_refresh_token = AsyncMock(return_value=True)
         mcp_config = _make_mcp_config(requires_auth=True)
@@ -4056,8 +4024,7 @@ class TestConnectFailureClassification:
         client._try_refresh_token.assert_awaited_once()
 
     async def test_a_later_failure_gets_its_own_refresh(self) -> None:
-        """The marker is scoped to one call stack, not to the client's lifetime —
-        leaving it set would cost every later reconnect its retry."""
+        """The marker is scoped to one call stack; leaving it set would cost every later reconnect its retry."""
         client = self._client()
         mcp_config = _make_mcp_config(requires_auth=True)
 
@@ -4089,8 +4056,7 @@ class TestConnectFailureClassification:
         assert client._try_refresh_token.await_count == 2
 
     async def test_a_401_is_terminal_only_after_a_refresh_was_attempted(self) -> None:
-        """Before a refresh, a 401 may just be an expired access token — keep the
-        tokens. After a failed refresh it is dead credentials."""
+        """Before a refresh a 401 may be an expired token; only after a failed refresh is it dead credentials."""
         err = _api_error(401)
 
         without_refresh = self._client()
@@ -4113,8 +4079,7 @@ class TestConnectFailureClassification:
         ["403 something else entirely", 'insufficient_scope scope="read"'],
     )
     async def test_step_up_needs_both_the_403_and_the_scope_marker(self, message: str) -> None:
-        """Either half alone is an ordinary failure. Raising on one of them turns
-        every 403 into a step-up prompt the server never asked for."""
+        """Either half alone is an ordinary failure; raising on just one turns every 403 into an unrequested step-up prompt."""
         client = self._client()
         with patch("app.services.mcp.mcp_client.log"):
             result = await client._handle_connect_failure(
@@ -4124,8 +4089,7 @@ class TestConnectFailureClassification:
         assert result is None
 
     async def test_step_up_without_a_scope_parameter_reports_no_scopes(self) -> None:
-        """The challenge is allowed to omit scope=; the caller must get an empty
-        list, not None, because it iterates it."""
+        """An omitted scope= must reach the caller as an empty list, not None, since the caller iterates it."""
         client = self._client()
         with patch("app.services.mcp.mcp_client.log"):
             with pytest.raises(StepUpAuthRequiredError) as exc_info:
@@ -4150,8 +4114,7 @@ class TestConnectFailureClassification:
         )
 
     async def test_the_retry_flag_is_cleared_even_when_the_retry_deletes_it_first(self) -> None:
-        """The recursive _do_connect runs the same finally block, so by the time
-        this frame gets there the attribute can already be gone."""
+        """A recursive _do_connect runs the same finally block, so by this frame the attribute may already be gone."""
         client = self._client()
         client._try_refresh_token = AsyncMock(return_value=True)
 
@@ -4187,10 +4150,7 @@ class TestDoConnectWiringExact:
         return resolved
 
     async def test_every_stage_is_handed_this_integration_and_its_config(self) -> None:
-        """_do_connect resolves once and threads the id, the config and the
-        resolution through five stages. Any one of them losing it connects the
-        right server but stamps, indexes or persists against the wrong record —
-        and the connect still reports success."""
+        """A stage that drops the resolved id connects the right server but stamps, indexes or persists against the wrong record, silently."""
         resolved = self._resolved_for()
         client = MCPClient(user_id=USER_ID)
         session = AsyncMock()
@@ -4226,8 +4186,7 @@ class TestDoConnectWiringExact:
     async def test_only_the_exact_custom_source_takes_the_custom_post_connect_path(
         self, source: str, is_custom: bool
     ) -> None:
-        """is_custom picks which Chroma collection the tools are indexed into —
-        getting it wrong hides a user's own server from retrieval entirely."""
+        """is_custom picks which Chroma collection the tools index into; getting it wrong hides a user's own server from retrieval."""
         resolved = self._resolved_for(source)
         client = MCPClient(user_id=USER_ID)
         client._open_session = AsyncMock(return_value=AsyncMock())
@@ -4407,16 +4366,12 @@ class TestBuildOauthAuthUrlExactParams:
         }
 
     async def test_the_default_redirect_path_is_the_integrations_page(self) -> None:
-        """The state string is what the callback parses to decide where to send
-        the browser back to; a mangled default drops the user somewhere else."""
+        """A mangled default state string drops the user somewhere other than the callback's intended redirect."""
         query = parse_qs(urlparse(await self._build()).query)
         assert query["state"] == [f"state_abc:{INTEGRATION_ID}:/integrations"]
 
     async def test_every_stage_is_handed_this_integration_and_its_discovery(self) -> None:
-        """Discovery, client-id resolution, PKCE validation, state creation and
-        scope selection each take the integration separately. Losing it on any
-        one of them builds an authorize URL for the wrong server or the wrong
-        client — and the URL still looks well-formed."""
+        """Losing the integration id on any one stage builds an authorize URL for the wrong server or client, and it still looks well-formed."""
         client = MCPClient(user_id=USER_ID)
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(requires_auth=True, client_id="my_client")
@@ -4747,8 +4702,7 @@ class TestExchangeCodeForTokensExact:
 
     @pytest.mark.parametrize("status", [200, 201, 299])
     async def test_every_2xx_is_a_successful_exchange(self, status: int) -> None:
-        """OAuth servers differ on which 2xx they return; only 3xx and up is an
-        error. A boundary off by one rejects a token that was actually issued."""
+        """OAuth servers differ on which 2xx they return; a boundary off by one rejects a token that was actually issued."""
         client = MCPClient(user_id=USER_ID)
         response = _ok_response({"access_token": "at"})
         response.status_code = status
@@ -4787,8 +4741,7 @@ class TestExchangeCodeForTokensExact:
         parse.assert_called_once_with(response)
 
     async def test_an_error_without_a_description_says_unknown_error(self) -> None:
-        """The raised message is what reaches the user's reconnect screen, so the
-        placeholder has to read as English, not as an empty tail."""
+        """The raised message reaches the user's reconnect screen, so the placeholder must read as English, not an empty tail."""
         client = MCPClient(user_id=USER_ID)
         response = MagicMock()
         response.status_code = 400
@@ -4884,9 +4837,7 @@ class TestHandleOauthCallbackNonceEnforcement:
     async def test_the_exchange_and_the_nonce_check_are_scoped_to_this_integration(
         self,
     ) -> None:
-        """The callback resolves, discovers, exchanges and nonce-checks under one
-        integration id. Losing it on any hop exchanges the code against the wrong
-        server's token endpoint or validates the wrong stored nonce."""
+        """Losing the integration id on any hop exchanges the code against the wrong token endpoint or the wrong stored nonce."""
         client = self._make_client()
         tokens = {
             "access_token": "at",
@@ -5044,12 +4995,7 @@ class TestServerUrlMatchingHelpersExact:
         assert match == "bbb"
 
     async def test_match_active_client_skips_an_integration_revoked_elsewhere(self):
-        """A warm session is not authorization — the stored status gates it.
-
-        ``disconnect`` only clears the dicts of the replica that handled it, so
-        without this a revoked integration stays routable through the MCP proxy
-        on every other replica for the life of the process.
-        """
+        """A warm session is not authorization; disconnect only clears the dicts of the replica that handled it, not the others."""
         client = MCPClient(user_id=USER_ID)
         client._clients["bbb"] = MagicMock()
         target = client._normalize_server_url(SERVER_URL)

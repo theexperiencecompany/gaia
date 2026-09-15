@@ -1,14 +1,13 @@
-"""Render an effective message array as reviewable text, and diff it against a
-recorded copy.
+"""Render an effective message array as reviewable text, and diff it against a recorded copy.
 
-Deliberately not a general snapshot library: the value here is that a reviewer
-can read the file and answer "should the model be seeing this?" line by line, so
-the rendering names each message's slot markers instead of dumping a repr.
+Deliberately not a general snapshot library: a reviewer reads the file and
+answers "should the model be seeing this?" line by line, with each
+message's slot markers named instead of a dumped repr.
 
-Re-record with ``RECORD_CONTEXT_SNAPSHOTS=1``. A snapshot is scaffolding — it
-records whatever the code does and so cannot fail meaningfully on its own. Every
-snapshot here ships beside real assertions in ``test_context_invariants.py``;
-a movement in one of these files is only acceptable when a named test demanded it.
+Re-record with RECORD_CONTEXT_SNAPSHOTS=1. A snapshot is scaffolding — it
+records whatever the code does and cannot fail meaningfully on its own.
+Every snapshot ships beside real assertions in test_context_invariants.py;
+a movement here is only acceptable when a named test demanded it.
 """
 
 import os
@@ -58,7 +57,7 @@ def _body(message: AnyMessage) -> str:
 
 
 def assert_snapshot(name: str, messages: list[AnyMessage]) -> None:
-    """Compare ``messages`` against the recorded rendering of ``name``."""
+    """Compare messages against the recorded rendering of name."""
     path = SNAPSHOT_DIR / f"{name}.txt"
     actual = render(messages)
 

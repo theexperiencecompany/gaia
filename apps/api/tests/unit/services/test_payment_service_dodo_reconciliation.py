@@ -1,12 +1,12 @@
-"""``verify_payment_completion`` reconciling against Dodo when no webhook landed.
+"""verify_payment_completion reconciling against Dodo when no webhook landed.
 
-The bug: verification only ever read ``get_latest_active_for_user``. A dropped
-or rejected ``subscription.active`` webhook therefore left a paying user with
-no local subscription row and no path to Pro — ``/payment/success`` told them
+The bug: verification only ever read get_latest_active_for_user. A dropped
+or rejected subscription.active webhook therefore left a paying user with
+no local subscription row and no path to Pro — /payment/success told them
 the payment had not completed while Dodo happily held their money.
 
 The fix routes the reconciliation through the SAME reducer the webhook goes
-through (``subscription_events.apply_subscription_event``), so a recovered
+through (subscription_events.apply_subscription_event), so a recovered
 payment and a webhook-delivered one produce identical state. These tests pin
 the ownership refusal too: the subscription id arrives in a URL the client
 controls, so it is a hint, never an authorisation.
@@ -34,13 +34,12 @@ DODO_SUBSCRIPTION_ID = "sub_reconciled"
 
 
 def _remote_subscription(**overrides: Any) -> MagicMock:
-    """A stand-in for the Dodo SDK's ``Subscription``.
+    """Build a stand-in for the Dodo SDK's Subscription.
 
-    Only ``model_dump`` matters: the service revalidates whatever the SDK hands
-    back into ``DodoSubscriptionData`` rather than trusting attribute access.
-    The dump is mode-aware like the SDK's own — ``mode="json"`` yields the wire
-    shape the webhook schema is built for, while the default python mode yields
-    real ``datetime`` objects that a ``created_at: str`` field refuses.
+    Only model_dump matters: the service revalidates the SDK's response
+    rather than trusting attribute access. The dump is mode-aware like the
+    real SDK — mode="json" yields the webhook wire shape, while the default
+    python mode yields datetime objects that a created_at: str field refuses.
     """
     payload: dict[str, Any] = {
         "subscription_id": DODO_SUBSCRIPTION_ID,
@@ -98,8 +97,7 @@ def _service(remote: MagicMock | Exception) -> DodoPaymentService:
 
 @pytest.fixture(autouse=True)
 def _no_scan_cache():
-    """The checkout scan caches a miss in Redis; keep it in memory so one
-    test's miss never reaches the next through a real local Redis."""
+    """Keep the checkout scan's cached miss in memory, not real Redis, so one test's miss never reaches the next."""
     with patch(f"{SERVICE_MODULE}.redis_cache") as cache:
         cache.get = AsyncMock(return_value=None)
         cache.set = AsyncMock()
@@ -109,9 +107,7 @@ def _no_scan_cache():
 
 @pytest.fixture(autouse=True)
 def _no_recorded_checkout_session():
-    """These tests exercise the subscription-id hint. The other recovery path
-    (the checkout session recorded at mint time) finds nothing, so the hint
-    is the only route to Dodo and the assertions stay about that route."""
+    """Force the checkout-session recovery path to find nothing, so these tests exercise only the subscription-id hint."""
     with patch(f"{SERVICE_MODULE}.checkout_session_repository") as repo:
         repo.list_recent_for_user = AsyncMock(return_value=[])
         yield
@@ -266,8 +262,7 @@ class TestVerifyPaymentReconcilesWithDodo:
 
 
 def _paid_checkout_service() -> DodoPaymentService:
-    """A service whose Dodo client reports the recorded checkout session paid,
-    with the payment carrying the subscription behind it."""
+    """Build a service whose Dodo client reports the recorded checkout session paid, with a subscription behind the payment."""
     service = DodoPaymentService()
     service.client = MagicMock()
     service.client.checkout_sessions.retrieve.return_value = MagicMock(
@@ -288,11 +283,11 @@ def _recorded_checkout(session_id: str = "cks_1") -> CheckoutSessionDocument:
 
 
 def _buried_paid_session_service() -> DodoPaymentService:
-    """A Dodo client for the user whose paid session is no longer the newest.
+    """Build a Dodo client for the user whose paid session is no longer the newest.
 
-    Only ``cks_paid`` was ever paid; the sessions minted after it by the paywall
-    are still sitting at the details step, which is what Dodo answers for a link
-    nobody opened.
+    Only cks_paid was ever paid; the sessions minted after it by the paywall
+    are still sitting at the details step, which is what Dodo answers for a
+    link nobody opened.
     """
     service = _paid_checkout_service()
     paid = MagicMock(payment_id="pay_1", payment_status="succeeded")
@@ -308,13 +303,13 @@ class TestVerifyPaymentMaterializesFromTheCheckoutSession:
     """The recovery route taken when Dodo's return URL carries no subscription id.
 
     It used to build the subscription row itself instead of delegating to
-    the shared activation, so a user whose ``subscription.active`` webhook
+    the shared activation, so a user whose subscription.active webhook
     was slow kept the pre-payment tier cached (402 for up to five more minutes)
     and the workflows paused when their subscription lapsed never came back.
     These tests pin the delegation, not the row's contents — the shared path's
     own tests cover those.
 
-    Each test re-patches ``checkout_session_repository`` over the module's
+    Each test re-patches checkout_session_repository over the module's
     autouse fixture, which exists to keep this route out of the sibling class.
     """
 
@@ -365,12 +360,7 @@ class TestVerifyPaymentMaterializesFromTheCheckoutSession:
 
     @pytest.mark.asyncio
     async def test_a_paid_session_buried_under_later_paywall_mints_is_still_found(self) -> None:
-        """Every 402 mints a checkout session, so a user who pays and is then
-        blocked once has a newer, unpaid session on top of the paid one.
-        Resolving only "the latest" asked Dodo about a session nobody ever paid,
-        and answered "No active subscription found" to a user who had paid —
-        with the fallback that exists for a lost webhook permanently disabled,
-        because every further block buries the paid session deeper."""
+        """Every 402 mints a session, burying the paid one — resolving only "the latest" would permanently disable the lost-webhook fallback."""
         service = _buried_paid_session_service()
 
         with (
@@ -413,8 +403,7 @@ class TestVerifyPaymentMaterializesFromTheCheckoutSession:
 
     @pytest.mark.asyncio
     async def test_one_session_dodo_cannot_answer_for_does_not_end_the_scan(self) -> None:
-        """The scan runs precisely when something has already gone wrong, so a
-        session Dodo will not answer for must not hide the paid one behind it."""
+        """The scan runs precisely when something has already gone wrong, so a session Dodo can't answer for must not hide the paid one."""
         service = _buried_paid_session_service()
         paid = MagicMock(payment_id="pay_1", payment_status="succeeded")
         service.client.checkout_sessions.retrieve.side_effect = (

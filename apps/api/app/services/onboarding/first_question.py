@@ -1,9 +1,9 @@
 """The one LLM-composed line of GAIA's opening conversation.
 
-:mod:`first_conversation` is deterministic on purpose, and stays that way: it is
+:mod:first_conversation is deterministic on purpose, and stays that way: it is
 the thing that always ships. This module writes only the LAST turn of it — one
 extremely specific question about what to tackle first, inferred from the three
-onboarding answers — and every failure mode returns ``None`` so the static line
+onboarding answers — and every failure mode returns None so the static line
 composed next door is what the user gets instead.
 
 The rules are enforced in code rather than trusted to the prompt. A model that
@@ -39,10 +39,8 @@ from shared.py.wide_events import log
 QUESTION_TIMEOUT_SECONDS = 20.0
 
 #: The ceiling for the call made at completion, when the prewarm missed. The
-#: user is watching a spinner here, so this is a last chance rather than a real
-#: attempt. Six seconds because a thread that ships with only "Something else"
-#: is the worse product by a wide margin, and the prewarm usually has finished
-#: long before this runs; the dev lane measured 5 to 13 seconds per compose.
+#: user is watching a spinner, so this is a last chance, not a real attempt —
+#: the dev lane measured 5 to 13 seconds per compose.
 LIVE_QUESTION_TIMEOUT_SECONDS = 6.0
 
 #: Low but not zero. At 0 the question collapses onto the same two shapes for
@@ -62,8 +60,11 @@ class FirstQuestion(BaseModel):
 
 
 class _QuestionDraft(BaseModel):
-    """The model's output. The schema IS the check: structured output cannot hand
-    back the wrong number of chips, so nothing downstream second-guesses the words."""
+    """The model's output.
+
+    The schema IS the check: structured output cannot hand back the wrong number of
+    chips, so nothing downstream second-guesses the words.
+    """
 
     chips: list[str] = Field(
         min_length=4, max_length=4, description="Exactly 4 jobs, 2 to 4 words each."
@@ -71,11 +72,10 @@ class _QuestionDraft(BaseModel):
 
 
 def comms_voice_rules() -> str:
-    """The comms agent's own Voice section, verbatim.
+    """Return the comms agent's own Voice section, verbatim.
 
-    Sliced out of :data:`COMMS_AGENT_PROMPT` rather than restated here: a
-    second copy of the voice rules is a second thing to keep in sync, and the
-    one that is never read is the one that rots.
+    Sliced out of COMMS_AGENT_PROMPT rather than duplicated, so the two can't
+    drift out of sync.
     """
     start = COMMS_AGENT_PROMPT.find(_VOICE_SECTION_START)
     end = COMMS_AGENT_PROMPT.find(_VOICE_SECTION_END, start + 1)
@@ -131,7 +131,7 @@ bakery owner, typed "chasing suppliers for invoices": ["Chase suppliers", "Find 
 
 
 def _answers_block(preferences: OnboardingPreferences, connected_platform: str | None) -> str:
-    """The onboarding answers as the model reads them, one per line."""
+    """Return the onboarding answers as the model reads them, one per line."""
     lines: list[str] = []
     profession = (preferences.profession or "").strip()
     if profession and profession.lower() != "other":
@@ -152,15 +152,11 @@ async def compose_first_question(
     user_id: str | None = None,
     timeout_seconds: float = QUESTION_TIMEOUT_SECONDS,
 ) -> FirstQuestion | None:
-    """The four starting jobs for a brand-new user, or ``None`` for no chips.
+    """Return the four starting jobs for a brand-new user, or None for no chips.
 
-    One structured call on the deployment's own cheap lane, capped at
-    :data:`QUESTION_TIMEOUT_SECONDS` with no retry, because the caller is a user
-    waiting on a page. Every exception, timeout and rule miss returns ``None``.
-
-    ``timeout_seconds`` exists for the persona eval script, which reads the copy
-    on whatever lane a developer has configured and must not report a slow local
-    endpoint as a copy problem. Nothing in the product passes it.
+    One structured call capped at QUESTION_TIMEOUT_SECONDS with no retry;
+    every exception, timeout, or rule miss returns None. timeout_seconds
+    exists only for the persona eval script; nothing in the product passes it.
     """
     started = time.monotonic()
     config = metered_config(user_id) if user_id else None
@@ -177,10 +173,8 @@ async def compose_first_question(
             prompt,
             label="onboarding_first_question",
             config=config,
-            # Live at completion (2s) gets one attempt: a retry plus backoff
-            # cannot fit, and a second timeout costs the user the same wait.
-            # The prewarm (8s, nobody waiting) may retry once for an empty or
-            # malformed draft.
+            # Live at completion (2s) gets one attempt (a retry can't fit); the
+            # prewarm (8s, nobody waiting) may retry once for a bad draft.
             options=LLMInvokeOptions(
                 max_attempts=2 if timeout_seconds >= QUESTION_TIMEOUT_SECONDS else 1,
                 timeout=timeout_seconds,
@@ -211,12 +205,10 @@ async def compose_first_question(
 
 
 def answers_fingerprint(preferences: OnboardingPreferences) -> str:
-    """A stable hash of the three answers the question is written from.
+    """Return a stable hash of the three answers the question is written from.
 
     Part of the cache key rather than a stored field, so changing an answer
-    cannot read a question written for the old one: the new answers hash to a
-    key nobody has written yet, and the prewarm for them writes that key. No
-    explicit invalidation exists because none can be forgotten.
+    hashes to a fresh, unwritten key instead of reading a stale question.
     """
     payload = json.dumps(
         {
@@ -268,12 +260,10 @@ async def resolve_first_question(
     preferences: OnboardingPreferences,
     connected_platform: str | None,
 ) -> FirstQuestion | None:
-    """The question to close the seeded conversation with, at completion time.
+    """Return the question to close the seeded conversation with, at completion time.
 
-    Prefers whatever :func:`prewarm_first_question` already wrote, because that
-    call cost the user nothing. A miss (they answered and completed in the same
-    breath, Redis was down, the prewarm lost its race) gets ONE short live
-    attempt, and then the static line.
+    Prefers whatever prewarm_first_question already wrote (free); a miss gets
+    one short live attempt, then the static line.
     """
     cached = await redis_cache.get(first_question_cache_key(user_id, preferences), FirstQuestion)
     if cached is not None:
@@ -304,12 +294,10 @@ async def resolve_first_question(
 
 
 async def seeded_chips(user_id: str, preferences: OnboardingPreferences) -> list[str]:
-    """The chips the seeded conversation offered this user, for the agent's prompt.
+    """Return the chips the seeded conversation offered this user, for the agent's prompt.
 
-    Read back from the same cache key the seeded turn was built from, so the
-    agent meeting "Growth" as a first message knows it is looking at an answer
-    to its own question. An expired key returns nothing rather than guessing: a
-    wrong list of chips would tell the model a choice was offered that was not.
+    Read back from the same cache key the seeded turn was built from. An
+    expired key returns nothing rather than guessing a wrong list of chips.
     """
     try:
         cached = await redis_cache.get(

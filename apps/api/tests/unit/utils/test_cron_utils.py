@@ -1,7 +1,7 @@
 """Unit tests for cron utilities.
 
-Timezone parsing now lives in ``app.utils.timezone.Timezone`` (covered by
-``test_timezone.py``); these tests cover cron validation and the cron-in-timezone
+Timezone parsing now lives in app.utils.timezone.Timezone (covered by
+test_timezone.py); these tests cover cron validation and the cron-in-timezone
 → UTC scheduling math, which is the load-bearing correctness for reminders and
 workflows.
 """
@@ -186,10 +186,9 @@ class TestGetNextRunTime:
         assert result == datetime(2025, 6, 15, 3, 30, 0, tzinfo=UTC)  # next 9AM IST
 
     def test_dst_iana_shifts_but_fixed_offset_does_not(self) -> None:
-        # THE reason IANA beats a fixed offset. US DST starts 2025-03-09.
-        # "0 9 * * *" in America/New_York:
-        #   - just before DST (base Mar 7): next fire Mar 8 09:00 EST = 14:00 UTC
-        #   - just after  DST (base Mar 9): next fire Mar 10 09:00 EDT = 13:00 UTC
+        # IANA tracks DST; a fixed offset can't. "0 9 * * *" America/New_York, DST starts 2025-03-09:
+        # before DST (base Mar 7): next fire Mar 8 09:00 EST = 14:00 UTC
+        # after DST (base Mar 9): next fire Mar 10 09:00 EDT = 13:00 UTC
         ny = Timezone.parse("America/New_York")
         before = get_next_run_time(
             "0 9 * * *", base_time=datetime(2025, 3, 7, 20, 0, tzinfo=UTC), tz=ny
@@ -207,10 +206,9 @@ class TestGetNextRunTime:
         assert fixed_after.hour == 14
 
     def test_dst_cross_boundary_fire_uses_target_period_offset(self) -> None:
-        # Regression: croniter handed a tz-aware base carried the base's UTC
-        # offset forward, so a fire landing in a DIFFERENT DST period came out an
-        # hour off (a summer "now" computing a winter 9 AM gave 15:00Z, not
-        # 14:00Z). The fire must use the offset of its OWN date.
+        # Regression: croniter carried the base's UTC offset forward, so a fire in a
+        # different DST period came out an hour off (summer "now" computing winter
+        # 9 AM gave 15:00Z, not 14:00Z). The fire must use its own date's offset.
         ny = Timezone.parse("America/New_York")
         # Summer base (EDT) -> next 9 AM Jan 1 is EST = 14:00 UTC.
         winter_fire = get_next_run_time(

@@ -32,8 +32,8 @@ def _build_integration_response(
     """Build an IntegrationResponse from prefetched data — no per-item DB queries.
 
     The batch-prefetched counterpart to get_integration_details: platform metadata
-    from the in-memory catalog, custom metadata + stored MCP tools from ``doc``,
-    creator from the prefetched ``creators`` map. Shares the assembly step with
+    from the in-memory catalog, custom metadata + stored MCP tools from doc,
+    creator from the prefetched creators map. Shares the assembly step with
     get_integration_details via assemble_integration_response.
     """
     created_by = doc.get("created_by") if doc else None
@@ -94,9 +94,9 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
 async def get_user_integration_records(user_id: str) -> list[dict[str, Any]]:
     """Return the raw records for all of a user's integrations.
 
-    Includes both ``created`` (added, not yet authenticated) and ``connected``
+    Includes both created (added, not yet authenticated) and connected
     states — callers that only want usable integrations filter on
-    ``status == "connected"`` (see ``get_connected_integration_ids``).
+    status == "connected" (see get_connected_integration_ids).
     """
     docs = await user_integration_repository.list_for_user(user_id)
     return [doc.model_dump() for doc in docs]
@@ -105,7 +105,7 @@ async def get_user_integration_records(user_id: str) -> list[dict[str, Any]]:
 async def get_connected_integration_ids(user_id: str) -> set[str]:
     """Return the integration ids the user has actually *connected*.
 
-    Single source of the ``status == "connected"`` filter shared by the
+    Single source of the status == "connected" filter shared by the
     workspace materializers (chat path, registration, integration sync, bulk
     sync) so they can never disagree on what "connected" means.
     """
@@ -119,14 +119,12 @@ async def get_connected_integration_ids(user_id: str) -> set[str]:
 
 @Cacheable(key_pattern="tools:user:{user_id}:connected_named", ttl=ONE_DAY_TTL)
 async def get_connected_integrations_named(user_id: str) -> list[dict[str, str]]:
-    """Connected integration ids paired with their display name (platform + custom).
+    """Return connected integration ids paired with their display name.
 
-    Platform names resolve from the in-memory OAuth config; custom MCP names (whose
-    ids are UUIDs and are absent from that config) come from a single batched
-    catalog query rather than degrading to a bare id. Used to render the
-    agent-facing connected-integrations manifest. Cached and invalidated on the
-    same ``tools:user:{user_id}:*`` family as the other per-user integration
-    caches, so connect/disconnect is reflected immediately.
+    Platform names resolve from the in-memory OAuth config; custom MCP names
+    (UUIDs, absent from that config) come from a single batched catalog query.
+    Cached under tools:user:{user_id}:*, so connect/disconnect is reflected
+    immediately.
     """
     connected = sorted(await get_connected_integration_ids(user_id))
     if not connected:
@@ -152,16 +150,10 @@ async def get_connected_integrations_named(user_id: str) -> list[dict[str, str]]
 async def invalidate_user_integration_caches(user_id: str) -> None:
     """Bust every cache derived from this user's integration set.
 
-    The imperative twin of the ``@CacheInvalidator(USER_INTEGRATION_CACHE_PATTERNS)``
-    on the canonical mutators, for paths that change a user's integrations without
-    going through them (e.g. direct ``user_integrations_collection`` writes). Uses
-    the SAME pattern list so no caller can bust a partial set and let one cache
-    (e.g. OAUTH_STATUS) drift out of sync with the others.
-
-    Best-effort: this is called at connect/disconnect/publish boundaries where the
-    user-facing operation has already succeeded, so a Redis hiccup must NOT flip a
-    successful flow into an error. On failure the stale entry self-heals at its TTL
-    (≤ 1 day). gather(return_exceptions) so one failing pattern never skips the rest.
+    Uses the same USER_INTEGRATION_CACHE_PATTERNS as the canonical
+    @CacheInvalidator mutators, for paths that bypass them. Best-effort: a
+    Redis hiccup must not flip a succeeded operation into an error; stale
+    entries self-heal at their TTL (≤ 1 day).
     """
     results = await asyncio.gather(
         *(

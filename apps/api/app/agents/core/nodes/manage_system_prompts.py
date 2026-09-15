@@ -1,22 +1,16 @@
 """Collapse the message array to one message per prompt slot, in canonical order.
 
-Stacking ten timestamped dynamic-context messages across a ten-turn conversation
-is what shatters the LLM's implicit prompt-cache prefix. This node discards every
-older copy of each slot and rebuilds the array in the order declared by
-:class:`~app.agents.context.slots.PromptSlot`, so the model sees the same shape
-on every turn.
+Stacking timestamped dynamic-context messages across turns is what shatters
+the LLM's implicit prompt-cache prefix. This node discards every older copy
+of each slot and rebuilds the array in the order declared by
+:class:~app.agents.context.slots.PromptSlot, so the model sees the same
+shape every turn. The ordering rationale lives with the enum, not here.
 
-The ordering rationale lives with the enum, not here — this node only applies it.
-
-The bigtool override's ``acall_model`` calls hooks via
-``state = await execute_hooks(...)`` and then invokes the LLM with
-``state["messages"]`` directly, so this return value IS the request. The
-persistent checkpoint still grows unfiltered (LangGraph's ``add_messages``
-reducer never reorders by id), which is why the dropped ids ride back on
-``PRUNED_MESSAGE_IDS_KEY`` for the model node to tombstone.
-
-Runs as a pre-model hook so it also fires when a generation is cancelled
-(end-of-graph hooks do not run on cancellation).
+The bigtool override invokes the LLM with this hook's returned
+state["messages"] directly, so the return value IS the request — but the
+persistent checkpoint still grows unfiltered, so dropped ids ride back on
+PRUNED_MESSAGE_IDS_KEY for the model node to tombstone. Runs as a pre-model
+hook so it also fires on cancellation (end-of-graph hooks do not).
 """
 
 from collections import defaultdict
@@ -114,8 +108,8 @@ def _manage_system_prompts(state: State, config: RunnableConfig) -> State:
     """Keep the latest message per slot and emit them in canonical slot order.
 
     The order depends on the provider the request is bound for — see
-    ``request_slot_order``. The lane's provider is read off the configurable,
-    which ``build_agent_config`` derives from the resolved ``ModelLane``.
+    request_slot_order. The lane's provider is read off the configurable,
+    which build_agent_config derives from the resolved ModelLane.
     """
     try:
         messages = state.get("messages", [])
@@ -129,17 +123,9 @@ def _manage_system_prompts(state: State, config: RunnableConfig) -> State:
         slot_order = request_slot_order(agent_configurable(config).get("provider"))
         kept = _keep_latest_per_slot(by_slot, slot_order)
 
-        # A short content fingerprint per slot. The cached prefix is a BYTE
-        # prefix, so a single slot whose bytes move between turns pushes
-        # everything after it out of the cache — and until now the only way to
-        # find which slot moved was to guess. Comparing these across two
-        # consecutive requests names the culprit directly. Hashes, never
-        # content: these carry user data.
-        # Built from ``kept.by_slot``, not ``by_slot``: a singleton slot sends
-        # only its LAST message, so hashing the whole group moves the digest
-        # when a stale copy differs even though the sent bytes are identical —
-        # a false "this slot churned" in precisely the stacked-slot case this
-        # field exists to diagnose.
+        # A short content fingerprint per slot, to name which slot moved the
+        # BYTE cache prefix. Hashes, never content. Built from ``kept.by_slot``
+        # since a singleton slot sends only its LAST message.
         slot_text = {
             slot.name.lower(): "\x00".join(
                 extract_text_content(m.content) for m in kept.by_slot[slot]
@@ -151,11 +137,9 @@ def _manage_system_prompts(state: State, config: RunnableConfig) -> State:
             name: hashlib.blake2b(text.encode(), digest_size=4).hexdigest()
             for name, text in slot_text.items()
         }
-        # Sizes answer the question the digests cannot: once the prefix IS stable,
-        # what is left uncached is simply the bytes behind the cache boundary, and
-        # the only way to raise the hit rate further is to know which slot owns
-        # them. Characters, not tokens — this node has no tokenizer, and ~4 chars
-        # per token is close enough to rank the slots.
+        # Sizes answer what the digests cannot: which slot owns the bytes
+        # behind the cache boundary. Characters, not tokens — no tokenizer
+        # here, and ~4 chars/token is close enough to rank the slots.
         slot_chars = {name: len(text) for name, text in slot_text.items()}
 
         log.set(

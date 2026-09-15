@@ -19,18 +19,12 @@ interface InViewMountProps {
 }
 
 /**
- * Defers MOUNTING its children until the placeholder scrolls near the viewport.
+ * Defers MOUNTING its children until the placeholder scrolls near the
+ * viewport — unlike `next/dynamic`, which only defers the chunk download
+ * while still mounting/hydrating immediately.
  *
- * `next/dynamic` only defers downloading the chunk — the component still mounts,
- * hydrates and executes immediately on the client, so its JS runs during the
- * initial-load critical path. This wrapper keeps that render/execution cost off
- * the initial load entirely: heavy, below-the-fold, non-indexed visual demos
- * only run when the user is about to see them.
- *
- * SSR-safe: server and the first client render both show the empty
- * (placeholder) state, so there is no hydration mismatch. Use only for content
- * that is NOT important for SEO (the indexed copy/tables/FAQ stay eagerly
- * server-rendered).
+ * SSR-safe (server and first client render both show the empty placeholder).
+ * Use only for content that isn't important for SEO.
  */
 export function InViewMount({
   children,

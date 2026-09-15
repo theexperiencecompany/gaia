@@ -84,10 +84,9 @@ const initializeCustomCron = (cronExpression?: string): string => {
     : "";
 };
 
-// Keep the compact inline triggers, but let each dropdown popover grow to fit
-// its option labels instead of inheriting the narrow trigger width (which
-// truncates "Custom", "Month", "Wednesday", …). min-width beats the inline
-// trigger-width style HeroUI sets on the popover.
+// Let each dropdown popover grow to fit its labels instead of inheriting the
+// narrow trigger width (truncates "Custom", "Month", "Wednesday", …) — min-width
+// beats HeroUI's inline trigger-width style on the popover.
 const SELECT_CLASSNAMES = { popoverContent: "min-w-fit" } as const;
 
 // Helper to convert 24h to 12h for display

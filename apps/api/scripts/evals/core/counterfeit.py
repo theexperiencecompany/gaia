@@ -1,21 +1,15 @@
 """Prove a case's gates can actually fail, without running the agent.
 
-A gate written from the pass side encodes *a good answer contains X*. A gate
-written from the fail side encodes *a bad answer cannot fake X*. Only the second
-is a test, and the difference is invisible in a run: a gate that cannot go red
-and a gate the agent happened to satisfy produce the same green.
+A gate from the pass side encodes "a good answer contains X"; from the fail
+side, "a bad answer cannot fake X" — only the second is a real test, since an
+incurable gate looks the same as one the agent happened to satisfy.
 
-So each case is scored against deliberately worthless runs. Every declared gate
-must reject them. Two levels, in increasing strength:
-
-* **empty** — a run that produced nothing at all: no text, no tool calls, no
-  world change. Needs no authoring, applies to every case ever written, and
-  catches the gate that is structurally incapable of failing.
-* **echo** — a run that says the prompt back and does nothing. Catches the gate
-  satisfied by words the user already supplied.
-* **counterfeit** — an optional per-case ``counterfeit:`` block: a hand-written
-  wrong answer built to be as sneaky as the author can make it. This is the one
-  that catches gates faked by a plausible-looking wrong answer.
+Each case runs against worthless attempts every gate must reject, at two
+strengths: empty (no text, no tool calls, no world change — catches a gate
+structurally incapable of failing) and echo (echoes the prompt and does
+nothing — catches a gate satisfied by words the user already supplied). An
+optional per-case counterfeit block adds a hand-written, deliberately sneaky
+wrong answer, catching gates faked by a plausible wrong answer.
 
 Nothing here calls a model or a database, so it belongs in CI.
 """
@@ -84,12 +78,10 @@ class CaseVerdict:
     def content_blind(self) -> bool:
         """Passes a reply that only parrots the prompt back.
 
-        NOT automatically a bug. A case whose gates are purely structural or
-        absence-based ("did not delegate a greeting", "produced one clean
-        bubble") is doing its stated job, and an echo satisfying it is a
-        property of what it set out to test rather than a hole in it. It does
-        mean the case asserts nothing about *what the agent actually said*, so
-        it is worth seeing — and worth fixing wherever content is the point.
+        NOT automatically a bug: a case with purely structural or
+        absence-based gates is doing its job, and an echo satisfying it
+        reflects what it tests rather than a hole. It does mean the case
+        asserts nothing about what the agent actually said.
         """
         return "echo" in self.passed_wholesale and not self.unfalsifiable
 
@@ -131,10 +123,10 @@ def _echo_run(case: Case) -> CaseRun:
 def _self_scored(suite: Scorable) -> frozenset[str]:
     """Gates the suite computes from its transport's own end state.
 
-    A benchmark verdict — ``gaia_exact``, ``probes`` — is derived from a payload
+    A benchmark verdict — gaia_exact, probes — is derived from a payload
     only a real run of that suite produces, so a synthetic run legitimately
     yields nothing for it and its absence here is not evidence of a defect.
-    Those names are covered instead by ``gates.validate_gates`` at load time.
+    Those names are covered instead by gates.validate_gates at load time.
     """
     extra = getattr(suite, "EXTRA_GATES", None)
     if not isinstance(extra, Mapping):
@@ -143,9 +135,10 @@ def _self_scored(suite: Scorable) -> frozenset[str]:
 
 
 def _plausible_run(case: Case) -> CaseRun:
-    """A run that did plenty of everything, used only to ask whether each
-    declared gate produces a value. Its scores are never judged — only the
-    presence of the keys is."""
+    """Build a run that did everything, to check whether each declared gate produces a value.
+
+    Its scores are never judged — only the presence of the keys is.
+    """
     return CaseRun(
         case_id=case.id,
         messages=[
@@ -159,7 +152,7 @@ def _plausible_run(case: Case) -> CaseRun:
 
 
 def _authored_run(case: Case) -> CaseRun | None:
-    """The case's own ``counterfeit:`` block, if its author wrote one."""
+    """Return the case's own counterfeit block, if its author wrote one."""
     block = case.setup.get("counterfeit") if isinstance(case.setup, dict) else None
     if not isinstance(block, dict):
         return None
@@ -177,18 +170,12 @@ def _authored_run(case: Case) -> CaseRun | None:
 
 
 def parroted_assertions(case: Case) -> list[str]:
-    """``communicate`` strings the user's own prompt already contains.
+    """Return strings the user's own prompt already contains.
 
-    A presence assertion the prompt supplies can be satisfied by repeating the
-    question back, so it credits the agent for nothing. This is reported rather
-    than rejected: for a recall case ("remember my order is a large oat latte")
-    the word genuinely does belong in both, and the case is honest as long as a
-    stronger gate stands beside it. Assert the value where it is authoritative —
-    the database — and keep prose assertions for tokens that cannot arrive by
-    accident.
-
-    Absence assertions are deliberately excluded: an injection canary belongs in
-    the prompt, because the prompt IS the attack.
+    Reported, not rejected: an echo can satisfy a presence assertion the
+    prompt supplies, but a recall case genuinely needs the word in both.
+    Assert authoritative values (the database); reserve prose for tokens
+    that can't arrive by accident. Absence assertions are excluded.
     """
     prompt = case.prompt.lower()
     required = case.expected.get("communicate") or []
@@ -218,11 +205,9 @@ def check_case(suite: Scorable, case: Case) -> CaseVerdict:
     )
     if not verdict.gates:
         return verdict
-    # The blind spot this check closes: a gate the suite never scores rejects
-    # every forgery, so it looks PROVEN while being incapable of passing —
-    # `_status_from_scores` reads a missing gate back as 0.0. Ask the opposite
-    # question first: on a run that did plenty of everything, does each declared
-    # gate produce a value at all?
+    # The blind spot this closes: a gate the suite never scores rejects every
+    # forgery, looking PROVEN while incapable of passing (_status_from_scores
+    # reads a missing gate as 0.0). Ask the opposite first: does every gate produce a value?
     try:
         scored = suite.score(case, _plausible_run(case))
         verdict.inert = [
@@ -252,7 +237,7 @@ def check_suite(suite: Scorable, cases: list[Case]) -> list[CaseVerdict]:
 
 
 def format_report(verdicts: list[CaseVerdict]) -> str:
-    """A report that leads with the number, because that is the decision."""
+    """Build a report that leads with the number, because that is the decision."""
     total = len(verdicts)
     ungated = [v for v in verdicts if v.ungated]
     judge_only = [v for v in verdicts if v.judge_only]

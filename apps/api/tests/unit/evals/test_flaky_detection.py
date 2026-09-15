@@ -64,12 +64,7 @@ def test_a_flip_between_recorded_versions_is_a_fix_not_a_flake(tmp_path: Path) -
 
 
 def test_a_flip_across_unstamped_runs_is_undetermined_not_a_fix(tmp_path: Path) -> None:
-    """Neither run says which build produced it, so nothing was demonstrated.
-
-    Reporting this as "a fix landing" is a claim the data cannot support: it
-    hides real flakiness behind a reassuring sentence, which is exactly the
-    shape of every silent-green defect in this harness.
-    """
+    """Neither run says which build produced it, so reporting this as "a fix landing" is a claim the data cannot support."""
     _write_run(tmp_path, "s-1", "demo", {"a": "passed"})
     _write_run(tmp_path, "s-2", "demo", {"a": "failed"})
     entry = flaky.history(tmp_path)[("demo", "a")]

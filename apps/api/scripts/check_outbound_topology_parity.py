@@ -2,8 +2,8 @@
 """Fail if the outbound RabbitMQ topology drifts between Python and TypeScript.
 
 The bot outbound queues are declared on BOTH sides — Python
-(``app/constants/outbound.py``, derived from ``BOT_CONVERSATION_SOURCES``) and
-TypeScript (``libs/shared/ts/src/bots/consumer/topology.ts``). RabbitMQ rejects
+(app/constants/outbound.py, derived from BOT_CONVERSATION_SOURCES) and
+TypeScript (libs/shared/ts/src/bots/consumer/topology.ts). RabbitMQ rejects
 a redeclare whose arguments differ, so a mismatch surfaces only at runtime as a
 confusing publish/consume failure. This guard turns that into a fast, obvious
 pre-commit/CI failure instead.
@@ -24,7 +24,7 @@ TOPOLOGY_TS = REPO_ROOT / "libs/shared/ts/src/bots/consumer/topology.ts"
 
 
 def python_bot_platforms() -> set[str]:
-    """Platform tokens in ``BOT_CONVERSATION_SOURCES`` (the Python source of truth)."""
+    """Platform tokens in BOT_CONVERSATION_SOURCES (the Python source of truth)."""
     text = CHAT_MODELS.read_text(encoding="utf-8")
     match = re.search(
         r"BOT_CONVERSATION_SOURCES:\s*frozenset\[ConversationSource\]\s*=\s*"
@@ -38,8 +38,11 @@ def python_bot_platforms() -> set[str]:
 
 
 def ts_outbound_platforms() -> set[str]:
-    """Keys of the TS ``OUTBOUND_QUEUES`` record (values are template literals
-    containing ``${...}``, so the block is captured up to the closing ``};``)."""
+    """Return the keys of the TS OUTBOUND_QUEUES record.
+
+    Values are template literals containing ${...}, so the block is
+    captured up to the closing };.
+    """
     text = TOPOLOGY_TS.read_text(encoding="utf-8")
     match = re.search(
         r"OUTBOUND_QUEUES:\s*Record<PlatformName,\s*string>\s*=\s*\{(.*?)\n\};",

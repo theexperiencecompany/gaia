@@ -1,26 +1,12 @@
-"""
-Skill Discovery Service - Generate available skills text for agent prompts.
+"""Skill Discovery Service - Generate available skills text for agent prompts.
 
-This module implements the "progressive disclosure" model from the Agent Skills spec:
-  Level 1: Only name + description + location injected into system prompt
-  Level 2: Agent reads full SKILL.md via the `read` tool (on-demand)
-  Level 3: Agent reads referenced files via `read` / `bash` (on-demand)
-
-The agent activates a skill by reading its file with the `read` tool (which reads
-host-side from JuiceFS — no sandbox spin-up); skill bodies are materialized into
-the user's workspace.
-
-Two sources are merged into the one "Available Skills:" listing:
-  - Built-in skills — shipped in the repo, loaded into process memory by
-    skill_loader (NOT stored in Mongo). Surfaced straight from memory here.
-  - User/system skills — installed per user, stored in MongoDB and queried by
-    get_skills_for_agent().
-
-If the builtin library ever grows to thousands of skills, move the memory read to
-a Redis(TTL) -> Mongo/JuiceFS read-through cache (see load_builtin_skills).
-
-Caching: get_available_skills_text is cached in Redis (12h TTL).
-Invalidation is handled by @CacheInvalidator decorators in registry.py.
+Implements the "progressive disclosure" model from the Agent Skills spec:
+name/description/location injected into the prompt, full SKILL.md and
+referenced files read on-demand via read/bash. Two sources merge into one
+"Available Skills:" listing: built-in skills (shipped in the repo, loaded
+into process memory, NOT in Mongo) and user/system skills (installed per
+user, MongoDB via get_skills_for_agent()). Cached in Redis (12h TTL);
+invalidated by @CacheInvalidator decorators in registry.py.
 """
 
 from app.agents.skills.models import Skill
@@ -39,20 +25,18 @@ from shared.py.wide_events import SkillContext, log
 
 
 def _builtin_entries(agent_name: str) -> list[tuple[str, str, str]]:
-    """Return ``(name, description, location)`` for builtins targeting ``agent_name``.
+    """Return (name, description, location) for builtins targeting agent_name.
 
-    Builtins are not stored in Mongo, so the Mongo-backed ``get_skills_for_agent``
-    never returned them — the index was silently empty of the entire builtin
-    library. We surface them straight from process memory. The location mirrors
-    exactly what ``storage.sessions.skills`` materializes on JuiceFS, so the
-    ``read(location)`` the agent is told to call actually resolves.
+    Builtins are not stored in Mongo, so get_skills_for_agent never returns
+    them — surfaced straight from process memory instead. The location
+    mirrors what storage.sessions.skills materializes on JuiceFS, so the
+    agent's read(location) actually resolves.
     """
     entries: list[tuple[str, str, str]] = []
     for skill in load_builtin_skills():
         if skill.subagent_id != agent_name:
             continue
-        # Built from the same helper the materializer uses, so the location the
-        # agent is told to read() always matches the file actually on disk.
+        # Same helper the materializer uses, so read() matches the disk file.
         location = f"{WORKSPACE_ROOT}/{builtin_skill_rel_path(skill)}"
         entries.append((skill.name, skill.description, location))
     return entries
@@ -65,24 +49,14 @@ async def get_available_skills_text(
 ) -> str:
     """Generate plain text skills listing for injection into agent system prompt.
 
-    Merges builtin skills (process memory) with user/system skills (MongoDB) for
-    the given agent_name. Each entry includes a location the `read` tool can open.
-    Results are cached in Redis (12h TTL).
-
-    Args:
-        user_id: Owner user ID
-        agent_name: Agent name as-is from SubAgentConfig.agent_name
-                    (executor, gmail_agent, github_agent, etc.)
-
-    Returns:
-        Plain text string for system prompt injection, or empty string if no skills
+    Merges builtin skills (process memory) with user/system skills (MongoDB)
+    for agent_name. Each entry includes a location the read tool can open.
     """
     log.set(user_id=user_id, agent_name=agent_name, skill=SkillContext(operation="get"))
 
-    # Builtins come from process memory and are always available. Only the
-    # executor needs them merged here: integration subagents already get their
-    # builtins via system_docs.integration_skills_block, so merging there too
-    # would list them twice. Fetch first so a Mongo hiccup can't hide them.
+    # Only the executor needs builtins merged here: integration subagents
+    # already get theirs via system_docs.integration_skills_block, so merging
+    # there too would list them twice.
     builtins = _builtin_entries(agent_name) if agent_name == EXECUTOR_SUBAGENT_ID else []
     try:
         user_skills = await get_skills_for_agent(user_id, agent_name)

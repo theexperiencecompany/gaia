@@ -1,6 +1,4 @@
-"""
-Service module for handling note operations.
-"""
+"""Service module for handling note operations."""
 
 from fastapi import HTTPException, status
 from langchain_core.documents import Document

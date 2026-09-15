@@ -1,8 +1,8 @@
 """
 Gmail personalization pipeline constants.
 
-Shared between the job-lifecycle helpers (`intelligence_job`) and the pipeline
-itself (`intelligence_service`), which run when a user connects Gmail.
+Shared between the job-lifecycle helpers (intelligence_job) and the pipeline
+itself (intelligence_service), which run when a user connects Gmail.
 """
 
 # ARQ task name — must match the registered worker task function.
@@ -22,9 +22,8 @@ HOLO_CONVERSATION_ID_FIELD = "holo_conversation_id"
 FIRST_CONVERSATION_ID_FIELD = "first_message_conversation_id"
 
 # Key inside the `onboarding` subdocument holding the seeded "Getting started"
-# conversation, so completion can hand it to the web and a reset can tear it
-# down. Deliberately NOT the legacy field above: a returning user carries both,
-# and one field cannot hold two conversations without orphaning one of them.
+# conversation. Deliberately NOT the legacy field above: a returning user
+# carries both, and one field can't hold two conversations without orphaning one.
 GETTING_STARTED_CONVERSATION_ID_FIELD = "getting_started_conversation_id"
 
 # Start triage once this many emails are buffered, without waiting for the full fetch.

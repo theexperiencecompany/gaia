@@ -1,23 +1,7 @@
-"""Unit tests for app.utils.mcp_oauth_utils module.
+"""Unit tests for app.utils.mcp_oauth_utils.
 
-Tests cover:
-- validate_https_url: HTTPS validation, HTTP rejection, localhost exceptions
-- is_localhost_url: localhost, loopback addresses, regular domains
-- validate_oauth_endpoints: all endpoints valid, one invalid raises error
-- extract_auth_challenge: 401 with WWW-Authenticate, non-401, timeout, connect error
-- find_protected_resource_metadata: found at first URL, found at second, not found
-- fetch_auth_server_metadata: OAuth discovery, OIDC fallback, full fallback
-- revoke_token: success, failure, timeout, client auth variants
-- validate_token_response: valid, missing access_token, wrong token_type
-- validate_pkce_support: S256 present, plain only, none
-- validate_jwt_issuer: valid JWT, non-JWT, mismatched issuer, decode error
-- parse_oauth_error_response: JSON, non-JSON, parse error
-- get_client_metadata_document_url: URL construction
-- introspect_token: success, failure, timeout
-- select_authorization_server: single, multiple
-
-The OAuth discovery functions take official ``mcp`` SDK models
-(``OAuthMetadata`` / ``ProtectedResourceMetadata``) rather than plain dicts,
+The OAuth discovery functions take official mcp SDK models
+(OAuthMetadata / ProtectedResourceMetadata) rather than plain dicts,
 so the helpers below build those models with sane HTTPS defaults.
 """
 
@@ -56,9 +40,9 @@ from app.utils.mcp_oauth_utils import (
 
 
 def _make_as_metadata(**overrides: Any) -> OAuthMetadata:
-    """Build an ``OAuthMetadata`` with valid HTTPS defaults.
+    """Build an OAuthMetadata with valid HTTPS defaults.
 
-    Pass ``None`` for a field to explicitly drop an optional endpoint, or any
+    Pass None for a field to explicitly drop an optional endpoint, or any
     value (e.g. an HTTP URL) to override a default for a specific test.
     """
     fields: dict[str, Any] = {
@@ -494,16 +478,16 @@ class TestFindProtectedResourceMetadata:
 class TestFetchAuthServerMetadata:
     """Tests for fetch_auth_server_metadata — RFC 8414 discovery with fallback.
 
-    Discovery now issues ``client.send(create_oauth_metadata_request(url))`` and
-    returns a validated :class:`OAuthMetadata` model. On total failure it returns
-    an origin-only fallback model rather than a dict with a ``fallback`` flag.
+    Discovery now issues client.send(create_oauth_metadata_request(url)) and
+    returns a validated :class:OAuthMetadata model. On total failure it returns
+    an origin-only fallback model rather than a dict with a fallback flag.
     """
 
     @staticmethod
     def _send_returning(handler: Any) -> AsyncMock:
-        """Build a mock httpx client whose ``send`` delegates to ``handler``.
+        """Build a mock httpx client whose send delegates to handler.
 
-        ``handler`` receives the ``httpx.Request`` and returns a mock response.
+        handler receives the httpx.Request and returns a mock response.
         """
         mock_client = AsyncMock()
         mock_client.send = AsyncMock(side_effect=lambda request, **kwargs: handler(request))

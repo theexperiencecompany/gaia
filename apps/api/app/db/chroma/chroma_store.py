@@ -94,10 +94,10 @@ class ChromaStore(BaseStore):
     async def _get_collection(self) -> AsyncCollection:
         """Get or create the ChromaDB collection.
 
-        Uses ``NoOpEmbeddingFunction`` as the collection-level embedding function so
+        Uses NoOpEmbeddingFunction as the collection-level embedding function so
         ChromaDB never attempts to load its default ONNX model.  ChromaStore
-        manages embeddings itself via ``self.embeddings`` and always passes
-        them explicitly to ``collection.upsert()``.
+        manages embeddings itself via self.embeddings and always passes
+        them explicitly to collection.upsert().
         """
         if self._collection_cache is None:
             log.set(
@@ -113,11 +113,7 @@ class ChromaStore(BaseStore):
                     embedding_function=NoOpEmbeddingFunction(),
                 )
             except ValueError:
-                # ChromaDB 1.x rejects a new embedding function when one is
-                # already persisted in the collection config.  Since
-                # ChromaStore manages embeddings itself (passes them
-                # explicitly to upsert), we can safely resolve the collection
-                # without overriding the embedding function.
+                # ChromaDB 1.x rejects a new embedding function when one is already persisted.
                 self._collection_cache = await self.client.get_or_create_collection(
                     name=self.collection_name,
                 )
@@ -183,7 +179,7 @@ class ChromaStore(BaseStore):
         """Prepare operations for execution.
 
         Search filtering runs here; a filter failure is captured and returned
-        (not raised) so ``abatch`` can still apply sibling writes before it
+        (not raised) so abatch can still apply sibling writes before it
         surfaces the error.
         """
         ops_list = list(ops)
@@ -333,7 +329,6 @@ class ChromaStore(BaseStore):
     def _matches_namespace_prefix(
         self, namespace: tuple[str, ...], prefix: tuple[str, ...]
     ) -> bool:
-        """Check if namespace matches prefix."""
         if len(namespace) < len(prefix):
             return False
         return namespace[: len(prefix)] == prefix
@@ -363,10 +358,7 @@ class ChromaStore(BaseStore):
             return bool(value != op_value)
         if operator in ("$gt", "$gte", "$lt", "$lte"):
             try:
-                # dict is excluded above (comparison undefined); list/None reach
-                # float() and raise TypeError, caught below — same behavior as
-                # before FilterValue existed. cast() only narrows for the type
-                # checker, it doesn't change what's passed at runtime.
+                # dict is excluded above; list/None reach float() and raise TypeError, caught below.
                 val_num = (
                     float(cast("str | float | int | bool", value))
                     if not isinstance(value, dict)
@@ -529,20 +521,16 @@ class ChromaStore(BaseStore):
         if not tasks:
             return
 
-        # Process-wide, not per-call: concurrent _apply_put_ops calls (e.g. the
-        # startup catalog warmup fanning out over every provider toolkit) share
-        # this one semaphore, so the fd cap holds across callers, not just
-        # within a single batch.
+        # Process-wide: concurrent _apply_put_ops calls share this semaphore, so the
+        # fd cap holds across callers, not just within a single batch.
         sem = loop_bound_semaphore("chroma_put_batch", MAX_CONCURRENT_CHROMA_WRITES)
 
         async def _guarded(coro: Coroutine[Any, Any, None]) -> None:
             async with sem:
                 await coro
 
-        # return_exceptions=True keeps one bad doc from killing the batch, but
-        # silently swallows every failure. Surface them so we don't end up with
-        # an indexing pass that "succeeded" yet wrote zero rows (the PostHog
-        # case — 336 tools "indexed", 0 in ChromaDB, no errors anywhere).
+        # Surface failures instead of letting return_exceptions=True swallow them —
+        # an indexing pass previously "succeeded" while writing zero rows silently.
         results: list[BaseException | None] = await asyncio.gather(
             *[_guarded(t) for t in tasks], return_exceptions=True
         )

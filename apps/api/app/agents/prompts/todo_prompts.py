@@ -70,10 +70,9 @@ NOTE: These update execution plan steps, not user-facing todos.
 To create/update persistent tasks, use create_tracked_todo / update_tracked_todo."""
 
 
-# Guidance shown to a tracked todo woken by a trigger it subscribed to. The watch was
-# meant to be well scoped, but reality is the test: judge each fire, and if the same
-# watch keeps waking the run on things that do not qualify, it is too loose and should
-# be tightened rather than paying for an agent run on every false positive.
+# Guidance shown to a tracked todo woken by a trigger it subscribed to. Judge
+# each fire: a watch that keeps waking the run on non-qualifying events is too
+# loose and should be tightened, not paid for on every false positive.
 TRIGGERED_RELEVANCE_GUIDANCE = (
     "Before you act, decide whether this event is actually the thing this todo is "
     "watching for. Treat a fire as a candidate to verify, not proof. If it is not "

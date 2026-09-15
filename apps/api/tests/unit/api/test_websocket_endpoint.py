@@ -5,7 +5,7 @@ directly with a mock WebSocket: the real handler logic (auth gate, subprotocol
 accept, connection registration, disconnect/server-error cleanup) runs against
 a stubbed transport. Connection bookkeeping is covered here; broadcast delivery
 and the fan-out belong to the manager and live in
-``tests/unit/core/test_websocket_manager.py``.
+tests/unit/core/test_websocket_manager.py.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -20,8 +20,7 @@ USER_ID = "507f1f77bcf86cd799439011"
 
 
 def _ws(protocol: str = "") -> MagicMock:
-    """A stubbed WebSocket transport: headers dict, accept/close awaitables,
-    and a receive_text that disconnects on its first read."""
+    """Build a stubbed WebSocket transport whose receive_text disconnects on its first read."""
     ws = MagicMock()
     ws.headers = {"sec-websocket-protocol": protocol}
     ws.accept = AsyncMock()
@@ -32,7 +31,7 @@ def _ws(protocol: str = "") -> MagicMock:
 
 @pytest.fixture(autouse=True)
 def _clean_connections():
-    """The manager is a singleton shared across tests — start from an empty pool."""
+    """Clear the connection pool: the manager is a singleton shared across tests."""
     websocket_manager.connections.clear()
     yield
     websocket_manager.connections.clear()
@@ -141,7 +140,7 @@ class TestWebsocketAccept:
 
 
 class TestConnectionBookkeeping:
-    """WebSocketManager.add_connection / remove_connection"""
+    """WebSocketManager.add_connection / remove_connection."""
 
     def test_add_connection_groups_by_user(self):
         ws_a = MagicMock()

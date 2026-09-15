@@ -89,8 +89,7 @@ class TestClaimReleaseDiscard:
     async def test_releasing_leaves_the_code_claimable_again(
         self, fake_store: dict[str, tuple[object, int | None]]
     ) -> None:
-        """A refused redemption (plan wall, account linked elsewhere) must leave
-        the code live for the retry the refusal asks for."""
+        """A refused redemption must leave the code live for the retry the refusal asks for."""
         code = await mint_platform_link_code("user1", PREFS)
         await claim_platform_link_code(code)
         await release_platform_link_code(code)
@@ -133,10 +132,7 @@ class TestClaimReleaseDiscard:
     async def test_the_stored_payload_is_json_native_under_the_prefixed_key(
         self, fake_store: dict[str, tuple[object, int | None]]
     ) -> None:
-        """What lands in Redis, exactly: the code's own key, the full binding as
-        plain JSON types, and the bounded TTL. The needs must be `str`, not
-        `OnboardingNeed` members — an enum instance handed to the cache is a
-        value only this process knows how to write."""
+        """The needs must be stored as str, not OnboardingNeed members — an enum instance is a value only this process can decode."""
         prefs = OnboardingPreferences(
             profession="founder", needs=[OnboardingNeed.INBOX, OnboardingNeed.CALENDAR]
         )

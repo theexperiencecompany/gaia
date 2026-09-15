@@ -67,12 +67,9 @@ export default function PaymentSuccessPage() {
   const printerStage = useReceiptPrinterStage(status === "success");
 
   useEffect(() => {
-    // The charge is verified exactly once per page load. `hasVerified` is the
-    // only guard, deliberately NOT paired with a cancel-on-cleanup flag: the
-    // two together strand the page, because StrictMode's double-invoke (and
-    // any re-render that hands `verifyPayment` a fresh identity) cancels the
-    // single in-flight run while the ref short-circuits the replacement, so
-    // nothing ever calls `setStatus` and the spinner never ends.
+    // Verified once per load via `hasVerified` alone — deliberately no
+    // cancel-on-cleanup flag, since StrictMode's double-invoke would cancel
+    // the single run while the ref blocks the replacement, stranding the spinner.
     if (hasVerified.current) return;
     hasVerified.current = true;
 
@@ -85,10 +82,9 @@ export default function PaymentSuccessPage() {
           setStatus("success");
           return;
         }
-        // Client-only by necessity, like `useCheckoutReturn`'s: a webhook
-        // that never lands produces no server-side event to count, so
-        // without this capture the moment a paying customer finds out their
-        // money did nothing is invisible in the funnel.
+        // Client-only by necessity (like `useCheckoutReturn`): a webhook
+        // that never lands produces no server-side event, so without this
+        // capture the funnel never sees a paying customer's failed confirmation.
         trackFailure("confirmation_timeout");
         setStatus("error");
         setErrorMessage(

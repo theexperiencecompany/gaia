@@ -9,11 +9,9 @@ export interface AppUpdateState {
   dismissUpdate: () => void;
 }
 
-// expo-updates is not yet installed. This hook provides the correct interface
-// and gracefully no-ops until expo-updates is added to the project.
-// To enable: run `npx expo install expo-updates` and replace the stub below
-// with:
-//   import * as Updates from "expo-updates";
+// expo-updates is not yet installed; this hook provides the correct interface
+// and no-ops until it's added. To enable: `npx expo install expo-updates`, then
+// replace the stub with `import * as Updates from "expo-updates"`.
 
 export function useAppUpdate(): AppUpdateState {
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);

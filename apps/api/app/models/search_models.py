@@ -55,10 +55,10 @@ class MultiURLResponse(BaseModel):
 
 
 class SearchUrlDocument(MongoDocument):
-    """A scraped URL's metadata as cached in the ``search_urls`` collection.
+    """A scraped URL's metadata as cached in the search_urls collection.
 
-    Global, keyed by ``url`` (the incidental Mongo ``_id`` is unused above the
-    repository). Same shape as :class:`URLResponse`, which is the API projection.
+    Global, keyed by url (the incidental Mongo _id is unused above the
+    repository). Same shape as :class:URLResponse, which is the API projection.
     """
 
     url: str

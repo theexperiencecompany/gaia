@@ -2,13 +2,13 @@
 
 Pins the two live-path persistence fixes:
 1. _attach_executor_tool_data runs on CANCELLED streams too — reintroducing the
-   old `if state.is_cancelled: return` early-exit makes every stopped turn lose
+   old if state.is_cancelled: return early-exit makes every stopped turn lose
    its executor cards and fails these tests.
 2. _finalize_stream tears the session down only AFTER the fallback save — the
    backstop attach drains the session, so teardown-first turns it into dead
    code (this exact bug existed and was caught by writing these tests).
 
-The persist itself goes through ``conversation_repository.append_message_tool_data``;
+The persist itself goes through conversation_repository.append_message_tool_data;
 these tests mock that repository method (never the DB).
 """
 
@@ -36,7 +36,7 @@ from app.services.chat.stream import (
 
 
 def _ready_session_with_cards(stream_id: str) -> None:
-    """A live session whose executor finished after producing one tool card."""
+    """Create a live session whose executor finished after producing one tool card."""
     session = create_session(stream_id, RunKind.LIVE)
     session.executor_spawned = True
     session.done_event.set()  # executor already signalled completion
@@ -55,9 +55,7 @@ def _state(*, cancelled: bool, saved: bool = False) -> _StreamState:
 class TestAttachExecutorToolData:
     @pytest.mark.parametrize("cancelled", [True, False])
     async def test_attaches_cards_regardless_of_cancellation(self, cancelled) -> None:
-        """THE regression test for 'stop the stream → all tool_data is gone':
-        the comms path owns a live run's cards, so it must push them onto the
-        saved message even when the user cancelled."""
+        """Regression: cancelling the stream must not drop a live run's tool_data cards."""
         _ready_session_with_cards("s1")
         state = _state(cancelled=cancelled)
 
@@ -103,14 +101,7 @@ class TestAttachExecutorToolData:
             )
 
     async def test_a_write_that_matched_no_message_is_reported(self) -> None:
-        """``append_message_tool_data`` returns False when its
-        ``messages.message_id`` filter matched nothing — nothing was written and
-        nothing raised. Swallowing that means every executor tool card the user
-        watched live is missing after a reload, with no trace in the logs.
-
-        The sibling write in ``result_delivery._persist_follow_up_actions``
-        already checks the same flag and logs; this path must not be quieter.
-        """
+        """A silently-unmatched write must be logged (see result_delivery._persist_follow_up_actions)."""
         _ready_session_with_cards("s1")
         body = MagicMock()
         body.voice_mode = False
@@ -127,8 +118,7 @@ class TestAttachExecutorToolData:
         assert log.error.called, "a silently dropped tool_data write was never reported"
 
     async def test_a_successful_write_is_not_reported_as_a_failure(self) -> None:
-        """Control: without it, unconditionally logging an error would satisfy
-        the test above."""
+        """Control: unconditionally logging an error would also satisfy the test above."""
         _ready_session_with_cards("s1")
         body = MagicMock()
         body.voice_mode = False
@@ -159,8 +149,7 @@ class TestFinalizeStreamBackstop:
         return persist, repo
 
     async def test_unsaved_turn_gets_fallback_save_and_attach(self) -> None:
-        """The error path must still drain the session: teardown happening
-        before the backstop attach silently produced an empty drain."""
+        """Teardown before the backstop attach must not happen — it silently emptied the drain."""
         _ready_session_with_cards("s1")
         state = _state(cancelled=True, saved=False)
 
@@ -171,8 +160,7 @@ class TestFinalizeStreamBackstop:
         assert get_session("s1") is None  # session torn down afterwards
 
     async def test_saved_turn_is_not_resaved_or_reattached(self) -> None:
-        """The happy path saved early and attached already — the backstop must
-        never double-persist or double-attach."""
+        """The backstop must never double-persist or double-attach a turn already saved and attached."""
         _ready_session_with_cards("s1")
         state = _state(cancelled=False, saved=True)
 
@@ -184,9 +172,7 @@ class TestFinalizeStreamBackstop:
 
 
 class TestResolvePendingApprovalTurnDegradesOnFailure:
-    """A bot-channel classifier lookup failing must not take chat down —
-    ``_resolve_pending_approval_turn`` must return False so the message runs
-    as a normal turn (see the docstring on the guarded except block)."""
+    """A failing classifier lookup must not take chat down — _resolve_pending_approval_turn returns False so the message runs as a normal turn."""
 
     def _bot_reply_body(self) -> MessageRequestWithHistory:
         return MessageRequestWithHistory(
@@ -213,8 +199,7 @@ class TestResolvePendingApprovalTurnDegradesOnFailure:
         assert result is False
 
     async def test_classifier_failure_does_not_publish_or_persist(self) -> None:
-        """The degraded path must skip the ack/persist steps entirely — those
-        only belong to a genuinely resolved approve/deny."""
+        """The degraded path must skip the ack/persist steps — those belong only to a resolved approve/deny."""
         with (
             patch.object(chat_stream, "stream_manager") as sm,
             patch.object(chat_stream, "_persist_turn", new_callable=AsyncMock) as persist,
@@ -239,13 +224,7 @@ class TestResolvePendingApprovalTurnDegradesOnFailure:
 
 
 class TestConsumeAgentStreamCallsTheAgent:
-    """``_consume_agent_stream`` is the only place the turn's identity is handed
-    to ``call_agent``: the request, the user, the conversation, the usage
-    collector + source (as ``AgentRunOptions``) and the three message ids (as
-    ``StreamMessageIds``). Every one of them is a keyword the agent reads and
-    nothing here reads back, so a dropped or nulled argument produces a turn
-    that streams normally and is attributed to nobody.
-    """
+    """_consume_agent_stream is the only place the turn identity reaches call_agent; a dropped keyword streams normally but misattributes the turn."""
 
     async def test_the_turn_identity_reaches_call_agent_intact(self) -> None:
         captured: dict[str, Any] = {}
@@ -304,13 +283,7 @@ class TestConsumeAgentStreamCallsTheAgent:
 
 
 class TestConsumeAgentStreamAccumulatesAcrossChunks:
-    """The turn's accumulators are handed to the dispatcher one chunk at a time.
-    They are the turn's only memory of what arrived before, so a chunk that
-    carries neither todos nor chips must still leave both intact — the dispatcher
-    returns the running follow-up list rather than recomputing it, and the todo
-    snapshots are merged in place. Both failures are silent live: the stream
-    looks identical and only the saved turn is missing its todos or its chips.
-    """
+    """Accumulators carry todos/chips across chunks; a chunk with neither must leave both intact or the saved turn silently loses them."""
 
     async def _consume(self, chunks: list[dict[str, Any]]) -> _StreamState:
         async def _chunks() -> AsyncGenerator[str, None]:
@@ -352,9 +325,7 @@ class TestConsumeAgentStreamAccumulatesAcrossChunks:
         assert state.todo_progress_accumulated == {"executor": snapshot}
 
     async def test_chips_from_an_earlier_chunk_survive_a_later_plain_chunk(self) -> None:
-        """The dispatcher returns the running list for every chunk, including the
-        ones that carry no chips — so the last chunk of a turn does not blank
-        them."""
+        """A later chip-less chunk must not blank out chips accumulated from an earlier chunk."""
         state = await self._consume(
             [
                 {"follow_up_actions": ["Draft a reply", "Add to calendar"]},
@@ -366,13 +337,7 @@ class TestConsumeAgentStreamAccumulatesAcrossChunks:
 
 
 class TestRunChatStreamTurnDerivations:
-    """``_run_chat_stream`` derives two values before any collaborator runs — the
-    turn state (whose ``user_message_id`` IS the client's send id) and the
-    new-conversation flag — then passes both on by value. Neither is read back,
-    so a wrong derivation streams a perfectly normal-looking turn: the reply is
-    persisted under an id the client never optimistically rendered, or the
-    conversation row / description path is chosen for the wrong branch.
-    """
+    """_run_chat_stream derives turn state and the new-conversation flag before any collaborator runs; a wrong derivation misattributes the saved reply or picks the wrong branch."""
 
     async def _run(self, body: MessageRequestWithHistory) -> dict[str, Any]:
         seen: dict[str, Any] = {}

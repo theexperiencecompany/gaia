@@ -17,15 +17,7 @@ from .registry import register_after_hook, register_before_hook
 
 
 def process_reddit_post(post_data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Extract only critical information from a Reddit post.
-
-    Args:
-        post_data: Raw Reddit post data
-
-    Returns:
-        Minimized post data with only essential fields
-    """
+    """Extract only critical information from a Reddit post."""
     try:
         data = post_data.get("data", {})
 
@@ -59,15 +51,7 @@ def process_reddit_post(post_data: dict[str, Any]) -> dict[str, Any]:
 
 
 def process_reddit_search_results(response_data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Process Reddit search results to minimize data.
-
-    Args:
-        response_data: Raw Reddit API search response
-
-    Returns:
-        Processed search results with only critical information
-    """
+    """Process Reddit search results to minimize data."""
     try:
         search_results = response_data.get("search_results", {})
         data = search_results.get("data", {})
@@ -97,15 +81,7 @@ def process_reddit_search_results(response_data: dict[str, Any]) -> dict[str, An
 
 
 def process_reddit_comment(comment_data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Extract only critical information from a Reddit comment.
-
-    Args:
-        comment_data: Raw Reddit comment data
-
-    Returns:
-        Minimized comment data with only essential fields
-    """
+    """Extract only critical information from a Reddit comment."""
     try:
         data = comment_data.get("data", {})
 
@@ -293,7 +269,6 @@ def reddit_post_detail_after_hook(
         # Get the post data (it's usually nested under 'data' in Reddit API)
         post_response = response.get("data", {})
 
-        # Process the post
         processed_post = process_reddit_post(post_response)
 
         if writer is not None and processed_post:
@@ -345,10 +320,9 @@ def reddit_comments_after_hook(
         if not response or "error" in response.get("data", {}):
             return response.get("data", {})
 
-        # Extract comments from Reddit API response. Composio's envelope types `data`
-        # as a plain Dict, but Reddit's raw listing API for this endpoint returns a
-        # top-level JSON array `[post_listing, comments_listing]` — genuinely either
-        # shape can arrive here.
+        # Composio types response data as a dict, but Reddit's raw listing API for
+        # this endpoint returns a top-level array [post_listing, comments_listing]
+        # — either shape can arrive here.
         response_data: dict[str, Any] | list[Any] = response.get("data", {})
 
         # Reddit returns an array with [post_data, comments_data]

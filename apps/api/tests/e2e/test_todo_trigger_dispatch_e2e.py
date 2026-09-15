@@ -1,27 +1,17 @@
 """E2E: a fired trigger fans out to subscribed todos, against real Mongo + Redis.
 
-WHAT THIS PROVES — the loop the dispatch unit test mocks away in full (it patches
-the repository, Redis, the enqueue, notifications and completion). Here every one
-of those is real: ``dispatch_to_subscribed_todos`` resolves subscribers through
-the real todo finders, evaluates conditions, claims the cooldown slot in real
-Redis, and runs each action for real — enqueues ``execute``, writes a
-notification, completes-and-tears-down.
+Unlike the dispatch unit test (which mocks the repository, Redis, enqueue,
+notifications and completion), every one of those is real here:
+dispatch_to_subscribed_todos resolves subscribers via the real todo finders,
+evaluates conditions, claims the cooldown slot in real Redis, and runs each
+action for real.
 
-Seeding goes through the REAL update path (``todo_repository.update`` with a
-``TodoUpdate`` carrying the subscription), because the finders match on
-``trigger_subscriptions.$elemMatch: {status: "active"}``. A subscription that did
-not round-trip whole — the ``exclude_unset`` regression that shipped once — would
-be stored without ``status`` and the ``$elemMatch`` would never match, so these
-tests would go red. That makes this file the end-to-end guard for that bug.
-
-Needs USE_REAL_SERVICES=1 (real Mongo + Redis); skipped at collection otherwise.
-
-NOT here: running the woken ``execute_tracked_todo`` agent. Its request is covered
-by ``tests/integration/test_tracked_todo_agent_request.py`` and the subscribe path
-through the compiled graph by ``tests/e2e/test_todo_trigger_subscription_flow.py``.
-This file asserts the ``execute`` hand-off — the enqueued job and its
-``TriggerOrigin`` — not the run itself, so ``enqueue_worker_job`` is the one seam
-spied rather than executed.
+Seeding goes through the real todo_repository.update, because finders match
+trigger_subscriptions.$elemMatch: {status: "active"} — the exclude_unset
+regression that once shipped would store a subscription without status and
+silently break that match. Needs USE_REAL_SERVICES=1; skipped at collection
+otherwise. Does NOT run the woken execute_tracked_todo agent (covered
+elsewhere) — only the hand-off, so enqueue_worker_job is spied not executed.
 """
 
 from unittest.mock import AsyncMock, patch
@@ -69,7 +59,7 @@ async def _seed_watch(
     """Create a todo, then attach a subscription through the real update path.
 
     The update path (not create) is deliberate: it is the one that dropped nested
-    defaults via ``exclude_unset`` before the fix, and it is what registration
+    defaults via exclude_unset before the fix, and it is what registration
     actually uses.
     """
     todo = await todo_repository.create(

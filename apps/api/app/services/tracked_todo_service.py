@@ -11,7 +11,7 @@ A tracked todo is a regular todo with:
 Canvas and activity are indexed together in ChromaDB by the storage layer.
 
 Canvas and log content live on the todo document itself — see
-``app/services/todo_canvas_storage.py`` for the storage primitives. No
+app/services/todo_canvas_storage.py for the storage primitives. No
 JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 """
 
@@ -53,7 +53,7 @@ CANVAS_TEMPLATE = """# {title}
 
 
 def _pin_active_todo(docs: list[TodoDocument], active_todo_id: str | None) -> None:
-    """Move the matching todo to the front of `docs` in-place (no-op if not found)."""
+    """Move the matching todo to the front of docs in-place (no-op if not found)."""
     if not active_todo_id:
         return
     for i, d in enumerate(docs):
@@ -63,7 +63,7 @@ def _pin_active_todo(docs: list[TodoDocument], active_todo_id: str | None) -> No
 
 
 def _format_due_string(due_date: datetime | None, now: datetime) -> str:
-    """Render the due-date suffix: ` due(Nd)`, ` OVERDUE(Nd)`, or empty."""
+    """Render the due-date suffix:  due(Nd),  OVERDUE(Nd), or empty."""
     if not due_date:
         return ""
     days_until = (due_date - now).days
@@ -90,7 +90,7 @@ class TrackedTodoService:
     """Manages VFS lifecycle for tracked (GAIA working memory) todos.
 
     All methods are static — the service holds no instance state. The
-    ``tracked_todo_service`` singleton is kept for call-site compatibility.
+    tracked_todo_service singleton is kept for call-site compatibility.
     """
 
     @staticmethod
@@ -133,10 +133,9 @@ class TrackedTodoService:
         # canvas.md a recall doc from the first write by splitting it here.
         canvas_content, moved_activity = split_legacy_canvas(canvas_content)
         now = datetime.now(UTC)
-        # Moved legacy entries predate this todo's creation, so they come first
-        # (oldest-first, like the migration). The creation marker stays last:
-        # an `edit` that appends needs a last line to anchor on, and models
-        # reach for edit before write.
+        # Moved legacy entries come first (oldest-first, like the migration); the
+        # creation marker stays last so an edit-append has a line to anchor on,
+        # and models reach for edit before write.
         activity_content = "\n\n".join(
             p for p in (moved_activity, f"- {now.isoformat()} ▶ tracked todo created") if p
         )
@@ -222,11 +221,10 @@ class TrackedTodoService:
 
     @staticmethod
     async def get_active_tracked_summary(user_id: str, active_todo_id: str | None = None) -> str:
-        """Formatted summary of active tracked todos for context injection.
+        """Format active tracked todos for context injection.
 
-        When active_todo_id is provided, that todo is pinned at the top with
-        an ⭐ ACTIVE marker so the agent can quickly identify the run's
-        bound canvas.
+        When active_todo_id is provided, that todo is pinned at the top with an
+        ⭐ ACTIVE marker so the agent can identify the run's bound canvas.
         """
         docs = await todo_repository.list_active_tracked(user_id, limit=15)
         if not docs:
@@ -270,10 +268,10 @@ class TrackedTodoService:
     async def migrate_legacy_canvas(doc: TodoDocument) -> bool:
         """One-shot split of a pre-activity.md canvas. Returns True when it wrote.
 
-        Legacy canvases carried `## Activity Log` / `## Timeline` inside the
-        canvas (and append mode stranded dated entries under `## Learnings`).
-        Those move to `activity_content`; moved legacy entries come first
-        because they predate anything written to activity.md post-deploy.
+        Legacy canvases carried an Activity Log / Timeline section inside the
+        canvas (and append mode stranded dated entries under Learnings). Those
+        move to activity_content; moved legacy entries come first because they
+        predate anything written to activity.md post-deploy.
         """
         if not doc.canvas_content:
             return False

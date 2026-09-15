@@ -22,7 +22,7 @@ from tests.conftest import FAKE_USER
 
 
 class TestGetMe:
-    """GET /api/v1/user/me"""
+    """GET /api/v1/user/me."""
 
     async def test_returns_current_user(self, client: AsyncClient):
         # Must be the real return type. A bare dict silently passed while the field
@@ -53,7 +53,7 @@ class TestGetMe:
 
 
 class TestUpdateName:
-    """PATCH /api/v1/user/name"""
+    """PATCH /api/v1/user/name."""
 
     async def test_update_name_success(self, client: AsyncClient):
         mock_result = {**FAKE_USER, "name": "New Name"}
@@ -79,7 +79,7 @@ class TestUpdateName:
 
 
 class TestUpdateTimezone:
-    """PATCH /api/v1/user/timezone"""
+    """PATCH /api/v1/user/timezone."""
 
     async def test_valid_timezone(self, client: AsyncClient):
         updated = UserDocument.model_validate(
@@ -126,7 +126,7 @@ class TestUpdateTimezone:
 
 
 class TestLogout:
-    """POST /api/v1/user/logout"""
+    """POST /api/v1/user/logout."""
 
     async def test_logout_without_session_cookie(self, client: AsyncClient):
         resp = await client.post("/api/v1/user/logout")

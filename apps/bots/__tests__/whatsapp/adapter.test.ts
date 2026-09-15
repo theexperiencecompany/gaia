@@ -83,12 +83,9 @@ vi.mock("@hono/node-server", () => ({
   serve: vi.fn(),
 }));
 
-// ---------------------------------------------------------------------------
-// Mock ./webhook before importing the adapter.
-// vi.mock factories are hoisted by Vitest, so we cannot reference module-level
-// variables inside them. Instead, we use vi.fn() inline and retrieve the mocks
-// after import via vi.mocked().
-// ---------------------------------------------------------------------------
+// Mock ./webhook before importing the adapter. vi.mock factories are hoisted, so
+// we can't reference module-level variables inside them — use vi.fn() inline and
+// retrieve the mocks after import via vi.mocked().
 
 vi.mock("../../whatsapp/src/webhook", () => ({
   verifyKapsoSignature: vi.fn(),

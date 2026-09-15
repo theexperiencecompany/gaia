@@ -204,8 +204,7 @@ def run_shape(
     *,
     budget_usd: float,
 ) -> list[Row]:
-    """Fire the shape until its fires run out, the workflow pauses, or the budget
-    (what is left of it) is spent; every fire is one row."""
+    """Fire the shape until its fires run out, the workflow pauses, or the budget is spent; every fire is one row."""
     print(f"{time.strftime('%H:%M:%S')} {shape.key} {shape.title}", flush=True)
     rows: list[Row] = []
     workflow = None
@@ -238,7 +237,7 @@ def run_shape(
 
 
 def _budget(text: str) -> float:
-    """A finite, non-negative dollar amount; ``nan`` would pass every comparison."""
+    """Parse a finite, non-negative dollar amount; nan would pass every comparison."""
     value = float(text)
     if not math.isfinite(value) or value < 0:
         raise argparse.ArgumentTypeError(

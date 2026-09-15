@@ -1,9 +1,9 @@
 """Google People API shapes returned through Composio's Gmail toolkit.
 
-``GMAIL_GET_CONTACTS`` and ``GMAIL_SEARCH_PEOPLE`` both answer with People API
-``person`` resources, so the same models describe both. Every field is optional:
+GMAIL_GET_CONTACTS and GMAIL_SEARCH_PEOPLE both answer with People API
+person resources, so the same models describe both. Every field is optional:
 People only returns the field groups the request's read mask asked for, and
-``extra="allow"`` keeps the rest of the resource rather than dropping it.
+extra="allow" keeps the rest of the resource rather than dropping it.
 """
 
 from typing import NotRequired, TypedDict
@@ -76,8 +76,8 @@ class ContactCard(TypedDict):
     """A person flattened to their primary name/email/phone, for the chat UI.
 
     Every field is optional because People may send a key as an explicit
-    ``null``, which the hook forwards untouched rather than normalizing — see
-    ``_contact_card``.
+    null, which the hook forwards untouched rather than normalizing — see
+    _contact_card.
     """
 
     name: str | None

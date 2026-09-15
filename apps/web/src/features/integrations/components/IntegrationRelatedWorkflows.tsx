@@ -57,9 +57,8 @@ export function IntegrationRelatedWorkflows({
   });
 
   // While loading, the sidebar shows a skeleton matching the workflow cards so
-  // the panel doesn't flash in. The "section" variant stays null until resolved
-  // (it's a full marketplace block, not a panel). Once resolved with zero
-  // workflows we still collapse to null — no empty section.
+  // it doesn't flash in; the "section" variant (a full marketplace block, not a
+  // panel) stays null until resolved, and collapses to null again if empty.
   if (isLoading) {
     if (variant !== "sidebar") return null;
     return (

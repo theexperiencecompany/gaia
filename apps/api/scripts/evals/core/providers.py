@@ -122,8 +122,8 @@ def health_check(p: ProviderConfig) -> ProviderHealth:
     """Cheap 1-token probe; skips (with reason) when credentials are missing.
 
     The key check comes first for every lane. A lane exempt from the probe used
-    to be exempt from the key check too, so ``gemini`` reported healthy with no
-    ``GOOGLE_API_KEY`` at all: the run added it to the rotation and then failed
+    to be exempt from the key check too, so gemini reported healthy with no
+    GOOGLE_API_KEY at all: the run added it to the rotation and then failed
     at transport time on every single case, one authentication error at a time.
     """
     if not p.configured():

@@ -3,7 +3,7 @@
 Called from the two exceed seams — the tiered rate limiter (covers every
 decorated endpoint and agent tool) and the daily cost-budget gate — so every
 wall a free user can hit produces one analytics event and, at most once a
-week (deduped in the senders), one email. ``origin`` picks the email: an
+week (deduped in the senders), one email. origin picks the email: an
 interactive hit (the user did something and was blocked) gets the upsell
 pitch; a background hit (a workflow run the user never initiated) gets an
 informative "your workflows are taking a break" email instead — telling a
@@ -32,13 +32,9 @@ class LimitHitOrigin(StrEnum):
     BACKGROUND = "background"
 
 
-#: The origin of the work running right now. Set once at a run's boundary
-#: (see ``limit_origin``) and read by every limit seam, because the seam that
-#: trips is usually several frames below the code that knows why it is running:
-#: an agent tool inside a background workflow used to report the run as
-#: interactive and mail the user "you hit your limit" for work they never
-#: started. INTERACTIVE is the right default — a request with nobody marking it
-#: is a user standing there.
+#: Origin of the work running now, set once at a run's boundary (see
+#: ``limit_origin``) — an agent tool in a background workflow once inherited
+#: INTERACTIVE and mailed the user for work they never started.
 _run_origin: ContextVar[LimitHitOrigin] = ContextVar(
     "limit_hit_origin", default=LimitHitOrigin.INTERACTIVE
 )
@@ -52,15 +48,9 @@ def current_limit_origin() -> LimitHitOrigin:
 def mark_run_origin(origin: LimitHitOrigin) -> None:
     """Declare what kind of work the CURRENT task is doing.
 
-    Covers everything the task reaches afterwards — the agent, its tools, and
-    any task spawned from here, since a task copies the context it is created
-    in. Scoped to the task rather than a block: arq runs each job as its own
-    task (``loop.create_task(function.coroutine(...))``), so a job cannot leak
-    its origin into the next one, and marking a whole run needs no ``with``
-    around its body — indentation that would otherwise drag every wrapped line
-    into the diff.
-
-    Tests share one task, so the suite resets it between cases.
+    Covers everything spawned from here since a task copies its context; arq
+    runs each job as its own task, so origin never leaks between jobs. Tests
+    share one task, so the suite resets it between cases.
     """
     _run_origin.set(origin)
 

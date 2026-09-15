@@ -25,9 +25,7 @@ COMMON = _HERE / "_common.py"
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
-    """A throwaway git repo with the script installed at the same relative
-    path it lives at in this repo, so ``REPO_ROOT`` (two parents up from
-    ``__file__``) resolves to ``tmp_path``."""
+    """Build a git repo with the script at its real relative path, so ``REPO_ROOT`` is ``tmp_path``."""
     lints_dir = tmp_path / "tools" / "lints"
     lints_dir.mkdir(parents=True)
     shutil.copy(SCRIPT, lints_dir / "check_suppressions.py")

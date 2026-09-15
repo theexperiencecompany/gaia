@@ -25,7 +25,7 @@ SUPPORT_ENDPOINT = "app.api.v1.endpoints.support"
 
 
 class TestGetMySupportRequests:
-    """GET /api/v1/support/requests/my"""
+    """GET /api/v1/support/requests/my."""
 
     async def test_page_over_max_returns_422(self, client: AsyncClient) -> None:
         resp = await client.get(f"/api/v1/support/requests/my?page={MAX_PAGE_NUMBER + 1}")

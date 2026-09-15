@@ -69,11 +69,9 @@ class GmailTriggerHandler(TriggerHandler):
     ) -> list[Workflow]:
         """Find workflows for a Gmail event.
 
-        Handles two matching strategies in one pass:
-        1. gmail_new_message workflows — matched by user_id (account-level, no trigger IDs)
-        2. gmail_poll_inbox workflows — matched by composio_trigger_ids (per-interval triggers)
-
-        Both are routed here because they share the GMAIL_NEW_GMAIL_MESSAGE Composio event.
+        Matches gmail_new_message workflows by user_id and gmail_poll_inbox
+        workflows by composio_trigger_ids in one pass — both share the
+        GMAIL_NEW_GMAIL_MESSAGE Composio event.
         """
         log.set_ns("trigger", integration_id="gmail", trigger_type=event_type)
         try:
@@ -93,9 +91,8 @@ class GmailTriggerHandler(TriggerHandler):
 
             workflows: list[Workflow] = []
 
-            # Strategy 1: gmail_new_message workflows are account-level (no trigger
-            # IDs), so they can only be matched by user_id. Poll webhooks may omit
-            # user_id, so only run this strategy when we actually have one.
+            # gmail_new_message workflows are account-level, matched only by user_id.
+            # Poll webhooks may omit user_id, so only run this when we have one.
             if user_id:
                 workflows.extend(
                     await workflow_repository.find_active_integration_workflows(
@@ -103,10 +100,8 @@ class GmailTriggerHandler(TriggerHandler):
                     )
                 )
 
-            # Strategy 2: gmail_poll_inbox workflows are matched by their registered
-            # trigger id. The id uniquely identifies the workflow (and its owner), so
-            # we do NOT gate on user_id here — Composio's poll webhooks frequently
-            # arrive with an empty user_id, and gating on it dropped every event.
+            # gmail_poll_inbox workflows match by trigger id alone — Composio's poll
+            # webhooks frequently arrive with an empty user_id, and gating on it dropped every event.
             if trigger_id:
                 workflows.extend(
                     await workflow_repository.find_active_by_composio_trigger(

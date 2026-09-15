@@ -370,8 +370,7 @@ class TestDeliverNotification:
 
 
 class TestDefaultChannels:
-    """A notification that names no channel goes in-app and to the ONE chat
-    platform the user prefers; never to every linked platform."""
+    """A notification naming no channel goes in-app and to the one preferred chat platform, never all linked."""
 
     @staticmethod
     def _orch_with_every_adapter_succeeding(storage: AsyncMock) -> NotificationOrchestrator:
@@ -543,7 +542,6 @@ class TestExecuteAction:
         assert result.error_code == "ACTION_NOT_FOUND"
 
     async def test_action_already_executed_api_call(self) -> None:
-        """An already-executed API_CALL action returns ACTION_ALREADY_EXECUTED."""
         storage = AsyncMock()
         action = _make_action(action_id="act-1", action_type=ActionType.API_CALL, executed=True)
         request = _make_request(actions=[action])
@@ -557,7 +555,6 @@ class TestExecuteAction:
         assert result.error_code == "ACTION_ALREADY_EXECUTED"
 
     async def test_action_disabled(self) -> None:
-        """A disabled action returns ACTION_DISABLED."""
         storage = AsyncMock()
         action = _make_action(action_id="act-1", disabled=True)
         request = _make_request(actions=[action])

@@ -1,17 +1,4 @@
-"""Real integration tests for the GAIA comms agent.
-
-Unlike test_comms_agent_flow.py (which uses a fake echo graph), this module
-imports and exercises the ACTUAL production `build_comms_graph` function from
-app.agents.core.graph_builder.build_graph.
-
-External I/O (DB clients, LLM API calls, memory service) is mocked so that
-the LangGraph routing logic, pre_model_hooks (filter_messages_node,
-manage_system_prompts_node), end_graph_hooks (follow_up_actions_node), and
-tool registration all run for real.
-
-If `build_comms_graph` (or the callee chain it pulls in) is removed or
-renamed these tests will fail immediately — which is the desired behaviour.
-"""
+"""Real integration tests for the GAIA comms agent."""
 
 import asyncio
 import contextlib
@@ -25,10 +12,6 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_core.runnables import RunnableConfig
 import pytest
 
-# ---------------------------------------------------------------------------
-# CRITICAL: import from the real production module.  If this import breaks,
-# the tests fail – which is exactly what we want.
-# ---------------------------------------------------------------------------
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.config.settings import settings
@@ -43,15 +26,9 @@ from tests.helpers import (
 def full_production_middleware():
     """Build the SAME middleware stack as production, not the degraded test default.
 
-    One middleware (summarization) needs a real model, so it is gated on
-    GOOGLE_API_KEY. With the key unset (the test default) it is silently dropped, so
-    build_comms_graph constructs a *different graph than production* — and that gap is
-    how a middleware-construction regression shipped green. Set a throwaway key (never
-    used for a network call — this only affects graph CONSTRUCTION) so the test builds
-    the real composition and any middleware that fails to construct fails here.
-
-    Opt-in (not autouse): the key also enables the model fallback, which would change
-    behaviour for tests that deliberately run without it (e.g. the timeout test).
+    Summarization middleware is gated on GOOGLE_API_KEY; unset (the test
+    default) it is silently dropped, building a different graph than
+    production. Opt-in, not autouse: the key also enables the model fallback.
     """
     import app.agents.middleware.factory as factory_mod
 
@@ -93,19 +70,9 @@ def _make_chroma_store_mock() -> MagicMock:
     return store
 
 
-# ---------------------------------------------------------------------------
-# Boundary-only patches for follow_up_actions_node
-#
-# We mock ONLY the external I/O boundaries:
-#   1. ainvoke_structured – the structured LLM call (returns the parsed schema)
-#   2. get_user_integration_capabilities – external HTTP/DB call
-#   3. get_stream_writer – prevents LangGraph stream context requirement
-#
-# The node's internal logic RUNS FOR REAL:
-#   - the delegated-to-executor / insufficient-history guards
-#   - messages[-4:] slicing and _pretty_print_messages() formatting
-#   - dynamic-context prompt construction and the silent stream config
-# ---------------------------------------------------------------------------
+# Boundary-only patches for follow_up_actions_node: mocks only ainvoke_structured,
+# get_user_integration_capabilities, and get_stream_writer. Its internal slicing,
+# prompt construction and guards run for real.
 
 _VALID_FOLLOW_UP = FollowUpActions(
     actions=[
@@ -123,10 +90,10 @@ def _follow_up_node_io_patches(
     follow_up: FollowUpActions = _VALID_FOLLOW_UP,
     capabilities: dict | None = None,
 ) -> list:
-    """Return context-manager patches that mock ONLY the I/O boundaries of
-    follow_up_actions_node: the structured LLM call (which returns the parsed
-    ``FollowUpActions``), the integrations lookup, and the stream writer. The
-    node's internal slicing/prompt/guard logic runs for real.
+    """Return patches mocking only follow_up_actions_node's I/O boundaries.
+
+    The structured LLM call, the integrations lookup, and the stream writer
+    are mocked; the node's internal slicing/prompt/guard logic runs for real.
     """
     if writer_fn is None:
         writer_fn = lambda _: None  # noqa: E731  # default no-op writer for an optional hook parameter
@@ -163,7 +130,7 @@ def _apply_all_patches(
 ):
     """Apply store, checkpointer, io, executor, memory patches via ExitStack.
 
-    This avoids ``*io_patches`` unpacking inside ``with()`` which Python
+    This avoids *io_patches unpacking inside with() which Python
     does not support (it produces a tuple, not individual context managers).
     """
     with contextlib.ExitStack() as stack:
@@ -203,14 +170,7 @@ def _apply_all_patches(
 
 @pytest.fixture
 async def comms_graph_simple():
-    """
-    Build the REAL comms agent graph with:
-    - FakeMessagesListChatModel (single plain-text response, no tool calls)
-    - InMemorySaver checkpointer
-    - All external I/O mocked at boundaries only
-
-    Yields the compiled CompiledGraph so tests can call ainvoke / aget_state.
-    """
+    """Build the REAL comms agent graph with a single plain-text fake response."""
     fake_llm = create_fake_llm(["Hello! How can I help you today?"])
     store_mock = _make_chroma_store_mock()
 
@@ -223,13 +183,7 @@ async def comms_graph_simple():
 
 @pytest.fixture
 async def comms_graph_with_tool_call():
-    """
-    Build the REAL comms agent graph whose fake LLM first returns a tool call
-    for `call_executor`, then returns a final text response.
-
-    The call_executor tool itself is patched to return a fixed string without
-    touching the real executor agent.
-    """
+    """Build the REAL comms agent graph whose fake LLM emits a call_executor tool call, then text."""
     tool_call_spec = {
         "name": "call_executor",
         "args": {"task": "Check the weather"},
@@ -260,17 +214,7 @@ class TestRealCommsAgent:
     # ------------------------------------------------------------------
 
     async def test_graph_can_be_compiled(self, full_production_middleware):
-        """
-        build_comms_graph() must compile without raising, with the FULL production
-        middleware stack (see the full_production_middleware fixture — without it the
-        key-gated summarization middleware is silently dropped and the test builds a
-        different graph than production).
-
-        This validates that the production wiring (tool_registry dict, create_agent
-        call, every middleware, pre_model_hooks, end_graph_hooks) constructs. If any
-        import or construction step inside build_comms_graph or its middleware breaks,
-        this test is the first to catch it.
-        """
+        """build_comms_graph() must compile without raising, with the FULL production middleware stack."""
         store_mock = _make_chroma_store_mock()
         fake_llm = create_fake_llm(["ok"])
 
@@ -298,16 +242,7 @@ class TestRealCommsAgent:
     # ------------------------------------------------------------------
 
     async def test_message_flows_through_real_nodes(self, comms_graph_simple):
-        """
-        Invoke the graph with a HumanMessage and verify:
-        - The graph completes without error.
-        - At least one AIMessage appears in the output (LLM responded).
-        - The production filter_messages_node and manage_system_prompts_node hooks
-          ran (no exception escaped from them).
-
-        We add a system prompt up-front so that manage_system_prompts_node has
-        something to process.
-        """
+        """The graph must complete and run the real pre_model_hooks without error."""
         config = _thread_config()
 
         result = await comms_graph_simple.ainvoke(
@@ -338,15 +273,7 @@ class TestRealCommsAgent:
         )
 
     async def test_filter_messages_node_removes_unanswered_tool_calls(self, comms_graph_simple):
-        """
-        Seed the state with an AI message that has an unanswered tool call.
-        After the graph runs its pre_model_hooks (filter_messages_node), that
-        dangling tool call should be stripped so the LLM does not see it.
-
-        We verify indirectly: the graph must complete without the LLM receiving
-        invalid state (LangChain would raise if the tool call + no ToolMessage
-        pair was forwarded to the model).
-        """
+        """filter_messages_node must strip a dangling tool call before the LLM sees it."""
         config = _thread_config()
 
         dangling_tool_call_id = "dangling_call_001"
@@ -376,11 +303,8 @@ class TestRealCommsAgent:
             config=config,
         )
 
-        # The graph must complete and produce at least one AIMessage from the LLM.
-        # filter_messages_node strips dangling tool calls ephemerally (before the
-        # LLM call) but does NOT remove them from the checkpoint. If the filter
-        # didn't work, LangChain would raise an error about unmatched tool calls,
-        # so reaching this point proves the filter ran correctly.
+        # filter_messages_node strips dangling tool calls ephemerally, not from the
+        # checkpoint; reaching here without a LangChain unmatched-tool-call error proves it ran.
         ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage)]
         assert len(ai_messages) >= 1, (
             "Graph should have produced at least one AIMessage after stripping the dangling tool call"
@@ -394,13 +318,7 @@ class TestRealCommsAgent:
         )
 
     async def test_pre_model_hook_pruning_persists_to_checkpoint(self, comms_graph_simple):
-        """
-        manage_system_prompts_node keeps one system prompt per slot, and since
-        the prompt-accumulation fix that pruning is DURABLE: the model node
-        tombstones the stale copies out of the checkpoint (RemoveMessage), so a
-        long-lived thread holds exactly one prompt per slot instead of one per
-        run. Conversation messages are untouched.
-        """
+        """manage_system_prompts_node's pruning is durable: stale prompts are tombstoned out."""
         config = _thread_config()
 
         result = await comms_graph_simple.ainvoke(
@@ -440,16 +358,7 @@ class TestRealCommsAgent:
     # ------------------------------------------------------------------
 
     async def test_tool_routing_to_tool_node(self, comms_graph_with_tool_call):
-        """
-        When the fake LLM emits a tool call for `call_executor`, the real
-        LangGraph conditional edge (should_continue) must route execution to the
-        DynamicToolNode, which executes the tool and produces a ToolMessage.
-
-        This validates that:
-        - The production should_continue routing logic runs.
-        - The DynamicToolNode is wired correctly for the comms agent.
-        - A ToolMessage is produced for the call_executor invocation.
-        """
+        """A call_executor tool call must route through should_continue to DynamicToolNode."""
         config = _thread_config()
 
         result = await comms_graph_with_tool_call.ainvoke(
@@ -470,13 +379,7 @@ class TestRealCommsAgent:
         )
 
     async def test_tool_routing_then_final_response(self, comms_graph_with_tool_call):
-        """
-        After the tool executes (ToolMessage), the graph re-enters the agent node.
-        The fake LLM's second response is a plain text message, so should_continue
-        routes to end_graph_hooks (follow_up_actions_node) and then END.
-
-        Verify the full message sequence: Human → AI(tool_call) → Tool → AI(final).
-        """
+        """After tool execution, should_continue must route the final plain-text reply to END."""
         config = _thread_config()
 
         result = await comms_graph_with_tool_call.ainvoke(
@@ -505,11 +408,7 @@ class TestRealCommsAgent:
     # ------------------------------------------------------------------
 
     async def test_state_structure_has_expected_fields(self, comms_graph_simple):
-        """
-        After invocation, aget_state() must return a snapshot whose .values dict
-        contains the fields declared in the bigtool State (messages,
-        selected_tool_ids, todos) and any extensions used by comms graph.
-        """
+        """aget_state() must return a snapshot with the bigtool State's declared fields."""
         config = _thread_config()
 
         await comms_graph_simple.ainvoke(
@@ -528,10 +427,7 @@ class TestRealCommsAgent:
         assert isinstance(values["messages"], list)
 
     async def test_state_accumulates_across_turns(self, comms_graph_simple):
-        """
-        Calling ainvoke twice on the same thread_id must accumulate messages
-        (checkpointing works with InMemorySaver in the real graph).
-        """
+        """Calling ainvoke twice on the same thread_id must accumulate messages."""
         config = _thread_config()
 
         await comms_graph_simple.ainvoke(
@@ -556,10 +452,7 @@ class TestRealCommsAgent:
         )
 
     async def test_different_thread_ids_are_isolated(self, comms_graph_simple):
-        """
-        Two different thread_ids must have independent state — even when using the
-        same compiled graph object with InMemorySaver.
-        """
+        """Two different thread_ids must have independent state on the same compiled graph."""
         config_a = _thread_config()
         config_b = _thread_config()
 
@@ -588,15 +481,7 @@ class TestRealCommsAgent:
     # ------------------------------------------------------------------
 
     async def test_memory_node_called_via_end_graph_hooks(self):
-        """
-        follow_up_actions_node is registered as an end_graph_hook in the real
-        build_comms_graph.  Verify it is called (mocked writer receives data)
-        when the graph finishes a turn without tool calls.
-
-        We spy on get_stream_writer's return value to confirm the node fired.
-        The node's internal logic (message slicing, prompt construction, parser)
-        runs for real; only the LLM I/O boundary and stream writer are mocked.
-        """
+        """follow_up_actions_node (end_graph_hook) must fire and write to the stream when a turn ends."""
         store_mock = _make_chroma_store_mock()
         fake_llm = create_fake_llm(["All done!"])
 
@@ -636,13 +521,7 @@ class TestRealCommsAgent:
         )
 
     async def test_follow_up_node_internal_logic_runs_for_real(self):
-        """Verify follow_up_actions_node's internal message slicing and guards
-        execute for real (not mocked away).
-
-        We provide enough messages (>= 2) to bypass the early-exit guard so the
-        slice and prompt construction run; the writer should receive the
-        ``follow_up_actions`` returned by the mocked structured call.
-        """
+        """follow_up_actions_node's internal message slicing and guards must execute for real."""
         store_mock = _make_chroma_store_mock()
         # Give the main agent enough responses for two human messages
         fake_llm = create_fake_llm(["Response A", "Response B", "Response C"])
@@ -685,22 +564,7 @@ class TestRealCommsAgent:
     # ------------------------------------------------------------------
 
     async def test_node_exception_propagates_correctly(self):
-        """
-        When a pre_model_hook (filter_messages_node) raises an unhandled exception,
-        the exception must propagate out of ainvoke as the original exception type
-        — not silently swallowed, and not re-wrapped as a generic Exception that
-        hides the original type.
-
-        This test will FAIL if filter_messages_node's exception handler is removed
-        AND the graph simply swallows the error, or if the error is re-raised as a
-        different type.
-
-        Design note: filter_messages_node wraps errors internally and returns state
-        on failure, which means a patched internal sub-call that raises won't cause
-        the graph to fail by default.  To prove exception-propagation behaviour we
-        patch the node itself to raise directly, bypassing its own guard, then
-        verify the exception propagates to the caller unchanged.
-        """
+        """A pre_model_hook exception must propagate out of ainvoke as its original type, unswallowed."""
         store_mock = _make_chroma_store_mock()
         fake_llm = create_fake_llm(["Should not be reached"])
 
@@ -736,14 +600,7 @@ class TestRealCommsAgent:
         )
 
     async def test_comms_agent_handles_empty_messages(self):
-        """
-        Sending an empty messages list must not crash the graph.
-
-        The production filter_messages_node and manage_system_prompts_node both
-        have early-exit guards for empty message lists.  If those guards are
-        removed, this test will detect the regression by catching the resulting
-        exception (KeyError / IndexError).
-        """
+        """Sending an empty messages list must not crash the graph."""
         store_mock = _make_chroma_store_mock()
         fake_llm = create_fake_llm(["Graceful empty response"])
 
@@ -771,15 +628,7 @@ class TestRealCommsAgent:
                     )
 
     async def test_comms_agent_handles_malformed_tool_call(self):
-        """
-        When the LLM returns a tool call with invalid / missing arguments, the
-        graph must return an error ToolMessage to the caller rather than crashing
-        with an unhandled exception.
-
-        The production DynamicToolNode wraps tool errors into ToolMessages so the
-        graph can continue.  If that wrapping is removed, this test will fail
-        because ainvoke will raise instead of returning a ToolMessage.
-        """
+        """A malformed tool call must return an error ToolMessage, not crash the graph."""
         # The fake LLM emits a tool call with an empty args dict — call_executor
         # requires a "task" argument, so this is intentionally malformed.
         malformed_tool_call = {
@@ -817,20 +666,7 @@ class TestRealCommsAgent:
         )
 
     async def test_comms_agent_timeout_handling(self, no_model_fallback, single_llm_attempt):
-        """
-        When the LLM call raises asyncio.TimeoutError, the exception must
-        propagate to the caller with the original TimeoutError type intact —
-        it must NOT be swallowed silently or converted to a different type.
-        ``single_llm_attempt`` skips the retry backoff: TimeoutError is
-        retryable, and the point here is propagation, not the retry count.
-
-        This test will FAIL if:
-        - The graph swallows the TimeoutError (returns normally instead of raising)
-        - The graph re-raises as a generic Exception hiding the original type
-
-        Note: asyncio.TimeoutError is a subclass of TimeoutError in Python 3.11+.
-        We check for asyncio.TimeoutError directly.
-        """
+        """A TimeoutError from the LLM call must propagate to the caller with its original type intact."""
         store_mock = _make_chroma_store_mock()
 
         # The LLM raises TimeoutError immediately when invoked

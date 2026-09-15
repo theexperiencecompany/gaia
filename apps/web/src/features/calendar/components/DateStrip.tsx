@@ -6,13 +6,9 @@ import { useSyncExternalStore } from "react";
 
 import { formatWeekdayShort } from "@/features/calendar/utils/calendarUtils";
 
-// Today's date read through `useSyncExternalStore`: a wall-clock value can't
-// be rendered server-side without risking a hydration mismatch, and resolving
-// one in a mount effect flashes stale content after the first paint. The
-// server snapshot matches no day, so nothing is highlighted during SSR and
-// hydration; React re-reads the client snapshot right after mounting. A no-op
-// subscribe suffices — snapshots are value-compared strings, and the strip
-// re-renders on every scroll/virtualization update anyway.
+// Today's date via `useSyncExternalStore`: server snapshot matches no day
+// (avoids SSR hydration mismatch), client re-reads right after mount. A
+// no-op subscribe suffices — snapshots are value-compared, strip re-renders on scroll anyway.
 const noopUnsubscribe = (): void => {
   // Intentional no-op: today's date has no live source to subscribe to.
 };

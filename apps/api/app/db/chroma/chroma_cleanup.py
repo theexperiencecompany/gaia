@@ -13,23 +13,7 @@ async def cleanup_integration_chroma_data(
     integration_id: str,
     server_url: str,
 ) -> dict[str, bool]:
-    """Clean up all ChromaDB data for an integration.
-
-    Removes:
-    1. Subagent discovery entry from ("subagents",) namespace
-    2. All indexed tools under the integration's namespace
-    3. Redis caches (namespace hash + subagent cache)
-
-    Args:
-        integration_id: The integration's unique ID
-        server_url: The MCP server URL (used for namespace derivation)
-
-    Returns:
-        Dict with cleanup status for each component:
-        - "subagent": Whether subagent entry was deleted
-        - "tools": Whether tools were deleted
-        - "cache": Whether cache was invalidated
-    """
+    """Clean up an integration's subagent entry, indexed tools, and Redis caches in ChromaDB."""
     log.set(vector=VectorContext(operation="delete", collection="langgraph_tools_store"))
 
     results = {"subagent": False, "tools": False, "cache": False}

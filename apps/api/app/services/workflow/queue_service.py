@@ -52,9 +52,9 @@ class WorkflowQueueService:
     ) -> bool:
         """Queue workflow execution as a background task.
 
-        Uses a deterministic ``_job_id`` hashed from workflow + user + context so
+        Uses a deterministic _job_id hashed from workflow + user + context so
         a duplicate enqueue collapses to one run while queued/executing (ARQ
-        rejects a same-id job). ``keep_result=0`` frees the id once the run
+        rejects a same-id job). keep_result=0 frees the id once the run
         finishes, so a later legitimate re-run is never blocked.
         """
         try:

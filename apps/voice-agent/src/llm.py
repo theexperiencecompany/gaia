@@ -161,7 +161,7 @@ class CustomLLM(LLM):
         The drain deliberately outlives the turn, so it gets its own wide event
         rather than writing into the turn's — that one has already been emitted
         by the time the executor answers, and anything the drain logged into it
-        would be dropped. ``trace_id`` is the turn's, so the two events join.
+        would be dropped. trace_id is the turn's, so the two events join.
         """
         task = asyncio.create_task(self._drain_in_event(resp, trace_id, turn_index))
         self._drain_tasks.add(task)
@@ -190,8 +190,8 @@ class CustomLLM(LLM):
         """Forward the post-reply UI events and speak each executor answer.
 
         Mirrors what's shown on screen: forward what's displayed (tool cards,
-        follow-ups), speak what's a bot message (each ``voice_tts`` answer, in
-        order, as its own utterance via ``session.say``).
+        follow-ups), speak what's a bot message (each voice_tts answer, in
+        order, as its own utterance via session.say).
         """
         try:
             async for raw in resp.content:
@@ -208,7 +208,7 @@ class CustomLLM(LLM):
             await resp.release()
 
     async def _handle_drain_event(self, data: str) -> None:
-        """Speak a ``voice_tts`` answer, or forward a plumbing event to the screen."""
+        """Speak a voice_tts answer, or forward a plumbing event to the screen."""
         try:
             event = json.loads(data)
         except json.JSONDecodeError:
@@ -692,7 +692,7 @@ class _VoiceTurn:
         """Forward the raw buffer to the frontend, sanitize it for TTS, and clear it.
 
         The frontend gets the full display chunk (markdown + OpenUI preserved);
-        TTS gets the sanitised copy, only when it clears ``min_chars``.
+        TTS gets the sanitised copy, only when it clears min_chars.
         """
         if not self.text_buffer:
             return None

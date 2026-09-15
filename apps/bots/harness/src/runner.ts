@@ -101,14 +101,10 @@ export async function linkDevUser(
 }
 
 /**
- * Keeps the booted adapter — and with it the real outbound RabbitMQ consumer —
- * alive for `settleMs` after a turn's reply stream closes, so deliveries the
- * backend publishes *after* the stream are recorded in that turn's events.
- *
- * A handoff turn is exactly this shape: the SSE stream ends on the preamble
- * ("one sec"), and the executor's narrated answer is published to the platform
- * queue seconds later. Shutting down in between does not lose the message — it
- * strands it in the durable queue for whichever `gaia-sim` boots next.
+ * Keeps the adapter (and its outbound RabbitMQ consumer) alive `settleMs` after a
+ * turn's stream closes, so deliveries published afterward land in that turn's
+ * events. A handoff turn closes SSE on the preamble while the real answer
+ * publishes later; shutting down early strands it in the queue instead of losing it.
  */
 function settle(settleMs: number): Promise<void> {
   if (settleMs <= 0) return Promise.resolve();

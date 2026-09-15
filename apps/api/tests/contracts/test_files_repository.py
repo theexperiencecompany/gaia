@@ -1,4 +1,4 @@
-"""Contract tests for FilesRepository (user-scoped, addressed by ``file_id``)."""
+"""Contract tests for FilesRepository (user-scoped, addressed by file_id)."""
 
 from __future__ import annotations
 

@@ -9,17 +9,12 @@ import { FIELD_NAMES, questions } from "../constants";
 import type { Action, OnboardingState } from "../state/types";
 
 /**
- * Persists Q1 (profession) and Q2 (needs) the moment Q2 is confirmed —
- * several stages before the flow's final `POST /onboarding`.
+ * Persists Q1 (profession) and Q2 (needs) the moment Q2 is confirmed, several
+ * stages before the flow's final `POST /onboarding` — the platform-link
+ * opener is composed from these *stored* answers, so writing early is what
+ * stops it degrading to a generic "Hi! Who are you?" on handoff.
  *
- * The server composes the platform-link opener ("Hi! I'm a founder. I could
- * use help with my inbox and my todos. Who are you?") from the *stored*
- * answers, and the platform stage mints that code long before the completion
- * call runs. Writing the answers here is what stops the opener — on the web
- * and on every platform handoff — from degrading to "Hi! Who are you?".
- *
- * A failure is surfaced, not swallowed: `preferencesPersisted` stays false, so
- * nothing mints a code composed from answers the server never received.
+ * A failure is surfaced, not swallowed: `preferencesPersisted` stays false.
  */
 export function useOnboardingPreferences(
   state: OnboardingState,

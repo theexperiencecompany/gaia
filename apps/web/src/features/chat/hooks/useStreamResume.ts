@@ -6,19 +6,12 @@ import { turnManager } from "@/features/chat/stream/turnManager";
 import { applySyncedConversation } from "@/services/syncService";
 
 /**
- * Reconcile a conversation with the server when it's opened — one request:
- * the sync fetch also carries the active-stream verdict, resume consumes
- * that verdict, and only then are the fetched messages applied.
+ * Reconcile a conversation on open: one sync fetch returns the active-stream
+ * verdict and the messages.
  *
- * Order is load-bearing. The verdict says whether a turn is still streaming
- * and, if so, resume attaches to its event log (replaying everything missed)
- * — registering a live session. Only THEN are the fetched messages applied:
- * mid-turn the server hasn't persisted the turn's messages yet, so an apply
- * that ran ahead of resume would see no server copy of the user's optimistic
- * message and sweep it as an orphan — the "my message vanished until the
- * stream finished" bug. With a session registered, the apply is blocked for
- * the streaming conversation; with no live turn, it proceeds and any orphan
- * sweep is legitimate.
+ * Order is load-bearing — resume must attach to a live turn's event log
+ * before messages apply, or an apply that runs ahead sweeps the optimistic
+ * user message as an orphan (the "message vanished" bug).
  */
 export const useStreamResume = (conversationId: string | null): void => {
   useEffect(() => {

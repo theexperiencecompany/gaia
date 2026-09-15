@@ -1,6 +1,5 @@
 import os
 
-import cloudinary
 import cloudinary.exceptions
 import cloudinary.uploader
 from fastapi import HTTPException
@@ -13,19 +12,9 @@ def upload_file_to_cloudinary(
     file_data: bytes | None = None,
     file_path: str | None = None,
 ) -> str:
-    """
-    Uploads a file to Cloudinary and returns the URL.
+    """Upload a file to Cloudinary and return its URL.
 
-    Args:
-        file_data (bytes, optional): The file data to upload.
-        file_path (str, optional): The path to the file to upload.
-        public_id (str): The public ID for the uploaded file.
-
-    Returns:
-        str: The URL of the uploaded file.
-
-    Raises:
-        HTTPException: If the upload fails or invalid parameters are provided.
+    Exactly one of file_data or file_path must be provided.
     """
     log.set(component="upload_service", public_id=public_id)
     # Validate input parameters

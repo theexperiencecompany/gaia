@@ -7,8 +7,8 @@ canvas.md does: the read-only VFS projection and the subagent's context block
 both re-derive from it.
 
 Available to the executor and to every subagent. A subagent already has its own
-instructions injected into context, so it can call ``update_integration_instructions``
-directly; the executor should ``get_integration_instructions`` first when it
+instructions injected into context, so it can call update_integration_instructions
+directly; the executor should get_integration_instructions first when it
 intends to edit an existing block rather than replace it wholesale.
 """
 

@@ -28,11 +28,9 @@ const useFetchUser = () => {
   const hasIdentified = useRef(false);
   const hasClearedOnError = useRef(false);
 
-  // The one place the current-user query is driven. Every other reader joins
-  // the same cache entry through `useCurrentUser` — the cache *is* the state,
-  // so nothing is copied out of it. The entry is persisted for instant paint,
-  // so this driver always re-validates on mount: one server round-trip per
-  // page load, exactly as before, while every other reader stays fresh-only.
+  // The one place the current-user query is driven — the cache *is* the
+  // state, nothing is copied out. Persisted for instant paint, so this
+  // driver always re-validates on mount (one round-trip/load); others stay fresh-only.
   const { data, error } = useQuery({
     ...currentUserQueryOptions,
     refetchOnMount: "always",
@@ -70,10 +68,9 @@ const useFetchUser = () => {
     }
   }, [data, currentPath]);
 
-  // OAuth redirect routing — isolated from store syncing so route changes
-  // don't overwrite user state with stale query data. Resolved during render
-  // (not in an effect) so the callback page never paints before redirecting;
-  // `redirect` performs the same client-side navigation router.push did.
+  // OAuth redirect routing, isolated from store syncing so route changes
+  // don't overwrite state with stale data. Resolved during render, not an
+  // effect, so the callback page never paints before redirecting; same as router.push.
   const accessToken = searchParams.get("access_token");
   const refreshToken = searchParams.get("refresh_token");
 

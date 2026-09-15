@@ -1,6 +1,6 @@
 """Unit tests for background-executor message delivery.
 
-Two invariants, both owned by ``result_delivery.py``:
+Two invariants, both owned by result_delivery.py:
 
 * a background result is delivered over EXACTLY ONE transport, chosen by the
   conversation's own source — bot conversations to their platform, everything
@@ -40,7 +40,7 @@ def _run(
     bot_message_id: str | None = None,
     workflow: bool = False,
 ) -> ExecutorRun:
-    """A run context for delivery tests (defaults: live, non-workflow)."""
+    """Build a run context for delivery tests (defaults: live, non-workflow)."""
     run = ExecutorRun(
         stream_id=stream_id,
         conversation_id="conv-1",
@@ -72,7 +72,7 @@ async def _deliver(
     """Run deliver_result with all I/O boundaries mocked.
 
     Returns (save_mock, platform_mock, ws_mock) for assertions. The real
-    is_bot_platform routing logic runs unmocked against ``conv_source``.
+    is_bot_platform routing logic runs unmocked against conv_source.
     """
     with (
         patch.object(
@@ -135,8 +135,7 @@ class TestDeliverResultRouting:
         assert event["message"]["response"] == "result text"
 
     async def test_the_save_is_attributed_to_the_runs_owner(self) -> None:
-        """update_messages scopes the write by ``user`` — an unattributed save
-        lands on nobody's conversation, so the delivered message is lost."""
+        """update_messages scopes the write by user — an unattributed save lands on nobody's conversation."""
         save, _platform, _ws = await _deliver(ConversationSource.WEB)
 
         assert save.await_args.kwargs["user"] == {"user_id": "user-1"}
@@ -150,12 +149,9 @@ class TestDeliverResultRouting:
 
 
 class TestDeliveryOutcomeIsOnTheWideEvent:
-    """A finished run whose answer never reached the user still saved that answer
-    to the conversation, so nothing about the run looks wrong: the executor_run
-    event reads ``outcome: success`` either way. Only the delivery verdict tells
-    the two apart, so it has to be ON the event — a bare INFO line is not
-    queryable, and that is how a Telegram turn ended in silence with a green
-    wide event.
+    """A finished run can still fail delivery silently — the delivery verdict must be ON the wide event, not a bare INFO line.
+
+    Otherwise a Telegram turn ends in silence with a green wide event.
     """
 
     @pytest.fixture(autouse=True)
@@ -170,8 +166,7 @@ class TestDeliveryOutcomeIsOnTheWideEvent:
         assert log.get()["result_delivery"]["source"] == "telegram"
 
     async def test_a_failed_platform_send_raises_the_events_level(self) -> None:
-        """``delivered: false`` is only half the signal — an operator scanning for
-        broken runs filters on severity, so the drop must also be an error."""
+        """delivered: false is only half the signal; the drop must also raise the event's severity to error."""
         await _deliver(ConversationSource.TELEGRAM, platform_delivered=False)
 
         errors = log.get()["errors"]
@@ -180,11 +175,7 @@ class TestDeliveryOutcomeIsOnTheWideEvent:
         assert errors[0]["conversation_id"] == "conv-1"
 
     async def test_the_undelivered_error_names_the_message_task_and_route(self) -> None:
-        """The error is the whole lead for "a user got silence": without the
-        message id there is nothing to look up, without the task id nothing ties
-        it to the run, and without the route nobody knows which delivery path
-        broke. An error that only says something failed cannot be actioned.
-        """
+        """The undelivered error must name the message id, task id, and route — without them nothing is actionable."""
         await _deliver(ConversationSource.TELEGRAM, platform_delivered=False, task_id="task-1")
 
         (error,) = log.get()["errors"]
@@ -194,8 +185,7 @@ class TestDeliveryOutcomeIsOnTheWideEvent:
         assert error["message_id"], "the saved message must be identified"
 
     async def test_the_result_type_is_on_the_delivery_namespace(self) -> None:
-        """An errored run and a finished one deliver through the same path; the
-        result_type is what separates them when the delivery itself is fine."""
+        """An errored run and a finished one deliver through the same path; result_type is what separates them."""
         await _deliver(ConversationSource.TELEGRAM)
 
         assert log.get()["result_delivery"]["result_type"] == "final"
@@ -207,8 +197,7 @@ class TestDeliveryOutcomeIsOnTheWideEvent:
         assert "errors" not in log.get()
 
     async def test_the_narration_fallback_is_visible_separately_from_delivery(self) -> None:
-        """Comms failing and the send failing are different faults with the same
-        symptom (a useless message), so ``narrated`` is its own field."""
+        """Comms failing and the send failing are different faults with the same symptom, so narrated is its own field."""
         await _deliver(ConversationSource.TELEGRAM, comms_text="", result_text="raw output")
 
         assert log.get()["result_delivery"]["narrated"] is False
@@ -217,10 +206,11 @@ class TestDeliveryOutcomeIsOnTheWideEvent:
 
 
 class TestDeliveryOrigin:
-    """The provenance frame recorded into a platform thread when a workflow
-    result is delivered there — it is how a later turn backtracks to the
-    source, so the title, both machine ids, and their absence cases are
-    load-bearing."""
+    """The provenance frame recorded into a platform thread when a workflow result is delivered there.
+
+    It is how a later turn backtracks to the source, so the title, both
+    machine ids, and their absence cases are load-bearing.
+    """
 
     def test_names_the_title_and_both_ids(self) -> None:
         run = _run(workflow=True)
@@ -240,9 +230,11 @@ class TestDeliveryOrigin:
 
 
 class TestWorkflowResultReachesThePlatformDelivery:
-    """A finished workflow run hands its result to the platform-delivery path
-    with the run's own owner and provenance — a wrong user_id would deliver
-    into a stranger's chats, a wrong origin would orphan the trail."""
+    """A finished workflow run hands its result to the platform-delivery path with the run's own owner and provenance.
+
+    A wrong user_id would deliver into a stranger's chats, a wrong origin
+    would orphan the trail.
+    """
 
     async def test_delivery_carries_the_runs_owner_and_origin(self) -> None:
         with (
@@ -271,7 +263,7 @@ class TestGetConversationSource:
     """The authoritative routing key: the conversation's persisted source.
 
     Coercion of a stored string into the enum now lives in the repository's
-    ``get_source`` (covered by the repository contract tests); here we assert the
+    get_source (covered by the repository contract tests); here we assert the
     delivery wrapper passes it through, scopes by owner, and fails soft.
     """
 
@@ -451,10 +443,9 @@ class TestDeliveryLatency:
 
 
 class TestDeliverResultToolDataOwnership:
-    """deliver_result attaches the cards its caller snapshotted, and keys queued
-    messages on task_id so sync dedups against the placeholder.
+    """deliver_result attaches caller-snapshotted cards and keys queued messages on task_id for dedup.
 
-    A live run arrives with ``tool_data=None`` — its cards belong to the comms
+    A live run arrives with tool_data=None — its cards belong to the comms
     stream, and a second copy here would render every card twice.
     """
 
@@ -487,8 +478,7 @@ class TestDeliverResultToolDataOwnership:
         assert ws_message["task_id"] == "task-9"
 
     async def test_the_message_is_saved_as_the_runs_own_user(self) -> None:
-        """A background run has no request session — the save is authorized by the
-        user carried on the run, so that user has to be the one handed over."""
+        """A background run has no request session; the save is authorized by the user carried on the run."""
         run = _run()
 
         save, _ws = await self._deliver_with_cards(run, None)
@@ -496,8 +486,7 @@ class TestDeliverResultToolDataOwnership:
         assert save.await_args.kwargs["user"] == {"user_id": "user-1"}
 
     async def test_live_run_never_self_attaches_cards(self) -> None:
-        """The comms stream owns a live run's cards, so its snapshot is None —
-        delivery must not invent tool_data of its own from anywhere else."""
+        """The comms stream owns a live run's cards, so its snapshot is None — delivery must not invent tool_data."""
         run = _run(RunKind.LIVE, stream_id="live_s1", task_id="task-9")
 
         save, ws = await self._deliver_with_cards(run, None)
@@ -508,9 +497,7 @@ class TestDeliverResultToolDataOwnership:
         assert "tool_data" not in ws.await_args.args[1]["message"]
 
     async def test_live_run_with_bot_message_id_still_appends_a_fresh_message(self) -> None:
-        """Every live turn carries bot_message_id (for a possible HIL pause).
-        Its presence alone must not route delivery down the HIL-merge path,
-        which races the comms stream's save and drops results on a miss."""
+        """bot_message_id alone must not route delivery down the HIL-merge path, which races the comms stream's save."""
         run = _run(RunKind.LIVE, stream_id="live_s2", task_id="task-10", bot_message_id="ack-msg-1")
         with patch.object(rd, "_merge_resumed_result", new_callable=AsyncMock) as merge:
             save, ws = await self._deliver_with_cards(run, None)
@@ -521,8 +508,7 @@ class TestDeliverResultToolDataOwnership:
         assert saved.message_id != "task-10"
 
     async def test_save_failure_prevents_any_transport_push(self) -> None:
-        """MongoDB is the source of truth — a message that failed to persist
-        must never be pushed (it would vanish on the next sync)."""
+        """MongoDB is the source of truth — a message that failed to persist must never be pushed."""
         run = _run()
         with (
             patch.object(
@@ -644,19 +630,13 @@ class TestRunLifecycleAnalytics:
         assert terminal_props["executor_active_ms"] >= 0.0
 
     async def test_a_run_with_no_user_id_captures_nothing(self) -> None:
-        """`run.user` with no id must produce no events at all.
-
-        The guard is `if executor_user_id:` over a `""` default — swap that
-        default for any truthy string and every user-less run starts emitting
-        events attributed to a garbage id.
-        """
+        """run.user with no id must produce no events at all — the guard relies on a "" default staying falsy."""
         mock_capture = await self._run_lifecycle("done", "final", user_id=None)
 
         mock_capture.assert_not_called()
 
     async def test_paused_run_has_no_terminal_event(self) -> None:
-        """A HIL pause is not a terminal outcome — the resume re-enters and
-        captures its own STARTED."""
+        """A HIL pause is not a terminal outcome — the resume re-enters and captures its own STARTED."""
         mock_capture = await self._run_lifecycle("", "paused")
 
         events = [c.args[1] for c in mock_capture.call_args_list]
@@ -668,10 +648,10 @@ class TestRunLifecycleAnalytics:
 
 
 class TestDeliverResultHilResume:
-    """A HIL-resumed run (``run.bot_message_id`` set) merges its result onto the
-    ORIGINAL live turn's message in place, instead of appending a rival one —
-    the same class of trap ``_persist_follow_up_actions`` already guards
-    against for follow-ups (see its docstring)."""
+    """A HIL-resumed run merges its result onto the ORIGINAL live turn's message in place, not a rival append.
+
+    The same class of trap _persist_follow_up_actions already guards against for follow-ups.
+    """
 
     async def _deliver_resumed(self, run: ExecutorRun, *, existing_tool_data=None, tool_data=None):
         existing = MessageModel(type="bot", response="old text", date="2026-01-01")
@@ -763,9 +743,7 @@ class TestDeliverResultHilResume:
         assert "tool_calls_data" in tool_names  # the resumed run's new card
 
     async def test_missing_original_message_falls_back_to_a_fresh_append(self) -> None:
-        """The approved action already RAN — a deleted original bubble must
-        not discard its report. The delivery re-keys to a fresh id and takes
-        the ordinary append path instead."""
+        """The approved action already RAN; a deleted original bubble must not discard its report — re-key to a fresh id."""
         run = _run(RunKind.QUEUED, task_id="task-resume-1", bot_message_id="orig-msg-1")
         with (
             patch.object(
@@ -824,9 +802,11 @@ def _record(approval_id: str, status: HILApprovalStatus, tool_name: str = "SEND_
 
 
 class TestApprovalId:
-    """The key every merge decision is made on. Reading it off the wrong kind
-    of card silently turns an ordinary tool card into an approval and lets the
-    upsert overwrite it."""
+    """The key every merge decision is made on.
+
+    Reading it off the wrong kind of card silently turns an ordinary tool
+    card into an approval and lets the upsert overwrite it.
+    """
 
     def test_an_approval_card_yields_its_id(self) -> None:
         assert rd._approval_id(_approval_card("a1", "pending")) == "a1"
@@ -848,8 +828,10 @@ class TestApprovalId:
 
 
 class TestMergeToolData:
-    """The resumed stream replays the gate-time PENDING frame after the decision
-    already landed. Appending blindly resurrects a decided card."""
+    """The resumed stream replays the gate-time PENDING frame after the decision already landed.
+
+    Appending blindly resurrects a decided card.
+    """
 
     def test_ordinary_cards_append_after_the_existing_ones(self) -> None:
         existing = [{"tool_name": "old_tool", "data": {}}]
@@ -865,8 +847,7 @@ class TestMergeToolData:
         assert merged == [_approval_card("a1", "pending")]
 
     def test_a_replayed_pending_never_downgrades_a_settled_decision(self) -> None:
-        """The bug this function exists for: the user decided, then the replay
-        put the pending card back and re-offered approve/decline."""
+        """Regression: the user decided, then a replay put the pending card back and re-offered approve/decline."""
         merged = rd._merge_tool_data(
             [_approval_card("a1", "approved")], [_approval_card("a1", "pending")]
         )
@@ -911,8 +892,7 @@ class TestMergeToolData:
         assert by_id == {"a1": "approved", "a2": "pending"}
 
     def test_an_approval_added_in_this_batch_is_upserted_not_duplicated(self) -> None:
-        """The index has to learn about ids appended during the same pass, or a
-        card that first appears in the new batch duplicates itself."""
+        """The index has to learn about ids appended during the same pass, or a same-batch card duplicates itself."""
         merged = rd._merge_tool_data(
             [], [_approval_card("a1", "pending"), _approval_card("a1", "approved")]
         )
@@ -929,9 +909,7 @@ class TestMergeToolData:
 
 
 class TestReconcileApprovalStatuses:
-    """A decision's resolved frame goes to whichever stream the user is watching
-    at that moment, so it may never reach the stream this delivery drains. The
-    record is the source of truth."""
+    """A decision's resolved frame may never reach the stream this delivery drains — the record is the source of truth."""
 
     async def test_a_stale_status_is_corrected_from_the_record(self) -> None:
         with patch.object(
@@ -980,8 +958,7 @@ class TestReconcileApprovalStatuses:
 
 
 class TestApprovalOutcomesNote:
-    """Ground truth handed to the narrator so it stops telling the user an
-    action is still waiting for approval after they decided it."""
+    """Ground truth handed to the narrator so it stops telling the user an action is still pending after they decided."""
 
     async def test_no_original_message_means_no_note(self) -> None:
         assert await rd._approval_outcomes_note(_run(RunKind.QUEUED, bot_message_id=None)) == ""
@@ -1017,8 +994,7 @@ class TestApprovalOutcomesNote:
         assert "the action did NOT run" in note
 
     async def test_an_undecided_approval_produces_no_note(self) -> None:
-        """A still-pending gate has no outcome to report — saying anything about
-        it is what the note exists to prevent."""
+        """A still-pending gate has no outcome to report — saying anything about it is what the note exists to prevent."""
         message = MessageModel(type="bot", response="x", date="2026-01-01")
         message.tool_data = [_approval_card("a1", "pending")]
         with (
@@ -1050,8 +1026,7 @@ class TestApprovalOutcomesNote:
 
 
 class TestMergeResumedResultFailurePaths:
-    """Every one of these is a write that silently matched nothing. Reporting
-    success here loses the user's result or their cards."""
+    """Every one of these is a write that silently matched nothing; reporting success here loses the user's result or cards."""
 
     async def _merge(
         self, *, existing, set_response=True, set_tool_data=True, new_cards=None, calls=None
@@ -1090,8 +1065,7 @@ class TestMergeResumedResultFailurePaths:
         assert await self._merge(existing=existing, set_response=False) is None
 
     async def test_a_failed_card_write_keeps_the_cards_the_user_already_saw(self) -> None:
-        """Falling back to the merged list would report cards that were never
-        stored; falling back to nothing would blank the user's rendered turn."""
+        """Falling back to the merged list reports unstored cards; falling back to nothing blanks the user's rendered turn."""
         existing = MessageModel(type="bot", response="old", date="2026-01-01")
         existing.tool_data = [{"tool_name": "old_tool", "data": {}}]
 
@@ -1152,8 +1126,7 @@ class TestMergeResumedResultFailurePaths:
         assert set_fu.await_args.kwargs["actions"] == ["do the next thing"]
 
     async def test_no_follow_ups_means_no_write(self) -> None:
-        """An unconditional write would blank the follow-ups the original turn
-        already had."""
+        """An unconditional write would blank the follow-ups the original turn already had."""
         set_fu = await self._merge_with_follow_ups([])
 
         set_fu.assert_not_awaited()
@@ -1167,9 +1140,7 @@ class TestMergeResumedResultFailurePaths:
         assert [e["tool_name"] for e in merged] == ["old_tool"]
 
     async def test_every_write_is_scoped_to_this_conversation_message_and_user(self) -> None:
-        """These are targeted in-place Mongo updates. An unscoped or wrongly
-        scoped one edits somebody else's message — the filter is the only thing
-        standing between a merge and another user's conversation."""
+        """These are targeted in-place Mongo updates; an unscoped filter could edit somebody else's message."""
         existing = MessageModel(type="bot", response="old", date="2026-01-01")
         existing.tool_data = []
         calls: dict = {}
@@ -1190,9 +1161,11 @@ class TestMergeResumedResultFailurePaths:
 
 
 class TestApprovalOutcomesNoteContent:
-    """The note is the prompt the narrator is grounded on, so its content is a
-    contract, not cosmetics: a dropped or mislabelled line is the agent telling
-    the user an action is still pending after they denied it."""
+    """The note is the prompt the narrator is grounded on, so its content is a contract, not cosmetics.
+
+    A dropped or mislabelled line is the agent telling the user an action
+    is still pending after they denied it.
+    """
 
     async def _note(self, cards, records):
         message = MessageModel(type="bot", response="x", date="2026-01-01")
@@ -1215,8 +1188,7 @@ class TestApprovalOutcomesNoteContent:
         assert get_msg.await_args.kwargs["user_id"] == "user-1"
 
     async def test_an_ordinary_card_does_not_stop_the_scan(self) -> None:
-        """Cards arrive in stream order, so a plain tool card routinely sits
-        before an approval. Stopping at the first non-approval loses it."""
+        """Cards arrive in stream order, so a plain tool card routinely sits before an approval; stopping there loses it."""
         cards = [{"tool_name": "web_search_tool", "data": {}}, _approval_card("a1", "pending")]
         records = {"a1": _record("a1", HILApprovalStatus.APPROVED, tool_name="SEND_GMAIL")}
 
@@ -1252,9 +1224,7 @@ class TestApprovalOutcomesNoteContent:
         assert "SEND_SLACK" in note
 
     async def test_the_note_leads_with_the_override_instruction(self) -> None:
-        """The lines alone are ambiguous — the narrator has the gate-time
-        'waiting for approval' text in front of it too. The header is what tells
-        it which one wins, so it is part of the contract, not decoration."""
+        """The header tells the narrator which text wins over the gate-time 'waiting for approval' text — contract, not decoration."""
         cards = [_approval_card("a1", "pending")]
         records = {"a1": _record("a1", HILApprovalStatus.APPROVED, tool_name="SEND_GMAIL")}
 
@@ -1265,9 +1235,7 @@ class TestApprovalOutcomesNoteContent:
         assert "never say it is pending and never re-offer approve/decline" in note
 
     async def test_the_whole_header_survives_verbatim(self) -> None:
-        """Every clause here does a job: it declares the outcomes final, tells
-        the model they beat the gate-time text, and forbids re-offering the
-        decision. A reworded half is a narrator that starts hedging again."""
+        """Every clause declares the outcomes final, beats the gate-time text, and forbids re-offering — a reworded half hedges again."""
         cards = [_approval_card("a1", "pending")]
         records = {"a1": _record("a1", HILApprovalStatus.APPROVED, tool_name="SEND_GMAIL")}
 
@@ -1282,8 +1250,7 @@ class TestApprovalOutcomesNoteContent:
 
 
 class TestMergeToolDataBookkeeping:
-    """The upsert index has to keep pointing at the right slot as the list
-    grows, or an approval frame overwrites an unrelated card."""
+    """The upsert index has to keep pointing at the right slot as the list grows, or it overwrites an unrelated card."""
 
     def test_an_approval_first_seen_in_the_new_batch_indexes_its_own_slot(self) -> None:
         existing = [{"tool_name": "old_tool", "data": {"keep": "me"}}]
@@ -1298,8 +1265,7 @@ class TestMergeToolDataBookkeeping:
         assert merged[1]["data"]["status"] == "approved"
 
     def test_skipping_a_pending_replay_does_not_abandon_the_rest_of_the_batch(self) -> None:
-        """The replayed frame is rarely last — dropping out of the loop at it
-        loses every card the resumed run produced afterwards."""
+        """The replayed frame is rarely last — dropping out of the loop at it loses every card produced afterwards."""
         merged = rd._merge_tool_data(
             [_approval_card("a1", "approved")],
             [_approval_card("a1", "pending"), {"tool_name": "later_tool", "data": {}}],
@@ -1314,8 +1280,7 @@ class TestMergeToolDataBookkeeping:
 
 class TestReconcileLooksUpTheRightRecord:
     async def test_the_lookup_uses_the_cards_own_approval_id(self) -> None:
-        """Reading a different approval's record stamps someone else's decision
-        onto this card."""
+        """Reading a different approval's record stamps someone else's decision onto this card."""
         with patch.object(rd, "get_approval", new=AsyncMock(return_value=None)) as get_approval:
             await rd._reconcile_approval_statuses([_approval_card("a-42", "pending")])
 
@@ -1324,8 +1289,7 @@ class TestReconcileLooksUpTheRightRecord:
 
 class TestMergeResumedResultFailsClosed:
     async def test_a_run_without_a_user_id_scopes_to_empty_not_none(self) -> None:
-        """``user_id=None`` in a Mongo filter matches documents with no owner
-        rather than nothing — the scoping has to fail closed."""
+        """user_id=None in a Mongo filter matches documents with no owner rather than nothing — scoping must fail closed."""
         existing = MessageModel(type="bot", response="old", date="2026-01-01")
         bot_message = MessageModel(type="bot", response="new", date="2026-01-01")
         bot_message.message_id = "orig-msg-1"
@@ -1355,8 +1319,7 @@ class TestMergeResumedResultFailsClosed:
 
 
 class TestDeliveredMessageIdentity:
-    """Which id the delivered message carries decides whether the frontend
-    reconciles onto the placeholder it already rendered or strands it."""
+    """Which id the delivered message carries decides whether the frontend reconciles onto its placeholder or strands it."""
 
     async def _deliver_run(self, run: ExecutorRun, follow_ups: list[str] | None = None):
         with (
@@ -1386,8 +1349,7 @@ class TestDeliveredMessageIdentity:
         assert message["task_id"] == "task-7"
 
     async def test_a_live_run_mints_a_fresh_id_and_advertises_no_task(self) -> None:
-        """A live run never had a task_id-keyed placeholder, so emitting the
-        task_id would point the client's replace at a key that never existed."""
+        """A live run never had a task_id-keyed placeholder, so emitting task_id would point the client's replace at nothing."""
         message = await self._deliver_run(_run(RunKind.LIVE, task_id="task-7"))
 
         # A real UUID, not just "not the task id": every live run falling back
@@ -1410,8 +1372,7 @@ class TestDeliveredMessageIdentity:
         assert message["replyToMessage"]["id"] == "user-msg-1"
 
     async def test_a_hil_resume_never_quotes(self) -> None:
-        """It merges onto the very message that already sits under the user's
-        turn, so a quote would have the turn quoting itself."""
+        """It merges onto the message under the user's turn, so a quote would have the turn quoting itself."""
         run = ExecutorRun(
             stream_id="",
             conversation_id="conv-1",
@@ -1463,16 +1424,14 @@ class TestDeletedConversationDuringDelivery:
         return result, ws
 
     async def test_a_conversation_deleted_mid_run_ends_delivery_quietly(self) -> None:
-        """The user deleted the conversation while the executor worked. There is
-        nowhere to deliver to, and nothing to push."""
+        """The user deleted the conversation mid-run: there is nowhere to deliver to and nothing to push."""
         result, ws = await self._deliver_with_save_raising(HTTPException(status_code=404))
 
         assert result == (None, None)
         ws.assert_not_awaited()
 
     async def test_any_other_save_failure_also_stops_delivery(self) -> None:
-        """Pushing a message that was never stored leaves the client showing a
-        turn that vanishes on reload."""
+        """Pushing a message that was never stored leaves the client showing a turn that vanishes on reload."""
         result, ws = await self._deliver_with_save_raising(HTTPException(status_code=500))
 
         assert result == (None, None)
@@ -1481,8 +1440,7 @@ class TestDeletedConversationDuringDelivery:
 
 class TestMergedCardsAreActuallyWritten:
     async def test_the_merged_list_is_what_reaches_mongo(self) -> None:
-        """Returning the merged cards while storing something else is the worst
-        shape of this bug: the live push shows them, the reload does not."""
+        """Returning the merged cards while storing something else means the live push shows them but the reload does not."""
         existing = MessageModel(type="bot", response="old", date="2026-01-01")
         existing.tool_data = [{"tool_name": "old_tool", "data": {}}]
         bot_message = MessageModel(type="bot", response="new", date="2026-01-01")
@@ -1535,8 +1493,7 @@ class TestMergedCardsAreActuallyWritten:
 
 
 class TestDeferredFollowUpPush:
-    """Follow-ups are generated AFTER the answer ships, so the spinner clears
-    first, and arrive as a second push on the same message id."""
+    """Follow-ups are generated AFTER the answer ships, so the spinner clears first and they arrive as a second push."""
 
     async def _push(self, *, generated, persisted=True):
         bot_message = MessageModel(type="bot", response="answered", date="2026-01-01")
@@ -1576,18 +1533,17 @@ class TestDeferredFollowUpPush:
         ws.assert_not_awaited()
 
     async def test_suggestions_that_failed_to_persist_are_never_shown(self) -> None:
-        """Broadcasting unstored suggestions puts them on screen only for them
-        to vanish on reload."""
+        """Broadcasting unstored suggestions puts them on screen only for them to vanish on reload."""
         ws = await self._push(generated=["ask about X"], persisted=False)
 
         ws.assert_not_awaited()
 
 
 def _logged(mock, level: str) -> tuple[str, dict]:
-    """(message, kwargs) of the last call at ``level``, message asserted real.
+    """(message, kwargs) of the last call at level, message asserted real.
 
     warning/error/critical/exception put BOTH halves on the wide event —
-    wide_events._append stores ``{"msg": message, **kwargs}`` — so a blanked or
+    wide_events._append stores {"msg": message, **kwargs} — so a blanked or
     dropped message is a real regression in errors[]/warnings[], not prose. The
     wording is deliberately not pinned; that it exists at all is.
     """
@@ -1600,12 +1556,12 @@ def _logged(mock, level: str) -> tuple[str, dict]:
 
 
 class TestFailurePathsAreDiagnosable:
-    """Every branch here drops a user's result on the floor. The structured
-    fields on the log line are the only way to find out which conversation and
-    which message it happened to — a blanked id turns an incident into a search
-    of the whole collection. Asserting them is a structural assert, the kind
-    tests/CLAUDE.md rule 7 asks for; the prose message is deliberately not
-    asserted.
+    """Every branch here drops a user's result on the floor.
+
+    The structured log fields are the only way to find which conversation
+    and message it happened to — a blanked id turns an incident into a
+    search of the whole collection. Asserting them is a structural assert
+    (tests/CLAUDE.md rule 7); the prose message is deliberately not asserted.
     """
 
     async def _merge_with_log(self, *, existing, set_response=True, set_tool_data=True):
@@ -1675,11 +1631,10 @@ class TestFailurePathsAreDiagnosable:
 
 
 class TestDeletedConversationIsNotAnError:
-    """#906 (d70e3ca7b) split these arms on purpose: a conversation the user
-    deleted mid-run is expected, and logging it at error put it in errors[] on
-    the wide event and on the dashboards that filter by level. Both arms return
-    the same thing, so the LEVEL is the entire observable difference — without
-    this test nothing stops the split being quietly undone.
+    """#906 split these arms on purpose: a deleted-mid-run conversation is expected, not an error-level event.
+
+    Both arms return the same thing, so the LEVEL is the entire observable
+    difference — without this test the split could be quietly undone.
     """
 
     async def _deliver_with_save_raising(self, exc: Exception):
@@ -1714,9 +1669,7 @@ class TestDeletedConversationIsNotAnError:
         assert not log.info.called, "a real failure was downgraded to info"
 
     async def test_a_non_http_failure_also_carries_its_cause(self) -> None:
-        """The second except arm. Without a case that never becomes an
-        HTTPException, its own report goes untested — and a save that dies on a
-        driver error is exactly the one you need the cause for."""
+        """The second except arm: a save that dies on a driver error (never an HTTPException) needs its own cause reported too."""
         result, log = await self._deliver_with_save_raising(RuntimeError("connection reset"))
 
         assert result == (None, None)
@@ -1726,9 +1679,11 @@ class TestDeletedConversationIsNotAnError:
 
 
 class TestBuildFollowUpActions:
-    """The executor-final follow-up one-shot: what it is asked, and under which
-    routing key. Every caller mocks ``generate_follow_up_actions``, so nothing
-    else asserts the arguments it is handed."""
+    """The executor-final follow-up one-shot: what it is asked, and under which routing key.
+
+    Every caller mocks generate_follow_up_actions, so nothing else asserts
+    the arguments it is handed.
+    """
 
     async def _build(
         self,
@@ -1752,8 +1707,7 @@ class TestBuildFollowUpActions:
         return gen
 
     async def test_the_sticky_routing_key_is_the_conversation(self) -> None:
-        """session_id is what chains these with the graph-path follow-ups; without
-        it every call lands on a random upstream and never hits the cache."""
+        """session_id chains these with the graph-path follow-ups; without it every call lands on a random upstream, missing cache."""
         gen = await self._build()
 
         assert gen.call_args.args[2] == {
@@ -1791,7 +1745,7 @@ class TestBuildFollowUpActions:
 
 
 def _quoting_run(user: dict | None = None) -> ExecutorRun:
-    """A queued run that answers a specific user message, so it quotes it."""
+    """Build a queued run that answers a specific user message, so it quotes it."""
     return ExecutorRun(
         stream_id="",
         conversation_id="conv-1",
@@ -1803,7 +1757,7 @@ def _quoting_run(user: dict | None = None) -> ExecutorRun:
 
 
 def _target(**over) -> rd._DeliveryTarget:
-    """The delivery target a quoting queued run produces."""
+    """Build the delivery target a quoting queued run produces."""
     fields: dict = {
         "user_id": "user-1",
         "conversation_id": "conv-1",
@@ -1859,8 +1813,7 @@ class TestNarrateResultCallContract:
         ]
 
     async def test_the_decided_approval_outcomes_ride_on_the_result_text(self) -> None:
-        """The note is what stops comms re-offering an approve/decline the user
-        already answered, so it has to be part of the text comms actually reads."""
+        """The note stops comms re-offering an approve/decline the user already answered, so it must be in the text comms reads."""
         with (
             patch.object(
                 rd, "_approval_outcomes_note", new=AsyncMock(return_value="\n\n[APPROVAL] done")
@@ -1875,8 +1828,7 @@ class TestNarrateResultCallContract:
 
 
 class TestBuildBotMessageShape:
-    """The saved-and-delivered bubble. The client renders on ``type`` and orders
-    the thread on ``date``, so both are load-bearing well past this function."""
+    """The saved-and-delivered bubble: the client renders on type and orders the thread on date, both load-bearing."""
 
     def test_it_is_a_bot_bubble_carrying_the_voiced_text(self) -> None:
         message = rd._build_bot_message(_run(), "voiced", None, is_hil_resume=False)
@@ -1885,9 +1837,7 @@ class TestBuildBotMessageShape:
         assert message.response == "voiced"
 
     def test_the_timestamp_is_a_real_utc_instant(self) -> None:
-        """A naive local stamp sorts the message into the wrong place in a
-        thread whose other messages are UTC — and a missing one drops it out
-        of the ordering entirely."""
+        """A naive local stamp sorts the message wrong in a UTC thread; a missing one drops it out of the ordering entirely."""
         before = datetime.now(UTC)
         message = rd._build_bot_message(_run(), "voiced", None, is_hil_resume=False)
         after = datetime.now(UTC)
@@ -1923,8 +1873,7 @@ class TestAttachReplyQuoteLookup:
         assert result == (True, "what I asked")
 
     async def test_a_run_with_no_user_id_scopes_to_empty_not_none(self) -> None:
-        """``user_id=None`` is an unscoped read in the repository layer; the
-        empty string matches nothing, which is the safe miss."""
+        """user_id=None is an unscoped read in the repository layer; the empty string matches nothing, the safe miss."""
         _result, get, _bot_message = await self._attach(_quoting_run(user={}))
 
         assert get.await_args.kwargs == {"user_id": ""}
@@ -1937,8 +1886,7 @@ class TestAttachReplyQuoteLookup:
         )
 
     async def test_a_live_run_neither_quotes_nor_reads(self) -> None:
-        """Live answers land directly under the user's turn, so a quote is
-        noise — and the lookup would be a pointless round trip."""
+        """Live answers land directly under the user's turn, so a quote is noise and the lookup a pointless round trip."""
         result, get, bot_message = await self._attach(_run())
 
         assert result == (False, "")
@@ -1954,8 +1902,7 @@ class TestAttachReplyQuoteLookup:
 
 
 class TestBroadcastPayloadIsWhatTheClientUpserts:
-    """The WebSocket message body, whole. The client upserts on these exact
-    keys, so a renamed one is a field the UI silently never shows."""
+    """The WebSocket message body, whole: the client upserts on these exact keys, so a renamed one silently never shows."""
 
     async def _broadcast(self, target: rd._DeliveryTarget):
         bot_message = MessageModel(type="bot", response="voiced", date="2026-01-01T00:00:00+00:00")
@@ -1998,9 +1945,11 @@ class TestBroadcastPayloadIsWhatTheClientUpserts:
 
 
 class TestSpawnDeferredFollowUps:
-    """The detached follow-up task is handed the delivery context by value; if
-    any of it goes missing the task dies on its own boundary and the
-    suggestions never arrive, with the answer already shipped."""
+    """The detached follow-up task is handed the delivery context by value.
+
+    If any of it goes missing the task dies on its own boundary and the
+    suggestions never arrive, with the answer already shipped.
+    """
 
     async def test_the_detached_task_gets_the_whole_delivery_context(self) -> None:
         captured: dict = {}
@@ -2033,9 +1982,11 @@ class TestSpawnDeferredFollowUps:
 
 
 class TestDeliveryContextIsThreadedWhole:
-    """``_narrate_and_deliver`` is the one place the run is unpacked into the
-    values every downstream helper works from. A field lost here is lost for
-    the rest of delivery, and every one of them reads as a working send."""
+    """_narrate_and_deliver is the one place the run is unpacked into the values every downstream helper works from.
+
+    A field lost here is lost for the rest of delivery, and every one of
+    them reads as a working send.
+    """
 
     async def _deliver_queued(self, **patches):
         """deliver_result over the WebSocket path for a quoting queued run."""
@@ -2059,8 +2010,7 @@ class TestDeliveryContextIsThreadedWhole:
         return ws, spawn
 
     async def test_the_push_is_addressed_to_the_runs_owner(self) -> None:
-        """The broadcast is a per-user fan-out: a blank owner reaches nobody
-        while every log line still reads ``delivered``."""
+        """The broadcast is a per-user fan-out: a blank owner reaches nobody while every log line still reads delivered."""
         ws, _spawn = await self._deliver_queued()
 
         assert ws.await_args.args[0] == "user-1"
@@ -2080,8 +2030,7 @@ class TestDeliveryContextIsThreadedWhole:
         assert spawn.call_args.kwargs["target"] == _target()
 
     async def test_the_returned_note_reaches_comms(self) -> None:
-        """The subagent's hand-back note is context comms cannot re-derive: the
-        note is dropped silently and the answer just comes back thinner."""
+        """The subagent's hand-back note is context comms cannot re-derive; if dropped, the answer just comes back thinner."""
         with (
             patch.object(
                 rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
@@ -2099,9 +2048,11 @@ class TestDeliveryContextIsThreadedWhole:
 
 
 class TestWorkflowNotificationRef:
-    """The workflow identity handed to the notification dispatcher. It decides
-    what the user is told finished and whether they are told at all, and the
-    run it was read off is gone by then."""
+    """The workflow identity handed to the notification dispatcher.
+
+    It decides what the user is told finished and whether they are told
+    at all, and the run it was read off is gone by then.
+    """
 
     async def _deliver_workflow(self, *, notify_on_completion: bool):
         run = replace(_run(workflow=True), workflow_notify_on_completion=notify_on_completion)
@@ -2126,9 +2077,7 @@ class TestWorkflowNotificationRef:
         )
 
     async def test_a_silent_workflow_stays_silent_through_the_hand_off(self) -> None:
-        """``notify_on_completion`` defaults to True on ``_WorkflowRef``, so a
-        silent workflow whose flag is lost here starts notifying — the exact
-        setting the user turned off."""
+        """notify_on_completion defaults to True on _WorkflowRef, so a lost flag here starts notifying against the user's setting."""
         notify = await self._deliver_workflow(notify_on_completion=False)
 
         assert notify.await_args.kwargs["workflow"] == rd._WorkflowRef(
@@ -2140,8 +2089,8 @@ class TestRunBoundaryCarriesTheOriginatingSurface:
     """The executor run stamps the turn's surface on its own wide event.
 
     An auxiliary call made INSIDE this run (a follow-up, a memory write) is
-    handed a bare config with no ``conversation_source``, so without this stamp
-    the ledger records a user's web turn as ``system`` — and executor turns are
+    handed a bare config with no conversation_source, so without this stamp
+    the ledger records a user's web turn as system — and executor turns are
     the expensive ones, so the under-count lands exactly where COGS-by-channel
     is read.
     """
@@ -2178,8 +2127,7 @@ class TestRunBoundaryCarriesTheOriginatingSurface:
         assert fields["conversation_source"] == "web"
 
     async def test_a_run_started_from_no_surface_carries_none(self) -> None:
-        """A workflow-triggered executor run has no originating surface. None is
-        the honest value; the ledger's own rule then classifies it."""
+        """A workflow-triggered executor run has no originating surface; None is the honest value, the ledger classifies it."""
         fields = await self._boundary_fields({"user_id": "u1"})
 
         assert fields["conversation_source"] is None
@@ -2187,11 +2135,12 @@ class TestRunBoundaryCarriesTheOriginatingSurface:
 
 @pytest.mark.regression
 class TestRunBoundaryCarriesWorkflowExecution:
-    """``run_executor_background`` opens its own wide-event boundary. The
-    workflow task stamped ``workflow.execution_id`` on ITS boundary, so unless
-    the run carries it across, every model call inside the executor lands in
-    the ledger with a workflow but no execution — which is exactly what
-    happened: $8 of a $10 workflow day was attributed to no run at all."""
+    """run_executor_background opens its own wide-event boundary; the workflow task stamped execution_id on ITS boundary.
+
+    Unless the run carries it across, model calls land in the ledger with
+    a workflow but no execution — $8 of a $10 workflow day was attributed
+    to no run at all.
+    """
 
     async def test_executor_calls_see_the_workflow_execution(self) -> None:
         from app.agents.core.background.executor_runner import _ExecutorResult
@@ -2232,9 +2181,7 @@ class TestRunBoundaryCarriesWorkflowExecution:
     async def test_a_run_missing_either_id_stamps_no_workflow(
         self, workflow_id: str | None, execution_id: str | None
     ) -> None:
-        """Half an identity is worse than none: a boundary stamped with only a
-        workflow id would attribute the run's calls to a workflow's *unknown*
-        execution, which is the very gap this fix closes."""
+        """Half an identity is worse than none: a workflow id alone attributes calls to the workflow's *unknown* execution."""
         from app.agents.core.background.executor_runner import _ExecutorResult
         from shared.py.wide_events import log
 

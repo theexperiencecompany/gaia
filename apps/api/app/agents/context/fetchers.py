@@ -1,6 +1,6 @@
 """The section bodies: what each piece of context actually renders to.
 
-Each takes the whole ``SectionContext`` and returns rendered text or ``""`` —
+Each takes the whole SectionContext and returns rendered text or "" —
 never raises. That is deliberate and is the one place in this codebase where
 swallowing is correct: a context section is enrichment, and failing a user's
 whole turn because a recall query timed out trades a degraded answer for no
@@ -8,7 +8,7 @@ answer. Every swallow logs the cause, so the failure is visible in the wide
 event rather than silent.
 
 A section whose text is nothing but one of these reads is registered against it
-directly in ``sections.SECTIONS``; only a section that genuinely branches keeps
+directly in sections.SECTIONS; only a section that genuinely branches keeps
 a body of its own next to the table.
 """
 
@@ -52,11 +52,9 @@ from shared.py.wide_events import log
 def _split_off_section(context: str, heading: str) -> tuple[str, str]:
     """Split a heading's section off the memory core.
 
-    Returns ``(everything before the heading, the section body)``. A heading is
-    matched at the very start too, not only after a blank line: the core of a
-    user with no stable documents OPENS with a churning section, and requiring
-    the blank line would file it as stable and put per-turn bytes back in the
-    cached prefix — for exactly the users the split exists to protect.
+    Returns (everything before the heading, the section body). A heading is
+    matched at the very start too, not only after a blank line: a user with
+    no stable documents OPENS with a churning section.
     """
     if context.startswith(heading):
         return "", context[len(heading) :]
@@ -68,11 +66,10 @@ def _split_off_section(context: str, heading: str) -> tuple[str, str]:
 
 
 async def _core_context(user_id: str | None) -> str:
-    """The memory core as the engine renders it, or ``""``.
+    """Return the memory core as the engine renders it, or "".
 
     Redis-cached inside the engine and invalidated on ingestion, so the two
-    sections built from it (the stable documents and the volatile agenda +
-    journal) each read it without a second round trip to Mongo.
+    sections built from it each read it without a second round trip to Mongo.
     """
     if not user_id:
         return ""
@@ -89,9 +86,9 @@ async def _core_context(user_id: str | None) -> str:
 
 
 def _split_core_context(core_context: str) -> tuple[str, str, str]:
-    """``(stable documents, agenda, recent activity)``.
+    """(stable documents, agenda, recent activity).
 
-    Split from the BACK. ``get_core_context`` emits the agenda BEFORE the
+    Split from the BACK. get_core_context emits the agenda BEFORE the
     journal, so splitting on the agenda first hands back everything to its right
     — the journal included — as "the agenda", and the journal's own split then
     finds nothing left to match.
@@ -102,27 +99,22 @@ def _split_core_context(core_context: str) -> tuple[str, str, str]:
 
 
 async def build_core_memory_block(ctx: SectionContext) -> str:
-    """The document half of the memory core: the user / assistant-conventions
-    documents (identity, preferences, routines).
+    """Build the document half of the memory core (identity, preferences, routines).
 
-    Deliberately in the volatile TAIL, not the cached prefix, even though the
-    documents change less often than the agenda/journal half: consolidation
+    Deliberately in the volatile TAIL, not the cached prefix: consolidation
     rewrites them DURING conversations, and inside the prefix each rewrite
-    pushed the whole conversation out of the cache behind it (measured on the
-    real graph: moving them behind the conversation took comms 46.0% -> 59.3%
-    and the executor 64.8% -> 75.8%). The tail re-send is the known price;
-    see the placement note on ``SECTIONS`` in ``sections.py``.
+    pushed the whole conversation out of cache (measured: moving them behind
+    the conversation took comms 46.0% -> 59.3%, executor 64.8% -> 75.8%).
     """
     documents, _agenda, _activity = _split_core_context(await _core_context(ctx.user_id))
     return f"{CORE_MEMORY_HEADER}\n{documents}" if documents else ""
 
 
 async def build_agenda_and_activity_block(ctx: SectionContext) -> str:
-    """The CHURNING half of the memory core: the current agenda and the recent
-    activity journal.
+    """Build the CHURNING half of the memory core: the current agenda and recent activity journal.
 
-    They sit in the volatile slot together, each under its own heading, so the
-    agenda a user gets asked about is never read as part of the journal.
+    They sit in the volatile slot together, each under its own heading, so
+    the agenda is never read as part of the journal.
     """
     _documents, agenda, activity = _split_core_context(await _core_context(ctx.user_id))
     parts: list[str] = []
@@ -136,7 +128,7 @@ async def build_agenda_and_activity_block(ctx: SectionContext) -> str:
 async def build_memory_recall_block(ctx: SectionContext) -> str:
     """Memories relevant to this turn, dated.
 
-    Rendered through ``entry_to_note`` so the agent can reason about *when*
+    Rendered through entry_to_note so the agent can reason about *when*
     something happened — "how long ago", "which came first" — directly from the
     injected text instead of having to ask.
     """
@@ -213,11 +205,10 @@ NEW_USER_CONVERSATION_LIMIT = 3
 
 
 def _selected_needs(preferences: dict[str, object]) -> list[OnboardingNeed]:
-    """The onboarding needs off a raw preferences bag, in the order picked.
+    """Return the onboarding needs off a raw preferences bag, in the order picked.
 
-    The bag comes from Mongo, so the values are plain strings; a value this
-    build does not know (an older client, a need since renamed) is skipped
-    rather than dropped the whole block on the floor.
+    A value this build does not know (an older client, a renamed need) is
+    skipped rather than dropping the whole block.
     """
     raw_needs = preferences.get("needs")
     if not isinstance(raw_needs, list):
@@ -284,13 +275,9 @@ async def build_background_banner(ctx: SectionContext) -> str:
 async def build_workspace_session_banner(ctx: SectionContext) -> str:
     """State the agent's own session directory and the public artifact URL base.
 
-    The agent never otherwise learns its session id, so a prompt asking it to
-    report an absolute ``/workspace/sessions/<id>/...`` path forces a guess — and
-    a weak model fabricates one, writing the deliverable outside the session the
-    artifact watcher scans, where it is silently lost.
-
-    It also knows a file's workspace path but not the URL the browser fetches it
-    from, so without the second line it cannot link or embed an artifact at all.
+    The agent never otherwise learns its session id, so a weak model
+    fabricates one, writing outside the session the artifact watcher scans.
+    The URL line lets it link/embed an artifact at all.
     """
     # Only ``vfs_session_id`` is trusted. Falling back to ``thread_id`` would
     # state ``/workspace/sessions/executor_<conv>/``, sending deliverables
@@ -335,11 +322,9 @@ async def build_active_todo_banner(ctx: SectionContext) -> str:
 def _dedupe_by_provider(items: list[dict[str, str]]) -> list[dict[str, str]]:
     """One row per provider, keeping whichever row resolved to a display name.
 
-    A connected set can hold two ids for the same account — a legacy
-    ``google_calendar`` beside today's ``googlecalendar`` — and only the
-    registered one resolves to a name. Rendering both handed the agent two
-    handoff targets for one account, one of which resolves to no subagent at
-    all. Ids that share no provider are untouched, so nothing is ever dropped.
+    A connected set can hold two ids for the same account (a legacy
+    google_calendar beside today's googlecalendar) — rendering both once gave
+    the agent two handoff targets, one resolving to no subagent.
     """
     by_provider: dict[str, dict[str, str]] = {}
     for item in items:
@@ -370,15 +355,10 @@ def _builtin_overlap_lines(items: list[dict[str, str]]) -> list[str]:
 async def build_connected_integrations_manifest(user_id: str, header: str) -> str:
     """One line per connected integration, so the agent knows what it can reach.
 
-    Capability awareness only — detailed tool schemas still come from
-    ``retrieve_tools`` at inference time. The parenthesised id doubles as the
-    ``subagent_id`` the executor passes to ``handoff``. A line collapses to
-    ``- id`` when the name IS the id, so a custom integration never renders the
-    same value twice.
-
-    A built-in whose job a connected provider is mistaken for gets its own row
-    above the accounts, because a capability the agent cannot see in this list
-    is one it attributes to whatever it can see.
+    Capability awareness only — tool schemas still come from retrieve_tools
+    at inference time. The parenthesised id doubles as the handoff
+    subagent_id. A built-in whose job a connected provider is mistaken for
+    gets its own row above the accounts.
     """
     try:
         items = await get_connected_integrations_named(user_id)
@@ -408,12 +388,11 @@ MANIFEST_TOOL_SAMPLE_SIZE = 5
 
 
 async def _tool_summary(integration_id: str) -> str:
-    """ ": N tools, e.g. a, b, c" for a connected integration, or "" when it has none.
+    """Return ": N tools, e.g. a, b, c" for a connected integration, or "" when it has none.
 
-    Read from the registry (the same catalogue ``retrieve_tools`` searches), so
-    the model knows what a connection is FOR without anyone writing prose per
-    integration. A listing failure keeps the bare row: the connection is real
-    even when its tool list is not readable right now.
+    Read from the registry (the same catalogue retrieve_tools searches). A
+    listing failure keeps the bare row: the connection is real even when
+    its tool list isn't readable right now.
     """
     try:
         tools = await get_integration_tool_list(integration_id)
@@ -435,10 +414,12 @@ async def _tool_summary(integration_id: str) -> str:
 
 
 async def build_connected_devices_manifest(user_id: str, header: str) -> str:
-    """One line per paired device and the servers it exposes, so the agent knows
-    the user has their own machine reachable and routes local-file work there
-    instead of the cloud sandbox. Capability awareness only - live online status
-    and tool schemas come from list_devices / retrieve_tools at call time."""
+    """One line per paired device and the servers it exposes.
+
+    Lets the agent know the user has their own machine reachable and route local-file
+    work there instead of the cloud sandbox. Capability awareness only — live online
+    status and tool schemas come from list_devices / retrieve_tools at call time.
+    """
     try:
         devices = await list_devices_service(user_id)
         if not devices:

@@ -1,13 +1,13 @@
-"""Session ``.meta.json`` I/O: corruption tolerance and timestamp semantics.
+"""Session .meta.json I/O: corruption tolerance and timestamp semantics.
 
 Two consumers depend on this module and both fail silently when it is wrong.
-``touch_session_last_active`` read-modify-writes the file on every chat turn, so
-a read that raises instead of returning ``{}`` takes down the turn. The
-idle-prune scanner turns ``last_active`` into a delete decision, so a timestamp
+touch_session_last_active read-modify-writes the file on every chat turn, so
+a read that raises instead of returning {} takes down the turn. The
+idle-prune scanner turns last_active into a delete decision, so a timestamp
 misread by a timezone offset either deletes a live session's workspace or keeps
 a dead one forever.
 
-Boundaries mocked: none — the files are real, under ``tmp_path``.
+Boundaries mocked: none — the files are real, under tmp_path.
 """
 
 from __future__ import annotations

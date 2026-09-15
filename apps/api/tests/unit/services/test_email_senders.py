@@ -61,8 +61,7 @@ class TestSendWelcomeEmail:
     @patch(f"{SENDERS}.send_email", side_effect=RuntimeError("API error"))
     @patch(f"{SENDERS}.render_email_template", return_value="<h1>ok</h1>")
     async def test_propagates_send_exception(self, mock_render, mock_send):
-        """The failure is recorded against the user ID — the field every
-        dashboard groups by — and carries no email address."""
+        """The failure is recorded against the user ID — the field every dashboard groups by — and carries no email address."""
         async with captured_wide_event() as event:
             with pytest.raises(RuntimeError, match="API error"):
                 await send_welcome_email("user@example.com", user_id=SENDER_USER_ID)
@@ -141,13 +140,7 @@ class TestAddMarketingContact:
         side_effect=RuntimeError("network error"),
     )
     async def test_provider_failure_is_recorded_and_re_raised(self, mock_create, mock_settings):
-        """A rejected contact must reach the caller. While this swallowed, the
-        worker job's own except branch was unreachable: it logged the contact as
-        added and stamped it settled on a signup that never joined the audience.
-
-        The failure still has to stay queryable, so the wide event carries it —
-        keyed on the user ID, never the email.
-        """
+        """A rejected contact must reach the caller — the worker's except branch logs it added/settled anyway — and stays queryable keyed on the user ID, never the email."""
         mock_settings.RESEND_AUDIENCE_ID = "aud-test"  # pragma: allowlist secret
         async with captured_wide_event() as event:
             with pytest.raises(RuntimeError, match="network error"):
@@ -215,8 +208,7 @@ class TestSendInactiveUserEmail:
     async def test_propagates_exception(
         self, mock_render, mock_send, mock_unsub_url, mock_unsub_headers
     ):
-        """The failure is recorded against the user ID — the field every
-        dashboard groups by — and carries no email address."""
+        """The failure is recorded against the user ID — the field every dashboard groups by — and carries no email address."""
         async with captured_wide_event() as event:
             with pytest.raises(RuntimeError, match="send failed"):
                 await send_inactive_user_email("user@example.com", SENDER_USER_ID)
@@ -380,9 +372,7 @@ class TestTheWeeklyWindowIsClaimedNotJustRead:
     async def test_the_claim_names_the_user_and_a_window_that_has_passed(
         self, _mock_render, _mock_send
     ) -> None:
-        """The claim's arguments ARE the dedupe. A stale_before in the future
-        makes every user look eligible and mails them daily; the wrong id
-        claims someone else's window."""
+        """The claim's arguments ARE the dedupe: a future stale_before mails every user daily, the wrong id claims another's window."""
         with (
             patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,
             patch(
@@ -425,8 +415,7 @@ class TestTheWeeklyWindowIsClaimedNotJustRead:
 
     @patch(f"{SENDERS}.render_email_template", return_value="<h1>Upsell</h1>")
     async def test_a_failed_send_hands_the_slot_back(self, _mock_render) -> None:
-        """Otherwise a failed send burns the whole week: the marker claims an
-        email went out when none did, and the user hears nothing for 7 days."""
+        """Otherwise a failed send burns the whole week: the marker claims an email went out and the user hears nothing for 7 days."""
         previously = datetime.now(UTC) - timedelta(days=30)
         with (
             patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,

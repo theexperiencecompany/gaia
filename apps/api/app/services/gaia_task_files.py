@@ -1,9 +1,8 @@
-"""Path router for ``/workspace/gaia-tasks/`` inside the coding tools.
+"""Path router for /workspace/gaia-tasks/ inside the coding tools.
 
 The agent reads and edits a tracked todo's working notes with the ordinary
-``read`` / ``write`` / ``edit`` tools at
-``/workspace/gaia-tasks/<slug>-<shortid>/{canvas.md,activity.md}``. Those
-bodies live on the todo document (see ``todo_canvas_storage``), and the disk
+read/write/edit tools at /workspace/gaia-tasks/<slug>-<shortid>/{canvas.md,activity.md}.
+Those bodies live on the todo document (see todo_canvas_storage), and the disk
 tree is a read-only projection, so the tools route these paths here instead
 of touching the filesystem — which also makes them work in native dev, where
 the projection does not exist at all.
@@ -37,7 +36,7 @@ WRITABLE_FILES = frozenset({GaiaTaskFile.CANVAS, GaiaTaskFile.ACTIVITY})
 
 @dataclass(frozen=True)
 class RootFile:
-    """A generated file at the gaia-tasks root (only ``index.md`` today)."""
+    """A generated file at the gaia-tasks root (only index.md today)."""
 
     name: str
 
@@ -145,8 +144,7 @@ def write_refusal(ref: GaiaTaskPath) -> str | None:
 
 
 async def write_file(ref: GaiaTaskPath, user_id: str, content: str) -> str | None:
-    """Persist a write to canvas.md / activity.md. Returns a refusal message
-    for anything else, None on success."""
+    """Persist a write to canvas.md/activity.md; return a refusal message on failure, None otherwise."""
     refusal = write_refusal(ref)
     if refusal is not None or not isinstance(ref, TaskFile):
         return refusal

@@ -18,15 +18,11 @@ const shouldRetryQuery = (failureCount: number, error: Error): boolean => {
 };
 
 /**
- * The browser's single QueryClient.
+ * The browser's single QueryClient. `QueryProvider` renders this instance, so
+ * non-React code (module-level helpers like `getUserHomeTimezone`) reads the
+ * same cache as components instead of keeping a second copy of the data.
  *
- * `QueryProvider` renders this instance, so non-React code (module-level
- * helpers that need cached server data, e.g. `getUserHomeTimezone`) can read
- * the same cache the components read instead of keeping a second copy of the
- * data in a store.
- *
- * On the server every render gets a fresh client — a module-level singleton
- * there would leak one request's data into the next.
+ * On the server every render gets a fresh client — a module-level singleton there would leak one request's data into the next.
  */
 const queryClientOptions = {
   defaultOptions: {

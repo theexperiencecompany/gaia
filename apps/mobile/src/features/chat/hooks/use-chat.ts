@@ -298,11 +298,9 @@ export function useChat(
       turnAccumulatorRef.current = createTurnAccumulator();
       streamIdRef.current = null;
 
-      // --- Single-settle turn finalization --------------------------------
-      // Exactly one of done / error / aborted ever runs. The SSE layer can
-      // fire multiple terminal signals (error then close, abort then close);
-      // without this guard each of them re-persisted state and raced the
-      // reconcile refetch.
+      // Single-settle turn finalization: exactly one of done/error/aborted ever
+      // runs. The SSE layer can fire multiple terminal signals (error then close,
+      // abort then close); without this guard each would re-persist state and race the reconcile refetch.
       let settled: "done" | "error" | "aborted" | null = null;
       const settle = (cause: "done" | "error" | "aborted") => {
         if (settled) return;
@@ -445,11 +443,9 @@ export function useChat(
               });
             },
             onStreamEvent: (event) => {
-              // Fold every parsed frame into the shared turn accumulator,
-              // then derive live UI state from it. The reducer already
-              // upserts approvals per approval_id, coalesces reasoning into
-              // tool_calls_data entries, nests subagent groups and upserts
-              // todo progress — no hand-rolled accumulation here.
+              // Fold every parsed frame into the shared turn accumulator, then
+              // derive live UI state from it — the reducer already upserts
+              // approvals, coalesces reasoning into tool_calls_data, nests subagent groups, and upserts todo progress.
               turnAccumulatorRef.current = applyStreamEvent(
                 turnAccumulatorRef.current,
                 event,
@@ -509,10 +505,9 @@ export function useChat(
               settle("error");
             },
             onSubscriptionRequired: (detail) => {
-              // Not a failure to retry — the account simply isn't subscribed.
-              // The wall (with the checkout link) renders above the composer;
-              // the assistant bubble just says why it stopped, with no retry
-              // affordance, so the two don't compete for the user's attention.
+              // Not a failure to retry — the account simply isn't subscribed. The
+              // wall (with checkout link) renders above the composer; the assistant
+              // bubble just says why it stopped, with no retry affordance.
               usePaywallStore.getState().setBlocked(detail);
               useChatStore
                 .getState()

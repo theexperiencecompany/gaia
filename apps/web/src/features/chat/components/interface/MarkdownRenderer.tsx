@@ -27,25 +27,18 @@ import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import { cn } from "@/lib/utils";
 import { useImageDialog } from "@/stores/uiStore";
 
-// Streamdown always sanitizes (rehype-sanitize defaultSchema, then rehype-harden)
-// and that pass is not user-replaceable. allowedTags is merged INTO that schema,
-// so it is how we keep the artifacts our pipeline depends on from being stripped:
-//  - `className` on span/div — the `math math-inline` / `math math-display`
-//    placeholders remark-math emits. rehype-katex runs AFTER sanitize (via the
-//    plugins.math slot) and reads them to render math; if the class is stripped
-//    first, math never renders.
-//  - `className`/`metastring` on code — the `language-xxx` class CodeBlock reads
-//    to choose a highlighter, plus the fenced-code meta string.
+// Streamdown's sanitize pass isn't user-replaceable; allowedTags merges
+// into it to keep: span/div `className` (remark-math's math placeholders,
+// read by rehype-katex which runs after sanitize) and code `className`/`metastring` (CodeBlock's highlighter + fence meta).
 const ALLOWED_TAGS: AllowedTags = {
   span: ["className"],
   div: ["className"],
   code: ["className", "metastring"],
 };
 
-// Blur-in per word. The library owns the batching: animation-fill-mode "both"
-// starts words invisible and ends them visible, so even when a fast model dumps
-// many tokens in one commit the simultaneous mount reads as intentional. blurIn
-// + a slightly longer 250ms ease-out masks those batch arrivals smoothly.
+// Blur-in per word: the library's "both" fill-mode starts words invisible
+// and ends visible, so a fast model dumping many tokens in one commit still
+// reads as intentional; the 250ms ease-out masks batch arrivals.
 const ANIMATION: AnimateOptions = {
   animation: "blurIn",
   duration: 250,
@@ -123,11 +116,9 @@ const MarkdownImageNode: React.FC<{ src?: string | Blob; alt?: string }> = ({
   );
 };
 
-// Built at module scope rather than inside the component so the per-element
-// renderers aren't redefined during render (no-nested-component-definitions).
-// MarkdownRenderer memoizes the result to keep a stable identity across
-// streaming ticks — a fresh components object each render would defeat
-// streamdown's per-block memoization and re-render every block per token.
+// Built at module scope, not inside the component, so renderers aren't
+// redefined each render; memoized for a stable identity across streaming
+// ticks — a fresh object would defeat streamdown's per-block memoization.
 function buildMarkdownComponents(
   hideCodeToolbar: boolean | undefined,
   isStreaming: boolean | undefined,

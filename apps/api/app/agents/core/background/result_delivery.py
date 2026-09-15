@@ -1,26 +1,16 @@
 """Terminal delivery for background-executor results.
 
-Two run-based entry points, both taking the run's ``ExecutorRun`` context:
+Two entry points share the run's ExecutorRun context: deliver_result narrates,
+composes the bot message, persists to MongoDB, then routes over EXACTLY ONE
+transport (bot platform / WebSocket / workflow notification); persist_cancelled_run
+instead durably persists a self-owning cancelled run's already-streamed cards
+(no narration/re-push — frontend sync reconciles by message_id == task_id).
+Every terminal path goes through one of these.
 
-- ``deliver_result``  — completed/errored run: narrate via comms, compose the
-  bot message, persist to MongoDB, then route over EXACTLY ONE transport
-  chosen by the conversation's own source (bot platform / WebSocket /
-  workflow notification).
-- ``persist_cancelled_run`` — cancelled run that self-owns its tool_data:
-  durably persist the already-streamed cards (no narration, no re-push; the
-  frontend sync reconciles by ``message_id == task_id``).
-
-Every executor terminal path goes through one of these.
-
-- ``deliver_message_to_conversation`` — the run-free primitive underneath: push
-  an already-voiced proactive message (a fired reminder, a tracked-todo result)
-  into one conversation on its own surface and record it in that conversation's
-  langgraph thread. Reuses the same save / route / checkpoint seams.
-
-Neither reads the run's session: both take the cards their caller snapshotted
-before signalling the run done. By the time delivery runs, the comms consumer
-(chat stream or silent workflow path) has already drained that session and torn
-it down — see ``executor_runner._finalize_executor_run``.
+deliver_message_to_conversation is the run-free primitive underneath (pushes an
+already-voiced proactive message into one conversation, reusing the same
+save/route/checkpoint seams). Neither reads the run's session — both take cards
+snapshotted before signalling done, since the comms consumer has by then torn it down.
 """
 
 import asyncio
@@ -101,28 +91,10 @@ async def deliver_result(
 ) -> tuple[str | None, str | None]:
     """Narrate, persist, and deliver a finished executor run's result.
 
-    Comms is invoked silently — no SSE stream. Its generated text becomes the
-    user-visible bot message. The executor's terminal text is NOT shown to the
-    user directly; it's internal context for comms.
-
-    Returns ``(narrated_text, message_id)`` of the saved bot message (voice mode
-    speaks the text and bubbles it by that id). ``(None, None)`` on failure.
-
-    The message is always saved to the conversation, then delivered over EXACTLY
-    ONE transport chosen by the conversation's own ``source``:
-      - workflow runs → the proactive workflow notification (multi-channel)
-      - bot conversations (whatsapp/telegram/discord/slack) → that platform's
-        API (bots have no WebSocket — it's their only inbound path)
-      - everything else (web/mobile/system) → the WebSocket push web/mobile listen on
-    Routing keys on the conversation, not the run that produced the message, so a
-    background/scheduled run posting into a bot conversation still reaches it.
-
-    Tool cards: ``tool_data`` is the caller's pre-signal snapshot, already gated
-    on ``run.executor_owns_tool_data`` — ``None`` for a live run, whose cards the
-    chat stream attaches to the comms ack instead (attaching them here too would
-    render every card twice). Queued runs key the saved message on
-    ``message_id == task_id`` so the frontend sync reconciles it with the live
-    placeholder by id — the WebSocket push is immediacy only.
+    Delivers over EXACTLY ONE transport chosen by the conversation's own source
+    (workflow notification, bot platform API, or WebSocket) — keyed on the
+    conversation, not the run, so a scheduled run still reaches a bot chat.
+    Returns (narrated_text, message_id), or (None, None) on failure.
     """
     try:
         return await _narrate_and_deliver(run, result_text, result_type, tool_data, returned_note)
@@ -134,14 +106,9 @@ async def deliver_result(
 async def persist_cancelled_run(run: ExecutorRun, tool_data: list[ToolDataEntry]) -> None:
     """Durably persist the tool cards a cancelled self-owning run already streamed.
 
-    The cards were streamed live and the frontend already rendered + persisted
-    them on the placeholder (keyed by task_id). This only writes the same cards
-    to MongoDB so they survive a cache clear and reach the user's other devices
-    via the normal conversation sync. Deliberately:
-      - keyed on ``message_id == task_id`` so sync reconciles with the placeholder
-        by id (no duplicate) — no WebSocket re-push of already-streamed data;
-      - no comms re-narration (the run was stopped) and no result text, mirroring
-        the cards-only placeholder the user saw.
+    Writes the frontend's already-rendered placeholder cards (keyed by task_id) to
+    MongoDB so they survive a cache clear and sync to other devices — no
+    re-narration, no result text, no WebSocket re-push of already-streamed data.
     """
     if not tool_data:
         log.info(
@@ -199,16 +166,12 @@ async def deliver_message_to_conversation(
     text: str,
     origin: str,
 ) -> ConversationSource | None:
-    """Deliver an already-voiced, proactively-produced message into one existing
-    conversation and record it in that conversation's langgraph thread.
+    """Deliver an already-voiced proactive message into one existing conversation.
 
-    Saves it, routes it over the conversation's OWN transport (its bot platform's
-    API, or the web/mobile WebSocket), then appends it to the checkpoint so a later
-    turn in this conversation remembers it. Unlike ``deliver_result`` it takes no
-    run and does not narrate — ``text`` is the user-facing message (a fired
-    reminder, a tracked-todo result); ``origin`` names the producer for the
-    checkpoint record. Returns the conversation's source when delivered, else None.
-    Best-effort: never raises into the caller.
+    Routes over the conversation's own transport (bot platform or WebSocket), then
+    appends to the checkpoint so a later turn remembers it. Unlike deliver_result,
+    takes no run and doesn't narrate — text is already the user-facing message.
+    Best-effort: never raises. Returns the conversation's source, or None.
     """
     if not text.strip():
         return None
@@ -271,23 +234,16 @@ async def _narrate_and_deliver(
 ) -> tuple[str | None, str | None]:
     """Compose the user-facing message, save it, and route it.
 
-    Returns ``(narrated_text, message_id)`` of the saved bot message, or
-    ``(None, None)`` if it could not be saved.
+    Returns (narrated_text, message_id) of the saved bot message, or
+    (None, None) if it could not be saved.
     """
     user_id = run.user.get("user_id", "")
 
     notification_text = await _narrate_result(run, result_text, result_type, returned_note)
 
-    # A HIL-resumed run reconciles onto the ORIGINAL live turn's message
-    # (``run.bot_message_id``, see ``_record_pause``) instead of minting a
-    # rival one. Otherwise queued runs share an id with the live placeholder
-    # useExecutorStream rendered, so the frontend's existing conversation sync
-    # reconciles by id. Other runs have no placeholder, so a fresh id is fine.
-    #
-    # QUEUED is load-bearing: every LIVE run also carries ``bot_message_id``
-    # (threaded for a possible pause), but only ``_record_pause`` writes it
-    # into a queue item. On presence alone every live run would take the
-    # merge path and race the comms stream's own save.
+    # A HIL-resumed run reconciles onto the ORIGINAL message (run.bot_message_id,
+    # see _record_pause) instead of minting a rival one. QUEUED is load-bearing:
+    # every live run also carries bot_message_id, so presence alone would race the comms stream's save.
     is_hil_resume = run.is_queued and bool(run.bot_message_id)
     bot_message = _build_bot_message(run, notification_text, tool_data, is_hil_resume=is_hil_resume)
 
@@ -304,11 +260,9 @@ async def _narrate_and_deliver(
         user_msg_content=user_msg_content,
     )
 
-    # Follow-up actions are a second LLM call. The interactive web/mobile path
-    # delivers the answer first and generates them in the background (see the
-    # WebSocket branch) so the user-visible result is never gated behind them.
-    # Workflow + bot-platform paths deliver via a single send with no spinner to
-    # unblock, so they attach follow-ups inline.
+    # Follow-ups are a second LLM call. The web/mobile path delivers the answer
+    # first and generates them in the background so the result isn't gated on
+    # them; workflow/bot-platform paths have no spinner to unblock, so attach inline.
     conversation_source = await _get_conversation_source(run.conversation_id, user_id)
     is_ws_path = not run.workflow_id and not is_bot_platform(conversation_source)
 
@@ -328,10 +282,9 @@ async def _narrate_and_deliver(
     if fresh_append and not await _save_bot_message(run.conversation_id, run.user, bot_message):
         return None, None
 
-    # Workflow run: the result was produced with no human watching, so deliver it
-    # as the proactive completion notification (multi-channel, "Done with X")
-    # carrying the real voiced result, instead of pushing to one conversation
-    # transport. The bot message is already saved above for "View Results".
+    # Workflow run: no human is watching, so deliver as the proactive completion
+    # notification (multi-channel, "Done with X") instead of one conversation
+    # transport. Bot message is already saved above for "View Results".
     if run.workflow_id:
         # Successful, non-silent runs are delivered into the user's real
         # messaging-platform conversations as normal bot messages (GAIA's voice,
@@ -355,10 +308,9 @@ async def _narrate_and_deliver(
         )
         return notification_text, bot_message.message_id
 
-    # Deliver over exactly one transport, decided by the conversation's source.
-    # Bot conversations go to their platform's API; web/mobile/system go to the
-    # WebSocket push. (The web conversation list excludes bot sources, so a
-    # WebSocket push for a bot conversation would be dropped anyway.)
+    # Deliver over exactly one transport, by the conversation's source: bot
+    # conversations to their platform API, web/mobile/system to WebSocket (the
+    # web list excludes bot sources, so a WebSocket push there would be dropped).
     if is_bot_platform(conversation_source):
         delivered = await deliver_message_to_platform(
             conversation_source,
@@ -441,7 +393,7 @@ def _build_bot_message(
     *,
     is_hil_resume: bool,
 ) -> MessageModel:
-    """The bot message this run's result is saved and delivered as."""
+    """Build the bot message this run's result is saved and delivered as."""
     bot_message = MessageModel(
         type="bot",
         response=notification_text,
@@ -463,11 +415,10 @@ async def _attach_reply_quote(
     *,
     is_hil_resume: bool,
 ) -> tuple[bool, str]:
-    """Quote the user's message on the bot message; returns ``(shown, content)``."""
+    """Quote the user's message on the bot message; returns (shown, content)."""
     # Reply-quote only for genuinely queued tasks — live tasks land directly
-    # after the user's last message so quoting it is visual noise; a
-    # HIL-resumed run merges onto that same live message, so it never had
-    # other messages land in between either.
+    # after the user's last message (quoting would be noise), and a HIL-resumed
+    # run merges onto that same live message, so it never had messages land between.
     user_msg_content = ""
     show_reply_quote = run.is_queued and not is_hil_resume and bool(run.user_message_id)
     if show_reply_quote:
@@ -491,8 +442,8 @@ async def _resolve_append_mode(
 ) -> tuple[bool, list[ToolDataEntry] | None]:
     """Merge a HIL-resumed result onto the original message where possible.
 
-    Returns ``(fresh_append, tool_data)`` — ``fresh_append`` False only when the
-    merge landed, in which case ``tool_data`` is the FULL merged card set.
+    Returns (fresh_append, tool_data) — fresh_append False only when the
+    merge landed, in which case tool_data is the FULL merged card set.
     """
     if not is_hil_resume:
         return True, tool_data
@@ -552,9 +503,8 @@ def _log_delivery_verdict(
 ) -> None:
     """Record whether the saved result actually reached the user."""
     # Delivery is the last step that can silently lose a finished run: the answer
-    # is saved to the conversation either way, so a failed send leaves a run whose
-    # outcome is "success" and whose user got nothing. Put the verdict ON the
-    # executor_run wide event (not just this line) so that state is queryable.
+    # saves either way, so a failed send leaves a "success" run whose user got
+    # nothing. Verdict goes on the executor_run wide event so it's queryable.
     log.set_ns(
         "result_delivery",
         transport=transport,
@@ -586,19 +536,11 @@ async def _merge_resumed_result(
     bot_message: MessageModel,
     new_tool_data: list[ToolDataEntry] | None,
 ) -> list[ToolDataEntry] | None:
-    """In-place update the ORIGINAL live turn's bot message with a HIL-resumed
-    run's result, instead of appending a rival one.
+    """In-place update the ORIGINAL live message with a HIL-resumed run's result.
 
-    ``update_messages``/``append_messages`` unconditionally ``$push``-es a new
-    array element — reusing the original message_id there would create a literal
-    duplicate copy of the message, not a merge (the same trap ``_persist_follow_up_actions``
-    already guards against). This does targeted in-place field updates instead.
-
-    Returns the FULL merged tool_data (original cards + this run's new cards):
-    the WebSocket push replaces the client's stored message wholesale, so a
-    delta alone would drop the original cards. ``None`` means the original
-    message could not be found or updated — the caller falls back to
-    appending a fresh message rather than discarding the result.
+    $push-based append would duplicate the message instead of merging (the trap
+    _persist_follow_up_actions also guards against). Returns the FULL merged
+    tool_data, since the WebSocket push replaces the client's message wholesale.
     """
     user_id = run.user.get("user_id", "")
     message_id = bot_message.message_id
@@ -823,10 +765,8 @@ async def _build_follow_up_actions(
     return await generate_follow_up_actions(
         follow_up_context,
         user_id,
-        # The conversation's session_id: without it these one-shots had no
-        # sticky-routing key, landed on a random upstream per call, and never
-        # chained their prompt head with the graph-path follow-ups (measured:
-        # 0% cache hit on every executor-final follow-up). The aux suffix is
+        # The conversation's session_id: without it, one-shots had no sticky-routing
+        # key (measured: 0% cache hit on executor-final follow-ups). aux suffix is
         # applied inside ainvoke_structured, matching the node-path calls.
         {"configurable": {"user_id": user_id, "session_id": conversation_id}},
     )
@@ -839,9 +779,11 @@ def _spawn_deferred_follow_ups(
     tool_data: list[ToolDataEntry] | None,
     target: _DeliveryTarget,
 ) -> None:
-    """Generate follow-up actions off the critical path and push them as a second
-    update on the already-delivered message, so the answer isn't gated behind the
-    extra LLM call."""
+    """Generate follow-up actions off the critical path and push a second update.
+
+    Runs after the message is already delivered, so the answer isn't gated
+    behind the extra LLM call.
+    """
     spawn_background_task(
         _generate_and_push_follow_ups(
             bot_message=bot_message,
@@ -914,13 +856,9 @@ async def _persist_follow_up_actions(
 ) -> bool:
     """Attach deferred follow-up suggestions to the already-saved bot message.
 
-    The answer was persisted and broadcast without suggestions to unblock the UI;
-    this sets them on that SAME message, matched by id. It MUST be an in-place
-    field update — re-saving the whole message through ``update_messages`` (which
-    ``$push``-es) would append a duplicate copy of the answer to the conversation.
-
-    Returns ``True`` when the suggestions were written to the stored message, so
-    the caller only broadcasts follow-ups that will survive a reload.
+    Must be an in-place update matched by id — re-saving via update_messages
+    ($push-based) would append a duplicate answer. Returns True only when written,
+    so the caller doesn't broadcast follow-ups that won't survive a reload.
     """
     if not message_id:
         log.warning(
@@ -950,11 +888,9 @@ async def _dispatch_workflow_notification(
 ) -> None:
     """Send the proactive workflow completion/failure notification.
 
-    Failures always notify — the user must learn their automation broke. The
-    success notification respects the workflow's ``notify_on_completion``
-    setting: silent workflows keep their result in the conversation and leave
-    any user-facing alerting to the agent's own send_notification calls (driven
-    by the workflow's instructions).
+    Failures always notify. Success respects notify_on_completion: silent
+    workflows keep their result in the conversation, leaving user-facing alerting
+    to the agent's own send_notification calls.
     """
     # Imported here to avoid the workflow-service → agent import cycle.
     from app.services.workflow.notifications import (
@@ -1008,12 +944,9 @@ async def _broadcast_bot_message(
         ws_payload["tool_data"] = tool_data
     if follow_up_actions:
         ws_payload["follow_up_actions"] = follow_up_actions
-    # Only advertise task_id when a live task_id-keyed placeholder actually
-    # exists to replace (``useExecutorStream`` only creates one for queued-kind
-    # dispatch — real queue pops AND HIL resumes, both prepared through
-    # ``prepare_run_from_item``). A plain live run's task_id never had a
-    # placeholder, so emitting it would make the client's replaceMessage(task_id)
-    # target a key that doesn't match the persisted message — a wrong-key delete.
+    # Only advertise task_id when a placeholder exists to replace (useExecutorStream
+    # creates one only for queued-kind dispatch). A plain live run's task_id has no
+    # placeholder, so emitting it would make replaceMessage(task_id) target the wrong key.
     if target.task_id and target.emit_task_id:
         ws_payload["task_id"] = target.task_id
     if target.show_reply_quote:
@@ -1084,8 +1017,10 @@ async def _get_conversation_source(conversation_id: str, user_id: str) -> Conver
 
 
 def _delivery_origin(run: ExecutorRun) -> str:
-    """Name what produced this run's result, with machine ids, so a delivered
-    message recorded in a platform thread can be traced back to its source."""
+    """Name what produced this run's result, with machine ids.
+
+    Lets a delivered message recorded in a platform thread trace back to its source.
+    """
     name = f' "{run.workflow_title}"' if run.workflow_title else ""
     origin = f"workflow{name} (id {run.workflow_id})"
     if run.active_todo_id:

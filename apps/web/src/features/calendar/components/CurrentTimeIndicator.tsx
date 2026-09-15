@@ -11,10 +11,9 @@ const CURRENT_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 });
 
-// Current wall-clock time, refreshed every minute, plus its label formatted
-// inside the update tick. Starts as null/empty so nothing time-dependent is
-// rendered on the server; both values are first set after mount, avoiding
-// hydration mismatches from server/client clock or locale differences.
+// Current wall-clock time, refreshed every minute, plus its formatted
+// label. Starts null/empty so nothing time-dependent renders server-side;
+// both are set after mount, avoiding server/client hydration mismatches.
 interface CurrentTime {
   now: Date | null;
   label: string;

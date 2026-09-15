@@ -371,8 +371,7 @@ class TestSearchBySimilarity:
         assert results[0]["id"] == "valid1"
 
     async def test_files_collection_uses_file_id_field(self) -> None:
-        """The 'files' collection keys off the file_id metadata field. Files never
-        request detail-enrichment (only notes do), so the item is returned as-is."""
+        """The files collection keys off file_id and skips detail-enrichment, unlike notes."""
         file_id = str(ObjectId())
         doc = _make_document(
             page_content="file content",

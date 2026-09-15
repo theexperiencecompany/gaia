@@ -53,10 +53,9 @@ export const processAxiosError = (
       break;
 
     case 402:
-      // Only mark this handled — and suppress the fallback error toast —
-      // when the body actually is the subscription_required shape. A
-      // malformed or unrelated 402 must still reach the caller's default
-      // error handling (see service.ts) instead of vanishing silently.
+      // Only mark handled (suppressing the fallback error toast) when the body actually is the
+      // subscription_required shape; a malformed/unrelated 402 must still reach the caller's
+      // default error handling (see service.ts) instead of vanishing silently.
       error.handled = handleSubscriptionRequiredError(data);
       break;
 

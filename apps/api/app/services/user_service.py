@@ -11,9 +11,9 @@ from shared.py.wide_events import log
 async def get_user_by_id(user_id: str) -> dict[str, Any] | None:
     """Get user by ID from database.
 
-    Returns the ``user_to_legacy_dict`` bridge shape — a raw-style dict with a
-    string ``_id`` — because its consumers (agent tools, workflow/todo workers)
-    mutate it and pass it on as a plain dict. Typing it as ``UserDocument`` is
+    Returns the user_to_legacy_dict bridge shape — a raw-style dict with a
+    string _id — because its consumers (agent tools, workflow/todo workers)
+    mutate it and pass it on as a plain dict. Typing it as UserDocument is
     the real fix and belongs with retiring that bridge, not here.
     """
     log.set(component="user_service", user_id=user_id)
@@ -30,7 +30,6 @@ async def update_user_profile(
     name: str | None = None,
     picture_data: bytes | None = None,
 ) -> UserUpdateResponse:
-    """Update user profile information."""
     log.set(
         component="user_service",
         user_id=user_id,

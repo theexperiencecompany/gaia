@@ -1,20 +1,15 @@
 """The prompt-cache guarantee the whole slot ordering exists to protect.
 
-Every ordering decision in ``PromptSlot`` — the clock at the tail of contents,
-volatile sections after stable ones, one message per slot — exists to keep the
-request prefix byte-identical across turns so the provider's implicit cache can
-match it. Nothing asserted that it actually did.
+Every ordering decision in PromptSlot exists to keep the request prefix
+byte-identical across turns so the provider's implicit cache can match it, and
+nothing previously asserted that it actually did.
 
-**The floor is the exact stable-block boundary, not a byte count or a ratio.**
-Both of those were considered and both are insensitive here. The static prompt
-is ~36 KB and a volatile block is a few hundred bytes, so folding the volatile
-block back into the cacheable region — the precise defect this change fixed —
-moves the shared prefix by well under 1%. A ratio high enough to catch it
-(0.999+) is indistinguishable from noise under any prompt edit, and a fixed byte
-count stops meaning anything the moment a prompt grows. The boundary itself has
-neither problem: it says exactly what the design requires — *no byte at or
-before the end of the stable block may move between turns* — and it stays true
-through any prompt edit, at any size.
+The floor is the exact stable-block boundary, not a byte count or a ratio: the
+static prompt is ~36 KB and a volatile block a few hundred bytes, so the defect
+this change fixed moves the shared prefix by well under 1% — invisible to a
+0.999+ ratio and to any fixed byte count once the prompt grows. The boundary
+says exactly what the design requires: no byte at or before the end of the
+stable block may move between turns.
 """
 
 import pytest
@@ -81,8 +76,7 @@ class TestPrefixSurvivesAClockTick:
 
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_only_the_clock_differs_across_a_tick(self, tier: AgentTier) -> None:
-        """Stated separately from the floor: a prefix can clear the boundary
-        while something else still moved behind it."""
+        """Stated separately from the floor: a prefix can clear the boundary while something else still moved behind it."""
         user = HarnessUser()
         first = await effective_context(
             tier, ContextSeed(user=user, sources=SOURCES, now=FIXED_NOW)
@@ -100,9 +94,7 @@ class TestPrefixSurvivesAClockTick:
 class TestPrefixSurvivesANewQuery:
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_a_new_query_leaves_the_cacheable_block_intact(self, tier: AgentTier) -> None:
-        """The defect this change fixed: with volatile content mis-slotted into
-        the stable block, a new query moved the cache boundary up into the
-        prompt and every subagent turn paid full price."""
+        """The defect this change fixed: volatile content mis-slotted into the stable block moved the cache boundary on every query."""
         user = HarnessUser()
         first = await effective_context(
             tier,
@@ -138,10 +130,7 @@ class TestPrefixSurvivesANewQuery:
 
 @pytest.mark.unit
 class TestTheFloorCanFail:
-    """A floor no realistic regression can breach is decoration. This pins that
-    the measurement responds to the exact defect it guards against — and it is
-    why the floor is a boundary rather than the ratio originally proposed, which
-    this same check showed to be insensitive at the real prompt sizes."""
+    """A floor no realistic regression can breach is decoration — this pins that the measurement responds to the exact defect it guards against."""
 
     async def test_volatile_content_in_the_stable_block_breaches_the_floor(self) -> None:
         user = HarnessUser()

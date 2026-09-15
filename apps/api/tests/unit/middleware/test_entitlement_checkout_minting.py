@@ -1,17 +1,17 @@
 """The gate must not mint a Dodo checkout session per blocked request.
 
-``test_entitlement_coverage`` sweeps the route table for what 402s; nothing
+test_entitlement_coverage sweeps the route table for what 402s; nothing
 there watches what a 402 *costs*. This file does: it counts the checkout
 sessions minted underneath a shell's worth of blocked requests.
 
-Every mint is a ``get_plans`` call, an HTTP round-trip to Dodo and an insert
-into ``checkout_sessions``. Minting inside the deny path puts all three on the
+Every mint is a get_plans call, an HTTP round-trip to Dodo and an insert
+into checkout_sessions. Minting inside the deny path puts all three on the
 latency of every 402, and an unpaid user's shell load is many 402s, so the cost
 is paid per blocked request rather than per user who actually wants to pay —
 and Dodo sessions are single-use, so every one of them is waste. Under that
 self-inflicted load Dodo rate-limits, which used to strip the link from the one
-response that needed it (``"Could not mint checkout link for paywall
-response"`` recurs through the local logs of 2026-09-06/07).
+response that needed it ("Could not mint checkout link for paywall
+response" recurs through the local logs of 2026-09-06/07).
 """
 
 from collections.abc import AsyncGenerator
@@ -41,7 +41,7 @@ SHELL_STARTUP_PATHS = (
 
 
 class _StubAuthMiddleware(BaseHTTPMiddleware):
-    """Publish an authenticated user, as ``WorkOSAuthMiddleware`` would."""
+    """Publish an authenticated user, as WorkOSAuthMiddleware would."""
 
     async def dispatch(self, request: Request, call_next: Any) -> Response:
         request.state.user = FAKE_USER
@@ -73,13 +73,7 @@ class TestGateDoesNotMintPerBlockedRequest:
     async def test_a_shell_load_of_402s_mints_no_checkout_sessions(
         self, gated_client: AsyncClient
     ) -> None:
-        """Three blocked startup calls must not become three Dodo sessions.
-
-        The paywall body carries no checkout link: the client mints one from
-        the allowlisted ``POST /api/v1/payments/checkout-session`` when the user
-        actually asks to subscribe. Dodo sessions are single-use, so minting one
-        the user never visits is pure waste at Dodo and in Mongo.
-        """
+        """Dodo sessions are single-use; the client mints one from POST /api/v1/payments/checkout-session on user intent, not here."""
         mint = AsyncMock(return_value=_checkout("https://checkout.dodo.test/abc"))
         with (
             patch(

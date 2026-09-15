@@ -1,20 +1,11 @@
 """Per-stream orchestration state for background executor runs.
 
-One ``StreamSession`` per ``stream_id`` replaces the five parallel
-module-level dicts that previously lived in ``inbox.py`` (spawned flags,
-done events, subagent counters, subagent results, tool-event collectors).
-Tearing down a session drops all of its state at once — there is no
-per-dict cleanup to forget.
-
-``ExecutorRun`` is the immutable identity of a single executor run: how it
-was spawned (``RunKind``), which conversation/user it belongs to, and its
-workflow context. It owns the tool_data ownership rule
-(``executor_owns_tool_data``) so terminal handlers consult one source of
-truth instead of re-deriving ``is_queued or workflow_id`` ad hoc.
-
-Sessions are intentionally in-process (asyncio primitives cannot cross
-process boundaries); the ``executor:busy`` Redis key remains the
-cross-process guard for multi-worker deployments.
+One StreamSession per stream_id replaces five parallel module-level dicts
+that previously lived in inbox.py; tearing it down drops all state at once.
+ExecutorRun is the immutable identity of a single executor run and owns
+the tool_data ownership rule (executor_owns_tool_data). Sessions are
+intentionally in-process; the executor:busy Redis key is the cross-process
+guard for multi-worker deployments.
 """
 
 import asyncio
@@ -33,11 +24,11 @@ from shared.py.wide_events import current_workflow_execution_id, log
 class RunKind(StrEnum):
     """How an executor run was spawned.
 
-    LIVE   — dispatched by ``call_executor`` inside a comms run (chat or
+    LIVE   — dispatched by call_executor inside a comms run (chat or
              silent/workflow); tool events reach the user over the comms
              stream and the comms path attaches them to its own message.
     QUEUED — popped from the per-conversation executor queue; the run has
-             its own ``queued_*`` stream and self-publishes its results.
+             its own queued_* stream and self-publishes its results.
     """
 
     LIVE = "live"
@@ -51,11 +42,9 @@ class StreamSession:
     stream_id: str
     kind: RunKind
     executor_spawned: bool = False
-    #: task_id of a ``call_executor`` dispatch this stream put on the
-    #: per-conversation queue instead of running, because another run held the
-    #: busy lock. The counterpart of ``executor_spawned``: exactly one of the two
-    #: is written per dispatch, so a caller can tell "the work started" from "the
-    #: work was deferred" without reading the tool's prose.
+    #: task_id of a ``call_executor`` dispatch queued instead of run, because
+    #: another run held the busy lock. Counterpart of ``executor_spawned``:
+    #: exactly one of the two is written per dispatch.
     executor_queued_task_id: str | None = None
     done_event: asyncio.Event = field(default_factory=asyncio.Event)
     #: Set with ``done_event`` when the executor's run ended in an error rather
@@ -66,10 +55,8 @@ class StreamSession:
     executor_failure: str | None = None
     tool_events: list[dict[str, Any]] = field(default_factory=list)
     pending_subagents: int = 0
-    # Integrations with a background handoff in flight this run. Guards against a
-    # second concurrent handoff to the same integration, whose subagent would share
-    # the deterministic checkpoint thread id and corrupt it. (Results live in Redis —
-    # see ``bg_results`` — because they must survive the executor's approval pause.)
+    # Integrations with a background handoff in flight: guards against a
+    # second concurrent handoff sharing (and corrupting) the same thread id.
     bg_integrations: set[str] = field(default_factory=set)
     # Voice-mode streams: the executor's finalize step publishes a TTS-only
     # ``voice_tts`` frame with its narrated answer for the voice agent to speak.
@@ -77,21 +64,11 @@ class StreamSession:
     # ``perf_counter`` of this stream's first executor frame, set once by the
     # writer. A redirect's second run must not inherit the cancelled run's.
     executor_first_frame_perf: float | None = None
-    # tool_call_ids whose result has already been streamed on this stream. A
-    # subagent handed off to from an executor tool is a *nested* run, and
-    # langgraph's "messages" mode replays its chunks into the outer run's stream
-    # carrying the inner run's metadata — same node, same checkpoint namespace —
-    # so neither the payload nor its metadata says which run it belongs to. Both
-    # drivers would emit a tool_output for it, and only the subagent's copy
-    # carries a subagent_id, so the client renders the second one outside the
-    # subagent's row. A tool_call_id is unique per call, so a second sighting is
-    # always the echo — but arrival order does not say which sighting is the
-    # subagent's, so the owner below decides rather than whoever looks first.
+    # tool_call_ids already streamed: a nested subagent run's chunks replay
+    # into the outer stream too, so a second sighting is always the echo.
     streamed_tool_outputs: set[str] = field(default_factory=set)
-    # tool_call_id -> the subagent_id of the run that ANNOUNCED it (None for the
-    # executor's own calls). "updates" mode does not carry nested runs, so only
-    # the owning driver ever announces a call, and it does so before any result
-    # exists. That makes this the one fact that survives the echo.
+    # tool_call_id -> the subagent_id of the run that ANNOUNCED it (None for
+    # the executor's own calls) — the one fact that survives the echo above.
     tool_output_owners: dict[str, str | None] = field(default_factory=dict)
 
 
@@ -99,8 +76,8 @@ class StreamSession:
 class RunIdentity:
     """The caller-supplied identity of one executor run.
 
-    Grouped so ``ExecutorRun.from_configurable`` takes the run's identity as one
-    object beside the LangGraph ``configurable`` it reads the rest from.
+    Grouped so ExecutorRun.from_configurable takes the run's identity as one
+    object beside the LangGraph configurable it reads the rest from.
     """
 
     conversation_id: str
@@ -133,10 +110,9 @@ class ExecutorRun:
     kind: RunKind
     task_id: str | None
     user_message_id: str | None
-    #: The ORIGINAL live turn's bot message id, present only when this run is a
-    #: HIL pause/resume of that turn's executor — see ``executor_runner._record_pause``.
-    #: A plain queued (busy-lock) dispatch never carries this, so its result still
-    #: mints a fresh message keyed on ``task_id``.
+    #: The ORIGINAL live turn's bot message id, present only for a HIL
+    #: pause/resume (see ``executor_runner._record_pause``); a plain queued
+    #: dispatch mints a fresh message keyed on ``task_id`` instead.
     bot_message_id: str | None = None
     workflow_id: str | None = None
     #: The workflow execution this run belongs to. Read off the workflow task's
@@ -163,9 +139,9 @@ class ExecutorRun:
         identity: RunIdentity,
         workflow_execution_id: str | None = None,
     ) -> "ExecutorRun":
-        """Build the run context from a LangGraph ``configurable`` dict.
+        """Build the run context from a LangGraph configurable dict.
 
-        ``workflow_execution_id`` is the stored one when rebuilding from a queue
+        workflow_execution_id is the stored one when rebuilding from a queue
         item or HIL resume record (those rebuild in a context with no workflow
         boundary); a live dispatch leaves it unset and reads the execution in
         flight off the boundary it is being built in.
@@ -200,7 +176,7 @@ class ExecutorRun:
 
     @property
     def identity(self) -> RunIdentity:
-        """This run's identity, in the shape a stored run item is written from."""
+        """Return this run's identity, in the shape a stored run item is written from."""
         return RunIdentity(
             stream_id=self.stream_id,
             conversation_id=self.conversation_id,
@@ -231,19 +207,9 @@ class ExecutorRun:
     def executor_owns_tool_data(self) -> bool:
         """Whether this run persists its own tool_data.
 
-        The real axis is live-streamed vs background-detached, NOT "is it a
-        workflow":
-          - live-streamed (chat): a comms stream attaches the executor's
-            tool_data to the comms message, so the executor must NOT also persist
-            it (single ownership prevents duplicate cards);
-          - background-detached (queued, scheduled workflow): no comms consumer
-            attaches cards, so the executor self-persists.
-
-        ``workflow_id is not None`` stands in for "background-detached" only
-        because every workflow run today is silent/scheduled. When a live
-        *interactive* workflow lands (streamed from the workflow page like chat),
-        it must be dispatched as ``RunKind.LIVE`` and this ``workflow_id`` clause
-        dropped — otherwise it would self-persist instead of streaming.
+        The real axis is live-streamed vs background-detached: live-streamed
+        attaches tool_data to the comms message; background-detached has no
+        comms consumer, so the executor self-persists.
         """
         return self.kind is RunKind.QUEUED or self.workflow_id is not None
 
@@ -254,8 +220,11 @@ _sessions: dict[str, StreamSession] = {}
 
 
 def create_session(stream_id: str, kind: RunKind) -> StreamSession:
-    """Create (or replace) the session for a stream. A new session is a new
-    run: whatever a previous waiter gave up on under this id is forgotten."""
+    """Create (or replace) the session for a stream.
+
+    A new session is a new run: whatever a previous waiter gave up on under
+    this id is forgotten.
+    """
     session = StreamSession(stream_id=stream_id, kind=kind)
     _sessions[stream_id] = session
     if stream_id in _abandoned:
@@ -312,13 +281,10 @@ def mark_executor_queued(stream_id: str, task_id: str) -> None:
 
 
 def queued_without_run(stream_id: str) -> str | None:
-    """The task_id this stream queued when nothing ran for it at all.
+    """Return the task_id this stream queued when nothing ran for it at all.
 
-    ``None`` once an executor actually spawned: the turn then did real work and
-    a queued dispatch alongside it is extra work, not a substitute for it. This
-    is the truthful "nothing happened yet" signal — the alternative, reading the
-    queue acknowledgement out of the tool's returned prose, is a model-visible
-    string that says nothing about what the dispatch actually did.
+    None once an executor actually spawned: this is the truthful "nothing
+    happened yet" signal, unlike reading the queue ack from the tool's prose.
     """
     session = _sessions.get(stream_id)
     if session is None or session.executor_spawned:
@@ -370,8 +336,7 @@ def executor_failure(stream_id: str) -> str | None:
 
 # ── Background subagent coordination ─────────────────────────────────
 # Incremented by handoff(background=True), decremented by
-# run_subagent_background. wait_for_subagents polls the counter and drains
-# the results once it hits zero.
+# run_subagent_background; wait_for_subagents drains at zero.
 
 
 def increment_pending_subagents(stream_id: str) -> int:
@@ -401,17 +366,9 @@ def note_tool_output_owner(stream_id: str, tool_call_id: str, subagent_id: str |
 def claim_tool_output(stream_id: str, tool_call_id: str, subagent_id: str | None = None) -> bool:
     """Claim the right to stream this tool result, once per stream.
 
-    Returns True for the owning caller and False for every echo. Fails open when
-    the stream has no session (a bare driver run, or any caller outside the
-    background machinery): with nowhere to record the claim there is nothing to
-    echo it either, so suppressing would only drop the sole copy.
-
-    A run that did not announce the call is always the echo, however early it
-    looks. Deciding on arrival order instead let the outer driver — which sees
-    the nested run's ToolMessage but has no ``subagent_id`` — win on a slow
-    machine and publish the result untagged, stranding the card outside the
-    subagent's row. An unannounced call still fails open, so a HIL resume (whose
-    announcement happened in the run before the pause) keeps streaming.
+    Returns True for the owning caller and False for every echo. Fails open
+    when the stream has no session. A run that did not announce the call is
+    always the echo, regardless of arrival order.
     """
     session = _sessions.get(stream_id)
     if session is None or not tool_call_id:
@@ -434,7 +391,7 @@ def get_pending_subagents(stream_id: str) -> int:
 def claim_bg_integration(stream_id: str, integration_id: str) -> bool:
     """Claim the one background-handoff slot for an integration this run.
 
-    ``False`` means one is already in flight — the caller must fall back to a
+    False means one is already in flight — the caller must fall back to a
     blocking handoff, because a second detached subagent for the same integration
     would share its deterministic checkpoint thread id.
     """

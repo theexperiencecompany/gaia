@@ -17,7 +17,7 @@ ExecutionMode = Literal["interactive", "background"]
 class SectionContext:
     """Everything any section is allowed to read.
 
-    A closed, typed shape rather than the run's ``configurable``: a section that
+    A closed, typed shape rather than the run's configurable: a section that
     could reach into the whole bag would be free to grow a dependency on
     anything, and "what does context assembly actually depend on?" would once
     again only be answerable by reading every fetch.
@@ -53,9 +53,9 @@ class SectionContext:
     ) -> "SectionContext":
         """Read a run's configurable into the closed section shape.
 
-        ``user_preferences`` / ``writing_style`` come off ``configurable`` the
-        same way ``user_name`` / ``user_timezone`` do — set once at the run
-        tree's root by ``build_agent_config`` and inherited unchanged by every
+        user_preferences / writing_style come off configurable the
+        same way user_name / user_timezone do — set once at the run
+        tree's root by build_agent_config and inherited unchanged by every
         child, never overridden per call.
         """
         mode = configurable.get("execution_mode") or "interactive"

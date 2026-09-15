@@ -3,9 +3,9 @@
 Every property states a serialization invariant and lets Hypothesis hunt for
 a counterexample:
 
-- ``model_dump()`` -> ``model_validate()`` must be lossless for any valid model.
-- The wire path (``model_dump_json`` with aliases) must round-trip through
-  ``model_validate_json`` without losing or mis-mapping fields.
+- model_dump() -> model_validate() must be lossless for any valid model.
+- The wire path (model_dump_json with aliases) must round-trip through
+  model_validate_json without losing or mis-mapping fields.
 - Datetimes must stay tz-aware and UTC-equivalent through both paths.
 
 If a field gained a serialization alias that collides, a default_factory got

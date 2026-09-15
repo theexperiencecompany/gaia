@@ -48,17 +48,9 @@ def _skill_storage_path(user_id: str, name: str) -> str:
 def _parse_github_url(url: str) -> tuple[str, str, str | None]:
     """Parse a GitHub URL or shorthand into owner, repo, and optional path.
 
-    Accepts:
-        - "owner/repo"
-        - "owner/repo/path/to/skill"
-        - "https://github.com/owner/repo"
-        - "https://github.com/owner/repo/tree/main/path/to/skill"
-        - "https://github.com/owner/repo/blob/main/path/to/skill"
-
-    Returns:
-        Tuple of (owner, repo, path_within_repo)
+    Accepts "owner/repo", "owner/repo/path/to/skill", and full github.com
+    URLs (plain, /tree/, or /blob/).
     """
-    # Strip whitespace and trailing slashes
     url = url.strip().rstrip("/")
 
     # Full GitHub URL
@@ -134,25 +126,10 @@ async def install_from_github(
 ) -> Skill:
     """Install a skill from a GitHub repository.
 
-    Downloads SKILL.md, parses frontmatter for metadata, writes body-only
-    to VFS, and registers flat metadata in MongoDB.
-
-    Args:
-        user_id: Owner user ID
-        repo_url: GitHub repo reference (owner/repo, full URL, etc.)
-        skill_path: Optional path within repo to skill folder
-        target_override: Override target from SKILL.md frontmatter
-        allowed_targets: If provided, the effective target (override or the
-            repo's frontmatter target) must be in this set, else ValueError.
-            Used by the REST endpoint to block scoping a skill to an
-            integration the user hasn't connected; left None for agent tools.
-
-    Returns:
-        The installed skill
-
-    Raises:
-        ValueError: If skill is invalid, already installed, or its effective
-            target is not in ``allowed_targets``.
+    Downloads SKILL.md, parses frontmatter for metadata, writes body-only to
+    VFS, and registers flat metadata in MongoDB. allowed_targets, when given,
+    restricts the effective target — used by the REST endpoint to block
+    scoping to an integration the user hasn't connected.
     """
     owner, repo, url_path = _parse_github_url(repo_url)
 
@@ -189,10 +166,8 @@ async def install_from_github(
                 "A valid skill must contain a SKILL.md file."
             )
 
-        # Download SKILL.md
         skill_md_content = await _fetch_file_content(skill_md_entry["download_url"], client=client)
 
-        # Validate
         errors = validate_skill_content(skill_md_content)
         if errors:
             raise ValueError(f"Invalid SKILL.md: {'; '.join(errors)}")
@@ -318,17 +293,6 @@ async def install_from_inline(
 
     Generates a SKILL.md from the provided components, validates it,
     writes body-only to VFS, and registers flat metadata in MongoDB.
-
-    Args:
-        user_id: Owner user ID
-        name: Skill name (kebab-case)
-        description: What the skill does
-        instructions: Markdown body instructions
-        target: Target agent (default: executor)
-        extra_metadata: Optional additional metadata key-values
-
-    Returns:
-        The installed skill
     """
     log.set(
         user_id=user_id,
@@ -393,16 +357,9 @@ async def update_skill_inline(
 ) -> Skill | None:
     """Edit an existing skill's description, instructions (body), and/or target.
 
-    Only provided fields change; the rest are preserved. The skill ``name`` is
-    immutable (it keys the VFS directory), so the storage path never moves. The
-    VFS SKILL.md is rewritten only when the body actually changes; description
-    and target are metadata and live only in MongoDB.
-
-    Returns the updated skill, or None if it does not exist for this user.
-
-    Raises:
-        ValueError: If the new values are invalid, or retargeting would collide
-            with an existing skill of the same name on that target.
+    Only provided fields change. The skill name is immutable, so the storage
+    path never moves; VFS SKILL.md is rewritten only when the body changes.
+    Returns None if the skill does not exist for this user.
     """
     skill = await get_skill(user_id, skill_id)
     if not skill:

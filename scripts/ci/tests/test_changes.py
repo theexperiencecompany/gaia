@@ -40,7 +40,7 @@ def _git(repo: Path, *args: str) -> None:
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
-    """A repo with a `master` commit and a branch on top of it."""
+    """Return a repo with a `master` commit and a branch on top of it."""
     root = tmp_path / "repo"
     root.mkdir()
     _git(root, "init", "-q", "-b", "master")
@@ -159,7 +159,7 @@ PARENT = "feat/the-pr-below-this-one"
 
 
 def _fake_gh(tmp_path: Path, stdout: str = "", exit_code: int = 0) -> str:
-    """A `gh` on PATH that answers the pulls API, returning the new PATH."""
+    """Put a `gh` that answers the pulls API on PATH and return the new PATH."""
     bin_dir = tmp_path / "fakebin"
     bin_dir.mkdir(exist_ok=True)
     gh = bin_dir / "gh"

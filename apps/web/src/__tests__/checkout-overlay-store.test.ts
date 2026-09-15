@@ -138,10 +138,9 @@ describe("checkout overlay state machine", () => {
   });
 
   it("hands the plans back seconds after the user closes the sheet, not minutes", async () => {
-    // Pressing pay is not evidence of paying: a completed checkout navigates
-    // the page to Dodo's return URL, so a closed overlay is the user backing
-    // out of a sheet that never went through. Waiting five minutes on that
-    // leaves them staring at "Confirming your payment…" with no way out.
+    // Pressing pay isn't proof of paying: a completed checkout navigates to
+    // Dodo's return URL, so a closed overlay means the user backed out —
+    // waiting minutes on that would leave "Confirming your payment…" stuck.
     await useCheckoutOverlayStore
       .getState()
       .startCheckout("monthly", "paywall_modal");

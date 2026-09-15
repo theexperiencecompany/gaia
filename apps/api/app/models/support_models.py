@@ -147,10 +147,10 @@ class SupportEmailNotification(BaseModel):
 
 
 class SupportRequestDocument(UserScopedDocument):
-    """A support request as stored in the ``support_requests`` collection.
+    """A support request as stored in the support_requests collection.
 
-    User-scoped; ``id`` is a caller-minted UUID stored as the Mongo ``_id``
-    (string, not ObjectId). ``updated_at`` is stamped by the base on every write.
+    User-scoped; id is a caller-minted UUID stored as the Mongo _id
+    (string, not ObjectId). updated_at is stamped by the base on every write.
     """
 
     ticket_id: str

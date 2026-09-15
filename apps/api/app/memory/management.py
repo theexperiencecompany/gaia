@@ -1,5 +1,4 @@
-"""Management accessors for the memory system: tree, graph, journal,
-documents, CRUD over individual memories, and the full wipe.
+"""Management accessors for the memory system: tree, graph, journal, documents, CRUD, full wipe.
 
 These back the settings-UI endpoints (plan F6) and the explicit memory
 tools (F4). Reads map ORM rows straight to the public API schemas; writes
@@ -43,7 +42,7 @@ from app.utils.errors import AppError
 
 
 async def get_tree(user_id: str) -> MemoryTreeResponse:
-    """The user's memory folder tree with per-folder (and subtree) counts."""
+    """Return the user's memory folder tree with per-folder (and subtree) counts."""
     folders = await pg_store.get_folder_tree(user_id)
     roots: list[MemoryTreeNode] = []
     nodes_by_path: dict[str, MemoryTreeNode] = {}
@@ -67,7 +66,7 @@ async def get_tree(user_id: str) -> MemoryTreeResponse:
 
 
 async def get_graph(user_id: str) -> MemoryGraphResponse:
-    """The entity graph: nodes, labeled edges, and their provenance memories."""
+    """Return the entity graph: nodes, labeled edges, and their provenance memories."""
     entity_counts, edge_rows = await pg_store.get_graph(user_id)
 
     nodes = [
@@ -129,9 +128,11 @@ async def list_memories(
     category: str | None = None,
     include_subfolders: bool = False,
 ) -> MemoryListResponse:
-    """One page of memories, newest first. ``category`` is an EXACT folder
-    match by default so tree expansion shows only a folder's own memories;
-    pass ``include_subfolders=True`` for whole-subtree listings."""
+    """Return one page of memories, newest first.
+
+    category is an EXACT folder match by default; pass
+    include_subfolders=True for whole-subtree listings.
+    """
     rows, total = await pg_store.list_memories(
         user_id,
         page=page,
@@ -172,18 +173,12 @@ class MemoryNotFoundError(AppError):
 
 
 async def _resolve_live_head(memory_id: str, user_id: str) -> MemoryRecord:
-    """The live head of the chain ``memory_id`` belongs to.
+    """Return the live head of the chain memory_id belongs to.
 
-    A model correcting a memory routinely hands back an id it saw in an older
-    recall, which by then has been superseded. That id still names a real
-    chain, so resolve it to the chain's live head rather than refusing — the
-    correction the user asked for is unambiguous either way.
-
-    Raises ``MemoryNotFoundError`` when the id names nothing at all (a typo, a
-    hallucination, another user's memory) or when the chain has no live head.
-    That has to be an exception, not a string: the tool returned
-    "Error: ... not found or already superseded" as its result and the model
-    read it as a result, told the user the memory was fixed, and moved on.
+    A superseded id still names a real chain, so it resolves to the chain's
+    live head rather than refusing. Raises MemoryNotFoundError (not a string
+    result — the model previously read an error string as success) when the
+    id names nothing or the chain has no live head.
     """
     try:
         row = await pg_store.get_memory(memory_id, user_id)
@@ -208,22 +203,16 @@ async def _resolve_live_head(memory_id: str, user_id: str) -> MemoryRecord:
 async def update_memory(user_id: str, memory_id: str, content: str) -> MemoryEntry:
     """Correct a memory by chaining an UPDATES version onto its live head.
 
-    A superseded id resolves to the head of its chain, so a correction never
-    fails just because the model quoted an older version. The old row stays as
-    history (``is_latest=False``); the new row inherits folder, kind, shelf
-    life, expiry, importance and entity links.
-
-    Raises ``MemoryNotFoundError`` when no live memory can be resolved.
+    The old row stays as history (is_latest=False); the new row inherits
+    folder, kind, shelf life, expiry, importance and entity links. Raises
+    MemoryNotFoundError when no live memory can be resolved.
     """
     old = await _resolve_live_head(memory_id, user_id)
     memory_id = str(old.id)
 
-    # embed_batch, not embed_query: this vector is stored as the row's passage
-    # embedding, and mixing query-space vectors into the passage index
-    # measurably degrades ANN recall (see embeddings._embed_query_sync).
-    # Computed BEFORE the Postgres supersession (same shape as ingestion's
-    # _apply_reconciled) so an embedding failure aborts the whole correction
-    # instead of leaving the new live row permanently invisible to dense recall.
+    # embed_batch, not embed_query: mixing query-space vectors into the passage
+    # index degrades ANN recall. Computed BEFORE the Postgres supersession so
+    # an embedding failure aborts the whole correction, not just recall.
     embedding = (await embed_batch([content]))[0]
 
     record = MemoryRecord(
@@ -293,10 +282,8 @@ async def _reconsolidate_documents(user_id: str, row: MemoryRecord) -> None:
 
 async def forget_memory(user_id: str, memory_id: str, reason: str) -> bool:
     """Soft-delete a memory: hidden from recall, kept for lineage history."""
-    # Snapshot liveness before forgetting so the free-cap counter is only
-    # decremented when a fact that actually counted toward the live set is
-    # removed. Mirrors pg_store's active-memory predicate (latest, not
-    # forgotten, not expired); a superseded or expired row never counted.
+    # Snapshot liveness before forgetting so the free-cap counter only
+    # decrements when a fact that actually counted toward the live set is removed.
     before = await pg_store.get_memory(memory_id, user_id)
     was_live = (
         before is not None

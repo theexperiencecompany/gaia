@@ -169,9 +169,7 @@ class TestStoreUserInfo:
     async def test_a_login_tracking_failure_is_recorded_and_the_login_still_succeeds(
         self, mock_user_repo, mock_track_login
     ):
-        """Analytics must never block a login, so the failure is swallowed — which
-        is only defensible while it stays queryable. It is keyed on the user ID,
-        the field every dashboard groups by, and carries no email address."""
+        """Keyed on the user ID (the field dashboards group by) and carries no email address."""
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = UserDocument(
             id=uid,
@@ -196,8 +194,7 @@ class TestStoreUserInfo:
 
     @pytest.mark.regression
     async def test_login_never_overwrites_a_stored_name(self, mock_user_repo, mock_track_login):
-        """The user corrected their name in settings; WorkOS still sends its own
-        guess on every login and used to clobber the correction."""
+        """Regression: WorkOS's login-time name guess used to clobber a user's settings correction."""
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = UserDocument(
             id=uid,
@@ -301,8 +298,7 @@ class TestStoreUserInfo:
         mock_track_signup,
         mock_redis_pool_manager,
     ):
-        """WorkOS has no first/last name for email-code signups; storing "" left
-        the user (and every greeting, email and prompt) nameless forever."""
+        """WorkOS sends no name for email-code signups; storing "" left the user nameless forever."""
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=uid)
@@ -311,10 +307,9 @@ class TestStoreUserInfo:
 
         assert mock_user_repo.create.call_args.args[0].name == "Aryan Randeriya"
         assert mock_track_signup.call_args.kwargs["name"] == "Aryan Randeriya"
-        # The derived name is what the queued delivery reads back off the row,
-        # so storing it is what decides how the welcome email greets the user.
-        # Not assert_awaited_once_with: enqueue_worker_job also attaches the
-        # caller's trace id, which is not this test's subject.
+        # The derived name is what the queued delivery reads back off the row to greet the user.
+        # Not assert_awaited_once_with: enqueue_worker_job also attaches the caller's trace id,
+        # which is not this test's subject.
         assert mock_redis_pool_manager.enqueue_job.await_args.args == (
             "deliver_signup_emails",
             uid,
@@ -359,11 +354,7 @@ class TestStoreUserInfo:
         mock_track_signup,
         mock_redis_pool_manager,
     ):
-        """Creating the user queues the ESP round-trips on the worker instead of
-        running them here. In-process they were fast but unowned: nothing drains
-        those tasks on shutdown, so a restart mid-send lost the welcome email and
-        the marketing contact with no record. What the job then does is
-        ``tests/unit/workers/tasks/test_signup_email_tasks.py``'s subject."""
+        """Queues the ESP round-trip on the worker; in-process it was undrained and lost on restart."""
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=uid)
@@ -392,17 +383,7 @@ class TestStoreUserInfo:
         mock_track_signup,
         mock_redis_pool_manager,
     ):
-        """Suppressing the side effects is not enough on its own. The recovery
-        sweep selects on a *missing* delivery stamp, so an unstamped seeded
-        account looks exactly like a signup whose enqueue was lost — and every
-        dev user would get a founder email and a marketing contact an hour
-        after minting, which is the one thing this path promises never happens.
-
-        The stamps ride in the insert rather than a follow-up write. One round
-        trip, and no window in which the row exists unstamped for a sweep to
-        find — mint is also the one signup path callers drive without a live
-        event loop of their own, and a second write there had nothing to run on.
-        """
+        """The sweep selects on a missing delivery stamp; the stamp rides in the insert itself."""
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=uid)
@@ -439,9 +420,7 @@ class TestStoreUserInfo:
         mock_track_signup,
         mock_redis_pool_manager,
     ):
-        """Redis being unreachable must cost the signup emails, not the signup:
-        the account is already written by this point, so raising here would fail
-        a registration that actually succeeded."""
+        """Redis being unreachable costs the signup emails, not a registration that already succeeded."""
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=uid)
@@ -930,9 +909,7 @@ class TestHandleOAuthConnection:
         self,
         mock_update_user_integration_status,
     ):
-        """Reconnecting is what un-pauses the workflows this integration's expiry
-        stopped. Scheduled for the wrong user or integration, the user's workflows
-        stay dark and someone else's come back."""
+        """A reconnect scheduled for the wrong user or integration leaves workflows dark."""
         config = make_integration_config(integration_id="notion", name="Notion")
         background_tasks = MagicMock()
 
@@ -952,11 +929,7 @@ class TestHandleOAuthConnection:
         self,
         mock_update_user_integration_status,
     ):
-        """A reconnect strands the todo subscriptions on this integration's
-        triggers exactly as it strands workflow triggers. They must be resynced
-        for the reconnecting user against the set of trigger slugs — dropped or
-        nulled, the todo watches stay dead on a fresh connected account with no
-        signal to the user."""
+        """Todo subscriptions strand on this integration's triggers exactly like workflow triggers do."""
         trigger = MagicMock()
         trigger.workflow_trigger_schema.slug = "notion_page_added"
         config = make_integration_config(

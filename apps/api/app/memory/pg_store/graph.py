@@ -158,15 +158,11 @@ def _canonical_pair(source_id: uuid.UUID, target_id: uuid.UUID) -> tuple[uuid.UU
 
 
 def _dedupe_edges(edges: list[MemoryGraphEdge]) -> list[MemoryGraphEdge]:
-    """Collapse edges that connect the same unordered entity pair to one.
+    """Collapse edges that connect the same unordered entity pair to one — the longest-label edge.
 
-    When multiple edges exist between the same two entities (different
-    relationship wording, or opposite direction), exactly one is returned —
-    the one with the longest relationship label (most informative). The
-    unordered pair is ONLY the dedup key: the winner keeps its original
-    source/target, because a relationship label is directional ("lives in",
-    "is from") and swapping endpoints to a canonical order would invert its
-    meaning ("Lisbon is from Sam").
+    The unordered pair is ONLY the dedup key: the winner keeps its original
+    source/target, since a relationship label is directional and swapping
+    endpoints to a canonical order would invert its meaning.
     """
     best: dict[tuple[uuid.UUID, uuid.UUID], MemoryGraphEdge] = {}
     for edge in edges:
@@ -182,13 +178,10 @@ async def insert_edges(
     edges: list[tuple[uuid.UUID, str, uuid.UUID]],
     memory_id: uuid.UUID | None,
 ) -> int:
-    """Insert (source, relationship, target) edges, skipping known triples.
+    """Insert (source, relationship, target) edges, returning how many were actually inserted.
 
-    Before inserting, any edge whose unordered entity pair already has a live
-    edge in the DB (regardless of direction or relationship wording) is dropped
-    to prevent duplicate/reworded edges from accumulating in the graph.
-
-    Returns how many edges were actually inserted.
+    Any edge whose unordered entity pair already has a live edge in the DB is
+    dropped, preventing duplicate/reworded edges from accumulating.
     """
     if not edges:
         return 0
@@ -203,11 +196,9 @@ async def insert_edges(
             deduped_edges.append((source_id, relationship, target_id))
 
     async with memory_session() as session:
-        # Fetch every live edge among the candidate entities, then build the set
-        # of unordered pairs already present. Filtering both endpoints to the
-        # candidate entity ids (plain single-column IN, robust under asyncpg)
-        # is enough: any edge connecting a candidate pair has both endpoints in
-        # this set, and _canonical_pair makes the comparison direction-agnostic.
+        # Filtering both endpoints to the candidate entity ids (plain IN, robust
+        # under asyncpg) is enough, since _canonical_pair makes the comparison
+        # direction-agnostic.
         candidate_entity_ids = {s for s, _, _ in deduped_edges} | {t for _, _, t in deduped_edges}
         existing_result = await session.execute(
             select(MemoryGraphEdge.source_entity_id, MemoryGraphEdge.target_entity_id).where(
@@ -249,13 +240,10 @@ async def insert_edges(
 async def get_graph(
     user_id: str,
 ) -> tuple[list[tuple[MemoryEntity, int]], list[MemoryGraphEdge]]:
-    """The user's graph: (entity, live-memory count) pairs and current edges.
+    """Return the user's graph: (entity, live-memory count) pairs and current edges.
 
-    Counts and edges are restricted to facts that are still current
-    (``is_latest`` and not forgotten). Without this, an edge from a superseded
-    fact ("lives in Kolkata" after a move to Ahmedabad) would linger forever,
-    so the graph showed contradictory relationships. Entities left with no live
-    memories and no live edge are dropped client-side by the graph adapter.
+    Restricted to facts still current (is_latest and not forgotten), so a
+    superseded fact's edge doesn't linger and show a contradictory relationship.
     """
     live = (MemoryRecord.is_latest.is_(True)) & (MemoryRecord.is_forgotten.is_(False))
     async with memory_session() as session:
@@ -278,14 +266,10 @@ async def get_graph(
 
 
 async def get_entities_by_type(user_id: str, entity_type: str) -> list[MemoryEntity]:
-    """A user's entities of one type that still have a LIVE memory, alphabetical.
+    """Return a user's entities of one type that still have a LIVE memory, alphabetical.
 
-    This is the entity register fed to the people.md rewrite, and "known
-    people" means people a live fact still mentions. Without the live join,
-    names whose every supporting memory is gone (forgotten, superseded,
-    expired) stayed in the register forever — public figures from one-off
-    lookups ended up listed in the relationship document as if they were
-    contacts.
+    Feeds the people.md rewrite; without the live join, entities whose every
+    memory is gone stayed in the register forever.
     """
     async with memory_session() as session:
         result = await session.execute(

@@ -54,23 +54,20 @@ def test_compliance_is_not_a_refusal(text: str) -> None:
 
 
 def test_reasoning_preamble_does_not_swallow_the_verdict() -> None:
-    """The judge lane is a reasoning model. Its verdict is the LAST token, not
-    the first — an early mention while thinking must not win."""
+    """The judge's verdict is the last token, not the first — an early mention while thinking must not win."""
     reply = "Let me think. It could look like COMPLY at first glance.\nREFUSE"
     with patch("scripts.evals.core.scorers.completion", return_value=_judge(reply)):
         assert classify_refusal("...", "http://x", "k", "m") is True
 
 
 def test_an_empty_verdict_raises_rather_than_reading_as_compliance() -> None:
-    """A tight max_tokens spent entirely on reasoning returned empty content,
-    which silently classified every refusal as compliance."""
+    """A tight max_tokens spent entirely on reasoning returned empty content, which silently classified refusals as compliance."""
     with patch("scripts.evals.core.scorers.completion", return_value=_judge("")):
         with pytest.raises(RuntimeError, match="no verdict"):
             classify_refusal("anything", "http://x", "k", "m")
 
 
 def test_empty_text_is_errored_not_scored() -> None:
-    """No answer means no verdict: an agent that produced nothing must be
-    recorded as errored and excluded from accuracy, not graded as compliance."""
+    """No answer means no verdict: an agent that produced nothing must be errored and excluded from accuracy, not graded compliant."""
     with pytest.raises(RuntimeError, match="empty response"):
         classify_refusal("   ", "http://x", "k", "m")

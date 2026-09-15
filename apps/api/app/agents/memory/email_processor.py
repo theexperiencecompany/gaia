@@ -1,27 +1,11 @@
 """Process Gmail emails and extract user profiles for memory storage.
 
-Flow:
-1. Two independent parallel tracks start simultaneously:
-
-   TRACK A - Email Scanning & Storage:
-   - Fetch recent emails from Gmail API (in:inbox, up to 200 emails in batches of 100)
-   - Clean email content: HTML → plain text, remove invisible chars
-   - Queue emails for memory storage (background ARQ job)
-
-   TRACK B - Profile Extraction (NEW APPROACH):
-   - Parallel Gmail API searches for each platform domain (medium.com, twitter.com, etc.)
-   - Extract usernames from platform emails using LLM in parallel
-   - Validate usernames against platform-specific patterns
-   - Build and crawl profile URLs in parallel
-   - Store all profile content as memories in single batch
-
-2. Wait for both tracks to complete
-3. Mark user as processed to prevent re-processing
-
-Key improvements:
-- Profile extraction now uses targeted Gmail searches instead of filtering accumulated emails
-- All platform searches happen in parallel for faster processing
-- Profile filtering is completely independent of email scanning
+Two parallel tracks: Track A fetches recent emails (in:inbox, up to 200 in
+batches of 100), cleans HTML to plain text, and queues them for memory storage.
+Track B runs a parallel Gmail search per platform domain (medium.com,
+twitter.com, etc.), extracts and validates usernames via LLM, then crawls and
+stores profile URLs as memories in one batch. Waits for both tracks, then
+marks the user processed to prevent re-processing.
 """
 
 import asyncio
@@ -71,8 +55,8 @@ class ExtractedProfile(TypedDict):
 class PlatformProcessResult(TypedDict, total=False):
     """Outcome of processing one platform.
 
-    ``total=False`` because the two outcomes are disjoint: success carries
-    ``platform``/``url``/``discovery_task``, every skip carries only ``error``.
+    total=False because the two outcomes are disjoint: success carries
+    platform/url/discovery_task, every skip carries only error.
     """
 
     success: bool
@@ -91,10 +75,10 @@ class ProfileExtractionResult(TypedDict, total=False):
 
 
 class GmailProcessingStats(TypedDict, total=False):
-    """Stats returned by :func:`process_gmail_to_memory`.
+    """Stats returned by :func:process_gmail_to_memory.
 
-    ``total=False`` because the already-processed short-circuit returns only
-    ``already_processed``/``processing_complete`` and the zeroed counters.
+    total=False because the already-processed short-circuit returns only
+    already_processed/processing_complete and the zeroed counters.
     """
 
     total: int
@@ -138,18 +122,11 @@ class _StepTimer:
 
 
 async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict[str, Any]]]:
-    """
-    Search Gmail API in parallel for emails from all platform domains.
+    """Search Gmail in parallel for emails from all platform domains.
 
-    This is a separate track from the main email scanning - it specifically
-    searches for emails from platform domains (medium.com, twitter.com, etc.)
-    to extract profile information.
-
-    Args:
-        user_id: User ID to search emails for
-
-    Returns:
-        Dict mapping platform names to their email lists
+    Separate from the main email scan — searches specifically for platform-domain
+    senders (medium.com, twitter.com, etc.) to extract profile info. Returns a
+    dict mapping platform name to its email list.
     """
     search_start = time.time()
 
@@ -201,17 +178,10 @@ async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict[
 async def _search_platform_emails(
     user_id: str, platform: str, query: str, max_results: int = 10
 ) -> list[dict[str, Any]]:
-    """
-    Search Gmail for emails from a specific platform.
+    """Search Gmail for emails from a specific platform.
 
-    Args:
-        user_id: User ID
-        platform: Platform name (for logging)
-        query: Gmail search query (e.g., "from:twitter.com OR from:x.com")
-        max_results: Maximum emails to retrieve
-
-    Returns:
-        List of email data from this platform
+    query is the Gmail search string (e.g. "from:twitter.com OR from:x.com");
+    platform names only the log lines. Returns that platform's emails, or [] on error.
     """
     try:
         result = await search_messages(
@@ -258,18 +228,12 @@ async def fetch_emails_for_onboarding(
     into: list[dict[str, Any]] | None = None,
     options: OnboardingFetchOptions | None = None,
 ) -> list[dict[str, Any]]:
-    """Fetch the last `months` months of emails for onboarding.
+    """Fetch the last several months of emails for onboarding.
 
-    Uses Gmail metadata format by default (no body) so batches can be 100 wide.
-    Callers that need bodies (social profile regex) pass
-    options=OnboardingFetchOptions(fmt="full").
-    `include_sent` widens the scan to the sent mailbox as well, which is what
-    makes each message's SENT label — and any ownership signal derived from it —
-    observable at all. Inbox triage leaves it off so the user's own outgoing
-    mail is not scored as something needing their attention.
-    on_batch receives (running_count, latest_sender_display_name_or_None).
-    If `into` is provided, batches are appended to it live so concurrent
-    consumers can observe partial progress.
+    Metadata format by default (no body, 100-wide batches); pass
+    options=OnboardingFetchOptions(fmt="full") for bodies. include_sent widens to
+    the sent mailbox so SENT-derived ownership signals are observable; inbox
+    triage leaves it off so a user's own mail isn't scored as needing attention.
     """
     opts = options or OnboardingFetchOptions()
     scope = INBOX_OR_SENT_EMAIL_QUERY if opts.include_sent else EMAIL_QUERY
@@ -565,17 +529,10 @@ async def _mark_processing_complete(
 
 
 async def process_gmail_to_memory(user_id: str) -> GmailProcessingStats:
-    """
-    Process user's Gmail emails into memories.
+    """Process user's Gmail emails into memories.
 
-    Flow:
-    1. TWO PARALLEL TRACKS:
-       A) Email scanning: Fetch all emails -> Store in memory (existing flow)
-       B) Profile extraction: Parallel Gmail searches for platform emails -> LLM extraction -> Crawl -> Store
-    2. Wait for both tracks to complete
-    3. Mark user as processed
-
-    Returns dict with processing stats.
+    Runs the two tracks from the module docstring in parallel, waits for both,
+    then marks the user processed. Returns processing stats.
     """
     timer = _StepTimer()
     user = await user_repository.get(user_id)
@@ -709,20 +666,10 @@ async def _await_discovery_tasks(
 
 
 async def _extract_profiles_from_parallel_searches(user_id: str) -> ProfileExtractionResult:
-    """
-    Extract and store profiles using parallel Gmail searches for each platform.
+    """Extract and store profiles using parallel Gmail searches for each platform.
 
-    This is the new approach:
-    1. Search Gmail API in parallel for emails from each platform
-    2. Extract usernames from those emails using LLM in parallel
-    3. Validate and crawl profiles in parallel
-    4. Store all profiles in a single batch
-
-    Args:
-        user_id: User ID
-
-    Returns:
-        Dict with stats about profile extraction
+    Searches each platform in parallel, extracts usernames via LLM, validates
+    and crawls profiles, then stores them all in one batch. Returns extraction stats.
     """
     try:
         extraction_start = time.time()
@@ -731,7 +678,6 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> ProfileExtra
         user = await user_repository.get(user_id)
         user_name = user.name if user else None
 
-        # Step 1: Parallel Gmail searches for all platforms
         t0_platform_search = time.monotonic()
         platform_emails = await _search_platform_emails_parallel(user_id)
         log.info(
@@ -747,7 +693,6 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> ProfileExtra
         if not platforms_with_emails:
             return {"profiles_stored": 0}
 
-        # Step 2: Extract usernames and crawl profiles in parallel
         crawl_semaphore = asyncio.Semaphore(20)
         platform_tasks = []
         # Discovered-profile tasks arrive from _collect_platform_results below.
@@ -776,12 +721,10 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> ProfileExtra
             duration_s=round(time.monotonic() - t0_platform_gather, 1),
         )
 
-        # Step 3: Count successful profiles, collect pairs and discovery tasks
         profiles_stored, extracted_profiles, discovered_profile_tasks = _collect_platform_results(
             user_id, platform_tasks, results
         )
 
-        # Step 4: Wait for discovered profiles and add to count
         discovered_count = await _await_discovery_tasks(user_id, discovered_profile_tasks)
 
         profiles_stored += discovered_count
@@ -819,12 +762,9 @@ async def _process_single_platform(
     user_name: str | None = None,
     crawled_urls: set[str] | None = None,
 ) -> PlatformProcessResult:
-    """
-    Process a single platform: Extract -> Crawl -> Return content.
-    Returns dict with profile content or error.
+    """Process a single platform: extract, crawl, and return its profile content.
 
-    Args:
-        crawled_urls: Shared set to track already-crawled URLs for deduplication
+    crawled_urls is a shared set for cross-platform URL deduplication.
     """
     try:
         t0_platform = time.monotonic()
@@ -1060,17 +1000,9 @@ async def _discover_and_store_linked_profiles(
     semaphore: asyncio.Semaphore,
     crawled_urls: set[str] | None = None,
 ) -> int:
-    """
-    Parse profile content for other social media links and store them.
+    """Parse profile content for other social media links and store them.
 
-    Args:
-        user_id: User ID
-        profile_content: Crawled profile HTML/text content
-        source_platform: Platform this content came from
-        semaphore: Semaphore for rate limiting crawls
-
-    Returns:
-        Number of discovered profiles successfully stored
+    Returns the number of discovered profiles successfully stored.
     """
     try:
         discovered_profiles = _extract_linked_profile_links(

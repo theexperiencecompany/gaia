@@ -22,16 +22,11 @@ import { timelineDef } from "./components/timeline";
 /**
  * Merged OpenUI component library.
  *
- * Base: `@openuidev/react-ui`'s `openuiLibrary` — the official Generative UI
- * component set (Stack, Card, Charts, Table, forms, …) — themed to GAIA via
- * `<ThemeProvider darkTheme={gaiaOpenUITheme}>` (see ./theme.ts).
- *
- * Plus the GAIA-only components react-ui has no equivalent for. `ImageGallery`
- * overrides react-ui's variant so uploaded session-file artifacts still resolve
- * via `resolveArtifactSrc`.
- *
- * The backend LLM prompt is generated from this same component set — see
- * `scripts/openui/generate-prompt.ts`.
+ * Base: `@openuidev/react-ui`'s `openuiLibrary` (Stack, Card, Charts, Table,
+ * forms, …), themed via `<ThemeProvider darkTheme={gaiaOpenUITheme}>`. Plus
+ * GAIA-only components react-ui lacks; `ImageGallery` overrides react-ui's
+ * variant to resolve uploaded session-file artifacts via `resolveArtifactSrc`.
+ * The prompt is generated from this same set (`scripts/openui/generate-prompt.ts`).
  */
 const gaiaComponents = [
   mapBlockDef,

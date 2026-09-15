@@ -50,8 +50,8 @@ async def create_custom_integration(
 ) -> Integration:
     """Create a custom MCP integration.
 
-    The stored ``server_url`` keeps the exact user-provided path (some servers
-    distinguish ``/mcp`` from ``/mcp/``); dedup runs on the normalized key. Two
+    The stored server_url keeps the exact user-provided path (some servers
+    distinguish /mcp from /mcp/); dedup runs on the normalized key. Two
     concurrent creates for the same URL both pass the caller's pre-check — the
     per-creator unique index rejects the loser, which then returns the winner.
     """
@@ -300,10 +300,9 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
     doc = await integration_repository.get_custom(integration_id)
 
     if not doc:
-        # No catalog row — just drop this user's link. The mutator deletes the
-        # row and invalidates atomically, returning False if there was nothing.
-        # @CacheInvalidator erases the wrapped function's return type to Any
-        # (see app/decorators/caching.py); cast back to the real contract.
+        # No catalog row — drop this user's link. Mutator deletes+invalidates
+        # atomically (False if nothing); cast back since @CacheInvalidator
+        # erases the return type to Any (app/decorators/caching.py).
         return cast(bool, await remove_user_integration(user_id, integration_id))
 
     if doc.created_by == user_id:

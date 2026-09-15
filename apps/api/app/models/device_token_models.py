@@ -1,6 +1,4 @@
-"""
-Device Token Models for Push Notifications
-"""
+"""Device Token Models for Push Notifications."""
 
 from enum import Enum
 
@@ -8,14 +6,14 @@ from pydantic import BaseModel, Field
 
 
 class PlatformType(str, Enum):
-    """Platform types for push notifications"""
+    """Platform types for push notifications."""
 
     IOS = "ios"
     ANDROID = "android"
 
 
 class PushTokenRequest(BaseModel):
-    """Request model for registering a device token"""
+    """Request model for registering a device token."""
 
     token: str = Field(..., description="Expo push token")
     platform: PlatformType = Field(..., description="Device platform (ios or android)")
@@ -23,7 +21,7 @@ class PushTokenRequest(BaseModel):
 
 
 class PushTokenResponse(BaseModel):
-    """Response model for device token operations"""
+    """Response model for device token operations."""
 
     success: bool = Field(..., description="Operation success status")
     message: str = Field(..., description="Response message")

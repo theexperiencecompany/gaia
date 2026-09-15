@@ -19,18 +19,13 @@ interface ApprovalRequestGroupProps {
 }
 
 /**
- * Pending approvals render as actionable cards; a decided one collapses into an
- * outcome chip on its tool's own row in the "Used N tools" thread (see
- * ApprovalOutcomeChip), so nothing renders here once it settles.
+ * Pending approvals render as cards; a decided one collapses into an
+ * outcome chip on its tool's row instead (see ApprovalOutcomeChip). With
+ * several pending, a review bar decides the whole set while per-card
+ * buttons still allow partial answers.
  *
- * With several pending at once (a concurrent-subagent batch), a review bar offers one
- * decision for the whole set — the "review the cart" moment — while the per-card
- * buttons stay available for partial answers.
- *
- * A decision is written back into this message's tool_data (via the resolver from
- * TextBubble): the resolved frame is published on the RESUMED run's stream, a different
- * message, so it never arrives to replace this card. Persisting it here clears the
- * derived "Waiting for approval" pill and survives reload.
+ * A decision writes back to this message's tool_data via TextBubble's
+ * resolver — the resolved frame publishes on a different (RESUMED) stream, so persisting here clears the pill and survives reload.
  */
 export default function ApprovalRequestGroup({
   items,

@@ -1,8 +1,8 @@
 """Which cases a run actually executes.
 
-``--only-failed`` shipped selecting zero cases in both of its modes — it ran
-after ``--resume`` had already dropped every finished case, and without
-``--resume`` it read a journal that did not exist yet. It printed "cases=0" and
+--only-failed shipped selecting zero cases in both of its modes — it ran
+after --resume had already dropped every finished case, and without
+--resume it read a journal that did not exist yet. It printed "cases=0" and
 exited 0 either way, so every retry since has silently been a full re-run.
 Selection is therefore pinned here, against a real journal on disk.
 """
@@ -47,8 +47,7 @@ def test_only_failed_does_not_silently_select_nothing(tmp_path: Path) -> None:
 
 
 def test_only_failed_ignores_errored_cases(tmp_path: Path) -> None:
-    """An errored case never produced an answer, so there is no verdict to retry
-    — ``--resume`` already picks those up."""
+    """An errored case never produced an answer, so there is no verdict to retry — --resume already picks those up."""
     journal = _journal(tmp_path, {"a": "errored"})
     opts = RunOptions(suite="demo", resume="run-1", only_failed=True)
     with pytest.raises(SystemExit, match="no failed cases"):
@@ -62,8 +61,7 @@ def test_only_failed_without_a_journal_fails_loudly(tmp_path: Path) -> None:
 
 
 def test_only_failed_re_reads_the_latest_attempt(tmp_path: Path) -> None:
-    """The journal only appends, so a case retried and fixed must not be picked
-    up again from its stale failure."""
+    """The journal only appends, so a case retried and fixed must not be picked up again from its stale failure."""
     journal = _journal(tmp_path, {"a": "failed", "b": "failed"})
     journal.append({"case_id": "a", "status": "passed"})
     opts = RunOptions(suite="demo", resume="run-1", only_failed=True)

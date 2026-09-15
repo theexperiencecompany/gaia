@@ -1,6 +1,6 @@
 """Per-message feedback endpoint.
 
-Trace IDs derive deterministically from `message_id`, so scores attach to
+Trace IDs derive deterministically from message_id, so scores attach to
 the matching trace without ever persisting the ID.
 """
 

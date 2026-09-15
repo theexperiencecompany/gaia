@@ -80,15 +80,9 @@ async def _stream_from_redis(
 ) -> AsyncGenerator[str, None]:
     """Forward the stream's event log to the client, following live.
 
-    The log replays from ``last_event_id`` (or the beginning), so this can be
-    attached at any point in the turn's lifetime without losing frames.
-
-    The body runs while the response streams — after the request's
-    ``http_request`` event has emitted — so it needs its own boundary or the
-    delivery outcome (disconnects, delivery errors) is silently discarded.
-    The generator body inherits the request's context, so ``get_trace_id()``
-    here still returns the request's trace_id (verified against
-    ``LoggingMiddleware`` + ``StreamingResponse``).
+    Replays from last_event_id (or the beginning), so this can attach at any
+    point in the turn's lifetime without losing frames. Needs its own log
+    boundary — it runs after the request's http_request event has emitted.
     """
     async with log_context("sse_delivery", trace_id=get_trace_id() or None, stream_id=stream_id):
         if not redis_cache.redis:
@@ -191,15 +185,9 @@ async def chat_stream_endpoint(
     # Request-accepted clock for TTFT/E2E; past the rate limit and cost
     # budget so it counts turns actually accepted.
     t0_perf = time.perf_counter()
-    # The ONE event for a chat message. It fires for every surface (web,
-    # desktop, and bots via endpoints/bot.py), no ad blocker can drop it, and
-    # it lands only once the request has passed the rate limit and the cost
-    # budget — so it counts messages that were actually accepted.
-    #
-    # The composer context below used to ride on a second, client-side
-    # `chat:message_sent`. Every field of it arrives in this request anyway, so
-    # that emitter was a duplicate of this one wearing a different name and has
-    # been removed; counting either name now gives the same, correct number.
+    # The ONE event for a chat message: fires for every surface, no ad blocker
+    # can drop it, and lands only once rate limit + cost budget pass. A
+    # duplicate client-side `chat:message_sent` emitter has been removed.
     capture_context_event(
         AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
         {
@@ -309,13 +297,9 @@ async def subscribe_executor_stream(
 
     log.set(user={"id": user_id}, chat={"stream_id": stream_id})
 
-    # A finished stream still has a replayable event log — subscribe_stream
-    # replays it and returns at the DONE control entry, so a late attach loses
-    # nothing. (An earlier is_complete short-circuit returned a bare [DONE]
-    # here, which dropped every frame a just-paused HIL resume had published —
-    # the second approval card never reached the client.) Only when the log has
-    # already expired is there genuinely nothing to replay; answer [DONE] then,
-    # or subscribe_stream would idle on keepalives forever.
+    # A finished stream still replays its log to DONE, so late attach loses
+    # nothing (an is_complete short-circuit here once dropped HIL resume
+    # frames). Only reply [DONE] outright once the log itself has expired.
     if progress.get("is_complete") and not await stream_manager.has_events(stream_id):
         log.info(
             f"{LogTag.CHAT} Executor stream complete and log expired, returning [DONE]",

@@ -1,8 +1,8 @@
 """The rate-limit card: how a blocked call is described to the frontend.
 
-``build_rate_limit_card`` is the one payload shape every limit surface renders
+build_rate_limit_card is the one payload shape every limit surface renders
 (the tool decorator here, the LLM budget wall, the free memory cap), and
-``with_rate_limiting`` is the caller that fills it in from a 429 the tiered
+with_rate_limiting is the caller that fills it in from a 429 the tiered
 limiter raised. Both are asserted directly — the decorator's consumers only
 ever exercise the pass-through path, so nothing else runs this code.
 """
@@ -73,8 +73,7 @@ class TestBuildRateLimitCard:
         assert card["tool_data"]["data"]["message"] == "You have reached the free memory cap."
 
     def test_no_message_means_no_message_key(self) -> None:
-        """The frontend renders its own default copy — an empty string would
-        override it with a blank line."""
+        """The frontend renders its own default copy; an empty string would override it with a blank line."""
         card = rl.build_rate_limit_card(
             feature="memory",
             plan_required=None,
@@ -86,7 +85,7 @@ class TestBuildRateLimitCard:
 
 
 async def _limited_tool(config: dict[str, Any] | None = None) -> dict[str, Any]:
-    """A rate-limited tool body; never reached once the limiter raises."""
+    """Run a rate-limited tool body; never reached once the limiter raises."""
     return {"ran": True}
 
 
@@ -140,9 +139,7 @@ class TestBlockedToolStreamsItsCard:
         }
 
     async def test_a_plain_count_limit_offers_no_upgrade(self) -> None:
-        """Nothing to upsell when the feature is in the plan and only the
-        count ran out — an invented plan_required would pitch a pointless
-        upgrade."""
+        """Nothing to upsell when only the count ran out; an invented plan_required would pitch a pointless upgrade."""
         writer = MagicMock()
 
         with pytest.raises(rl.LangChainRateLimitError):
@@ -170,9 +167,7 @@ class TestBlockedToolStreamsItsCard:
         assert raised.value.detail["plan_required"] == "pro"
 
     async def test_the_agent_facing_message_is_pinned_exactly(self) -> None:
-        """The message is the agent's whole instruction sheet — every clause
-        (base line, reset, upsell) is pinned so the mutation gate notices if
-        any of them stops reaching the model."""
+        """Every clause (base line, reset, upsell) is pinned so the mutation gate notices if any stops reaching the model."""
         exc = rl.LangChainRateLimitError(
             feature="generate_image",
             detail={"plan_required": "pro", "current_plan": "free"},
@@ -188,8 +183,7 @@ class TestBlockedToolStreamsItsCard:
         )
 
     async def test_a_free_user_is_pointed_at_the_upgrade_tool(self) -> None:
-        """A wall with no way past it reads as a dead end, so the agent-facing
-        message names the tool that mints a checkout link."""
+        """A wall with no way past it reads as a dead end, so the agent-facing message names the tool that mints a checkout link."""
         with pytest.raises(rl.LangChainRateLimitError) as raised:
             await _call_blocked_tool(
                 RateLimitExceededException(
@@ -217,8 +211,7 @@ class TestBlockedToolStreamsItsCard:
         )
 
     async def test_no_streaming_context_still_blocks_the_call(self) -> None:
-        """The card is decoration; outside a LangGraph run there is no writer
-        and the refusal must still reach the agent."""
+        """The card is decoration; outside a LangGraph run there is no writer and the refusal must still reach the agent."""
         with pytest.raises(rl.LangChainRateLimitError):
             await _call_blocked_tool(
                 RateLimitExceededException(feature="generate_image", reset_time=RESET_AT),
@@ -227,10 +220,11 @@ class TestBlockedToolStreamsItsCard:
 
 
 class TestAllowedCallRecordsTheContext:
-    """The passing path stashes the plan for the response metadata. Plans
-    normally arrive as a PlanType, but the fallback branch stringifies
-    whatever else the cache hands back — and it must stringify THAT value,
-    not a placeholder."""
+    """The passing path stashes the plan for the response metadata.
+
+    Plans normally arrive as a PlanType, but the fallback branch stringifies
+    whatever else the cache hands back, and it must stringify that value.
+    """
 
     @staticmethod
     async def _run_allowed(plan: object) -> dict[str, object]:
@@ -292,7 +286,7 @@ class TestBlockedCallLabelsANonEnumPlan:
 
 
 class TestTokenCounting:
-    """With ``count_tokens`` on, a dict result's ``tokens_used`` is logged."""
+    """With count_tokens on, a dict result's tokens_used is logged."""
 
     @staticmethod
     async def _run(tokens_used: Any) -> MagicMock:
@@ -338,8 +332,7 @@ class TestTokenCounting:
         )
 
     async def test_a_missing_tokens_key_logs_nothing(self) -> None:
-        """A dict result without ``tokens_used`` is not an error and logs no
-        usage line — the default must read as zero, not truthy."""
+        """A dict result without tokens_used is not an error and logs no usage line — the default must read as zero, not truthy."""
 
         async def tool(config: dict[str, Any] | None = None) -> dict[str, Any]:
             return {"ran": True}
@@ -402,7 +395,7 @@ class TestAttachUsageMetadata:
 
 
 class TestSystemBypass:
-    """``bypass_for_system`` skips metering ONLY for backend-initiated runs."""
+    """bypass_for_system skips metering ONLY for backend-initiated runs."""
 
     @staticmethod
     async def _run(initiator: str | None) -> AsyncMock:
@@ -441,13 +434,15 @@ class TestSystemBypass:
 
 
 async def _endpoint() -> dict[str, bool]:
-    """A rate-limited endpoint body."""
+    """Run a rate-limited endpoint body."""
     return {"ok": True}
 
 
 class TestTieredRateLimitMetersUnderItsOrigin:
-    """The decorator's ``origin`` has to survive the hop into the limiter —
-    a background run metered as interactive sends the wrong upsell email."""
+    """The decorator's origin has to survive the hop into the limiter.
+
+    A background run metered as interactive sends the wrong upsell email.
+    """
 
     @staticmethod
     async def _call(origin: LimitHitOrigin | None) -> AsyncMock:
@@ -489,9 +484,11 @@ class TestTieredRateLimitMetersUnderItsOrigin:
 
 
 class TestTieredRateLimitCallerResolution:
-    """The caller-resolution branches at the top of the decorator — a public
-    route with nobody to bill, an authenticated-but-id-less caller, and the
-    bot-style kwarg/positional fallback ``resolve_caller`` itself covers."""
+    """The caller-resolution branches at the top of the decorator.
+
+    A public route with nobody to bill, an authenticated-but-id-less caller,
+    and the bot-style kwarg/positional fallback resolve_caller itself covers.
+    """
 
     async def test_unauthenticated_call_bypasses_the_limiter_entirely(self) -> None:
         decorated = rl.tiered_rate_limit("chat_messages")(_endpoint)
@@ -535,9 +532,7 @@ class TestTieredRateLimitCallerResolution:
         mock_enforce.assert_awaited_once_with("kwarg-user", "chat_messages", origin=None)
 
     async def test_unauthenticated_bypass_forwards_positional_and_keyword_args(self) -> None:
-        """The bypass calls the wrapped function with its ORIGINAL args and
-        kwargs — dropping either silently breaks any endpoint that takes
-        positional arguments or keyword arguments beyond ``user``."""
+        """The bypass calls the wrapped function with its original args and kwargs, or it silently breaks endpoints taking either."""
 
         async def echo(*args: Any, **kwargs: Any) -> dict[str, Any]:
             return {"args": args, "kwargs": kwargs}
@@ -557,8 +552,10 @@ class TestTieredRateLimitCallerResolution:
 
 @contextmanager
 def _budget_of(spent: float, plan: PlanType) -> Iterator[MagicMock]:
-    """Run the real budget comparison against a mocked spend, yielding the
-    upsell seam so a test can assert what the wall booked."""
+    """Run the real budget comparison against a mocked spend.
+
+    Yields the upsell seam so a test can assert what the wall booked.
+    """
     with (
         patch(
             "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
@@ -576,8 +573,10 @@ def _budget_of(spent: float, plan: PlanType) -> Iterator[MagicMock]:
 
 
 class TestDailyCostBudget:
-    """The rolling USD wall: exhausted spend blocks the call with the same 429
-    shape the count limiter raises, and books the upsell side effects."""
+    """The rolling USD wall blocks with the same 429 shape the count limiter raises.
+
+    It also books the upsell side effects.
+    """
 
     async def test_spend_under_the_budget_passes_and_books_nothing(self) -> None:
         with _budget_of(FREE_DAILY_COST_BUDGET_USD / 2, PlanType.FREE) as mock_upsell:
@@ -598,8 +597,7 @@ class TestDailyCostBudget:
         assert raised.value.detail["current_plan"] == PlanType.FREE.value
 
     async def test_the_upsell_names_the_user_feature_plan_and_origin(self) -> None:
-        """Every argument is load-bearing: the plan decides whether the seam
-        fires at all, the feature names the wall, the origin picks the email."""
+        """Every argument is load-bearing: the plan decides whether the seam fires, the feature names the wall, the origin picks the email."""
         with _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE) as mock_upsell:
             with pytest.raises(CostBudgetExceededException):
                 await rl.enforce_daily_cost_budget(
@@ -630,8 +628,7 @@ class TestDailyCostBudget:
 
 
 class TestToolPlanLabelling:
-    """Both of ``plan_label``'s call sites: the context stashed for the
-    response metadata, and the inline card a blocked call streams."""
+    """Both of plan_label's call sites: the stashed response context and the inline card a blocked call streams."""
 
     @staticmethod
     async def _run(plan: object, writer: MagicMock | None = None) -> None:
@@ -681,10 +678,8 @@ class TestToolPlanLabelling:
         assert writer.call_args.args[0]["tool_data"]["data"]["current_plan"] == "legacy_plan"
 
 
-# ---------------------------------------------------------------------------
 # Exact pins for the extracted helpers: context resolution, the limit-hit
 # conversion, and the enforcement happy path.
-# ---------------------------------------------------------------------------
 
 
 class TestResolveContext:
@@ -822,8 +817,7 @@ class TestLimitHitException:
 
 
 class TestLimitHitExceptionDetailFallbacks:
-    """The detail dict wins; the exception's own attributes are the fallback —
-    and an unrecognised detail shape degrades to an empty dict, not a crash."""
+    """The detail dict wins; the exception's own attributes are the fallback, and an unrecognised shape degrades to an empty dict."""
 
     @staticmethod
     async def _convert(exc: RateLimitExceededException) -> tuple[Any, MagicMock]:

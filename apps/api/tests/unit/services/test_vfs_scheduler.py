@@ -1,4 +1,4 @@
-"""``make_scheduler`` must serialize a user's syncs and coalesce bursts.
+"""make_scheduler must serialize a user's syncs and coalesce bursts.
 
 Two writes to one todo inside a single agent turn (edit canvas.md, then write
 activity.md, each also appending log.md) schedule several fire-and-forget
@@ -29,8 +29,6 @@ def mounted():
 
 @pytest.mark.unit
 async def test_a_slower_older_sync_cannot_overwrite_a_newer_one(mounted) -> None:
-    """Snapshot order must match completion order: the last sync to touch disk
-    must be the one that saw the newest data."""
     snapshots = iter(["v1", "v2"])
     delays = iter([0.05, 0.0])  # v1 is slow, v2 is fast
     disk: list[str] = []

@@ -1,13 +1,13 @@
-"""Durable persistence for HIL approval records (Mongo ``hil_approvals``).
+"""Durable persistence for HIL approval records (Mongo hil_approvals).
 
 The decision source of truth. A pending record is written when the gate asks for
 approval and transitioned to a terminal status exactly once when a decision
-arrives — the one-time guarantee is a conditional ``pending -> decided`` update,
+arrives — the one-time guarantee is a conditional pending -> decided update,
 so a duplicate or racing decision cannot double-resolve the same request.
 
-Writes are idempotent because the gate's pre-``interrupt()`` code re-runs from the
+Writes are idempotent because the gate's pre-interrupt() code re-runs from the
 top of the node on every resume replay: the id is derived from the tool call
-(:func:`approval_id_for`) and stored as the unique ``_id``, so a replay neither
+(:func:approval_id_for) and stored as the unique _id, so a replay neither
 creates a second record nor resets a decided one.
 """
 
@@ -25,8 +25,8 @@ def approval_id_for(conversation_id: str, tool_call_id: str) -> str:
     """Deterministic approval id for one gated tool call.
 
     Derived rather than random: the node re-runs from the top on resume, so a
-    ``uuid4()`` here would mint a second id (and a second card) on every replay.
-    ``tool_call_id`` is stable across replays — it lives in the checkpointed
+    uuid4() here would mint a second id (and a second card) on every replay.
+    tool_call_id is stable across replays — it lives in the checkpointed
     AI message.
     """
     return str(uuid5(NAMESPACE_URL, f"hil:{conversation_id}:{tool_call_id}"))
@@ -44,7 +44,7 @@ async def upsert_pending_approval(
     summary: str,
     integration_name: str | None,
 ) -> bool:
-    """Create the pending record if absent. Returns ``True`` only when newly created.
+    """Create the pending record if absent. Returns True only when newly created.
 
     A resume replay never resurrects a decided record (the duplicate insert is a
     no-op). The return value is what the caller uses to publish the approval
@@ -82,7 +82,7 @@ async def record_auto_approval(
 ) -> None:
     """Log an action auto mode ran without asking — the receipt behind its card.
 
-    Written already-decided (never ``pending``), so it is a record, not a request: no
+    Written already-decided (never pending), so it is a record, not a request: no
     sweep expires it and no decision endpoint can resolve it. The duplicate-insert
     no-op keeps it idempotent for the same reason the pending upsert is.
     """
@@ -107,7 +107,7 @@ async def record_auto_approval(
 
 
 async def get_approval(approval_id: str) -> HILApprovalRecord | None:
-    """Load one approval record, or ``None`` when it does not exist."""
+    """Load one approval record, or None when it does not exist."""
     return await hil_approval_repository.get(approval_id)
 
 
@@ -119,9 +119,9 @@ async def mark_decided(
     scope: str,
     decided_by: str | None,
 ) -> bool:
-    """Transition a ``pending`` record to a terminal status, exactly once.
+    """Transition a pending record to a terminal status, exactly once.
 
-    Returns ``True`` if this call performed the transition, ``False`` if the
+    Returns True if this call performed the transition, False if the
     record was missing or already decided — the caller uses this to enforce
     one-time resolution before resuming the paused run.
     """
@@ -138,7 +138,7 @@ async def set_resume_item(approval_id: str, item: ExecutorRunItem) -> None:
 async def clear_resume_item(approval_id: str) -> None:
     """Drop a record's re-dispatch context — the run it pointed at is gone.
 
-    Written when a cancellation ends the paused run: with no ``resume_item`` the
+    Written when a cancellation ends the paused run: with no resume_item the
     decided-unresumed sweep can no longer bring it back, the same signal a record
     that never registered a pause already relies on.
     """
@@ -150,7 +150,7 @@ async def stamp_subagent_resume(
 ) -> None:
     """Record the parked background subagent's checkpoint thread on its approval.
 
-    The durable link the ``wait_for_subagents`` join uses to rediscover and resume this
+    The durable link the wait_for_subagents join uses to rediscover and resume this
     subagent after the executor's own pause — the deterministic thread id survives the
     resume where the in-process session does not.
     """
@@ -163,15 +163,12 @@ async def stamp_subagent_resume(
 
 
 async def list_parked_subagents_for_conversation(conversation_id: str) -> list[HILApprovalRecord]:
-    """A conversation's background-subagent approvals — the join's work list.
+    """Return the conversation's uncollected background-subagent approvals.
 
-    Records stamped with a ``subagent_thread_id`` (a detached subagent parked on them)
-    whose subagent has not yet been collected — ``pending`` (still awaiting a decision)
-    or decided (ready to resume). Filtered on ``subagent_collected_at``, NOT
-    ``resumed_at``: the latter records executor re-dispatch, which happens on the first
-    decision while other batch members are still uncollected. Conversation-scoped
-    because the executor busy lock guarantees one run per conversation; ``stream_id``
-    cannot be used — it changes on resume.
+    Filtered on subagent_collected_at, NOT resumed_at: the latter records executor
+    re-dispatch, which happens on the first decision while other batch members are
+    still uncollected. Conversation-scoped because the executor busy lock guarantees
+    one run per conversation; stream_id can't be used since it changes on resume.
     """
     return await hil_approval_repository.list_parked_subagents_for_conversation(conversation_id)
 
@@ -191,13 +188,15 @@ async def mark_resumed(approval_id: str) -> None:
 
 
 async def list_expired_pending() -> list[HILApprovalRecord]:
-    """Pending approvals past ``expires_at`` — the timeout sweep's work list."""
+    """Pending approvals past expires_at — the timeout sweep's work list."""
     return await hil_approval_repository.list_expired_pending()
 
 
 async def list_decided_unresumed(grace_seconds: float) -> list[HILApprovalRecord]:
-    """Decided records whose resume never dispatched (crash between the decided
-    transition and the run spawn) — the sweep re-dispatches them."""
+    """Return decided records whose resume never dispatched, for the sweep to retry.
+
+    Covers a crash between the decided transition and the run spawn.
+    """
     return await hil_approval_repository.list_decided_unresumed(
         list(HIL_UNRESUMED_SWEEP_STATUSES), grace_seconds
     )

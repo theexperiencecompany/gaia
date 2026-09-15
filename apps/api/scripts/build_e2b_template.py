@@ -1,35 +1,35 @@
 #!/usr/bin/env python3
-"""Build (or rebuild) the `gaia-coder` E2B template.
+"""Build (or rebuild) the gaia-coder E2B template.
 
-Bakes `fuse3`, `juicefs`, and the mount script into a custom Python sandbox so
+Bakes fuse3, juicefs, and the mount script into a custom Python sandbox so
 cold-start cost is dominated by E2B's microVM boot, not package install. Each
-build produces a versioned template; the alias `gaia-coder` always points at
+build produces a versioned template; the alias gaia-coder always points at
 the latest.
 
 Usage:
     cd apps/api
     uv run python scripts/build_e2b_template.py [--name gaia-coder]
 
-Requires `E2B_API_KEY` and `E2B_DOMAIN` in the env (we run on E2B's EU cluster:
-`E2B_DOMAIN=e2b-juliett.dev`). Templates are per-cluster — one built on
-`e2b.app` does not exist on the EU cluster and vice versa — so the domain is
+Requires E2B_API_KEY and E2B_DOMAIN in the env (we run on E2B's EU cluster:
+E2B_DOMAIN=e2b-juliett.dev). Templates are per-cluster — one built on
+e2b.app does not exist on the EU cluster and vice versa — so the domain is
 required rather than defaulted, and must match the API's. Prints the resulting
-template ID — set it as `E2B_TEMPLATE_ID` in Infisical (and the gaia-backend
+template ID — set it as E2B_TEMPLATE_ID in Infisical (and the gaia-backend
 container will pick it up on next boot).
 
 Security posture
 ----------------
-The default E2B Python image ships its sandbox user as a member of `sudo` with
+The default E2B Python image ships its sandbox user as a member of sudo with
 NOPASSWD ALL — convenient for ad-hoc package installs, but catastrophic for
 multi-tenant isolation: the JuiceFS daemon runs as root and (regardless of how
 carefully we deliver creds) holds the meta-DB password somewhere in its
-process tree. With unrestricted sudo, a malicious agent could `sudo cat
-/proc/<juicefs_pid>/environ` and recover those creds — then re-mount the
-cross-user namespace without `--subdir`. The fix is to remove the sandbox user
-from the `sudo` group entirely.
+process tree. With unrestricted sudo, a malicious agent could sudo cat
+/proc/<juicefs_pid>/environ and recover those creds — then re-mount the
+cross-user namespace without --subdir. The fix is to remove the sandbox user
+from the sudo group entirely.
 
 The API drives root-needing operations (running mount.sh, tailing the JuiceFS
-access log) via `sbx.commands.run(..., user="root")`, which e2b's envd honors
+access log) via sbx.commands.run(..., user="root"), which e2b's envd honors
 directly — no sudo involved. The agent's bash tool runs commands as the
 unprivileged sandbox user; it has no path to root.
 """
@@ -76,7 +76,7 @@ SYSTEM_STAGING_TARBALL = MOUNT_SCRIPT_PATH.parent / "_gaia_system.tar.gz"
 
 
 def _stage_system_tarball() -> None:
-    """Write the shared ``_system`` files to a tarball for baking into the image.
+    """Write the shared _system files to a tarball for baking into the image.
 
     mtime is pinned to 0 so the artifact is reproducible and doesn't bust E2B's
     build cache when the file bodies are unchanged.

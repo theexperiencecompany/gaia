@@ -1,20 +1,8 @@
 """Validate presence of env-backed settings, grouped by feature.
 
-WARNING: This file is parsed by the GAIA CLI (packages/cli/src/lib/env-parser.ts) using regex.
-Any changes to the structure of SettingsGroup or how groups are registered MUST be reflected in the CLI parser.
-If you change the syntax, please update the CLI parser accordingly.
-
-Why
-- Make missing config obvious with actionable logs.
-
-Flow
-- Define fields in `app.config.settings` (Pydantic classes).
-- Register related keys here as `SettingsGroup`s.
-- `validate_settings()` scans the instantiated settings object and logs what’s missing.
-
-Add env vars
-1) Add fields to `CommonSettings`/`ProductionSettings`/`DevelopmentSettings`.
-2) Add a `SettingsGroup` in `_register_predefined_groups()` with matching key names.
+WARNING: This file is parsed by the GAIA CLI (packages/cli/src/lib/env-parser.ts)
+using regex. Any change to SettingsGroup's structure or registration MUST be
+reflected in the CLI parser.
 """
 
 from dataclasses import dataclass
@@ -27,8 +15,8 @@ from shared.py.wide_events import log
 class SettingsGroup:
     """One group of related config keys, and what breaks without them.
 
-    ``all_required`` False means any one key in the group suffices;
-    ``alternative_group`` names a mutually exclusive group that can stand in.
+    all_required False means any one key in the group suffices;
+    alternative_group names a mutually exclusive group that can stand in.
     """
 
     name: str
@@ -316,26 +304,13 @@ class SettingsValidator:
         self.missing_groups = []
 
     def validate_settings(
-        # Deliberately `object`, not `CommonSettings`: the body below only ever
-        # does hasattr()/getattr() with dynamic string keys, so it works on any
-        # object and never needs the concrete settings type. Importing
-        # CommonSettings here would also require a TYPE_CHECKING-guarded import
-        # to avoid a circular dependency with app.config.settings -- see
-        # apps/api/CLAUDE.md's Type Safety section, item 9, for why that's
-        # avoided rather than reached for. Do not "fix" this back to
-        # CommonSettings; it is not an imprecision.
+        # Deliberately `object`, not `CommonSettings`: the body only does
+        # hasattr()/getattr() with dynamic keys; importing CommonSettings would
+        # need a TYPE_CHECKING-guarded import to dodge a circular dependency (apps/api/CLAUDE.md item 9).
         self,
         settings_obj: object,
     ) -> list[tuple[SettingsGroup, list[str]]]:
-        """
-        Validate settings against registered groups.
-
-        Args:
-            settings_obj: The settings object to validate
-
-        Returns:
-            List of tuples with missing groups and their missing keys
-        """
+        """Validate settings against registered groups."""
         self.missing_groups = []
 
         for group in self.groups:

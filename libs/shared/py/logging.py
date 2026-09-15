@@ -5,17 +5,17 @@ Advanced logging configuration for GAIA applications.
 ║ CROSS-RUNTIME CONTRACT — MIRROR EVERY SHAPE CHANGE IN TYPESCRIPT         ║
 ║                                                                          ║
 ║ This file is ONE HALF of GAIA's log envelope. The other half is          ║
-║   libs/shared/ts/src/bots/utils/logger.ts  (function `buildRecord`)      ║
+║   libs/shared/ts/src/bots/utils/logger.ts  (function buildRecord)      ║
 ║ and it MUST emit the same key names, the same value types and the same   ║
-║ timestamp format, because one LogQL query (`| json | ...`) has to span   ║
+║ timestamp format, because one LogQL query (| json | ...) has to span   ║
 ║ the Python services and the TypeScript bots at once. A field that        ║
 ║ exists here and not there — or exists on both with a different type —    ║
 ║ silently breaks every dashboard that joins the two surfaces.             ║
 ║                                                                          ║
 ║ If you are an agent editing ONLY this file, before you finish:           ║
 ║  1. Open libs/shared/ts/src/bots/utils/logger.ts and make the matching   ║
-║     change in `buildRecord` / `RESERVED_LOG_KEYS` / `COLLIDING_KEY_      ║
-║     PREFIX` / `sanitizeErrorForLog`.                                     ║
+║     change in buildRecord / RESERVED_LOG_KEYS / COLLIDING_KEY_      ║
+║     PREFIX / sanitizeErrorForLog.                                     ║
 ║  2. Update the shared contract that both sides are checked against:      ║
 ║     scripts/ci/wide-event-conformance/contract.json                      ║
 ║  3. Run the conformance check — it emits real lines from BOTH runtimes   ║
@@ -53,10 +53,10 @@ Environment variables:
 - LOG_COLORIZE: Colored console output (default: true, ignored in json mode)
 - LOG_DIR: Directory to write log files into (default: ./logs)
 
-Usage: app code logs through the wide-event facade (``from
-shared.py.wide_events import log``), never this module directly — importing
+Usage: app code logs through the wide-event facade (from
+shared.py.wide_events import log), never this module directly — importing
 this module (which the facade's package init does) is what activates the
-sinks. ``get_contextual_logger`` exists for shared/infra code that needs a
+sinks. get_contextual_logger exists for shared/infra code that needs a
 raw loguru logger outside the wide-event lifecycle.
 """
 
@@ -152,12 +152,12 @@ _TRUNCATED_MESSAGE_MAX_CHARS = 10_000
 def env_context() -> dict[str, str]:
     """Infra identity stamped on every emitted JSON line.
 
-    The Python half of the envelope's `env`/`service`/`commit` — mirrored by
-    `buildRecord` in libs/shared/ts/src/bots/utils/logger.ts, which resolves the
+    The Python half of the envelope's env/service/commit — mirrored by
+    buildRecord in libs/shared/ts/src/bots/utils/logger.ts, which resolves the
     same three fields from the same variables. Resolved once and cached.
 
-    `commit` reads GIT_COMMIT_SHA (or COMMIT_SHA), set in the Docker image / CI,
-    and falls back to "local" during development. `service` reads
+    commit reads GIT_COMMIT_SHA (or COMMIT_SHA), set in the Docker image / CI,
+    and falls back to "local" during development. service reads
     GAIA_SERVICE_NAME, which each service sets to its own Promtail label.
     """
     return {
@@ -268,24 +268,24 @@ def _core_fields(entry: dict[str, object]) -> dict[str, object]:
 
 
 def _iso_utc_millis(moment: datetime) -> str:
-    """Serialize a timestamp exactly as `new Date().toISOString()` does in TS.
+    """Serialize a timestamp exactly as new Date().toISOString() does in TS.
 
     Loguru records carry the *local* timezone, so the same instant serialized on
     a laptop in UTC+05:30 and in a UTC container produced two different strings
-    — enough to break any query that compares or groups on the raw `time` value
-    across surfaces. Normalizing to UTC with millisecond precision and a `Z`
+    — enough to break any query that compares or groups on the raw time value
+    across surfaces. Normalizing to UTC with millisecond precision and a Z
     suffix makes both runtimes emit byte-identical timestamps for one instant.
     """
     return moment.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _finite(value: object) -> object:
-    """Recursively replace non-finite floats with ``None`` and cycles with a marker.
+    """Recursively replace non-finite floats with None and cycles with a marker.
 
     Only called after a non-finite value has already been detected, so the
     common path never pays for this walk. A structure that contains itself
     (directly or transitively) would recurse forever here and is rejected by
-    ``json.dumps`` anyway — replacing it with a constant marker keeps the rest
+    json.dumps anyway — replacing it with a constant marker keeps the rest
     of the line intact instead of forcing the sanitize fallback to drop it.
     """
     ancestors: set[int] = set()
@@ -318,16 +318,16 @@ def _finite(value: object) -> object:
 def _dumps(entry: object) -> str:
     """Serialize one log line as RFC-8259 JSON.
 
-    ``json.dumps`` emits bare ``NaN``/``Infinity`` by default. Python reads
+    json.dumps emits bare NaN/Infinity by default. Python reads
     those back happily, so the defect is invisible locally — but they are not
-    valid JSON, and Loki's ``| json`` (Go) rejects the whole line. The event is
+    valid JSON, and Loki's | json (Go) rejects the whole line. The event is
     still ingested as raw text, so it silently disappears from every structured
-    query instead of failing loudly. A single ``x / 0`` behind an average (say a
+    query instead of failing loudly. A single x / 0 behind an average (say a
     latency mean over zero samples) is enough to lose the event.
 
-    ``allow_nan=False`` turns that into a ValueError we can catch, so the fast
+    allow_nan=False turns that into a ValueError we can catch, so the fast
     path stays the C encoder and only a line that actually contains a
-    non-finite float pays for the scrub. Non-finite becomes ``null``, matching
+    non-finite float pays for the scrub. Non-finite becomes null, matching
     what the TypeScript bots emit for the same values.
     """
     try:
@@ -339,10 +339,10 @@ def _dumps(entry: object) -> str:
 def _sanitized_entry(entry: dict[str, object], exc: Exception) -> dict[str, object]:
     """Fallback entry when the full record cannot be serialized.
 
-    ``default=str`` cannot save non-str dict keys — rather than dropping the
+    default=str cannot save non-str dict keys — rather than dropping the
     whole line, preserve the core fields (all plain str/int, always
     serializable) plus trace_id, and record what went wrong. (Cyclic values
-    are handled in ``_finite`` by degrading to a marker, so they do not reach
+    are handled in _finite by degrading to a marker, so they do not reach
     this fallback.)
     """
     sanitized = _core_fields(entry)
@@ -356,18 +356,18 @@ def _truncated_entry(entry: dict[str, object], original_size_bytes: int) -> dict
     """Rebuild an oversized entry under the byte cap, dropping only what does not fit.
 
     Truncation must cost payload, never identity. Collapsing to the core fields
-    alone kept ``message`` — so the line still reads as a canonical boundary
-    event — while discarding ``service``, ``env``, ``task``, ``outcome`` and
-    ``duration_ms``, the fields that make it one. A single fat job argument was
+    alone kept message — so the line still reads as a canonical boundary
+    event — while discarding service, env, task, outcome and
+    duration_ms, the fields that make it one. A single fat job argument was
     then enough to erase a task's outcome from the record while the event itself
     still appeared in Loki.
 
     Fields are spent smallest-first, so what gets shed is whatever is actually
-    fat. Identity is small — ``service``, ``env``, ``task``, ``outcome``,
-    ``trace_id`` are a few dozen bytes between them — so it survives any line an
+    fat. Identity is small — service, env, task, outcome,
+    trace_id are a few dozen bytes between them — so it survives any line an
     oversized payload can produce, without this sink having to know the
     wide-event vocabulary. The names that did not fit are listed in
-    ``dropped_fields``, so a dropped field reads as shed-for-size rather than as
+    dropped_fields, so a dropped field reads as shed-for-size rather than as
     a field the code never set.
     """
     truncated = _core_fields(entry)
@@ -403,29 +403,29 @@ def _truncated_entry(entry: dict[str, object], original_size_bytes: int) -> dict
 def _build_json_entry(record: Record) -> str:
     """Serialize a loguru record to a flat NDJSON line — total, never raises.
 
-    Produces one JSON object per line. Fields from `.bind()` calls are merged
-    into the top-level object so that LogQL `| json` can filter on them directly.
+    Produces one JSON object per line. Fields from .bind() calls are merged
+    into the top-level object so that LogQL | json can filter on them directly.
     The envelope — time/level/env/service/commit/logger/message — is stamped
-    HERE, on every line, exactly as `buildRecord` does for the TypeScript bots,
-    so `| json | env="production"` selects the same lines on both surfaces. It
+    HERE, on every line, exactly as buildRecord does for the TypeScript bots,
+    so | json | env="production" selects the same lines on both surfaces. It
     is also the single place the infra identity is resolved: no caller adds
-    `env_context()` to its own payload.
+    env_context() to its own payload.
 
     Three guarantees keep the sink total:
 
     - Core keys always win: an extra field colliding with a core key (e.g.
-      `log.set(level=...)` or a service-layer `log.set(service=...)`) is emitted
-      as `ctx_<key>` instead of corrupting the line's real level/message or
+      log.set(level=...) or a service-layer log.set(service=...)) is emitted
+      as ctx_<key> instead of corrupting the line's real level/message or
       contradicting the Promtail label for this process.
     - Serialization never drops a record: unserializable extras (non-str dict
       keys, circular refs) fall back to a sanitized entry carrying the core
-      fields, trace_id and `serialization_error`.
+      fields, trace_id and serialization_error.
     - Lines are capped at MAX_JSON_LINE_BYTES: an oversized line sheds its
-      largest fields (named in `dropped_fields`, flagged with `line_truncated` +
-      `original_size_bytes`) and keeps the rest, so Loki (default max_line_size
+      largest fields (named in dropped_fields, flagged with line_truncated +
+      original_size_bytes) and keeps the rest, so Loki (default max_line_size
       256KB) never rejects it and the event stays attributable.
 
-    NOTE: must NOT be used as loguru's `format=` parameter — loguru treats
+    NOTE: must NOT be used as loguru's format= parameter — loguru treats
     callable formats as template generators and calls str.format_map() on the
     returned string, which breaks on JSON's curly braces. Use as a callable
     sink instead (see _json_stdout_sink).
@@ -489,7 +489,7 @@ def _json_stdout_sink(message: Message) -> None:
 def _prune_structured_logs(log_dir: Path, today: date) -> None:
     """Delete structured-*.json files older than the retention window.
 
-    Loguru applies `retention=` only to sinks it owns; this one is a callable
+    Loguru applies retention= only to sinks it owns; this one is a callable
     sink, so it prunes its own files. Called on handle open, i.e. once per
     process and again on each midnight rollover.
     """
@@ -571,7 +571,7 @@ class _InterceptHandler(logging.Handler):
     """Re-emit a stdlib logging record through loguru.
 
     Installed on the ROOT logger, so it is the single exit for every library
-    that uses ``logging`` — there is no namespace it can be registered under
+    that uses logging — there is no namespace it can be registered under
     that escapes the sink.
     """
 
@@ -603,7 +603,7 @@ def _route_through_root(logger_name: str, level: str) -> None:
     """Drop a logger's own handlers so its records reach the root interceptor.
 
     uvicorn ships its own stdout/stderr StreamHandlers and sets
-    ``propagate = False``; leaving them attached under LOG_FORMAT=json would put
+    propagate = False; leaving them attached under LOG_FORMAT=json would put
     colourised text on the descriptor that is supposed to be pure NDJSON.
     """
     stdlib_logger = logging.getLogger(logger_name)
@@ -616,7 +616,7 @@ def configure_loguru() -> Logger:
     """
     Configure console logging with standard library interception.
 
-    Every ``logging`` record in the process — GAIA's, the framework's, and any
+    Every logging record in the process — GAIA's, the framework's, and any
     library's — is routed through loguru, so the configured sink is the only
     writer on the descriptor. GAIA's namespaces log at LOG_LEVEL; everything
     else at THIRD_PARTY_LOG_LEVEL.
@@ -714,7 +714,7 @@ def configure_file_logging(log_dir: str | Path | None = None) -> None:
     Creates separate files for general, error, structured JSON, and critical
     logs — all with automatic rotation and compression.
 
-    No-ops under ``LOG_FORMAT=json`` (the container setting): there, stdout NDJSON
+    No-ops under LOG_FORMAT=json (the container setting): there, stdout NDJSON
     is captured by the Docker daemon and shipped to Loki via Promtail, so file
     sinks would only fill an ephemeral filesystem. Owning that rule here — rather
     than at each call site — keeps it a single decision every app inherits.

@@ -30,12 +30,9 @@ _listener_task: asyncio.Task[None] | None = None
 async def _dispatch_revoke(device_id: str) -> None:
     """Close this device's socket if the revoke lands on the pod that owns it.
 
-    Send the revoke frame first so the daemon exits cleanly via its FRAME_REVOKE
-    handler, instead of reconnect-looping against a now-dead refresh credential.
-
-    Own boundary per revoke: this is the pod's only enforcement point and runs
-    outside any request, so a failure here would otherwise be a discarded field
-    rather than an event saying which device stayed connected.
+    Sends the revoke frame first so the daemon exits cleanly via FRAME_REVOKE
+    instead of reconnect-looping against a dead credential. Own boundary per
+    revoke since this runs outside any request as the pod's sole enforcement point.
     """
     async with log_context("device_revoke", device={"device_id": device_id}):
         websocket = device_connection_manager.get(device_id)

@@ -120,10 +120,7 @@ class TestPlaybooksRepository:
         assert trusted.revision == 4
 
     async def test_suspect_runs_grow_the_streak_until_a_success_resets_it(self, repo) -> None:
-        """A suspect grows the streak once per verdict on a body: a second
-        suspect with no heal between (two replays of one body racing) counts
-        once, the rewrite a heal makes puts the body back to NOT_RUN, and the
-        next suspect grows it again."""
+        """A suspect grows the streak once per verdict on a body; a heal's rewrite resets it to NOT_RUN before the next suspect grows it again."""
         await repo.create(make_doc())
 
         first = await repo.record_run_outcome(
@@ -192,8 +189,7 @@ class TestPlaybooksRepository:
         )
 
     async def test_record_run_outcome_scoped_to_the_replayed_revision(self, repo) -> None:
-        """A rewrite keeps the id, so a replay that finishes after the agent
-        rewrote the body must not stamp its verdict on the new body."""
+        """A rewrite keeps the id; a replay finishing after it must not stamp its verdict on the new body."""
         replayed = await repo.upsert_for_workflow(make_doc())
         rewritten = await repo.upsert_for_workflow(make_doc(description="second"))
         assert rewritten.playbook_id == replayed.playbook_id
@@ -257,8 +253,7 @@ class TestPlaybooksRepository:
         )
 
     async def test_record_run_outcome_scoped_to_the_replayed_playbook(self, repo) -> None:
-        """A replay that finishes after the agent re-authored the playbook must
-        not stamp the old sequence's verdict on the new one."""
+        """A replay finishing after the playbook was re-authored must not stamp the old sequence's verdict on the new one."""
         replayed = await repo.create(make_doc())
         assert (
             await repo.record_run_outcome(
@@ -310,8 +305,7 @@ class TestPlaybooksRepository:
         assert await repo.get_for_workflow(WORKFLOW_ID, USER_ID) == created
 
     async def test_delete_revision_removes_only_the_body_it_was_told(self, repo) -> None:
-        """A heal rewrites in place and bumps the revision; a discard decided
-        against the old body must find nothing and leave the new one alone."""
+        """A heal rewrites in place and bumps the revision; a discard against the old body must leave the new one alone."""
         created = await repo.create(make_doc())
         rewritten = await repo.upsert_for_workflow(
             make_doc(description="rewritten", steps=created.steps)
@@ -353,10 +347,7 @@ class TestPlaybooksRepository:
 
 
 class TestPlaybooksUniqueIndexSurface:
-    """The one-per-workflow index lives on the real collection, not the ephemeral
-    fixture — recreate it here to prove the DuplicateKeyError surface the
-    repository's upsert retry depends on, and that the upsert itself never
-    trips it."""
+    """Recreate the real one-per-workflow index to prove the DuplicateKeyError surface the upsert retry depends on."""
 
     async def _create_indexes(self, raw_collection) -> None:
         # Mirrors app/db/mongodb/indexes.py::create_playbook_indexes.
@@ -380,11 +371,7 @@ class TestPlaybooksUniqueIndexSurface:
 
 class TestTheStoredFormReadsBack:
     async def test_a_for_each_over_an_ask_slot_survives_the_write_and_the_read(self, repo) -> None:
-        """Seen on the real model: it wrote exactly the shape the brief asks for,
-        a for_each whose source is an $ask. The repository stored the slot under
-        its field name (``prompt``) instead of its alias (``$ask``), the read
-        refused the document it had just written, and every later fire fell to
-        the agent with a warning nobody watches."""
+        """Regression: the repository stored an AskSlot under its field name (prompt) instead of its alias ($ask), so the read refused what it had just written."""
         stored = await repo.upsert_for_workflow(
             make_doc(
                 steps=[

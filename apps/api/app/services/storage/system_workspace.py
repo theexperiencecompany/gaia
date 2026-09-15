@@ -1,32 +1,18 @@
-"""Shared ``_system`` subtree + per-user symlinks (de-duplicated system files).
+"""Shared _system subtree + per-user symlinks (de-duplicated system files).
 
-System-owned files (INDEX.md, the GUIDE.md docs, builtin skill bodies) are
-identical for every user. Instead of materializing a copy into each user's
-workspace, we keep ONE copy under ``/mnt/jfs/_system`` and point each user's
-workspace at it with symlinks — so per user we store a few bytes of pointer, not
-the bodies.
+System-owned files (INDEX.md, GUIDE.md, builtin skill bodies) are identical
+for every user, so we keep ONE copy under /mnt/jfs/_system and point each
+user's workspace at it with symlinks instead of materializing a copy per user.
 
-Two halves:
-  - ``ensure_system_subtree()`` writes the single ``_system`` copy host-side
-    (idempotent, hash-gated). Safe to call on every bootstrap.
-  - ``link_system_files_into_workspace()`` replaces the per-user copies with
-    symlinks into the in-sandbox ``_system`` mount.
+ensure_system_subtree() writes the single _system copy (idempotent,
+hash-gated); link_system_files_into_workspace() replaces per-user copies
+with symlinks into it, targeting the absolute in-sandbox path
+/workspace/.system/<rel> (mount_juicefs.sh bind-mounts /_system there),
+deliberately "broken" on the host — fine, since the read tool serves these
+files from memory and never follows the symlink.
 
-In-sandbox, ``mount_juicefs.sh`` bind-mounts ``/_system`` read-only at
-``/workspace/.system`` (best-effort). The symlink targets are the absolute
-in-sandbox path ``/workspace/.system/<rel>`` — they resolve inside the sandbox
-(where ``.system`` is mounted) and are deliberately "broken" on the host (which
-has no ``/workspace``). That is fine: the ``read`` tool serves these files from
-memory (``system_files``) and never follows the symlink — the symlink exists
-only so in-sandbox ``bash`` (``cat``/``ls``/``grep``) can reach the one copy.
-
-No feature flag: ``ensure_system_subtree`` runs every bootstrap and
-``link_system_files`` replaces copies with symlinks once the subtree exists.
-The copy-writers are symlink-aware (``matches_text`` treats a symlink as
-"matches"), so they never clobber the links — and if the shared subtree is ever
-unavailable, ``link_system_files`` no-ops and the copy-writers transparently
-write per-user copies instead. The in-sandbox ``_system`` mount ships with the
-E2B template, so the symlinks resolve there as soon as the template is rebuilt.
+No feature flag: matches_text treats a symlink as "matches" so copy-writers
+never clobber the links, falling back to per-user copies if unavailable.
 """
 
 from __future__ import annotations
@@ -65,7 +51,7 @@ def _library_signature(files: list[SystemFile]) -> str:
 
 
 def _write_system_files(root: Path, files: list[SystemFile]) -> None:
-    """Write each manifest file under ``root`` if its body changed."""
+    """Write each manifest file under root if its body changed."""
     for f in files:
         target = root / f.rel_path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -74,9 +60,9 @@ def _write_system_files(root: Path, files: list[SystemFile]) -> None:
 
 
 def _prune_orphan_system_files(root: Path, files: list[SystemFile]) -> None:
-    """Drop files under ``root`` no longer present in the manifest.
+    """Drop files under root no longer present in the manifest.
 
-    ``system_files()`` is the authoritative complete set, so stale bodies (e.g.
+    system_files() is the authoritative complete set, so stale bodies (e.g.
     a removed builtin skill) must not linger once the signature says it's current.
     """
     expected = {f.rel_path for f in files}
@@ -89,7 +75,7 @@ def _prune_orphan_system_files(root: Path, files: list[SystemFile]) -> None:
 
 
 async def ensure_system_subtree() -> bool:
-    """Write the single shared ``_system`` copy host-side. Idempotent + hash-gated.
+    """Write the single shared _system copy host-side. Idempotent + hash-gated.
 
     Returns True if the subtree is present/written, False if the mount is
     unavailable (native dev). Safe to call on every bootstrap — steady-state
@@ -127,7 +113,7 @@ async def ensure_system_subtree() -> bool:
 
 
 def system_subtree_available() -> bool:
-    """Whether the shared ``_system`` subtree exists on the host mount."""
+    """Whether the shared _system subtree exists on the host mount."""
     try:
         return (_mount_root() / SYSTEM_SUBDIR).is_dir()
     except Exception:
@@ -140,9 +126,9 @@ def _link_target(rel_path: str) -> str:
 
 
 def _link_location(user_id: str, rel_path: str) -> Path:
-    """Host path where the per-user symlink for ``rel_path`` must be written.
+    """Host path where the per-user symlink for rel_path must be written.
 
-    Reuses ``_host_base_and_rel`` — the single source of the workspace-rel →
+    Reuses _host_base_and_rel — the single source of the workspace-rel →
     host-path routing (skill bodies live in the /skills/<uid> overlay subtree,
     everything else under /users/<uid>) — so the symlink placement can never
     disagree with where the read fast-path looks for the same file.
@@ -152,7 +138,7 @@ def _link_location(user_id: str, rel_path: str) -> Path:
 
 
 def _place_symlink(link: Path, target: str) -> bool:
-    """Create/refresh ``link`` -> ``target`` symlink, replacing any stale copy.
+    """Create/refresh link -> target symlink, replacing any stale copy.
 
     Returns True if it created or changed the link, False if already correct.
     """
@@ -169,22 +155,15 @@ def _place_symlink(link: Path, target: str) -> bool:
 
 
 async def link_system_files_into_workspace(user_id: str) -> int:
-    """Replace per-user copies of system files with symlinks into ``_system``.
+    """Replace per-user copies of system files with symlinks into _system.
 
-    Returns the number of links created/changed. No-op safe: steady-state calls
-    return 0, and if the shared subtree isn't present it returns 0 so the
-    copy-writers transparently fall back to per-user copies.
-
-    Raises ``ValueError`` on a ``user_id`` that isn't a single safe path
-    component.
+    No-op safe: returns 0 if the shared subtree isn't present, so the
+    copy-writers transparently fall back to per-user copies. Raises
+    ValueError on a user_id that isn't a single safe path component.
     """
-    # Checked before anything else, including the availability short-circuit:
-    # `_link_location` joins user_id straight into the host path and
-    # `_place_symlink` unlinks whatever it finds, so an id like "../_system"
-    # would replace the ONE shared copy every user points at with a
-    # self-referential symlink — and the hash marker then stops
-    # ensure_system_subtree from ever repairing it. Mirrors the guard juicefs
-    # already applies to conversation_id.
+    # Checked first: _link_location joins user_id into the host path and
+    # _place_symlink unlinks whatever it finds, so an id like "../_system"
+    # would replace the ONE shared copy with an unrepairable self-symlink.
     ensure_safe_path_id(user_id, label="user_id")
     if not system_subtree_available():
         return 0

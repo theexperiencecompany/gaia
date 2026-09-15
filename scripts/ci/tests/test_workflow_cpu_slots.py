@@ -54,8 +54,7 @@ def test_the_nx_step_holds_cpu_tokens_while_it_runs(
 def test_the_tokens_it_takes_match_the_parallelism_it_asks_nx_for(
     workflow: dict[str, Any], job_name: str
 ) -> None:
-    """Holding fewer tokens than nx spawns workers is a governor that lies:
-    the box budget is respected on paper while the cores are oversubscribed."""
+    """Hold as many tokens as nx spawns workers, or the box is oversubscribed on the quiet."""
     steps = workflow["jobs"][job_name]["steps"]
     run = next(s["run"] for s in steps if "runner.sh with-slots" in s.get("run", ""))
     # The command line only. The step's own comments explain what with-slots is

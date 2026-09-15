@@ -1,8 +1,8 @@
-"""Repository for the ``checkout_sessions`` collection.
+"""Repository for the checkout_sessions collection.
 
 Records the Dodo checkout session id at checkout-creation time so the
 result page can resolve what a user bought even when the
-``subscription.active`` webhook has not landed yet (the webhook-vs-redirect
+subscription.active webhook has not landed yet (the webhook-vs-redirect
 race): the session id is the stable reference Dodo can answer for before a
 subscription row exists.
 """
@@ -23,11 +23,10 @@ class CheckoutSessionsRepository(
     async def list_recent_for_user(
         self, user_id: str, *, limit: int
     ) -> list[CheckoutSessionDocument]:
-        """This user's most recently minted sessions, newest first.
+        """Return this user's most recently minted sessions, newest first.
 
-        Deliberately not a "latest" read: every paywall block mints a session,
-        so the newest row is usually one nobody paid, and the paid one the
-        caller is looking for sits below it.
+        Deliberately not a "latest" read: every paywall block mints a session, so the
+        newest row is usually unpaid and the paid one the caller wants sits below it.
         """
         return await self._find(
             {"user_id": user_id},

@@ -61,10 +61,10 @@ _FEATURES = {
 
 
 def _user(timezone: str | None = "UTC", **onboarding: object) -> UserDocument:
-    """A user exactly as ``user_repository.get`` yields one.
+    """Build a user exactly as user_repository.get yields one.
 
-    Built through ``UserDocument`` rather than a namespace so the typed
-    ``onboarding`` subdocument (and its lenient blob handling) is the same thing
+    Built through UserDocument rather than a namespace so the typed
+    onboarding subdocument (and its lenient blob handling) is the same thing
     the projection reads in production — a hand-rolled stand-in would let the
     validation the real read performs go untested.
     """
@@ -86,7 +86,7 @@ _NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def _plan(overrides: dict[str, object] | None) -> PlanResponse | None:
-    """A Pro plan with the given fields overridden; ``{}`` means no plan at all."""
+    """Build a Pro plan with the given fields overridden; {} means no plan at all."""
     if overrides == {}:
         return None
     fields: dict[str, object] = {
@@ -179,18 +179,18 @@ def _ids(files: list[dict]) -> set[str]:
 
 
 async def _raw(group: str, user_id: str = USER_ID) -> str:
-    """The serialized body of one projected group, exactly as it hits disk."""
+    """Return the serialized body of one projected group, exactly as it hits disk."""
     files, _ = await _build(user_id)
     return next(f for f in files if f["id"] == group)["body"]
 
 
 async def _body(group: str, user_id: str = USER_ID) -> dict:
-    """The parsed JSON body of one projected group."""
+    """Return the parsed JSON body of one projected group."""
     return json.loads(await _raw(group, user_id))
 
 
 def _serialized(payload: dict) -> str:
-    """The exact on-disk form: 2-space indent, one trailing newline.
+    """Build the exact on-disk form: 2-space indent, one trailing newline.
 
     Built with stdlib json rather than the projection model, so this asserts the
     format independently instead of re-running the code under test.
@@ -223,11 +223,7 @@ class TestBuildAccountProjections:
             assert file["body"].endswith("\n")
 
     async def test_each_group_lands_at_its_own_path_under_account(self, sources) -> None:
-        """The id -> path mapping, pinned per group.
-
-        Asserting only the shared ``account/`` prefix lets any two groups swap
-        paths, or every group collapse onto one file, without a test noticing.
-        """
+        """Asserting only the shared account/ prefix would let any two groups swap paths."""
         files, _ = await _build()
         paths = {f["id"]: f["path"] for f in files}
 
@@ -247,11 +243,7 @@ class TestBuildAccountProjections:
             )
 
     async def test_bodies_are_indented_json_with_a_trailing_newline(self, sources) -> None:
-        """The on-disk format itself: 2-space indent, one trailing newline.
-
-        These files are read by a human and diffed by the materializer's
-        content check, so the serialization is part of the contract.
-        """
+        """These files are read by a human and diffed by the materializer, so the format is contract."""
         files, _ = await _build()
         subscription = next(f for f in files if f["id"] == "subscription")
 
@@ -262,14 +254,7 @@ class TestBuildAccountProjections:
 @pytest.mark.unit
 class TestSourceIdentity:
     async def test_every_source_is_queried_for_the_requested_user(self, sources) -> None:
-        """Each builder must pass the user id through to its source.
-
-        Nothing else in this file can catch a builder that queries the wrong
-        user (or None): the mocked sources answer identically whatever they are
-        asked, so the body comes out right while the data belongs to someone
-        else. In production that is one user's plan, usage and linked accounts
-        projected into another user's workspace.
-        """
+        """Mocked sources answer identically for any user, so only this test catches a cross-user query."""
         await _build("user-42")
 
         sources.subscription_status.assert_awaited_once_with("user-42")
@@ -399,8 +384,7 @@ class TestProjectionBodies:
         )
 
     async def test_preferences_carry_the_onboarding_persona(self, sources) -> None:
-        """Profession and needs are what the agent reads to shape a turn — the
-        onboarding answers used to stop at Mongo and never reach it."""
+        """Profession and needs are what the agent reads; onboarding answers used to stop at Mongo."""
         with patch(
             f"{MODULE}.user_repository",
             get=AsyncMock(
@@ -422,12 +406,7 @@ class TestProjectionBodies:
             }
 
     async def test_preferences_drop_a_need_outside_the_allowed_keys(self, sources) -> None:
-        """A stored need the enum no longer defines must never reach the agent.
-
-        The typed ``onboarding`` subdocument drops it at the user read (a
-        historical row still has to load), so the projection ships without it
-        rather than skipping the group.
-        """
+        """The typed onboarding subdocument drops an unknown need at the user read, not at the group."""
         with patch(
             f"{MODULE}.user_repository",
             get=AsyncMock(return_value=_user(preferences={"needs": ["telepathy"]})),
@@ -449,11 +428,7 @@ class TestProjectionBodies:
             }
 
     async def test_preferences_ignore_a_non_dict_preferences_blob(self, sources) -> None:
-        """Mongo's ``onboarding.preferences`` is an untyped blob.
-
-        A string or a list there must read as "no preferences", not blow up the
-        whole projection pass.
-        """
+        """Mongo's onboarding.preferences is an untyped blob; a string or list must read as "no preferences"."""
         with patch(
             f"{MODULE}.user_repository",
             get=AsyncMock(return_value=_user(preferences="brief")),
@@ -600,11 +575,7 @@ class TestSourceFailureIsolation:
         }
 
     async def test_a_failing_source_logs_the_group_and_the_error_type(self, sources) -> None:
-        """The swallow is only defensible if the failure is observable.
-
-        ``_safe_body`` returns None so the pass continues; the error event is
-        the ONLY record that a provider broke, so its fields are the contract.
-        """
+        """The error event is the ONLY record a provider broke, since _safe_body swallows and continues."""
         async with captured_wide_event() as event:
             with patch(
                 f"{MODULE}.build_usage_summary",
@@ -696,12 +667,7 @@ class TestSyncAccountFiles:
         assert all(f["path"].startswith(f"{ACCOUNT_DIR}/") for f in args[1])
 
     async def test_sync_forwards_the_failed_paths_so_they_are_not_pruned(self, sources) -> None:
-        """The preserve set has to reach the materializer to do anything.
-
-        Dropping it here is invisible from the projection tests — they assert
-        ``build_account_projections`` returns it — and would silently restore
-        the bug where a provider outage deletes a valid account view.
-        """
+        """Dropping the preserve set here is invisible to the projection tests and would delete a valid view."""
         with (
             patch(f"{MODULE}._is_mounted", return_value=True),
             patch(f"{MODULE}.user_workspace_path", return_value="/mnt/jfs/users/user-1"),

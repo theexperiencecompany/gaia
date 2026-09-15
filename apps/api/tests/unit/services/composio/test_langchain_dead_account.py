@@ -1,14 +1,14 @@
 """Dead-connected-account reconciliation in the Composio tool wrapper.
 
 Regression cover for GAIA-BACKEND-2ZG: a revoked Composio account made
-`execute_tool` raise `NotFoundError`, which PR #932 wrapped in a blanket
-`except Exception` returning `{"successful": False, "error": str(e)}`. That
+execute_tool raise NotFoundError, which PR #932 wrapped in a blanket
+except Exception returning {"successful": False, "error": str(e)}. That
 stopped the 500 but left the user stuck (nothing ever recorded the connection
 as dead) and swallowed timeouts, 5xx and real bugs into the same opaque string.
 
 The wrapper is imported as a module rather than by symbol: the regression lane
 replays marked tests against the base revision, where the private helpers below
-do not exist yet. ``from ... import _helper`` would break at collection and prove
+do not exist yet. from ... import _helper would break at collection and prove
 nothing; attribute access fails inside the test body, where it counts as a real
 failure.
 """
@@ -63,7 +63,7 @@ def _returns(result: dict[str, Any]) -> Any:
 
 
 def _composio_tool(slug: str = "GMAIL_FETCH_MESSAGES") -> Tool:
-    """The minimum Composio tool descriptor `wrap_tool` needs."""
+    """Build the minimum Composio tool descriptor wrap_tool needs."""
     return Tool(
         slug=slug,
         name=slug,
@@ -126,8 +126,7 @@ def _ui_chat_turn(writer: MagicMock, *, expired: bool = True) -> Iterator[None]:
 
 
 class TestDeadAccountClassifier:
-    """A false positive here marks a healthy integration expired, so the
-    classifier must key on the structured error and not merely on a 404."""
+    """A false positive here marks a healthy integration expired, so classification must key on the structured error, not a bare 404."""
 
     def test_structured_error_code_is_recognized(self) -> None:
         assert wrapper._is_dead_account_error(_not_found(DEAD_ACCOUNT_BODY, "boom")) is True
@@ -155,26 +154,21 @@ class TestDeadAccountClassifier:
         ids=["error_code", "code", "name", "type"],
     )
     def test_either_spelling_of_the_code_and_the_name_is_recognised(self, detail: dict) -> None:
-        """Composio's error envelope is not versioned and has shipped both
-        spellings of each field. The message here carries NO marker, so only the
-        structured field under test can classify it — recognising just one
-        spelling would let a dead account through as an unhandled 404."""
+        """Composio's error envelope is not versioned and has shipped both spellings of each field; the message here carries no marker."""
         assert wrapper._is_dead_account_error(_not_found({"error": detail}, "boom")) is True
 
     def test_a_dead_account_message_is_recognised_whatever_its_casing(self) -> None:
-        """The fallback matches lowercase markers, so it has to normalise first —
-        and this sentence carries no 1810 to be rescued by."""
+        """The fallback matches lowercase markers, so it must normalise first — this sentence carries no 1810 to be rescued by."""
         error = _not_found(None, "No Active Connected Account for GMAIL")
         assert wrapper._is_dead_account_error(error) is True
 
 
 class TestUnrelatedFailuresPropagate:
-    """The blanket catch this replaces turned every failure into an opaque
-    `{"successful": False}` string and hid it from Sentry.
+    """Guards against the PR #932 blanket catch widening again — it never reached master, so this pins no shipped bug.
 
-    Unmarked on purpose: that catch only ever existed in the PR #932 diff, never
-    on master, so these pass on the base revision. They guard the narrow catch
-    from widening again rather than pinning a shipped bug.
+    That catch turned every failure into an opaque {"successful": False}
+    string and hid it from Sentry; these tests pass on base and are
+    deliberately unmarked.
     """
 
     @pytest.mark.parametrize(
@@ -209,9 +203,7 @@ class TestUnrelatedFailuresPropagate:
 class TestDeadAccountReconciles:
     @pytest.mark.regression
     async def test_it_expires_the_integration_and_asks_the_user_to_reconnect(self) -> None:
-        """Driven through the real executor-thread -> event-loop bridge the wrapper
-        uses in production, because that hop is what carries the graph's stream
-        context to the connect prompt. Mocking it away proves nothing about it."""
+        """Driven through the real executor-thread -> event-loop bridge, which carries the graph's stream context to the connect prompt."""
         provider = LangchainProvider()
         provider._loop = asyncio.get_running_loop()
         action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")))
@@ -245,8 +237,7 @@ class TestDeadAccountReconciles:
         assert "sign in again" in result["error"]
 
     async def test_the_expiry_is_persisted_before_the_prompt_reads_the_status(self) -> None:
-        """Racing the write would show first-time-connect copy for a connection
-        that plainly died, so the order is the contract."""
+        """Racing the write would show first-time-connect copy for a connection that plainly died — the order is the contract."""
         provider = LangchainProvider()
         provider._loop = asyncio.get_running_loop()
         action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")))
@@ -290,8 +281,7 @@ class TestDeadAccountReconciles:
         )
 
     async def test_the_transition_runs_under_its_own_named_wide_event_boundary(self) -> None:
-        """The dispatch arrives from an executor thread with no boundary of its own,
-        so without this one every `log.set()` inside the transition is discarded."""
+        """The dispatch arrives from an executor thread with no boundary of its own; without this one every log.set() is discarded."""
         with (
             patch(f"{MODULE}.expire_user_integration", AsyncMock()),
             patch(f"{MODULE}.log_context") as boundary,
@@ -328,10 +318,7 @@ class TestDeadAccountReconciles:
 
 
 class TestNonRaisingDeadAccountResult:
-    """Composio also reports a dead account without raising, as a
-    `{"successful": False, "error": ...}` payload. That string match is far
-    looser than the structured 404, so it only logs — driving the expiry
-    transition off it would mark healthy integrations dead."""
+    """A dead account can also arrive as a non-raising {"successful": False} payload; the looser string match only logs, never expires."""
 
     def test_it_logs_a_warning_and_passes_the_failure_through_untouched(self) -> None:
         provider = LangchainProvider()
@@ -357,9 +344,7 @@ class TestNonRaisingDeadAccountResult:
 
 class TestASuccessfulCallIsNeverReportedDead:
     def test_dead_account_wording_inside_a_successful_payload_is_not_a_dead_account(self) -> None:
-        """Tool payloads echo arbitrary provider text — a successful search whose
-        results mention "no active connected account" is a result, not a failure.
-        Reporting it would put a false dead-account warning on a healthy run."""
+        """Tool payloads echo arbitrary provider text; a successful result mentioning "no active connected account" is not a dead account."""
         provider = LangchainProvider()
         action_func = _action_func(
             provider,
@@ -381,8 +366,7 @@ class TestASuccessfulCallIsNeverReportedDead:
 
 class TestReconnectPromptNeedsALoop:
     def test_without_a_captured_loop_it_degrades_to_the_raw_error(self) -> None:
-        """No loop means no expiry and no prompt — the tool must still return the
-        underlying failure rather than a None error the agent cannot read."""
+        """No loop means no expiry and no prompt — the tool must still return the underlying failure, not a None error."""
         provider = LangchainProvider()
         provider._loop = None
         action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")))
@@ -398,18 +382,14 @@ class TestReconnectPromptNeedsALoop:
 
 class TestTheProviderCapturesItsLoop:
     async def test_a_provider_built_on_the_loop_holds_it_for_the_executor_threads(self) -> None:
-        """The wrapped tool callables are sync and run in an executor thread; the
-        loop captured here is the only way back to async work from there."""
+        """The wrapped tool callables run sync in an executor thread; this captured loop is the only way back to async work."""
         assert LangchainProvider()._loop is asyncio.get_running_loop()
 
     def test_a_provider_built_off_the_loop_captures_nothing_yet(self) -> None:
         assert LangchainProvider()._loop is None
 
     async def test_wrapping_a_tool_tops_up_a_capture_the_constructor_missed(self) -> None:
-        """The provider is a lazy singleton, so whichever caller builds it first may
-        be off-loop — but tools are fetched per request from the running loop.
-        Without this second chance the reconnect prompt is skipped for the whole
-        process, which is how it failed the first time."""
+        """A lazy singleton may be built off-loop; without this second capture at wrap time, the reconnect prompt is skipped process-wide."""
         provider = await asyncio.to_thread(LangchainProvider)
         assert provider._loop is None
 
@@ -429,8 +409,7 @@ class TestTheProviderCapturesItsLoop:
 
 
 class TestTheDeadAccountWideEvent:
-    """A dead account is invisible to the user beyond one failed tool call, so
-    this event is what says which tool, which account and why."""
+    """A dead account is invisible to the user beyond one failed tool call, so this event says which tool, which account, and why."""
 
     async def test_it_records_the_invocation_and_the_reason_it_was_classified_dead(self) -> None:
         provider = LangchainProvider()
@@ -469,8 +448,7 @@ class TestTheDeadAccountWideEvent:
 
 class TestTheReconnectPromptIsBounded:
     async def test_a_prompt_that_overruns_its_budget_degrades_to_the_raw_error(self) -> None:
-        """The wait blocks an executor thread inside the user's turn, so it cannot
-        be unbounded — on timeout the agent gets the underlying failure instead."""
+        """The wait blocks an executor thread inside the user's turn, so on timeout the agent gets the underlying failure instead."""
         provider = LangchainProvider()
         provider._loop = asyncio.get_running_loop()
         action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")))
@@ -496,8 +474,7 @@ class TestTheReconnectPromptIsBounded:
 
 class TestTheToolCallItselfIsForwarded:
     async def test_the_named_tool_and_its_arguments_reach_composio(self) -> None:
-        """A dropped tool name or argument bag would execute the wrong call — and
-        every stub that answers with a fixed value looks identical to that."""
+        """A dropped tool name or argument bag would execute the wrong call — a fixed-value stub would look identical to that."""
         seen: dict[str, object] = {}
 
         def execute_tool(tool: str, kwargs: dict[str, Any]) -> dict[str, Any]:

@@ -1,5 +1,4 @@
-"""The activation checklist derives every ``done`` from a real signal at read
-time; only the collapse is persisted. Repositories are the seams."""
+"""The activation checklist derives every done from a real signal at read time; only the collapse is persisted."""
 
 from unittest.mock import AsyncMock, patch
 
@@ -48,7 +47,7 @@ def _done(response: FirstStepsResponse) -> dict[FirstStepKey, bool]:
 
 
 def _assert_user_not_found(error: AppError) -> None:
-    """The 404 every entry point raises, including the id an operator needs."""
+    """Assert the 404 every entry point raises, including the id an operator needs."""
     assert error.status_code == 404
     assert error.message == "User not found"
     assert error.why == "no user document matches the authenticated session's id"
@@ -93,8 +92,7 @@ class TestGetFirstSteps:
         repos["integrations"].assert_awaited_once_with(USER_ID)
 
     async def test_connect_integration_counts_gmail(self, repos) -> None:
-        """Gmail is self-managed, so it only reads as connected through the
-        canonical status map — a raw ``user_integrations`` count misses it."""
+        """Gmail is self-managed, so only the canonical status map counts it as connected."""
         repos["integrations"].return_value = {"gmail": True, "notion": False}
 
         assert _done(await get_first_steps(USER_ID))[FirstStepKey.CONNECT_INTEGRATION] is True

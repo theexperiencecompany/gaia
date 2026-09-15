@@ -14,10 +14,9 @@ export const useOnboardingGuard = () => {
   // Only proceed if user data is loaded with email and onboarding data is available
   if (!user.email || user.onboarding === undefined) return;
 
-  // Resolved during render (not in an effect) so a guarded page never paints
-  // before redirecting. It replaces rather than pushes, like every other
-  // guard: a pushed redirect leaves the page the user was bounced off in
-  // history, so Back returns to it and is bounced straight out again.
+  // Resolved during render, not an effect, so a guarded page never paints
+  // before redirecting. Replaces (not pushes), like every guard — a pushed
+  // redirect leaves Back bouncing right back out.
   const isOnboardingCompleted = user.onboarding?.completed;
 
   if (pathname === "/onboarding") {

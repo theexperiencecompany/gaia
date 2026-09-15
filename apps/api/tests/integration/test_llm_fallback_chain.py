@@ -54,8 +54,7 @@ class TestProviderPriorityOrdering:
     """Verify provider ordering follows PROVIDER_PRIORITY and respects preferences."""
 
     def test_default_priority_order(self) -> None:
-        """Without a preferred provider, ordering follows PROVIDER_PRIORITY
-        (openrouter > gemini — the default provider leads)."""
+        """Without a preferred provider, ordering follows PROVIDER_PRIORITY (openrouter > gemini)."""
         mock_gemini = _make_mock_llm("gemini")
         mock_openrouter = _make_mock_llm("openrouter")
 
@@ -187,12 +186,7 @@ class TestProviderInitialization:
                 init_llm()
 
     def test_init_llm_preferred_unavailable_no_fallback_uses_priority(self) -> None:
-        """Preferred provider unavailable with fallback disabled still returns from priority order.
-
-        The `_get_ordered_providers` logic has `if fallback_enabled or not ordered`,
-        meaning when no preferred provider matched and ordered is empty, it falls
-        through to priority-based ordering regardless of fallback_enabled.
-        """
+        """_get_ordered_providers falls through to priority order when no preferred provider matched, regardless of fallback_enabled."""
         mock_gemini = _make_mock_llm("gemini")
 
         with patch(
@@ -264,8 +258,7 @@ class TestProviderConstants:
             )
 
     def test_default_priority_matches_the_default_provider(self) -> None:
-        """Priority 1 is the provider serving DEFAULT_MODEL_NAME — the fallback
-        chain must start at the lane the app actually defaults to."""
+        """Priority 1 is the provider serving DEFAULT_MODEL_NAME."""
         assert PROVIDER_PRIORITY[1] == DEFAULT_LLM_PROVIDER == "openrouter"
 
     def test_provider_models_have_expected_keys(self) -> None:
@@ -281,7 +274,7 @@ class TestGetAvailableProviders:
     def _build_registry(self, present_providers: dict[str, Any]) -> ProviderRegistry:
         """Build a ProviderRegistry with all LLM slots registered.
 
-        Providers listed in `present_providers` get a real loader that returns
+        Providers listed in present_providers get a real loader that returns
         the given instance. Missing providers get a loader that returns None
         (simulating missing API key via WARN strategy).
         """
@@ -335,7 +328,7 @@ class TestGetAvailableProviders:
 class TestProductionProviderRegistration:
     """Drives the REAL register_llm_providers().
 
-    `_build_registry` above always registers all four slots and varies only the
+    _build_registry above always registers all four slots and varies only the
     keys, so production's actual state — custom_llm never registered, because it
     is gated on ENV=development — was unrepresentable, and the KeyError it raised
     went unseen by every tier.

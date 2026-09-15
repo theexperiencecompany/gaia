@@ -97,12 +97,9 @@ export class Analytics {
    */
   alias(previousId: string, distinctId: string): void {
     if (!this.client) return;
-    // Argument order is the `$create_alias` wire convention, which is inverted
-    // from how it reads: the OLD id goes in `distinctId` and the NEW one in
-    // `alias`. Verified against both SDKs — posthog-python's
-    // `alias(previous_id, distinct_id)` emits
-    // `{distinct_id: previous_id, alias: distinct_id}`, and posthog-node's own
-    // docstring example passes the anonymous id as `distinctId`.
+    // Argument order matches the `$create_alias` wire convention, which is inverted from how it
+    // reads: OLD id goes in `distinctId`, NEW one in `alias`. Verified against posthog-python's
+    // `alias(previous_id, distinct_id)` → `{distinct_id: previous_id, alias: distinct_id}` and posthog-node.
     this.client.alias({ distinctId: previousId, alias: distinctId });
   }
 

@@ -1,5 +1,7 @@
-"""Run actual inference with synthetic inputs to confirm output shapes and
-behavior. This is the ground truth for the TS pipeline."""
+"""Run actual inference with synthetic inputs to confirm output shapes and behavior.
+
+This is the ground truth for the TS pipeline.
+"""
 
 import json
 from pathlib import Path

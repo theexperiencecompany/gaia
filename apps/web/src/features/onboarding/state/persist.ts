@@ -1,11 +1,9 @@
 import { isKnownNeed } from "../constants";
 import type { OnboardingState } from "./types";
 
-// v3 = the paid-first flow. A bumped key is what stops a half-finished v2
-// run (clarify answers, reveal acks) from rehydrating into a state shape
-// that no longer has those stages. The user id is part of the key: the cache
-// is one account's progress, and a second account on the same browser must
-// start from question one rather than inherit it.
+// v3 = the paid-first flow. A bumped key stops a half-finished v2 run from
+// rehydrating into a shape that no longer has those stages. The user id is
+// part of the key, so a second account on the same browser starts from question one.
 const STORAGE_KEY_PREFIX = "gaia-onboarding-state-v3";
 
 const storageKey = (userId: string) => `${STORAGE_KEY_PREFIX}:${userId}`;

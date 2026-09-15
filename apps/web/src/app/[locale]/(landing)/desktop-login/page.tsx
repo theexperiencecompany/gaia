@@ -68,10 +68,9 @@ export default function DesktopLoginPage() {
     return cleanup;
   }, []);
 
-  // Session verified (or the Electron main process signalled completion) —
-  // hand off to the app. Resolved during render (not in an effect) so the
-  // login screen never paints before navigating; `redirect` performs the same
-  // client-side navigation router.replace did.
+  // Session verified (or Electron signalled completion) — hand off to the
+  // app. Resolved during render, not an effect, so this screen never paints
+  // before navigating; `redirect` does the same as router.replace.
   if (status === "redirecting") {
     redirect("/c", RedirectType.replace);
   }

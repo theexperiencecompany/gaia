@@ -47,16 +47,10 @@ from app.models.notification.notification_models import (
 )
 from app.models.payment_models import PlanType
 
-#: The user every test resolves for. The fakes below are keyed on it and raise on
-#: anything else, so "the right user's plan/spend" is asserted by construction —
-#: a lookup for the wrong user (or for ``None``) fails instead of quietly
-#: answering.
+#: The user every test resolves for; fakes below are keyed on it and raise on anything else.
 USER = "u1"
 
 #: A provider-routing pin, in the shape a DEV_MODEL_OPTIONS entry carries one.
-#: The paid lane no longer pins (session_id sticky routing replaced it), but the
-#: pin's plumbing — reaching the wire, being dropped on fallback — still has to be
-#: right for the lanes that do.
 _A_ROUTING_PIN: dict[str, Any] = {"provider": {"only": ["minimax"]}}
 
 
@@ -78,13 +72,10 @@ def _plan(plan: PlanType, *, over_budget: bool = False) -> Any:
 
 @contextmanager
 def _distinct_reasoning_knobs() -> Iterator[None]:
-    """Give the two reasoning knobs different values for the duration.
+    """Give the two reasoning knobs different values so which one a role is routed to is observable.
 
-    ``PAID_COMMS_REASONING`` and ``OPENROUTER_REASONING`` are both
-    ``{"effort": "medium"}`` right now, so any assertion on their real values
-    passes whichever one the code picked. These stand-ins make the choice
-    observable — the point is which knob a role is routed to, not what today's
-    effort happens to be.
+    PAID_COMMS_REASONING and OPENROUTER_REASONING are both {"effort": "medium"}
+    right now, so an assertion on their real values would pass either way.
     """
     with (
         patch.object(lane_module, "PAID_COMMS_REASONING", {"effort": "comms-only"}),
@@ -111,11 +102,7 @@ class TestPlanRouting:
         assert resolved.provider_pin is None
 
     async def test_paid_gets_the_paid_model_with_no_routing_pin(self) -> None:
-        """No `only` pin, deliberately: the session_id sticky-routing key keeps a
-        conversation on the provider holding its warm prompt cache, and an explicit
-        pin fought that — measured 64% cache hits against 83-91% per turn without
-        it. The key must be ABSENT rather than None; the SDK's **model_kwargs
-        spread crashes on None."""
+        """No pin: an explicit pin fought sticky routing (64% cache hits vs 83-91%); key must be ABSENT, not None."""
         resolved = await _resolve(PlanType.PRO)
 
         assert resolved.provider == PAID_MODEL_PROVIDER
@@ -124,9 +111,7 @@ class TestPlanRouting:
         assert "model_kwargs" not in resolved.binding_keys()
 
     async def test_a_paid_lane_routes_each_role_to_its_own_reasoning_knob(self) -> None:
-        """The comms knob exists so it can be raised past the executor's without
-        moving it. Routed to one shared knob, raising comms silently raises every
-        background turn's spend too."""
+        """Routed to one shared knob, raising comms would silently raise every background turn's spend too."""
         with _distinct_reasoning_knobs():
             comms = await _resolve(PlanType.PRO, AgentRole.COMMS)
             executor = await _resolve(PlanType.PRO, AgentRole.EXECUTOR)
@@ -159,8 +144,7 @@ class TestPlanRouting:
         assert plan is None
 
     async def test_a_plan_lookup_failure_is_reported_on_the_wide_event(self) -> None:
-        """Degrading a paying user to the free model is exactly the kind of silent
-        downgrade that must be visible in the event, with the cause attached."""
+        """Degrading a paying user to the free model must be visible in the event, with the cause attached."""
         with (
             patch.object(
                 lane_module.payment_service,
@@ -192,8 +176,7 @@ class TestMonthlyEconomicGuard:
         assert resolved.provider_pin is None
 
     async def test_the_degraded_user_keeps_their_paid_tier(self) -> None:
-        """Only the model degrades — every other pro entitlement stays intact, so
-        the budget wall must still see PRO."""
+        """Only the model degrades — every other pro entitlement stays intact."""
         a, b, c = _plan(PlanType.PRO, over_budget=True)
         with a, b, c:
             _, plan = await resolve_lane(USER, AgentRole.COMMS)
@@ -201,8 +184,7 @@ class TestMonthlyEconomicGuard:
         assert plan == PlanType.PRO
 
     async def test_the_degrade_is_a_named_event_carrying_who_and_which_tier(self) -> None:
-        """``pro_model_degraded`` is the queryable signal that the economic guard
-        fired. Without the user and tier on it, nobody can tell who it hit."""
+        """pro_model_degraded must carry the user and tier, or nobody can tell who it hit."""
         a, b, c = _plan(PlanType.PRO, over_budget=True)
         with a, b, c, patch.object(lane_module, "log") as log:
             await resolve_lane(USER, AgentRole.COMMS)
@@ -233,8 +215,7 @@ def _spend(amount: float) -> Any:
 
 
 class TestTheMonthlySpendRead:
-    """The guard's own read. ``TestMonthlyEconomicGuard`` patches it out to test
-    routing, so without these the read itself never runs."""
+    """The guard's own read; TestMonthlyEconomicGuard patches it out to test routing."""
 
     async def test_spend_at_the_budget_crosses_the_guard(self) -> None:
         with _spend(PRO_MONTHLY_COST_BUDGET_USD):
@@ -272,7 +253,7 @@ class TestTheMonthlySpendRead:
 class _FakeRedisSetNX:
     """SET NX semantics, faithful on the two points this gate rests on.
 
-    A non-str value raises the way redis-py does (``DataError``) rather than
+    A non-str value raises the way redis-py does (DataError) rather than
     being stored: the marker has to be something Redis can actually hold, and a
     fake that swallows anything would call a broken write a success. The TTL is
     recorded because the notice is once *a month*, not once *ever*.
@@ -355,8 +336,7 @@ class TestDegradeNotice:
         assert notice.created.await_count == 1
 
     async def test_the_gate_is_keyed_to_this_user_and_this_month(self) -> None:
-        """A key missing either part is a notice that fires for the wrong person
-        or never fires again."""
+        """A key missing either part is a notice that fires for the wrong person or never fires again."""
         with _Notice() as notice:
             await _notify_degrade_once(USER)
 
@@ -391,8 +371,7 @@ class TestDegradeNotice:
         assert notice.request.type == NotificationType.INFO
 
     async def test_the_notice_tells_the_user_what_happened_and_until_when(self) -> None:
-        """The whole point of the notice: a paying user's model just changed under
-        them, so the copy has to say so and name the date it comes back."""
+        """The copy has to say the model changed and name the date it comes back."""
         with _Notice() as notice:
             await _notify_degrade_once(USER)
 
@@ -403,8 +382,7 @@ class TestDegradeNotice:
         )
 
     async def test_no_redis_client_sends_nothing(self) -> None:
-        """Without the SET NX gate there is no once-a-month guarantee, so the
-        notice is skipped rather than sent on every degraded turn."""
+        """Without the SET NX gate, the notice is skipped rather than sent on every degraded turn."""
         with _Notice() as notice, patch.object(lane_module.redis_cache, "redis", None):
             await _notify_degrade_once(USER)
 
@@ -429,9 +407,7 @@ class TestDegradeNotice:
         }
 
     async def test_the_degraded_turn_notifies_the_user_it_degraded(self) -> None:
-        """resolve_lane spawns the notice rather than awaiting it, so the user's
-        turn is not held up by a notification write. The spawned work still has to
-        be the notice for THIS user."""
+        """resolve_lane spawns the notice rather than awaiting it, so the turn is not held up by the write."""
         spawned: list[Any] = []
         plan, budget, _ = _plan(PlanType.PRO, over_budget=True)
         with (
@@ -450,8 +426,8 @@ class TestDegradeNotice:
 class TestReasoningPerRole:
     """The per-tier effort policy, asserted on the literal effort strings.
 
-    Paid comms ran at ``low`` while free comms inherited the client default
-    ``medium``, so a paying user's front-door agent thought LESS than a free
+    Paid comms ran at low while free comms inherited the client default
+    medium, so a paying user's front-door agent thought LESS than a free
     one's. These assert the values, not the constants: a test that reads the
     constant back cannot catch the constant being wrong.
     """
@@ -494,14 +470,7 @@ class TestDevOverride:
         assert resolved.reasoning is None
 
     async def test_a_reasoning_dev_model_gets_the_asking_roles_effort(self) -> None:
-        """A dev pick is a PAID lane by definition — it is an explicit choice, not
-        plan routing — so comms gets the paid comms effort and the executor the
-        client default, exactly as a paid turn does.
-
-        The two knobs hold the same effort today, so asserting their real values
-        cannot tell "routed by role" from "returns one constant for everybody".
-        Pulling them apart for the duration is what makes the routing visible.
-        """
+        """A dev pick is a PAID lane by definition, so comms and executor route to their own effort knob."""
         option = dev_option_for("minimax-m3", use_defaults=False)
         assert option is not None
 
@@ -524,13 +493,7 @@ class TestDevOverride:
     async def test_the_custom_endpoint_resolves_the_model_the_client_would_serve(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """DEV_MODEL_OPTIONS["custom"] carries no model of its own. Leaving the
-        lane's model None left LLMAccountingMiddleware with no name to price the
-        call against — it falls back to DEFAULT_PRICING, ~11x the real rate. The
-        client binds PROVIDER_MODELS[CUSTOM] (DEV_LLM_MODEL) as its own default
-        whenever the model key is absent, so resolving that same value changes
-        nothing about which model runs and keeps the name visible to accounting.
-        """
+        """Leaving the lane's model None left LLMAccountingMiddleware pricing against DEFAULT_PRICING, ~11x the real rate."""
         monkeypatch.setitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, "nous/deepseek-v4-flash-cheap")
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
@@ -543,9 +506,7 @@ class TestDevOverride:
     async def test_the_custom_endpoint_pins_no_model_when_dev_llm_model_is_unset(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Genuinely unknown ahead of the call (the endpoint is not configured), so
-        None is still right — the client raises its own unconfigured-endpoint error
-        rather than the run being priced against a name we invented."""
+        """None is still right; the client raises its own unconfigured-endpoint error rather than being priced against a made-up name."""
         monkeypatch.setitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, "")
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
@@ -558,10 +519,7 @@ class TestDevOverride:
     async def test_a_lane_missing_from_provider_models_pins_no_model(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The sibling above configures the lane to an empty string; here the lane
-        is absent from the map entirely. The lookup's fallback has to stay falsy — a
-        placeholder default would pin a model that does not exist and price the call
-        against it."""
+        """Here the lane is absent from the map entirely; the lookup's fallback still has to stay falsy."""
         monkeypatch.delitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, raising=False)
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
@@ -593,8 +551,7 @@ class TestDevOverride:
             assert dev_option_for(None, use_defaults=True) is None
 
     def test_a_bogus_env_dev_default_says_so_naming_the_value(self) -> None:
-        """Silence here is a developer whose DEV_DEFAULT_MODEL typo looks like the
-        selector simply not working."""
+        """Silence here would look to a developer like the selector simply not working."""
         with (
             patch.object(lane_module.settings, "DEV_DEFAULT_MODEL", "not-a-real-id"),
             patch.object(lane_module, "log") as log,
@@ -610,8 +567,7 @@ class TestDevOverride:
         assert log.warning.call_args.kwargs == {"dev_default": "not-a-real-id"}
 
     def test_the_stashed_executor_id_is_looked_up_without_the_env_default(self) -> None:
-        """``dev_option`` takes an id comms already resolved, so the env default
-        must not get a second chance to override it here."""
+        """dev_option takes an id comms already resolved; the env default must not get a second chance."""
         with patch.object(lane_module.settings, "DEV_DEFAULT_MODEL", "deepseek-v4"):
             option = dev_option("minimax-m3")
 
@@ -635,8 +591,7 @@ class TestSerializationRoundTrip:
         assert ModelLane.from_configurable(original.to_configurable()) == original
 
     def test_a_bag_written_before_lanes_existed_yields_none(self) -> None:
-        """In-flight queue items and stored HIL resume_items predate the lane key;
-        the caller resolves a fresh lane rather than crashing on them."""
+        """In-flight queue items and stored HIL resume_items predate the lane key."""
         assert ModelLane.from_configurable(None) is None
         assert ModelLane.from_configurable({}) is None
 
@@ -656,8 +611,7 @@ class TestSerializationRoundTrip:
 
 class TestFallback:
     def test_the_fallback_lane_switches_provider_and_drops_the_pin(self) -> None:
-        """A pin names providers on the lane being left; carrying it to a different
-        provider turns one failure into two."""
+        """A pin names providers on the lane being left; carrying it to a different provider turns one failure into two."""
         paid = ModelLane(
             provider="openrouter",
             model=PAID_MODEL_NAME,
@@ -697,7 +651,7 @@ class TestFallback:
 class TestRebindOntoAFallbackLane:
     """The other half of the provider-failover fix.
 
-    ``fallback()`` picks the next lane; ``rebind()`` is what makes the run actually
+    fallback() picks the next lane; rebind() is what makes the run actually
     use it. It was untested — the regression test covered only that ainvoke_llm
     honours a fallback_config, not that the config handed to it was right.
     """
@@ -723,8 +677,7 @@ class TestRebindOntoAFallbackLane:
         )
 
     def test_the_failed_lanes_keys_are_removed_not_merged_over(self) -> None:
-        """A merge would leave the dead provider's routing pin attached — which is
-        exactly how the failover silently retried the lane that had just failed."""
+        """A merge would leave the dead provider's routing pin attached, silently retrying the lane that just failed."""
         rebound = self._gemini().rebind({"user_id": "u1", **self._paid().binding_keys()})
 
         assert rebound["provider"] == LLMProviderName.GEMINI

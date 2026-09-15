@@ -31,9 +31,9 @@ class ConnectionRejected:
 
 
 async def stored_connected_account_id(state_data: dict[str, str]) -> str | None:
-    """The id minted at initiate time — the source of truth for the callback.
+    """Return the id minted at initiate time — the source of truth for the callback.
 
-    Composio's hosted Connect Link redirects back without the ``connectedAccountId``
+    Composio's hosted Connect Link redirects back without the connectedAccountId
     the retired initiate() flow appended, and the parameter is documented
     nowhere, so it cannot be relied on either way. Failing on the query string
     alone rejected connections that had actually succeeded.
@@ -106,11 +106,9 @@ async def complete_composio_connection(
         background_tasks=background_tasks,
         connected_account_id=connected_account_id,
     )
-    # capture_event, not capture_context_event: Composio redirects the
-    # browser here without a WorkOS session, so the PostHog context
-    # middleware has nobody to identify. The user id is the one the state
-    # token was validated against — pass it explicitly or the connection
-    # event lands on an anonymous profile.
+    # capture_event, not capture_context_event: Composio redirects here without
+    # a WorkOS session, so pass the user id explicitly or the event lands on
+    # an anonymous profile.
     capture_event(
         str(user_id),
         AnalyticsEvents.INTEGRATION_CONNECTED,

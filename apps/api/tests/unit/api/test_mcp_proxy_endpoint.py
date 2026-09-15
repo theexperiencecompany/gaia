@@ -29,7 +29,7 @@ API = "/api/v1/mcp"
 
 
 class TestProxyToolCall:
-    """POST /api/v1/mcp/proxy/tool-call"""
+    """POST /api/v1/mcp/proxy/tool-call."""
 
     async def test_tool_call_success(self, client: AsyncClient) -> None:
         mock_result = CallToolResult(
@@ -123,7 +123,7 @@ class TestProxyToolCall:
 
 
 class TestProxyResourcesList:
-    """POST /api/v1/mcp/proxy/resources/list"""
+    """POST /api/v1/mcp/proxy/resources/list."""
 
     async def test_resources_list_success(self, client: AsyncClient) -> None:
         mock_result = ListResourcesResult(
@@ -186,7 +186,7 @@ class TestProxyResourcesList:
 
 
 class TestProxyResourceTemplatesList:
-    """POST /api/v1/mcp/proxy/resources/templates/list"""
+    """POST /api/v1/mcp/proxy/resources/templates/list."""
 
     async def test_templates_list_success(self, client: AsyncClient) -> None:
         mock_result = ListResourceTemplatesResult(
@@ -252,7 +252,7 @@ class TestProxyResourceTemplatesList:
 
 
 class TestProxyResourceRead:
-    """POST /api/v1/mcp/proxy/resources/read"""
+    """POST /api/v1/mcp/proxy/resources/read."""
 
     async def test_resource_read_success(self, client: AsyncClient) -> None:
         mock_result = ReadResourceResult(
@@ -308,7 +308,7 @@ class TestProxyResourceRead:
 
 
 class TestProxyPromptsList:
-    """POST /api/v1/mcp/proxy/prompts/list"""
+    """POST /api/v1/mcp/proxy/prompts/list."""
 
     async def test_prompts_list_success(self, client: AsyncClient) -> None:
         mock_result = ListPromptsResult(prompts=[Prompt(name="greet", description="Say hi")])

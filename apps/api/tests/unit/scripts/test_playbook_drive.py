@@ -14,8 +14,7 @@ pytestmark = pytest.mark.unit
 
 class TestWaitForExecutorLock:
     def test_a_lock_still_held_at_the_deadline_is_a_failure_not_a_fire(self) -> None:
-        """Firing into a held lock is recorded as skipped, which would read as a
-        scenario result."""
+        """Firing into a still-held lock is recorded as skipped, not as a scenario result."""
         store = Store.__new__(Store)
         store.db = MagicMock()
         store.db.__getitem__.return_value.find_one.return_value = {"conversation_id": "conv_1"}

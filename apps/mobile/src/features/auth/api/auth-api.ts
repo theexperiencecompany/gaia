@@ -18,10 +18,9 @@ export interface UserInfoResponse {
 }
 
 export async function getLoginUrl(callbackUri: string): Promise<string> {
-  // Prefer the dedicated Google OAuth endpoint when the API has it deployed;
-  // fall back to the WorkOS authkit endpoint with provider rewrite for older
-  // API versions. The fallback shows a brief WorkOS "invalid redirect" flash
-  // before completing — harmless but visible until the API ships.
+  // Prefer the dedicated Google OAuth endpoint when deployed; fall back to WorkOS
+  // authkit with provider rewrite for older API versions (shows a brief, harmless
+  // "invalid redirect" flash until the API ships).
   const googleUrl = `${API_BASE_URL}/oauth/login/google/mobile?redirect_uri=${encodeURIComponent(callbackUri)}`;
   const workosUrl = `${API_BASE_URL}/oauth/login/workos/mobile?redirect_uri=${encodeURIComponent(callbackUri)}`;
 

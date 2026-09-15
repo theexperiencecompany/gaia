@@ -1,7 +1,7 @@
 """Account-center mutation tools — the ONLY way the agent changes account state.
 
-The ``account/`` workspace files are read-only projections; these tools are the
-write path. Each is registered with an ``always_gate`` HIL stamp so it asks the
+The account/ workspace files are read-only projections; these tools are the
+write path. Each is registered with an always_gate HIL stamp so it asks the
 user for confirmation regardless of their approval mode or per-tool overrides —
 these are settings on the user's own account, not workflow steps.
 """

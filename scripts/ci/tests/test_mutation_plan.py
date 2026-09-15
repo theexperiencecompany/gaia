@@ -112,7 +112,7 @@ def _entry(module: str, testfiles: list[str], changed_lines: list[int]) -> dict[
 
 
 def _groups(outputs: dict[str, str]) -> list[list[dict[str, str]]]:
-    """The modules each shard carries, unpacked from the matrix."""
+    """Return the modules each shard carries, unpacked from the matrix."""
     return [json.loads(item["group"]) for item in json.loads(outputs["matrix"])]
 
 

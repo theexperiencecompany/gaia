@@ -21,7 +21,7 @@ class BraveProvider(SearchProvider):
     monthly_free_limit = 1_000
 
     def is_configured(self) -> bool:
-        """True when a Brave API key is configured."""
+        """Return True when a Brave API key is configured."""
         return bool(settings.BRAVE_API_KEY)
 
     async def search(self, query: str, count: int) -> SearchResponse:

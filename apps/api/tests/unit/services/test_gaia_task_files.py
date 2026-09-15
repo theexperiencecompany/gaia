@@ -1,5 +1,7 @@
-"""Unit tests for gaia_task_files — the /workspace/gaia-tasks/ path router the
-coding tools use so canvas.md / activity.md live on the todo doc, not on disk."""
+"""Unit tests for gaia_task_files, the /workspace/gaia-tasks/ path router.
+
+The coding tools use it so canvas.md / activity.md live on the todo doc, not on disk.
+"""
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
@@ -46,8 +48,7 @@ def _doc(**overrides: object) -> TodoDocument:
 
 @pytest.fixture
 def mock_repo():
-    """The repository singleton is imported by both this module and the
-    projection glue (index.md), so patch it at both seams."""
+    """Patch the repository singleton at both import seams (this module and the projection glue)."""
     with (
         patch(f"{_MOD}.todo_repository") as m,
         patch("app.services.gaia_tasks_fs.todo_repository", m),
@@ -134,8 +135,7 @@ class TestResolve:
         assert await resolve(f"gaia-tasks/{FOLDER}/notes.md", USER_ID) is None
 
     async def test_gaia_tasks_under_a_session_dir_names_the_absolute_path(self, mock_repo):
-        """A relative `gaia-tasks/...` resolves into the session scratch dir;
-        the error must hand the model the path it meant."""
+        """A relative gaia-tasks/... path under a session dir still names the absolute path in the error."""
         with pytest.raises(GaiaTaskPathError, match="/workspace/gaia-tasks/"):
             await resolve(f"sessions/conv-1/scratch/gaia-tasks/{FOLDER}/canvas.md", USER_ID)
 
@@ -299,8 +299,10 @@ class TestWriteFile:
 
 
 class TestProjectGaiaTask:
-    """`project_gaia_task` shapes the on-disk projection; every field the agent
-    reads must map across exactly."""
+    """project_gaia_task shapes the on-disk projection.
+
+    Every field the agent reads must map across exactly.
+    """
 
     def test_maps_notes_and_meta(self):
         doc = _doc(

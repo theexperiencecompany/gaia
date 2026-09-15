@@ -128,9 +128,6 @@ const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
   },
 ];
 
-/**
- * Get shortcuts by category
- */
 export const getShortcutsByCategory = (
   category: KeyboardShortcut["category"],
 ) => KEYBOARD_SHORTCUTS.filter((s) => s.category === category);

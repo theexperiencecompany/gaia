@@ -1,14 +1,4 @@
-"""End-to-end webhook delivery pipeline: signed HTTP delivery → endpoint →
-trigger registry → handler → workflow queueing / expiry transition.
-
-The unit tests for this endpoint mock the signature check, the registry and the
-handler, so the chain a real Composio delivery travels is never exercised in one
-piece. These tests keep every link real — HMAC verification over the actual
-request bytes, raw-body routing, model validation, the global trigger registry,
-the Gmail handler's matching strategies, and spawn_logged_task's background
-execution — and mock only the infra seams (Redis dedupe, workflow repository,
-ARQ queueing, the terminal expiry services).
-"""
+"""End-to-end webhook delivery pipeline: signed HTTP delivery to workflow queueing / expiry."""
 
 import asyncio
 import base64
@@ -42,7 +32,7 @@ CALENDAR_AUTH_CONFIG_ID = "ac_exqcpnLvCzGJ"
 
 
 def _sign(body: bytes, webhook_id: str, timestamp: str, secret: str) -> str:
-    """The exact scheme app/utils/webhook_utils.py verifies."""
+    """Sign a body using the exact scheme app/utils/webhook_utils.py verifies."""
     signed = webhook_id.encode() + b"." + timestamp.encode() + b"." + body
     digest = hmac_mod.new(secret.encode(), signed, hashlib.sha256).digest()
     return f"v1,{base64.b64encode(digest).decode()}"
@@ -120,7 +110,7 @@ def _workflow() -> Workflow:
 
 @pytest.fixture
 def _webhook_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The hermetic fence blanks the real secret; sign against a known one."""
+    """Blank the real secret set by the hermetic fence and sign against a known one."""
     monkeypatch.setattr(settings, "COMPOSIO_WEBHOOK_SECRET", TEST_SECRET)
 
 
@@ -135,8 +125,7 @@ def _redis():
 
 @pytest.fixture
 def _spawned():
-    """Keep spawn_logged_task REAL but hand back its tasks, so each test can
-    await the fire-and-forget work deterministically instead of sleeping."""
+    """Keep spawn_logged_task REAL but hand back its tasks so each test can await them."""
     spawned: list[asyncio.Task] = []
 
     def _recording_spawn(operation: str, coro: Any, **ctx: Any) -> asyncio.Task:
@@ -154,8 +143,7 @@ async def _drain(spawned: list[asyncio.Task]) -> None:
 
 
 class TestTriggerDeliveryToQueuedExecution:
-    """A signed GMAIL_NEW_GMAIL_MESSAGE delivery must come out the other end as
-    a queued workflow execution carrying the payload and the integration stamp."""
+    """A signed GMAIL_NEW_GMAIL_MESSAGE delivery must become a queued workflow execution."""
 
     async def test_a_signed_delivery_buffers_the_matched_workflow_for_a_batched_run(
         self,
@@ -164,10 +152,7 @@ class TestTriggerDeliveryToQueuedExecution:
         _redis: MagicMock,
         _spawned: list,
     ) -> None:
-        """gmail_new_message fires once per inbound email, so a delivery joins the
-        workflow's daily batch instead of queueing its own agent run — the direct
-        per-event queue path must NOT be taken (that fan-out once spent a paying
-        user's whole daily budget in three minutes)."""
+        """A delivery joins the daily batch; the per-event queue path once burned a day's budget in 3 min."""
         queue = AsyncMock()
         buffer = AsyncMock(return_value=True)
         body = _gmail_delivery()
@@ -218,12 +203,7 @@ class TestTriggerDeliveryToQueuedExecution:
         _redis: MagicMock,
         _spawned: list,
     ) -> None:
-        """A tracked todo can be waiting on the same event a workflow matched.
-
-        The hand-off is queued from inside ``process_event``, before its
-        no-matching-workflow return — the return that would otherwise drop the
-        reply a todo has been waiting for.
-        """
+        """A tracked todo waiting on the same event must not be dropped by the no-match return."""
         enqueue = AsyncMock()
         body = _gmail_delivery()
         with (
@@ -334,8 +314,7 @@ class TestTriggerDeliveryToQueuedExecution:
 
 
 class TestConnectionExpiryDelivery:
-    """A signed connected_account.expired delivery must resolve the integration
-    through the real oauth_config and run the shared expiry transition."""
+    """A signed connected_account.expired delivery must resolve via real oauth_config and expire."""
 
     async def test_an_expired_calendar_account_runs_the_expiry_transition(
         self,

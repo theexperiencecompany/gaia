@@ -317,7 +317,7 @@ class TestScrapeUrlMetadata:
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_logo_link_tag_used_as_website_image(self, mock_client_cls: MagicMock) -> None:
-        """link rel=logo tag href is used as website_image."""
+        """Link rel=logo tag href is used as website_image."""
         mock_client = AsyncMock()
         mock_client.get.return_value = _mock_response(HTML_LOGO_LINK_TAG)
         mock_client_cls.return_value.__aenter__.return_value = mock_client

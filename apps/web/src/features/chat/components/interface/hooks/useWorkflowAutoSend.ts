@@ -8,14 +8,12 @@ import { useComposerStore } from "@/stores/composerStore";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 /**
- * Runs a workflow the user picked outside the composer (sidebar, workflow page)
- * as a real chat turn.
+ * Runs a workflow the user picked outside the composer (sidebar, workflow
+ * page) as a real chat turn.
  *
- * Hosted at ChatPage (not Composer) because ChatPage is memoized and never
- * remounts, whereas Composer remounts across the NewChatLayout →
- * ChatWithMessages layout switch that fires when the optimistic message flips
- * hasMessages to true. Keeping the once-only guard (autoSendFiredRef) here
- * stops that remount from resetting it and firing the workflow twice.
+ * Hosted at ChatPage, not Composer: ChatPage is memoized and never
+ * remounts, while Composer remounts across the NewChatLayout ->
+ * ChatWithMessages switch (hasMessages flipping true), which would reset the once-only guard (autoSendFiredRef) and fire twice.
  */
 export const useWorkflowAutoSend = (): void => {
   const sendMessage = useSendMessage();
@@ -34,22 +32,16 @@ export const useWorkflowAutoSend = (): void => {
 
     const workflow = selectedWorkflow;
 
-    // Defer one macrotask so navigation settles, then clear + send inside
-    // the callback: clearing the store HERE (in the effect body) would
-    // re-render before the macrotask fires, running this effect's cleanup
-    // and cancelling the send — silently dropping the execution (an e2e-
-    // verified regression). With the clear inside the callback, a cleanup
-    // on supersede is harmless: firedRef makes the next pass a no-op.
+    // Defer one macrotask, then clear+send inside the callback: clearing in
+    // the effect body would re-render before the macrotask fires, cancelling
+    // the send (e2e-verified regression) — clearing in-callback makes a superseding cleanup a no-op.
     const sendTimer = setTimeout(() => {
       autoSendFiredRef.current = true;
       useComposerStore.getState().clearSelectedWorkflow();
 
-      // GAIA is paid-only, and this is a real send: useComposerSubmit's own
-      // pre-check never runs for this path (handleFormSubmit returns early
-      // on `autoSend` before reaching it), so this is the one place that has
-      // to gate it. While the subscription-status is still unknown, let the
-      // send proceed — the backend's 402 is the backstop — rather than trap
-      // a paying user on a not-yet-resolved "false".
+      // GAIA is paid-only: useComposerSubmit's pre-check never runs for this
+      // path (handleFormSubmit returns early on `autoSend`), so this is the
+      // one gate — while unknown, proceed since the backend's 402 is the backstop.
       if (!isSubscriptionStatusUnknown && !isPaid) {
         openUpgradeModal(undefined, { source: "workflow_autosend" });
         return;

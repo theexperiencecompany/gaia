@@ -1,4 +1,4 @@
-"""Persistent `bash` tool — run shell commands in the user's E2B sandbox."""
+"""Persistent bash tool — run shell commands in the user's E2B sandbox."""
 
 from __future__ import annotations
 
@@ -54,16 +54,9 @@ MAX_TIMEOUT_SECONDS = 600
 DEFAULT_TIMEOUT_SECONDS = 120
 MAX_COMMAND_LENGTH = 16_000
 
-# Bucketed bash exit code counter. The buckets (string labels) are part of the
-# `fs-metrics-coverage` capability contract; changing them requires a spec
-# update. Raw exit codes would be ≤256 series per process — wasted cardinality
-# when 95% are 0. The bucket choice mirrors the standard shell semantics:
-#   - 0           → success
-#   - 1-126       → generic command failure
-#   - 127         → command not found
-#   - 128-254     → killed by signal (128 + signal_number)
-#   - 255         → catch-all error
-#   - "timeout"   → killed by our own `_run_foreground` deadline
+# Bucketed bash exit code counter (fs-metrics-coverage contract). Mirrors
+# shell semantics: 0=success, 1-126=generic failure, 127=not found,
+# 128-254=killed by signal, 255=catch-all, "timeout"=our deadline.
 _BASH_EXIT_CODE_TOTAL = _register_once(
     "tool_bash_exit_code_total",
     lambda: Counter(
@@ -126,7 +119,7 @@ def _emit_bash_error(run_id: str, chunk: str, return_message: str, session_id: s
 def _resolve_cwd(cwd: str, session_id: str | None) -> tuple[str, str | None]:
     """Resolve the working directory for a bash run.
 
-    Returns ``(cwd, error)``. ``error`` is non-None when the LLM-supplied cwd
+    Returns (cwd, error). error is non-None when the LLM-supplied cwd
     escapes the workspace, in which case the caller returns it. Any non-empty
     resolved cwd is guaranteed to be inside the workspace.
     """
@@ -134,16 +127,13 @@ def _resolve_cwd(cwd: str, session_id: str | None) -> tuple[str, str | None]:
         return session_dir(session_id), None
     if cwd:
         # A relative cwd joins to the session dir (or /workspace), mirroring
-        # canonical_path so `cwd="scratch"` means the session's scratch — the
-        # same session-relative model read/write use.
+        # canonical_path, so `cwd="scratch"` means the session's scratch.
         if not cwd.startswith("/"):
             base = session_dir(session_id) if session_id else WORKSPACE_ROOT
             cwd = posixpath.join(base, cwd)
         # Normalize BEFORE the containment check — otherwise `/workspace/../etc`
-        # (or a relative `../` that climbs out after the join) starts with
-        # `/workspace/` and slips past, then the shell resolves the `..` and
-        # lands outside. The gate is load-bearing against prompt-injection drift
-        # reaching host-internal config (`/etc/gaia`).
+        # starts with `/workspace/`, slips past, and the shell resolves the
+        # `..` to escape — a gate against reaching host config (`/etc/gaia`).
         normalized = posixpath.normpath(cwd)
         if not is_under_workspace(normalized):
             return cwd, f"Error: cwd must be under {WORKSPACE_ROOT}"
@@ -206,22 +196,17 @@ async def bash(
     try:
         async with fs_timer(FsOps.TOOL_BASH), acquire_sandbox(user_id) as sbx:
             if cwd:
-                # Session dirs are created on demand — nothing pre-creates them
-                # host-side at chat start — so any resolved cwd (the session
-                # root or e.g. `scratch/<job>`) may not exist yet. `make_dir`
-                # creates parents and no-ops if the dir exists; _resolve_cwd
-                # guarantees a non-empty cwd is inside the workspace.
+                # Session dirs are created on demand, so a resolved cwd may
+                # not exist yet. `make_dir` creates parents and no-ops if it
+                # already exists.
                 with contextlib.suppress(Exception):
                     await sbx.files.make_dir(cwd)
             if background:
                 return await _run_background(sbx, run_id, command, cwd, session_id)
             result = await _run_foreground(sbx, run_id, command, cwd, timeout, session_id)
-            # A bash command can create artifacts any number of ways (cat,
-            # python, mv, curl -o, …), not just the write tool. Enumerate the
-            # session's artifacts/ from the sandbox itself (it sees its
-            # own writes instantly — no host-mount/cross-mount race) and push
-            # them in real time; the chat forwarder relays them as SSE during
-            # this turn. De-duped downstream by (session_id, path).
+            # A bash command can create artifacts many ways (cat, python, mv,
+            # curl -o, …), not just the write tool. Enumerate the session's
+            # artifacts/ from the sandbox itself and push in real time.
             if session_id:
                 async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
                     await _publish_artifacts(sbx, user_id, session_id)
@@ -229,31 +214,22 @@ async def bash(
     except SandboxAcquisitionError as e:
         return _emit_bash_error(run_id, str(e), f"Error: sandbox unavailable ({e})", session_id)
     except Exception as e:
-        # acquire_sandbox already evicted the sandbox if this failure means it
-        # died (it health-checks on any error) — here we just surface it.
+        # acquire_sandbox already evicted the sandbox if it died; surface it.
         log.error(f"{LogTag.SANDBOX} bash tool failed", error_type=type(e).__name__, exc_info=True)
         return _emit_bash_error(run_id, str(e), f"Error executing command: {e}", session_id)
 
 
 async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None:
-    """Enumerate the session's ``artifacts/`` in the sandbox and push each
-    file as a real-time artifact event (covers cat/python/mv/curl, etc.).
+    """Enumerate the session's artifacts/ in the sandbox and push each file as a real-time event.
 
-    Implementation note: this used to be N+1 sandbox round-trips (one ``find``
-    plus one ``base64`` per artifact). For a turn that writes 5 artifacts that
-    was 6 envd round-trips. We now collapse to a *single* ``find`` invocation
-    whose ``-exec`` emits the path, size, and base64 body for every artifact in
-    one stream — parsed back here in Python. One round-trip total, regardless
-    of how many artifacts the turn produced.
+    Used to be N+1 sandbox round-trips (one find plus one base64 per
+    artifact, 6 for a 5-artifact turn); now a single find -exec streams
+    path/size/base64 for every artifact in one round-trip.
     """
     artifacts_root = session_artifacts(session_id)
-    # NUL-delimited fields AND records. Filenames cannot contain NUL bytes on
-    # Linux, so this delimitation is desync-proof even when the agent creates
-    # artifacts whose names contain tabs or newlines. Each artifact emits
-    # exactly four NUL-terminated fields: <path>\0<size>\0<mtime>\0<base64>\0.
-    # Real mtime is required so the chat-stream forwarder's
-    # (event,path,size_bytes,mtime) dedup actually skips unchanged files —
-    # using `time.time()` here would invalidate the signature on every push.
+    # NUL-delimited fields AND records (desync-proof, filenames can't contain
+    # NUL). Each artifact emits <path>\0<size>\0<mtime>\0<base64>\0. Real
+    # mtime is required so the forwarder's dedup skips unchanged files.
     max_inline = INLINE_ARTIFACT_MAX_BYTES
     enumerate_cmd = (
         f"find {sh_quote(artifacts_root)} -type f "
@@ -360,10 +336,8 @@ async def _run_foreground(
         )
 
     try:
-        # `timeout` is the e2b server-side command-stream deadline; when it fires
-        # the SDK raises TimeoutException and stops streaming. A local
-        # asyncio.timeout would only cancel our coroutine, not the remote
-        # command, which is why S7483 does not apply here.
+        # `timeout` is the e2b server-side deadline; a local asyncio.timeout
+        # would only cancel our coroutine, not the remote command.
         result = await sbx.commands.run(  # type: ignore[attr-defined]  # e2b SDK ships no stubs  # NOSONAR python:S7483
             command,
             cwd=cwd or WORKSPACE_ROOT,

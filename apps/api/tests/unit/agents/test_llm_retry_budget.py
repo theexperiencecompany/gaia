@@ -3,14 +3,14 @@
 Found by driving one failing turn against a provider returning 500: it produced
 **40** upstream requests and took four minutes to surface an error.
 
-``langchain-openrouter`` defaults ``max_retries=2``, which hands the OpenRouter
-SDK a backoff window of ``max_retries * 150_000`` ms — 300 seconds of internal
-retrying *inside a single* ``ainvoke``. That nests under ``with_llm_retry``
+langchain-openrouter defaults max_retries=2, which hands the OpenRouter
+SDK a backoff window of max_retries * 150_000 ms — 300 seconds of internal
+retrying *inside a single* ainvoke. That nests under with_llm_retry
 (3 attempts) and then repeats for the fallback model, so the real budget was
-never 3 attempts; the 120 s ``asyncio.timeout`` in ``ainvoke_llm`` was the only
+never 3 attempts; the 120 s asyncio.timeout in ainvoke_llm was the only
 thing stopping it, and it fired twice.
 
-``with_llm_retry`` documents itself as "the single, canonical LLM retry". These
+with_llm_retry documents itself as "the single, canonical LLM retry". These
 pin that claim: exactly one layer retries, so the attempt count and the timeout
 mean what they say.
 """
@@ -33,7 +33,7 @@ from app.constants.llm import LLM_RETRY_MAX_ATTEMPTS
 
 @pytest.fixture(autouse=True)
 def _openrouter_configured(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The hermetic conftest blanks credentials; these factories need a key."""
+    """Restore a fake OPENROUTER_API_KEY; the hermetic conftest blanks credentials."""
     from app.config.settings import settings
 
     monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "test-key", raising=False)
@@ -64,12 +64,12 @@ class TestLLMRetryBudget:
 
 
 def _construct(factory: Callable[[], Any]) -> Any:
-    """Run a ``@lazy_provider`` factory's real body and unwrap the chat model.
+    """Run a @lazy_provider factory's real body and unwrap the chat model.
 
-    Via ``loader_func`` rather than resolving through the registry: registration
+    Via loader_func rather than resolving through the registry: registration
     is gated on credentials read at IMPORT time, which the hermetic fence blanks,
     so a registry lookup returns None in CI while passing for anyone whose local
-    ``.env`` happened to hold a key.
+    .env happened to hold a key.
     """
     llm = factory().loader_func()
     return getattr(llm, "default", llm)
@@ -79,7 +79,7 @@ def _retries(llm: Any) -> bool:
     """Whether the SDK client will run its own retry loop.
 
     Asserted on the config the SDK actually reads at request time, not on
-    ``max_retries``: that kwarg cannot express "off" — setting it to 0 only stops
+    max_retries: that kwarg cannot express "off" — setting it to 0 only stops
     langchain passing a config, and the SDK then applies its own one-hour default.
     """
     config = llm.client.sdk_configuration.retry_config

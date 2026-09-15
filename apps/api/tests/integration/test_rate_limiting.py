@@ -1,5 +1,5 @@
 """
-TEST 12: Rate Limiting Under Load
+TEST 12: Rate Limiting Under Load.
 
 Integration tests for the tiered rate limiting system.
 Tests rate limit configuration, enforcement, tier differentiation,
@@ -42,9 +42,7 @@ from tests.helpers import effective_limit
 
 @contextmanager
 def frozen_time(iso: str) -> Generator[datetime, None, None]:
-    """Patch ``datetime.now`` in the rate_limits and tiered_rate_limiter modules
-    to return a fixed UTC datetime.  Unlike freezegun this does not touch every
-    module in the process, avoiding the transformers/torch NameError."""
+    """Patch datetime.now in the rate_limits and tiered_rate_limiter modules to a fixed UTC datetime, avoiding freezegun's transformers/torch NameError."""
     frozen = datetime.fromisoformat(iso).replace(tzinfo=UTC)
 
     _original_rate_limits_datetime = __import__(
@@ -77,7 +75,7 @@ def _make_limiter_with_fake_redis() -> tuple[TieredRateLimiter, fakeredis.aiored
 
 
 class _FakeRedisCache:
-    """Minimal stand-in for ``app.db.redis.RedisCache`` backed by fakeredis."""
+    """Minimal stand-in for app.db.redis.RedisCache backed by fakeredis."""
 
     def __init__(self, fake_redis: fakeredis.aioredis.FakeRedis) -> None:
         self.redis = fake_redis
@@ -497,8 +495,7 @@ class TestConcurrentRequests:
         self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
 
     async def test_concurrent_increments_are_atomic(self) -> None:
-        """Fire exactly the daily allowance concurrently; every one succeeds and
-        the counter lands precisely on the limit (no lost increments)."""
+        """Fire exactly the daily allowance concurrently; every one succeeds and the counter lands precisely on the limit."""
         # Use a feature that still has an enforced daily count — chat is now
         # cost-walled (free.day == 0), so it can't exercise the daily counter.
         # Derived from config so retuning the limit never makes this stale.
@@ -524,11 +521,7 @@ class TestConcurrentRequests:
             assert int(counter) == num_requests
 
     async def test_concurrent_requests_respect_limit(self) -> None:
-        """Fire more concurrent requests than the limit allows.
-
-        Some should succeed and some should raise RateLimitExceededException.
-        The total successful increments must not exceed the limit.
-        """
+        """Fire more concurrent requests than the limit allows; total successful increments must not exceed the limit."""
         # Derived from config so retuning deep_research never makes this stale.
         limit = get_limits_for_plan("deep_research", PlanType.FREE).day
         num_requests = limit + 15
@@ -605,8 +598,7 @@ class TestPlanGatedFeatures:
         self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
 
     async def test_rate_limit_exceeded_on_free_suggests_upgrade(self) -> None:
-        """When a free user is rate-limited on a feature where free limit is 0
-        for that period, the exception should include plan_required='pro'."""
+        """When a free user is rate-limited on a feature with a 0 free limit, the exception includes plan_required='pro'."""
         with (
             frozen_time("2026-04-01T12:00:00"),
             patch.object(self.limiter, "_sync_usage_real_time", new_callable=AsyncMock),

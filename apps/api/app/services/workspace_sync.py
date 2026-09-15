@@ -4,14 +4,14 @@ Re-materializes the per-user JuiceFS workspace (system symlinks + user-root docs
 + SKILL.md / instructions catalog) for many users at once. Two callers share
 this core:
 
-* **App startup** (`unified_startup`): bounded run over *active* users whose
-  on-disk skills marker is stale vs. the current ``library_hash()`` — so a
+* **App startup** (unified_startup): bounded run over *active* users whose
+  on-disk skills marker is stale vs. the current library_hash() — so a
   deploy that ships new builtin skills re-syncs everyone who's been using GAIA,
   without touching the chat-turn hot path.
-* **Developer CLI** (`app/scripts/sync_user_workspaces.py`): one-off backfill of
+* **Developer CLI** (app/scripts/sync_user_workspaces.py): one-off backfill of
   users who predate registration-time provisioning, or a forced re-sync.
 
-Per-user work is delegated to :func:`provision_user_workspace`, which is
+Per-user work is delegated to :func:provision_user_workspace, which is
 idempotent and hash-gated; this module only decides *which* users to touch.
 """
 
@@ -47,7 +47,7 @@ schedule_user_provision = make_scheduler(_provision, log_name="user_provision")
 
 
 async def _active_user_ids(active_days: int) -> list[str]:
-    """User ids with a conversation updated within ``active_days``."""
+    """User ids with a conversation updated within active_days."""
     cutoff = datetime.now(UTC) - timedelta(days=active_days)
     ids = await conversation_repository.active_user_ids_since(cutoff)
     return [uid for uid in ids if uid]
@@ -64,11 +64,11 @@ async def sync_stale_user_workspaces(
     active_days: int | None = None,
     force: bool = False,
 ) -> dict[str, int]:
-    """Re-provision users whose skills marker != current ``library_hash()``.
+    """Re-provision users whose skills marker != current library_hash().
 
-    ``active_only`` restricts to users with recent conversation activity (the
-    startup default). ``force`` re-provisions regardless of the marker. Returns
-    ``{"scanned", "synced", "skipped"}``. No-ops when JuiceFS is unmounted.
+    active_only restricts to users with recent conversation activity (the
+    startup default). force re-provisions regardless of the marker. Returns
+    {"scanned", "synced", "skipped"}. No-ops when JuiceFS is unmounted.
     """
     if not _is_mounted():
         log.info("workspace_sync.skipped_no_mount")
@@ -104,16 +104,12 @@ async def sync_stale_user_workspaces(
 
 
 async def init_system_subtree() -> None:
-    """Startup: materialize the global shared ``_system`` subtree once the mount
-    is live. The subtree is global and only changes when the skill library ships,
-    so startup is the right place. Idempotent + hash-gated; no-ops without a mount."""
+    """Materialize the shared _system subtree at startup (idempotent, hash-gated; no-op without a mount)."""
     await providers.aget("juicefs_mount")
     await ensure_system_subtree()
 
 
 async def resync_stale_user_workspaces() -> None:
-    """Startup: re-provision active users whose skill catalog is stale vs. the
-    current library (e.g. a deploy shipped new builtin skills). The developer
-    script covers backfill / ad-hoc runs."""
+    """Re-provision active users whose skill catalog is stale; the dev script covers backfill/ad-hoc runs."""
     await providers.aget("juicefs_mount")
     await sync_stale_user_workspaces(active_only=True)

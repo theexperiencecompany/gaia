@@ -78,21 +78,15 @@ describe("useIsPaid — plan status unknown vs. known-free", () => {
   });
 
   it("reports isUnknown === true (never a bare 'not paid') before the current-user cache has a real userId", () => {
-    // Simulates the exact pre-hydration window from the bug report: the
-    // persisted query cache hasn't restored yet, so userId is still "" and
-    // the subscription-status query is disabled — it has never fetched and
-    // never will until userId appears. TanStack Query v5 reports
-    // isLoading === false for a disabled query even though it has no data,
-    // which is the trap the old `useIsPaid` contract fell into.
+    // Simulates pre-hydration: userId is "" so the subscription-status
+    // query is disabled and never fetches. TanStack v5 reports
+    // isLoading === false for a disabled query — the trap the old `useIsPaid` contract fell into.
     withProviders(<Probe />);
 
     expect(screen.getByTestId("isPaid").textContent).toBe("false");
-    // The critical assertion: a consumer relying on `isUnknown` must be able
-    // to tell "hasn't answered yet" apart from "answered: free". Before the
-    // fix this hook exposed `isLoading` here, which TanStack reports as
-    // `false` for a disabled query — so a consumer gating on `isLoading ||
-    // isPaid` would incorrectly treat this exact state as "known free" and
-    // render the free-tier UI / paywall for a user who might be Pro.
+    // A consumer relying on `isUnknown` must tell "hasn't answered" apart
+    // from "answered: free" — the old hook exposed `isLoading` here (false
+    // for a disabled query), so `isLoading || isPaid` wrongly read "known free".
     expect(screen.getByTestId("isUnknown").textContent).toBe("true");
     // The query must never have fired — proves this is genuinely the
     // disabled-query window, not a fast real fetch.

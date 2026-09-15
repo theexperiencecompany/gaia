@@ -3,10 +3,10 @@
 The check below rides in the executor's opening brief, not in the narration of
 the finished result. Two reasons, both load-bearing:
 
-* Only the executor can act on it. ``write_playbook`` lives in the executor's
-  tool registry; comms binds exactly ``call_executor`` / ``cancel_executor`` /
-  the memory tools and is built with ``disable_retrieve_tools=True``
-  (``build_graph.py``), so a check delivered at narration time asks for a tool
+* Only the executor can act on it. write_playbook lives in the executor's
+  tool registry; comms binds exactly call_executor / cancel_executor /
+  the memory tools and is built with disable_retrieve_tools=True
+  (build_graph.py), so a check delivered at narration time asks for a tool
   the narrator cannot reach, and risks being re-voiced into the user's message.
 * The executor already has its own calls in context when it finishes, so the
   judgement is made against what actually happened without rendering a trace
@@ -100,13 +100,9 @@ PLAYBOOK_HEAL_NO_REASON = "no reason was recorded"
 #: cannot drift apart on voice.
 _PLAYBOOK_VOICE = """Write like a person. Open on the actual point, vary your sentence length, use plain words, and say what you think instead of hedging every clause. No throat-clearing openers, no "delve", "seamless", "robust", "leverage", "testament to", no reflexive "Moreover". Do not overcorrect into forced quirkiness or slang either. Natural and clear is the whole target."""
 
-#: The mid-run call: fills the ``$ask`` slots the next step needs, and nothing
-#: else. One call per step that carries slots, made immediately before that
-#: step, so the slots are written from everything that has actually run. It runs
-#: before the later steps, so it must not write the user's result or judge the
-#: run: neither can be done before the run's outcome is known.
-#: Wraps the element a for_each step is on, so a slot written per element is
-#: written about that element and not about the list.
+#: The mid-run call: fills the ``$ask`` slots the next step needs, made
+#: immediately before that step. Must not write the user's result or judge
+#: the run. Wraps the for_each element, so a slot is about that element only.
 PLAYBOOK_ASK_ELEMENT = """
 <this_element>
 The next step repeats over a list, and right now it is on this element. Write about THIS one only:
@@ -176,9 +172,8 @@ Ground every word in what is listed above. Never invent a number, a name, a link
 
 
 #: Delivered as the run's result when every step replayed but the narration
-#: call did not return. The steps' effects are real and their results are on
-#: the record, so the user gets what ran rather than a failed run, and the
-#: playbook is not sent to heal over a call that was never its fault.
+#: call did not return — the user gets what ran rather than a failed run,
+#: and the playbook is not sent to heal over a call that was never its fault.
 PLAYBOOK_NARRATION_FALLBACK_TEMPLATE = """The saved steps for this workflow ran, but the summary could not be written this time ({reason}).
 
 What ran:

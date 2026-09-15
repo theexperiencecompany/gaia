@@ -19,7 +19,7 @@ class NotesRepository(UserScopedRepository[NoteDocument, NoteUpdate]):
         return await self._find({"user_id": user_id})
 
     async def find_by_ids(self, user_id: str, note_ids: list[str]) -> list[NoteDocument]:
-        """The user's notes whose ``_id`` is in ``note_ids`` (order not preserved)."""
+        """Return the user's notes whose _id is in note_ids (order not preserved)."""
         if not note_ids:
             return []
         return await self._find(
@@ -27,7 +27,7 @@ class NotesRepository(UserScopedRepository[NoteDocument, NoteUpdate]):
         )
 
     async def search_by_plaintext(self, user_id: str, *, pattern: str) -> list[NoteSearchHit]:
-        """Notes whose plaintext matches a regex ``pattern`` (caller escapes it)."""
+        """Return notes whose plaintext matches a regex pattern (caller escapes it)."""
         return await self._aggregate(
             [
                 {"$match": {"user_id": user_id, "plaintext": {"$regex": pattern, "$options": "i"}}},

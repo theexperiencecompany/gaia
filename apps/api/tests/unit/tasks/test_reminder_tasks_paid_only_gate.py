@@ -2,13 +2,13 @@
 
 The HTTP paywall is a middleware; the scheduler never makes an HTTP request, so
 a reminder created while subscribed would keep firing (and keep spending) after
-the subscription lapsed. ``execute_reminder_by_agent`` is the single choke point
+the subscription lapsed. execute_reminder_by_agent is the single choke point
 every fire passes through, so the gate lives there.
 
-The gate only SKIPS. It used to write ``PAUSED`` as well, which was invisible:
-``BaseSchedulerService.process_task_execution`` writes the reminder's status
-again the moment the fire returns — ``SCHEDULED`` for a recurring reminder,
-``COMPLETED`` for a one-off — so the pause was overwritten every time and no
+The gate only SKIPS. It used to write PAUSED as well, which was invisible:
+BaseSchedulerService.process_task_execution writes the reminder's status
+again the moment the fire returns — SCHEDULED for a recurring reminder,
+COMPLETED for a one-off — so the pause was overwritten every time and no
 subscription-restore path had anything to resume from. Skipping instead lets
 the scheduler's own re-arm bring a recurring reminder back by itself, which is
 what the workflow gate does for the same reason.
@@ -71,15 +71,7 @@ async def test_free_user_reminder_does_not_fire() -> None:
 
 @pytest.mark.usefixtures("lapsed_user")
 async def test_the_block_reaches_the_funnel_under_the_blocked_users_own_id() -> None:
-    """Every other paywall block in the app is attributable; this one must be too.
-
-    This gate cannot go through ``require_active_subscription`` — that raises,
-    and a worker must skip — so the event it would have fired has to be fired
-    here. Without it "how many users lost a reminder to the wall" is
-    unanswerable while every other surface answers it, and a worker has no
-    request context, so the id must be explicit or the block lands on an
-    anonymous profile.
-    """
+    """Unable to use require_active_subscription (it raises), so the paywall event must be fired here with an explicit user_id since a worker has no request context to attribute it."""
     with (
         patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
         patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
@@ -109,12 +101,7 @@ async def test_a_paying_users_reminder_is_never_captured_as_blocked() -> None:
 
 @pytest.mark.usefixtures("lapsed_user")
 async def test_the_skip_is_recorded_on_the_wide_event_with_both_ids() -> None:
-    """A skipped reminder is silent: the wide event is the only trace.
-
-    ``log.warning`` writes message AND kwargs into the event's ``warnings[]``
-    (see libs/shared/py/wide_events.py), so both ids are a queried surface —
-    without them "why did my reminder stop?" is unanswerable from Loki.
-    """
+    """log.warning writes both ids into the wide event's warnings[] so "why did my reminder stop?" is answerable from Loki."""
     with (
         patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
         patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
@@ -130,13 +117,7 @@ async def test_the_skip_is_recorded_on_the_wide_event_with_both_ids() -> None:
 
 
 async def test_a_user_who_just_paid_fires_off_the_row_not_the_stale_cache() -> None:
-    """The cached tier lags a payment by up to its TTL.
-
-    A user who paid two minutes ago still reads FREE from Redis. Refusing an
-    HTTP request on that is recoverable — the next one is fine — but a reminder
-    occurrence refused on it is gone. The real gate, not a stub of it: cache
-    FREE, row PRO, and the reminder fires.
-    """
+    """The real gate, not a stub: cache reads FREE while the row is PRO, and the reminder still fires — unlike an HTTP request, a skipped occurrence is gone for good."""
     with (
         patch(f"{MODULE}.is_paid", entitlements.is_paid),
         patch(
@@ -177,15 +158,7 @@ async def test_the_gate_asks_about_the_reminders_own_owner() -> None:
 async def test_a_recurring_reminder_the_gate_skipped_is_left_armed_for_its_next_occurrence() -> (
     None
 ):
-    """Driven through the scheduler, because the scheduler is what overwrote the pause.
-
-    ``process_task_execution`` is the path the ARQ job takes: claim, execute,
-    then write the status again. Testing the gate alone cannot see that second
-    write, which is why the pause it used to take looked correct in isolation
-    and was gone in production. Only the reminder repository and the ARQ pool
-    are faked; the status the reminder ends up in is whatever the real
-    scheduler settles on.
-    """
+    """Driven through process_task_execution (the real ARQ path) because testing the gate alone misses the scheduler's second status write that overwrote the pause in production."""
     set_status = AsyncMock(return_value=True)
     with (
         patch(

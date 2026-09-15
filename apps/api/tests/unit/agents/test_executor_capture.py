@@ -111,12 +111,7 @@ class TestDrain:
         assert group["tool_calls"][0]["tool_call_id"] == "tc-1"
 
     def test_drain_is_non_destructive(self) -> None:
-        """Single-ownership depends on this: draining must NOT empty the source.
-
-        If someone "optimizes" drain into a destructive pop, the comms attach
-        and a finalize backstop racing would silently drop cards instead of
-        deduping by ownership.
-        """
+        """Draining must NOT empty the source, or a racing attach/finalize backstop would drop cards."""
         session = create_session("s1", RunKind.QUEUED)
         session.tool_events.append(_tool_call_event("tc-1"))
 
@@ -199,11 +194,7 @@ class TestReturnedToFrontendNote:
         assert "  - todo_data (1 todo, via subagent:Todoist)\n" in note
 
     def test_an_unattributable_card_is_never_credited_to_a_producer(self) -> None:
-        """A subagent that started without a name produces cards nothing can
-        credit — and neither can the executor's own cards. Both must land on the
-        SAME unattributed row: two ways of having no producer are one fact, and
-        splitting them into two rows tells comms two different things happened.
-        """
+        """An unnamed subagent's cards and the executor's own cards must land on the SAME unattributed row."""
         session = create_session("s1", RunKind.QUEUED)
         session.tool_events.append({"subagent_start": {"subagent_id": "sub-9"}})
         session.tool_events.append(
@@ -217,9 +208,7 @@ class TestReturnedToFrontendNote:
         assert "via subagent" not in note
 
     def test_a_malformed_group_row_is_skipped_not_fatal(self) -> None:
-        """``subagent_group`` rows also arrive pre-formed from child streams, so
-        the shape is not this module's to guarantee. One bad row must cost its
-        own provenance, never the whole note."""
+        """A malformed subagent_group row must cost its own provenance, never the whole note."""
         session = create_session("s1", RunKind.QUEUED)
         session.tool_events.append({"tool_data": {"tool_name": "subagent_group", "data": None}})
         session.tool_events.append({"tool_data": {"tool_name": "todo_data", "data": [{"id": "a"}]}})
@@ -231,9 +220,7 @@ class TestReturnedToFrontendNote:
         assert build_returned_to_frontend_note("s1") == ""
 
     def test_the_full_note_is_pinned_verbatim_for_a_named_subagent_card(self) -> None:
-        """Exact rendered text — not a substring — so a dropped tool name, an
-        emptied subagent name, or a vanished data lookup all go red here even
-        if a looser 'in note' check would not notice the surrounding text."""
+        """Exact rendered text, not a substring, so a dropped tool name or emptied subagent name goes red."""
         session = create_session("s1", RunKind.QUEUED)
         session.tool_events.append(
             {
@@ -287,10 +274,12 @@ class TestReturnedToFrontendNote:
 
 
 class TestCollectCoalescesReasoning:
-    """Direct unit coverage of ``redis_writer._collect``'s content-merge line —
-    pins the exact defaults used when a dict is missing its ``content`` key,
+    """Direct unit coverage of redis_writer._collect's content-merge line.
+
+    Pins the exact defaults used when a dict is missing its content key,
     which the higher-level streaming tests never exercise (every delta they
-    send already carries content)."""
+    send already carries content).
+    """
 
     def test_two_consecutive_deltas_concatenate_exactly(self) -> None:
         session = create_session("s1", RunKind.QUEUED)
@@ -365,11 +354,13 @@ class TestRedisStreamWriter:
 
 @pytest.mark.unit
 class TestAnExecutorThatNeverFinishes:
-    """Seen live: an executor stopped mid-run and never signalled done. The
-    silent path waited the whole EXECUTOR_WAIT_TIMEOUT, which equals the
-    worker's job timeout, so the job was cut first, the fire was never closed
-    out, and the record stayed 'running'. The wait now ends before the job
-    does, counts as the executor failing, and says what was still running."""
+    """Seen live: an executor stopped mid-run and never signalled done.
+
+    The silent path waited the whole EXECUTOR_WAIT_TIMEOUT, which equals the
+    worker's job timeout, so the job was cut first and the record stayed
+    'running'. The wait now ends before the job does, counts as the executor
+    failing, and says what was still running.
+    """
 
     async def test_a_timed_out_wait_marks_the_executor_failed_with_a_reason(self) -> None:
         register_executor_capture("s1")
@@ -406,8 +397,7 @@ class TestAnExecutorThatNeverFinishes:
     async def test_the_stuck_tasks_are_the_agent_runs_with_their_innermost_frames(
         self,
     ) -> None:
-        """Only the executor's and subagents' runs are named, each with the
-        innermost frames joined newest first, so the line says where it sits."""
+        """Only the executor's and subagents' runs are named, each with its innermost frames joined newest first."""
 
         async def deeper(levels: int) -> None:
             if levels:
@@ -422,7 +412,7 @@ class TestAnExecutorThatNeverFinishes:
             await asyncio.sleep(10)
 
         class run_subagent_probe(Coroutine[object, object, object]):  # noqa: N801 -- named like the coroutine it stands for
-            """A coroutine object with no ``__qualname__``: named by its type."""
+            """A coroutine object with no __qualname__: named by its type."""
 
             def __init__(self) -> None:
                 self._inner = asyncio.sleep(10)

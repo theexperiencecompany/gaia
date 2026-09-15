@@ -89,9 +89,9 @@ def _tool_msg(content: str, name: str = "search") -> ToolMessage:
 def _decide(
     mw: WorkspaceCompactionMiddleware, msg: ToolMessage, tool_name: str, usage: float
 ) -> tuple[bool, str]:
-    """Run the middleware's compaction decision the way ``awrap_tool_call`` does.
+    """Run the middleware's compaction decision the way awrap_tool_call does.
 
-    The decide logic now lives in the module-level ``should_compact_output``; the
+    The decide logic now lives in the module-level should_compact_output; the
     middleware only supplies its config and derives the per-tool flags. This
     mirrors that derivation so the behavioral assertions stay identical.
     """
@@ -208,12 +208,7 @@ class TestAwrapToolCall:
         mock_write.assert_not_awaited()
 
     async def test_missing_mount_compacts_in_context_instead_of_skipping(self) -> None:
-        """JuiceFS down (native dev / outage) must still compact.
-
-        The workspace spill is the lossless tier; when it is unavailable the
-        output is truncated in context instead. Returning the full output
-        unchanged (the old behavior) let context grow without bound.
-        """
+        """JuiceFS down must still compact: truncate in context rather than return the full output unchanged."""
         mw = WorkspaceCompactionMiddleware(max_output_chars=10)
         big = "HEAD" + ("x" * 200_000) + "TAIL"
 
@@ -359,8 +354,7 @@ class TestAwrapToolCall:
         mock_write.assert_not_awaited()
 
     async def test_missing_user_id_compacts_in_context(self) -> None:
-        """No workspace identity means no spill target — compact in context,
-        never hand the agent the full output back."""
+        """No workspace identity means no spill target — compact in context."""
         mw = WorkspaceCompactionMiddleware(max_output_chars=10)
         big = "x" * 200_000
         request = SimpleNamespace(
@@ -440,8 +434,10 @@ _DIGEST_SWAP: dict = {"done": False}
 
 
 class _SwapAfterInvokeModel(BaseChatModel):
-    """Lets the first invoke complete, then swaps in an unusable payload so
-    the narrowing branch (content neither str nor list) is exercised."""
+    """Let the first invoke complete, then swap in an unusable payload.
+
+    Exercises the narrowing branch where content is neither str nor list.
+    """
 
     @property
     def _llm_type(self) -> str:
@@ -488,8 +484,10 @@ class _InstantDigestModel(BaseChatModel):
 
 
 class TestLLMSummary:
-    """The digest tier: the LLM summary IS the compacted payload; the JuiceFS
-    pointer is an optional add-on, never a requirement (issue #916)."""
+    """The digest tier: the LLM summary IS the compacted payload.
+
+    The JuiceFS pointer is an optional add-on, never a requirement (issue #916).
+    """
 
     def _mw(self, llm: object) -> WorkspaceCompactionMiddleware:
         return WorkspaceCompactionMiddleware(
@@ -505,8 +503,7 @@ class TestLLMSummary:
         )
 
     async def test_digest_stands_alone_without_a_workspace(self) -> None:
-        """No user/conversation id → nowhere to spill; the summary alone must
-        carry the substance instead of degrading to lossy truncation."""
+        """No user/conversation id: the summary alone must carry the substance, not lossy truncation."""
         mw = self._mw(create_fake_llm(["Found 3000 rows; all status=shipped."]))
         big = json.dumps([{"row": i, "status": "shipped"} for i in range(1500)])
 
@@ -553,8 +550,7 @@ class TestLLMSummary:
     async def test_digest_failure_degrades_to_legacy_spill_body_without_double_write(
         self,
     ) -> None:
-        """When the summarizer is unreachable but the workspace exists, today's
-        preview-plus-pointer body is kept — and the raw output is written ONCE."""
+        """Summarizer unreachable but workspace exists: keep the preview-plus-pointer body, write raw output ONCE."""
         mw = self._mw(_BrokenModel())
         big = "x" * 5000
 
@@ -651,7 +647,7 @@ class TestLLMSummary:
         assert _summary_input_sample(short) == short
 
     def test_summary_input_sample_boundary_is_inclusive(self) -> None:
-        """len == head+tail passes through untouched; one more char splits."""
+        """Len == head+tail passes through untouched; one more char splits."""
         from app.constants.summarization import (
             COMPACTION_SUMMARY_INPUT_HEAD_CHARS as HEAD,
             COMPACTION_SUMMARY_INPUT_TAIL_CHARS as TAIL,
@@ -666,8 +662,10 @@ class TestLLMSummary:
 
 
 class TestDigestComposition:
-    """Pin the digest message's exact observable pieces — header, pointer
-    wording per format, kwargs fields, status passthrough, kwargs merging."""
+    """Pin the digest message's exact observable pieces.
+
+    Header, pointer wording per format, kwargs fields, status passthrough, kwargs merging.
+    """
 
     def _build(self, *, fmt="json", spilled=True, status="success", extra=None):
         path = WROTE[1]
@@ -850,8 +848,7 @@ class TestLLMSummarizeInternals:
         assert len(matches) == 1, log.records
 
     async def test_missing_content_attr_uses_empty_default(self) -> None:
-        """getattr's '' default must survive: a message without .content yields
-        an empty digest -> 'was empty' warning, not a crash or a phantom value."""
+        """A message without .content yields an empty digest -> 'was empty' warning, not a crash."""
         from app.agents.middleware import compaction as cm
 
         log = _StubLog()
@@ -954,8 +951,10 @@ class TestLLMSummarizeInternals:
 
 
 class TestDigestWarningPayloads:
-    """The fallback warnings carry the tool name and error type — operators
-    grep for them when a lane degrades; they must not be able to go None."""
+    """The fallback warnings carry the tool name and error type.
+
+    Operators grep for them when a lane degrades; they must not be able to go None.
+    """
 
     async def test_llm_failure_warning_names_tool_and_error(self) -> None:
         log = _StubLog()
@@ -995,10 +994,11 @@ class TestDigestWarningPayloads:
 
 
 class TestKwargPlumbing:
-    """compact_tool_output forwards identity/reason/tool kwargs into the
-    spill write, the log payloads, and the message fields. A None slipped
-    into any of those is invisible in happy-path assertions, so capture
-    everything at every boundary and compare exactly."""
+    """compact_tool_output forwards identity/reason/tool kwargs into the spill write, log payloads, and message fields.
+
+    A None slipped into any of those is invisible in happy-path assertions,
+    so capture everything at every boundary and compare exactly.
+    """
 
     async def test_spill_write_receives_identity_and_raw_content(self) -> None:
         mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=None)
@@ -1072,8 +1072,10 @@ class TestKwargPlumbing:
 
 
 class TestCompactToolOutputBoundary:
-    """Every kwarg compact_tool_output forwards must land somewhere observable
-    — message fields, log payloads, write kwargs — or a None can slip through."""
+    """Every kwarg compact_tool_output forwards must land somewhere observable.
+
+    Message fields, log payloads, write kwargs — or a None can slip through.
+    """
 
     async def test_digest_success_path_pins_every_forwarded_kwarg(self) -> None:
         from langchain_core.messages import AIMessage
@@ -1437,8 +1439,10 @@ class TestNoWorkspaceIdentityWarningPayload:
 
 
 class TestFullKwargsCapture:
-    """Patch every internal function, drive all three tiers, and assert the
-    EXACT kwargs each receives — any dropped or None'd kwarg fails."""
+    """Patch every internal function, drive all three tiers, and assert the EXACT kwargs each receives.
+
+    Any dropped or None'd kwarg fails.
+    """
 
     async def test_digest_path_kwargs(self) -> None:
         import json as _json
@@ -1634,8 +1638,7 @@ class TestUnusablePayloadKwargs:
         assert matches[0][1] == {"tool_name": "my_tool", "payload_type": "int"}
 
     async def test_no_workspace_warning_missing_strings_exact(self) -> None:
-        """The 'set'/'missing' strings in the identity-warning kwargs are
-        load-bearing — operators grep for them."""
+        """The 'set'/'missing' strings in the identity-warning kwargs are load-bearing — operators grep for them."""
         from app.agents.middleware import compaction as cm
 
         log = _StubLog()

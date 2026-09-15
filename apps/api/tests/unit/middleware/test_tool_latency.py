@@ -30,7 +30,7 @@ def _sum(tool_name: str, status: str) -> float:
 
 
 class _RegularTool:
-    """A non-MCP tool: no ``tool_connector``, so it keeps its own name."""
+    """A non-MCP tool: no tool_connector, so it keeps its own name."""
 
 
 class _McpTool:
@@ -93,8 +93,7 @@ async def test_failing_call_observes_error_span() -> None:
 
 
 async def test_mcp_tool_collapses_to_mcp_label() -> None:
-    """User-defined MCP server tool names are unbounded cardinality — the
-    collector sees ``mcp`` while the wide event keeps the real name."""
+    """MCP tool names are unbounded cardinality: the collector sees mcp, the wide event the real name."""
     before = _count("mcp", "success")
     mcp_tool = MagicMock()
     mcp_tool.tool_connector = MagicMock()
@@ -145,8 +144,7 @@ async def test_failing_call_records_exact_seconds() -> None:
 
 
 async def test_hil_pause_is_neither_success_nor_error() -> None:
-    """A gate interrupt is control flow, not a result: it propagates and
-    leaves nospan — the pause is measured as HIL wait, not tool time."""
+    """A gate interrupt propagates and leaves no span: the pause is HIL wait, not tool time."""
     from langchain.agents.middleware import AgentMiddleware
     from langchain.agents.middleware.types import ToolCallRequest
 
@@ -167,9 +165,7 @@ async def test_hil_pause_is_neither_success_nor_error() -> None:
 
 
 async def test_middleware_chain_routes_through_each_wrapper() -> None:
-    """The chain is built by wrapping each middleware around the inner handler:
-    a wrapper wired to None (or a None seed) must route through the middleware,
-    not silently fall back to a direct tool call."""
+    """A wrapper wired to None must still route through the middleware, not call the tool directly."""
     from langchain.agents.middleware import AgentMiddleware
     from langchain.agents.middleware.types import ToolCallRequest
 
@@ -207,8 +203,7 @@ async def test_middleware_chain_routes_through_each_wrapper() -> None:
 
 
 async def test_pre_tool_failure_falls_back_with_the_original_call() -> None:
-    """A middleware that breaks before the tool runs is retried directly — and
-    the retry must carry the original tool_call, not a nulled one."""
+    """The direct retry must carry the original tool_call, not a nulled one."""
     from langchain.agents.middleware import AgentMiddleware
     from langchain.agents.middleware.types import ToolCallRequest
 
@@ -225,8 +220,7 @@ async def test_pre_tool_failure_falls_back_with_the_original_call() -> None:
 
 
 async def test_pre_tool_break_then_direct_invoke_failure_records_exact_error_seconds() -> None:
-    """Pre-tool middleware breaks AND the direct-invoke retry also fails: the
-    error span is the elapsed subtraction in seconds (a sign error records 14.5)."""
+    """Pre-tool break plus a failed direct-invoke retry records the elapsed seconds (a sign error would record 14.5)."""
     from langchain.agents.middleware import AgentMiddleware
     from langchain.agents.middleware.types import ToolCallRequest
 
@@ -252,10 +246,7 @@ async def test_pre_tool_break_then_direct_invoke_failure_records_exact_error_sec
 
 
 async def test_post_tool_middleware_failure_still_records_success() -> None:
-    """A middleware that breaks AFTER the tool ran and succeeded is a successful
-    tool call: the status label reflects the tool's outcome, not the
-    middleware's. Recording it as an error inflated the tool error rate while the
-    tool's success went uncounted."""
+    """A middleware that breaks after the tool succeeded is still a successful tool call; the status label is the tool's outcome."""
     from langchain.agents.middleware import AgentMiddleware
     from langchain.agents.middleware.types import ToolCallRequest
 
@@ -282,8 +273,7 @@ async def test_post_tool_middleware_failure_still_records_success() -> None:
 
 
 async def test_pre_tool_failure_records_success_when_the_direct_invoke_succeeds() -> None:
-    """A pre-tool middleware breaks, the tool never ran, the direct fallback runs
-    it and it succeeds — that is a successful tool call, not an error."""
+    """A pre-tool break whose direct fallback then succeeds is a successful tool call, not an error."""
     from langchain.agents.middleware import AgentMiddleware
     from langchain.agents.middleware.types import ToolCallRequest
 
@@ -306,8 +296,7 @@ async def test_pre_tool_failure_records_success_when_the_direct_invoke_succeeds(
 
 
 async def test_pre_tool_failure_records_error_when_the_direct_invoke_also_fails() -> None:
-    """The tool genuinely never produced a result — a real error span, and the
-    failure propagates."""
+    """A tool that never produced a result records a real error span and the failure propagates."""
     from langchain.agents.middleware import AgentMiddleware
     from langchain.agents.middleware.types import ToolCallRequest
 

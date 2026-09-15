@@ -101,12 +101,7 @@ class TestThreadIsolation:
     """Checkpoints from different thread_ids must not bleed into each other."""
 
     async def test_two_threads_store_independently(self, manager: CheckpointerManager) -> None:
-        """
-        Checkpoints written under thread_1 must not appear when querying thread_2.
-
-        This guards against a misconfigured connection pool or schema bug that
-        would cause LangGraph to serve the wrong conversation history to a user.
-        """
+        """Guards against a misconfigured connection pool or schema bug serving the wrong conversation history to a user."""
         checkpointer = manager.get_checkpointer()
         thread_1 = str(uuid4())
         thread_2 = str(uuid4())
@@ -132,11 +127,7 @@ class TestThreadIsolation:
         assert result_1.checkpoint["id"] != result_2.checkpoint["id"]
 
     async def test_thread_1_not_visible_from_thread_2(self, manager: CheckpointerManager) -> None:
-        """
-        alist on thread_2 must not yield checkpoints belonging to thread_1.
-
-        If isolation breaks, a user could receive another user's conversation.
-        """
+        """If isolation breaks, a user could receive another user's conversation."""
         checkpointer = manager.get_checkpointer()
         thread_1 = str(uuid4())
         thread_2 = str(uuid4())
@@ -158,7 +149,7 @@ class TestThreadIsolation:
     async def test_multiple_checkpoints_per_thread_ordered(
         self, manager: CheckpointerManager
     ) -> None:
-        """alist must return all checkpoints for a thread, newest first."""
+        """Alist must return all checkpoints for a thread, newest first."""
         checkpointer = manager.get_checkpointer()
         thread_id = str(uuid4())
         config = _thread_config(thread_id)
@@ -192,7 +183,7 @@ class TestCheckpointStorageStaysBounded:
     the thread; the pre-model filtering was request-only, so the checkpoint
     accumulated one full stack per run (39 copies on one workflow thread) and
     the end-graph hook node re-serialized the whole accumulated list into
-    ``checkpoint_writes`` on every run — 19 GB of Postgres from one database.
+    checkpoint_writes on every run — 19 GB of Postgres from one database.
     This drives the REAL comms graph against the REAL Postgres checkpointer and
     measures actual stored bytes for the thread.
     """
@@ -255,10 +246,9 @@ class TestCheckpointStorageStaysBounded:
             row = await cur.fetchone()
         total_bytes = int(row[0]) if row else 0
 
-        # Each run legitimately stores ~one prompt stack (the graph input write
-        # and its delta blob). The regression stored the full ACCUMULATED list
-        # again per run — super-linear growth that blows straight through this
-        # linear budget (measured: ~3.5x over it at 4 runs, growing per run).
+        # Each run legitimately stores ~one prompt stack. The regression stored
+        # the full accumulated list again per run — super-linear growth that
+        # blows this linear budget (measured ~3.5x over it at 4 runs).
         budget = runs * stack_bytes * 3
         assert total_bytes < budget, (
             f"thread stored {total_bytes} bytes after {runs} runs "

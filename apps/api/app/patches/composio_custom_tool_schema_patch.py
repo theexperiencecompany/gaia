@@ -14,7 +14,7 @@ from shared.py.wide_events import log
 
 
 def to_std_dict(obj: t.Any) -> t.Any:  # noqa: ANN401 -- framework contract
-    """Recursively convert jsonref proxies to standard python dicts/lists"""
+    """Recursively convert jsonref proxies to standard python dicts/lists."""
     if isinstance(obj, dict):
         return {k: to_std_dict(v) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -27,7 +27,7 @@ _applied = False
 
 
 def _patched_parse_info(self: t.Any) -> t.Any:  # noqa: ANN401 -- framework contract
-    """Patched version that inlines $ref before storing schema"""
+    """Patched version that inlines $ref before storing schema."""
     if _original_parse_info is None:
         raise RuntimeError("composio_custom_tool_schema_patch.apply() was not called")
     tool_info = _original_parse_info(self)
@@ -42,7 +42,7 @@ def _patched_parse_info(self: t.Any) -> t.Any:  # noqa: ANN401 -- framework cont
 
 
 def apply() -> None:
-    """Apply the patch to CustomTool.__parse_info"""
+    """Apply the patch to CustomTool.__parse_info."""
     global _applied, _original_parse_info
 
     if _applied:

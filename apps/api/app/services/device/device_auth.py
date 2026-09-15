@@ -1,6 +1,6 @@
 """Device connect-token minting/verification and refresh-credential hashing.
 
-The daemon presents a short-lived JWT (``aud=device-bridge``) on the WebSocket
+The daemon presents a short-lived JWT (aud=device-bridge) on the WebSocket
 upgrade. It obtains that JWT by exchanging a long-lived refresh credential, which
 rotates on every exchange. We store only the SHA-256 of the refresh credential.
 """
@@ -34,7 +34,7 @@ def generate_refresh_token() -> str:
 
 
 def create_device_token(device_id: str, user_id: str) -> tuple[str, int]:
-    """Mint a short-lived device connect JWT. Returns ``(token, expires_in_seconds)``."""
+    """Mint a short-lived device connect JWT. Returns (token, expires_in_seconds)."""
     expires_in = DEVICE_TOKEN_EXPIRY_MINUTES * 60
     now = datetime.now(UTC)
     payload = {
@@ -50,7 +50,7 @@ def create_device_token(device_id: str, user_id: str) -> tuple[str, int]:
 
 
 def verify_device_token(token: str) -> DeviceTokenClaims | None:
-    """Verify a device connect JWT. Returns ``{user_id, device_id}`` or ``None``.
+    """Verify a device connect JWT. Returns {user_id, device_id} or None.
 
     The audience check is what stops a chat agent-token or any other HS256 token
     signed with the same secret from authenticating as a device.

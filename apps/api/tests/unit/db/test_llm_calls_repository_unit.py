@@ -3,7 +3,7 @@
 The behavioural proof that a re-run creates nothing lives in the contract suite
 against real Mongo. This pins the operations the repository actually builds —
 the parts a fake Mongo cannot show and a real one only shows indirectly: that
-the match is on the deterministic key, that it is ``$setOnInsert`` (so an
+the match is on the deterministic key, that it is $setOnInsert (so an
 existing row is never rewritten), and that one bad row cannot abort the batch.
 """
 
@@ -37,8 +37,7 @@ def _collection(upserted: int = 2) -> MagicMock:
 
 
 async def test_each_row_is_matched_on_its_own_deterministic_key() -> None:
-    """Matching on anything else — an ObjectId, an insert order — would make a
-    re-run duplicate rather than recognise what it already wrote."""
+    """Matching on anything else — an ObjectId, an insert order — would make a re-run duplicate rather than recognise what it already wrote."""
     collection = _collection()
     repo = LLMCallsRepository()
 
@@ -53,8 +52,7 @@ async def test_each_row_is_matched_on_its_own_deterministic_key() -> None:
 
 
 async def test_an_existing_row_is_never_rewritten() -> None:
-    """``$setOnInsert``, not ``$set``: a row already in the ledger is history,
-    and a re-run must not restate it with today's re-derived numbers."""
+    """$setOnInsert, not $set: a row already in the ledger is history and must not be restated with today's re-derived numbers."""
     collection = _collection()
     repo = LLMCallsRepository()
 
@@ -67,8 +65,7 @@ async def test_an_existing_row_is_never_rewritten() -> None:
 
 
 async def test_one_duplicate_cannot_abort_the_rest_of_the_batch() -> None:
-    """A backfill batch is thousands of rows and some will already exist.
-    Ordered writes would stop at the first and silently drop the remainder."""
+    """A backfill batch is thousands of rows; ordered writes would stop at the first duplicate and silently drop the remainder."""
     collection = _collection()
     repo = LLMCallsRepository()
 
@@ -79,8 +76,7 @@ async def test_one_duplicate_cannot_abort_the_rest_of_the_batch() -> None:
 
 
 async def test_the_count_returned_is_what_was_actually_created() -> None:
-    """The number the script reports as written. Returning the batch size would
-    claim a re-run created rows it recognised and skipped."""
+    """Returning the batch size would claim a re-run created rows it recognised and skipped."""
     collection = _collection(upserted=1)
     repo = LLMCallsRepository()
 
@@ -91,8 +87,7 @@ async def test_the_count_returned_is_what_was_actually_created() -> None:
 
 
 async def test_an_empty_batch_does_not_reach_mongo() -> None:
-    """The last day of a window is often empty; a bulk_write with no operations
-    raises rather than no-opping."""
+    """The last day of a window is often empty; a bulk_write with no operations raises rather than no-opping."""
     collection = _collection()
     repo = LLMCallsRepository()
 
@@ -104,8 +99,7 @@ async def test_an_empty_batch_does_not_reach_mongo() -> None:
 
 
 async def test_the_stored_row_keeps_its_own_creation_time() -> None:
-    """``created_at`` is when the CALL happened, not when the backfill ran — it
-    is the TTL key and the time axis of every ledger query."""
+    """created_at is when the call happened, not when the backfill ran — it is the TTL key and the time axis of every ledger query."""
     collection = _collection()
     repo = LLMCallsRepository()
 

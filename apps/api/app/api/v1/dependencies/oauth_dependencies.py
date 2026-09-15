@@ -42,18 +42,10 @@ async def _backfill_user_timezone(user_id: str, tz: str) -> None:
 # so `async def` is deliberately the cheaper of the two — and it runs on every
 # authenticated request. Dropping `async` would add a threadpool hop per request.
 async def get_current_user(request: Request) -> AuthenticatedUser:  # NOSONAR python:S7503
-    """
-    Retrieves the current user from request state.
-    Authentication is handled by the WorkOSAuthMiddleware.
-
-    Args:
-        request: FastAPI request object with authenticated user in state
-
-    Returns:
-        User data dictionary with authentication info
+    """Return the authenticated user from request state (set by WorkOSAuthMiddleware).
 
     Raises:
-        HTTPException: On authentication failure
+        HTTPException: On authentication failure.
     """
     if not hasattr(request.state, "authenticated") or not request.state.authenticated:
         log.info(f"{LogTag.OAUTH} No authenticated user found in request state")
@@ -103,28 +95,9 @@ async def get_user_id(  # NOSONAR python:S7503
 
 
 async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
-    """
-    Authenticate a user from a WebSocket connection using cookies.
-    This is a special version of get_current_user for WebSocket connections.
-
-    For mobile clients that cannot send cookies, the token is passed via the
-    Sec-WebSocket-Protocol header (subprotocol) for security. This prevents
-    token exposure in server logs and referrers.
-
-    Protocol format: "Bearer, <token>" (client sends ['Bearer', token])
-
-    Args:
-        websocket: The WebSocket connection with cookies
-
-    Returns:
-        User data dictionary with authentication info
-
-    Raises:
-        WebSocketException: Connection will be closed on auth failure
-    """
-    # Dev auth bypass — WebSockets never pass through WorkOSAuthMiddleware
-    # (BaseHTTPMiddleware only handles HTTP), so the bypass is mirrored here,
-    # including the X-Dev-User per-request impersonation header. get_settings()
+    """Authenticate a WebSocket connection via cookies or a Sec-WebSocket-Protocol bearer token."""
+    # WebSockets skip WorkOSAuthMiddleware (HTTP only), so the dev bypass —
+    # including X-Dev-User impersonation — is mirrored here. get_settings()
     # hard-fails if this is set in production.
     if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
         target_email, user_data = await resolve_dev_bypass_user(
@@ -177,10 +150,9 @@ def get_user_timezone(
         default="UTC", alias="x-timezone", description="User's timezone identifier"
     ),
 ) -> GET_USER_TZ_TYPE:
-    """Current time in the request's ``x-timezone`` header zone (defaults to UTC).
+    """Return the current time in the request's x-timezone header zone (defaults to UTC).
 
-    Returns ``(canonical_timezone, now)``. Offset-aware and never raises on a
-    malformed header (falls back to UTC) via ``Timezone.parse``.
+    Offset-aware and never raises on a malformed header (falls back to UTC).
     """
     tz = Timezone.parse(x_timezone)
     now = tz.now()
@@ -194,20 +166,11 @@ async def get_user_timezone_from_preferences(
         default="", alias="x-timezone", description="Browser timezone fallback"
     ),
 ) -> str:
-    """
-    Resolve the user's home timezone, healing a stale/junk stored "UTC".
+    """Resolve the user's home timezone, healing a stale/junk stored "UTC".
 
-      1. A real (non-UTC) `user.timezone` stored in Mongo is authoritative.
-      2. Otherwise — stored value is empty OR a low-confidence "UTC" (often a
-         junk default that then sticks forever and silently runs everything in
-         UTC) — a valid non-UTC `x-timezone` header wins and is backfilled,
-         healing the stored value so header-less background paths (scheduled
-         workflows, notifications) converge to the user's real zone.
-      3. UTC as last resort, or a genuine stored "UTC" when there is no better
-         signal.
-
-    Emits the wide-event field `timezone_source` so every request makes it
-    visible which branch was used.
+    A real non-UTC stored timezone wins; otherwise a valid x-timezone header
+    heals it (so header-less background paths converge on the real zone);
+    UTC is the last resort. Emits timezone_source on the wide event.
     """
     user_id = user.get("user_id")
 

@@ -49,7 +49,7 @@ def _make_todo_data(**overrides: Any) -> dict:
 
 
 def _make_todo_response(**overrides: Any) -> TodoResponse:
-    """Build a ``TodoResponse`` for use in mock return values."""
+    """Build a TodoResponse for use in mock return values."""
     base: dict[str, Any] = {
         "id": TODO_ID,
         "user_id": USER_ID,

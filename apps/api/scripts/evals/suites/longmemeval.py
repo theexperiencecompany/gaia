@@ -29,10 +29,10 @@ DEFAULT_CASE_TIMEOUT_S = 420.0
 
 
 def _case_timeout_s() -> float:
-    """Per-question wall clock, overridable via ``EVALS_CASE_TIMEOUT_S``.
+    """Per-question wall clock, overridable via EVALS_CASE_TIMEOUT_S.
 
-    A non-numeric value fails here, by name, rather than as a bare ``ValueError``
-    from ``float()`` half a run into a suite.
+    A non-numeric value fails here, by name, rather than as a bare ValueError
+    from float() half a run into a suite.
     """
     raw = os.environ.get("EVALS_CASE_TIMEOUT_S")
     if raw is None:
@@ -58,10 +58,8 @@ class LongMemEvalSuite(Suite):
 
     def __init__(self, cfg: EvalConfig) -> None:
         self.cfg = cfg
-        #: question_id -> byte offset into the JSONL sidecar. The whole parsed
-        #: dataset used to sit on this attribute for the entire run so each case
-        #: could linear-scan it; now only the offsets stay resident and each
-        #: case reads exactly its own line on demand.
+        #: question_id -> byte offset into the JSONL sidecar; only offsets stay
+        #: resident now, replacing a full parsed dataset each case linear-scanned.
         self._offsets: dict[str, int] | None = None
         self._backend_ready = False
 
@@ -69,8 +67,7 @@ class LongMemEvalSuite(Suite):
         return DEFAULT_DATASET.with_suffix(".jsonl")
 
     def _ensure_jsonl(self) -> Path:
-        """Convert the oracle array to a JSONL sidecar once, so items can be
-        read one line at a time instead of holding the parsed array all run."""
+        """Convert the oracle array to a JSONL sidecar once, so items can be read one line at a time."""
         if not DEFAULT_DATASET.exists():
             raise SystemExit(
                 f"LongMemEval dataset not found at {DEFAULT_DATASET}. "
@@ -202,11 +199,9 @@ class LongMemEvalSuite(Suite):
     async def _ensure_backend(self, tracker: EvalCostTracker) -> None:
         """Register the memory backend once per run, then prove it is reachable.
 
-        Registration must NOT repeat per case: ``providers.register`` replaces the
-        LazyLoader, so re-registering discards the live engine (leaking its pool)
-        and forces every case to rebuild one. Once Postgres goes away, that rebuild
-        fails and the swallowed failure surfaces as a bare "engine not available"
-        for every remaining case — which is how an outage got published as 0/64.
+        Must not repeat per case: providers.register replaces the LazyLoader,
+        so re-registering leaks the live engine's pool and forces a rebuild
+        that, once Postgres is down, surfaced as 0/64 for every case.
         """
         from app.db.postgresql import get_postgresql_engine
 

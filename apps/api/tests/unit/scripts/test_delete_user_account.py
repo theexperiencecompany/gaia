@@ -28,7 +28,7 @@ RAW_EMAIL = "User@Example.COM "
 
 
 class FakeCollection:
-    """A chroma collection whose `.get()` records the filter it was called with."""
+    """A chroma collection whose .get() records the filter it was called with."""
 
     def __init__(self, name: str, ids: list[str]) -> None:
         self.name = name
@@ -64,15 +64,13 @@ class TestChromaInventory:
         assert _chroma_inventory(client, UID) == {"memories": 3, "conversations": 1}
 
     def test_collections_holding_nothing_are_left_out(self) -> None:
-        """The inventory is a remnant report: a zero would read as a surviving
-        collection an operator then goes looking for."""
+        """A zero-count collection is omitted — it would read as a surviving collection to go looking for."""
         client = FakeClient([FakeCollection("memories", ["a"]), FakeCollection("empty", [])])
 
         assert _chroma_inventory(client, UID) == {"memories": 1}
 
     def test_every_collection_is_filtered_to_this_user(self) -> None:
-        """The filter is the whole safety story — an unfiltered read would report
-        (and the delete pass would then act on) other people's vectors."""
+        """An unfiltered read would report, and the delete pass would then act on, other people's vectors."""
         memories = FakeCollection("memories", ["a"])
         client = FakeClient([memories])
 
@@ -81,7 +79,7 @@ class TestChromaInventory:
         assert memories.calls[0]["where"] == {"user_id": UID}
 
     def test_a_collection_with_no_ids_key_counts_as_empty(self) -> None:
-        """chroma omits `ids` rather than returning an empty list on some backends."""
+        """Chroma omits ids rather than returning an empty list on some backends."""
 
         class NoIds(FakeCollection):
             def get(self, **kwargs: Any) -> dict[str, Any]:
@@ -93,17 +91,14 @@ class TestChromaInventory:
 @pytest.mark.unit
 class TestObjectIdFilter:
     def test_builds_the_id_filter_from_the_hex_string(self) -> None:
-        """The id-codec lives in app/db (repository-boundaries lint), so the
-        raw-connection script never imports bson itself."""
+        """The id-codec lives in app/db (repository-boundaries lint) so this script never imports bson itself."""
         assert object_id_filter(UID) == {"_id": ObjectId(UID)}
 
 
 @pytest.mark.unit
 class TestMongoInventory:
     def test_users_are_counted_by_object_id_on_top_of_the_string_scan(self) -> None:
-        """The users row is keyed by ObjectId while every other collection keys
-        user_id as a string — dropping the codec would silently zero the users
-        count and the dry-run would claim the account has no user document."""
+        """The users row is keyed by ObjectId while every other collection keys user_id as a string."""
         db = MagicMock()
         db.list_collection_names.return_value = ["users"]
         # Non-zero on BOTH sides so the += is observable: a mutant that
@@ -120,9 +115,7 @@ class TestMongoInventory:
         db.users.count_documents.assert_called_once_with({"_id": ObjectId(UID)})
 
     def test_full_inventory_shape(self) -> None:
-        """Every branch of the scan: fs.* handled via gridfs only, plain
-        collections keyed by user_id string, support_requests by the $or over
-        id and email, zero-count collections omitted."""
+        """Covers fs.* via gridfs, plain collections by user_id, and support_requests by the $or over id and email."""
         email = "user@example.com"
         db = MagicMock()
         db.list_collection_names.return_value = [
@@ -160,9 +153,7 @@ class TestMongoInventory:
 @pytest.mark.unit
 class TestPgInventory:
     def test_counts_every_user_table_and_omits_the_empty_ones(self) -> None:
-        """Postgres is scanned by a fixed table list rather than a catalogue
-        query, so a table dropped from PG_USER_TABLES is never counted and never
-        deleted — the inventory would report the user as fully erased."""
+        """Postgres is scanned by the fixed PG_USER_TABLES list, not a catalogue query."""
         rows = iter([(3,)] + [(0,)] * (len(PG_USER_TABLES) - 1))
         cursor = MagicMock()
         cursor.fetchone.side_effect = lambda: next(rows)
@@ -175,8 +166,7 @@ class TestPgInventory:
         assert cursor.execute.call_count == len(PG_USER_TABLES)
 
     def test_every_query_is_scoped_to_this_user(self) -> None:
-        """An unscoped count would report (and the delete pass then act on)
-        other people's rows."""
+        """An unscoped count would report, and the delete pass then act on, other people's rows."""
         cursor = MagicMock()
         cursor.fetchone.return_value = (1,)
         conn = MagicMock()
@@ -199,7 +189,7 @@ class TestPgInventory:
 
 
 def _footprint(**overrides: Any) -> Any:
-    """A _Footprint with MagicMock clients; override any field by name."""
+    """Build a _Footprint with MagicMock clients; override any field by name."""
     from unittest.mock import AsyncMock
 
     from app.scripts.delete_user_account import JFS_USERS_ROOT, _Footprint
@@ -1129,8 +1119,7 @@ class TestBuildFootprint:
     async def test_an_empty_postgres_inventory_prints_none_not_an_empty_dict(
         self, capsys: Any
     ) -> None:
-        """The footprint is read by a human before they approve a deletion —
-        `postgres: {}` reads as a bug, `postgres: none` reads as "nothing there"."""
+        """An empty postgres inventory must print "postgres: none", not "postgres: {}"."""
         await _run_build_footprint(MagicMock(), {}, pg_counts={})
 
         assert "postgres: none" in capsys.readouterr().out.splitlines()
@@ -1191,8 +1180,7 @@ class TestRunExecuteMode:
             await _run(args)
 
     async def test_execute_mode_aborts_when_confirm_email_is_missing(self) -> None:
-        """A missing --confirm-email must abort even when the fallback string
-        would coincidentally compare equal to the email."""
+        """Must abort even when the fallback string would coincidentally compare equal to the email."""
         import argparse
         from unittest.mock import MagicMock, patch
 

@@ -1,6 +1,4 @@
-"""
-Asana trigger handler.
-"""
+"""Asana trigger handler."""
 
 from typing import Any, ClassVar
 

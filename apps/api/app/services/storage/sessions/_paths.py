@@ -1,10 +1,10 @@
 """Per-session host paths.
 
-Internal-to-the-``sessions`` package. The two helpers here are split out so
+Internal-to-the-sessions package. The two helpers here are split out so
 every sub-module (lifecycle, artifacts, skills) can derive paths from the
 JuiceFS mount without re-importing the underscore-prefixed primitives from
-``app.services.storage.juicefs`` themselves. Both go through
-``session_root`` / ``_mount_root`` so the safety contract (mount-required +
+app.services.storage.juicefs themselves. Both go through
+session_root / _mount_root so the safety contract (mount-required +
 id-validated) is enforced exactly once.
 """
 
@@ -20,7 +20,7 @@ from app.services.storage.juicefs import (
 
 
 def session_base(user_id: str, conv_id: str) -> Path:
-    """Validated session path; raises ``JuiceFSUnavailable`` if unmounted."""
+    """Return the validated session path; raises JuiceFSUnavailable if unmounted."""
     _require_mount()
     return session_root(user_id, conv_id)
 

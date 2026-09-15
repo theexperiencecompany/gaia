@@ -1,13 +1,13 @@
 """Discovery tools the comms agent runs itself, without the executor.
 
-Two questions used to cost a round trip through ``call_executor``: "is there a
+Two questions used to cost a round trip through call_executor: "is there a
 Notion integration?" and "is there a ready-made workflow for X?". Both are
 read-only catalogue lookups with no side effects.
 
 Neither does work on the user's data, so putting them on the front door does
 not breach the "delegate every real ask" rule: they read catalogues. Connecting
 an integration is not one of them -- that goes to the executor, whose
-``connect_integration`` tool and integration checker are the one card source.
+connect_integration tool and integration checker are the one card source.
 """
 
 from typing import Annotated, Any, TypedDict

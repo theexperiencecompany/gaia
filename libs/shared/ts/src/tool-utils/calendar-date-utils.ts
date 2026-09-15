@@ -158,7 +158,6 @@ export function formatAllDayDateRange(
   }
 }
 
-/** Get event duration text. */
 export function getEventDurationText(
   startDate: string,
   endDate?: string,

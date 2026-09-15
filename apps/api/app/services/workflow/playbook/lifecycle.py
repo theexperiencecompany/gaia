@@ -1,33 +1,18 @@
 """The playbook lifecycle as one pure state machine.
 
-A playbook moves between run statuses under three counters — ``suspect_streak``,
-``heal_attempts`` and ``revision`` — and the rules for which event touches
-which counter used to live in docstrings across the repository, the worker and
-the check module. Every rule is here now, as a total function over (state,
-event), so the repository's atomic writes and the worker's limit checks are
-derived from one definition instead of agreeing by convention.
+Governs three counters — suspect_streak, heal_attempts, revision — as a
+total function over (state, event), so the repository's atomic writes and
+the worker's limit checks derive from one definition.
 
-The rules, stated once:
-
-* A **replay** records its outcome. ``SUCCESS`` clears the reason and the
-  suspect streak. ``FAILED`` records the reason and leaves the streak alone. A
-  ``SUSPECT`` records the reason and grows the streak, but only when the run
-  says it counts and the playbook was not already suspect: two replays of one
-  body racing to the same verdict are one suspect, not two.
-* A **heal run that completed** without rewriting spends one heal attempt on
-  the body it was healing.
-* A **rewrite** starts a new body: status back to ``NOT_RUN``, reason cleared,
-  revision bumped. The suspect streak survives on purpose — a rewrite is how a
-  heal answers a suspect replay, and a playbook that keeps coming back suspect
-  must still reach the limit. The heal attempts survive too: a rewrite out of
-  a heal run (the body was ``FAILED`` or ``SUSPECT``) spends one and carries
-  the count, and a rewrite of a body never replayed (``NOT_RUN``, a second
-  write in the same run) carries it unchanged, so a body rewritten after every
-  failed replay must still reach the limit. Only a trusted replay (the body
-  was ``SUCCESS``) clears either.
-* A playbook is **discarded** when its heal attempts or its suspect streak
-  reach their limit, or when the workflow it was written for has changed
-  underneath it.
+Rules:
+* replay: SUCCESS clears reason and streak; FAILED records reason; SUSPECT
+  records reason and grows the streak once per suspect body, not per replay.
+* heal run completed without rewriting: spends one heal attempt.
+* rewrite: NOT_RUN, reason cleared, revision bumped. Streak and heal
+  attempts survive (so a body that keeps coming back suspect still hits
+  the limit) unless the body was SUCCESS, which clears both.
+* discarded when heal attempts or suspect streak hit their limit, or the
+  workflow it was written for changed underneath it.
 """
 
 from __future__ import annotations
@@ -102,9 +87,11 @@ def _advance(
     heal_attempts: int | None = None,
     revision: int | None = None,
 ) -> PlaybookLifecycle:
-    """The state with the given fields changed; ``dataclasses.replace`` with the
-    state's own type kept rather than the generic one. ``reason`` is always
-    stated: a transition either carries one or clears it, never inherits it."""
+    """Return the state with the given fields changed.
+
+    Like dataclasses.replace but keeps the state's own type. reason is always
+    stated: a transition either carries one or clears it, never inherits it.
+    """
     return PlaybookLifecycle(
         status=state.status if status is None else status,
         reason=reason,
@@ -121,7 +108,7 @@ UNTRUSTED = PlaybookLifecycle(
 
 
 def transition(state: PlaybookLifecycle, event: PlaybookEvent) -> PlaybookLifecycle:
-    """The lifecycle after ``event``. Total over every (status, event) pair."""
+    """Return the lifecycle after event. Total over every (status, event) pair."""
     match event:
         case Rewritten():
             return _advance(
@@ -172,21 +159,21 @@ def _after_replay(state: PlaybookLifecycle, outcome: PlaybookRunOutcome) -> Play
 
 
 def streak_grows(state: PlaybookLifecycle, outcome: PlaybookRunOutcome) -> bool:
-    """Whether recording ``outcome`` grows the suspect streak from ``state``.
+    """Whether recording outcome grows the suspect streak from state.
 
     The one question the repository has to answer without the state in hand:
-    a plain ``$inc`` cannot be conditional on the stored status, so the write
+    a plain $inc cannot be conditional on the stored status, so the write
     matches on it instead. This is the rule that match encodes.
     """
     return transition(state, Replayed(outcome)).suspect_streak > state.suspect_streak
 
 
 def grows_from_untrusted(outcome: PlaybookRunOutcome) -> bool:
-    """Whether ``outcome`` grows the streak of a body that is not already suspect.
+    """Whether outcome grows the streak of a body that is not already suspect.
 
     The repository cannot read the stored status before it writes, so it writes
     conditionally on it; this is the rule that decides whether the growing
-    write is even attempted. Defined through :func:`transition` so it cannot
+    write is even attempted. Defined through :func:transition so it cannot
     drift from the table.
     """
     return streak_grows(UNTRUSTED, outcome)

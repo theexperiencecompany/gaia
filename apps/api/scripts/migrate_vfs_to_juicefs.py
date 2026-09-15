@@ -4,20 +4,20 @@
 This is the one-shot migration that backs the hard cutover from the old
 MongoDB-backed VFS to the persistent E2B+JuiceFS workspace. For each user it:
 
-  1. Reads all files from `/users/{user_id}/executor/files` and
-     `/users/{user_id}/executor/notes` in the legacy `vfs_nodes` collection.
-  2. Writes them into `/mnt/jfs/users/{user_id}/legacy/` on the host JuiceFS
+  1. Reads all files from /users/{user_id}/executor/files and
+     /users/{user_id}/executor/notes in the legacy vfs_nodes collection.
+  2. Writes them into /mnt/jfs/users/{user_id}/legacy/ on the host JuiceFS
      mount.
-  3. Marks `legacy_imported=True` on the user's `e2b_sandboxes` doc.
+  3. Marks legacy_imported=True on the user's e2b_sandboxes doc.
 
 NOTE: the runtime VFS service has been deleted; this script accesses the
-legacy `vfs_nodes` MongoDB collection directly so it can run during the
+legacy vfs_nodes MongoDB collection directly so it can run during the
 cutover release. After it completes successfully you can drop the collection.
 
 Skills migration: handled inline because installed skills already get
 re-written to JuiceFS by the updated installer the next time they install/
 sync a skill. For pre-existing user skills, run this script first and a
-companion task will re-stamp skill files into `/mnt/jfs/skills/{user_id}/`.
+companion task will re-stamp skill files into /mnt/jfs/skills/{user_id}/.
 
 Usage:
     cd apps/api

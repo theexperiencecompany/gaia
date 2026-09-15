@@ -35,7 +35,7 @@ class DesktopToolResultRequest(BaseModel):
         """Reject internally-inconsistent payloads without ever dropping a result.
 
         A success must not carry an error, and a failure must not carry data.
-        We deliberately do NOT require a non-empty ``error`` on failure: the
+        We deliberately do NOT require a non-empty error on failure: the
         bridge guarantees a tool result always reaches the awaiting tool, so a
         failure with an empty message is relayed, not rejected into a timeout.
         """

@@ -3,15 +3,15 @@
 The comms prompt's "MOMENT 1: SILENT" rule was the only thing stopping the model
 from narrating its own handoff, and models ignore it: in production the comms
 agent answered "yeah, i can set all that up. let me get the tasks created…" with
-a ``call_executor`` tool call attached, then answered again with the real
+a call_executor tool call attached, then answered again with the real
 acknowledgement once the tool returned. The user got two replies.
 
 The driver is what has to enforce it, and the enforcement point is NOT the
 individual chunk. On the OpenAI/OpenRouter wire the text deltas arrive BEFORE
 the tool-call deltas of the same message, carrying no tool-call marker at all —
 so a per-chunk guard suppresses nothing. That is why these tests drive a real
-``ChatOpenRouter`` against a real (loopback) SSE server emitting the real delta
-order, through a real LangGraph with ``stream_mode=["messages", "updates"]``:
+ChatOpenRouter against a real (loopback) SSE server emitting the real delta
+order, through a real LangGraph with stream_mode=["messages", "updates"]:
 anything less faithful cannot tell a working guard from a decorative one.
 """
 
@@ -115,9 +115,9 @@ class _GraphState(TypedDict):
 
 
 def _build_graph(base_url: str, nudges: int = 0) -> Any:
-    """``agent → (tools → agent)* → END``, driven by a real streaming wire client.
+    """Agent → (tools → agent)* → END, driven by a real streaming wire client.
 
-    ``nudges`` mirrors the real graph's ``nudge_continue`` node: a tool-free
+    nudges mirrors the real graph's nudge_continue node: a tool-free
     reply is sent back for one more pass instead of ending the run, which is the
     only way a single turn produces two assistant messages the user keeps.
     """
@@ -155,8 +155,7 @@ def _build_graph(base_url: str, nudges: int = 0) -> Any:
 
 @pytest.fixture
 def suppressed_seams() -> Iterator[None]:
-    """Silence the two seams a bare driver run cannot reach: the cancellation
-    flag (Redis) and tool-card formatting (the ChromaDB tool registry)."""
+    """Silence the two seams a bare driver run cannot reach: cancellation and tool-card formatting."""
     with (
         patch("app.helpers.agent_helpers.stream_manager") as manager,
         patch(
@@ -179,7 +178,7 @@ async def _drive(base_url: str) -> list[str]:
 
 
 def _responses(frames: list[str]) -> list[str]:
-    """The assistant text the client actually received, frame by frame."""
+    """Return the assistant text the client actually received, frame by frame."""
     out = []
     for frame in frames:
         if not frame.startswith("data: "):
@@ -214,11 +213,7 @@ def _complete_message(frames: list[str]) -> str:
 
 @pytest.mark.regression
 async def test_a_handoff_preamble_is_never_persisted(suppressed_seams: None) -> None:
-    """The turn's reply is the acknowledgement alone.
-
-    In production this was persisted as the preamble glued to the ack, and the
-    user saw both as separate messages on Telegram.
-    """
+    """The turn's reply is the acknowledgement alone (prod glued preamble+ack into one Telegram message)."""
     with _ScriptedWire([TURN_WITH_PREAMBLE, TURN_WITH_ACK]) as wire:
         frames = await _drive(wire.base_url)
 
@@ -228,14 +223,7 @@ async def test_a_handoff_preamble_is_never_persisted(suppressed_seams: None) -> 
 async def test_each_assistant_message_ends_with_a_boundary_frame(
     suppressed_seams: None,
 ) -> None:
-    """The stream says which message just ended and whether its text was a
-    preamble, so a live consumer can retract what it already showed.
-
-    The retraction is what makes this workable: the wire hands over the preamble
-    before it hands over the tool call, so the text is unavoidably already on the
-    client. Suppressing it there instead would mean withholding every token of
-    every reply until its message ended.
-    """
+    """The stream says which message ended and whether its text was a preamble, so a consumer can retract it."""
     with _ScriptedWire([TURN_WITH_PREAMBLE, TURN_WITH_ACK]) as wire:
         frames = await _drive(wire.base_url)
 
@@ -247,9 +235,7 @@ async def test_each_assistant_message_ends_with_a_boundary_frame(
 async def test_the_discard_arrives_before_the_replacement_text(
     suppressed_seams: None,
 ) -> None:
-    """Ordering is the whole contract: a consumer must be told to drop the
-    preamble before the real reply starts arriving, or it has no way to tell
-    which text belongs to which message."""
+    """A consumer must be told to drop the preamble before the real reply starts arriving."""
     with _ScriptedWire([TURN_WITH_PREAMBLE, TURN_WITH_ACK]) as wire:
         frames = await _drive(wire.base_url)
 
@@ -265,8 +251,7 @@ async def test_the_discard_arrives_before_the_replacement_text(
 async def test_tool_progress_still_streams_for_a_discarded_message(
     suppressed_seams: None,
 ) -> None:
-    """Silencing the narration must not silence the tool card — the user has to
-    see that something is happening."""
+    """Silencing the narration must not silence the tool card."""
     with _ScriptedWire([TURN_WITH_PREAMBLE, TURN_WITH_ACK]) as wire:
         frames = await _drive(wire.base_url)
 
@@ -286,11 +271,7 @@ async def test_a_tool_free_reply_streams_unchanged(suppressed_seams: None) -> No
 async def test_two_kept_messages_are_joined_by_the_break_sentinel(
     suppressed_seams: None,
 ) -> None:
-    """Two assistant messages in one turn are two bubbles, not one glued
-    sentence — "fixing it." followed by "fixing it now" was persisted as
-    "fixing it.fixing it now". The boundary between them is the sentinel every
-    consumer already splits on.
-    """
+    """Two assistant messages in one turn are two bubbles: "fixing it." + "fixing it now" must not glue."""
     second = "and it's done."
     with _ScriptedWire(
         [

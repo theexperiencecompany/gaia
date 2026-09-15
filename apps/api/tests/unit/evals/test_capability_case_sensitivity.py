@@ -4,11 +4,11 @@ Three capability projections lowercased only the value they read out of the
 database and compared it against the raw YAML term, so any expectation carrying
 an uppercase letter could never match no matter what the agent did:
 
-* ``_matched_title`` — ``hard-compose-birthday-plan`` asserts a tracked todo
-  titled ``"Sam's birthday"``. The agent created exactly that title and the case
-  still scored ``end_state=0.0``.
-* ``_project_reminders`` — same comparison for a reminder's payload title.
-* ``answer_contains`` — ``fact in text.lower()``, so ``answer_contains: "Lisbon"``
+* _matched_title — hard-compose-birthday-plan asserts a tracked todo
+  titled "Sam's birthday". The agent created exactly that title and the case
+  still scored end_state=0.0.
+* _project_reminders — same comparison for a reminder's payload title.
+* answer_contains — fact in text.lower(), so answer_contains: "Lisbon"
   can never hold.
 
 This is worse than a wrong answer: the run looks like an agent failure, and the

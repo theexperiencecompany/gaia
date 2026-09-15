@@ -316,9 +316,8 @@ function usePostConnectSettlePolling(
       integration?.status === "connected" && (integration?.toolCount ?? 0) > 0;
 
     // Stop once the integration connects with tools, or after the attempt
-    // ceiling (covers a failed background connect). Keep polling while the
-    // integration isn't in the list yet — the post-connect refetch may still
-    // be in flight.
+    // ceiling (covers a failed background connect) — keep polling meanwhile,
+    // since the post-connect refetch may still be in flight.
     if (hasSettled || settleTick >= POST_CONNECT_POLL_MAX_ATTEMPTS) {
       setSettlingIntegrationId(null);
       return;

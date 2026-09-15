@@ -71,12 +71,9 @@ function bucketToolData(
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
-// Merge consecutive reasoning steps into one. A single continuous thought can
-// arrive as several adjacent reasoning entries (e.g. when an interleaved tool
-// call between them was nested into a subagent group and dropped from this
-// level), which would otherwise render as several separate "Thinking" rows for
-// one block. Only truly adjacent reasoning is merged — a real tool call between
-// two thoughts still separates them, preserving chronological order.
+// Merge consecutive reasoning steps into one: an interleaved tool call
+// nested into a subagent group can drop out of this level, splitting one
+// thought into several "Thinking" rows. Only truly adjacent reasoning merges.
 function coalesceReasoning(calls: ToolCallEntry[]): ToolCallEntry[] {
   const out: ToolCallEntry[] = [];
   for (const tc of calls) {
@@ -121,17 +118,9 @@ function coalesceTimelineReasoning(timeline: TimelineItem[]): TimelineItem[] {
 
 // ── Stable React keys for streamed entries ──────────────────────────────────
 
-// Streamed payloads mutate in place as a turn progresses — adjacent reasoning
-// fragments coalesce into one growing entry (coalesceReasoning /
-// coalesceTimelineReasoning) and grouped tools accumulate merged arrays — and
-// every pass REPLACES the entry object, so a key derived from payload content
-// changes on each frame and remounts the rendered card mid-stream (losing tab
-// selection, approval progress, expanded state). Keys therefore come from
-// STRUCTURE, never content: an entry's own stream-stable id when it has one
-// (tool_call_id / subagent_id / creation timestamp / tool name for synthesized
-// groups), else its slot after the nearest preceding identified sibling
-// ("anchor"). Streams are append-only, so that slot is fixed the moment the
-// item exists and never shifts while its payload grows.
+// Payloads mutate in place mid-stream (coalescing reasoning, merging
+// arrays), so a content-derived key remounts the card each frame. Keys use
+// STRUCTURE instead: a stream-stable id, else a fixed anchor slot after the nearest identified sibling.
 function deriveStableKeys<T>(
   items: T[],
   stableKey: (item: T) => string | null,
@@ -175,10 +164,9 @@ export function deriveStepKeys(
   );
 }
 
-// processedTools entries as TextBubble renders them. Synthesized grouped
-// entries exist exactly once per tool name with merged-array data, so the tool
-// name is their identity; individual entries use their payload's tool_call_id,
-// else their creation timestamp (stamped once, never rewritten).
+// processedTools keys: synthesized grouped entries exist once per tool
+// name (their identity); individual entries use tool_call_id, else their
+// creation timestamp (stamped once, never rewritten).
 export function deriveProcessedToolKeys(
   entries: TypedToolDataEntry[],
 ): string[] {
@@ -299,10 +287,9 @@ function inferNestingForRootSpawned(
   return finalGroups.filter((g) => !nestedIds.has(g.subagent_id));
 }
 
-// Emit a backend subagent group at its originating tool call's position
-// (handoff or spawn). Attaches the call's task/output to the group and
-// records the group id so the trailing "append-unmatched" pass doesn't
-// re-emit it. Returns the matched group, or null if no match was found.
+// Emit a backend subagent group at its originating handoff/spawn call's
+// position, attaching the call's task/output and recording the group id so
+// the trailing append-unmatched pass doesn't re-emit it.
 function emitGroupForCall(
   tc: ToolCallEntry,
   isHandoff: boolean,
@@ -333,11 +320,9 @@ function emitGroupForCall(
   emittedGroupIds.add(matched.subagent_id);
 }
 
-// Walk the executor's tool-call stream once, interleaving backend-provided
-// subagent groups at the position of their originating handoff/spawn call so
-// the rendered timeline matches emission order. Each handoff/spawn tool call
-// is consumed (attaching its inputs.task and outputs to the matched group);
-// every other tool call passes through as a root-level timeline item.
+// Walk the tool-call stream once, interleaving backend subagent groups at
+// their originating handoff/spawn call's position to match emission order.
+// Each handoff/spawn call is consumed; everything else passes through as root-level.
 function buildBackendTimeline(
   toolCalls: ToolCallEntry[],
   subagentGroups: SubagentGroupData[],
@@ -384,10 +369,9 @@ function buildBackendTimeline(
   return timeline;
 }
 
-// ── Synthesis fallback for legacy messages ───────────────────────────────────
-// For chats persisted before subagent_group backend support was added (pre-2025-04).
-// Also handles fast-fail handoffs where _resolve_subagent returns an error
-// before subagent_start is ever emitted (so no backend group exists).
+// Synthesis fallback for legacy messages: chats persisted before
+// subagent_group backend support (pre-2025-04), and fast-fail handoffs
+// where _resolve_subagent errors before subagent_start is ever emitted.
 
 function extractSubagentIdFromInputs(
   inputs: ToolCallEntry["inputs"],
@@ -444,12 +428,9 @@ function makeSyntheticSpawnGroup(
   };
 }
 
-// Build a timeline directly from a tool-call stream when no backend
-// subagent_group entries are present. Handoff/spawn calls become subagent
-// timeline items at their natural position; if a handoff returned
-// synchronously (output already present, i.e. the fast-fail error path), the
-// group is closed immediately so any following executor-level tool calls
-// render at root level instead of getting bundled into the failed handoff.
+// Build a timeline from a tool-call stream with no backend subagent_group
+// entries. Handoff/spawn calls become subagent items in place; a
+// synchronous handoff (fast-fail) closes its group immediately so later calls render at root.
 function buildSyntheticTimeline(toolCalls: ToolCallEntry[]): TimelineItem[] {
   const timeline: TimelineItem[] = [];
   let currentGroup: EnrichedSubagentGroup | null = null;
@@ -480,10 +461,9 @@ function buildSyntheticTimeline(toolCalls: ToolCallEntry[]): TimelineItem[] {
     }
   }
 
-  // Synthetic groups are built by pushing raw tool calls, so their adjacent
-  // reasoning fragments aren't merged yet. Enrich them the same way the backend
-  // path does (buildBackendTimeline via deepEnrichGroup) so fallback timelines
-  // don't render split Thinking rows.
+  // Synthetic groups push raw tool calls, so reasoning isn't merged yet —
+  // enrich them the same way buildBackendTimeline does (deepEnrichGroup) so
+  // fallback timelines don't render split Thinking rows.
   return timeline.map((item) =>
     item.kind === "subagent"
       ? { kind: "subagent" as const, data: deepEnrichGroup(item.data) }

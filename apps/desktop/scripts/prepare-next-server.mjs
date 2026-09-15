@@ -1,19 +1,9 @@
 #!/usr/bin/env node
 /**
- * Cross-platform Next.js standalone preparation for electron-builder.
- *
- * THE single prepare script for every platform (mac/win/linux) — there is no
- * shell variant, by design: two scripts doing the same job in two languages
- * drift apart silently (Windows once shipped without the prune + wake-word
- * canary). One code path = no platform divergence.
- *
- * Steps:
- *   1. Locate the standalone app root (handles both the primary checkout
- *      layout and the deeper-nested layout produced by git worktree builds).
- *   2. Copy it — with the real (dereferenced) traced node_modules — into
- *      apps/desktop/.next-server-prepared, overlaying static + public assets.
- *   3. Prune the dead weight the desktop runtime never loads, and assert the
- *      wake-word runtime survived (the canary).
+ * Cross-platform Next.js standalone preparation for electron-builder — the one
+ * prepare script for every platform (a shell variant once drifted and shipped
+ * Windows without the prune + wake-word canary). Locates the standalone app root
+ * (handles git worktree's nested layout), copies it, prunes dead weight, and asserts the canary.
  */
 
 import { spawn } from "node:child_process";
@@ -151,13 +141,9 @@ async function deleteByExtension(dir, ext) {
   }
 }
 
-// The onnxruntime-web artifacts the wake-word engine actually fetches at
-// runtime. `libs/wake-word/src/web/runtime.ts` imports `onnxruntime-web/wasm`
-// and runs the plain "wasm" execution provider, which loads the CPU wasm binary
-// plus its Emscripten glue. The JSEP/WebGPU, asyncify, and JSPI flavors are
-// never loaded — and the JSEP binary alone (25 MiB) exceeds Cloudflare Workers'
-// per-asset cap, so it is deliberately kept out of the synced runtime. Keep this
-// in lockstep with RUNTIME_FILES in apps/web/scripts/sync-wake-word-runtime.mjs.
+// onnxruntime-web files the wake-word engine actually loads: the CPU "wasm"
+// provider only (JSEP alone is 25 MiB, over Cloudflare Workers' per-asset cap).
+// Keep in lockstep with RUNTIME_FILES in apps/web/scripts/sync-wake-word-runtime.mjs.
 const ORT_RUNTIME_FILES = new Set([
   "ort-wasm-simd-threaded.wasm",
   "ort-wasm-simd-threaded.mjs",

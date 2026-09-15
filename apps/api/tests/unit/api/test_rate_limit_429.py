@@ -1,11 +1,11 @@
 """Endpoint-level 429 wiring for the tiered rate limiter.
 
-The root conftest mocks ``check_and_increment`` to always succeed, so no test
+The root conftest mocks check_and_increment to always succeed, so no test
 proves an exceeded limit surfaces as an HTTP 429. Here the REAL limiter runs
-against a fake Redis seam (``tiered_limiter.redis``) pre-seeded past the FREE
+against a fake Redis seam (tiered_limiter.redis) pre-seeded past the FREE
 notes daily limit (30, see app/config/rate_limits.py) — the decision logic
-raises its real 429 signal and the real ``POST /api/v1/notes`` route (a write
-endpoint behind ``@tiered_rate_limit``) must translate it into a 429 with the
+raises its real 429 signal and the real POST /api/v1/notes route (a write
+endpoint behind @tiered_rate_limit) must translate it into a 429 with the
 real detail shape.
 """
 

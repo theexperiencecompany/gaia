@@ -30,11 +30,7 @@ Do the thing when asked.
 
 @pytest.fixture(autouse=True)
 def _fork_safe_proxy_env(monkeypatch):
-    """httpx.AsyncClient() consults urllib.getproxies(), which on macOS falls
-    through to the System Configuration framework — a call that segfaults
-    inside mutmut's forked worker processes. A truthy proxy environment makes
-    urllib short-circuit before that call; respx intercepts the transport, so
-    the value never affects what the tests observe."""
+    """Short-circuit urllib.getproxies() with a truthy proxy env; it segfaults inside mutmut's forked workers on macOS, though respx intercepts the transport regardless."""
     monkeypatch.setenv("no_proxy", "*")
 
 
@@ -49,8 +45,9 @@ def _contents_entry(name: str, entry_type: str, path: str, download_url: str | N
 
 @pytest.fixture
 def storage_seams():
-    """Mock only the VFS write boundary and the Mongo registry call — the
-    real HTTP fetch/parse/validation/recursion logic under test is untouched."""
+    """Mock only the VFS write boundary and the Mongo registry call.
+
+    The real HTTP fetch/parse/validation/recursion logic under test stays untouched."""
     with (
         patch(
             "app.agents.skills.installer.ensure_user_skills_dir",
@@ -97,8 +94,7 @@ class TestInstallFromGithubSuccess:
         assert "Do the thing when asked." in write_call.args[3]
 
     async def test_nested_subdirectory_files_are_downloaded_and_listed(self, storage_seams):
-        """A skill with a resources/ subfolder must recurse into it and record
-        every downloaded file, not just the top-level SKILL.md."""
+        """Recurse into a resources/ subfolder and record every downloaded file, not just SKILL.md."""
         write_mock, install_mock, _ = storage_seams
         with respx.mock:
             respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/my-skill").mock(
@@ -160,9 +156,7 @@ class TestInstallFromGithubValidation:
                 await install_from_github(user_id="u1", repo_url="org/repo/skills/empty")
 
     async def test_disallowed_target_raises_value_error(self, storage_seams):
-        """allowed_targets blocks installing a skill scoped to an integration
-        the user hasn't connected — this is the REST endpoint's own guard,
-        enforced here at the source so agent-tool callers get it too."""
+        """allowed_targets blocks installing a skill scoped to an integration the user hasn't connected, at the source so agent-tool callers get it too."""
         with respx.mock:
             respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/my-skill").mock(
                 return_value=httpx.Response(
@@ -227,8 +221,7 @@ Do the thing when asked.
 
 
 class TestInstallFromGithubRequestShape:
-    """Every field of the SkillInstallRequest must come from the repo's
-    frontmatter and the fetch — not from defaults."""
+    """Every field of the SkillInstallRequest must come from the repo's frontmatter and the fetch, not from defaults."""
 
     async def test_builds_full_install_request(self, storage_seams):
         _, install_mock, _ = storage_seams
@@ -310,8 +303,7 @@ class TestInstallFromInline:
             )
 
     async def test_passes_frontmatter_extras_through(self, storage_seams, monkeypatch):
-        """generate_skill_md cannot emit license/compatibility/allowed-tools;
-        pin their request mapping with frontmatter that carries them."""
+        """generate_skill_md cannot emit license/compatibility/allowed-tools; pin their request mapping via frontmatter carrying them."""
         rich_skill_md = (
             "---\n"
             "name: my-skill\n"

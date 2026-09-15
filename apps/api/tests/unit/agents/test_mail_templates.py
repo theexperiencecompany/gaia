@@ -640,10 +640,8 @@ class TestProcessGetThreadResponse:
 
 class TestMalformedPartDoesNotAbortTheMessage:
     def test_empty_part_claiming_base64_cte_does_not_raise(self):
-        # A part whose copied headers claim base64 transfer encoding but whose
-        # body carries no data used to crash content extraction with
-        # UnboundLocalError('bpayload') inside the stdlib, aborting the whole
-        # fetch loop as a partial result.
+        # A part claiming base64 encoding with no body data used to crash content
+        # extraction with UnboundLocalError('bpayload') inside the stdlib.
         payload = {
             "mimeType": "multipart/mixed",
             "headers": [{"name": "Subject", "value": "Mixed"}],
@@ -691,10 +689,7 @@ class TestMalformedPartDoesNotAbortTheMessage:
         assert names == ["report.pdf"]
 
     def test_synthesized_part_drops_the_source_wire_transfer_encoding(self):
-        """``set_content`` stores already-decoded text and stamps its own encoding,
-        so carrying the source part's wire encoding across describes the body
-        wrongly — and on an empty part it is what sent the stdlib down its base64
-        branch with nothing to decode."""
+        """set_content stores already-decoded text; carrying the source wire encoding across describes it wrongly."""
         part = GmailMessagePart.model_validate(
             {
                 "mimeType": "text/plain",
@@ -728,15 +723,10 @@ class TestMalformedPartDoesNotAbortTheMessage:
 
 
 def _stamp_wire_encoding(parser: GmailMessageParser, content_type: str) -> None:
-    """Put a walked part back into the undecodable state, on the real MIME tree.
+    """Stamp base64 onto an empty walked part; _copy_headers no longer lets the parser reach this state itself.
 
-    ``_copy_headers`` no longer lets the parser build this itself, so the state is
-    restored on the parsed ``EmailMessage``: an empty part whose headers claim
-    base64. Nothing is mocked — the stdlib genuinely raises ``UnboundLocalError``
-    from ``get_payload(decode=True)`` on the way through, which is the failure the
-    extraction guards have to absorb. What this does NOT prove is that a Gmail
-    payload can still reach that state through the parser's own construction; with
-    the header fix in place it cannot.
+    Nothing is mocked — the stdlib genuinely raises UnboundLocalError from
+    get_payload(decode=True), which is the failure the extraction guards absorb.
     """
     assert parser.email_message is not None
     for part in parser.email_message.walk():
@@ -790,8 +780,7 @@ class TestUndecodablePartIsSkippedNotFatal:
         assert "Good HTML" in parser.html_content
 
     def test_an_undecodable_attachment_is_listed_without_content(self):
-        """The attachment still has to appear — a user looking at the message must
-        see that a file is there, even when its bytes cannot be pulled out."""
+        """The attachment still has to appear even when its bytes cannot be pulled out."""
         payload = {
             "mimeType": "multipart/mixed",
             "headers": [{"name": "Subject", "value": "Attach"}],

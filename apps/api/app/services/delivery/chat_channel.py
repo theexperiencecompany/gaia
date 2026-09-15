@@ -21,16 +21,14 @@ from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 
-#: The chat platforms a priority list may contain. A stored document that names
-#: anything else (hand-edited, or a platform we dropped) can never route a
-#: message somewhere unsupported because every entry is filtered through this.
-#: Every bot platform, not just the ones in the default order — a user who puts
-#: iMessage first has chosen a platform GAIA can genuinely text on.
+#: The chat platforms a priority list may contain — a stored document naming
+#: anything else is filtered out here. Includes every bot platform, not just
+#: the default order, so a user who puts iMessage first can use it.
 VALID_CHAT_PLATFORMS: frozenset[str] = CHAT_CHANNEL_VALUES
 
 
 def resolve_channel_priority(stored: list[str] | None) -> list[str]:
-    """The user's stored chat-channel priority, or the default order.
+    """Return the user's stored chat-channel priority, or the default order.
 
     Unknown entries are dropped; a list that is empty after cleaning falls back
     to the default rather than resolving to "no channel", because an unusable
@@ -44,7 +42,7 @@ def resolve_channel_priority(stored: list[str] | None) -> list[str]:
 
 
 async def get_chat_channel_priority(user_id: str) -> list[str]:
-    """The order the settings UI shows: the user's own, or the default."""
+    """Return the order the settings UI shows: the user's own, or the default."""
     user = await user_repository.get(user_id)
     return resolve_channel_priority(user.chat_channel_priority if user else None)
 
@@ -72,13 +70,11 @@ def pick_chat_channel(
     linked: Mapping[str, PlatformLinkEntry],
     preferences: Mapping[str, bool],
 ) -> ChatChannel | None:
-    """The first platform in ``priority`` that is linked, enabled and reachable.
+    """Return the first platform in priority that is linked, enabled and reachable.
 
-    Pure so the ordering rules are provable without a database. A platform the
-    user switched off in notification settings is skipped, as is one linked
-    without an account id (a legacy row); the order then falls through to the
-    next. ``None`` means no bot platform is usable: the caller sends on the web
-    only and never falls back to every platform.
+    Pure so the ordering rules are provable without a database. A platform
+    the user switched off, or linked without an account id (legacy row), is
+    skipped and falls through to the next. None means no bot platform is usable.
     """
     for platform in priority:
         entry = linked.get(platform)
@@ -93,7 +89,7 @@ def pick_chat_channel(
 
 
 async def resolve_chat_channel(user_id: str) -> ChatChannel | None:
-    """The one chat platform for ``user_id``, from a single read of their document."""
+    """Return the one chat platform for user_id, from a single read of their document."""
     user = await user_repository.get(user_id)
     if user is None:
         return None

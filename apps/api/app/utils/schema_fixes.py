@@ -13,19 +13,10 @@ from shared.py.wide_events import log
 def normalize_schema_refs(schema: object) -> object:
     """Normalize $ref references in a JSON schema.
 
-    Some MCP servers use numeric keys in $defs (like '0', '1') which can cause
-    issues with reference resolution. This function normalizes such schemas.
-
-    ``schema`` is typed ``object``, not ``dict``, because some MCP servers hand
-    back a non-dict ``inputSchema`` (bool/None/etc.) — the isinstance guard
-    below is a real, load-bearing check, not dead code.
-
-    Args:
-        schema: JSON schema value (expected to be a dict, but not guaranteed)
-
-    Returns:
-        Normalized schema with fixed $refs, or the original value unchanged
-        when it isn't a dict
+    Some MCP servers use numeric $defs keys ('0', '1'), which break
+    reference resolution; this rewrites them. schema is typed object, not
+    dict, because some MCP servers hand back a non-dict inputSchema — the
+    isinstance guard below is real, load-bearing code.
     """
     log.set(operation="normalize_schema_refs")
     if not isinstance(schema, dict):
@@ -104,14 +95,7 @@ def _update_refs_recursive(obj: object, key_mapping: dict[str, str], defs_key: s
 
 
 def patch_tool_schema(tool: Tool) -> Tool:
-    """Patch a tool's input schema to fix common issues.
-
-    Args:
-        tool: MCP tool object with inputSchema attribute
-
-    Returns:
-        Tool with normalized schema
-    """
+    """Patch a tool's input schema to fix common issues."""
     log.set(operation="patch_tool_schema", tool_name=getattr(tool, "name", None))
     if not hasattr(tool, "inputSchema") or not tool.inputSchema:
         return tool

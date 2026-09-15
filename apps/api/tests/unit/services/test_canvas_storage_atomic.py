@@ -1,15 +1,15 @@
 """Atomic canvas/activity writes — the branch-only storage primitives.
 
-These tests pin behavior the base revision does not have (``append_text_field``
-backing ``append_activity``/``append_log``, the ``expected_updated_at``
-compare-and-set, ``write_canvas_and_activity``, the reindex revision, and the
-empty-body embedding delete). They live in their own module rather than in
-``test_todo_canvas_storage.py`` on purpose: the regression-proof lane overlays
-this branch's test tree onto the base revision, so a file that imports
-branch-only names at module level would collection-error there (an error is not
-proof — the run never reaches an assertion). The branch-only callables are
-imported inside the tests that use them, so this module imports cleanly on base
-and each marked test then fails on the behavior, which is what the lane checks.
+These tests pin behavior the base revision does not have (append_text_field
+backing append_activity/append_log, the expected_updated_at compare-and-set,
+write_canvas_and_activity, the reindex revision, and the empty-body embedding
+delete). They live in their own module rather than in test_todo_canvas_storage.py
+on purpose: the regression-proof lane overlays this branch's test tree onto the
+base revision, so a file that imports branch-only names at module level would
+collection-error there (an error is not proof — the run never reaches an
+assertion). The branch-only callables are imported inside the tests that use
+them, so this module imports cleanly on base and each marked test then fails on
+the behavior, which is what the lane checks.
 """
 
 from collections.abc import Coroutine
@@ -64,13 +64,11 @@ def mock_sync():
 
 @pytest.fixture
 def captured_reindex():
-    """Capture the fire-and-forget reindex: patched spawn collects coroutines so
-    tests can await them deterministically; the embedding call itself is mocked.
+    """Capture the fire-and-forget reindex; the embedding call is mocked too.
 
-    ``create=True`` on the spawn patch keeps this fixture usable against the
-    base revision, which has no ``spawn_logged_task`` import — the regression
-    lane runs the marked tests against base, and a fixture that errors there is
-    not proof.
+    create=True keeps this usable against base revision, which has no
+    spawn_logged_task import — the regression lane runs marked tests there,
+    and an erroring fixture is not proof.
     """
     scheduled: list[tuple[str, Coroutine[Any, Any, Any]]] = []
 
@@ -87,8 +85,7 @@ def captured_reindex():
 
 
 class TestSharedPrimitives:
-    """The canvas read/write + log-append basics, kept where the atomic tests
-    live too so this module is self-contained when run alone."""
+    """The canvas read/write + log-append basics, kept here so this module is self-contained when run alone."""
 
     async def test_read_canvas_returns_content(self, mock_repo):
         mock_repo.get.return_value = _todo_doc(canvas_content="hello")
@@ -327,11 +324,7 @@ class TestClearDeletesEmbedding:
 class TestAppendLog:
     @pytest.mark.regression
     async def test_routes_the_suffix_through_the_atomic_append(self, mock_repo, mock_sync) -> None:
-        """The append is one server-side concat, not a read-then-overwrite.
-
-        A missing-todo early return is identical on both revisions and would
-        pass on base; asserting the ``append_text_field`` call is what
-        distinguishes the atomic path."""
+        """Regression: asserts append_text_field is called (one server-side concat), since a missing-todo early return would pass identically on base."""
         mock_repo.append_text_field.return_value = _todo_doc()
 
         assert await append_log(TODO_ID, USER_ID, "audit v2") is True

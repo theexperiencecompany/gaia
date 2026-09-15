@@ -35,20 +35,9 @@ import {
 import { getMainWindow } from "./windows/main";
 
 /**
- * Register all main-process IPC handlers.
- *
- * Handlers registered here:
- * - `get-platform`        — returns `process.platform`
- * - `get-version`         — returns the app version string
- * - `window-ready`        — renderer signals it has finished hydrating
- * - `open-external`       — opens a URL in the default system browser
- * - `wake-word-detected`  — listener heard "Hey GAIA"; show the popup
- * - `popup-dismiss`       — popup renderer requested dismissal
- * - `desktop-tool:execute` — run a backend-requested action (screenshot, ...)
- * - `desktop-tool:permissions` — report mic/screen permission status
- * - `desktop-tool:open-permission-settings` — deep-link a privacy pane
- *
- * @param onWindowReady - Callback invoked when the renderer sends `window-ready`.
+ * Register all main-process IPC handlers: platform/version info, the renderer's
+ * `window-ready` signal, opening external URLs, wake-word popup show/dismiss,
+ * and the desktop-tool bridge (execute, permissions, permission-settings deep link).
  */
 export function registerIpcHandlers(onWindowReady: () => void): void {
   ipcMain.handle(IPC.getPlatform, () => process.platform);

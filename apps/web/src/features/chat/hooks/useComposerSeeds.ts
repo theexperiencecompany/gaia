@@ -10,14 +10,10 @@ import {
 
 /**
  * Fills the composer from the two out-of-band seeds that can arrive with a
- * chat: a prompt staged in the composer store (sidebar cards, tool results,
- * every `appendToInput` caller) and a `?q=` deep link.
+ * chat: a staged prompt (composer store) and a `?q=` deep link.
  *
- * This lives with the composer rather than the page because the composer owns
- * the input. The page used to push the text up through a ref callback in an
- * effect, which is the `no-pass-data-to-parent` shape — and it also meant a
- * prompt staged while the composer was unmounted (during a voice call) was
- * dropped on the floor.
+ * Lives with the composer, not the page, so a prompt staged while the composer
+ * is unmounted (e.g. during a voice call) isn't dropped.
  */
 export const useComposerSeeds = (
   inputRef: React.RefObject<HTMLTextAreaElement | null>,

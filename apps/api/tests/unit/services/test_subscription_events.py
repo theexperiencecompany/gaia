@@ -1,4 +1,4 @@
-"""``apply_subscription_event`` — the one writer of subscription state.
+"""apply_subscription_event — the one writer of subscription state.
 
 Every source of a subscription change (the Dodo webhooks, the user-initiated
 cancel, payment verification's reconciliation) lands here, so the rules
@@ -85,9 +85,7 @@ class TestOrdering:
     async def test_an_event_older_than_the_rows_last_change_is_a_no_op(
         self, webhook_service, mock_webhook_subscription_repository, mock_track_subscription
     ) -> None:
-        """Dodo retries out of order: a delayed ``on_hold`` can land after the
-        ``active`` that recovered the same subscription. Applying it would put
-        a paying user back on hold until the next event happened to arrive."""
+        """A delayed on_hold landing after the active that recovered it must not put a paying user back on hold."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
             return_value=_row(last_event_at=datetime.fromisoformat(RECOVERED_AT))
         )
@@ -130,9 +128,7 @@ class TestIdempotency:
     async def test_a_scheduled_cancel_already_recorded_is_not_captured_twice(
         self, webhook_service, mock_webhook_subscription_repository, mock_track_subscription
     ) -> None:
-        """The user's own cancel request records the flag first; Dodo's
-        ``subscription.cancelled`` then reports the same state. One
-        cancellation, one ``subscription:cancelled``."""
+        """The user's own cancel and Dodo's subsequent subscription.cancelled must not double-count as two cancellations."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
             return_value=_row(cancel_at_next_billing_date=True)
         )
@@ -158,10 +154,7 @@ class TestRecovery:
         mock_webhook_subscription_repository,
         mock_track_subscription,
     ) -> None:
-        """The row existing is not the row being active. Recovery used to
-        restore the workflows and drop the cache, but never wrote the status
-        back — so ``get_active_for_user`` kept filtering the row out and the
-        customer kept reading FREE — and never carried the new billing dates."""
+        """Recovery used to restore workflows and drop the cache but never write status back, so get_active_for_user kept reading FREE."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
             return_value=_row(
                 status=lapsed_status,
@@ -230,11 +223,7 @@ class TestScheduledCancelNeverDowngradesEarly:
         mock_webhook_subscription_repository,
         mock_track_subscription,
     ) -> None:
-        """``cancel_subscription`` used to mirror whatever status Dodo returned.
-        The webhook path already refused to do that — a cancel scheduled for
-        period end keeps the user on Pro until ``subscription.expired`` — and
-        the two paths must agree, or the same cancel downgrades a user early
-        depending only on which path recorded it first."""
+        """cancel_subscription must agree with the webhook path (Pro until subscription.expired), not downgrade early depending on which path ran first."""
         service = DodoPaymentService()
         service.client = MagicMock()
         service.client.subscriptions.update.return_value = _dodo_subscription(dodo_status)
@@ -398,8 +387,7 @@ class TestActivationCreatesTheRow:
 
 @pytest.mark.unit
 class TestTransitionsDriveTheSideEffects:
-    """Workflows follow the status: crossing into ``active`` restores them,
-    leaving it pauses them, and anything else leaves them alone."""
+    """Workflows follow the status: crossing into active restores them, leaving it pauses them, else they are untouched."""
 
     async def test_a_lapse_pauses_the_workflows_and_a_recovery_restores_them(
         self,
@@ -536,7 +524,7 @@ class TestTransitionsDriveTheSideEffects:
         mock_subscription_plan_cache_drop,
         mock_activation_workflow_reactivation,
     ) -> None:
-        """``None`` in the update would be written as null over a good value."""
+        """None in the update would be written as null over a good value."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
             return_value=_row(status="on_hold", last_event_at=None)
         )
@@ -553,8 +541,7 @@ class TestTransitionsDriveTheSideEffects:
 
 @pytest.mark.unit
 class TestSideEffectsNeverFailTheEvent:
-    """A workflow or email failure must not turn an otherwise-recorded billing
-    change into a failure Dodo would retry; it is logged with its cause."""
+    """A workflow or email failure must not turn a recorded billing change into a failure Dodo would retry; it is logged instead."""
 
     async def test_a_reactivation_failure_is_swallowed_and_logged(self) -> None:
         with (
@@ -762,8 +749,7 @@ class TestResolveSubscriptionOwner:
 
 @pytest.mark.unit
 class TestDesiredState:
-    """What each event kind says the row should now have — the exact fields,
-    because the repository writes exactly these as ``$set``."""
+    """What each event kind says the row should now have — exact fields, since the repository writes them as $set."""
 
     def test_activation_and_renewal_carry_the_billing_dates(self) -> None:
         for kind in (SubscriptionEventKind.ACTIVATED, SubscriptionEventKind.RENEWED):
@@ -817,8 +803,7 @@ class TestDesiredState:
 
 @pytest.mark.unit
 class TestResultsNameTheOwnerAndTheRow:
-    """Every outcome hands back the owner the caller acts on, and every write
-    targets the row that was read — not some other id."""
+    """Every outcome hands back the owner the caller acts on, and every write targets the row that was read."""
 
     async def test_an_equal_timestamp_is_not_stale_and_the_result_names_the_owner(
         self,
@@ -827,8 +812,7 @@ class TestResultsNameTheOwnerAndTheRow:
         mock_subscription_plan_cache_drop,
         mock_activation_workflow_reactivation,
     ) -> None:
-        """Dodo can stamp two events in the same second; only strictly older
-        ones are stale."""
+        """Dodo can stamp two events in the same second; only strictly older ones are stale."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
             return_value=_row(status="on_hold", last_event_at=NOW)
         )

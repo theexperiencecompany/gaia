@@ -47,10 +47,8 @@ async def test_injects_status_when_lock_held_on_interactive_turn() -> None:
 
 
 async def test_injects_status_when_state_has_no_messages_key() -> None:
-    # A state with no "messages" key must still get the status frame: the hook
-    # defaults it to [] so the [*messages, status] spread stays a list. A None
-    # default (the obvious mistake) makes that spread raise, which the hook's
-    # own except would swallow into a silent no-op.
+    # Missing "messages" must default to [], not None, or the [*messages, status]
+    # spread raises and the hook's own except swallows it into a silent no-op.
     state: dict = {}
     cache = _redis_holding(build_lock_value("s1", "task-9"))
     with patch(f"{MODULE}.redis_cache", cache):

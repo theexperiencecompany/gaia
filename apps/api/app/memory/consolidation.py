@@ -1,15 +1,15 @@
 """Core documents: the debounced LLM rewrites plus the rendered agenda.
 
-Three of the four documents (``user.md``, ``memory.md``, ``people.md``) are
+Three of the four documents (user.md, memory.md, people.md) are
 written by an LLM. After every ingestion the affected doc types are merged into
 a per-user Redis pending set and a single in-process waiter sleeps out the
 debounce window before rewriting them (plan F2.5). Each rewrite is fed the
 document's WHOLE live fact corpus — not a recency window — because a rewrite
 that cannot see the fact it corrupted can never be corrected by it. The result
 is size-checked, then fact-checked against those same facts, before it lands
-through ``management.update_document``.
+through management.update_document.
 
-``agenda.md`` is not written by an LLM at all: it is rendered from the agenda
+agenda.md is not written by an LLM at all: it is rendered from the agenda
 memory rows, so every item on it can be searched, corrected, superseded and
 expired like any other memory.
 """
@@ -46,9 +46,8 @@ from app.models.memory_db_models import MemoryRecord
 from shared.py.wide_events import MemoryContext, UserContext, log, wide_task
 
 # Which core documents a fact feeds, keyed by its top-level category folder.
-# Folders not listed here default to user.md (general life context). The agenda
-# folder maps to nothing on purpose: agenda.md is rendered from its rows, never
-# consolidated, so an agenda item must not also leak into user.md.
+# Unlisted folders default to user.md. Agenda maps to nothing on purpose:
+# agenda.md is rendered from its rows, never consolidated.
 CATEGORY_DOC_MAP: dict[str, tuple[MemoryDocType, ...]] = {
     "relationships": (MemoryDocType.PEOPLE_MD, MemoryDocType.USER_MD),
     "family": (MemoryDocType.PEOPLE_MD, MemoryDocType.USER_MD),
@@ -85,22 +84,18 @@ _PENDING_DOC_TYPES = "doc_types"
 _AGENDA_DOC_HEADING = "# Current agenda"
 _AGENDA_EMPTY_BODY = "- (nothing open)"
 
-# One live debounce waiter per user, in-process (same pattern as the
-# memory_node background-task set). A process restart during the sleep loses
-# the pending debounce — acceptable: the next ingestion reschedules it and
-# the documents converge.
-#
-# Across replicas each keeps its own waiter, but the pending set is in Redis and
-# claimed with an atomic GETDEL, so exactly one replica gets the payload.
+# One live debounce waiter per user, in-process. A process restart loses the
+# pending debounce; the next ingestion reschedules it and documents converge.
+# Across replicas the pending set is in Redis, claimed via atomic GETDEL.
 _waiters: dict[str, asyncio.Task] = {}
 
 
 def infer_doc_types(facts: list[ExtractedFact]) -> set[MemoryDocType]:
     """Which LLM-written core documents this ingestion's facts touch.
 
-    Only durable facts qualify. A ``state`` value ("18 workflows active") must
+    Only durable facts qualify. A state value ("18 workflows active") must
     never be consolidated into a document that is injected into every prompt,
-    and ``task``/``journal`` assertions are not facts at all by the time they
+    and task/journal assertions are not facts at all by the time they
     get here — they were routed to the agenda and the journal upstream.
     """
     doc_types: set[MemoryDocType] = set()
@@ -153,15 +148,14 @@ async def cancel_consolidation(user_id: str) -> None:
 
 
 async def _debounce_wait() -> None:
-    """The debounce window; a module-level seam so the integration suite can
-    release the waiter on demand instead of sleeping out a wall-clock window."""
+    """Sleep out the debounce window — a module-level seam the integration suite can release on demand."""
     await asyncio.sleep(CONSOLIDATION_DEBOUNCE_SECONDS)
 
 
 async def _debounce_waiter(user_id: str) -> None:
     """Sleep out the debounce window, then consume the pending set and consolidate.
 
-    Runs in its own ``wide_task`` scope: this is a fire-and-forget background
+    Runs in its own wide_task scope: this is a fire-and-forget background
     task with no request middleware, so the scope is what makes consolidation
     outcomes and failures emit a queryable wide event.
     """
@@ -240,11 +234,8 @@ async def consolidate(
 async def render_agenda_document(user_id: str) -> None:
     """Rewrite agenda.md from the user's live agenda rows — no LLM involved.
 
-    The agenda used to be an LLM-maintained document fed by a Redis
-    side-channel, which meant no tool could correct an item and nothing could
-    expire one. Rendering from rows makes every line a real memory: searchable,
-    correctable with update_memory, retired by ``forget_memory`` when the
-    conversation closes it, and swept when it ages out.
+    Rendering from rows (not the old LLM-maintained/Redis version) makes every
+    line a real memory: searchable, correctable, and expirable.
     """
     rows = await pg_store.get_agenda_memories(user_id, limit=AGENDA_INJECTED_ITEM_CAP)
     lines = [f"- {row.content}" for row in rows] or [_AGENDA_EMPTY_BODY]
@@ -302,12 +293,9 @@ async def _rewrite_within_cap(
     return None
 
 
-# Whitespace the verifier may tidy while striking nothing: blank lines it
-# collapses, trailing spaces. Proportional, because a flat allowance is only
-# small relative to a long document — 200 characters is nothing against a 3,000
-# character profile and the whole thing against a 168 character one, which is
-# exactly the size of document that was replaced by "Let me process what's new
-# from" in production.
+# Whitespace the verifier may tidy without striking anything (blank lines,
+# trailing spaces). Proportional, since a flat allowance is too small for a
+# long document but too large for a short one (168-char doc replaced wholesale).
 _SHRINK_TOLERANCE = 0.05
 _MIN_SHRINK_TOLERANCE_CHARS = 16
 
@@ -315,14 +303,11 @@ _MIN_SHRINK_TOLERANCE_CHARS = 16
 async def _strike_unsupported(
     user_id: str, doc_type: MemoryDocType, content: str, facts: list[MemoryRecord]
 ) -> str:
-    """Remove lines the source facts do not support. Returns the kept document.
+    """Remove lines the source facts do not support, returning the kept document.
 
-    One extra structured call per rewrite. Consolidation is the only place a
-    fact can silently mutate — the always-injected user.md said "Partner: Khyal
-    Shetal (anniversary Oct 19, 2026)" while five live memories said "Khyati
-    Sheth ... October 19, 2022" — and nothing downstream can tell a corrupted
-    document from a correct one. On LLM failure the unverified document stands:
-    a document that skipped its check beats no document.
+    One extra structured call per rewrite — consolidation is the only place a
+    fact can silently mutate a document undetectably. On LLM failure the
+    unverified document stands: skipping the check beats having no document.
     """
     if not facts:
         return content
@@ -337,11 +322,9 @@ async def _strike_unsupported(
             error_type="llm_returned_empty",
         )
         return content
-    # The verifier only ever removes whole lines, so what the document loses has
-    # to be the lines it says it struck. When the arithmetic does not add up the
-    # model did something else entirely: a run of this returned the placeholder
-    # "## Document\n...document body..." with nothing struck, which is neither
-    # None nor empty, so it was written verbatim over a 3,077-character profile.
+    # The verifier only removes whole lines, so what the document loses must be
+    # what it says it struck; if the arithmetic doesn't add up the model did
+    # something else entirely (once returned an unstruck placeholder verbatim).
     original = content.strip()
     kept = verified.content.strip()
     # Only a line the document actually contained can explain its loss. Counting
@@ -369,13 +352,9 @@ async def _strike_unsupported(
             error_type="unsupported_document_lines",
             struck_count=len(verified.struck),
         )
-    # Master's shrink guard above validates that the model's own copy only
-    # lost what the struck list explains; this then enforces the strikes
-    # mechanically, because the model also desyncs the other way — probed
-    # live, it listed the corrupted partner line as struck while returning
-    # the document with the line still present. The strike list is the
-    # verdict either way. Headings are structure, not claims, so a struck
-    # heading is a model error this must not amplify.
+    # The shrink guard above validates the loss; this enforces the strike list
+    # mechanically, since the model can also desync the other way (list a line
+    # as struck but return it unchanged). Headings are structure, not claims.
     return _apply_strikes(kept, verified.struck)
 
 
@@ -393,7 +372,7 @@ def _apply_strikes(content: str, struck: list[str]) -> str:
 
 
 def _system_prompt(doc_type: MemoryDocType, user_name: str) -> str:
-    """The consolidation system prompt for one doc, with shared fields filled."""
+    """Return the consolidation system prompt for one doc, with shared fields filled."""
     return _DOC_PROMPTS[doc_type].format(
         max_chars=DOCUMENT_TARGET_MAX_CHARS,
         current_date=f"{datetime.now(UTC):%A, %d %B %Y}",
@@ -402,7 +381,7 @@ def _system_prompt(doc_type: MemoryDocType, user_name: str) -> str:
 
 
 async def _get_user_name(user_id: str) -> str:
-    """The user's display name, so prompts can tell the user apart from others."""
+    """Return the user's display name, so prompts can tell the user apart from others."""
     try:
         user = await user_repository.get(user_id)
     except Exception:
@@ -411,16 +390,16 @@ async def _get_user_name(user_id: str) -> str:
 
 
 def _prefixes_for(doc_type: MemoryDocType) -> list[str]:
-    """Category folders that feed this document, per ``CATEGORY_DOC_MAP``."""
+    """Category folders that feed this document, per CATEGORY_DOC_MAP."""
     return [prefix for prefix, docs in CATEGORY_DOC_MAP.items() if doc_type in docs]
 
 
 async def _gather_facts(user_id: str, doc_type: MemoryDocType) -> list[MemoryRecord]:
-    """Every live DURABLE fact this document is written from.
+    """Return every live DURABLE fact this document is written from.
 
     Not a recency window: a rewrite fed only the 50 freshest facts can never be
     contradicted by the fact it corrupted, so a bad name or date survives every
-    subsequent pass. ``CONSOLIDATION_FACTS_LIMIT`` is a safety valve, not a
+    subsequent pass. CONSOLIDATION_FACTS_LIMIT is a safety valve, not a
     window.
     """
     prefixes = None if doc_type is MemoryDocType.USER_MD else _prefixes_for(doc_type)
@@ -456,7 +435,7 @@ def _facts_section(facts: list[MemoryRecord]) -> list[str]:
 
 
 def _format_inputs(previous_content: str, sections: list[str]) -> str:
-    """The human message for one rewrite: previous version + the fact corpus."""
+    """Build the human message for one rewrite: previous version + the fact corpus."""
     previous_block = previous_content.strip() or "(no previous version)"
     inputs_block = "\n\n".join(sections) if sections else "(no facts)"
     return (

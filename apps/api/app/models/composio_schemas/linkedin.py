@@ -1,6 +1,6 @@
 """LinkedIn REST/v2 response shapes returned through Composio's proxy.
 
-Only the fields `linkedin_utils` actually reads are declared; `extra="allow"`
+Only the fields linkedin_utils actually reads are declared; extra="allow"
 keeps the rest of each response rather than dropping it.
 """
 

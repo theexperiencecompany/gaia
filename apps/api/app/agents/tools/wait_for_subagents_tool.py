@@ -1,21 +1,17 @@
 """Tool for the executor to wait for background subagents and collect results.
 
 When the executor dispatches subagents with handoff(background=True), it can
-continue with other work and then call wait_for_subagents() to block until all
-background subagents have finished — or parked on a HIL approval.
+continue with other work and then call wait_for_subagents() to block until
+all background subagents have finished — or parked on a HIL approval.
 
-This tool is also the HIL **approval barrier**: subagents that hit a gated
-(destructive) tool park their own checkpointed graph thread and record the
-approval durably. This join rediscovers them from those records, resumes the
-decided ones, and pauses the executor ONCE for everything still pending — one
-review moment per burst of parallel work, however many actions are in it. It
-loops (pause → decision → resume → collect → maybe pause again) until the whole
-batch is resolved, then returns every subagent's result together.
+This is also the HIL approval barrier: subagents that hit a gated tool park
+their own checkpointed graph thread and record the approval durably. This
+join rediscovers them, resumes the decided ones, and pauses the executor
+ONCE for everything still pending, looping until the whole batch resolves.
 
 Everything the loop needs crosses the executor's pause durably: approval
-records in Mongo, subagent checkpoints in Postgres, results in Redis (keyed by
-conversation — stream ids change on resume). The in-process session counter is
-only the fast path for live tasks in the current invocation.
+records in Mongo, subagent checkpoints in Postgres, results in Redis (keyed
+by conversation — stream ids change on resume).
 """
 
 import asyncio
@@ -132,11 +128,10 @@ async def _resolve_parked_batch(
 ) -> None:
     """Drive every HIL-parked subagent to completion, pausing the executor as needed.
 
-    Each round: resume subagents whose approvals are decided; if any approvals are
-    still pending, ``interrupt()`` once with the whole batch (the executor
-    checkpoints and exits; a decision re-dispatches it and this node re-runs from
-    the top, idempotently). A resumed subagent may park again on its next gated
-    action — the loop carries it into the next round.
+    Resumes decided approvals; if any are still pending, interrupt()s once
+    with the whole batch — a decision re-dispatches the executor and this
+    re-runs idempotently from the top. A re-parked subagent carries into
+    the next round.
     """
     writer = make_redis_stream_writer(stream_id)
     while True:
@@ -185,11 +180,10 @@ async def _collect_subagent(
 ) -> None:
     """Resume one decided subagent and store its outcome.
 
-    Collection is stamped BEFORE the resume runs: LangGraph replays the thread's
-    approved action on resume, so if this process dies mid-resume, a re-run must
-    not drive the thread again (re-sending the email). The cost of crashing after
-    the stamp is one missing result string; the cost of stamping late is a
-    duplicated irreversible action. The sweep's loud-expiry covers the former.
+    Collection is stamped before the resume runs, since resume replays the
+    approved action: a crash after stamping costs one missing result
+    (covered by the sweep's loud-expiry); stamping late risks a duplicated
+    irreversible action.
     """
     await mark_subagent_collected(record.approval_id)
     # Also stamp resumed_at: this decision has now reached a run. Without it the

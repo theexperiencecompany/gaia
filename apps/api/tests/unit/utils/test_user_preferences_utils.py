@@ -254,8 +254,7 @@ class TestFormatUserPreferencesForAgent:
 
 
 class TestOnboardingPreferences:
-    """``UserDocument.onboarding`` is the typed subdocument, ``AuthenticatedUser.onboarding``
-    is still the raw Mongo dict — both shapes must read the same pair."""
+    """UserDocument.onboarding is typed; AuthenticatedUser.onboarding is still the raw Mongo dict."""
 
     def test_typed_subdocument_yields_only_the_stored_preference_keys(self) -> None:
         onboarding = OnboardingSubdocument(

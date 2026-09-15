@@ -5,11 +5,9 @@ Extraction quality is the heart of the memory system: everything downstream
 what gets pulled out of the transcript here. Edit with care.
 """
 
-# Shared folder taxonomy + routing rules used by both the extraction and the
-# categorize prompts. Choosing the folder by the fact's SUBJECT (not by who it
-# mentions) is the single most common categorization mistake; these rules and
-# examples exist to prevent it. Contains no '{' / '}' so it is safe to embed in
-# a str.format() template.
+# Shared folder taxonomy + routing rules used by both the extraction and
+# categorize prompts. Contains no '{' / '}' so it is safe to embed in a
+# str.format() template.
 _FOLDER_GUIDANCE = """## Choosing the folder (category_path)
 
 File each fact by its SUBJECT (what the fact is ABOUT), never by which person
@@ -131,12 +129,9 @@ List open loops this conversation opened or closed: new commitments, deadlines, 
     + _FOLDER_GUIDANCE
 )
 
-#: The user's folder tree, which grows as memory accumulates. It rides the
-#: TRAILING volatile message, not the system prompt: the memory lane's cache is
-#: a byte-prefix cache, and this sat at the very end of the system prompt —
-#: directly ahead of the transcript — so every new folder moved the cache
-#: boundary and the whole transcript re-sent uncached behind it. The folder
-#: GUIDANCE above is stable and stays in the prompt; only the tree moves.
+#: The user's folder tree, which grows as memory accumulates. Rides the
+#: TRAILING volatile message, not the system prompt, since a growing tree
+#: there moved the byte-prefix cache boundary and re-sent the transcript uncached.
 EXTRACTION_FOLDER_TREE_BLOCK = """## Existing memory folders
 
 {folder_tree}"""
@@ -182,9 +177,7 @@ Given the fact below, assign:
 EPISODE_SUMMARY_SYSTEM_PROMPT = """You write the daily journal of GAIA, a personal AI assistant. Given the timestamped entries from one day of a user's journal, write a 2-4 sentence past-tense summary of the day focused on what the USER did, decided, or accomplished, and any meaningful outcomes GAIA produced for them. Skip GAIA's internal mechanics (drafting, presenting, storing, indexing). Be concrete: keep names, decisions, and outcomes; drop filler and duplicate details. Write only the summary text."""
 
 
-# --- Core-document consolidation -------------------------------------------
-#
-# One prompt per core document. Each rewrites a single markdown doc from the
+# One prompt per core document, each rewriting a markdown doc from the
 # previous version plus fresh inputs. The shared rules block keeps the five
 # prompts consistent; the per-doc body defines the section skeleton.
 

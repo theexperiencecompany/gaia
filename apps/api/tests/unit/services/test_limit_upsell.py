@@ -107,8 +107,7 @@ class TestScheduleGate:
 
 
 class TestTheRunOriginMarker:
-    """``mark_run_origin`` decides which email a limit hit sends, so an unmarked
-    run must read as the user standing there, not as background work."""
+    """mark_run_origin decides which email a limit hit sends; an unmarked run reads as the user standing there."""
 
     def test_a_marked_run_reports_its_origin(self) -> None:
         mark_run_origin(LimitHitOrigin.BACKGROUND)

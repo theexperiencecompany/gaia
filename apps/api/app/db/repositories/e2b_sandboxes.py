@@ -1,6 +1,6 @@
-"""Repository for the ``e2b_sandboxes`` collection — one sandbox record per user.
+"""Repository for the e2b_sandboxes collection — one sandbox record per user.
 
-Global, keyed by ``user_id``. ``record_acquisition`` is an atomic upsert that
+Global, keyed by user_id. record_acquisition is an atomic upsert that
 stamps the live sandbox and increments the invocation counter; the state
 transitions (pause/dead/touch) are fire-and-forget raw writes.
 """
@@ -33,9 +33,9 @@ class E2bSandboxesRepository(MongoRepository[E2bSandboxDocument, E2bSandboxUpdat
         last_canary_ts: str,
         timestamp: datetime,
     ) -> None:
-        """Upsert the user's active sandbox and bump ``total_invocations``.
+        """Upsert the user's active sandbox and bump total_invocations.
 
-        ``created_at`` is set only on insert; every acquire refreshes the rest."""
+        created_at is set only on insert; every acquire refreshes the rest."""
         await self._apply_raw_update(
             {"user_id": user_id},
             {
@@ -78,7 +78,7 @@ class E2bSandboxesRepository(MongoRepository[E2bSandboxDocument, E2bSandboxUpdat
         )
 
     async def find_idle_user_ids(self, *, cutoff: datetime) -> list[str]:
-        """User ids whose sandbox is idle past ``cutoff`` and not already dead."""
+        """User ids whose sandbox is idle past cutoff and not already dead."""
         return await self._distinct(
             "user_id", {"last_used_at": {"$lt": cutoff}, "state": {"$ne": "dead"}}
         )

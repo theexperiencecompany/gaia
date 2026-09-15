@@ -1,9 +1,4 @@
-"""Integration tests for chat API endpoints.
-
-Tests POST /api/v1/chat-stream and POST /api/v1/cancel-stream/{stream_id}
-with mocked service layer to verify routing, auth enforcement, response
-structure, and SSE format through the full FastAPI request lifecycle.
-"""
+"""Integration tests for chat API endpoints."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -43,21 +38,15 @@ def _make_mock_task() -> MagicMock:
 
 def _make_subscription_mock(plan_type: PlanType | None = None) -> MagicMock:
     sub = MagicMock()
-    # PRO by default: GAIA is paid-only (require_subscription gates the
-    # endpoint before any of the mechanics below run), so these tests — which
-    # exercise response shape, headers, and background-task wiring rather than
-    # the paywall itself — need a plan that clears the gate. FREE-plan
-    # behavior is covered separately by TestChatStreamPaywall.
+    # PRO by default so these tests clear the paywall gate; FREE-plan behavior
+    # is covered separately by TestChatStreamPaywall.
     sub.plan_type = plan_type or PlanType.PRO
     return sub
 
 
 @pytest.fixture(autouse=True)
 def fresh_redis_client():
-    """Every test runs on its own event loop, and a connection the previous
-    test opened stays bound to a loop that no longer runs: the cost-budget
-    read uses the raw client and dies on it with a RuntimeError the fail-open
-    handler does not cover. Start each test from a lazily-created client."""
+    """Start each test with a fresh Redis client, since a prior test's stays bound to a dead loop."""
     redis_cache.redis = None
     yield
     redis_cache.redis = None
@@ -65,10 +54,7 @@ def fresh_redis_client():
 
 @pytest.fixture(autouse=True)
 def bypass_plan_cache():
-    """The paid-only gate reads the plan through a Redis cache. A value left
-    there by another test — or by a previous run against the same Redis —
-    would override the subscription mock every test below relies on, so the
-    lookup is answered straight from that mock."""
+    """Answer the paid-only gate's plan lookup straight from the mock, bypassing a stale Redis cache."""
 
     async def _uncached(user_id: str) -> PlanType:
         status = await payment_service.get_user_subscription_status(user_id)
@@ -91,7 +77,7 @@ class TestChatStreamEndpoint:
     def mock_rate_limiter(self):
         """Bypass the tiered rate limiter's Redis calls for all chat tests.
 
-        `tiered_limiter` is a module-level TieredRateLimiter() singleton whose
+        tiered_limiter is a module-level TieredRateLimiter() singleton whose
         .redis attribute is bound to the real redis_cache at import time.
         Patching check_and_increment directly avoids any real Redis connection.
         """
@@ -446,12 +432,7 @@ class TestChatStreamPaywall:
         mock_spawn,
         gated_test_client,
     ):
-        """The 402 carries a null ``checkout_url`` and cost Dodo nothing.
-
-        Asserted through the real middleware stack rather than the gate alone:
-        this is the request an unpaid user's app shell actually makes, and it
-        is the shape the web interceptor and the mobile SSE client parse.
-        """
+        """The 402 carries a null checkout_url and cost Dodo nothing, through the real middleware."""
         mock_subscription.return_value = _make_subscription_mock(PlanType.FREE)
         checkout = MagicMock()
         checkout.checkout.payment_link = "https://checkout.dodo.test/xyz"

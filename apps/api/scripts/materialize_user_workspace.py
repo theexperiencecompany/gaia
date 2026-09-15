@@ -1,32 +1,18 @@
 #!/usr/bin/env python3
 """Materialize a user's FS workspace from the built-in skills library.
 
-Usable in dev (run inside the api container against the local JuiceFS
-mount) and in prod (same script, same JuiceFS — just pass the real user_id
-and the integrations they have connected).
+Usable in dev (inside the api container, local JuiceFS mount) and in prod
+(same script, same JuiceFS, real user_id and connected integrations).
 
 Layout written:
-
     /workspace/users/<uid>/INDEX.md
     /workspace/users/<uid>/sessions/GUIDE.md
     /workspace/users/<uid>/integrations/GUIDE.md
     /workspace/users/<uid>/integrations/<id>/agent/skills/<slug>/skill.md
     /workspace/users/<uid>/skills/<slug>/skill.md          (executor target)
 
-Connected integrations are normally read from Mongo
-(``user_integrations`` collection where status == "connected"); pass
-``--connected gmail,googlecalendar`` to override for testing.
-
-Examples:
-    # Materialize using Mongo as source of truth (default)
-    uv run python scripts/materialize_user_workspace.py 69f6395dc7480ea81ec94f4e
-
-    # Force a specific connected set (no Mongo lookup)
-    uv run python scripts/materialize_user_workspace.py <uid> \\
-        --connected gmail,googlecalendar,todoist
-
-    # Materialize for every user that has at least one connected integration
-    uv run python scripts/materialize_user_workspace.py --all-users
+Connected integrations are read from Mongo (user_integrations, status ==
+"connected") unless --connected overrides them for testing.
 """
 
 from __future__ import annotations
@@ -47,7 +33,7 @@ from app.services.storage import (
 
 
 async def _connected_for(user_id: str) -> set[str]:
-    """Connected integration ids from Mongo (status == "connected")."""
+    """Return connected integration ids from Mongo (status == "connected")."""
     from app.services.integrations.user_integrations import get_connected_integration_ids
 
     return await get_connected_integration_ids(user_id)

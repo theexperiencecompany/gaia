@@ -1,13 +1,13 @@
 """A lane exempt from the probe is not exempt from having credentials.
 
-``configured()`` used to answer "yes" for the gemini lane whether or not
-``GOOGLE_API_KEY`` was set, and ``health_check`` returned "verified by key
+configured() used to answer "yes" for the gemini lane whether or not
+GOOGLE_API_KEY was set, and health_check returned "verified by key
 presence only" with no key present. The lane joined the rotation and then failed
 at transport time on every single case — an outage the health check exists to
 catch before the first model call.
 
-The second half is the config loader: a lane that declares no ``base_url_env``
-used to inherit ``DEV_LLM_BASE_URL``, so the native lanes' health probe (and any
+The second half is the config loader: a lane that declares no base_url_env
+used to inherit DEV_LLM_BASE_URL, so the native lanes' health probe (and any
 rotation retry) pointed at the very backend they exist to be an alternative to.
 """
 

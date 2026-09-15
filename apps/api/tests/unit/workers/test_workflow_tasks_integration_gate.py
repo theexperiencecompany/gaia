@@ -107,9 +107,7 @@ class TestADisconnectedIntegrationPausesTheWorkflow:
         )
 
     async def test_the_skip_reason_names_every_integration_the_fire_lacked(self) -> None:
-        """The reason is the run's only record of why nothing happened; a fire
-        that named one of two missing integrations sends the operator after the
-        wrong one."""
+        """The skip reason is the run's only record; naming one of two missing integrations misdirects."""
         result, _, _, _ = await _run_task(
             _workflow(), GMAIL_AND_NOTION, {"trigger_type": "schedule"}
         )
@@ -117,9 +115,7 @@ class TestADisconnectedIntegrationPausesTheWorkflow:
         assert result == "Workflow wf-1 paused — not connected: gmail, notion"
 
     async def test_a_trigger_fire_is_gated_too(self) -> None:
-        """Composio/email trigger fires reach the same task and repeated just as
-        hard — an integration-triggered workflow whose integration died would
-        otherwise nag on every inbound event."""
+        """An integration-triggered workflow whose integration died must be gated too, or it nags every event."""
         result, deactivate, _, _ = await _run_task(
             _workflow(), GMAIL, {"trigger_type": "integration"}
         )
@@ -128,9 +124,7 @@ class TestADisconnectedIntegrationPausesTheWorkflow:
         deactivate.assert_awaited_once()
 
     async def test_a_manual_run_is_not_paused(self) -> None:
-        """The user is standing there and gets the connect card in chat; pausing
-        the workflow they just asked to run would be a surprise, and one card is
-        not a loop."""
+        """A manual run gets the connect card in chat instead of a surprise pause — one card is not a loop."""
         result, deactivate, _, budget = await _run_task(
             _workflow(), GMAIL, {"trigger_type": "manual"}
         )
@@ -178,10 +172,11 @@ class TestTheLimitNoticeSpeaksOncePerWindow:
 
 
 class TestTheNoticeTellsTheUserWhatToReconnect:
-    """The pause is only useful if the notice is actionable: the workflow that
-    stopped, the integration that stopped it, and one click to fix it. These
-    pin the copy and the link, because a notice that says the right thing about
-    the wrong integration is the loop it was written to end."""
+    """The pause notice must be actionable: which workflow, which integration, and one click to fix it.
+
+    These pin the copy and the link, because a notice naming the wrong integration is the loop it
+    was written to end.
+    """
 
     @staticmethod
     async def _sent(missing: list[IntegrationRef]) -> Any:
@@ -223,8 +218,7 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
         }
 
     async def test_a_notice_that_cannot_be_delivered_is_recorded_not_raised(self) -> None:
-        """The workflow is already paused; turning a lost message into a worker
-        error would retry the whole fire for nothing."""
+        """A notice that can't be delivered must not become a worker error, or the whole fire retries for nothing."""
         with (
             patch(
                 f"{MODULE}.notification_service.create_notification",
@@ -248,9 +242,7 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
 
 class TestTheLimitNoticeIsClaimedPerWorkflow:
     async def test_the_claim_is_made_for_this_workflow_and_its_owner(self) -> None:
-        """The claim is a SET NX per workflow: keyed on the wrong id it would
-        silence a different workflow's first notice, and keyed on the wrong user
-        it would silence everyone's."""
+        """The claim is a SET NX per workflow: the wrong id silences a different workflow, the wrong user silences everyone."""
         with (
             patch(
                 f"{MODULE}.workflow_repository.claim_limit_notice",

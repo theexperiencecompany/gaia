@@ -1,8 +1,8 @@
-"""``.meta.json`` I/O for session directories.
+""".meta.json I/O for session directories.
 
-Each session has a single ``.meta.json`` file at the session root with two
-load-bearing fields: ``created_at`` (immutable) and ``last_active``
-(idle-prune cutoff). ``schema_version`` is stamped on every write so a
+Each session has a single .meta.json file at the session root with two
+load-bearing fields: created_at (immutable) and last_active
+(idle-prune cutoff). schema_version is stamped on every write so a
 future migration can detect old payloads without scanning every key.
 """
 
@@ -22,7 +22,7 @@ def now_iso() -> str:
 
 
 def read_session_meta(meta: Path) -> dict[str, object]:
-    """Best-effort read of a session ``.meta.json``.
+    """Best-effort read of a session .meta.json.
 
     Returns an empty dict for missing files, malformed JSON, or non-object
     payloads — callers treat absence and corruption identically (recreate).
@@ -37,16 +37,16 @@ def read_session_meta(meta: Path) -> dict[str, object]:
 
 
 def write_session_meta(meta: Path, data: dict[str, object]) -> None:
-    """Stamp ``schema_version`` and write compactly. Caller owns the dict."""
+    """Stamp schema_version and write compactly. Caller owns the dict."""
     data["schema_version"] = SESSION_META_SCHEMA_VERSION
     meta.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
 
 
 def parse_last_active(meta: Path) -> datetime | None:
-    """Return the parsed ``last_active`` timestamp or ``None`` if unparseable.
+    """Return the parsed last_active timestamp or None if unparseable.
 
     Used by the stale-session scanner — naive values are coerced to UTC so
-    comparisons against ``datetime.now(tz=UTC)`` don't blow up. Anything we
+    comparisons against datetime.now(tz=UTC) don't blow up. Anything we
     can't read is treated as "unknown" rather than "stale": callers skip it
     rather than pruning a session whose timestamp got truncated.
     """

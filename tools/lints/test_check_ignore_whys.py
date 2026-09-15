@@ -147,8 +147,7 @@ def test_distant_group_comment_does_not_cover_new_entry(repo: Path) -> None:
 
 
 def test_single_line_module_array_does_not_swallow_weakening_keys(repo: Path) -> None:
-    """``module = ["x"]`` closes on its own line — every key after it is still a
-    key, not another module name."""
+    """Treat keys after a one-line ``module = ["x"]`` as keys, not module names."""
     text = MINIMAL + ('\n[[tool.mypy.overrides]]\nmodule = ["vendor.sdk"]\nignore_errors = true\n')
     (repo / "pyproject.toml").write_text(text)
     result = run(repo)

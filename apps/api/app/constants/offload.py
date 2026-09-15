@@ -2,8 +2,8 @@
 
 When a tool's output is offloaded to a workspace file (by the compaction
 middleware, or by a tool that self-offloads), the message carries a structured
-marker and the agent mines the file with `query_json` (structured JSON/JSONL
-querying) or `grep` (free text) instead of reading the whole thing back.
+marker and the agent mines the file with query_json (structured JSON/JSONL
+querying) or grep (free text) instead of reading the whole thing back.
 """
 
 # Marker keys: OFFLOAD_KEY on a ToolMessage's `additional_kwargs`; OFFLOAD_RESULT_KEY

@@ -19,11 +19,9 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.trigger_config import TriggerConfig
 
-# Defensive: guarantee the Composio CustomTool monkey-patches are applied in any
-# process that builds a Composio client (API, ARQ worker, future entrypoints),
-# not only where an entrypoint remembers to `import app.patches`. Without the
-# user_id-injection patch, custom tools 500 with "Missing user_id in
-# auth_credentials".
+# Defensive: guarantees Composio's CustomTool monkey-patches run in any process
+# that builds a Composio client, not just where an entrypoint imports app.patches.
+# Without the user_id-injection patch, custom tools 500 with "Missing user_id in auth_credentials".
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before patched SDKs are used
 from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import (
@@ -81,12 +79,9 @@ class ComposioService:
                 else settings.COMPOSIO_REDIRECT_URI
             )
 
-            # `link()`, not `initiate()`: the legacy POST /api/v3/connected_accounts
-            # behind initiate() is being retired for Composio-managed OAuth (cutover
-            # 2026-07-03), after which it raises
-            # ComposioLegacyConnectedAccountsEndpointRetiredError. Same return shape
-            # and same allow_multiple semantics; the redirect now points at
-            # Composio's hosted Connect Link rather than straight at the provider.
+            # link(), not initiate(): the legacy endpoint retires 2026-07-03 and
+            # then raises ComposioLegacyConnectedAccountsEndpointRetiredError. Same
+            # return shape/allow_multiple semantics; redirect now goes to Composio's hosted Connect Link.
             loop = asyncio.get_event_loop()
             connection_request = await loop.run_in_executor(
                 None,
@@ -249,17 +244,12 @@ class ComposioService:
         tool_kit: str | None = None,
         specific_tools: list[str] | None = None,
     ) -> list[Tool]:
-        """Fetch raw Composio tool definitions WITHOUT wrapping them.
+        """Fetch raw Composio tool definitions without wrapping them.
 
-        ``get_tools``/``get_tools_by_name`` run the LangchainProvider, which
-        builds a Pydantic args-model + closure per tool (~100KB each). Wrapping
-        the whole ~1.6k-tool catalog this way is the dominant source of resident
-        memory. For warmup we only need metadata (name + description) to index
-        the catalog into ChromaDB (retrieval) and Mongo (the /tools listing).
-        The raw endpoint returns ``composio.types.Tool`` objects (slug,
-        description, input_parameters) with no wrapping. Executable
-        StructuredTools are materialized lazily, per provider, when a subagent is
-        first created (see ``ToolRegistry.register_provider_tools``).
+        get_tools/get_tools_by_name wrap via LangchainProvider (~100KB per
+        tool), the dominant source of resident memory across the ~1.6k-tool
+        catalog. Warmup only needs name+description; StructuredTools
+        materialize lazily per provider when a subagent is first created.
         """
 
         def _fetch() -> list[Tool]:
@@ -443,12 +433,9 @@ class ComposioService:
             )
             raise
         finally:
-            # Always flush the proxy connected_account_id cache: on success the
-            # cached ID is gone, on partial failure it may now be invalid, and
-            # on the idempotent no-op path a previous session may have cached
-            # an ID revoked outside this code path. Skipping invalidation when
-            # gather() raises would leave stale IDs in memory for up to the
-            # full TTL.
+            # Always flush: on success the cache is stale, on partial failure the
+            # ID may be invalid, and on the no-op path a previous session may have
+            # cached a revoked ID. Skipping this on gather() raise leaves stale IDs for up to the full TTL.
             if config.toolkit:
                 invalidate_connected_account_cache(user_id=user_id, toolkit=config.toolkit)
 

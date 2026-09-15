@@ -48,7 +48,7 @@ _MAX_REASON_CHARS = 300
 class WorkflowStepGenerationError(RuntimeError):
     """Step generation failed for a reason the user should be told about.
 
-    Subclasses ``RuntimeError`` so callers that already treat generation failure
+    Subclasses RuntimeError so callers that already treat generation failure
     as a runtime error keep working; the API layer catches this type to turn the
     opaque 500 into a message the workflow modal can render.
     """
@@ -59,7 +59,7 @@ class WorkflowStepGenerationError(RuntimeError):
 
 
 def _failure_reason(error: BaseException) -> str:
-    """A one-line, user-showable summary of why generation failed.
+    """Build a one-line, user-showable summary of why generation failed.
 
     The exception type is included because provider errors (a 402 from the
     model gateway, a timeout) say nothing about workflows on their own, and a
@@ -79,14 +79,12 @@ async def _structured_one_shot(
     label: str,
     user_id: str,
 ) -> _StructuredSchemaT:
-    """A structured one-shot on the provider THIS deployment actually runs on.
+    """Run a structured one-shot on the provider this deployment actually runs on.
 
-    ``ainvoke_structured`` is hardwired to the OpenRouter aux lane. A deployment
-    pointed at a custom endpoint (``DEV_DEFAULT_MODEL=custom``) has no working
-    OpenRouter route, so every workflow generation died on a provider error
-    before the model was ever asked — which surfaced as a blank 500 from
-    ``/regenerate-steps``. ``background_structured_runnable`` picks the lane
-    this deployment is configured for and falls back to the aux lane otherwise.
+    ainvoke_structured is hardwired to the OpenRouter aux lane, so a deployment
+    on a custom endpoint (DEV_DEFAULT_MODEL=custom) died with a blank 500 from
+    /regenerate-steps; this picks the deployment's configured lane instead,
+    falling back to aux.
     """
     config = metered_config(user_id)
     return cast(
@@ -178,7 +176,7 @@ def _build_available_triggers(
 ) -> str:
     """Build a compact list of available integration triggers for the LLM.
 
-    If `connected_integration_ids` is provided, only triggers from those
+    If connected_integration_ids is provided, only triggers from those
     integrations are listed. This prevents the LLM from suggesting triggers
     the user can't actually use.
     """
@@ -217,8 +215,8 @@ def _collect_registry_categories(
 ) -> tuple[list[str], list[str]]:
     """List the tool-registry categories the generator may use, with their tools.
 
-    Provider categories (``require_integration``) are included only when the
-    integration is in ``active_set``; core categories are always included.
+    Provider categories (require_integration) are included only when the
+    integration is in active_set; core categories are always included.
     """
     category_names: list[str] = []
     tools_with_categories: list[str] = []
@@ -262,7 +260,7 @@ async def _collect_custom_integration_categories(
 ) -> tuple[list[str], list[str], dict[str, str]]:
     """List the user's selected custom (MCP / self-added) integrations.
 
-    These aren't in the static registry or ``OAUTH_INTEGRATIONS``, so each is
+    These aren't in the static registry or OAUTH_INTEGRATIONS, so each is
     surfaced as its own category keyed by integration id, along with the
     id -> display-name map the preferred-tools hint needs. Loading them is an
     enrichment: on failure this degrades to the built-in catalog.
@@ -306,11 +304,10 @@ def _build_integration_hints(
 ) -> list[str]:
     """Build the preferred/explicit integration hint lines appended to the prompt.
 
-    Each slug is resolved to a human label plus its category id: the name tells
-    the LLM what the user meant; the id is what each step's ``category`` must be
-    set to for that integration's tools to resolve. Custom integrations are
-    keyed by an opaque uuid, so ``display_names`` supplies the human name
-    ``OAUTH_INTEGRATIONS`` can't.
+    Each slug resolves to a human label plus the category id each step's
+    category must be set to for that integration's tools to resolve. Custom
+    integrations are keyed by an opaque uuid, so display_names supplies the
+    name OAUTH_INTEGRATIONS can't.
     """
 
     def _hint_label(slug: str) -> str:
@@ -349,10 +346,10 @@ async def _run_generation_attempt(
 ) -> tuple[list[WorkflowStep] | None, Exception | None]:
     """Run one generation attempt and classify its outcome.
 
-    Returns ``(steps, None)`` on success and ``(None, error)`` when the attempt
+    Returns (steps, None) on success and (None, error) when the attempt
     is regenerable — empty output or schema-invalid structured output. Provider
     failures are not regenerable and are raised as
-    ``WorkflowStepGenerationError``.
+    WorkflowStepGenerationError.
     """
     try:
         result = await _structured_one_shot(
@@ -372,10 +369,8 @@ async def _run_generation_attempt(
         )
         return None, e
     except Exception as e:
-        # Not regenerable: the provider itself failed (auth, credit,
-        # timeout) after ainvoke_llm's own retry+fallback. Re-raise as
-        # the typed error so the API answers with the reason instead of
-        # a blank 500 — the cause chain is kept, nothing is swallowed.
+        # Not regenerable: provider failure after ainvoke_llm's own retry+fallback.
+        # Re-raise typed so the API answers with the reason instead of a blank 500.
         log.error(
             f"{LogTag.WORKFLOW} ========== FAILED: provider error",
             attempt=attempt + 1,
@@ -405,9 +400,9 @@ class WorkflowPromptRequest:
     """The inputs that shape a generated/improved workflow instruction prompt.
 
     Grouped into one object because they travel together from the API layer:
-    what the workflow is (``title``/``description``), what the user already
-    wrote (``existing_prompt``), and which integrations may or should be named
-    (``connected_integration_ids``/``integration_ids``).
+    what the workflow is (title/description), what the user already
+    wrote (existing_prompt), and which integrations may or should be named
+    (connected_integration_ids/integration_ids).
     """
 
     title: str | None = None
@@ -436,7 +431,7 @@ class WorkflowGenerationService:
         Raises:
             WorkflowStepGenerationError: If generation fails — either the
                 provider call failed outright or every attempt came back
-                empty/schema-invalid. Carries a user-showable ``reason``.
+                empty/schema-invalid. Carries a user-showable reason.
         """
         log.info(f"{LogTag.WORKFLOW} ========== START", title=title)
 
@@ -547,9 +542,9 @@ class WorkflowGenerationService:
     ) -> GeneratedPromptResult:
         """Generate or improve workflow instructions using LLM.
 
-        If `request.connected_integration_ids` is provided, the available-triggers
+        If request.connected_integration_ids is provided, the available-triggers
         list shown to the LLM is restricted to those integrations.
-        If `request.integration_ids` is provided, the LLM is hinted to prefer
+        If request.integration_ids is provided, the LLM is hinted to prefer
         those integrations when naming triggers/actions.
         """
         title = request.title

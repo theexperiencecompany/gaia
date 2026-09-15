@@ -39,10 +39,9 @@ export const useBackgroundSync = () => {
       return;
     }
 
-    // Guards the post-await writes below: an in-flight sync that resolves
-    // after this effect cleaned up must not touch component state. Store
-    // flags stay unconditional — they record global sync facts that outlive
-    // this component.
+    // Guards the post-await writes below: a sync that resolves after this
+    // effect cleaned up must not touch component state. Store flags stay
+    // unconditional — they record global sync facts that outlive this component.
     let cancelled = false;
 
     const runSync = async () => {

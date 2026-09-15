@@ -58,8 +58,7 @@ class TestValidateUploadWebp:
 
 
 class TestValidateUploadExtraFormats:
-    """The anydoc-extracted formats (RTF/EPUB/ODF/DOC) pass validation with their
-    real magic bytes; a mislabeled payload is rejected."""
+    """The anydoc-extracted formats (RTF/EPUB/ODF/DOC) pass with real magic bytes; a mislabeled payload is rejected."""
 
     pytestmark = pytest.mark.asyncio
 

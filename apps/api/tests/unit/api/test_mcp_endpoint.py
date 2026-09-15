@@ -1,8 +1,8 @@
 """Unit tests for the MCP integration endpoints (app/api/v1/endpoints/mcp.py).
 
 The OAuth callback route owns the redirect URLs: every test pins the exact
-``Location`` the browser is sent to. The MCPClient is the seam; the
-``oauth_callback`` service runs for real.
+Location the browser is sent to. The MCPClient is the seam; the oauth_callback
+service runs for real.
 """
 
 from collections.abc import Iterator
@@ -63,7 +63,7 @@ def _callback_seams(
 
 
 class TestMCPOAuthCallback:
-    """GET /api/v1/mcp/oauth/callback"""
+    """GET /api/v1/mcp/oauth/callback."""
 
     async def test_success_redirects_to_the_frontend_with_the_quoted_name(
         self, client: AsyncClient

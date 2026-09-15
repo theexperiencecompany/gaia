@@ -4,7 +4,7 @@ GitHub tool schemas.
 Reference: node_modules/@composio/core/generated/github.ts
 
 Note: All Composio tool responses are wrapped in ToolExecutionResponse with
-`data`, `error`, `successful` keys. These models represent the INNER data structure.
+data, error, successful keys. These models represent the INNER data structure.
 """
 
 from typing import Any, Literal

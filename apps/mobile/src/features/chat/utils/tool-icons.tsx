@@ -77,10 +77,9 @@ export function getToolCategoryIcon(
 
   const config = getToolIconConfig(category);
 
-  // For image-based icons (integrations), fall back to the bundled
-  // INTEGRATION_LOGOS map when the API doesn't return an icon URL — mirrors
-  // web's getIconPath() so registry tools (icon_url=null) still render the
-  // correct integration logo.
+  // For image-based icons (integrations), fall back to INTEGRATION_LOGOS when the
+  // API doesn't return an icon URL — mirrors web's getIconPath() so registry
+  // tools (icon_url=null) still render the correct logo.
   const integrationLogoFallback =
     config?.isImage && config.icon ? INTEGRATION_LOGOS[config.icon] : undefined;
 

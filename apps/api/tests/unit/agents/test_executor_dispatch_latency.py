@@ -1,9 +1,9 @@
 """Unit tests for executor dispatch + run latency spans (Tasks 5-6).
 
-Dispatch stamps ``t_dispatch_perf``; the runner turns it into queue-wait,
-TTFT, active and E2E observations. The LLM/graph itself is never driven —
-``run_executor_background`` runs with its execute step stubbed and its
-delivery/lock boundaries mocked, so the assertions cover the timing +
+Dispatch stamps t_dispatch_perf; the runner turns it into queue-wait, TTFT,
+active and E2E observations. The LLM/graph itself is never driven —
+run_executor_background runs with its execute step stubbed and its
+delivery/lock boundaries mocked, so the assertions cover the timing and
 PostHog wiring only.
 """
 
@@ -34,7 +34,7 @@ def _sum(name: str, labels: dict[str, str]) -> float:
 
 
 class _RecordingUser(dict):
-    """A user mapping that records the default handed to ``.get``.
+    """Record the default handed to .get on a user mapping.
 
     The default only exists on the missing-key path, where the value is falsy
     either way — recording the argument is the only way a test can pin it.
@@ -74,10 +74,10 @@ def _run(stream_id: str, **overrides: Any) -> ExecutorRun:
 
 
 def _mock_redis(held_value: str | None) -> MagicMock:
-    """Stand-in for the executor_tool redis_cache binding.
+    """Stand in for the executor_tool redis_cache binding.
 
-    Patches the module attribute (not the ``client`` property, which would
-    lazily open a real connection).
+    Patches the module attribute, not the client property, which would lazily
+    open a real connection.
     """
     mock_redis = MagicMock()
     mock_redis.client.get = AsyncMock(return_value=held_value)
@@ -92,8 +92,7 @@ class TestDispatchLatency:
         sess._sessions.clear()
 
     async def test_busy_lock_queues_and_carries_dispatch_stamp(self) -> None:
-        """A held lock queues the task, marks the session, and the queued item
-        carries the dispatch stamp the runner later measures queue-wait from."""
+        """The queued item carries the dispatch stamp the runner measures queue-wait from."""
         stream_id = "dispatch-queued"
         with (
             patch.object(et, "try_acquire_lock", AsyncMock(return_value=False)),
@@ -175,8 +174,7 @@ class TestDispatchLatency:
         assert get_session(stream_id) is None
 
     async def test_redirect_wait_is_measured_within_budget(self) -> None:
-        """A cancel in flight lets the dispatch wait for the lock and run live;
-        the wait is stamped on the wide event within the redirect budget."""
+        """The redirect wait is stamped on the wide event, within the redirect budget."""
         stream_id = "dispatch-redirect"
         attempts = {"n": 0}
 
@@ -236,8 +234,10 @@ class TestExecutorRunLatency:
         result: _ExecutorResult | None = None,
         record_pause: bool | AsyncMock = True,
     ) -> MagicMock:
-        """Drive run_executor_background with execute stubbed and delivery/lock
-        boundaries mocked. Returns the PostHog capture mock."""
+        """Drive run_executor_background with execute stubbed and the boundaries mocked.
+
+        Returns the PostHog capture mock.
+        """
         if first_frame_at is not None:
             session = sess.create_session(run.stream_id, run.kind)
             session.executor_first_frame_perf = first_frame_at
@@ -267,9 +267,7 @@ class TestExecutorRunLatency:
         return mock_capture
 
     async def test_pause_record_failure_labels_the_active_span_error(self) -> None:
-        """A pause whose resume context could not be written is failed as an
-        error, so its active span must say ``error`` too — not the pre-pause
-        ``paused`` — to agree with the E2E/run-total labels finalize emits."""
+        """Labelled error, not the pre-pause paused, to agree with the E2E/run-total labels."""
         run = _run("exec-pause-lost", t_dispatch_perf=time.perf_counter())
         error_before = _count("executor_active_seconds", {"status": "error"})
         paused_before = _count("executor_active_seconds", {"status": "paused"})
@@ -286,7 +284,7 @@ class TestExecutorRunLatency:
         assert len(failed) == 1
 
     async def test_recorded_pause_labels_the_active_span_paused(self) -> None:
-        """A pause that records cleanly stays ``paused`` on the active span."""
+        """A pause that records cleanly stays paused on the active span."""
         run = _run("exec-pause-ok", t_dispatch_perf=time.perf_counter())
         paused_before = _count("executor_active_seconds", {"status": "paused"})
         error_before = _count("executor_active_seconds", {"status": "error"})
@@ -301,9 +299,7 @@ class TestExecutorRunLatency:
         assert _count("executor_active_seconds", {"status": "error"}) == error_before
 
     async def test_active_histogram_agrees_with_the_active_ms_it_reports(self) -> None:
-        """The histogram sample and the ``executor_active_ms`` sent to PostHog/Loki
-        are the same measurement: recording the pause is bookkeeping I/O after the
-        run went idle, and must not stretch one of them but not the other."""
+        """Recording the pause is bookkeeping I/O after the run went idle and must stretch neither."""
         run = _run("exec-slow-pause-record", t_dispatch_perf=time.perf_counter())
         sum_before = (
             REGISTRY.get_sample_value("executor_active_seconds_sum", {"status": "error"}) or 0.0
@@ -328,8 +324,7 @@ class TestExecutorRunLatency:
         assert abs(observed_s - active_ms / 1000.0) < 0.05
 
     async def test_queue_wait_is_labelled_by_whether_the_run_was_queued(self) -> None:
-        """A live run's dispatch->start gap is spawn delay, not queue wait; the two
-        must be separable or a real backlog hides behind thousands of ~0s samples."""
+        """A live run's dispatch-to-start gap is spawn delay; a backlog would hide behind ~0s samples."""
         live_before = _count("executor_queue_wait_seconds", {"source": "web", "queued": "false"})
         queued_before = _count("executor_queue_wait_seconds", {"source": "web", "queued": "true"})
 
@@ -353,8 +348,7 @@ class TestExecutorRunLatency:
         )
 
     async def test_hil_resume_is_not_labelled_queued(self) -> None:
-        """A HIL resume runs on its own stream (``RunKind.QUEUED``) but never waited
-        on the busy lock, so its run must not count as queued work."""
+        """A HIL resume runs on RunKind.QUEUED but never waited on the busy lock."""
 
         def _run_total(queued: str) -> float:
             return (
@@ -397,8 +391,7 @@ class TestExecutorRunLatency:
         assert props["executor_active_ms"] >= 0.0
 
     async def test_run_without_dispatch_stamp_omits_queue_wait(self) -> None:
-        """Runs that predate the stamp (queued items written before deploy)
-        degrade to missing timings, never zero-filled."""
+        """Runs predating the stamp degrade to missing timings, never zero-filled."""
         stream_id = "exec-legacy"
         run = _run(stream_id)
         mock_capture = await self._background(run)
@@ -411,9 +404,7 @@ class TestExecutorRunLatency:
         assert "executor_ttft_ms" not in props
 
     async def test_mixed_epoch_dispatch_stamp_measures_nothing(self) -> None:
-        """A queued run that survived a restart carries a stamp from another
-        monotonic epoch — its deltas are garbage and must not reach Prometheus
-        or PostHog."""
+        """A stamp from another monotonic epoch yields garbage deltas that must not be reported."""
         stream_id = "exec-restarted"
         run = _run(stream_id, t_dispatch_perf=time.perf_counter() + 3600.0)
         e2e_before = _count("executor_e2e_seconds", {"status": "success", "queued": "false"})
@@ -429,8 +420,7 @@ class TestExecutorRunLatency:
 
 
 class TestQueueWaitMeasurement:
-    """``_queue_wait_ms`` in isolation: exact millis, the label values, and the
-    two guards (no stamp, mixed-epoch negative delta)."""
+    """_queue_wait_ms in isolation: exact millis, label values, and the no-stamp and mixed-epoch guards."""
 
     def setup_method(self) -> None:
         sess._sessions.clear()
@@ -485,8 +475,7 @@ class TestQueueWaitMeasurement:
 
 
 class TestExecutorTtftMeasurement:
-    """``_executor_ttft_ms`` in isolation: exact millis, the base selection, and
-    the missing/negative guards."""
+    """_executor_ttft_ms in isolation: exact millis, base selection, and the missing/negative guards."""
 
     def setup_method(self) -> None:
         sess._sessions.clear()
@@ -536,9 +525,11 @@ class TestExecutorTtftMeasurement:
 
 
 class TestBackgroundRunExactWiring:
-    """The background run's seams, pinned: the execute call's arguments, the
-    exact timing values on both metric and log surfaces, the cancellation
-    decision, and the initialization sentinels."""
+    """The background run's seams, pinned.
+
+    The execute call's arguments, the exact timing values on both metric and log
+    surfaces, the cancellation decision, and the initialization sentinels.
+    """
 
     def setup_method(self) -> None:
         sess._sessions.clear()
@@ -555,10 +546,10 @@ class TestBackgroundRunExactWiring:
         result: _ExecutorResult | None = None,
         is_cancelled: bool = False,
     ):
-        """The run's I/O boundaries mocked, with the clock pinned to ``perf_values``.
+        """Run with the I/O boundaries mocked and the clock pinned to perf_values.
 
-        ``_finalize_executor_run`` is patched out so the run's own metrics are
-        the only ones emitted; its surface is covered by its own tests.
+        _finalize_executor_run is patched out so the run's own metrics are the
+        only ones emitted; its surface is covered by its own tests.
         """
         execute = AsyncMock(return_value=result or _ExecutorResult("done", "final"))
         is_cancelled_mock = AsyncMock(return_value=is_cancelled)
@@ -657,9 +648,7 @@ class TestBackgroundRunExactWiring:
         )
 
     async def test_timing_sentinels_start_as_none(self) -> None:
-        """``ttft_ms``/``active_ms`` begin unset so ``_timing_fields`` can omit a
-        span that never happened. The sentinels are read off the caller frame at
-        the first point they exist, before the run overwrites them."""
+        """ttft_ms and active_ms begin unset so _timing_fields omits a span that never happened."""
         run = _run("exec-sentinel")
         captured: dict[str, Any] = {}
         real_run_props = er._run_props
@@ -681,8 +670,7 @@ class TestBackgroundRunExactWiring:
 
 
 class TestCaptureExecutorTerminalWiring:
-    """The terminal lifecycle event's exact payload: the user-id sentinel and
-    the dedupe key it is emitted under."""
+    """The terminal lifecycle event's exact payload: the user-id sentinel and dedupe key."""
 
     def test_user_id_defaults_to_the_empty_string(self) -> None:
         user = _RecordingUser()
@@ -729,8 +717,7 @@ class TestResumeForwarding:
         sess._sessions.clear()
 
     async def test_the_resume_command_reaches_the_executor(self) -> None:
-        """A HIL resume must hand its Command to the executor; dropping it replays
-        the run from the start instead of continuing past the approval."""
+        """Dropping the resume Command would replay the run instead of continuing past the approval."""
         run = _run("exec-resume-forward")
         sentinel = object()
         with (

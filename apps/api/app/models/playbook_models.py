@@ -1,29 +1,17 @@
 """Playbook models — a workflow's settled tool-call sequence, written down.
 
-A playbook is authored by the agent at the end of a run it judges repeatable,
-and replayed by a script-driven subagent instead of being re-reasoned from
-scratch. The document is YAML the agent reads and edits; these models are the
-parsed form the runner executes.
+Authored by the agent at the end of a run it judges repeatable, then replayed
+by a script-driven subagent instead of re-reasoned. The document is YAML the
+agent edits; these models are its parsed, runner-executed form.
 
-The grammar is deliberately three keys — ``description``, ``steps`` and
-``result_brief``. It carries no BRANCHING: a run whose order depends on what it
-finds is not compilable and stays on the agent path, which is the correct
-outcome rather than a gap to fill with conditionals.
+Grammar is deliberately three keys (description, steps, result_brief) with no
+BRANCHING — an order-dependent run stays on the agent path. Bounded repetition
+(for_each, capped by max_items, via $item) isn't branching: step order stays
+fixed, only the repeat count varies.
 
-Bounded repetition is not branching, and ``for_each`` is where that line is
-drawn. A step may repeat over a list, capped by ``max_items``, with ``$item``
-addressing the element. The order of steps is still fixed and known before the
-run; only how many times one of them repeats varies. Without it the commonest
-workflow shape GAIA has — fetch the mail, then act on the ones that need it —
-was unfreezable, and declined as "the call order depends on what the fetch
-finds" when the order never changed at all.
-
-Text a model has to write at replay has no section of its own: it lives inline,
-as ``{"$ask": "what to write"}`` standing where the argument's value goes. That
-is not cosmetic. A slot declared in its own table can be declared and then
-referenced by nothing — five of the eight asks ever written in production were
-dead that way, filled by a model call and thrown away — and an inline slot is
-read by exactly the step it sits in, so a dead one cannot be written.
+A model's replay-time text lives inline as {"$ask": "..."} where the argument
+goes, not in its own section — a separate slot table let slots go dead (5 of 8
+ever written); inline ties each one to the step that reads it.
 """
 
 from collections.abc import Iterator, Mapping, Sequence
@@ -46,10 +34,9 @@ from pydantic import (
 from app.db.repositories.base import MongoDocument
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
 
-#: The key that marks an argument value as a slot a model fills at replay,
-#: rather than as data. A ``$`` prefix because no tool takes an argument or a
-#: JSON field by that name, so the marker cannot collide with real content.
-#: ``AskSlot`` below repeats the literal because a pydantic alias has to be one.
+#: The key marking an argument value as a replay-time slot, not data. A `$`
+#: prefix because no tool/JSON field is named that, so it can't collide.
+#: AskSlot below repeats the literal because a pydantic alias has to be one.
 ASK_KEY = "$ask"
 
 #: Cap on a single ``$ask`` slot's output. Generous enough for a briefing body,
@@ -57,10 +44,9 @@ ASK_KEY = "$ask"
 #: generation — the whole point of a playbook is a bounded token cost.
 DEFAULT_ASK_MAX_TOKENS = 1024
 
-#: Ceiling on how many times one ``for_each`` step may repeat. A replay's cost
-#: has to be knowable before it runs, and the fan-out is the only part of a
-#: playbook whose size the author cannot see when they write it: today's inbox
-#: had three mails that wanted a reply, tomorrow's has forty.
+#: Ceiling on how many times one for_each step may repeat: a replay's cost must
+#: be knowable before it runs, and fan-out is the one thing whose size the
+#: author cannot see up front (today's inbox: 3 mails; tomorrow's: 40).
 MAX_FOR_EACH_ITEMS = 25
 
 #: The key a ``for_each`` ask slot answers to, appended to the step's prefix.
@@ -75,17 +61,13 @@ _STEP_ID_DESCRIPTION = "Referencable name, e.g. $steps.<id>.field"
 class DeclineKind(str, Enum):
     """Why a run refused to freeze its sequence, as a value rather than prose.
 
-    The set is deliberately narrow. A free-text reason let a run decline because
-    the *arguments* differed between runs — the attendees of today's meeting, the
-    subject of today's mail — which the placeholder vocabulary already handles
-    and which the check brief already says is not a reason. Prose could spell
-    that; an enum cannot, because no member means it. The same goes for a run
-    whose only variation was how MANY times one call repeated: that is what a
-    ``for_each`` step is for, so it has no member either and the tool redirects.
+    The set is deliberately narrow: a free-text reason let a run decline over
+    *argument* differences (today's attendees, today's mail subject) that the
+    placeholder vocabulary already handles, or over call-count variation that
+    for_each already handles — an enum has no member for either, so it can't.
 
-    The ``BLOCKED_*`` members are not really declines at all. They say the run
-    never got to do the work, so there was no sequence to judge — see
-    :data:`BLOCKED_DECLINE_KINDS`.
+    BLOCKED_* members aren't really declines: they mean the run never got to do
+    the work, so there was no sequence to judge — see BLOCKED_DECLINE_KINDS.
     """
 
     #: The workflow needs an integration the user has never connected. The run
@@ -108,11 +90,9 @@ class DeclineKind(str, Enum):
     NO_WORK_TODAY = "no_work_today"
 
 
-#: Kinds that describe a run which never reached the work. They must not count
-#: toward ``PLAYBOOK_DECLINE_LIMIT``: a workflow blocked on a disconnected
-#: integration fires twice a day and would exhaust its three chances in under
-#: two days, then be locked out of ever earning a playbook — including after the
-#: user connects the integration, because only a workflow edit resets the tally.
+#: Never counts toward PLAYBOOK_DECLINE_LIMIT: a workflow blocked on a
+#: disconnected integration fires twice a day and would exhaust 3 chances in
+#: under 2 days, staying locked out even after reconnecting (only an edit resets it).
 BLOCKED_DECLINE_KINDS = frozenset(
     {
         DeclineKind.BLOCKED_MISSING_INTEGRATION,
@@ -121,12 +101,9 @@ BLOCKED_DECLINE_KINDS = frozenset(
     }
 )
 
-#: A call that changes something, by its name: every tool in this codebase and
-#: every Composio action spells its verb first (``create_todo``,
-#: ``GMAIL_SEND_EMAIL``). A run that made one of these did the work, whatever it
-#: says about the day. A heuristic by name, not a catalogue: a doing-tool with
-#: a novel verb slips through, which is today's behaviour, and no listing tool
-#: (``list_``, ``get_``, ``fetch_``, ``search_``) can be mistaken for one.
+#: A call that changes something, by its name: tools and Composio actions spell
+#: their verb first (create_todo, GMAIL_SEND_EMAIL). A heuristic, not a
+#: catalogue — a novel-verb doing-tool slips through; list_/get_/fetch_/search_ never do.
 WORK_CALL_VERBS = frozenset(
     {
         "create",
@@ -157,10 +134,9 @@ def is_work_call(tool_name: str) -> bool:
     return any(part in WORK_CALL_VERBS for part in parts)
 
 
-#: Kinds that do not count toward the limit: the blocked ones, and a quiet day.
-#: A fan-out over an empty list makes no calls, and a playbook freezes calls
-#: that ran, so a workflow whose work is seasonal would spend its chances on
-#: the days nothing happened and be locked out on the day something did.
+#: Kinds that don't count toward the limit: the blocked ones, and a quiet day.
+#: A playbook only freezes calls that ran, so a seasonal workflow would
+#: otherwise spend its chances on empty days and lock out on a busy one.
 UNCOUNTED_DECLINE_KINDS = BLOCKED_DECLINE_KINDS | {DeclineKind.NO_WORK_TODAY}
 
 #: Blocked kinds that name integrations and can therefore pause the workflow.
@@ -177,8 +153,8 @@ class PlaybookRunStatus(str, Enum):
 
     Kept on the playbook rather than the execution record because it answers a
     question about the playbook: is the frozen sequence still carrying the
-    workflow, or did it break and need re-authoring? ``NOT_RUN`` is a playbook
-    written but not yet replayed. ``SUSPECT`` is a replay that completed but
+    workflow, or did it break and need re-authoring? NOT_RUN is a playbook
+    written but not yet replayed. SUSPECT is a replay that completed but
     whose results the runner did not trust.
     """
 
@@ -266,7 +242,7 @@ def is_time_slot(value: object) -> TypeGuard[Mapping[str, Any]]:
 def is_ask_slot(value: object) -> TypeGuard[Mapping[str, Any]]:
     """Whether a value stands for text a model writes, rather than being data.
 
-    A ``TypeGuard`` rather than a plain ``bool`` so the callers that go on to
+    A TypeGuard rather than a plain bool so the callers that go on to
     read the slot's keys — the validator naming what a bad one contains — get
     the mapping type from the check they already make.
     """
@@ -328,10 +304,9 @@ class PlaybookAskAnswer(BaseModel):
 
     @model_validator(mode="after")
     def _exactly_one_kind(self) -> Self:
-        # ``items`` is judged by presence, not length: an empty list is the
-        # answer "nothing qualifies today", which a for_each slot must be able
-        # to receive. Seen on a scheduled fire: the model answered ``[]`` on a
-        # quiet day and the refusal turned a right body into a failed replay.
+        # `items` is judged by presence, not length — an empty list means "nothing
+        # qualifies today", which a for_each slot must accept. Seen live: a quiet-day
+        # `[]` answer was refused, turning a correct body into a failed replay.
         has_text, has_items = bool(self.text.strip()), self.items is not None
         if has_text == has_items:
             raise ValueError(
@@ -354,11 +329,9 @@ class PlaybookAskFill(BaseModel):
 def _nulls_are_unset(data: object) -> object:
     """Documents written before the step variants existed carry every field.
 
-    The old single model defaulted ``tool``/``handoff``/``for_each``/``max_items``
-    to ``None`` and ``steps`` to ``[]``, and those defaults are on every stored
-    playbook. Under ``extra="forbid"`` they would refuse the variant they belong
-    to, so a null (or an empty child list) is read as the field being unset,
-    which is exactly what it meant when it was written.
+    The old single model defaulted tool/handoff/for_each/max_items to None and
+    steps to []; under extra="forbid" those would refuse the variant they
+    belong to, so a null (or empty steps) is read as unset — its original meaning.
     """
     if not isinstance(data, Mapping):
         return data
@@ -389,7 +362,7 @@ class _CallStep(BaseModel):
         return self.id or self.tool
 
     def arg_ask_slots(self, prefix: str) -> list[LocatedAsk]:
-        """The slots inside this step's arguments, keyed under ``prefix``.
+        """The slots inside this step's arguments, keyed under prefix.
 
         The prefix is a parameter because a repeating step fills its arguments
         once per element, and two elements' answers must not share a key: the
@@ -427,7 +400,7 @@ class ToolStep(_CallStep):
 
 
 class ForEachStep(_CallStep):
-    """One tool call, replayed once per element of a list, ``$item`` addressing
+    """One tool call, replayed once per element of a list, $item addressing
     the element.
 
     Bounded repetition is not branching: the order of steps is still fixed and
@@ -447,7 +420,7 @@ class ForEachStep(_CallStep):
     def _names_a_list(cls, value: str | AskSlot) -> str | AskSlot:
         """A placeholder woven into prose resolves to a STRING, and a string is
         not a list. Seen on the first real authoring run:
-        ``for_each: overdue-items-from-$steps.list``. Refused here, at the write,
+        for_each: overdue-items-from-$steps.list. Refused here, at the write,
         rather than on the replay a whole agentic run later."""
         if isinstance(value, AskSlot) or PLACEHOLDER_TOKEN.fullmatch(value):
             return value
@@ -459,7 +432,7 @@ class ForEachStep(_CallStep):
 
     @property
     def source_key(self) -> str:
-        """The key the loop source answers to when it is an ``$ask``."""
+        """The key the loop source answers to when it is an $ask."""
         return ask_slot_key(self.label, (FOR_EACH_ASK_PATH,))
 
     def ask_slots(self, prefix: str) -> list[LocatedAsk]:
@@ -483,7 +456,7 @@ class ForEachStep(_CallStep):
 
 
 def _call_shape(value: object) -> str:
-    """Which call variant a value is: the one that carries ``for_each``."""
+    """Which call variant a value is: the one that carries for_each."""
     if isinstance(value, ForEachStep):
         return "for_each"
     if isinstance(value, ToolStep):
@@ -541,9 +514,9 @@ class HandoffStep(BaseModel):
 def _step_shape(value: object) -> str:
     """Which variant a value is, read off its shape.
 
-    No ``kind`` key is stored or rendered: the documents already in Mongo and
+    No kind key is stored or rendered: the documents already in Mongo and
     the YAML the agent reads carry none, and the shape says it anyway. A
-    ``handoff`` key is a handoff; a ``for_each`` key is a repeating call; the
+    handoff key is a handoff; a for_each key is a repeating call; the
     rest is a plain call.
     """
     if isinstance(value, HandoffStep):
@@ -620,10 +593,9 @@ _ARGS_DESCRIPTION = (
 )
 
 
-#: Names a model reaches for when it means ``args``. Dropped as unknown keys,
-#: any of these would store a call with no arguments at all and pass it off as
-#: authored; refusing them by name is what keeps lenience from swallowing the
-#: one key a step cannot do without.
+#: Names a model reaches for when it means args. If dropped as unknown keys,
+#: the call would store with no arguments and pass as authored — refusing
+#: them by name keeps lenience from swallowing the one key a step needs.
 _ARGS_NEAR_MISSES = ("arguments", "input", "inputs", "params", "parameters", "kwargs")
 
 
@@ -701,7 +673,7 @@ class PlaybookHandoffStepInput(_CallInput):
 
     Flat by design: playbooks are depth-1, so a handoff's children are always
     calls. Modelling that here instead of reusing the step union keeps the
-    tool's JSON Schema free of the self-``$ref`` that several function-calling
+    tool's JSON Schema free of the self-$ref that several function-calling
     providers mishandle.
     """
 
@@ -710,11 +682,9 @@ class PlaybookHandoffStepInput(_CallInput):
     @model_validator(mode="before")
     @classmethod
     def _flat_or_refused(cls, data: object) -> object:
-        # Lenient about unknown keys, but not about these two: a child that
-        # carries its own ``steps`` or ``handoff`` is the author nesting a
-        # delegation a level deeper than a playbook goes, and dropping that
-        # silently would store a playbook that runs a fraction of what the
-        # author wrote and pass it off as the whole sequence.
+        # Lenient about unknown keys, but not these two: a child carrying its own
+        # steps/handoff nests delegation deeper than a playbook goes. Dropping it
+        # silently would store a playbook that runs only a fraction of what was written.
         if isinstance(data, Mapping):
             nested = sorted(key for key in ("steps", "handoff") if key in data)
             if nested:
@@ -790,7 +760,7 @@ def playbook_body_from_input(
 class PlaybookDocument(PlaybookBody, MongoDocument):
     """A playbook as stored in Mongo.
 
-    Identity is the business key ``playbook_id``; one active playbook per
+    Identity is the business key playbook_id; one active playbook per
     workflow. The structured body is the only stored form: the YAML the agent
     reads back is rendered from it on demand, so there is no second copy to
     drift out of sync with the steps that actually replay.

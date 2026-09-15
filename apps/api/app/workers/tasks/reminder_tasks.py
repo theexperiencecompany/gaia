@@ -1,6 +1,4 @@
-"""
-Reminder-related ARQ tasks.
-"""
+"""Reminder-related ARQ tasks."""
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -17,19 +15,11 @@ async def process_reminder(
     reminder_id: str,
     scheduled_for: int | None = None,
 ) -> str:
-    """
-    Process a reminder task.
+    """Process a reminder task; return a result message.
 
-    Args:
-        ctx: ARQ context
-        reminder_id: ID of the reminder to process
-        scheduled_for: unix seconds of the occurrence this job was armed for.
-            The claim pins it so a sibling pod's stale job cannot fire the next
-            occurrence early. Jobs enqueued before the stamp existed pass None
-            and claim on status alone, so a deploy never strands them.
-
-    Returns:
-        Processing result message
+    scheduled_for pins the claim to one occurrence so a sibling pod's stale job
+    can't fire the next one early. Jobs enqueued before the stamp existed pass
+    None and claim on status alone, so a deploy never strands them.
     """
     log.set(reminder_id=reminder_id, scheduled_for=scheduled_for)
     log.info(f"{LogTag.WORKER} Processing reminder task", reminder_id=reminder_id)
@@ -41,15 +31,7 @@ async def process_reminder(
 
 
 async def cleanup_expired_reminders(ctx: dict[str, Any]) -> str:  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
-    """
-    Cleanup expired or completed reminders (scheduled task).
-
-    Args:
-        ctx: ARQ context
-
-    Returns:
-        Cleanup result message
-    """
+    """Delete reminders finished more than 30 days ago; return a result message."""
     log.info(f"{LogTag.WORKER} Running cleanup of expired reminders")
     cutoff_date = datetime.now(UTC) - timedelta(days=30)
 

@@ -5,10 +5,9 @@ import {
 } from "@/features/auth/utils/auth-storage";
 import { API_BASE_URL } from "./constants";
 
-// Callback invoked when any request returns 401 Unauthorized.
-// Wired up by AuthProvider via setOnUnauthorized() so that the auth layer
-// can clear stored credentials and redirect to login without creating a
-// circular dependency between api.ts and the React context.
+// Callback for any 401 Unauthorized response, wired up by AuthProvider via
+// setOnUnauthorized() so the auth layer can clear credentials and redirect to
+// login without a circular dependency between api.ts and the React context.
 let onUnauthorizedCallback: (() => void) | null = null;
 
 export function setOnUnauthorized(callback: () => void): void {

@@ -4,7 +4,7 @@ Tests the notes CRUD endpoints with mocked service layer
 to verify routing, status codes, response bodies, and validation.
 
 Note: The notes endpoints do NOT have try/except blocks — exceptions
-propagate to the global handler. With ``ASGITransport(raise_app_exceptions=True)``
+propagate to the global handler. With ASGITransport(raise_app_exceptions=True)
 (the default), these surface as raised exceptions in the test client rather than
 500 responses. Tests for service errors therefore assert that the exception is raised.
 """
@@ -45,7 +45,7 @@ FAKE_NOTE_RESPONSE = {
 
 
 class TestCreateNote:
-    """POST /api/v1/notes"""
+    """POST /api/v1/notes."""
 
     @patch(
         "app.api.v1.endpoints.notes.create_note_service",
@@ -105,7 +105,7 @@ class TestCreateNote:
 
 
 class TestGetNote:
-    """GET /api/v1/notes/{note_id}"""
+    """GET /api/v1/notes/{note_id}."""
 
     @patch(
         "app.api.v1.endpoints.notes.get_note",
@@ -132,7 +132,7 @@ class TestGetNote:
 
 
 class TestGetAllNotes:
-    """GET /api/v1/notes"""
+    """GET /api/v1/notes."""
 
     @patch(
         "app.api.v1.endpoints.notes.get_all_notes",
@@ -170,7 +170,7 @@ class TestGetAllNotes:
 
 
 class TestUpdateNote:
-    """PUT /api/v1/notes/{note_id}"""
+    """PUT /api/v1/notes/{note_id}."""
 
     @patch(
         "app.api.v1.endpoints.notes.update_note",
@@ -228,7 +228,7 @@ class TestUpdateNote:
 
 
 class TestDeleteNote:
-    """DELETE /api/v1/notes/{note_id}"""
+    """DELETE /api/v1/notes/{note_id}."""
 
     @patch(
         "app.api.v1.endpoints.notes.delete_note",

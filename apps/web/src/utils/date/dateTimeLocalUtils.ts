@@ -113,7 +113,6 @@ export const formatDateLocal = (dateTimeLocalStr: string): string => {
 /**
  * Get start of day in datetime-local format
  *
- * @param date - Date object
  * @returns datetime-local string for start of day (00:00)
  */
 export const getStartOfDay = (date: Date): string => {
@@ -125,7 +124,6 @@ export const getStartOfDay = (date: Date): string => {
 /**
  * Get end of day in datetime-local format
  *
- * @param date - Date object
  * @returns datetime-local string for end of day (23:59)
  */
 export const getEndOfDay = (date: Date): string => {

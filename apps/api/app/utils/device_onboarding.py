@@ -1,7 +1,6 @@
-"""Surfacing the device-onboarding card and the device-approval link, plus the
-agent copy for each.
+"""Build the device-onboarding card, approval link, and matching agent copy.
 
-Mirrors ``app/utils/integration_checker.py``: the UI card and the agent's
+Mirrors app/utils/integration_checker.py: the UI card and the agent's
 instruction are one operation, and the wording is source-category aware -
 URL-free on UI (the card carries the action) and inline on text-only clients
 (bots, background) where there is no card. The approve link is only ever

@@ -134,8 +134,7 @@ async def _emit_stage(
 
 @dataclass
 class InboxScanContext:
-    """Shared state between the inbox fetch task and triage (which starts
-    as soon as enough emails are buffered)."""
+    """Shared state between the inbox fetch task and triage, which starts early once buffered."""
 
     # Raw Gmail message dicts straight off `fetch_emails_for_onboarding`; the key
     # set varies with the fetch format and the provider's casing (`labelIds` vs
@@ -160,11 +159,10 @@ class OnboardingContext:
 
 
 async def _scan_then_enqueue_memory(user_id: str, ctx: InboxScanContext) -> None:
-    """Run the visible inbox scan, then queue durable memory ingestion so it
-    runs in parallel with the rest of the DAG and survives later failures.
+    """Run the visible inbox scan, then queue durable memory ingestion to run in parallel.
 
-    Ingestion is queued *after* the scan on purpose: both hit the same Composio
-    Gmail capacity, and racing them starves the user-visible scan.
+    Queued *after* the scan on purpose: both hit the same Composio Gmail
+    capacity, and racing them starves the user-visible scan.
     """
     await _run_inbox_scanning(user_id, ctx)
     try:
@@ -184,8 +182,7 @@ async def _scan_then_enqueue_memory(user_id: str, ctx: InboxScanContext) -> None
 
 
 async def process_onboarding_intelligence(user_id: str) -> None:
-    """Gmail personalization DAG. Called as an ARQ background task when a user
-    connects Gmail, at most once per user."""
+    """Run the Gmail personalization DAG as an ARQ background task, at most once per user."""
     log.set(user={"id": user_id})
     pipeline_start = time.monotonic()
     log.info(f"{LogTag.ONBOARDING} pipeline start", user_id=user_id, phase="start")
@@ -270,8 +267,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
 
 async def _run_inbox_scanning(user_id: str, ctx: InboxScanContext) -> None:
-    """Stream the inbox into ctx.emails. Sets first_batch_ready once ~100
-    emails buffered so triage can start early; sets done when fetch completes."""
+    """Stream the inbox into ctx.emails, signalling first_batch_ready at ~100 and done at completion."""
     t0 = time.monotonic()
 
     cached = await inbox_scan_cache.get(user_id, "metadata")
@@ -472,7 +468,7 @@ async def _run_triage(
 
 
 def _important_emails_for_client(triage: InboxTriage | None) -> list[TriageEmailSummary]:
-    """The top few important emails, projected onto the fields the client shows."""
+    """Return the top few important emails, projected onto the fields the client shows."""
     return [
         TriageEmailSummary(sender=e.sender, subject=e.subject, why_important=e.why_important)
         for e in (triage.important_emails[:5] if triage else [])
@@ -484,8 +480,7 @@ async def _run_social_profiles(
     user_name: str,
     user_email: str | None,
 ) -> list[SocialProfile]:
-    """Fetch full email bodies, extract social profiles, persist, and emit
-    SOCIAL_PROFILES_READY. Returns the deduped profiles."""
+    """Fetch email bodies, extract and persist social profiles, emit SOCIAL_PROFILES_READY."""
     t0 = time.monotonic()
     profiles: list[SocialProfile] = []
     try:
@@ -543,9 +538,11 @@ async def _run_holo_card(
     user: UserDocument,
     social_profiles: list[SocialProfile],
 ) -> bool:
-    """Generate and persist the holo card. Returns whether it is now viewable —
-    the public card page 404s until ``onboarding.house`` exists, so the caller
-    must not advertise a link for a card that failed to generate."""
+    """Generate and persist the holo card, returning whether it is now viewable.
+
+    The public card page 404s until onboarding.house exists, so the caller
+    must not advertise a link for a card that failed to generate.
+    """
     t0 = time.monotonic()
     card_ready = False
     try:
@@ -626,7 +623,7 @@ async def _run_holo_card(
 
 
 def holo_card_url(user_id: str) -> str:
-    """The public, shareable holo-card page for a user.
+    """Return the public, shareable holo-card page for a user.
 
     The route's card id *is* the user id — the card is live as soon as its
     content is saved, so there is nothing to publish first.
@@ -635,11 +632,10 @@ def holo_card_url(user_id: str) -> str:
 
 
 def _holo_card_message(card_url: str) -> str:
-    """The seeded chat message announcing the card.
+    """Return the seeded chat message announcing the card.
 
-    Chat has no holo-card renderer (no TOOL_RENDERERS entry, no bubble type), so
-    the card travels as its public link rather than as a payload the client
-    would silently drop.
+    Chat has no holo-card renderer, so the card travels as its public link
+    rather than as a payload the client would silently drop.
     """
     return (
         "Your holo card is ready — I built it from what I learned in your inbox.\n\n"
@@ -649,14 +645,11 @@ def _holo_card_message(card_url: str) -> str:
 
 
 async def _announce_personalization(user_id: str, *, card_ready: bool) -> str | None:
-    """Tell the user what the pipeline produced: one notification on every
-    channel they have, plus a seeded web conversation holding the card link.
+    """Notify the user on every channel and seed a web conversation with the card link.
 
-    card_ready is False when holo-card generation failed. The public card
-    page 404s until the card exists, so nothing may link to it in that case.
-    Returns the seeded conversation id, or None when there is no card to hand
-    over or seeding failed. Delivery is fail-soft: an undelivered announcement
-    must not fail the pipeline or cost the user their personalization marker.
+    Returns the seeded conversation id, or None when there is no card or
+    seeding failed. Fail-soft: an undelivered announcement must not fail the
+    pipeline or cost the user their personalization marker.
     """
     card_url = holo_card_url(user_id)
     body = _MEMORIES_NOTIFICATION_BODY
@@ -725,8 +718,7 @@ async def _announce_personalization(user_id: str, *, card_ready: bool) -> str | 
 
 
 async def _persist_social_profiles(user_id: str, social_profiles: list[SocialProfile]) -> None:
-    """Write auto-extracted profiles only if the user hasn't already confirmed
-    them via POST /social-profiles."""
+    """Write auto-extracted profiles only if the user hasn't already confirmed them."""
     if not social_profiles:
         return
     try:
@@ -745,8 +737,7 @@ async def _persist_profiles(
     writing_style: WritingStyleProfile | None,
     triage: InboxTriage | None,
 ) -> None:
-    """Persist writing style and triage summary. Social profiles are persisted
-    separately by _run_social_profiles."""
+    """Persist writing style and triage summary (social profiles persist separately)."""
     t0 = time.monotonic()
     triage_summary: PersistedTriageSummary | None = None
     if triage:

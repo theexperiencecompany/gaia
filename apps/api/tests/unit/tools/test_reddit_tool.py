@@ -3,7 +3,7 @@
 The proxy smoke test (test_integration_tools_proxy.py) proves the tool routes
 through proxy_request_sync and test_platform_integration_tools.py pins the
 response shaping; these pin the exact OAuth API requests the tool sends —
-endpoint, method, `limit` query and the User-Agent header Reddit requires —
+endpoint, method, limit query and the User-Agent header Reddit requires —
 and the full result shape, including each fetch degrading independently.
 """
 

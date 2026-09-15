@@ -3,7 +3,7 @@
 The cron that keeps tracked todos honest: expired todos get a health-check
 agent pass (archive/notify), overdue todos get an individual notification,
 dormant todos get re-queued or bundled into a digest. The backoff escalation
-(`_register_notification`) is the load-bearing part — a stuck todo must stop
+(_register_notification) is the load-bearing part — a stuck todo must stop
 nagging once the schedule is exhausted, and the daytime gate must keep
 notifications out of the user's night.
 """
@@ -75,9 +75,9 @@ def _pool(**overrides) -> MagicMock:
 
 
 def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
-    """The patches an end-to-end sweep needs, with overridable return values.
+    """Build the patches an end-to-end sweep needs, with overridable return values.
 
-    Returns ``(pool, mocks, patches)`` where ``mocks`` keys name each seam.
+    Returns (pool, mocks, patches) where mocks keys name each seam.
     """
     defaults = {
         "list": [_doc()],
@@ -125,7 +125,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
 
 @contextmanager
 def _sweep(**overrides) -> Iterator[tuple[MagicMock, dict[str, AsyncMock]]]:
-    """An end-to-end sweep with every seam mocked; yields ``(pool, mocks)``."""
+    """Run an end-to-end sweep with every seam mocked; yields (pool, mocks)."""
     pool, mocks, patches = _sweep_patches(**overrides)
     with ExitStack() as stack:
         for p in patches:
@@ -191,8 +191,7 @@ class TestIsDormant:
         assert _is_dormant(doc, NOW) is True
 
     def test_blocking_label_at_exactly_max_days_is_not_yet_stuck(self):
-        """ "Surface" means strictly past the cap — day 8 of an 8-day cap is the
-        last quiet day, not the first escalated one."""
+        """Day 8 of an 8-day cap is the last quiet day, not the first escalated one."""
         doc = _doc(
             updated_at=NOW - timedelta(days=WAITING_LABEL_MAX_DAYS), labels=["waiting-for-approval"]
         )
@@ -533,10 +532,7 @@ class TestIsUserDaytime:
 
 
 # ---------------------------------------------------------------------------
-# _send_user_dormant_digest
-#
-# The redirect-action tests moved with the helper to
-# tests/unit/services/todos/test_todo_notifications.py.
+# _send_user_dormant_digest — redirect-action tests moved to test_todo_notifications.py
 # ---------------------------------------------------------------------------
 
 
@@ -589,8 +585,7 @@ class TestSendUserDormantDigest:
 
 
 class TestMigrateAllLegacyCanvases:
-    """The cursor loop's own contract: it pages to a short page, sums every
-    page's migrated count, and stops on the empty page."""
+    """The cursor loop's own contract: it pages to a short page, sums every page's migrated count, and stops on the empty page."""
 
     async def test_empty_scan_returns_zero(self):
         with (
@@ -625,8 +620,7 @@ class TestMigrateAllLegacyCanvases:
         assert [c.args[0][0].id for c in migrate.await_args_list] == ["a0", "last"]
 
     async def test_short_first_page_stops_immediately(self):
-        """A first page shorter than the size is the whole scan — the loop must
-        stop without a second fetch."""
+        """A first page shorter than the size is the whole scan — the loop must stop without a second fetch."""
         finder = AsyncMock(side_effect=[[_doc(id="only", updated_at=NOW)]])
         with (
             patch(
@@ -666,8 +660,7 @@ class TestMigrateLegacyCanvases:
             assert await _migrate_legacy_canvases([_doc(id="a", updated_at=NOW)]) == 0
 
     async def test_a_failing_todo_is_logged_and_skipped(self):
-        """One todo raising must not abort the batch, and the failure is logged
-        with the todo id and the error — pins the whole log call."""
+        """One todo raising must not abort the batch, and the failure is logged with the todo id and the error."""
         from app.workers.tasks.maintenance_sweep_tasks import _migrate_legacy_canvases
 
         with (
@@ -705,8 +698,7 @@ class TestMigrateLegacyCanvases:
 
 class TestMaintenanceSweep:
     async def test_every_tracked_todo_gets_the_legacy_canvas_migration(self):
-        """The one-shot split rides the sweep over ALL tracked todos — active
-        or completed — not just the active page the tiers classify."""
+        """The one-shot split rides the sweep over ALL tracked todos — active or completed — not just the active page the tiers classify."""
         todos = [_doc(id="a", updated_at=NOW), _doc(id="b", completed=True, updated_at=NOW)]
         with _sweep(migration=todos) as (pool, mocks):
             pool.exists = AsyncMock(return_value=1)
@@ -717,9 +709,7 @@ class TestMaintenanceSweep:
         mocks["list"].assert_awaited_once_with(limit=200)
 
     async def test_legacy_migration_pages_past_the_first_page(self):
-        """The migration cursor walks every page to a short page, so a legacy
-        todo past the first 200 — including a completed one — still migrates,
-        while classification keeps the active-only list."""
+        """The migration cursor walks every page to a short page, so a legacy todo past the first 200 still migrates, while classification keeps the active-only list."""
         from app.workers.tasks.maintenance_sweep_tasks import _MIGRATION_PAGE_SIZE
 
         active = [_doc(id="active-1", updated_at=NOW)]
@@ -859,11 +849,9 @@ class TestHealthCheckAgentCall:
         assert "already running" not in result
 
     async def test_the_run_is_tagged_as_a_maintenance_health_check(self) -> None:
-        # The trigger context is the only thing that tells the agent stack this
-        # turn is a background health check rather than a chat message, and it
-        # carries the todo the verdict belongs to. A dropped ``options=``, a
-        # renamed key or a renamed trigger type all make the run anonymous, and
-        # nothing downstream complains — it just stops being attributable.
+        # The trigger context tells the agent stack this is a background health
+        # check (not chat) and carries the todo the verdict belongs to. A dropped
+        # options=, renamed key, or renamed trigger type makes the run anonymous.
         captured: dict[str, object] = {}
 
         async def fake_call_agent_silent(
@@ -942,13 +930,9 @@ class TestHealthCheckAgentCall:
 class TestCanvasBounding:
     @pytest.mark.regression
     async def test_an_oversized_canvas_does_not_break_the_health_check_request(self) -> None:
-        # Prod: one user's canvas grew past MAX_MESSAGE_LENGTH, so building the
-        # MessageRequestWithHistory inside _call_health_check_agent raised
-        # ValidationError *outside* every try/except. It propagated through
-        # _health_check_dormant into the dormant loop and aborted the whole cron:
-        # every later todo skipped, the digest never sent, for every user.
-        # call_agent_silent is the seam here on purpose — mocking
-        # _call_health_check_agent would mock away the failing construction.
+        # Prod: an oversized canvas made MessageRequestWithHistory construction raise
+        # ValidationError outside every try/except, aborting the whole cron for every
+        # user. call_agent_silent is mocked here on purpose to keep that construction real.
         head = "## Current State\nwaiting on the vendor\n"
         tail = "FINAL CANVAS LINE"
         canvas = head + "x" * (60_000 - len(head) - len(tail)) + tail

@@ -90,12 +90,9 @@ export const useLogout = () => {
 
     resetUser();
 
-    // Redirection will be handled by the authApi.logout method
-    // but in case it doesn't (for example, if there's no logout_url),
-    // we redirect to the post-logout landing. In Electron the marketing
-    // homepage lives in the (landing) group, which has no ElectronRouteGuard
-    // to bounce logged-out users — so send desktop users straight to the
-    // desktop login screen instead of the public landing page.
+    // Fallback redirect if authApi.logout doesn't (no logout_url) — in
+    // Electron, (landing) has no ElectronRouteGuard to bounce logged-out
+    // users, so desktop goes to the desktop login screen instead of "/".
     router.push(isElectron ? "/desktop-login" : "/");
   }, [clearAllStorage, router, isElectron]);
 

@@ -1,18 +1,4 @@
-"""The comms tier as a running graph.
-
-Comms is the front door and is deliberately the *narrowest* agent in the
-product: delegate to the executor, cancel that delegation, remember and recall,
-and the read-only discovery three (find an integration, search public workflow
-templates, draw the connect card). No tool retrieval at all, and every reply
-routed straight to the user. Its value comes from what it cannot do — a comms
-agent that could reach the executor's tools would act on the user's accounts
-without any of the delegation, approval, or streaming machinery in between.
-Nothing on this surface writes to the user's data.
-
-``test_chat_stream.py`` covers what comms puts on the wire. This covers the
-graph: which tools exist, what happens to a call for one that does not, the
-end-of-turn hooks, and how a turn carries into the next.
-"""
+"""The comms tier as a running graph: its tool surface, delegation, and how a turn carries into the next."""
 
 from __future__ import annotations
 
@@ -70,17 +56,7 @@ class TestCommsToolSurface:
         assert REJECT_NODE not in run.nodes(), f"{tool} was not bound to comms"
 
     async def test_delegating_to_the_executor_actually_dispatches(self):
-        """Being bound is not the same as working. The "bound" test above stays
-        green whatever the tool returns, so this pins the one thing the user
-        depends on: asking for real work hands it off and says so. Without it,
-        comms answers "on it" and nothing is ever dispatched.
-
-        Its own conversation, deliberately: ``call_executor`` takes a busy lock
-        keyed on the thread (``executor:busy:{thread_id}``) with a 30-minute
-        TTL, and a lock left by any earlier dispatch queues this one instead of
-        starting it — which is a different, also-valid response and would make
-        the assertion order-dependent.
-        """
+        """Uses its own thread: call_executor's busy lock (executor:busy:{thread_id}, 30-minute TTL) would otherwise queue this dispatch instead of running it."""
         async with comms_graph(
             [call("call_executor", {"task": "book a table"}, call_id="c1"), "On it."]
         ) as graph:
@@ -92,9 +68,6 @@ class TestCommsToolSurface:
 
     @pytest.mark.parametrize("tool", ["plan_tasks", "handoff", "read", "bash", "deep_research"])
     async def test_an_executor_tool_is_not_reachable_from_comms(self, tool: str):
-        """The tier boundary. If an executor tool were callable here it would run
-        outside delegation — no executor thread, no todo plan, no approval gate,
-        and nothing on the stream to show it happened."""
         async with comms_graph([call(tool, {}, call_id="c1"), "ok"]) as graph:
             run = await run_graph(graph, "do the thing")
 
@@ -103,8 +76,7 @@ class TestCommsToolSurface:
         assert not run.ran(tool)
 
     async def test_comms_cannot_retrieve_its_way_to_more_tools(self):
-        """``retrieve_tools`` is disabled on comms. If it were reachable, comms
-        could bind the whole registry and the boundary above would be advisory."""
+        """retrieve_tools is disabled on comms — reachable, it could bind the whole registry."""
         async with comms_graph(
             [
                 call(
@@ -122,12 +94,8 @@ class TestCommsToolSurface:
         assert REJECT_NODE in run.nodes()
 
     async def test_a_rejected_tool_still_lets_the_turn_finish(self):
-        """The user must get an answer even when the model reached for something
-        it does not have."""
-        # The reply is deliberately clean of AI-isms: the style guard sends a
-        # dirty comms draft back for a rewrite, and the scripted model cycles
-        # its responses, so a reply carrying a tell (this one used to open with
-        # "Let me ...") desynchronises the script and tests nothing.
+        # Reply avoids AI-isms like "Let me ...": the style guard would send it
+        # back for a rewrite and desync the scripted model's reply cycle.
         async with comms_graph(
             [call("plan_tasks", {}, call_id="c1"), "delegating that now."]
         ) as graph:
@@ -138,10 +106,7 @@ class TestCommsToolSurface:
 
 class TestMemoryTools:
     async def test_recall_reaches_the_memory_engine_and_answers_the_model(self):
-        """``ran()`` and "not None" are both satisfied by an error string — the
-        memory tools resolve the user from ``config["metadata"]``, and a config
-        missing it returns "Error: user_id not found in config" while still
-        looking like a completed tool call. Assert the real result."""
+        """A config missing config["metadata"] returns "Error: user_id not found in config", which still satisfies ran() — assert the real result."""
         async with comms_graph(
             [call("search_memory", {"query": "coffee"}, call_id="m1"), "You like oat milk."]
         ) as graph:
@@ -156,17 +121,13 @@ class TestMemoryTools:
 
 class TestReplyShape:
     async def test_a_comms_reply_carries_the_message_break_marker(self):
-        """The client splits a comms turn into bubbles on this marker. Only
-        comms gets it — the executor's text is not user-facing — so it is the
-        one signal that a reply came from the front door."""
+        """The client splits a comms turn into bubbles on this marker; the executor's text never carries it."""
         async with comms_graph(["Hi there."]) as graph:
             run = await run_graph(graph, "hello")
 
         assert run.final_text() == f"Hi there.{NEW_MESSAGE_BREAKER}"
 
     async def test_an_empty_model_reply_is_replaced_with_something_sayable(self):
-        """A model that returns neither text nor a tool call would otherwise
-        render as an empty bubble."""
         async with comms_graph([AIMessage(content="")]) as graph:
             run = await run_graph(graph, "hello")
 
@@ -176,13 +137,7 @@ class TestReplyShape:
 
 class TestEndOfTurnHooks:
     async def test_the_turn_runs_its_end_graph_hooks(self):
-        """Follow-up suggestions and passive memory ingestion both hang off the
-        end hook. If the graph stopped routing through it, chips would vanish and
-        nothing said in conversation would ever be remembered.
-
-        Asserted via ``visited``, not ``nodes()``: the end hooks are
-        side-effecting and write no channels, so the node emits an empty update
-        rather than echoing the message list back into the checkpoint."""
+        """Asserted via visited, not nodes(): the end hooks are side-effecting and write no channels, so the node emits an empty update."""
         async with comms_graph(["Hi there."]) as graph:
             run = await run_graph(graph, "hello")
 
@@ -196,7 +151,7 @@ class TestEndOfTurnHooks:
 
 
 class TestSystemPromptSlots:
-    """``manage_system_prompts_node`` keeps at most one system message per slot.
+    """manage_system_prompts_node keeps at most one system message per slot.
 
     It does not *inject* prompts — the chat service builds those upstream — so
     its whole job is collapsing accumulated copies. A checkpointed thread grows
@@ -224,8 +179,7 @@ class TestSystemPromptSlots:
         assert "turn 3" in str(systems[0].content)
 
     async def test_the_surviving_prompt_leads_the_conversation(self):
-        """Gemini promotes only the leading contiguous run of SystemMessages into
-        system_instruction and silently drops any that follow a user turn."""
+        """Gemini promotes only the leading contiguous run of SystemMessages into system_instruction, silently dropping any after a user turn."""
         async with comms_graph(["Hi."]) as graph:
             run = await run_graph(
                 graph,
@@ -243,8 +197,7 @@ class TestSystemPromptSlots:
         assert isinstance(prompt[0], SystemMessage)
 
     async def test_only_the_latest_clock_reaches_the_model(self):
-        """Time rides a HumanMessage so the system prefix stays byte-stable.
-        Two clocks in one prompt is the model reading contradictory times."""
+        """Time rides a HumanMessage so the system prefix stays byte-stable."""
         from app.helpers.message_helpers import build_current_time_message
 
         old_clock = build_current_time_message(user_timezone="UTC")
@@ -277,8 +230,6 @@ class TestAcrossTurns:
         assert asked == ["first question", "second question"]
 
     async def test_a_second_turn_shows_the_model_the_first(self):
-        """Comms is the only tier that sees the user's own words, so losing the
-        prior turn means it re-asks for what it was already told."""
         async with comms_graph(["Noted.", "Second answer."]) as graph:
             await run_graph(graph, "my code is 1234", thread_id="shared")
             run = await run_graph(graph, "what was it?", thread_id="shared")
@@ -302,28 +253,21 @@ _MessageFingerprint = tuple[str, str, str]
 
 
 class TestTheConversationGrowsAppendOnly:
-    """The provider caches a BYTE prefix of the request, so a turn only resumes
-    from cache if it begins with the previous turn's history verbatim. Appending
-    is free; rewriting a message that was already sent truncates the cache at
-    that point and every message behind it is re-read.
+    """The provider caches a byte prefix of the request, so only appending — never rewriting a sent message — keeps the cache.
 
-    This is invisible to every other assertion: a rewrite leaves the same
-    messages present and the agent still answers correctly, so the transcript
-    looks right while the bytes on the wire changed. Only a byte-level check
-    catches it, which is why it belongs in the suite rather than in a dashboard.
+    A rewrite still looks correct in the transcript (same messages, correct
+    answer) while truncating the cache and forcing a re-read of everything
+    behind it, so only a byte-level check catches it.
     """
 
     @staticmethod
     def _tool_identity(message: BaseMessage) -> str:
         """Everything about a message's tool calls that the wire carries.
 
-        An assistant turn is identified by every call it makes — ``name``,
-        ``args`` and ``id`` — because a request whose args change while the
-        text stays identical is a different byte sequence behind an unchanged
-        transcript. A tool result is identified by the call it answers, so a
-        re-correlated result is caught the same way. ``args`` is serialised
-        with sorted keys: the fingerprint has to move when the values move and
-        stay put when only dict ordering does.
+        An assistant turn is identified by every call's name, args and id — a
+        request whose args change while the text stays identical is still a
+        different byte sequence. args is serialised with sorted keys so the
+        fingerprint moves only when values move, not dict ordering.
         """
         if isinstance(message, ToolMessage):
             return f"->{message.tool_call_id}"
@@ -335,12 +279,7 @@ class TestTheConversationGrowsAppendOnly:
 
     @classmethod
     def _conversation(cls, prompt_messages: Sequence[BaseMessage]) -> list[_MessageFingerprint]:
-        """The conversation portion of one recorded request.
-
-        System slots are handled separately and excluded here. Identity is
-        (type, text, tool identity) — see :meth:`_tool_identity` for why the
-        text alone is not enough.
-        """
+        """Return the conversation portion of one recorded request, system slots excluded."""
         return [
             (
                 type(m).__name__,
@@ -357,8 +296,8 @@ class TestTheConversationGrowsAppendOnly:
     ) -> list[list[_MessageFingerprint]]:
         """Every model call the graph made, in order, across several turns.
 
-        ``run.prompts`` is copied off the scripted model, which accumulates for
-        the lifetime of the graph — so turn 2's ``run`` re-reports turn 1's calls
+        run.prompts is copied off the scripted model, which accumulates for
+        the lifetime of the graph — so turn 2's run re-reports turn 1's calls
         as well. Taking it whole makes the second turn look like it rewound the
         conversation. Only the calls added since the previous turn are new.
         """
@@ -372,12 +311,7 @@ class TestTheConversationGrowsAppendOnly:
         return requests
 
     async def test_each_request_begins_with_the_previous_requests_history(self) -> None:
-        """Two turns on ONE thread, which is where the cache is supposed to pay:
-        turn 2's request must open with turn 1's history byte for byte.
-
-        A single plain-reply turn makes exactly one model call and so compares
-        nothing, hence two turns against the same ``thread_id``.
-        """
+        """Two turns on the same thread_id: a single turn makes only one model call, so there is nothing to compare."""
         async with comms_graph(["first reply", "second reply"]) as graph:
             requests = await self._requests_across_turns(
                 graph, ("first question", "second question"), f"cache-{uuid4()}"
@@ -386,16 +320,7 @@ class TestTheConversationGrowsAppendOnly:
         self._assert_append_only(requests)
 
     async def test_a_turn_that_called_a_tool_still_begins_with_its_own_history(self) -> None:
-        """The case with something to break. Delegating through ``call_executor``
-        leaves an AI message carrying ``tool_calls`` in the history, and
-        ``filter_messages_node`` rebuilds that message on every later call,
-        narrowing its ``tool_calls`` to the answered ones (``filter_messages.py``).
-
-        Rebuilding is only safe while it is *stable* — the same message in, the
-        same bytes out. The moment the rebuild's result depends on how much of
-        the turn has run, an already-sent message changes shape mid-conversation
-        and everything behind it is re-read at full price.
-        """
+        """filter_messages_node rebuilds an AI message's tool_calls on every later call (filter_messages.py) — the rebuild must be stable, same message in, same bytes out."""
         async with comms_graph(
             [call("call_executor", {"task": "do it"}, call_id="x1"), "done", "second reply"]
         ) as graph:

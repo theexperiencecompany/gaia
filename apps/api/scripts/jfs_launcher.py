@@ -1,40 +1,19 @@
 #!/usr/bin/env python3
-"""Launch ``juicefs`` with ``PR_SET_DUMPABLE=0`` so its ``/proc/<pid>/*``
-entries are inaccessible to non-owner non-``CAP_SYS_PTRACE`` readers.
+"""Launch juicefs with PR_SET_DUMPABLE=0 so its /proc/<pid>/* is inaccessible to non-owner readers.
 
-Background
-----------
-The juicefs daemon holds the meta-DB URL, ``META_PASSWORD``, and R2 keys in
-its process environ. The default kernel rule for ``/proc/<pid>/{environ,
-cmdline}`` reads is "owner uid or ``CAP_SYS_PTRACE``"; for a root-owned
-process this means an unprivileged sibling user is denied — but a process
-that obtained ``CAP_SYS_PTRACE`` (e.g. via ``sudo cat``) is not.
+The juicefs daemon holds the meta-DB URL, META_PASSWORD, and R2 keys in its
+environ. The default kernel rule ("owner uid or CAP_SYS_PTRACE") denies an
+unprivileged sibling but not one that obtained CAP_SYS_PTRACE (e.g. via sudo
+cat). PR_SET_DUMPABLE(0) additionally sets /proc/<pid>/* to root:root mode 0,
+requires PTRACE_MODE_READ_FSCREDS for any non-owner reader, and refuses
+ptrace attach from anyone but the owner or capability-holder.
 
-``PR_SET_DUMPABLE(0)`` makes the kernel additionally:
-  * Set ``/proc/<pid>/*`` ownership to ``root:root`` mode ``0``.
-  * Require ``PTRACE_MODE_READ_FSCREDS`` for any non-owner reader (so a
-    ``CAP_SYS_PTRACE`` reader still passes; an unprivileged reader does not).
-  * Refuse ``ptrace`` attach from anything that isn't the owner or
-    capability-holder.
-
-In the gaia-coder template the unprivileged sandbox user has **no** ``sudo``
-(see ``build_e2b_template.py``), so they cannot obtain ``CAP_SYS_PTRACE``.
-With ``dumpable=0`` set here, every path from a user shell to the daemon's
-secrets is closed — including future regressions where someone accidentally
-re-grants sudo, because the dumpable flag is independent of the sudo policy.
-
-The flag survives ``execve(2)`` for non-suid binaries (which juicefs is),
-and is inherited across ``fork(2)`` — so when juicefs daemonizes via
-``--background`` the child keeps the flag.
-
-Usage
------
-Invoked from ``mount_juicefs.sh`` in place of a bare ``juicefs`` call:
-
-    /etc/gaia/jfs_launcher.py mount --subdir /users/$USER_ID ... $META_URL /mnt/jfs
-
-Mirrors a standard juicefs CLI; everything after ``argv[0]`` is forwarded
-unmodified to the juicefs binary.
+The sandbox user has no sudo (build_e2b_template.py), so this closes every
+path to the daemon's secrets independent of the sudo policy — including a
+future regression that re-grants it. The flag survives execve (juicefs is
+non-suid) and fork, so a --background daemonized child keeps it too, and
+mount_juicefs.sh invokes this in place of a bare juicefs call, mirroring the
+CLI and forwarding argv[1:] unmodified.
 """
 
 from __future__ import annotations

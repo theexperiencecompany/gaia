@@ -22,16 +22,7 @@ _html_converter.skip_internal_links = True
 
 
 def _build_user_context(user_name: str | None, user_email: str | None) -> str:
-    """
-    Build user context string for memory extraction.
-
-    Args:
-        user_name: User's name (optional)
-        user_email: User's email (optional)
-
-    Returns:
-        Formatted context string
-    """
+    """Build a user context string for memory extraction."""
     if not user_name:
         return ""
 
@@ -48,16 +39,7 @@ def remove_invisible_chars(s: str) -> str:
 
 
 def process_email_content(emails: list[dict]) -> tuple[list[dict], int]:
-    """
-    Process email content converting HTML to clean text.
-    Skips platform emails (they're only used for profile discovery).
-
-    Args:
-        emails: Raw email data from Gmail API
-
-    Returns:
-        Tuple of (processed_emails, failed_count)
-    """
+    """Convert HTML email content to clean text, skipping platform emails (profile-discovery only)."""
     processed = []
     failed_count = 0
 
@@ -115,15 +97,7 @@ async def store_emails_to_memory(
     user_name: str | None = None,
     user_email: str | None = None,
 ) -> None:
-    """
-    Ingest an email batch into the memory engine.
-
-    Args:
-        user_id: User ID
-        processed_emails: List of processed email dicts
-        user_name: User's name (optional)
-        user_email: User's email (optional)
-    """
+    """Ingest an email batch into the memory engine."""
     if not processed_emails:
         return
 
@@ -175,13 +149,7 @@ Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
 
 
 async def mark_email_processing_complete(user_id: str, memory_count: int) -> None:
-    """
-    Mark user's email processing as complete in database.
-
-    Args:
-        user_id: User ID
-        memory_count: Number of memories stored
-    """
+    """Mark the user's email processing as complete in the database."""
     await user_repository.mark_email_processing_complete(user_id, memory_count)
 
 
@@ -192,16 +160,7 @@ async def store_single_profile(
     content: str,
     user_name: str | None = None,
 ) -> None:
-    """
-    Store a single social profile to memory.
-
-    Args:
-        user_id: User ID
-        platform: Platform name (twitter, github, etc.)
-        profile_url: Profile URL
-        content: Crawled profile content
-        user_name: User's name (optional)
-    """
+    """Store a single social profile to memory."""
     try:
         memory_content = f"User's {platform} profile: {profile_url} {content}"
 

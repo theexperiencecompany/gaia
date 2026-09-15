@@ -8,8 +8,8 @@ from app.utils.search.models import SearchResponse
 class SearchProvider(ABC):
     """A single search backend.
 
-    ``name`` doubles as the budget/registry key. ``monthly_free_limit`` is the
-    free upstream-call allowance per calendar month, or ``None`` when the backend
+    name doubles as the budget/registry key. monthly_free_limit is the
+    free upstream-call allowance per calendar month, or None when the backend
     is self-hosted and effectively unlimited.
     """
 

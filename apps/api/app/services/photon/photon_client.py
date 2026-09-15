@@ -54,7 +54,7 @@ async def _photon_request(
     payload: dict[str, str] | None = None,
     params: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Call the project-scoped Photon management API and unwrap its `{succeed, data}` envelope."""
+    """Call the project-scoped Photon management API and unwrap its {succeed, data} envelope."""
     auth = _auth()
     url = f"{SPECTRUM_API_BASE}/projects/{auth[0]}{path}"
     try:

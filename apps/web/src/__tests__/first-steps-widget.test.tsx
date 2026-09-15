@@ -80,10 +80,9 @@ describe("FirstStepsWidget", () => {
 
   const progressBar = () => screen.getByRole("progressbar");
 
-  // The collapse clips the rows with `grid-template-rows` and marks them
-  // inert rather than unmounting them, so "hidden" means unreachable, not
-  // absent from the DOM. Roles are the honest check: an inert subtree is out
-  // of the accessibility tree, which is exactly what a user loses.
+  // The collapse clips rows via `grid-template-rows` and marks them inert
+  // rather than unmounting — inert removes them from the accessibility tree,
+  // so role queries (not DOM presence) are the honest "hidden" check.
   const reachableSteps = () =>
     screen.queryAllByRole("button", { name: /^(Say hi|Connect|Link|Create)/ });
 

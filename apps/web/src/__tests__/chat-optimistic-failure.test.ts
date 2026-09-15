@@ -1,21 +1,9 @@
 /**
- * A send that dies before the backend assigns any ids must still leave evidence.
- *
- * For a brand-new conversation the optimistic message is the ONLY record of what
- * the user typed — nothing is in IndexedDB and no conversation exists yet. The
- * failure path used to call `clearOptimisticMessage()` unconditionally, so an
- * API that was down, rate-limiting, or rejecting auth erased the user's message
- * from the thread entirely, leaving a toast that faded in a few seconds.
- *
- * Verified against a live stack: with the API stopped, a new-conversation send
- * left a completely empty thread. In an existing conversation the same failure
- * correctly showed "Not delivered" + Retry, because there the user message is
- * persisted and gets flipped to `failed` instead.
- *
- * The chain these pin is store flag -> conversation mapping -> bubble props. The
- * JSX itself is NOT covered: apps/web has no DOM test environment, so "the label
- * and Retry button are on screen" rests on the live-stack run above, not on a
- * rendered assertion.
+ * A send that dies before the backend assigns ids must still leave evidence: the
+ * failure path used to call `clearOptimisticMessage()` unconditionally, erasing a
+ * new conversation's only record of the message on any API failure. Verified live
+ * (API stopped): new-conversation send left an empty thread; existing conversations
+ * correctly showed "Not delivered" + Retry. Pins store flag → mapping → props; JSX itself is unverified (no DOM test env).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {

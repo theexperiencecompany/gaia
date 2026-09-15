@@ -1,9 +1,9 @@
 """Durable background-subagent results, keyed by conversation (Redis).
 
 These outlive the process and the executor's HIL approval pause — unlike the
-in-process ``StreamSession`` — so a result produced before the pause is still
+in-process StreamSession — so a result produced before the pause is still
 collectible after the resume, which runs as a fresh dispatch under a new
-``stream_id`` (hence conversation-keyed). Redis is the same durability tier the
+stream_id (hence conversation-keyed). Redis is the same durability tier the
 executor busy lock already relies on across the pause.
 """
 
@@ -30,10 +30,10 @@ async def append_bg_subagent_result(conversation_id: str, agent: str, result: st
 async def try_claim_bg_dispatch(conversation_id: str, tool_call_id: str) -> bool:
     """One background dispatch per handoff tool call, durable across node replays.
 
-    A ``handoff`` sharing its node run with ``wait_for_subagents`` re-runs when the
-    join's interrupt is resumed; ``tool_call_id`` lives in the checkpointed AI message,
+    A handoff sharing its node run with wait_for_subagents re-runs when the
+    join's interrupt is resumed; tool_call_id lives in the checkpointed AI message,
     so this SETNX makes the side effect (spawning the subagent) idempotent as the
-    pre-interrupt code must be. ``True`` = first dispatch, proceed.
+    pre-interrupt code must be. True = first dispatch, proceed.
     """
     key = f"{HIL_BG_RESULTS_KEY_PREFIX}dispatch:{conversation_id}:{tool_call_id}"
     return bool(await redis_cache.client.set(key, "1", nx=True, ex=HIL_BG_RESULTS_TTL_SECONDS))

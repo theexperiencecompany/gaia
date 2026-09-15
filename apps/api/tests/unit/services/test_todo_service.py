@@ -1,7 +1,7 @@
 """Unit tests for the todo service layer.
 
 Persistence and caching now live in the todos/projects repositories (exercised
-by the contract suite in ``tests/contracts``). These tests mock the repository
+by the contract suite in tests/contracts). These tests mock the repository
 singletons and verify the *service orchestration*: inbox assignment, workflow
 queueing, search indexing, tracked-todo completion routing, response mapping,
 and the ProjectService guards.
@@ -64,7 +64,7 @@ NOW = datetime.now(UTC)
 def _no_analytics():
     """Neutralize analytics captures for tests not asserting on them.
 
-    ``capture_event`` resolves the PostHog provider at call time, which is not
+    capture_event resolves the PostHog provider at call time, which is not
     registered in this test module's import chain — capture-specific tests
     patch the call explicitly and assert on it.
     """
@@ -491,8 +491,7 @@ class TestDeleteTodo:
     async def test_a_subscribed_todo_unregisters_before_the_document_goes(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
-        """Once the document is deleted nothing names its Composio trigger, so a
-        teardown that ran after the delete — or not at all — leaks it forever."""
+        """Once the document is deleted nothing names its Composio trigger, so teardown must run before delete or it leaks forever."""
         doc = _make_todo_doc(todo_id=FAKE_TODO_ID)
         doc.trigger_subscriptions = [
             TriggerSubscription(
@@ -750,8 +749,7 @@ class TestBulkServiceComplete:
         )
 
     async def test_captures_completed_count_with_tracked_todos(self, mock_bulk_repos):
-        """Tracked todos count through their completion lifecycle — the
-        reported count is modified + tracked, not a plain update count."""
+        """Tracked todos count through their completion lifecycle — the reported count is modified + tracked, not a plain update count."""
         todo_repo, _ = mock_bulk_repos
         todo_repo.find_by_ids = AsyncMock(
             return_value=[
@@ -827,9 +825,7 @@ class TestBulkServiceDelete:
         assert exc.value.status_code == 404
 
     async def test_subscribed_todo_tears_down_before_delete(self, mock_bulk_repos):
-        """A subscribed todo must unregister its Composio trigger with the
-        deleted-doc's own id/user and the bulk-delete reason — once the document
-        is gone nothing names the trigger, so a wrong id or reason leaks it."""
+        """Teardown must use the deleted doc's own id/user and the bulk-delete reason — once gone, a wrong id or reason leaks the trigger."""
         todo_repo, _ = mock_bulk_repos
         subscribed = _make_todo_doc(todo_id="a")
         subscribed.trigger_subscriptions = [

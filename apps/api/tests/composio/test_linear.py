@@ -1,19 +1,13 @@
 """Tests for Linear custom tools registered in linear_tool.py.
 
-Strategy: The tool functions are closures registered via the Composio decorator
-inside `register_linear_custom_tools`. To test them without a real Composio
-connection we:
+The tool functions are closures registered via the Composio decorator.
+Without a real Composio connection: mock @composio.tools.custom_tool to
+capture the decorated callables, patch linear_utils.graphql_request at the
+HTTP boundary, then call the captured callables directly with Pydantic
+input models and a fake auth_credentials dict.
 
-1. Capture the callables by mocking the `@composio.tools.custom_tool` decorator
-   so it records each decorated function instead of registering it with Composio.
-2. Patch `app.utils.linear_utils.graphql_request` at the HTTP boundary so no
-   real network calls are made.
-3. Call the captured callables directly with Pydantic input models and a fake
-   `auth_credentials` dict, then assert on the returned dicts.
-
-If `linear_tool.py` is deleted or the import chain breaks every test will fail
-with an ImportError, satisfying the requirement that the tests must import and
-call the actual tool code.
+Deleting linear_tool.py or breaking its import chain fails every test with
+an ImportError, so the tests are proven to import and call the real code.
 """
 
 from typing import Any
@@ -49,11 +43,7 @@ EXECUTE_REQUEST = MagicMock()  # not used by any of the current tools
 
 
 def _capture_tools() -> dict[str, Any]:
-    """
-    Run `register_linear_custom_tools` with a fake Composio object whose
-    `tools.custom_tool` decorator simply stores the decorated functions
-    keyed by their __name__, then returns the collected dict.
-    """
+    """Run register_linear_custom_tools with a fake Composio object and return the decorated functions keyed by their __name__."""
     captured: dict[str, Any] = {}
 
     def fake_custom_tool(toolkit: str):
@@ -78,8 +68,8 @@ def _call(tool_name: str, request, side_effects=None, return_values=None):
     """
     Call a captured tool function with graphql_request mocked.
 
-    Either `side_effects` (iterable consumed in call order) or
-    `return_values` (iterable consumed in call order) must be provided.
+    Either side_effects (iterable consumed in call order) or
+    return_values (iterable consumed in call order) must be provided.
     """
     tool_fn = _TOOLS[tool_name]
     with patch(

@@ -1,40 +1,16 @@
 """Tool-output compaction middleware.
 
-Bounds how much a single tool observation can contribute to the context. Once
-the decision to compact is made, the output goes through two independent
-best-effort steps whose outcomes compose:
+Bounds how much a single tool observation can contribute to the context.
+Once compaction triggers: (1) workspace spill (optional, lossless) writes
+RAW output to /workspace/sessions/{conv}/tool_outputs/, leaving a pointer
+to mine with query_json/grep — skipped on JuiceFS-less deployments (issue
+#916); (2) with summary_llm, one bounded call digests the output; without
+one, a deterministic preview or head+tail truncation as last resort.
 
-1. Workspace spill (optional, lossless). When the workspace exists the RAW
-   output is written to `/workspace/sessions/{conv}/tool_outputs/`; the compacted
-   message then carries a pointer the model can still mine with
-   `query_json`/`grep`. A JuiceFS-less deployment (every native, non-Docker run —
-   see the JuiceFS trade-off in `apps/api/CLAUDE.md`) skips this and compacts on
-   alone; the spill is an add-on, never a requirement (issue #916).
-2. Summary payload. With a ``summary_llm`` available the output is digested by
-   one bounded model call into a dense factual digest placed directly in
-   context — counts, IDs, errors verbatim, totals, representative samples — so
-   the agent rarely needs to re-mine the spilled file at all. The call is
-   single-attempt, timeout-bounded, and fires only for outputs already judged
-   oversized; any failure degrades cleanly. Without a summarizer the payload is
-   the deterministic heuristic preview (`_summarize_output`) or, when there was
-   nowhere to spill either, a head+tail truncation whose marker says plainly
-   that the middle is gone and cannot be recovered.
-
-The truncation fallback exists because returning the output unchanged is not a
-safe degradation: it silently removes the only bound on context growth, which is
-how a native run reached 131k median input tokens per case and hit the step
-limit.
-
-Two independent triggers (unchanged from the prior VFS-backed version):
-- Per-tool: a single output exceeds `max_output_chars` → compact immediately
-- Thread-level: estimated context usage exceeds `compaction_threshold` →
-  compact any output bigger than `MIN_COMPACTION_SIZE`
-
-The decide-and-compact logic lives in the module-level `compact_tool_output`
-helper and the middleware is a thin wrapper around it, so the tiering is
-testable without a middleware stack. Subagents reach it through that same
-middleware (`create_subagent_middleware` passes `enable_compaction=True`);
-comms deliberately does not compact, having no tools to mine a spilled file.
+Truncation exists because unchanged output removed the only bound on
+context growth (a native run once hit 131k median input tokens and the
+step limit). Triggers: per-tool (exceeds max_output_chars) or thread-level
+(exceeds compaction_threshold, compacting anything over MIN_COMPACTION_SIZE).
 """
 
 from __future__ import annotations
@@ -87,7 +63,7 @@ COMPACTION_TRUNCATED_MARKER = "[Compacted in context]"
 
 
 def estimate_context_usage(messages: Sequence[AnyMessage], context_window: int) -> float:
-    """Estimate the fraction of the context window consumed by ``messages``.
+    """Estimate the fraction of the context window consumed by messages.
 
     Uses the same 4-chars-per-token heuristic as the rest of the agent stack.
     """
@@ -110,11 +86,9 @@ def should_compact_output(
 ) -> tuple[bool, str]:
     """Decide whether a tool output should be spilled to the workspace.
 
-    ``tool_name`` is intentionally unused here — callers already resolve it into
-    ``always_persist``/``excluded`` before calling in; kept as a parameter for
-    call-site readability (and mirrored by the test suite).
-
-    Returns ``(should_compact, reason)``. ``reason`` is empty when not compacting.
+    tool_name is intentionally unused — callers already resolve it into
+    always_persist/excluded, kept for call-site readability. Returns
+    (should_compact, reason); reason is empty when not compacting.
     """
     del tool_name
     if excluded:
@@ -187,7 +161,7 @@ async def _llm_summarize_output(
     """Digest an oversized tool output into a bounded in-context summary.
 
     Single attempt under a hard timeout — the compaction path runs inside the
-    tool loop, so a slow endpoint must never stall it. Returns ``None`` on any
+    tool loop, so a slow endpoint must never stall it. Returns None on any
     failure (or an empty/unusable response); callers degrade to the deterministic
     tiers, and the failure is logged loudly rather than swallowed.
     """
@@ -239,7 +213,7 @@ async def _llm_summarize_output(
 async def _write_raw_output(
     *, content_str: str, tool_name: str, user_id: str, conversation_id: str
 ) -> tuple[OffloadFmt, str]:
-    """Write the RAW output to the workspace; return ``(fmt, sandbox_path)``.
+    """Write the RAW output to the workspace; return (fmt, sandbox_path).
 
     The raw content (not a metadata wrapper) is written so query_json/grep can
     mine it directly. Raises on any storage failure — callers own the fallback.
@@ -285,7 +259,7 @@ def _stub_spill_message(
     """Build the deterministic-preview spill message for an already-written file.
 
     The degraded payload shape used when no LLM summarizer produced a digest:
-    heuristic preview plus the file pointer. ``_write_raw_output`` wrote the
+    heuristic preview plus the file pointer. _write_raw_output wrote the
     file; this only renders the in-context replacement.
     """
     summary = _summarize_output(content_str, tool_name)
@@ -350,12 +324,9 @@ def _summarized_compact_message(
 ) -> ToolMessage:
     """Build the LLM-summary compaction message, with an optional spill pointer.
 
-    The digest IS the payload — the agent can reason over it directly instead of
-    exploring a file. When the raw output was also spilled, a one-line pointer
-    and the offload marker ride along so lossless recovery stays available;
-    when it wasn't (no workspace), the summary stands alone.
-
-    ``spilled`` is ``(fmt, sandbox_path)`` from ``_write_raw_output``.
+    The digest IS the payload. When the raw output was also spilled, a
+    one-line pointer rides along for lossless recovery; otherwise the
+    summary stands alone. spilled is (fmt, sandbox_path) from _write_raw_output.
     """
     body = f"[{tool_name} compacted — {reason}] {summary}"
     additional: dict[str, Any] = {
@@ -417,14 +388,11 @@ def _truncate_in_context(
     status: str,
     existing_additional_kwargs: dict[str, Any],
 ) -> ToolMessage | None:
-    """Compact ``content_str`` in place, keeping its head and tail plus a loud marker.
+    """Compact content_str in place, keeping its head and tail plus a loud marker.
 
-    The fallback tier, used when no workspace file can be written. Unlike the
-    spill this is LOSSY and unrecoverable, so the marker says so explicitly —
-    the model must never mistake a truncated output for the whole thing.
-
-    Returns ``None`` when the output already fits the budget: there is nothing
-    to reclaim, and re-wrapping it would only add noise.
+    The fallback tier, used when no workspace file can be written. Unlike a
+    spill this is LOSSY and unrecoverable, so the marker says so explicitly.
+    Returns None when the output already fits the budget.
     """
     kept = COMPACTION_FALLBACK_HEAD_CHARS + COMPACTION_FALLBACK_TAIL_CHARS
     dropped = len(content_str) - kept
@@ -486,21 +454,18 @@ async def compact_tool_output(
 ) -> ToolMessage | None:
     """Decide-and-compact a tool output. The one canonical compaction path.
 
-    The workspace spill runs first as an OPTIONAL lossless step (skipped without
-    a workspace identity or when storage fails); an LLM digest of the output is
-    the in-context payload whenever ``summary_llm`` is supplied; the legacy
-    deterministic preview and head+tail truncation remain as degradation tiers.
-    Returns a compacted ``ToolMessage``, or ``None`` when the output should be
-    kept as-is (below threshold, excluded, or nothing to reclaim).
+    Workspace spill runs first as an OPTIONAL lossless step; an LLM digest
+    is the in-context payload when summary_llm is supplied; deterministic
+    preview and head+tail truncation are the degradation tiers. Returns
+    None when the output should be kept as-is.
     """
-    # Inline media can't be spilled to a text file and re-read — the block IS
-    # the payload the model needs. Each block is bounded at its producer
-    # (ImageCodec), and how many reach a request is bounded at the request
-    # boundary (MediaAdapter), so there is nothing for compaction to do here.
+    # Inline media can't be spilled and re-read — the block IS the payload;
+    # each is already bounded at its producer (ImageCodec) and the request
+    # boundary (MediaAdapter).
     if has_media_blocks(content):
         return None
-    # Text-extract rather than str(): a media-free block list would otherwise be
-    # sized and previewed as its Python repr ("[{'type': 'text', ...}]").
+    # Text-extract rather than str(): a media-free block list would otherwise
+    # be sized/previewed as its Python repr.
     content_str = extract_text_content(content)
     should, reason = should_compact_output(
         content_str,
@@ -664,16 +629,14 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         )
         result = compacted if compacted is not None else result
 
-        # Whether we just offloaded the output or the tool self-offloaded (gmail,
-        # which is excluded from compaction), surface the file-mining tools the
-        # moment a marker is present. Keyed on the offload itself, so it covers
-        # every producer uniformly.
+        # Covers both this offload and a tool's own self-offload (gmail,
+        # excluded from compaction) uniformly, keyed on the marker itself.
         return self._bind_offload_tools(result, request)
 
     def _bind_offload_tools(
         self, result: ToolMessage, request: ToolCallRequest
     ) -> ToolMessage | Command[Any]:
-        """Append query_json/grep to ``selected_tool_ids`` if ``result`` carries an offload marker.
+        """Append query_json/grep to selected_tool_ids if result carries an offload marker.
 
         Binds only the mining tools not already selected — selected_tool_ids is an
         append-only reducer, so this avoids re-binding the same tool every offload

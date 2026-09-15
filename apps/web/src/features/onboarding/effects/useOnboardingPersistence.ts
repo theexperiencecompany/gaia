@@ -12,24 +12,12 @@ import {
 import type { Action, OnboardingState } from "../state/types";
 
 /**
- * Keeps the wizard in step with the signed-in user's cache. The user store
- * rehydrates from localStorage before the session is confirmed, so the id can
- * change after first paint: each new id starts from its own cache (or from
- * scratch), and nothing is written under an id the state was not loaded for.
- *
- * Returns whether the current user's cache has been applied. Anything that
- * reads the restored state (the funnel's `onboarding:started`) has to wait for
- * this, because the hydrate dispatch lands a render later than the mount.
- * Which user is loaded lives in the reducer (`state.hydratedFor`), so this
- * hook holds no state of its own.
- *
- * The server outranks the cache in both directions. A draft that claims the
- * preferences were persisted while the account has none is a leftover from
- * before a reset (the dev reset script, an admin unset); rehydrating it would
- * skip every stage and re-complete onboarding on the first paint, so it is
- * dropped. And where there is no draft at all — a second device, a cleared
- * browser — the answers the account already gave stand in for one, instead of
- * the wizard re-asking Q1 and Q2 and overwriting them.
+ * Keeps the wizard in step with the signed-in user's cache: the user store can
+ * rehydrate a new id after first paint, so each id starts from its own cache.
+ * Returns whether that cache has been applied — callers of the restored state
+ * (`onboarding:started`) must wait, since hydrate lands a render after mount.
+ * The server outranks the cache both ways: a draft claiming completion with no
+ * server prefs (a reset) is dropped; a missing draft falls back to the account's answers instead of re-asking.
  */
 export function useOnboardingPersistence(
   userId: string,

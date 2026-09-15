@@ -62,24 +62,9 @@ import { wideLog, withWideEvent } from "../utils/wide-events";
 import { BotServer } from "./base-server";
 
 /**
- * Abstract base class that all platform bot adapters extend.
- *
- * Provides shared infrastructure for command dispatch, streaming chat,
- * error handling, and lifecycle management. Platform-specific behavior
- * is delegated to abstract methods that each adapter implements.
- *
- * @example
- * ```typescript
- * class DiscordAdapter extends BaseBotAdapter {
- *   platform = "discord" as const;
- *
- *   async initialize() { this.client = new Client({...}); }
- *   async registerCommands(commands) { ... }
- *   async registerEvents() { ... }
- *   async start() { await this.client.login(token); }
- *   async stop() { this.client.destroy(); }
- * }
- * ```
+ * Abstract base class all platform bot adapters extend, providing shared command dispatch,
+ * streaming chat, error handling, and lifecycle management; platform-specific behavior is
+ * delegated to abstract methods each adapter implements.
  */
 export abstract class BaseBotAdapter {
   /**
@@ -123,16 +108,10 @@ export abstract class BaseBotAdapter {
   private _outboundConsumer: OutboundConsumer | null = null;
 
   /**
-   * Shared HTTP server for this bot process.
-   *
-   * Always available during lifecycle methods ({@link initialize},
-   * {@link registerCommands}, {@link registerEvents}, {@link start},
-   * {@link stop}). Created in {@link boot} using a per-platform default port
-   * (discord: 3200, slack: 3201, telegram: 3202, whatsapp: 3203). Override
-   * with `BOT_SERVER_PORT`. Includes `GET /health` by default. Subclasses
-   * can mount additional routes (e.g. webhook endpoints) via
-   * `this.botServer.app` in their {@link registerEvents} implementation,
-   * before the server starts.
+   * Shared HTTP server for this bot process, available during all lifecycle methods. Created in
+   * {@link boot} on a per-platform default port (discord 3200, slack 3201, telegram 3202,
+   * whatsapp 3203), overridable via `BOT_SERVER_PORT`; includes `GET /health` by default.
+   * Subclasses may mount routes via `this.botServer.app` in {@link registerEvents}, before start.
    */
   protected get botServer(): BotServer {
     if (!this._botServer) {
@@ -146,21 +125,12 @@ export abstract class BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Boots the adapter through its full lifecycle.
+   * Boots the adapter through its full lifecycle (called from each bot's `index.ts`): stores
+   * commands, then runs {@link initialize}, {@link registerCommands}, {@link registerEvents},
+   * {@link start} in order.
    *
-   * This is the main entry point called from each bot's `index.ts`.
-   * It runs the lifecycle steps in order:
-   * 1. Store unified command definitions
-   * 2. {@link initialize} — create platform client
-   * 3. {@link registerCommands} — wire commands to platform handlers
-   * 4. {@link registerEvents} — register event listeners
-   * 5. {@link start} — connect to the platform
-   *
-   * Emits one canonical `bot_boot` wide event covering the whole sequence, so a
-   * bot that dies during startup says why — with a duration and an outcome —
-   * instead of leaving a "boot_started" line and silence.
-   *
-   * @param commands - Array of unified {@link BotCommand} definitions to register.
+   * Emits one canonical `bot_boot` wide event covering the whole sequence, so a bot that dies
+   * during startup says why — with a duration and an outcome — instead of silence.
    */
   async boot(commands: BotCommand[]): Promise<void> {
     this.logger = createBotLogger(this.platform, "base-adapter");
@@ -317,14 +287,12 @@ export abstract class BaseBotAdapter {
   protected abstract stop(): Promise<void>;
 
   /**
-   * Sends a single already-rendered message to `destinationId` on this
-   * platform. Called by the outbound RabbitMQ consumer for backend-originated
-   * messages. The text has already been run through `renderForPlatform` — do
-   * not convert it again; just hand it to the platform SDK.
+   * Sends a single already-rendered message to `destinationId`, called by the outbound RabbitMQ
+   * consumer for backend-originated messages. The text has already run through
+   * `renderForPlatform` — do not convert it again, just hand it to the platform SDK.
    *
-   * `isChannel` is true when `destinationId` is a channel/group id (send to the
-   * channel) and false when it is a user id (open/use the DM). Platforms that
-   * address a channel and a user identically (Telegram) may ignore it.
+   * `isChannel` is true for a channel/group id, false for a user id (DM); platforms that
+   * address both identically (Telegram) may ignore it.
    */
   protected abstract deliverOutbound(
     destinationId: string,
@@ -398,10 +366,9 @@ export abstract class BaseBotAdapter {
     wideLog.warning("outbound_file_fallback_text", {
       attachment_filename: attachment.filename,
     });
-    // The base implementation IS the "this platform can't send files" path —
-    // platforms that can (WhatsApp) override the whole method and capture their
-    // own success. Reaching here always means the user got text instead of the
-    // artifact they asked for.
+    // The base implementation IS the "this platform can't send files" path — platforms that
+    // can (WhatsApp) override the whole method and capture their own success. Reaching here
+    // always means the user got text instead of the artifact they asked for.
     this.analytics.capture(
       await this.resolveDistinctId(destinationId),
       BOT_EVENTS.FILE_DELIVERED,
@@ -419,16 +386,11 @@ export abstract class BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Dispatches a command by name, executing the unified handler.
+   * Dispatches a command by name via its registered handler, formatting and sending any error
+   * back to the user.
    *
-   * Looks up the command in the registered commands map and calls its
-   * `execute` function with the provided parameters. Handles errors
-   * gracefully by sending a formatted error message to the user.
-   *
-   * @param name - The command name (without leading slash).
-   * @param target - The message target for replies.
-   * @param args - Parsed arguments keyed by option name.
-   * @param rawText - Optional raw text input for free-form commands.
+   * @param name - Command name, without the leading slash.
+   * @param rawText - Raw text input, for free-form commands.
    */
   protected async dispatchCommand(
     name: string,
@@ -561,18 +523,11 @@ export abstract class BaseBotAdapter {
   private readonly welcomedUsers = new Set<string>();
 
   /**
-   * The PostHog distinct_id for a platform user: their stable GAIA user id once
-   * the account is linked, otherwise `"<platform>:<platformUserId>"`.
-   *
-   * Keying on the GAIA id is what lets a person's bot activity land on the same
-   * profile as their web and API activity — the backend already attributes bot
-   * chat turns that way (`bot.py::chat`), so without this the same turn produced
-   * two people. An unlinked user genuinely has no GAIA identity yet, so the
-   * platform id stands in until they link; {@link alias} then folds that history
-   * into the real profile.
-   *
-   * A failed lookup degrades to the platform id rather than dropping the event:
-   * an event on the anonymous profile is recoverable, a missing one is not.
+   * The PostHog distinct_id for a platform user: their stable GAIA user id once linked,
+   * otherwise `"<platform>:<platformUserId>"`. Keying on the GAIA id joins bot activity to the
+   * same profile as web/API (the backend attributes `bot.py::chat` the same way); {@link alias}
+   * later folds an unlinked user's history in. A failed lookup degrades to the platform id
+   * (recoverable) rather than dropping the event.
    */
   protected async resolveDistinctId(platformUserId: string): Promise<string> {
     const cached = this.distinctIdCache.get(platformUserId);
@@ -615,15 +570,10 @@ export abstract class BaseBotAdapter {
   }
 
   /**
-   * Welcome gate shared by adapters that greet a user on first contact (Discord
-   * DM embed, WhatsApp text).
-   *
-   * Greets a user ONLY while they have not linked their GAIA account. Linked
-   * users never see the welcome — deterministically, because the decision is
-   * driven by the persistent auth status (MongoDB), not by process memory. This
-   * fixes the bug where a restart re-greeted already-linked users. For an
-   * unlinked user it still fires at most once per process so the greeting does
-   * not repeat on every message while they remain unlinked.
+   * Welcome gate shared by adapters that greet a user on first contact (Discord DM embed,
+   * WhatsApp text). Greets ONLY while the GAIA account is unlinked — driven by the persistent
+   * auth status (MongoDB), not process memory, which fixes a bug where a restart re-greeted
+   * already-linked users. For an unlinked user it still fires at most once per process.
    */
   protected async shouldSendWelcome(userId: string): Promise<boolean> {
     if (this.welcomedUsers.has(userId)) return false;
@@ -674,19 +624,13 @@ export abstract class BaseBotAdapter {
   }
 
   /**
-   * Routes an inbound media message to the right action — transcribe audio,
-   * upload an image/document, or reject an unsupported/oversize payload —
-   * returning a {@link MediaOutcome} the adapter then sends through its own
-   * channel APIs.
+   * Routes an inbound media message to transcribe/upload/reject via {@link processBotMedia}
+   * (the platform-agnostic decision); this injects the shared GAIA client and user context so
+   * every adapter stays byte-for-byte consistent. `download` is a thunk so unsupported kinds
+   * never incur one.
    *
-   * The platform-agnostic decision lives in {@link processBotMedia}; this base
-   * method injects the shared GAIA client and builds the user context so every
-   * adapter calls one inherited method and stays byte-for-byte consistent.
-   * `download` is a thunk so unsupported kinds never incur a download.
-   *
-   * Owns the media pipeline's wide-event boundary: the download, the Whisper
-   * transcription and the upload all happen before any chat boundary exists, so
-   * without this every attachment's latency and rejection reason was dark.
+   * Owns the media pipeline's wide-event boundary (download, Whisper transcription, upload),
+   * which happens before any chat boundary exists — without it, latency and rejection reason were dark.
    */
   protected resolveIncomingMedia(
     media: IncomingMedia,
@@ -705,11 +649,9 @@ export abstract class BaseBotAdapter {
         is_voice_note: media.isVoiceNote,
       },
       async () => {
-        // Every inbound attachment on every platform funnels through here, so
-        // this is the one place the upload can be counted. `outcome` separates
-        // an attachment GAIA actually ingested ("chat") from one it turned away
-        // as unsupported or oversize ("reply") — the rejection rate is the
-        // number worth watching. No filename: it is user content.
+        // Every inbound attachment on every platform funnels through here, the one place to
+        // count uploads. `outcome` separates an ingested attachment ("chat") from a rejected
+        // one ("reply") — rejection rate is worth watching. No filename: it's user content.
         const outcome = await processBotMedia(
           this.gaia,
           media,

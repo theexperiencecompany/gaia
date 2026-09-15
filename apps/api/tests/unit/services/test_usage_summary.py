@@ -110,12 +110,7 @@ class TestGetRealtimeUsage:
             assert summary.upgrade.month == pro.month
 
     async def test_monthly_window_is_read_and_reported_alongside_the_daily_one(self) -> None:
-        """Both windows are projected, not just the day.
-
-        Every other case here asserts ``periods["day"]``, so a service that
-        stopped reading the month — or asked Redis for a window name that does
-        not exist — would look completely healthy.
-        """
+        """Both windows are projected: every other case here only asserts periods["day"], so a dropped month looks healthy."""
         feature = next(
             key
             for key, cfg in usage_summary.FEATURE_LIMITS.items()
@@ -171,12 +166,7 @@ class TestGetRealtimeUsage:
         assert period.remaining == limits.day
 
     async def test_a_single_call_allowance_is_still_a_reported_window(self) -> None:
-        """A limit of exactly 1 is a real limit.
-
-        The window filter is ``limit > 0``; nudged to ``> 1`` it would silently
-        drop every allowance-of-one feature from the summary, and the real
-        config has such features (free image generation).
-        """
+        """The window filter is limit > 0; nudged to > 1 it would silently drop every allowance-of-one feature (e.g. free images)."""
         feature = next(
             key for key, cfg in usage_summary.FEATURE_LIMITS.items() if cfg.free.day == 1
         )
@@ -190,11 +180,7 @@ class TestGetRealtimeUsage:
         assert features[feature].periods["day"].limit == 1
 
     async def test_a_free_user_never_reads_a_pro_only_window(self) -> None:
-        """Windows are selected from the USER's plan, not the paid one.
-
-        Reading pro windows for a free user would report allowances they do not
-        have and burn a Redis round trip per phantom window.
-        """
+        """Windows are selected from the user's own plan; reading pro windows for a free user reports allowances they lack."""
         pro_only = next(
             key
             for key, cfg in usage_summary.FEATURE_LIMITS.items()
@@ -262,12 +248,7 @@ class TestBuildUsageSummary:
         assert summary.features[pro_only].periods["day"].limit == pro_limits.day
 
     async def test_the_summary_is_assembled_for_the_requested_user_and_their_plan(self) -> None:
-        """Both downstream reads are keyed to this user AND this plan.
-
-        The mocked seams answer the same whatever they are handed, so nothing
-        else here can catch a summary built from another user's windows or from
-        the wrong tier's allowances.
-        """
+        """Both downstream reads must be keyed to this user AND this plan — the mocked seams answer the same regardless."""
         subscription = AsyncMock(return_value=SimpleNamespace(plan_type=PlanType.PRO))
         realtime = AsyncMock(return_value={})
         with (

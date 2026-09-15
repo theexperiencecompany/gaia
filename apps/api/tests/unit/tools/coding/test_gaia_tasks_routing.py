@@ -1,4 +1,4 @@
-"""read/write/edit on ``/workspace/gaia-tasks/**`` route to the todo document.
+"""read/write/edit on /workspace/gaia-tasks/** route to the todo document.
 
 The router's own logic (folder resolution, writable set) runs for real here;
 the seams are the todos repository and the canvas storage writers. None of

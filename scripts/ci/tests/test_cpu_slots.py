@@ -67,8 +67,7 @@ def _live_sum(holders: Path) -> int:
 
 
 def test_failopen_when_not_self_hosted(tmp_path: Path) -> None:
-    """RUNNER_ENVIRONMENT unset → acquire is a no-op that returns success and
-    takes nothing, so a GitHub-hosted VM is never touched by the governor."""
+    """With RUNNER_ENVIRONMENT unset, acquire takes nothing and succeeds (GitHub-hosted VMs)."""
     env = _base_env(tmp_path / "pool", 8)
     del env["RUNNER_ENVIRONMENT"]
     r = _run("cpu_slots_acquire 5 && echo OK", env)
@@ -114,9 +113,7 @@ rm -f "$MARK"
 
 @needs_flock
 def test_never_oversubscribed_and_drains(tmp_path: Path) -> None:
-    """Twelve acquirers each want 3 tokens on a pool of 8 — 36 requested against
-    8. Sampling the holders dir throughout, the live sum must never exceed 8,
-    and after everyone finishes the pool is whole (holders empty)."""
+    """Twelve acquirers of 3 tokens on a pool of 8 never hold more than 8, and leave it whole."""
     pool = tmp_path / "pool"
     holders = pool / "holders"
     tokens, want, actors, hold = 8, 3, 12, 1.0
@@ -159,8 +156,7 @@ def test_never_oversubscribed_and_drains(tmp_path: Path) -> None:
 
 @needs_flock
 def test_dead_holder_is_reclaimed(tmp_path: Path) -> None:
-    """A SIGKILL'd holder cannot run its EXIT trap, so its tokens WOULD leak.
-    The next acquirer sees the holder pid is dead and reclaims them."""
+    """Reclaim a SIGKILL'd holder's tokens, which its skipped EXIT trap would otherwise leak."""
     pool = tmp_path / "pool"
     holders = pool / "holders"
     tokens, want = 8, 8
@@ -198,9 +194,7 @@ def test_dead_holder_is_reclaimed(tmp_path: Path) -> None:
 
 @needs_flock
 def test_timeout_fails_open_with_warning(tmp_path: Path) -> None:
-    """A live holder pins the whole pool; a second acquirer waits its timeout
-    and then PROCEEDS WITHOUT the tokens (a warning, exit 0) — the governor can
-    never hang or fail a gate."""
+    """Proceed without tokens (warning, exit 0) after the timeout — the governor never hangs a gate."""
     pool = tmp_path / "pool"
     holders = pool / "holders"
     tokens = 8

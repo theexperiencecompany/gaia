@@ -1,19 +1,6 @@
-"""The durable usage rollup: what ``record_cost`` books, and what ``get_activity`` shows.
+"""The durable usage rollup: what record_cost books, and what get_activity shows.
 
-Two invariants, both of them money:
-
-1. Charged work and auxiliary background work must land in disjoint fields.
-   ``cost``/``*_tokens`` are the exact durable mirror of the Redis windows the
-   budget wall enforces; ``aux_*`` is COGS the user is never charged for. A
-   crossed wire either eats a user's allowance for work they never asked for,
-   or hides real spend from the wall.
-2. Tokens must survive a pricing failure. ``record_llm_call`` books
-   ``cost_usd=0`` when the pricing lookup misses, so gating the rollup on cost
-   alone would silently drop the raw usage the call has to be re-priced from.
-
-The repository is the seam (its own ``$inc`` semantics are proven against real
-Mongo in ``tests/contracts/test_usage_daily_repository.py``); everything inside
-``usage_activity`` runs for real.
+Two invariants, both of them money: charged cost/*_tokens and aux_* (uncharged COGS) must land in disjoint fields, or a crossed wire eats a user's allowance or hides real spend from the budget wall; and tokens must survive a pricing failure, since record_llm_call books cost_usd=0 on a pricing miss, so gating the rollup on cost alone would drop the raw usage needed to re-price it. The repository's own $inc semantics are proven against real Mongo in tests/contracts/test_usage_daily_repository.py; everything inside usage_activity runs for real.
 """
 
 from collections.abc import Iterator
@@ -45,15 +32,14 @@ def _row(date: str, **fields: object) -> UsageDailyDocument:
 
 @pytest.fixture(autouse=True)
 def frozen_clock() -> Iterator[None]:
-    """Both functions read ``datetime.now(UTC)`` to decide which day a write or
-    a window belongs to, so the day boundary has to be pinned."""
+    """Pin datetime.now(UTC) so both functions agree on which day a write belongs to."""
     with time_machine.travel(FROZEN, tick=False):
         yield
 
 
 @pytest.fixture
 def a_box_a_day_ahead_of_utc() -> Iterator[None]:
-    """A worker whose LOCAL calendar day runs ahead of the UTC one."""
+    """Simulate a worker whose local calendar day runs ahead of the UTC one."""
     original = os.environ.get("TZ")
     os.environ["TZ"] = "Pacific/Kiritimati"  # UTC+14
     time.tzset()
@@ -188,12 +174,7 @@ class TestRecordCost:
     async def test_the_rollup_day_is_the_utc_one_not_the_boxs_local_one(
         self, increment: AsyncMock, a_box_a_day_ahead_of_utc: None
     ) -> None:
-        """The row key is a UTC day and every reader joins on that — the
-        heatmap, the percentile window, and the true-cost backfill, which reads
-        the day straight off the ``llm_call`` event's UTC timestamp. A worker
-        reading its own local clock files the same call under a different day,
-        so the durable history and the logs stop lining up for anyone outside
-        UTC. CI runs in UTC, which is exactly why this needs saying out loud."""
+        """The row key is a UTC day, matching the heatmap, percentile window, and true-cost backfill — not the box's local day."""
         with time_machine.travel("2026-03-04T23:30:00+00:00", tick=False):
             await record_cost(USER, _spend(0.02), charged=True)
 
@@ -219,7 +200,7 @@ class TestRecordCost:
 
 @pytest.fixture
 def rollups() -> Iterator[AsyncMock]:
-    """The activity read seam: the window's rollup rows and the percentile inputs."""
+    """Stub the activity read seam: the window's rollup rows and the percentile inputs."""
     with (
         patch.object(usage_daily_repository, "rollups_since", AsyncMock(return_value=[])) as mock,
         patch.object(usage_daily_repository, "counts_since", AsyncMock(return_value={})),

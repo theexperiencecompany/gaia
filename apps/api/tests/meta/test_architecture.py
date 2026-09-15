@@ -22,17 +22,14 @@ APP_DIR = Path(__file__).resolve().parents[3] / "app"
 
 
 def _git_tracked_py_files() -> list[Path]:
-    """All app/**/*.py files tracked by git (never os.walk — untracked
-    experiments must not change what's asserted)."""
+    """Return all app/**/*.py files tracked by git (never os.walk — untracked experiments must not change what's asserted)."""
     root = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
     out = subprocess.check_output(["git", "ls-files", "apps/api/app"], text=True)
     return [root / p for p in out.splitlines() if p.endswith(".py")]
 
 
 def test_every_app_module_imports_cleanly() -> None:
-    """Every production module under app/ imports without error (Haystack's
-    test_imports pattern) — catches circular-import and import-side-effect
-    regressions in seconds."""
+    """Every production module under app/ imports without error (Haystack's test_imports pattern)."""
     failures: list[str] = []
     for path in _git_tracked_py_files():
         rel = path.relative_to(APP_DIR.parents[1])  # repo/apps/api
@@ -54,10 +51,7 @@ def test_every_app_module_imports_cleanly() -> None:
 
 
 def test_repository_boundaries() -> None:
-    """Only the repository layer may reach MongoDB collections directly.
-
-    Services/endpoints/agents must go through app.db.repositories (the
-    repository-boundaries rule, also enforced by tools/lints)."""
+    """Only the repository layer may reach MongoDB collections directly (the repository-boundaries rule, also enforced by tools/lints)."""
     offenders: list[str] = []
     pattern = (
         r"from app\.db\.mongodb\.collections import"
@@ -78,8 +72,7 @@ def test_repository_boundaries() -> None:
 
 
 def test_no_stateful_service_classes() -> None:
-    """No *Service class may have instance state or non-static methods (the
-    no-service-classes rule — services are module-level functions)."""
+    """No *Service class may have instance state or non-static methods (the no-service-classes rule)."""
     import re
 
     allowlist = {

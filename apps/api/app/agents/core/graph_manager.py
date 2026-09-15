@@ -30,7 +30,7 @@ class GraphUnavailableError(RuntimeError):
 class GraphManager:
     @classmethod
     async def get_graph(cls, graph_name: str = "default_graph") -> CompiledAgentGraph:
-        """Get the graph instance by name.
+        """Look up the graph instance by name from the lazy provider registry.
 
         Raises:
             GraphUnavailableError: if the provider is not registered, raised

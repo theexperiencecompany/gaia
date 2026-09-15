@@ -1,7 +1,7 @@
-"""Repository for the ``files`` collection — user-scoped uploaded-file metadata.
+"""Repository for the files collection — user-scoped uploaded-file metadata.
 
-Every access is by the business ``file_id`` scoped to the owning user; the Mongo
-``_id`` (ObjectId) is incidental but preserved as ``id`` because the update
+Every access is by the business file_id scoped to the owning user; the Mongo
+_id (ObjectId) is incidental but preserved as id because the update
 endpoint still returns it.
 """
 
@@ -28,12 +28,12 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
         return await self._find({"user_id": user_id, "conversation_id": conversation_id})
 
     async def find_ids_for_conversation(self, conversation_id: str, user_id: str) -> list[str]:
-        """The user's ``file_id``s visible in one conversation.
+        """Return the user's file_ids visible in one conversation.
 
         Files uploaded before conversation scoping existed carry no
-        ``conversation_id`` (the old web client never sent one, and only new
+        conversation_id (the old web client never sent one, and only new
         conversations get backfilled), so they stay visible everywhere — do not
-        "simplify" this to an exact ``conversation_id`` match.
+        "simplify" this to an exact conversation_id match.
         """
         documents = await self._find(
             {
@@ -50,10 +50,10 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
     async def apply_metadata_update(
         self, file_id: str, *, user_id: str, update: FileUpdate
     ) -> FileDocument | None:
-        """Patch a file's editable metadata, always stamping ``updated_at``.
+        """Patch a file's editable metadata, always stamping updated_at.
 
-        An empty patch still bumps ``updated_at`` (matching the pre-repository
-        behaviour of a ``$set`` that only carried the timestamp)."""
+        An empty patch still bumps updated_at (matching the pre-repository
+        behaviour of a $set that only carried the timestamp)."""
         set_fields = update.model_dump(exclude_unset=True)
         ops: dict[str, dict[str, object]] = {"$set": set_fields} if set_fields else {}
         return await self._apply_raw_update(

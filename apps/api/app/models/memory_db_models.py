@@ -45,9 +45,9 @@ class MemoryRecord(Base):
     """An atomic memory: a semantic fact or an experience.
 
     Never hard-deleted from agent flows. Contradictions create a new row
-    linked via ``parent_id``/``root_id`` with ``relation_type='updates'``
-    and flip the old row's ``is_latest`` to False. User-initiated deletes
-    set ``is_forgotten=True``.
+    linked via parent_id/root_id with relation_type='updates'
+    and flip the old row's is_latest to False. User-initiated deletes
+    set is_forgotten=True.
     """
 
     __tablename__ = "memories"

@@ -67,10 +67,9 @@ export function PricingCards({
   const { plans, isLoading, error, subscriptionStatus } =
     usePricing(initialPlans);
   const user = useCurrentUser();
-  // Whether the signed-in user's plan status is genuinely not yet known
-  // (cold cache / user store still rehydrating). While true, `isCurrentPlan`
-  // / `hasActiveSubscription` below are unresolvable — never infer "on free
-  // plan" from that and let a paying user click into a duplicate checkout.
+  // Whether the signed-in user's plan status is genuinely not yet known (cold
+  // cache / rehydrating). While true, isCurrentPlan/hasActiveSubscription are
+  // unresolvable — never infer "on free plan" and duplicate-checkout a payer.
   const isSubscriptionStatusUnknown = useIsSubscriptionStatusUnknown();
 
   // Only show loading if we're actually loading AND don't have any plans yet
@@ -137,10 +136,9 @@ export function PricingCards({
     (a: Plan, b: Plan) => a.amount - b.amount,
   );
 
-  // Size the block so each tier keeps the width it would have in a 3-column
-  // layout: a 2-tier lineup uses a 2-column grid in a ~2xl block, a 3-tier
-  // lineup the full 5xl. Enterprise is a tier in that count — it is a card in
-  // the same grid, equal height, stacking under Pro on mobile.
+  // Size the block so each tier keeps its 3-column width: 2 tiers use a
+  // ~2xl block, 3 tiers the full 5xl. Enterprise counts as a tier — it's a
+  // card in the same grid, equal height, stacking under Pro on mobile.
   const tierCount = sortedPlans.length + (enterprisePlan ? 1 : 0);
   let blockWidthClass = "max-w-sm";
   let gridColsClass = "sm:grid-cols-1";
@@ -174,11 +172,9 @@ export function PricingCards({
               ? Math.round(priceInUSDCents / ANNUAL_PRICE_RETENTION)
               : undefined;
 
-          // The backend always sets plan_type ("free" | "pro") for an active
-          // subscription, but current_plan can be null when the subscribed
-          // product isn't in the active plan list — so don't rely on it. Pro is
-          // the only paid tier, so the paid card is "current" if plan_type is
-          // pro; fall back to a name match for any other (future) paid tier.
+          // current_plan can be null even for an active subscription (product not
+          // in the active plan list), so use plan_type instead: pro is the only
+          // paid tier, with a name-match fallback for a future paid tier.
           const isCurrentPlan =
             user.userId && subscriptionStatus
               ? isPro

@@ -1,5 +1,8 @@
-"""The device-onboarding card utils: the streamed card payload and the
-source-category-aware agent copy (URL-free on UI, inline on text-only)."""
+"""Device-onboarding card utils.
+
+Covers the streamed card payload and the source-category-aware agent copy
+(URL-free on UI, inline on text-only).
+"""
 
 from unittest.mock import patch
 

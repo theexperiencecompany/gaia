@@ -1,6 +1,4 @@
-"""
-Base scheduler models for task scheduling system.
-"""
+"""Base scheduler models for task scheduling system."""
 
 from datetime import UTC, datetime
 from enum import Enum
@@ -61,7 +59,7 @@ class BaseScheduledTask(BaseModel):
     @field_serializer("scheduled_at", "stop_after", when_used="json")
     def serialize_schedule_datetime(self, value: datetime | None) -> str | None:
         """ISO strings for JSON only; python mode (Mongo writes) keeps native
-        datetimes so the scheduler's `scheduled_at: {"$lte": now}` scan matches."""
+        datetimes so the scheduler's scheduled_at: {"$lte": now} scan matches."""
         if value is not None:
             return value.isoformat()
         return None

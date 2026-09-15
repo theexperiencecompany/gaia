@@ -15,10 +15,8 @@ def test_device_setup_topic_is_registered_and_covers_the_flow():
     # names every supported OS so GAIA can answer per-platform
     for os_name in ("macOS", "Linux", "Windows"):
         assert os_name in body
-    # The manual must explain the two device capabilities and their mechanism so
-    # the agent routes correctly: device MCP tools are discovered via
-    # retrieve_tools + subagent handoff (not shelled out to), while run_on_device
-    # is the shell/file path.
+    # Device MCP tools are discovered via retrieve_tools + subagent handoff
+    # (not shelled out to); run_on_device is the separate shell/file path.
     assert "retrieve_tools" in body
     assert "run_on_device" in body
     assert "device://<device_id>/<server_key>" in body

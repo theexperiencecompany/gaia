@@ -1,8 +1,4 @@
-"""Integration tests for health check endpoints.
-
-Tests the health/ping/root endpoints return correct status and payload
-structure through the full FastAPI request lifecycle.
-"""
+"""Integration tests for health check endpoints."""
 
 from unittest.mock import patch
 
@@ -68,11 +64,7 @@ class TestHealthEndpoints:
         assert isinstance(data["status"], str)
 
     async def test_health_when_project_info_unavailable_still_returns_200(self, test_client):
-        """GET /health should still return 200 when pyproject.toml cannot be read.
-
-        The get_project_info utility falls back to default values on failure,
-        so the endpoint must remain available even if file I/O fails.
-        """
+        """GET /health should still return 200 when pyproject.toml cannot be read."""
         with patch(
             "app.api.v1.endpoints.health.get_project_info",
             return_value={
@@ -90,15 +82,7 @@ class TestHealthEndpoints:
         assert data["version"] == "dev"
 
     async def test_health_when_get_project_info_raises_returns_500(self, test_client):
-        """GET /health returns 500 when get_project_info raises unexpectedly.
-
-        get_project_info() normally catches all exceptions internally and
-        returns defaults, but if it propagates an exception the endpoint has
-        no try/except and FastAPI must return 500 rather than 200.
-
-        This guards against a hypothetical regression where the internal
-        fallback is removed and the exception escapes.
-        """
+        """GET /health returns 500 when get_project_info raises unexpectedly."""
         with patch(
             "app.api.v1.endpoints.health.get_project_info",
             side_effect=RuntimeError("Unexpected I/O error reading pyproject.toml"),

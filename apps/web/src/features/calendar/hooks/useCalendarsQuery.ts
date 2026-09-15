@@ -5,16 +5,12 @@ import type { CalendarItem } from "@/types/api/calendarApiTypes";
 import { calendarApi } from "../api/calendarApi";
 
 /**
- * React Query hook for fetching calendar list with caching
+ * Centralized hook for fetching the calendar list (used by
+ * useSharedCalendar, GridSection) — React Query caches and dedupes it
+ * across all consumers.
  *
- * This is the centralized hook for fetching calendars. Use this in:
- * - useSharedCalendar (for calendar page and components)
- * - GridSection (with enabled flag based on integration status)
- *
- * DO NOT call this hook multiple times in the same component tree.
- * Instead, pass calendars as props from parent components that already fetch them.
- *
- * React Query will automatically cache and deduplicate requests across all consumers.
+ * Do not call this multiple times in one component tree; pass calendars as
+ * props from a parent that already fetches them.
  */
 export const useCalendarsQuery = (
   options?: Partial<UseQueryOptions<CalendarItem[], Error>>,

@@ -114,7 +114,7 @@ def weighted_score(items: list[tuple[int, str, bool]]) -> int:
 
 
 def scored_entries(entries: list[RouteEntry]) -> list[RouteEntry]:
-    """The entry points the score is computed over — exempt ones are not scored.
+    """Return the entry points the score is computed over — exempt ones are not scored.
 
     The single definition of "how much surface did discovery actually find",
     shared by the report, the JSON contract, and the ``--min-entries`` gate.
@@ -123,7 +123,7 @@ def scored_entries(entries: list[RouteEntry]) -> list[RouteEntry]:
 
 
 def waived_checks(entries: list[RouteEntry]) -> tuple[int, int]:
-    """``(checks waived, files they sit in)`` across the scan."""
+    """Return ``(checks waived, files they sit in)`` across the scan."""
     waived = [entry for entry in entries for result in entry.checks.values() if result.suppressed]
     return len(waived), len({entry.file for entry in waived})
 

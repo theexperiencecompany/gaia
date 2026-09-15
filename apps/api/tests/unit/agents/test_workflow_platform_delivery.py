@@ -1,6 +1,6 @@
 """Behavior tests for app.agents.core.background.workflow_platform_delivery.
 
-Locks: a result goes to the ONE platform ``resolve_chat_channel`` picks; the
+Locks: a result goes to the ONE platform resolve_chat_channel picks; the
 notification text is split into bubbles on the break sentinel; that platform
 gets a persisted bot message and one outbound publish; the platform that
 already has the result in its own conversation is never pinged again; and
@@ -110,8 +110,7 @@ class TestDeliverWorkflowResultToPlatforms:
         assert publish.await_args.kwargs == {"destination_override": "tg-123"}
 
     async def test_failed_publish_is_logged_not_raised(self) -> None:
-        """A failed publish is swallowed — but observable: log.error lands in
-        the wide event's errors[], naming the platform and conversation."""
+        """A failed publish is swallowed but observable: log.error lands in the wide event's errors[]."""
         with (
             _channel(TELEGRAM),
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
@@ -135,9 +134,6 @@ class TestDeliverWorkflowResultToPlatforms:
         assert errors[0]["conversation_id"] == "tg-conv"
 
     async def test_the_platform_that_already_has_the_result_is_not_pinged_again(self) -> None:
-        """A reminder answered in the Telegram conversation is not re-sent to
-        Telegram, and it does not go to a second platform either: the preferred
-        platform already has it."""
         with (
             _channel(TELEGRAM),
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock()) as session,
@@ -193,11 +189,12 @@ class TestDeliverWorkflowResultToPlatforms:
 
 
 class TestDeliveredResultsReachTheSessionThread:
-    """A result pushed into a bot session must also land in that conversation's
-    langgraph checkpoint thread — the Mongo save alone is invisible to the next
-    turn, which reads its history from the checkpoint, so GAIA had no memory of
-    results it had just sent to Telegram. The record carries the platform and
-    origin (with machine ids) so a later turn can backtrack to the source."""
+    """A result pushed into a bot session must also land in the conversation's langgraph checkpoint thread.
+
+    The Mongo save alone is invisible to the next turn, which reads its history
+    from the checkpoint. The record carries the platform and origin (with
+    machine ids) so a later turn can backtrack to the source.
+    """
 
     ORIGIN = 'workflow "Morning digest" (id wf-1), tracked todo (id todo-9)'
 
@@ -231,16 +228,14 @@ class TestDeliveredResultsReachTheSessionThread:
         )
 
     async def test_recorded_text_excludes_break_sentinel(self) -> None:
-        """The sentinel is stripped before the checkpoint write — it never
-        reaches the next turn's history as literal text."""
+        """The sentinel is stripped before the checkpoint write."""
         record = await self._deliver(OutboundResult.PUBLISHED)
         for _, text in record.await_args_list:
             assert NEW_MESSAGE_BREAKER not in text
             assert "<NEW" not in text
 
     async def test_whatsapp_display_name_preserves_casing(self) -> None:
-        """WhatsApp's display name is ``WhatsApp``, not ``Whatsapp`` — a
-        ``.capitalize()`` fallback would be observable here."""
+        """WhatsApp's display name is WhatsApp, not Whatsapp — a .capitalize() fallback would show here."""
         recorder = AsyncMock()
         with (
             _channel(ChatChannel(source=ConversationSource.WHATSAPP, platform_user_id="wa-1")),
@@ -261,8 +256,7 @@ class TestDeliveredResultsReachTheSessionThread:
         assert recorder.await_args.args[1].startswith("[Delivered to the user on WhatsApp —")
 
     async def test_imessage_is_spelled_the_way_apple_spells_it(self) -> None:
-        """iMessage is the one platform whose display name is not a plain
-        capitalization, so the map must carry it rather than fall back."""
+        """IMessage is the one platform whose display name is not a plain capitalization."""
         recorder = AsyncMock()
         with (
             _channel(ChatChannel(source=ConversationSource.IMESSAGE, platform_user_id="im-1")),
@@ -290,9 +284,7 @@ class TestDeliveredResultsReachTheSessionThread:
 
 class TestVariantBreakTokens:
     async def test_new_line_break_variant_splits_bubbles_and_never_ships_literally(self) -> None:
-        """The model sometimes emits <NEW_LINE_BREAK> instead of the canonical
-        <NEW_MESSAGE_BREAK>. The variant must split bubbles exactly like the
-        canonical token and must never reach a platform as literal text."""
+        """The model sometimes emits <NEW_LINE_BREAK> instead of the canonical <NEW_MESSAGE_BREAK>."""
         variant = "<NEW_LINE_BREAK>"
         text = f"Report is ready.{variant}It has 3 pages."
 

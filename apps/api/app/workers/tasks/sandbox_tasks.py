@@ -1,7 +1,7 @@
 """ARQ tasks that maintain per-user E2B sandboxes + JuiceFS metadata.
 
 Currently:
-- `sweep_idle_sandboxes`: hourly. Marks sandboxes whose `last_used_at` is older
+- sweep_idle_sandboxes: hourly. Marks sandboxes whose last_used_at is older
   than the eviction threshold as dead and drops them from the in-process pool
   so the next request creates a fresh one. The underlying E2B sandbox is left
   to E2B's own paused-TTL to reclaim (default 30 days), which keeps the FS

@@ -27,12 +27,9 @@ const defaultStyles = {
   light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
 };
 
-// A tile-less, dependency-free style with a transparent background. Use it for
-// data visualizations (choropleths, world arcs, dot maps) where you draw your
-// own layers and don't need a street basemap. The easiest way to opt in is the
-// `blank` prop:
-//   <MapView blank>...</MapView>
-// The transparent background lets the themed container show through.
+// Tile-less, dependency-free transparent style for data viz that draws its
+// own layers (choropleths, arcs, dot maps) — opt in via the `blank` prop
+// (<MapView blank>), which lets the themed container show through.
 const blankMapStyle: MapLibreGL.StyleSpecification = {
   version: 8,
   sources: {},
@@ -645,10 +642,9 @@ function PopupCloseButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-// Detached <div> that backs MapLibre's DOM-content popups/tooltips. Created in
-// a lazy initializer (guarded for SSR) rather than a mount effect, so it
-// exists before the first paint and the portal never flashes in late. Returns
-// null on the server, where portals are never rendered.
+// Detached <div> backing MapLibre's DOM-content popups/tooltips. Created
+// in a lazy initializer (SSR-guarded), not a mount effect, so it exists
+// before first paint and the portal never flashes in late; null on the server.
 function usePopupContainer(): HTMLDivElement | null {
   const [container] = useState<HTMLDivElement | null>(() =>
     typeof document === "undefined" ? null : document.createElement("div"),
@@ -1166,10 +1162,9 @@ type MapGeoJSONProps<
   beforeId?: string;
 };
 
-// Theme-aware monochrome defaults so MapGeoJSON reads
-// clearly on the light/dark surface out of the box: a visible neutral-gray fill
-// with page-background separators between shapes. Override either via
-// `fillPaint` / `linePaint`.
+// Theme-aware monochrome defaults so MapGeoJSON reads clearly out of the
+// box: a visible neutral-gray fill with page-background separators between
+// shapes. Override via `fillPaint` / `linePaint`.
 const GEOJSON_DEFAULT_COLORS = {
   light: { fill: "#d4d4d4", line: "#fafafa" },
   dark: { fill: "#404040", line: "#0a0a0a" },
@@ -1507,11 +1502,9 @@ function buildArcCoordinates(
 ): [number, number][] {
   const [x0, y0] = from;
   const [xTo, y2] = to;
-  // Unwrap the destination longitude so |dx| <= 180. This makes arcs that
-  // straddle the antimeridian (e.g. Tokyo -> San Francisco) bow the short way
-  // across the Pacific instead of the long way around the globe. Resulting
-  // longitudes may fall outside [-180, 180]; MapLibre renders them correctly
-  // on the globe projection, and on mercator when world copies are enabled.
+  // Unwrap destination longitude so |dx| <= 180, so antimeridian-straddling
+  // arcs (e.g. Tokyo -> SF) bow the short way. Result may fall outside
+  // [-180, 180]; MapLibre renders that correctly on globe/mercator-with-world-copies.
   const rawDx = xTo - x0;
   const x2 = rawDx > 180 ? xTo - 360 : rawDx < -180 ? xTo + 360 : xTo;
   const dx = x2 - x0;

@@ -1,19 +1,4 @@
-"""How the executor gets its tools: retrieval, binding, and what happens when
-binding fails.
-
-The executor is bound to fourteen tools at build time and must *retrieve* every
-other one before it can call it (`build_graph.py` `initial_tool_ids`). That
-retrieve → bind → call loop is the hinge the whole executor tier turns on: a
-break in it means the agent cannot do anything it was not born knowing, and the
-failure mode is not an exception — it is the model being handed an empty list
-and trying again.
-
-These run the REAL executor graph (see ``_harness/graph_run.executor_graph``).
-The vector store is a real ``InMemoryStore`` with no index, which is not a
-limitation but the point: binding by ``exact_tool_names`` must never search it,
-so any test that starts depending on embeddings will fail here rather than
-silently become non-deterministic.
-"""
+"""Real executor graph tests; binding by exact_tool_names must never search the vector store, keeping retrieval deterministic without embeddings."""
 
 from __future__ import annotations
 
@@ -46,8 +31,7 @@ def retrieve(*names: str, retrieve_id: str = "r1") -> dict[str, Any]:
 
 class TestExactBinding:
     async def test_a_retrieved_tool_becomes_callable_in_the_same_turn(self):
-        """The whole loop. Retrieve by exact name, then call it, then answer —
-        this is how the executor reaches all 91 tools from a bound set of 14."""
+        """Exercises the full loop: retrieve, call, then answer — reaching all 91 tools from a bound set of 14."""
         async with executor_graph(
             [
                 retrieve(RETRIEVABLE),
@@ -63,9 +47,7 @@ class TestExactBinding:
         assert run.final_text() == "Here is what I found."
 
     async def test_exact_binding_never_searches_the_vector_store(self):
-        """``exact_tool_names`` resolves against the in-memory registry. If it
-        ever starts hitting ChromaDB, every retrieval test becomes dependent on
-        Google embeddings and quietly non-deterministic — §2.6 of the plan."""
+        """Binding by exact_tool_names must never hit ChromaDB, or every retrieval test becomes dependent on embeddings (plan §2.6)."""
         store = RecordingStore()
 
         async with executor_graph(
@@ -77,13 +59,7 @@ class TestExactBinding:
         assert store.searches == [], "exact binding performed a semantic search"
 
     async def test_the_selection_is_announced_back_to_the_model(self):
-        """The model only learns what it may call from this ToolMessage.
-
-        Asserted verbatim, not by substring: the text is the instruction the
-        model acts on, and "the name appears somewhere in there" would still
-        pass if the surrounding sentence stopped telling it the tools are
-        callable now.
-        """
+        """Asserts the ToolMessage verbatim, not by substring, since a partial match would still pass if the callable-now instruction were dropped."""
         async with executor_graph([retrieve(RETRIEVABLE), "ok"]) as graph:
             run = await run_graph(graph, "search the web")
 
@@ -98,8 +74,7 @@ class TestExactBinding:
         assert sorted(run.bound_tools()) == sorted([RETRIEVABLE, "get_weather"])
 
     async def test_a_tool_stays_bound_for_the_rest_of_the_run(self):
-        """``selected_tool_ids`` accumulates. If a later turn dropped the earlier
-        selection, a two-step task would need to re-retrieve between every call."""
+        """selected_tool_ids accumulates, so a later turn doesn't need to re-retrieve between calls in the same run."""
         async with executor_graph(
             [
                 retrieve(RETRIEVABLE),
@@ -115,15 +90,7 @@ class TestExactBinding:
 
 
 class TestWhatTheModelIsActuallyHanded:
-    """``selected_tool_ids`` is what retrieval decided; this is what the provider
-    received as function declarations. They are different things, and only the
-    second one determines whether the model can call anything.
-
-    Nothing asserted this before: the fake model returned ``self`` from
-    ``bind_tools`` and discarded the list, so deleting the whole of
-    ``build_tools_to_bind`` left every retrieval test green while the executor
-    silently degraded to a chatbot with no tools at all.
-    """
+    """Asserts what the provider actually received, not what retrieval decided — deleting build_tools_to_bind once left every retrieval test green while the executor silently lost every tool."""
 
     async def test_the_model_is_bound_its_starting_toolset(self):
         async with executor_graph(["hi"]) as graph:
@@ -141,9 +108,7 @@ class TestWhatTheModelIsActuallyHanded:
         assert "retrieve_tools" in run.model_bound_tools()
 
     async def test_a_retrieved_tool_is_bound_on_the_next_model_call(self):
-        """The claim the rest of this file makes indirectly. Retrieval updating
-        state is only half of it — the tool has to reach the provider before the
-        model can emit a call for it."""
+        """Retrieval updating state is only half of it — the tool has to reach the provider before the model can emit a call for it."""
         async with executor_graph([retrieve(RETRIEVABLE), "ok"]) as graph:
             run = await run_graph(graph, "search the web")
 
@@ -151,9 +116,7 @@ class TestWhatTheModelIsActuallyHanded:
         assert RETRIEVABLE in run.model_bound_tools()
 
     async def test_no_tool_is_bound_twice(self):
-        """Providers reject duplicate function names outright — the whole turn
-        400s. Reachable: a model can retrieve a tool that is already in the
-        initial set, which puts it in the bind list twice."""
+        """Providers reject duplicate function names outright, so a tool already in the initial set must not be bound twice after retrieval."""
         async with executor_graph([retrieve("read"), "ok"]) as graph:
             run = await run_graph(graph, "read a file")
 
@@ -164,9 +127,7 @@ class TestWhatTheModelIsActuallyHanded:
         )
 
     async def test_the_binding_order_keeps_the_cacheable_prefix_stable(self):
-        """The provider caches on a prefix of the request. Retrieval-selected
-        tools are appended last precisely so the stable part does not shift each
-        time the model retrieves something new."""
+        """Retrieval-selected tools are appended last so the cacheable prefix never shifts when the model retrieves something new."""
         async with executor_graph([retrieve(RETRIEVABLE), "ok"]) as graph:
             run = await run_graph(graph, "search the web")
 
@@ -177,9 +138,7 @@ class TestWhatTheModelIsActuallyHanded:
         )
 
     async def test_a_middleware_tool_is_bound_even_though_it_is_not_an_initial_id(self):
-        """``spawn_subagent`` comes from the middleware stack, not
-        ``initial_tool_ids`` — it is the only tool that depends on that branch,
-        and every tool the rest of the suite exercises is in both."""
+        """spawn_subagent comes from the middleware stack, not initial_tool_ids — the one tool depending on that branch."""
         async with executor_graph(["hi"]) as graph:
             run = await run_graph(graph, "hello")
 
@@ -188,8 +147,7 @@ class TestWhatTheModelIsActuallyHanded:
 
 class TestUnboundToolHandling:
     async def test_calling_an_unretrieved_tool_is_corrected_not_executed(self):
-        """The graph must not run a tool the model never bound, and must tell it
-        how to recover — naming the tool and the exact call to make."""
+        """The correction must name the tool and the exact call to make so the model can recover."""
         async with executor_graph(
             [call(RETRIEVABLE, {"query": "cats"}), "I will retrieve it first."]
         ) as graph:
@@ -204,8 +162,7 @@ class TestUnboundToolHandling:
         assert "retrieve_tools" in correction
 
     async def test_the_run_recovers_after_a_correction(self):
-        """The correction is only useful if the model can act on it — the graph
-        must route back to the agent rather than terminate."""
+        """The graph must route back to the agent after a correction rather than terminate."""
         async with executor_graph(
             [
                 call(RETRIEVABLE, {"query": "cats"}, call_id="c0"),
@@ -220,15 +177,7 @@ class TestUnboundToolHandling:
         assert run.final_text() == "Found it."
 
     async def test_a_model_that_never_retrieves_hits_the_recursion_limit(self):
-        """Documents a real hazard rather than a desired behaviour: nothing
-        bounds the reject → agent → reject cycle, so a model that keeps calling
-        an unbound tool spins until the recursion limit and the user gets the
-        step-limit error instead of an answer.
-
-        Pinning it here means a future fix (a retry cap, or corrective text on
-        the retrieval side) will turn this test red and have to be considered
-        deliberately. See the plan, §9 A.
-        """
+        """Documents a real hazard, not desired behavior: nothing bounds the reject-agent-reject cycle, so this pins the recursion-limit outcome per the plan, §9 A."""
         async with executor_graph(
             [call(RETRIEVABLE, {"query": "cats"}, call_id="loop")] * 30
         ) as graph:
@@ -242,12 +191,7 @@ class TestScopingAndNaming:
     """Two filters that decide whether a name is bindable at all."""
 
     async def test_a_desktop_tool_cannot_be_retrieved_into_a_web_conversation(self):
-        """Desktop tools execute on the user's machine through the desktop app.
-        Binding one in a web conversation gives the model a tool whose calls go
-        nowhere — it waits out the timeout and reports the desktop app is closed.
-
-        Distinct from the initial-set test: this is the only route by which a
-        model could ever obtain one, so it is the only one that matters."""
+        """Binding a desktop tool into a web conversation makes calls go nowhere until the model times out and reports the desktop app is closed."""
         async with executor_graph([retrieve("take_screenshot"), "ok"]) as graph:
             run = await run_graph(graph, "screenshot my screen")
 
@@ -255,19 +199,14 @@ class TestScopingAndNaming:
         assert "take_screenshot" not in run.model_bound_tools()
 
     async def test_a_dashed_tool_name_resolves_to_its_real_underscored_tool(self):
-        """MCP servers commonly expose dashed names and models echo them with
-        underscores (or the reverse). Without canonicalization the call is
-        rejected forever, the model retries, and the unbounded reject cycle ends
-        in a step-limit error instead of the tool running."""
+        """Models echo dashed MCP names with underscores (or the reverse); without canonicalization the call is rejected forever."""
         async with executor_graph([retrieve("web-search-tool"), "ok"]) as graph:
             run = await run_graph(graph, "search the web")
 
         assert run.bound_tools() == [RETRIEVABLE]
 
     async def test_a_dashed_call_of_a_bound_tool_is_routed_not_rejected(self):
-        """The same rewrite on the routing side. Binding it and then rejecting
-        the call is the worst of both — the model is told the tool exists and
-        cannot use it."""
+        """Same dash/underscore rewrite on the routing side — telling the model the tool exists yet rejecting the call would be the worst of both."""
         async with executor_graph([call("plan-tasks", {"tasks": []}, call_id="c1"), "ok"]) as graph:
             run = await run_graph(graph, "plan something")
 
@@ -283,12 +222,7 @@ class TestUnknownToolNames:
         assert run.bound_tools() == []
 
     async def test_an_unknown_name_is_named_back_with_a_do_not_retry(self):
-        """An unknown name used to come back as ``Available tools: []`` — the
-        same answer a semantic search that found nothing gives, so the model had
-        no signal the NAME was wrong and would retype it until it ran out of
-        steps. Retrieval now names the rejected tool and points at the query
-        path, which is the only thing that breaks that loop.
-        """
+        """An unknown name used to come back as an empty tool list indistinguishable from a failed search, so the model retried until it ran out of steps."""
         async with executor_graph([retrieve("no_such_tool_xyz"), "gave up"]) as graph:
             run = await run_graph(graph, "do something impossible")
 
@@ -309,8 +243,7 @@ class TestUnknownToolNames:
 
 class TestRetrievalContract:
     async def test_retrieve_tools_is_available_without_being_retrieved(self):
-        """It is the bootstrap: if it were not bound from turn 1, nothing could
-        ever be retrieved and the executor would be limited to its 14 tools."""
+        """The bootstrap tool: unbound from turn 1, nothing could ever be retrieved and the executor would be limited to its 14 tools."""
         async with executor_graph([retrieve(RETRIEVABLE), "ok"]) as graph:
             run = await run_graph(graph, "search the web")
 
@@ -318,10 +251,7 @@ class TestRetrievalContract:
         assert run.bound_tools() == [RETRIEVABLE]
 
     async def test_calling_retrieve_tools_with_no_names_is_corrected(self):
-        """A no-arg call is a model mistake. Asserting the response is merely
-        non-empty is not enough — "Available tools: []" is non-empty and tells
-        the model nothing, so the corrective text that retrieval actually
-        produces must survive the trip back."""
+        """A non-empty response like "Available tools: []" isn't enough — the corrective text naming query/exact_tool_names must survive the round trip."""
         async with executor_graph([call("retrieve_tools", {}, call_id="r1"), "ok"]) as graph:
             run = await run_graph(graph, "find me a tool")
 
@@ -332,9 +262,7 @@ class TestRetrievalContract:
         )
 
     async def test_asking_for_a_subagent_by_name_explains_how_to_reach_it(self):
-        """Subagents are not bindable tools. Retrieval knows this and returns
-        guidance naming ``handoff``; if only the (empty) bind list came back the
-        model would read it as "no such thing" and give up."""
+        """Subagents aren't bindable tools; retrieval must name the handoff route instead of returning an empty bind list."""
         async with executor_graph([retrieve("subagent:gmail"), "ok"]) as graph:
             run = await run_graph(graph, "check my mail")
 

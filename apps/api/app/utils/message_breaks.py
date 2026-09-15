@@ -1,14 +1,14 @@
 """Bubble-break sentinel handling for outbound assistant text.
 
-The model is told to emit ``<NEW_MESSAGE_BREAK>`` between bubbles, but it emits
-near-misses constantly: ``<NEW_LINE_BREAK>``, ``[NEW_MESSAGE_BREAK]``,
-``</NEW_MESSAGE_BREAK>``, ``<NEW MESSAGE BREAK>`` — and, when a chunk boundary
-lands mid-token, a truncated ``<NEW_MESSAGE_B``. Every one of those used to ship
+The model is told to emit <NEW_MESSAGE_BREAK> between bubbles, but it emits
+near-misses constantly: <NEW_LINE_BREAK>, [NEW_MESSAGE_BREAK],
+</NEW_MESSAGE_BREAK>, <NEW MESSAGE BREAK> — and, when a chunk boundary
+lands mid-token, a truncated <NEW_MESSAGE_B. Every one of those used to ship
 to the user as literal text. This module is the single place that knows what a
 sentinel looks like; every outbound path splits through
-:func:`split_message_bubbles` rather than matching the literal token itself.
+:func:split_message_bubbles rather than matching the literal token itself.
 
-The TypeScript half is ``libs/shared/ts/src/utils/messageBreakUtils.ts`` — the
+The TypeScript half is libs/shared/ts/src/utils/messageBreakUtils.ts — the
 two must accept the same spellings.
 """
 
@@ -38,7 +38,7 @@ MESSAGE_BREAK_SENTINEL_RE = re.compile(
 
 
 def _word_prefixes(word: str) -> str:
-    """Regex matching any non-empty prefix of ``word`` (``N``, ``NE``, ``NEW``)."""
+    """Regex matching any non-empty prefix of word (N, NE, NEW)."""
     pattern = ""
     for char in reversed(word):
         pattern = f"{char}(?:{pattern})?" if pattern else char
@@ -48,7 +48,7 @@ def _word_prefixes(word: str) -> str:
 def _partial_sequence(words: tuple[str, ...]) -> str:
     """Regex matching any non-empty prefix of one whole spelling.
 
-    Built inside-out so ``NEW``, ``NEW_MESS`` and ``NEW_MESSAGE_BRE`` all match
+    Built inside-out so NEW, NEW_MESS and NEW_MESSAGE_BRE all match
     while a complete, closed sentinel does not (there is no closing bracket).
     """
     pattern = ""
@@ -59,9 +59,8 @@ def _partial_sequence(words: tuple[str, ...]) -> str:
 
 
 #: A sentinel truncated by a chunk boundary, anchored to the end of the text.
-#: At least one character of the spelling is required: a bare trailing ``<`` is
-#: ordinary text far more often than it is a half-received sentinel, and eating
-#: it would corrupt code snippets and comparisons.
+#: At least one character is required: a bare trailing ``<`` is ordinary text
+#: far more often than a half-received sentinel.
 PARTIAL_MESSAGE_BREAK_RE = re.compile(
     _OPEN + "(?:" + "|".join(_partial_sequence(w) for w in _SENTINEL_WORD_SEQUENCES) + ")$",
     re.IGNORECASE,
@@ -69,7 +68,7 @@ PARTIAL_MESSAGE_BREAK_RE = re.compile(
 
 
 def strip_partial_message_break(text: str) -> str:
-    """Drop a sentinel that a chunk boundary cut in half at the end of ``text``."""
+    """Drop a sentinel that a chunk boundary cut in half at the end of text."""
     return PARTIAL_MESSAGE_BREAK_RE.sub("", text)
 
 

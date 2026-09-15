@@ -1,6 +1,6 @@
 """MCP proxy response schemas.
 
-The proxied payloads stay ``list[dict[str, Any]]``: each element is an MCP
+The proxied payloads stay list[dict[str, Any]]: each element is an MCP
 content block / resource / prompt serialized by the MCP SDK, and the block union
 is open-ended by spec (text, image, audio, resource link, embedded resource,
 plus server extensions). These bodies are forwarded verbatim to the MCP App

@@ -1,6 +1,6 @@
 """Unit tests for the Gmail personalization pipeline orchestration.
 
-`process_onboarding_intelligence` runs once, when a user connects Gmail. The
+process_onboarding_intelligence runs once, when a user connects Gmail. The
 tests below pin down its two early exits (already personalized, Gmail not
 connected), which nodes the happy path runs and in what shape, that the pipeline
 creates nothing the user has to clean up (no todos, no workflows), and that the
@@ -109,7 +109,7 @@ def _user(**overrides: Any) -> UserDocument:
 
 
 def _expected_ctx() -> OnboardingContext:
-    """The context `_user()` must produce, field for field."""
+    """Build the context _user() must produce, field for field."""
     return OnboardingContext(
         user_id=USER,
         name="Ann",
@@ -167,7 +167,7 @@ class TestScanThenEnqueueMemory:
 def pipeline_stack() -> Any:
     """Fakes every node so only the orchestration is exercised.
 
-    `personalization_already_ran` is deliberately NOT faked — the guard reads the
+    personalization_already_ran is deliberately NOT faked — the guard reads the
     user's real onboarding subdoc, so the tests drive it with real markers.
     """
     with (
@@ -261,9 +261,7 @@ class TestProcessOnboardingIntelligenceGuards:
     async def test_an_already_personalized_user_is_logged_as_skipped_not_failed(
         self, pipeline_stack: Any
     ) -> None:
-        """Three no-op exits look identical from outside the job; `outcome` and
-        `reason` are the only things that tell a skipped reconnect apart from a
-        user whose Gmail fell off, and the second needs chasing."""
+        """Outcome and reason are the only things that tell a skipped reconnect apart from a user whose Gmail fell off, which needs chasing."""
         user = _user(onboarding={GMAIL_PERSONALIZATION_MARKER: "2026-08-01T00:00:00Z"})
         pipeline_stack["repo"].get = AsyncMock(return_value=user)
 
@@ -314,9 +312,7 @@ class TestProcessOnboardingIntelligenceHappyPath:
         assert pipeline_stack["announce"].await_count == 1
 
     async def test_the_scan_and_triage_share_one_inbox_context(self, pipeline_stack: Any) -> None:
-        """Triage starts as soon as the scan has buffered its first batch, which
-        only works if both hold the same context object — a second instance
-        leaves triage waiting on an event nothing ever sets."""
+        """Triage starts as soon as the scan buffers its first batch, which only works if both hold the same context object."""
         await process_onboarding_intelligence(USER)
 
         scanned_ctx = pipeline_stack["scan"].await_args.args[1]
@@ -329,9 +325,7 @@ class TestProcessOnboardingIntelligenceHappyPath:
     async def test_the_pipeline_brackets_itself_with_a_start_and_a_done_line(
         self, pipeline_stack: Any
     ) -> None:
-        """A personalization run has no other trace: `phase` is what pairs the
-        two lines into a duration, and the counts are the only record of what a
-        given user actually got out of it."""
+        """Phase pairs the two log lines into a duration; the counts are the only record of what the user got out of the run."""
         triage = _triage()
         pipeline_stack["triage"].return_value = triage
         pipeline_stack["style"].return_value = _style()
@@ -356,8 +350,7 @@ class TestProcessOnboardingIntelligenceHappyPath:
         assert done.kwargs["outcome"] == "ok"
 
     async def test_a_run_that_found_nothing_reports_zero_not_one(self, pipeline_stack: Any) -> None:
-        """`triage_important_count` is the volume metric for the whole feature —
-        a floor of 1 on empty runs invents inbox findings that never existed."""
+        """A floor of 1 on empty runs would invent inbox findings that never existed."""
         await process_onboarding_intelligence(USER)
 
         done = next(
@@ -370,9 +363,7 @@ class TestProcessOnboardingIntelligenceHappyPath:
         assert done.kwargs["social_profiles_count"] == 0
 
     async def test_the_context_is_threaded_into_every_node(self, pipeline_stack: Any) -> None:
-        """Every node reads its inputs off one context built from the user
-        document, so a field dropped where it is built degrades several nodes at
-        once — a card with no name, a triage with no focus. Pin the whole object."""
+        """Every node reads its inputs off one context, so a field dropped where it is built degrades several nodes at once."""
         await process_onboarding_intelligence(USER)
 
         assert pipeline_stack["triage"].await_args.args[0] == USER
@@ -386,9 +377,7 @@ class TestProcessOnboardingIntelligenceHappyPath:
     async def test_the_resolved_triage_and_style_are_folded_into_the_card_context(
         self, pipeline_stack: Any
     ) -> None:
-        """The two slowest nodes land after the base context is built, so they are
-        folded in with `replace`. Losing either leaves the holo card blind to the
-        inbox the user just waited on."""
+        """The two slowest nodes land after the base context is built, so they are folded in with replace."""
         triage, style = _triage(), _style()
         pipeline_stack["triage"].return_value = triage
         pipeline_stack["style"].return_value = style
@@ -442,8 +431,7 @@ class TestProcessOnboardingIntelligenceHappyPath:
     async def test_the_marker_is_stamped_once_with_the_seeded_conversation_id(
         self, pipeline_stack: Any
     ) -> None:
-        """The marker is what makes a Gmail reconnect a no-op, and the seeded
-        conversation id rides along so a reset can tear it down."""
+        """The seeded conversation id rides along with the marker so a reset can tear it down."""
         pipeline_stack["announce"].return_value = "conv-7"
 
         await process_onboarding_intelligence(USER)
@@ -472,9 +460,7 @@ class TestProcessOnboardingIntelligenceHappyPath:
     async def test_a_card_that_failed_to_generate_is_announced_as_absent(
         self, pipeline_stack: Any
     ) -> None:
-        """The public /profile page 404s until the card exists, so a failed card
-        must never be advertised — and with nothing to hand over there is no
-        conversation to record against the marker."""
+        """The public /profile page 404s until the card exists, so a failed card must never be advertised."""
         pipeline_stack["holo"].return_value = False
         pipeline_stack["announce"].return_value = None
 
@@ -508,8 +494,7 @@ class TestProcessOnboardingIntelligenceHappyPath:
 
 class TestProcessOnboardingIntelligenceCreatesNothingToCleanUp:
     async def test_no_todos_and_no_workflows_are_created(self, pipeline_stack: Any) -> None:
-        """The pipeline's output is memories, a style, a triage, profiles and the
-        card. Anything it persists on the user's behalf is theirs to delete."""
+        """Anything the pipeline persists on the user's behalf is theirs to delete — no todos or workflows."""
         with (
             patch(
                 "app.services.todos.todo_service.TodoService.create_todo", AsyncMock()
@@ -560,8 +545,7 @@ class TestHoloCardUrl:
             assert holo_card_url(USER) == CARD_URL
 
     def test_only_the_trailing_separator_is_trimmed(self) -> None:
-        """`rstrip("/")` takes a character SET, so a widened set would eat real
-        characters off the end of a deployment URL and 404 the card page."""
+        """rstrip("/") takes a character SET, so a widened set would eat real characters off a deployment URL."""
         frontend = MagicMock()
         frontend.FRONTEND_URL = "https://app.example.test/X/"
         with patch(f"{MODULE}.settings", frontend):
@@ -575,8 +559,7 @@ class TestHoloCardMessage:
         assert CARD_URL in _holo_card_message(CARD_URL)
 
     def test_the_message_is_the_whole_reward_the_user_reads(self) -> None:
-        """This text is the entire hand-off after a Gmail connect — it is seeded
-        as GAIA's own turn, so it is prose a user reads, not a log line."""
+        """The entire hand-off after a Gmail connect, seeded as GAIA's own turn — prose a user reads, not a log line."""
         assert _holo_card_message(CARD_URL) == (
             "Your holo card is ready — I built it from what I learned in your inbox.\n\n"
             f"{CARD_URL}\n\n"
@@ -612,8 +595,7 @@ class TestAnnouncePersonalization:
         assert content.body.endswith("Your holo card is ready too.")
 
     async def test_a_card_that_does_not_exist_is_never_linked(self, announce_stack: Any) -> None:
-        """The public card page 404s until the card is persisted, so a failed
-        card must leave no link anywhere — action, body, or conversation."""
+        """The public card page 404s until the card is persisted, so a failed card must leave no link anywhere."""
         notifications, seed = announce_stack
 
         assert await _announce_personalization(USER, card_ready=False) is None
@@ -650,11 +632,7 @@ class TestAnnouncePersonalization:
             assert await _announce_personalization(USER, card_ready=True) is None
 
     async def test_the_notification_is_built_field_for_field(self, announce_stack: Any) -> None:
-        """Every field here is rendered or acted on by the client: the labels are
-        the buttons, the styles decide which one is primary, `open_in_new_tab`
-        and `close_notification` decide whether the user loses the notification
-        on the way to their memories, and `metadata.source` is what attributes
-        the notification to this pipeline in analytics."""
+        """Every field here is rendered or acted on by the client — nothing is filler."""
         notifications, _ = announce_stack
 
         await _announce_personalization(USER, card_ready=True)
@@ -677,8 +655,7 @@ class TestAnnouncePersonalization:
     async def test_an_undeliverable_notification_is_visible_in_the_wide_event(
         self, announce_stack: Any
     ) -> None:
-        """Delivery is swallowed on purpose, so the warning is the ONLY evidence
-        a user was never told their personalization finished."""
+        """Delivery is swallowed on purpose, so the warning is the ONLY evidence a user was never told."""
         notifications, _ = announce_stack
         # Long on purpose: a provider stack trace is what actually lands here,
         # and the 200-char cap is what keeps one failure from flooding the event.
@@ -699,9 +676,7 @@ class TestAnnouncePersonalization:
     async def test_the_announce_line_reports_which_half_landed(
         self, announce_stack: Any, seeded: str | None, outcome: str
     ) -> None:
-        """`outcome` is what separates a user who got their card handed over from
-        one who got only a notification — the two are indistinguishable
-        otherwise, and only this line records which happened."""
+        """Outcome is the only line that records whether the user got their card handed over or just a notification."""
         with patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value=seeded)):
             await _announce_personalization(USER, card_ready=True)
 

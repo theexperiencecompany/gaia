@@ -1,285 +1,22 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
-import { PuzzleIcon, ToolsIcon } from "@icons";
+import { ToolsIcon } from "@icons";
 import type { ApprovalStatus } from "@shared/chat";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
-import {
-  BrainIcon,
-  ChevronDown,
-  ShieldAlertIcon,
-} from "@/components/shared/icons";
+import { BrainIcon, ChevronDown } from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
-import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { deriveStepKeys } from "./TextBubble/useSubagentSynthesis";
+import { ToolCallRow, WaitingForApprovalPill } from "./ToolCallRow";
+import { expandTransition } from "./toolCallDisplay";
 import type { EnrichedSubagentGroup } from "./UnifiedToolThread";
 
-// ── Animation config (matches LoadingIndicator) ─────────────────────────────
-
-const expandTransition = {
-  duration: 0.2,
-  ease: [0.32, 0.72, 0, 1] as const,
-};
-
-// A tool call blocked on a HIL approval shows this amber marker in place of the
-// running spinner, so the tree explains *why* the step is stuck (the approval
-// card below carries the actual approve/deny action).
-function WaitingForApprovalPill() {
-  return (
-    <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-amber-400">
-      <ShieldAlertIcon width={13} height={13} />
-      Waiting for approval
-    </span>
-  );
-}
-
-// A settled decision rides its tool's own row — one place tells the whole story.
-const APPROVAL_CHIP: Record<
-  string,
-  { label: string; color: "success" | "danger" | "warning" }
-> = {
-  approved: { label: "Approved", color: "success" },
-  auto_approved: { label: "Auto-approved", color: "success" },
-  denied: { label: "Denied", color: "danger" },
-  timeout: { label: "Expired", color: "warning" },
-  abandoned: { label: "Expired", color: "warning" },
-};
-
-function ApprovalOutcomeChip({ status }: Readonly<{ status: ApprovalStatus }>) {
-  const chip = APPROVAL_CHIP[status];
-  if (!chip) return null;
-  return (
-    <Chip
-      size="sm"
-      variant="flat"
-      color={chip.color}
-      className="ml-2 h-5 text-[10px]"
-    >
-      {chip.label}
-    </Chip>
-  );
-}
-
-// ── Top-level tool call row ─────────────────────────────────────────────────
-
-// A `read` of a markdown file returns line-numbered text (`    12\t# Heading`),
-// whose number+tab prefix stops the content from parsing as markdown. For the
-// display card, strip that prefix so skill files (SKILL.md) and other .md reads
-// render as real markdown. The agent still receives the numbered version.
-const MARKDOWN_READ_PATH = /\.(md|markdown|mdx)$/i;
-function displayToolOutput(call: ToolCallEntry): unknown {
-  const { output, inputs } = call;
-  if (call.tool_name === "read" && typeof output === "string") {
-    const rawPath =
-      inputs && typeof inputs === "object"
-        ? (inputs as { path?: unknown }).path
-        : undefined;
-    // Only a string path can be a markdown filename; anything else (objects,
-    // numbers) must not be coerced — `String({})` would yield "[object Object]".
-    if (typeof rawPath === "string" && MARKDOWN_READ_PATH.test(rawPath)) {
-      return output.replace(/^ *\d+\t/gm, "");
-    }
-  }
-  return output;
-}
-
-// A read/write/edit whose path is any `skill.md` renders as a first-class
-// "… a Skill" step with the Settings→Skills plugin icon, instead of the generic
-// "Read"/"Write" tool row.
-const SKILL_FILE_PATH = /(^|\/)skill\.md$/i;
-const SKILL_TOOL_LABELS: Record<string, string> = {
-  read: "Reading a Skill",
-  write: "Writing a Skill",
-  edit: "Editing a Skill",
-};
-function skillToolLabel(call: ToolCallEntry): string | null {
-  const label = SKILL_TOOL_LABELS[call.tool_name];
-  if (!label) return null;
-  const { inputs } = call;
-  const rawPath =
-    inputs && typeof inputs === "object"
-      ? (inputs as { path?: unknown }).path
-      : undefined;
-  return typeof rawPath === "string" && SKILL_FILE_PATH.test(rawPath)
-    ? label
-    : null;
-}
-
-// Strips separators so two labels can be compared for redundancy ("retrieve_tools"
-// vs "Retrieve tools"). Module scope keeps its identity stable across renders.
-function normalizeLabel(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function ToolCallRow({
-  call,
-  isLast,
-  getIconUrl,
-  getIntegrationName,
-  awaitingApproval,
-  approvalStatus,
-}: Readonly<{
-  call: ToolCallEntry;
-  isLast: boolean;
-  getIconUrl: (c: ToolCallEntry) => string | undefined;
-  getIntegrationName: (c: ToolCallEntry) => string | undefined;
-  /** This tool call is blocked on a pending HIL approval. */
-  awaitingApproval: boolean;
-  /** Settled HIL outcome for this call, rendered as a chip on the row. */
-  approvalStatus?: ApprovalStatus;
-}>) {
-  const [expanded, setExpanded] = useState(false);
-
-  // Skill-file reads/writes/edits get a dedicated label + plugin icon; the skill
-  // label wins over any backend-provided custom message.
-  const skillLabel = skillToolLabel(call);
-  const primaryLabel =
-    skillLabel || call.message || formatToolName(call.tool_name);
-  const integrationLabel =
-    getIntegrationName(call) ||
-    (call.tool_category && call.tool_category !== "unknown"
-      ? call.tool_category
-          .replaceAll("_", " ")
-          .split(" ")
-          .map(
-            (word) =>
-              word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
-          )
-          .join(" ")
-      : "");
-  // `show_category === false` means the backend sent a custom/curated label as
-  // the primary. In that case the primary already reads naturally, so the
-  // secondary shows the raw tool name (with underscores, untrimmed) for
-  // transparency. Otherwise the primary IS the tool name, so the secondary shows
-  // the integration/category (the original behaviour).
-  const hasCustomLabel = call.show_category === false;
-  const secondaryLabel = hasCustomLabel
-    ? call.tool_name.toLowerCase()
-    : integrationLabel;
-  // Hide the secondary when it adds nothing — e.g. "retrieve_tools" under
-  // "Retrieve tools". Compares with separators stripped so a tool name only
-  // shows when it genuinely differs from the primary label.
-  const normPrimary = normalizeLabel(primaryLabel);
-  const normSecondary = normalizeLabel(secondaryLabel);
-  const hasCategoryText =
-    secondaryLabel.length > 0 &&
-    normSecondary.length > 0 &&
-    !normPrimary.includes(normSecondary) &&
-    !normSecondary.includes(normPrimary);
-  const hasInputs =
-    call.inputs &&
-    typeof call.inputs === "object" &&
-    Object.keys(call.inputs).length > 0;
-  const hasOutput = call.output && call.output.trim().length > 0;
-  const hasDetails = hasInputs || hasOutput;
-
-  return (
-    <div className="flex items-stretch gap-2">
-      <div className="flex flex-col items-center self-stretch">
-        <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
-          {skillLabel ? (
-            <div className="relative rounded-lg p-1">
-              <div className="absolute inset-0 rounded-lg bg-lime-500/20 backdrop-blur" />
-              <PuzzleIcon
-                width={21}
-                height={21}
-                className="relative text-lime-400"
-              />
-            </div>
-          ) : (
-            getToolCategoryIcon(
-              call.tool_category || "general",
-              { size: 21, width: 21, height: 21 },
-              getIconUrl(call),
-            ) || (
-              <div className="p-1 bg-zinc-800 rounded-lg">
-                <ToolsIcon width={21} height={21} />
-              </div>
-            )
-          )}
-        </div>
-        {!isLast && <div className="w-px flex-1 bg-default-200 min-h-4" />}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <button
-          type="button"
-          className={`w-full text-left group/parent ${hasCategoryText ? "min-h-8 flex flex-col justify-center" : "flex items-center min-h-8"} ${hasDetails ? "cursor-pointer" : "cursor-default"}`}
-          onClick={() => hasDetails && setExpanded(!expanded)}
-        >
-          <div className="flex items-center gap-1">
-            <p
-              className={`text-xs text-zinc-400 font-medium ${hasDetails ? "group-hover/parent:text-white transition-colors" : ""}`}
-            >
-              {primaryLabel}
-            </p>
-            {hasDetails && (
-              <ChevronDown
-                className={`text-zinc-500 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-                width={14}
-                height={14}
-              />
-            )}
-            {awaitingApproval && (
-              <span className="ml-2">
-                <WaitingForApprovalPill />
-              </span>
-            )}
-            {approvalStatus && <ApprovalOutcomeChip status={approvalStatus} />}
-          </div>
-          {hasCategoryText && (
-            <p className="text-[11px] text-zinc-600 leading-tight">
-              {secondaryLabel}
-            </p>
-          )}
-        </button>
-
-        <AnimatePresence>
-          {expanded && hasDetails && (
-            <m.div
-              layout
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={expandTransition}
-              className="overflow-hidden"
-            >
-              <div className="mt-2 space-y-2 text-[11px] bg-zinc-800/50 rounded-xl p-3 mb-3 w-fit">
-                {hasInputs && (
-                  <div className="flex flex-col">
-                    <span className="text-zinc-500 font-medium mb-1">
-                      Input
-                    </span>
-                    <CompactMarkdown content={call.inputs} />
-                  </div>
-                )}
-                {hasOutput && (
-                  <div className="flex flex-col">
-                    <span className="text-zinc-500 font-medium mb-1">
-                      Output
-                    </span>
-                    <CompactMarkdown content={displayToolOutput(call)} />
-                  </div>
-                )}
-              </div>
-            </m.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-// ── Model thinking row ──────────────────────────────────────────────────────
-// A step where the model reasoned (a ToolCallEntry carrying `reasoning`). Mirrors
-// ToolCallRow's layout (icon column + connector + collapsible body) so thinking
-// sits naturally between tool steps at both the root and subagent levels.
-
+// A step where the model reasoned (ToolCallEntry carrying `reasoning`).
+// Mirrors ToolCallRow's layout so thinking sits naturally between tool steps.
 function ThinkingStepRow({
   reasoning,
   isLast,
@@ -334,18 +71,18 @@ function ThinkingStepRow({
   );
 }
 
+interface StepCallbacks {
+  getIconUrl: (c: ToolCallEntry) => string | undefined;
+  getIntegrationName: (c: ToolCallEntry) => string | undefined;
+  /** tool_call_ids blocked on a pending HIL approval. */
+  pendingApprovalToolCallIds: Set<string>;
+  approvalStatusByToolCallId?: Map<string, ApprovalStatus>;
+}
+
 // One timeline step: a thinking block when the entry carries `reasoning`, else a
-// normal tool-call row. Hook-free, so it stands in for ToolCallRow at every call
-// site (root timeline + subagent tool lists) without conditional-hook issues.
+// tool-call row. Hook-free, so it avoids conditional-hook issues at every call site.
 export function StepRow(
-  props: Readonly<{
-    call: ToolCallEntry;
-    isLast: boolean;
-    getIconUrl: (c: ToolCallEntry) => string | undefined;
-    getIntegrationName: (c: ToolCallEntry) => string | undefined;
-    pendingApprovalToolCallIds: Set<string>;
-    approvalStatusByToolCallId?: Map<string, ApprovalStatus>;
-  }>,
+  props: Readonly<StepCallbacks & { call: ToolCallEntry; isLast: boolean }>,
 ) {
   const {
     pendingApprovalToolCallIds,
@@ -372,240 +109,298 @@ export function StepRow(
   );
 }
 
-// ── Subagent row (Option B style) ───────────────────────────────────────────
+function deriveSubagentSteps(
+  group: EnrichedSubagentGroup,
+  pendingApprovalToolCallIds: Set<string>,
+) {
+  // spawn_subagent is excluded here; it renders as nested SubagentRows.
+  const visibleSteps = group.tool_calls.filter(
+    (tc) => tc.tool_name !== "spawn_subagent",
+  );
+  return {
+    visibleSteps,
+    // Keys come from stream-stable structure, never payload, so a growing reasoning delta keeps its `expanded` state.
+    stepKeys: deriveStepKeys(group.subagent_id, visibleSteps),
+    awaitingApproval: visibleSteps.some(
+      (tc) =>
+        !!tc.tool_call_id && pendingApprovalToolCallIds.has(tc.tool_call_id),
+    ),
+    // Thinking blocks aren't "tools".
+    toolCount: visibleSteps.filter((s) => s.reasoning == null).length,
+  };
+}
+
+function SubagentIcon({ group }: Readonly<{ group: EnrichedSubagentGroup }>) {
+  return (
+    getToolCategoryIcon(
+      group.tool_category ?? "subagent",
+      { width: 21, height: 21 },
+      group.icon_url ?? undefined,
+    ) || (
+      <div className="p-1 bg-zinc-800 rounded-lg">
+        <ToolsIcon width={21} height={21} />
+      </div>
+    )
+  );
+}
+
+function SubagentTextBlock({
+  title,
+  content,
+  className,
+}: Readonly<{ title: string; content: string; className: string }>) {
+  return (
+    <div
+      className={`${className} text-[11px] bg-zinc-800/50 rounded-xl p-3 w-fit`}
+    >
+      <span className="text-zinc-500 font-medium mb-0.5 block">{title}</span>
+      <CompactMarkdown content={content} />
+    </div>
+  );
+}
+
+function SubagentStepList({
+  steps,
+  stepKeys,
+  lastIsTerminal,
+  callbacks,
+}: Readonly<{
+  steps: ToolCallEntry[];
+  stepKeys: string[];
+  /** False when nested subagents follow the last step, so its connector continues. */
+  lastIsTerminal: boolean;
+  callbacks: StepCallbacks;
+}>) {
+  if (steps.length === 0) return null;
+  return (
+    <div className="space-y-0">
+      {steps.map((tc, tIdx) => (
+        <StepRow
+          key={stepKeys[tIdx]}
+          call={tc}
+          isLast={tIdx === steps.length - 1 && lastIsTerminal}
+          {...callbacks}
+        />
+      ))}
+    </div>
+  );
+}
+
+interface SubagentBodyProps {
+  group: EnrichedSubagentGroup;
+  expanded: boolean;
+  onToggle: () => void;
+  steps: ReturnType<typeof deriveSubagentSteps>;
+  isStreaming: boolean;
+  callbacks: StepCallbacks;
+}
+
+function RunningSubagentBody({
+  group,
+  expanded,
+  onToggle,
+  steps,
+  callbacks,
+}: Readonly<SubagentBodyProps>) {
+  return (
+    <>
+      <button
+        type="button"
+        className="min-h-8 flex items-center gap-2 cursor-pointer w-full group/sa"
+        onClick={onToggle}
+      >
+        <span className="text-xs font-medium text-zinc-400 group-hover/sa:text-zinc-300 transition-colors mr-auto">
+          {group.subagent_name}
+        </span>
+        {steps.awaitingApproval ? (
+          <WaitingForApprovalPill />
+        ) : (
+          <Spinner size="sm" color="default" />
+        )}
+        <ChevronDown
+          className={`text-zinc-600 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+          width={14}
+          height={14}
+        />
+      </button>
+      {expanded && (
+        <div className="mt-1">
+          {/* The task is known at spawn time, so show it live rather than on completion. */}
+          {group.handoff_input && (
+            <SubagentTextBlock
+              title="Task"
+              content={group.handoff_input}
+              className="mb-2"
+            />
+          )}
+          <SubagentStepList
+            steps={steps.visibleSteps}
+            stepKeys={steps.stepKeys}
+            lastIsTerminal
+            callbacks={callbacks}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+function CompletedSubagentHeader({
+  group,
+  expanded,
+  onToggle,
+  toolCount,
+}: Readonly<{
+  group: EnrichedSubagentGroup;
+  expanded: boolean;
+  onToggle: () => void;
+  toolCount: number;
+}>) {
+  return (
+    <button
+      type="button"
+      className="min-h-8 flex flex-col justify-center w-full text-left group/sa cursor-pointer"
+      onClick={onToggle}
+    >
+      <div className="flex items-center">
+        <span className="text-xs font-medium text-zinc-200 group-hover/sa:text-white transition-colors mr-auto">
+          {group.subagent_name}
+        </span>
+        <div className="flex items-center gap-1 ml-4 shrink-0">
+          {group.duration_ms != null && (
+            <span className="text-[10px] text-zinc-600 tabular-nums">
+              {(group.duration_ms / 1000).toFixed(1)}s
+            </span>
+          )}
+          <ChevronDown
+            className={`text-zinc-600 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+            width={14}
+            height={14}
+          />
+        </div>
+      </div>
+      <p className="text-[11px] text-zinc-600 leading-tight">
+        Subagent
+        {toolCount > 0 && ` · ${toolCount} tool${toolCount === 1 ? "" : "s"}`}
+      </p>
+    </button>
+  );
+}
+
+function CompletedSubagentBody({
+  group,
+  expanded,
+  onToggle,
+  steps,
+  isStreaming,
+  callbacks,
+}: Readonly<SubagentBodyProps>) {
+  const { visibleSteps } = steps;
+  const hasNested = group.nested_subagents.length > 0;
+  return (
+    <>
+      <CompletedSubagentHeader
+        group={group}
+        expanded={expanded}
+        onToggle={onToggle}
+        toolCount={steps.toolCount}
+      />
+
+      <AnimatePresence>
+        {expanded && (
+          <m.div
+            layout
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={expandTransition}
+            className="overflow-hidden"
+          >
+            <div className="mt-1.5 mb-1">
+              {group.handoff_input && (
+                <SubagentTextBlock
+                  title="Task"
+                  content={group.handoff_input}
+                  className="mb-2"
+                />
+              )}
+
+              <SubagentStepList
+                steps={visibleSteps}
+                stepKeys={steps.stepKeys}
+                lastIsTerminal={!hasNested}
+                callbacks={callbacks}
+              />
+
+              {hasNested && (
+                <div className={visibleSteps.length > 0 ? "mt-1" : ""}>
+                  {group.nested_subagents.map((nested) => (
+                    <SubagentRow
+                      key={`nested-${nested.subagent_id}`}
+                      group={nested}
+                      isLast
+                      isStreaming={isStreaming}
+                      {...callbacks}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {group.handoff_output && (
+                <SubagentTextBlock
+                  title="Result"
+                  content={group.handoff_output}
+                  className="mt-2"
+                />
+              )}
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
 
 export function SubagentRow({
   group,
   isLast,
   isStreaming,
-  getIconUrl,
-  getIntegrationName,
-  pendingApprovalToolCallIds,
-  approvalStatusByToolCallId,
-}: Readonly<{
-  group: EnrichedSubagentGroup;
-  isLast: boolean;
-  /** Whether the message's stream is still open. A subagent only counts as
-   *  running while its stream is live — once the SSE closes, a missing
-   *  `subagent_end` (dropped/crashed) must not spin the card forever. */
-  isStreaming: boolean;
-  getIconUrl: (c: ToolCallEntry) => string | undefined;
-  getIntegrationName: (c: ToolCallEntry) => string | undefined;
-  /** tool_call_ids blocked on a pending HIL approval — surfaces "Waiting for
-   *  approval" on the matching step and this subagent's header. */
-  pendingApprovalToolCallIds: Set<string>;
-  approvalStatusByToolCallId?: Map<string, ApprovalStatus>;
-}>) {
-  // Running only while the stream is open: completed_at is null both for a
-  // genuinely-running subagent AND for one whose end event never arrived, so
-  // gate on the live stream to tell them apart.
-  const isRunning = group.completed_at === null && isStreaming;
-  // Start expanded while running so live tool calls are visible by default
-  const [expanded, setExpanded] = useState(() => isRunning);
-
-  // Steps shown in order: tool calls + thinking blocks. spawn_subagent is
-  // excluded (rendered separately as nested SubagentRows).
-  const visibleSteps = group.tool_calls.filter(
-    (tc) => tc.tool_name !== "spawn_subagent",
-  );
-  // One stable React key per step — derived from stream-stable structure
-  // (tool_call_id, else a slot anchored to the nearest preceding identified
-  // sibling), never payload content, so a growing reasoning delta keeps its
-  // row's `expanded` state across stream frames.
-  const stepKeys = deriveStepKeys(group.subagent_id, visibleSteps);
-  // One of this subagent's steps is blocked on approval — the header shows the
-  // amber marker instead of the neutral spinner so the pause reads as
-  // intentional, not a hang.
-  const awaitingApproval = visibleSteps.some(
-    (tc) =>
-      !!tc.tool_call_id && pendingApprovalToolCallIds.has(tc.tool_call_id),
-  );
-  // Count only real tool calls for the label (thinking blocks aren't "tools").
-  const toolCount = visibleSteps.filter((s) => s.reasoning == null).length;
-
-  const iconEl = getToolCategoryIcon(
-    group.tool_category ?? "subagent",
-    { width: 21, height: 21 },
-    group.icon_url ?? undefined,
-  ) || (
-    <div className="p-1 bg-zinc-800 rounded-lg">
-      <ToolsIcon width={21} height={21} />
-    </div>
-  );
-
-  // Running mode: show spinner + live tool calls, collapsible
-  if (isRunning) {
-    return (
-      <div className="flex items-stretch gap-2 pb-2">
-        <div className="flex flex-col items-center self-stretch">
-          <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
-            {iconEl}
-          </div>
-          {!isLast && <div className="w-px flex-1 bg-default-200 min-h-4" />}
-        </div>
-        <div className="flex-1 min-w-0">
-          <button
-            type="button"
-            className="min-h-8 flex items-center gap-2 cursor-pointer w-full group/sa"
-            onClick={() => setExpanded((e) => !e)}
-          >
-            <span className="text-xs font-medium text-zinc-400 group-hover/sa:text-zinc-300 transition-colors mr-auto">
-              {group.subagent_name}
-            </span>
-            {awaitingApproval ? (
-              <WaitingForApprovalPill />
-            ) : (
-              <Spinner size="sm" color="default" />
-            )}
-            <ChevronDown
-              className={`text-zinc-600 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-              width={14}
-              height={14}
-            />
-          </button>
-          {expanded && (
-            <div className="mt-1">
-              {/* The task is known the moment the subagent is spawned (it's the
-                  handoff call's input), so show it live — don't make the user
-                  wait until completion to see what this subagent is doing. */}
-              {group.handoff_input && (
-                <div className="mb-2 text-[11px] bg-zinc-800/50 rounded-xl p-3 w-fit">
-                  <span className="text-zinc-500 font-medium mb-0.5 block">
-                    Task
-                  </span>
-                  <CompactMarkdown content={group.handoff_input} />
-                </div>
-              )}
-              {visibleSteps.length > 0 && (
-                <div className="space-y-0">
-                  {visibleSteps.map((tc, tIdx) => (
-                    <StepRow
-                      key={stepKeys[tIdx]}
-                      call={tc}
-                      isLast={tIdx === visibleSteps.length - 1}
-                      getIconUrl={getIconUrl}
-                      getIntegrationName={getIntegrationName}
-                      pendingApprovalToolCallIds={pendingApprovalToolCallIds}
-                      approvalStatusByToolCallId={approvalStatusByToolCallId}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
+  ...callbacks
+}: Readonly<
+  StepCallbacks & {
+    group: EnrichedSubagentGroup;
+    isLast: boolean;
+    /** A subagent only counts as running while its stream is live, so a dropped `subagent_end` can't spin forever. */
+    isStreaming: boolean;
   }
+>) {
+  // completed_at is null both while running AND when the end event never arrived; the live stream tells them apart.
+  const isRunning = group.completed_at === null && isStreaming;
+  // Start expanded while running so live tool calls are visible by default.
+  const [expanded, setExpanded] = useState(() => isRunning);
+  const bodyProps: SubagentBodyProps = {
+    group,
+    expanded,
+    onToggle: () => setExpanded((e) => !e),
+    steps: deriveSubagentSteps(group, callbacks.pendingApprovalToolCallIds),
+    isStreaming,
+    callbacks,
+  };
 
-  // Completed mode: show duration + collapsed/expanded tool history
   return (
     <div className="flex items-stretch gap-2 pb-2">
       <div className="flex flex-col items-center self-stretch">
         <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
-          {iconEl}
+          <SubagentIcon group={group} />
         </div>
         {!isLast && <div className="w-px flex-1 bg-default-200 min-h-4" />}
       </div>
-
       <div className="flex-1 min-w-0">
-        <button
-          type="button"
-          className="min-h-8 flex flex-col justify-center w-full text-left group/sa cursor-pointer"
-          onClick={() => setExpanded(!expanded)}
-        >
-          <div className="flex items-center">
-            <span className="text-xs font-medium text-zinc-200 group-hover/sa:text-white transition-colors mr-auto">
-              {group.subagent_name}
-            </span>
-            <div className="flex items-center gap-1 ml-4 shrink-0">
-              {group.duration_ms != null && (
-                <span className="text-[10px] text-zinc-600 tabular-nums">
-                  {(group.duration_ms / 1000).toFixed(1)}s
-                </span>
-              )}
-              <ChevronDown
-                className={`text-zinc-600 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-                width={14}
-                height={14}
-              />
-            </div>
-          </div>
-          <p className="text-[11px] text-zinc-600 leading-tight">
-            Subagent
-            {toolCount > 0 &&
-              ` · ${toolCount} tool${toolCount === 1 ? "" : "s"}`}
-          </p>
-        </button>
-
-        <AnimatePresence>
-          {expanded && (
-            <m.div
-              layout
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={expandTransition}
-              className="overflow-hidden"
-            >
-              <div className="mt-1.5 mb-1">
-                {group.handoff_input && (
-                  <div className="mb-2 text-[11px] bg-zinc-800/50 rounded-xl p-3 w-fit">
-                    <span className="text-zinc-500 font-medium mb-0.5 block">
-                      Task
-                    </span>
-                    <CompactMarkdown content={group.handoff_input} />
-                  </div>
-                )}
-
-                {visibleSteps.length > 0 && (
-                  <div className="space-y-0">
-                    {visibleSteps.map((tc, tIdx) => (
-                      <StepRow
-                        key={stepKeys[tIdx]}
-                        call={tc}
-                        isLast={
-                          tIdx === visibleSteps.length - 1 &&
-                          group.nested_subagents.length === 0
-                        }
-                        getIconUrl={getIconUrl}
-                        getIntegrationName={getIntegrationName}
-                        pendingApprovalToolCallIds={pendingApprovalToolCallIds}
-                        approvalStatusByToolCallId={approvalStatusByToolCallId}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {group.nested_subagents.length > 0 && (
-                  <div className={visibleSteps.length > 0 ? "mt-1" : ""}>
-                    {group.nested_subagents.map((nested) => (
-                      <SubagentRow
-                        key={`nested-${nested.subagent_id}`}
-                        group={nested}
-                        isLast
-                        isStreaming={isStreaming}
-                        getIconUrl={getIconUrl}
-                        getIntegrationName={getIntegrationName}
-                        pendingApprovalToolCallIds={pendingApprovalToolCallIds}
-                        approvalStatusByToolCallId={approvalStatusByToolCallId}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {group.handoff_output && (
-                  <div className="mt-2 text-[11px] bg-zinc-800/50 rounded-xl p-3 w-fit">
-                    <span className="text-zinc-500 font-medium mb-0.5 block">
-                      Result
-                    </span>
-                    <CompactMarkdown content={group.handoff_output} />
-                  </div>
-                )}
-              </div>
-            </m.div>
-          )}
-        </AnimatePresence>
+        {isRunning ? (
+          <RunningSubagentBody {...bodyProps} />
+        ) : (
+          <CompletedSubagentBody {...bodyProps} />
+        )}
       </div>
     </div>
   );

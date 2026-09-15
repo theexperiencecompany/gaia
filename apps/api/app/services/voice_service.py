@@ -1,6 +1,6 @@
 """Voice selection — curated catalog listing and per-user voice preference.
 
-The catalog lives in ``app/constants/voices.py``. ElevenLabs is contacted only
+The catalog lives in app/constants/voices.py. ElevenLabs is contacted only
 to resolve preview sample URLs (cached for a day); listing and selection work
 even when the upstream call fails.
 """
@@ -83,10 +83,8 @@ async def get_elevenlabs_voices() -> list[ElevenLabsAccountVoice]:
     if not settings.ELEVENLABS_API_KEY:
         return []
     try:
-        # _fetch_elevenlabs_voices is wrapped in @Cacheable, whose __call__
-        # erases the return type to Awaitable[Any]; the function itself is
-        # annotated -> list[ElevenLabsAccountVoice], and the decorator's
-        # model= gives the cache-hit path the same type.
+        # @Cacheable's __call__ erases the return type to Awaitable[Any]; cast back
+        # since the function itself and the cache-hit path (via model=) agree on it.
         return cast(list[ElevenLabsAccountVoice], await _fetch_elevenlabs_voices())
     except (httpx.HTTPError, ValueError, KeyError) as e:
         log.warning("Failed to fetch ElevenLabs voices", error=str(e))
@@ -163,7 +161,7 @@ async def get_user_voice(user_id: str) -> str | None:
     Plain Mongo read — deliberately NO availability validation here. This runs
     in the /token critical path (every session start), and validation would
     drag a (cached, but worst-case live) ElevenLabs lookup into it. Selections
-    are validated once at ``set_user_voice`` time instead.
+    are validated once at set_user_voice time instead.
     """
     user = await user_repository.get(user_id)
     voice_id = user.selected_voice_id if user else None
@@ -175,11 +173,9 @@ async def get_user_voice(user_id: str) -> str | None:
 async def list_voices(user_id: str) -> VoiceListResponse:
     """Return the curated catalog plus account voices, with the user's selection.
 
-    Curated entries come first (stable copy, hand-written descriptions); any
-    other voice on the ElevenLabs account — premades we did not curate and the
-    account's own cloned voices — is appended with metadata derived from its
-    labels. Catalog entries the account no longer carries are dropped: they
-    would have no preview and, worse, fail TTS if selected.
+    Curated entries come first; any other account voice (uncurated premades,
+    cloned voices) is appended with metadata from its labels. Catalog entries
+    the account no longer carries are dropped — they'd fail TTS if selected.
     """
     account, shared, selected, starred = await asyncio.gather(
         get_elevenlabs_voices(),
@@ -213,10 +209,9 @@ async def list_voices(user_id: str) -> VoiceListResponse:
     # (curated catalog, then account, then library).
     voices.sort(key=lambda v: not v.starred)
 
-    # Reconcile the stored selection against what is actually listed: a voice
-    # deleted from the ElevenLabs account would otherwise show as selected in the
-    # picker (and fail TTS if kept). Free here since the full catalog is already
-    # assembled — unlike get_user_voice, which stays validation-free for /token.
+    # Reconcile the stored selection against what is listed: a voice deleted from
+    # the account would otherwise show selected and fail TTS. Free here since the
+    # catalog is already assembled, unlike get_user_voice's /token fast path.
     available_ids = {v.voice_id for v in voices}
     if selected not in available_ids:
         selected = DEFAULT_VOICE_ID if DEFAULT_VOICE_ID in available_ids else None
@@ -224,14 +219,11 @@ async def list_voices(user_id: str) -> VoiceListResponse:
 
 
 async def get_starred_voice_ids(user_id: str) -> list[str]:
-    """The user's starred voice ids, defaulting to the product starter set."""
+    """Return the user's starred voice ids, defaulting to the product starter set."""
     user = await user_repository.get(user_id)
-    # Both absences are real: a missing user_id resolves to None, and a user who
-    # never starred anything has starred_voice_ids unset. The `is None` test says
-    # exactly that — the previous `isinstance(stored, list)` guard meant the same
-    # thing (the field is declared `list[str] | None`, so pydantic admits nothing
-    # else) but read as unreachable to mypy, which erases `| None` outside the
-    # strict-optional repository island.
+    # Both absences are real: a missing user_id resolves to None, same as a user
+    # who never starred anything. mypy erases `| None` outside the repository's
+    # strict-optional island, so an `isinstance(stored, list)` guard here read as unreachable.
     stored: list[str] | None = user.starred_voice_ids if user else None
     if stored is None:
         return list(DEFAULT_STARRED_VOICE_IDS)
@@ -251,13 +243,9 @@ async def set_voice_star(user_id: str, voice_id: str, starred: bool) -> list[str
 async def set_user_voice(user_id: str, voice_id: str) -> str:
     """Persist the user's voice selection.
 
-    The voice must be on the account or in the public ElevenLabs library. Library
-    voices are stored and synthesized by id directly — ElevenLabs TTS accepts a
-    library voice id without first adding it to the account (verified across both
-    free and professional library voices). The old add-to-account step was
-    unnecessary: it consumed account voice slots and failed outright when the API
-    key lacked the ``add_voice_from_voice_library`` permission, blocking
-    otherwise-usable voices.
+    The voice must be on the account or in the public ElevenLabs library.
+    Library voices are stored and synthesized by id directly — ElevenLabs TTS
+    accepts a library voice id without first adding it to the account.
     """
     if voice_id not in await _known_voice_ids():
         shared_ids = {v.voice_id for v in await get_shared_voices()}

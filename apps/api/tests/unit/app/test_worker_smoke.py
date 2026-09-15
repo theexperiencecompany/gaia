@@ -27,9 +27,7 @@ def test_worker_settings_registers_tracked_todo_execution() -> None:
 
 
 def test_the_personalization_task_keeps_no_result() -> None:
-    """Its job id is per user and doubles as the one-run-at-a-time claim; a
-    kept result would make ARQ refuse the next enqueue for an hour after a
-    failed run."""
+    """The per-user job id doubles as the one-run-at-a-time claim; a kept result would make ARQ refuse the next enqueue for an hour after a failed run."""
     from app.worker import WorkerSettings
 
     task = next(

@@ -71,10 +71,9 @@ export default function ApprovalRequestSection({
         feedback: feedback.trim() || undefined,
         scope,
       });
-      // Settle locally: the resolved frame is published on the RESUMED run's
-      // stream (a different message), so it never replaces this card. A 410
-      // (already resolved elsewhere) is swallowed by postApprovalDecision and
-      // settles here too; reaching the catch means the submit genuinely failed.
+      // Settle locally: the resolved frame publishes on the RESUMED run's
+      // stream (a different message), never replacing this card. A 410
+      // (already resolved elsewhere) is swallowed upstream and settles here too.
       markApprovalDecided();
       onDecided(
         decision === "approve" ? "approved" : "denied",

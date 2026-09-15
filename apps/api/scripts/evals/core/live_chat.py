@@ -1,8 +1,8 @@
 """One way to send a chat turn against a running API and read the reply back.
 
-Three harnesses (``chat_quality``, ``adversarial_users``,
-``first_question_personas``) each grew their own ``_send_turn`` against the same
-``/api/v1/chat-stream`` endpoint, and two more scripts imported one of those
+Three harnesses (chat_quality, adversarial_users,
+first_question_personas) each grew their own _send_turn against the same
+/api/v1/chat-stream endpoint, and two more scripts imported one of those
 copies from a *sibling script* to avoid a fourth. The copies had drifted in ways
 that changed what a run measured, not just how it was written: one dropped the
 retracted handoff preamble and two did not, one polled for the delegated answer
@@ -59,10 +59,10 @@ class Turn(BaseModel):
 
 
 def frame_tool_names(frame: dict, *, include_nested: bool = True) -> list[str]:
-    """Every tool name in one SSE frame's ``tool_data``, which is an entry or a list.
+    """Every tool name in one SSE frame's tool_data, which is an entry or a list.
 
-    ``include_nested`` also unwraps the tool a ``tool_calls_data`` announcement
-    carries (its ``data`` is one step dict). ``first_question_personas`` read only
+    include_nested also unwraps the tool a tool_calls_data announcement
+    carries (its data is one step dict). first_question_personas read only
     the outer name, so that stays available rather than being quietly widened:
     unwrapping adds names to the tool list the judge is shown, which can flip a
     "did it actually do the thing" criterion.
@@ -91,10 +91,10 @@ def assemble(
     drop_discarded_boundary: bool = True,
     collect_frame_kinds: bool = False,
 ) -> tuple[str, list[str], list[str]]:
-    """Fold raw SSE lines into ``(reply, tools, frame_kinds)``.
+    """Fold raw SSE lines into (reply, tools, frame_kinds).
 
     Split out from the request so the assembly rules — which are the part that
-    decides what a run measures — are testable without an API. Non-``data:``
+    decides what a run measures — are testable without an API. Non-data:
     lines, undecodable payloads and non-dict frames are skipped rather than
     raising: a stream that ends mid-frame is a slow lane, not a failed eval.
     """
@@ -126,7 +126,7 @@ def assemble(
 
 
 def bot_messages_after(messages: list[dict], user_text: str) -> list[dict]:
-    """Bot messages saved after the LAST user message equal to ``user_text``.
+    """Bot messages saved after the LAST user message equal to user_text.
 
     Last, not first: a scenario may send the same words twice, and the turn being
     graded is the most recent one.
@@ -191,12 +191,12 @@ async def await_delivery(
 class TurnOptions:
     """How one harness wants a turn read back.
 
-    Every field is one behaviour a copy of ``_send_turn`` actually had; nothing
+    Every field is one behaviour a copy of _send_turn actually had; nothing
     here is speculative. Frozen because a harness's turn shape is fixed for the
     whole run — a mutable options object shared across turns is a way for turn 7
     to be read differently from turn 1 and for nobody to notice.
 
-    The defaults are ``chat_quality``'s behaviour, which is the shape three of
+    The defaults are chat_quality's behaviour, which is the shape three of
     the five scripts want; the other two say how they differ at the call site,
     in one visible line, instead of eighty lines down a private function.
     """
@@ -230,11 +230,11 @@ async def send_turn(
 ) -> Turn:
     """One comms turn against the running API, joined from its SSE frames.
 
-    ``history`` is the prior turns of THIS conversation in the shape the endpoint
+    history is the prior turns of THIS conversation in the shape the endpoint
     expects; the new user message is appended to it. Sharing the conversation id
     across turns is what makes turn 2 a follow-up rather than a second cold open.
 
-    A non-200 comes back as a ``Turn`` whose reply carries the status and body
+    A non-200 comes back as a Turn whose reply carries the status and body
     rather than as an exception: one persona hitting a 402 should show up as one
     bad row in the report, not as a dead run.
     """

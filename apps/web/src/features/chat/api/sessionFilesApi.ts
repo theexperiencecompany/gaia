@@ -12,16 +12,11 @@ function encodePath(path: string): string {
 
 /**
  * Rewrite bot-emitted artifact paths (./artifacts/foo, /artifacts/foo,
- * artifacts/foo) to the auth-gated backend URL for the current conversation.
- * Returns the original src for anything that doesn't match (absolute URLs,
- * data: URIs, etc.). Used by MarkdownRenderer and OpenUI components that
- * render images the bot wrote into the session's artifacts/ dir.
- *
- * `conversationId` is normally piped in from `useParams<{id}>()`; when
- * absent we fall back to parsing the current pathname so this works in
- * trees that mount outside the page's param scope (OpenUI components are
- * rendered via a dynamic CSR boundary that doesn't always see the route
- * params synchronously).
+ * artifacts/foo) to the auth-gated backend URL for this conversation;
+ * returns the original src for anything else. Used by MarkdownRenderer and
+ * OpenUI for images the bot wrote into artifacts/. `conversationId` falls
+ * back to parsing the pathname when `useParams` doesn't see it (OpenUI's
+ * dynamic CSR boundary can mount outside the page's param scope).
  */
 export function resolveArtifactSrc(
   src: string | undefined,

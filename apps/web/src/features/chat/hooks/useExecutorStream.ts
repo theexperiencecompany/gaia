@@ -114,11 +114,9 @@ export const createExecutorStreamHandler =
         tool_data: null,
       };
       useChatStore.getState().addOrUpdateMessage(placeholder);
-      // Persist the placeholder (keyed by task_id) so live tool cards survive a
-      // refresh that happens before the final conversation.new_message arrives.
-      // useBgMessageWebSocket replaces this entry by task_id when the final
-      // message lands; an orphaned placeholder is only possible if the run is
-      // never finalized, in which case keeping its cards is the desired outcome.
+      // Persists the placeholder (keyed by task_id) so tool cards survive a
+      // refresh before conversation.new_message arrives; useBgMessageWebSocket
+      // replaces it by task_id — an orphan only occurs if the run never finalizes.
       await db.putMessage(placeholder);
     }
 
@@ -225,10 +223,9 @@ export const createExecutorStreamHandler =
               });
               continue;
             }
-            // The loading indicator is driven by the turn session, which is no
-            // longer reading anything — a resumed run streams here instead. Left
-            // unlabelled, the indicator froze on whatever the pause set
-            // ("Resuming") for the entire rest of the run.
+            // The turn session (no longer reading) normally drives the loading
+            // indicator; a resumed run streams here instead, so leaving it
+            // unlabelled would freeze it on the pause's "Resuming" text.
             const label = loadingLabelForEvent(parsed);
             if (label) {
               useStreamStore
@@ -256,10 +253,9 @@ export const createExecutorStreamHandler =
         controller.signal,
       );
     } catch (err) {
-      // subscribeToExecutorStream re-throws on SSE error/abort. Finalize here so
-      // the error path clears the spinner too (not only the clean-close path) —
-      // and carry the reason, or a dead background run persists as a finished
-      // one and renders as a complete answer.
+      // subscribeToExecutorStream re-throws on SSE error/abort; finalize here too
+      // (not only on clean close) so the spinner clears, and carry the reason or a
+      // dead background run persists as a finished, complete-looking answer.
       console.error(
         "[useExecutorStream] Executor stream ended with error:",
         err,
@@ -272,18 +268,11 @@ export const createExecutorStreamHandler =
   };
 
 /**
- * Subscribe to `executor.stream_started` WebSocket events.
- *
- * When a queued executor task starts, the backend emits this event with a
- * fresh stream_id. This hook creates a temporary placeholder message in the
- * Zustand store and opens a new SSE connection to `GET /stream/{stream_id}`,
- * folding live events into the placeholder through the SAME shared accumulator
- * the live chat turn uses — reasoning, subagents, todo progress, and text all
- * render identically on both paths. The placeholder is removed when
- * `useBgMessageWebSocket` receives the final `conversation.new_message`.
- *
- * Only active for the currently-viewed conversation — if the user is elsewhere,
- * the final message arrives via the normal WS notification path.
+ * Subscribe to `executor.stream_started` events: create a placeholder and open
+ * an SSE connection to `GET /stream/{stream_id}`, folding events through the
+ * same accumulator the live chat turn uses so both paths render identically.
+ * Active only for the currently-viewed conversation; removed on the final
+ * `conversation.new_message`.
  */
 export function useExecutorStream() {
   const controllersRef = useRef<Set<AbortController>>(new Set());

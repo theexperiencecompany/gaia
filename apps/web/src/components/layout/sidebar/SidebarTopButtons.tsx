@@ -31,12 +31,6 @@ const buttonData = [
     icon: <Home11Icon />,
     label: "Home",
   },
-  // Temporarily disabled — Calendar feature is not yet ready.
-  // {
-  //   route: "/calendar",
-  //   icon: <Calendar03Icon />,
-  //   label: "Calendar",
-  // },
   {
     route: "/todos",
     icon: <CheckListIcon />,
@@ -47,11 +41,6 @@ const buttonData = [
     icon: <ConnectIcon />,
     label: "Integrations",
   },
-  // {
-  //   route: "/mail",
-  //   icon: <Mail01Icon />,
-  //   label: "Mail",
-  // },
   {
     route: "/workflows",
     icon: <ZapIcon />,
@@ -62,12 +51,6 @@ const buttonData = [
     icon: <MessageMultiple02Icon />,
     label: "Chats",
   },
-
-  // {
-  //   route: "/browser",
-  //   icon: <AiBrowserIcon height={23} width={23} />,
-  //   label: "Use Browser",
-  // },
 ];
 
 export default function SidebarTopButtons() {

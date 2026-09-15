@@ -1,9 +1,7 @@
-"""The ``data:`` chunk dispatcher forwards each event to the right publisher
-with the turn's own stream id and accumulators.
+"""The data: chunk dispatcher forwards each event to the right publisher with the turn's stream id and accumulators.
 
-A wrong stream id would publish a user's tool cards into someone else's
-stream, and a dropped accumulator would lose the cards from the saved turn,
-so every publisher call is pinned argument by argument here.
+A wrong stream id would publish a user's tool cards into someone else's stream, and a dropped accumulator would
+lose the cards from the saved turn, so every publisher call is pinned argument by argument here.
 """
 
 from __future__ import annotations

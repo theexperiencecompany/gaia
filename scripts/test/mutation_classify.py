@@ -91,9 +91,9 @@ def _body(name: str) -> list[str]:
 
 
 def _first_argument_end(text: str, i: int) -> int:
-    """Index just past the first call argument starting at ``i``: the comma
-    that ends it, or the closing bracket of a one-argument call.
+    """Index just past the first call argument starting at ``i``.
 
+    That is the comma that ends it, or the closing bracket of a one-argument call.
     Bracket/quote balanced: a type arg like ``dict[str, object] | None`` (or a
     quoted forward ref) holds commas a regex stops at, and a half-blanked cast
     then reads as a real change.
@@ -228,7 +228,7 @@ def _excluded_span(path: str, line_no: int):
 
 
 def _falsy_literal(node) -> bool:
-    """True for a literal that is falsy — None/False/0/"" and empty containers."""
+    """Return True for a literal that is falsy — None/False/0/"" and empty containers."""
     if isinstance(node, ast.Constant):
         return not node.value
     if isinstance(node, ast.List | ast.Tuple | ast.Set):
@@ -239,7 +239,7 @@ def _falsy_literal(node) -> bool:
 
 
 def _mutated_token(span, line_no: int, orig_line: str, mut_line: str) -> str | None:
-    """The text the mutation put where the literal at ``span`` was, or None.
+    """Return the text the mutation put where the literal at ``span`` was, or None.
 
     Column-exact rather than a common-prefix/suffix diff. mutmut changes ONE
     construct per mutant, so everything left of the literal is untouched and
@@ -257,7 +257,7 @@ def _mutated_token(span, line_no: int, orig_line: str, mut_line: str) -> str | N
 
 
 def _falsy_replacement(replacement: str | None, *, removal_stays_falsy: bool) -> bool:
-    """True when the mutation put another falsy literal where the original was.
+    """Return True when the mutation put another falsy literal where the original was.
 
     ``removal_stays_falsy`` answers the one case the text cannot: mutmut also
     DELETES the argument, and what the call then does is the callee's business.
@@ -277,7 +277,7 @@ def _falsy_replacement(replacement: str | None, *, removal_stays_falsy: bool) ->
 
 
 def _boolean_consumer(node) -> bool:
-    """True when node's own value reaches only a test every falsy value answers alike."""
+    """Return True when node's own value reaches only a test every falsy value answers alike."""
     parent = getattr(node, "parent", None)
     if isinstance(parent, ast.BoolOp) and isinstance(parent.op, ast.Or):
         # `x or y` evaluates to y for EVERY falsy x, so which falsy x it was is lost.
@@ -308,7 +308,7 @@ def _boolean_consumer(node) -> bool:
 
 
 def _early_exit_on_falsy(stmt, name: str) -> bool:
-    """True for ``if not name: <exit>`` — everything after runs only on truthy."""
+    """Return True for ``if not name: <exit>`` — everything after runs only on truthy."""
     return (
         isinstance(stmt, ast.If)
         and not stmt.orelse
@@ -321,7 +321,7 @@ def _early_exit_on_falsy(stmt, name: str) -> bool:
 
 
 def _tests_truthy(test, name: str) -> bool:
-    """True when reaching a body past ``test`` requires ``name`` to be truthy.
+    """Return True when reaching a body past ``test`` requires ``name`` to be truthy.
 
     Either the test IS the name, or it is an ``and`` chain containing it: ``and``
     short-circuits, so `if x and y:` reaches its body only on a truthy x, exactly
@@ -336,7 +336,7 @@ def _tests_truthy(test, name: str) -> bool:
 
 
 def _guarded_by(node, name: str) -> bool:
-    """True when node sits in code that runs only while `name` is truthy."""
+    """Return True when node sits in code that runs only while `name` is truthy."""
     child = node
     parent = getattr(node, "parent", None)
     while parent is not None:
@@ -372,7 +372,7 @@ def _through_casts(node):
 
 
 def _only_boolean_uses(call) -> bool:
-    """True when nothing downstream of `call` can tell one falsy value from another."""
+    """Return True when nothing downstream of `call` can tell one falsy value from another."""
     call = _through_casts(call)
     if _boolean_consumer(call):
         return True
@@ -402,7 +402,7 @@ def _only_boolean_uses(call) -> bool:
 
 
 def _lookup_with_default(node) -> bool:
-    """True for ``x.get(k, d)``, ``x.pop(k, d)`` or ``getattr(o, n, d)``.
+    """Return True for ``x.get(k, d)``, ``x.pop(k, d)`` or ``getattr(o, n, d)``.
 
     Each hands back ``d`` only when the lookup misses, so the same reasoning
     about which falsy fallback was written applies to every spelling — pop's
@@ -436,7 +436,7 @@ def _outermost_lookup(node):
 def _unobservable_get_default(
     path: str, line_no: int, col: int, orig_line: str, mut_line: str
 ) -> bool:
-    """True when the mutation only changed a .get() default nothing can observe.
+    """Return True when the mutation only changed a .get() default nothing can observe.
 
     A falsy default is unobservable when every consumer of the value collapses
     all falsy values to one answer — `x or y`, `if x:`, `x if x else y`, and
@@ -487,7 +487,7 @@ def _unobservable_get_default(
 
 
 def _reads_only_as_boolean(assign: ast.Assign) -> bool:
-    """True when every LOAD of the assigned name collapses all falsy values.
+    """Return True when every LOAD of the assigned name collapses all falsy values.
 
     Unlike ``_only_boolean_uses`` this does not bail when the name is rebound:
     the mutation only changed the initial literal, and if every read of the name
@@ -524,10 +524,10 @@ def _reads_only_as_boolean(assign: ast.Assign) -> bool:
 def _unobservable_falsy_assignment(
     path: str, line_no: int, col: int, orig_line: str, mut_line: str
 ) -> bool:
-    """True when the mutation only swapped one falsy literal for another in an
-    assignment whose name nothing can tell apart.
+    """Return True when a falsy-to-falsy literal swap is unobservable.
 
-    The canonical case is ``cancelled = False`` mutated to ``cancelled = None``:
+    The mutation only changed the initial literal of an assignment whose name
+    nothing can tell apart. The canonical case is ``cancelled = False`` mutated to ``cancelled = None``:
     the name is read only by a truthiness test (``elif cancelled:``), and every
     falsy value answers that test identically, so no test can distinguish them —
     the same CONSUMER-based reasoning as the .get()-default rule, applied to a
@@ -567,7 +567,7 @@ def _unobservable_falsy_assignment(
 def _unobservable_header_case(
     path: str, line_no: int, col: int, orig_line: str, mut_line: str
 ) -> bool:
-    """True when the mutation only re-cased an HTTP header name in a lookup.
+    """Return True when the mutation only re-cased an HTTP header name in a lookup.
 
     HTTP header field names are case-insensitive (RFC 9110 §5.1), and every
     ``.headers`` mapping in this stack implements that: Starlette's
@@ -628,7 +628,7 @@ def _unobservable_header_case(
 def _unobservable_response_header_case(
     path: str, line_no: int, col: int, orig_line: str, mut_line: str
 ) -> bool:
-    """True when the mutation only re-cased a header name a Response is SENDING.
+    """Return True when the mutation only re-cased a header name a Response is SENDING.
 
     The sibling rule above covers header LOOKUPS and is deliberately narrow
     about outgoing dicts, because a dict built for an outgoing REQUEST does
@@ -694,7 +694,7 @@ def _unobservable_response_header_case(
 def _unobservable_ensure_ascii(
     path: str, line_no: int, col: int, orig_line: str, mut_line: str
 ) -> bool:
-    """True when the mutation only swapped json.dumps' ensure_ascii for another falsy value.
+    """Return True when the mutation only swapped json.dumps' ensure_ascii for another falsy value.
 
     A ONE-OFF, not a rule. A keyword argument's truthiness semantics belong to
     the callee and the AST cannot know them in general — substituting None for
@@ -741,7 +741,7 @@ def _unobservable_ensure_ascii(
 
 
 def _unreachable_match_arm(path: str, line_no: int) -> bool:
-    """True when line_no sits in a ``case _: assert_never(...)`` arm.
+    """Return True when line_no sits in a ``case _: assert_never(...)`` arm.
 
     That arm exists for mypy, which uses it to prove the match exhaustive over
     the enum or union it switches on; at runtime no input reaches it. Deleting

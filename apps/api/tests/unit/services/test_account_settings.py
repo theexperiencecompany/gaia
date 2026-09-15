@@ -1,5 +1,4 @@
-"""Account settings mutations: validation, the owning repo/service seam, and
-the confirmation contract.
+"""Account settings mutations: validation, the owning repo/service seam, the confirmation contract.
 
 The appliers are the real write path behind the account tools — a wrong value
 that reached Mongo from here would ship straight into the user's account, so

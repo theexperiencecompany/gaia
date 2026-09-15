@@ -1339,8 +1339,7 @@ class TestMarkdownToNotionBlocks:
         assert result[0]["content"] == "───"
 
     def test_callout_github_alert_style_matched_as_quote(self) -> None:
-        """The > prefix matches the quote rule first, so GitHub-style callouts
-        are returned as quotes rather than callouts."""
+        """The > prefix matches the quote rule first, so GitHub-style callouts return as quotes."""
         result = markdown_to_notion_blocks("> [!NOTE] Important info")
         assert result[0] == {
             "block_property": "quote",
@@ -1400,7 +1399,7 @@ class TestMarkdownToNotionBlocks:
         assert result[0]["content"] == "indented text"
 
     def test_code_block_no_closing_fence(self) -> None:
-        """Code block with no closing ``` should consume remaining lines."""
+        """A code block with no closing fence consumes remaining lines."""
         md = "```python\nline1\nline2"
         result = markdown_to_notion_blocks(md)
         assert result[0]["type"] == "code"
@@ -1420,8 +1419,7 @@ class TestMarkdownToNotionBlocks:
         assert result[0]["block_property"] == "quote"
 
     def test_callout_branch_unreachable_due_to_quote_priority(self) -> None:
-        """The > [! callout check on line 625 is unreachable because the > quote
-        check on line 595 matches first. All > lines become quotes."""
+        """The > [! callout check (line 625) is unreachable — the > quote check (line 595) matches first."""
         for md in ["> [!WARNING] Be careful", "> [!TIP] A tip"]:
             result = markdown_to_notion_blocks(md)
             assert result[0]["block_property"] == "quote"

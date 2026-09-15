@@ -27,10 +27,8 @@ PROFESSION_PHRASES: dict[str, str] = {
 }
 
 # Q2 chips are pains in the user's words (needOptions / roleNeedOptions in
-# apps/web onboarding constants), each cut to the few words that name it. They
-# are listed, not sentenced: "Inbox out of control, meetings cold." reads like
-# something a person actually types, where three first-person clauses joined by
-# "and" reads like a paragraph they never wrote.
+# apps/web onboarding constants), each cut to the few words that name it.
+# Listed, not sentenced: reads like something a person actually types.
 NEED_PHRASES: dict[OnboardingNeed, str] = {
     OnboardingNeed.INBOX: "inbox out of control",
     OnboardingNeed.CALENDAR: "meetings cold",
@@ -60,7 +58,7 @@ NEED_PHRASES: dict[OnboardingNeed, str] = {
 
 
 def _join(phrases: list[str]) -> str:
-    """The picked pains as one comma list, in tap order.
+    """Join the picked pains as one comma list, in tap order.
 
     Commas, not "and": the list is a handover of what is wrong, and "and" turns
     it into a sentence the user would have had to compose.
@@ -101,7 +99,7 @@ def _profession_sentence(profession: str | None) -> str | None:
 
 
 def compose_first_message(preferences: OnboardingPreferences) -> str:
-    """The opening line the user sends GAIA, built from Q1 (profession) and Q2 (needs)."""
+    """Build the opening line the user sends GAIA, from Q1 (profession) and Q2 (needs)."""
     parts: list[str] = []
 
     profession = _profession_sentence(preferences.profession)

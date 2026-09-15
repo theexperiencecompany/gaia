@@ -101,10 +101,9 @@ export async function openServerSession(
       requestInit: { ...(config.headers ? { headers: config.headers } : {}) },
       fetch: guardedFetch,
     });
-    // StreamableHTTPClientTransport declares `get sessionId(): string | undefined`
-    // where the SDK's own Transport interface types it as the optional `sessionId?:
-    // string` — a mismatch that only surfaces under exactOptionalPropertyTypes, not
-    // a real behavioral difference (both mean "may be absent").
+    // StreamableHTTPClientTransport's `sessionId` getter type mismatches the
+    // SDK's own optional `sessionId?` under exactOptionalPropertyTypes only —
+    // not a real behavioral difference; both mean "may be absent".
     return {
       transport: transport as unknown as Transport,
       close: () => transport.close(),
@@ -112,12 +111,9 @@ export async function openServerSession(
   }
 
   if (config.type === "stdio") {
-    // Let the host's resolved PATH/HOME override getDefaultEnvironment()'s
-    // (which reads the raw process.env). A Finder-launched desktop app has a
-    // bare PATH there, so npx/uvx/node would fail ENOENT; the injected
-    // login-shell PATH fixes that. For the CLI these already equal the default,
-    // so the spawned env is unchanged. Only PATH/HOME are lifted — not the full
-    // env — to keep getDefaultEnvironment()'s safe-subset filtering intact.
+    // Overrides getDefaultEnvironment()'s PATH/HOME with the host's resolved
+    // ones — a Finder-launched app has a bare PATH that ENOENTs npx/uvx/node.
+    // Only these two are lifted, to keep the safe-subset env filtering intact.
     const injected = bridgeEnv().env;
     const transport = new StdioClientTransport({
       command: config.command,

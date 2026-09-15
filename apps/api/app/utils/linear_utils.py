@@ -17,14 +17,11 @@ LINEAR_TOOLKIT = "LINEAR"
 
 
 def history_label_names(raw: object) -> list[str]:
-    """Label names off an issue-history entry's ``addedLabels``/``removedLabels``.
+    """Label names off an issue-history entry's addedLabels/removedLabels.
 
-    Accepts both a plain ``[{id, name}]`` list and a ``{"nodes": [...]}``
-    connection. ``QUERY_ISSUE_HISTORY`` selects ``addedLabels { id name }``,
-    which implies a list — a connection would need ``{ nodes { ... } }`` — but
-    Linear's published schema could not be confirmed for this field, so both
-    shapes are handled rather than one guessed at. Anything else yields no
-    labels instead of raising.
+    Accepts both a plain [{id, name}] list and a {"nodes": [...]} connection
+    — Linear's schema could not be confirmed for this field. Anything else
+    yields no labels instead of raising.
     """
     if isinstance(raw, dict):
         raw = raw.get("nodes")
@@ -38,19 +35,10 @@ def graphql_request(
     variables: dict[str, Any] | None,
     auth_credentials: dict[str, Any],
 ) -> dict[str, Any]:
-    """
-    Execute a GraphQL request against Linear's API via Composio's proxy.
+    """Execute a GraphQL request against Linear's API via Composio's proxy.
 
-    Args:
-        query: GraphQL query or mutation string
-        variables: Optional variables for the query
-        auth_credentials: Auth credentials dict; must contain `user_id`
-
-    Returns:
-        The 'data' field from the GraphQL response
-
-    Raises:
-        Exception: If the request fails or returns GraphQL errors
+    Returns the 'data' field from the response. auth_credentials must
+    contain user_id.
     """
     user_id = auth_credentials.get("user_id")
     if not user_id:
@@ -87,18 +75,10 @@ def fuzzy_match(
     limit: int = 3,
     threshold: float = 0.4,
 ) -> list[dict[str, Any]]:
-    """
-    Fuzzy match a query string against a list of candidates.
+    """Fuzzy match a query string against a list of candidates.
 
-    Args:
-        query: The search query
-        candidates: List of dicts to search through
-        key: The key in each dict to match against
-        limit: Maximum number of results to return
-        threshold: Minimum similarity score (0-1) to include
-
-    Returns:
-        List of matching candidates sorted by similarity (best first)
+    threshold is the minimum similarity score (0-1) to include. Returns
+    matches sorted by similarity, best first.
     """
     if not query or not candidates:
         return candidates[:limit] if candidates else []

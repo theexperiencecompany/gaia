@@ -12,16 +12,14 @@ import re
 # (apps/api/app/agents/skills/builtin/<slug>/SKILL.md).
 SKILL_SOURCE_FILENAME = "SKILL.md"
 
-# Filename of the materialized skill body inside each slug dir on the workspace
-# (e.g. integrations/<id>/agent/skills/<slug>/skill.md). Shared by the
-# materializer (storage.sessions.skills), the system-file index, and discovery
-# so the path the agent is told to read always matches the file on disk.
+# Filename of the materialized skill body on the workspace (e.g.
+# integrations/<id>/agent/skills/<slug>/skill.md). Shared by the materializer,
+# system-file index, and discovery so the agent's read path matches disk.
 SKILL_BODY_FILENAME = "skill.md"
 
-# Bucket id for general builtin skills not owned by an integration subagent
-# (create-artifacts, task-management, …). It is NOT a registered subagent: it
-# maps to itself and its skills materialize under /workspace/skills/ rather than
-# /workspace/integrations/<id>/.
+# Bucket id for general builtin skills not owned by an integration subagent.
+# NOT a registered subagent: it maps to itself, and its skills materialize
+# under /workspace/skills/ rather than /workspace/integrations/<id>/.
 EXECUTOR_SUBAGENT_ID = "executor"
 
 # User-facing label for the executor target in the skills UI. The executor is
@@ -34,12 +32,10 @@ SKILLS_PACKAGE_DIRNAME = "skills"
 BUILTIN_SKILLS_DIRNAME = "builtin"
 
 # --- SKILL.md frontmatter parsing -------------------------------------------
-# Input is a trusted, bounded builtin SKILL.md frontmatter block bundled in the
-# repo — never user-supplied — so the lazy `.*?` cannot be driven into pathological
-# backtracking by an adversary.
+# Input is a trusted, bounded builtin frontmatter block, never user-supplied,
+# so the lazy `.*?` cannot be driven into pathological backtracking.
 SKILL_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)  # NOSONAR python:S5852
-# Forgiving YAML reader: builtins only ever use scalar key: value pairs and we
-# don't want to depend on PyYAML in this hot path. The leading-whitespace gap is
-# matched possessively (`\s*+`) so it never backtracks into the value group,
-# keeping the match linear. Trailing whitespace is stripped by the caller.
+# Forgiving YAML reader avoiding a PyYAML dependency in this hot path. The
+# leading-whitespace gap is matched possessively (`\s*+`) to stay linear;
+# trailing whitespace is stripped by the caller.
 SKILL_FRONTMATTER_KV_RE = re.compile(r"^([A-Za-z_]\w*):\s*+(.+)$")

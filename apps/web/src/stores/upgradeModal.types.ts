@@ -2,18 +2,13 @@
 import type { PaywallSource } from "@/lib/analytics";
 
 /**
- * The one payload the upgrade modal is opened with, whichever path opened it.
+ * The one payload the upgrade modal is opened with, whichever path opened it. Every field is
+ * optional: a 402 `subscription_required` response carries `discountCode`/`message`, the
+ * founder's letter carries `discountCode`/`discountPercent` (so pricing cards show the real
+ * price), and plain "Upgrade to Pro" buttons carry nothing.
  *
- * Every field is optional because the call sites disagree on what they know:
- * a 402 `subscription_required` response carries `discountCode`/`message`
- * from the backend; the founder's letter carries a
- * `discountCode`/`discountPercent` pair (the percent lets the pricing cards
- * show what the reader will actually pay); and the plain "Upgrade to Pro"
- * buttons carry nothing at all.
- *
- * No checkout link rides on this. A session minted while raising a wall is a
- * session minted for every gated request behind it, nearly all of them never
- * opened; every surface here mints its own when the user asks to subscribe.
+ * No checkout link rides on this — minting one while raising a wall would mint it for every
+ * gated request behind it, nearly all never opened; each surface mints its own on subscribe.
  */
 export interface UpgradeOffer {
   /** Discount code to apply at checkout. */

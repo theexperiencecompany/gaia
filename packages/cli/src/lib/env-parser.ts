@@ -15,16 +15,9 @@ export type {
   WebEnvVar,
 } from "./env-parser.types";
 
-// Infrastructure connection strings set by setup mode.
-//
-// selfhost: API runs inside Docker; database URLs use container hostnames
-//   (e.g. "mongo", "redis") which resolve within Docker's internal network.
-//   CHROMADB_PORT=8000 is the container-internal port. The host maps it to
-//   8080 via docker-compose (8080:8000). healthcheck.ts always probes 8080
-//   on the host — that is correct and does NOT use this env var.
-//
-// developer: Everything runs on localhost. CHROMADB_PORT=8080 is the
-//   host-mapped port exposed by docker-compose for local use.
+// Infrastructure connection strings by setup mode. selfhost: Docker-internal hostnames;
+// CHROMADB_PORT=8000 is container-internal (host maps it to 8080 — healthcheck.ts always
+// probes 8080, not this var). developer: localhost; CHROMADB_PORT=8080 is that mapped port.
 const INFRASTRUCTURE_DEFAULTS: Record<SetupMode, Record<string, string>> = {
   selfhost: {
     MONGO_DB: "mongodb://mongo:27017/gaia",
@@ -152,10 +145,9 @@ export function getWebInfrastructureDefaults(
 ): Record<string, string> {
   const apiPort = portOverrides?.[8000] ?? 8000;
 
-  // Single env var for the web app. WS URLs are derived from this at runtime
-  // by swapping http:// -> ws:// (see useWebSocketConnection.ts).
-  // Always uses localhost because this is a browser-side (client) URL —
-  // even in selfhost mode the browser connects via Docker-mapped host ports.
+  // Single env var for the web app; WS URLs are derived from it at runtime by swapping
+  // http:// -> ws:// (see useWebSocketConnection.ts). Always localhost since this is a
+  // browser-side URL — even in selfhost mode the browser uses Docker-mapped host ports.
   return {
     NEXT_PUBLIC_API_BASE_URL: `http://localhost:${apiPort}/api/v1/`,
   };

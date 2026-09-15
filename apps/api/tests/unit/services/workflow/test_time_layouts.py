@@ -1,4 +1,4 @@
-"""``time_layouts``: a recorded argument's layout, told apart by example."""
+"""time_layouts: a recorded argument's layout, told apart by example."""
 
 from __future__ import annotations
 
@@ -34,8 +34,7 @@ class TestDetectLayout:
         assert layout in KNOWN_TIME_LAYOUTS
 
     def test_the_most_specific_layout_wins(self) -> None:
-        """A value with seconds must not be read as the minutes-only layout,
-        which is what a table in the wrong order would do."""
+        """A value with seconds must not be read as the minutes-only layout, which is what a table in the wrong order would do."""
         assert detect_layout("2026-09-06 09:00:00") != "%Y-%m-%d %H:%M"
         assert detect_layout("2026-09-06T09:00:00+00:00") != "%Y-%m-%dT%H:%M:%S"
 
@@ -51,8 +50,7 @@ class TestDetectLayout:
 
 @pytest.mark.unit
 class TestDetectLayoutInProse:
-    """Seen live (D4): the run titled a todo "Plan for September 5, 2026"; a
-    bare-date hint had the model drop the words. The words are the layout."""
+    """Seen live (D4): the run titled a todo "Plan for September 5, 2026"; a bare-date hint had the model drop the words."""
 
     @pytest.mark.parametrize(
         ("value", "layout"),

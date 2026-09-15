@@ -1,20 +1,15 @@
 import type { KnipConfig } from "knip";
 
-// knip — TS/JS dead-code detection (scripts/dead-code-check.sh + CI, --strict).
-// Only suppress when a symbol is genuinely consumed in a way knip can't trace
-// (dynamic-by-name renderers, framework-by-convention files, config/CSS-subpath
-// imports, parked WIP features). Never add an entry to silence a real finding —
-// if nothing uses it, delete the code or the dependency. Every entry needs a
-// one-line reason; entries without a live consumer should be removed.
+// knip — TS/JS dead-code detection (scripts/dead-code-check.sh + CI, --strict). Only suppress
+// when a symbol is genuinely consumed in a way knip can't trace; never add an entry to silence
+// a real finding — delete unused code/deps instead. Every entry needs a one-line reason.
 const config: KnipConfig = {
   // ─── Global: suppress exports/types for dynamically-consumed files ───
   // ignoreIssues is root-only (not valid at workspace level).
   ignoreIssues: {
-    // macOS Finder-icon updater: passes the absolute path of the SIP-protected
-    // /usr/bin/osascript to execFile (never via $PATH, so $PATH can't be
-    // repointed at a malicious binary). It's a runtime system command, not an
-    // import — knip flags it as unresolved only on the Linux CI runner where
-    // the macOS binary is absent.
+    // macOS Finder-icon updater: execFile's the absolute, SIP-protected /usr/bin/osascript path
+    // (never via $PATH, so it can't be repointed at a malicious binary). It's a runtime system
+    // command, not an import — knip flags it "unresolved" only on the Linux CI runner.
     "apps/desktop/src/main/app-icon.ts": ["unresolved"],
 
     // OpenUI: components resolved by name via @openuidev/react-lang Renderer
@@ -38,19 +33,17 @@ const config: KnipConfig = {
       "types",
     ],
 
-    // Calendar support modules: the store/utils/date helpers live outside
-    // features/calendar/** (ignored as a parked feature) but are consumed only
-    // by it. Suppress their export/type findings so the parked feature stays
-    // intact for re-enablement. TODO(team): fold in with the calendar decision.
+    // Calendar support modules live outside features/calendar/** (a parked, ignored feature)
+    // but are consumed only by it; suppressed so the parked feature stays intact for
+    // re-enablement. TODO(team): fold in with the calendar decision.
     "apps/web/src/stores/calendarStore.ts": ["exports", "types"],
     "apps/web/src/utils/calendar/**": ["exports", "types"],
     "apps/web/src/utils/date/calendarDateUtils.ts": ["exports", "types"],
     "apps/web/src/types/features/calendarTypes.ts": ["exports", "types"],
 
-    // Notification enums mirror the backend ActionStyle contract
-    // (apps/api/.../notification_models.py). Members like PRIMARY/SECONDARY may
-    // be unused in TS today but are valid values the API can serialize, so they
-    // must stay in the enum for correct deserialization.
+    // Mirrors the backend ActionStyle contract (apps/api/.../notification_models.py): members
+    // like PRIMARY/SECONDARY may be unused in TS today but are valid API-serialized values,
+    // so they must stay for correct deserialization.
     "libs/shared/ts/src/types/notification.ts": ["enumMembers"],
 
     // i18n: exports consumed by next-intl framework wiring
@@ -93,11 +86,9 @@ const config: KnipConfig = {
 
   // Exclude non-app files from unused file detection
   ignore: [
-    // Python virtualenvs: the repo root is a uv workspace, so any root-level
-    // `uv run` materializes .venv/ here. Vendored site-packages ships thousands
-    // of JS bundles (litellm's Next.js static chunks, cloudinary widgets) that
-    // knip reads as project files; uv self-ignores them via an inner
-    // .gitignore, which knip does not honor.
+    // The repo root is a uv workspace, so `uv run` materializes .venv/ here; vendored
+    // site-packages ships thousands of JS bundles (litellm's Next.js chunks, cloudinary
+    // widgets) that knip reads as project files. uv's inner .gitignore hides them; knip doesn't honor it.
     ".venv/**",
     ".venv311/**",
 
@@ -115,23 +106,20 @@ const config: KnipConfig = {
     ".opencode/**",
     ".pi/**",
 
-    // Builtin docgen skill templates: .mjs/.typ/.py/.tex files materialized into
-    // the agent workspace and executed by the skills' build.sh scripts (e.g.
-    // `node report.mjs`), never imported as modules — so knip reads them as
-    // unused files.
+    // Builtin docgen skill templates (.mjs/.typ/.py/.tex) are materialized into the agent
+    // workspace and run by the skills' build.sh scripts (e.g. `node report.mjs`), never
+    // imported as modules — so knip reads them as unused files.
     "apps/api/app/agents/skills/builtin/**",
 
-    // SEO content source-of-truth: human-edited `entries/*.ts` are read by the
-    // static-data codegen (scripts/extract-static-data*, which knip ignores) and
-    // emitted to public/data/{feature}/*.json — the runtime fetches the JSON via
-    // the Cloudflare ASSETS binding, so the .ts sources are never bundled.
+    // Human-edited `entries/*.ts` are read by the static-data codegen (scripts/extract-static-data*,
+    // itself knip-ignored) and emitted to public/data/{feature}/*.json; the runtime fetches that
+    // JSON via the Cloudflare ASSETS binding, so the .ts sources are never bundled.
     "apps/web/src/features/alternatives/data/entries/**",
     "apps/web/src/features/comparisons/data/entries/**",
     "apps/web/src/features/integrations/data/combosData-*.ts",
 
-    // Parked feature: the /calendar route renders notFound() with its
-    // CalendarPage import commented out (app/[locale]/(main)/calendar/page.tsx).
-    // The components are intact for re-enablement, not dead code.
+    // Parked: /calendar renders notFound() with its CalendarPage import commented out
+    // (app/[locale]/(main)/calendar/page.tsx). Components stay intact for re-enablement.
     // TODO(team): re-enable the route or remove the feature.
     "apps/web/src/features/calendar/**",
     "apps/web/src/components/layout/sidebar/**/Calendar*.tsx",
@@ -348,24 +336,21 @@ const config: KnipConfig = {
       ],
       ignoreDependencies: [
         "wait-on",
-        // Workspace package bundled into out/ by electron-vite at build time, so
-        // it's not a runtime dependency electron-builder should pack into the
-        // asar (declaring it breaks packaging: libs/shared/ts is outside
-        // apps/desktop). Same handling as apps/web and apps/mobile.
+        // Bundled into out/ by electron-vite at build time, so it's not a runtime dependency
+        // electron-builder should pack into the asar (declaring it breaks packaging: libs/shared/ts
+        // is outside apps/desktop). Same handling as apps/web and apps/mobile.
         "@gaia/shared",
-        // bridge-core (bundled from @gaia/shared source via the vite alias)
-        // imports these; externalizeDepsPlugin keeps them external so
-        // electron-builder packs them into the asar — no file in src imports
-        // them directly, so knip cannot trace them.
+        // bridge-core (bundled from @gaia/shared source via the vite alias) imports
+        // these; externalizeDepsPlugin keeps them external for electron-builder to
+        // pack into the asar — no src file imports them directly, so knip can't trace them.
         "@modelcontextprotocol/sdk",
         "ws",
         "zod",
         "@types/ws",
       ],
-      // An execFile() argument, not a module: app-icon.ts hardcodes the absolute
-      // path to the SIP-protected macOS binary precisely so it is never resolved
-      // via $PATH. knip probes the filesystem for it, so it resolves on a Mac and
-      // is "unresolved" on the Linux CI runner.
+      // An execFile() argument, not a module: app-icon.ts hardcodes the absolute, SIP-protected
+      // macOS binary path so it's never resolved via $PATH. knip probes the filesystem, so it
+      // resolves on a Mac and is "unresolved" on the Linux CI runner.
       ignoreUnresolved: ["/usr/bin/osascript"],
     },
 
@@ -407,18 +392,16 @@ const config: KnipConfig = {
         "@gaia/bot-slack",
         "@gaia/bot-telegram",
         "@gaia/bot-whatsapp",
-        // Test-only: `vi.mock("amqplib")` in __tests__ must resolve the same
-        // module id the shared OutboundConsumer imports, which under the
-        // isolated linker requires apps/bots to declare it. Tests are excluded
-        // from the reference graph above, so knip cannot see that use.
+        // Test-only: `vi.mock("amqplib")` in __tests__ must resolve the same module id the
+        // shared OutboundConsumer imports, which the isolated linker requires apps/bots to
+        // declare; tests are excluded from the reference graph above, so knip can't see that use.
         "amqplib",
       ],
     },
 
     // ── iMessage bot ─────────────────────────────────────────────────
-    // The Photon SDK's gRPC transport calls import.meta.resolve() on these at
-    // runtime, so they must be installed and shipped even though no source
-    // file imports them. knip cannot see a runtime-only resolve.
+    // Photon SDK's gRPC transport calls import.meta.resolve() on these at runtime, so they
+    // must ship even though no source file imports them — knip can't see a runtime-only resolve.
     "apps/bots/imessage": {
       project: ["**/*.ts", "!**/__tests__/**", "!**/*.test.ts"],
       ignoreDependencies: ["@grpc/grpc-js", "nice-grpc", "nice-grpc-common"],
@@ -433,11 +416,9 @@ const config: KnipConfig = {
         "!src/**/*.test.{ts,tsx}",
         "!**/__tests__/**",
       ],
-      // Peer type package for react-dom (pulled in transitively by Ink/React).
-      // The bridge-core source is inlined by the esbuild alias plugin and
-      // `packages: "external"` keeps its imports external, so the published CLI
-      // needs these in its own node_modules even though no src file imports them
-      // directly.
+      // Peer type package for react-dom (pulled in transitively by Ink/React). The
+      // bridge-core source is inlined by the esbuild alias plugin with `packages:
+      // "external"`, so the published CLI needs these in its own node_modules though nothing imports them directly.
       ignoreDependencies: [
         "@types/react-dom",
         "@modelcontextprotocol/sdk",

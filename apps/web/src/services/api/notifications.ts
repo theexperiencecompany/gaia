@@ -12,10 +12,9 @@ import {
 /** Shape-only description of an unexpected payload — never its contents. */
 function describePayload(payload: unknown): string {
   if (typeof payload === "string") {
-    // Classify by the first non-whitespace character rather than quoting the
-    // body. This still separates the cases that matter — an edge/proxy HTML
-    // page from truncated JSON from an empty body — without putting any of the
-    // response's bytes into the error, which could carry a token or user text.
+    // Classify by the first non-whitespace char, not by quoting the body — this still separates
+    // markup/JSON/empty without putting response bytes (which may carry a token or user text)
+    // into the error.
     const firstChar = payload.trimStart()[0];
     const kind =
       firstChar === "<"
@@ -54,13 +53,9 @@ export class NotificationsAPI {
       `${NotificationsAPI.BASE_URL}?${params.toString()}`,
     );
 
-    // The endpoint always returns a `notifications` array (required field on the
-    // API's response model). Anything else means the body did not come from the
-    // API — a proxy/edge error page or truncated JSON that axios silently leaves
-    // as a string. Fail loudly, and describe what actually arrived, so the next
-    // occurrence identifies itself instead of surfacing as a TypeError deep in a
-    // hook. Only the status and the payload's shape are reported, never its
-    // contents, so this stays free of notification text.
+    // `notifications` is a required field on the API's response model; anything else means a
+    // proxy/edge error page or truncated JSON (axios leaves it as a string), not a real response.
+    // Fail loudly instead of a TypeError deep in a hook; report only status/shape, never contents.
     if (!Array.isArray(response.data?.notifications)) {
       throw new Error(
         `Malformed notifications response: expected \`notifications\` to be an array. ` +

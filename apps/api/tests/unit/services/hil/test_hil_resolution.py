@@ -46,7 +46,7 @@ def _quiet_log():
 
 @pytest.fixture
 def resume() -> Any:
-    """Mocks the run-dispatch boundary; the resolution logic itself runs for real."""
+    """Mock the run-dispatch boundary; the resolution logic itself runs for real."""
     prepared = MagicMock(run=MagicMock(), task=MagicMock(), configurable={})
     with (
         patch(f"{MODULE}.prepare_run_from_item", new=AsyncMock(return_value=prepared)) as prepare,
@@ -119,12 +119,9 @@ class TestExactlyOnce:
     async def test_the_resume_names_the_approval_that_was_actually_decided(
         self, resume: Any
     ) -> None:
-        # The status alone is not enough. A synchronous spawn that gated several calls
-        # replays its resume list positionally, so the driver matches on approval_id to
-        # hand each gate its OWN decision (subagent_runner.resume_for_gate). Send the
-        # wrong id and a correct matcher discards a real decision: the gate never sees an
-        # answer and an APPROVED action silently never runs. Deciding the second of two
-        # catches both a hardcoded id and "always the first record".
+        # The driver matches on approval_id (subagent_runner.resume_for_gate) since a
+        # synchronous spawn replays its resume list positionally; the wrong id discards a
+        # decision silently. Deciding the second of two catches "always the first record" too.
         second = make_record(approval_id="appr-2", tool_call_id="call-2")
         with (
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=second)),
@@ -136,15 +133,13 @@ class TestExactlyOnce:
 
 
 class TestTheResumeSlotIsExclusive:
-    """A batch pause puts several approvals on ONE executor thread. Two decisions landing
-    together must not start two concurrent LangGraph runs on it — that corrupts the
-    checkpoint and can double-execute whatever the run was mid-way through.
+    """A batch pause puts several approvals on ONE executor thread.
 
-    The whole guarantee is one Redis ``SETNX``. Every other test in this file mocks
-    ``claim_resume_dispatch`` to a constant, so the exclusivity itself was never executed;
-    a plain ``SET`` would hand the slot to every caller with the suite still green. These
-    run the real function against a real (in-memory) Redis, so the claim has to actually
-    be atomic.
+    Two decisions landing together must not start two concurrent LangGraph runs on it —
+    that corrupts the checkpoint and can double-execute whatever the run was mid-way
+    through. The whole guarantee is one Redis SETNX; every other test here mocks
+    claim_resume_dispatch to a constant, so these run the real function against a real
+    (in-memory) Redis to prove the claim is actually atomic.
     """
 
     @pytest.fixture
@@ -196,10 +191,9 @@ class TestUnresumableRecords:
     async def test_an_early_decision_on_a_parked_subagent_decides_without_dispatch(
         self, resume: Any
     ) -> None:
-        # The user answers a parked subagent's card BEFORE the executor reaches its
-        # join (so no resume_item exists yet). With a live executor (busy lock held)
-        # the decision must land — the running executor collects it durably — and
-        # must NOT dispatch or stamp a resume.
+        # The user answers before the executor reaches its join (no resume_item yet).
+        # With a live executor (busy lock held), the decision must land durably but
+        # must NOT dispatch or stamp a resume — the running executor collects it.
         record = make_record(resume_item=None, subagent_thread_id="gmail_executor_conv-1")
         with (
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
@@ -213,10 +207,9 @@ class TestUnresumableRecords:
         assert resume.mark_resumed.await_count == 0  # no dispatch happened, none stamped
 
     async def test_an_early_decision_with_no_live_executor_fails_loudly(self, resume: Any) -> None:
-        # Fire-and-forget: the executor finished without ever joining, so nobody
-        # will collect this decision. Accepting it would tell the user "going
-        # ahead" for an action that never runs — refuse instead; the sweep
-        # expires the record as a visible timeout.
+        # Fire-and-forget: the executor finished without joining, so nobody will collect
+        # this decision. Accepting it would tell the user "going ahead" for an action that
+        # never runs — refuse instead; the sweep expires the record as a visible timeout.
         record = make_record(resume_item=None, subagent_thread_id="gmail_executor_conv-1")
         with (
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
@@ -250,10 +243,9 @@ class TestUnresumableRecords:
     async def test_a_lost_resume_slot_skips_dispatch_but_keeps_the_decision(
         self, resume: Any
     ) -> None:
-        # Two decisions on one batch land near-simultaneously. The loser must NOT
-        # start a second LangGraph run on the same executor thread (checkpoint
-        # corruption) — and must NOT stamp resumed_at, so the sweep can dispatch
-        # the decision later if the in-flight round misses it.
+        # Two decisions on one batch land near-simultaneously. The loser must NOT start a
+        # second LangGraph run on the same thread (checkpoint corruption), and must NOT
+        # stamp resumed_at, so the sweep can dispatch the decision if this round misses it.
         resume.claim.return_value = False
         record = make_record()
         with (
@@ -626,8 +618,7 @@ class TestHILWaitBenchmarks:
     """Dispatch measures what the user waited and what the system added."""
 
     async def test_dispatch_measures_user_wait_and_dispatch_lag(self, resume: Any) -> None:
-        """A real decision arrives on a PENDING record: ``decided_at`` is stamped by the
-        transition itself, so the measurement must not depend on a pre-decided fixture."""
+        """decided_at is stamped by the transition, so this starts from a PENDING record."""
         record = make_record(created_at=datetime.now(UTC) - timedelta(seconds=30))
         assert record.decided_at is None
         wait_before = REGISTRY.get_sample_value("hil_user_wait_seconds_count", {}) or 0.0
@@ -651,8 +642,7 @@ class TestHILWaitBenchmarks:
         assert 0.0 <= dispatch_lag <= 10.0
 
     async def test_skipped_dispatch_still_measures_the_user_wait(self, resume: Any) -> None:
-        """A decision that loses the resume claim is still a decision the user
-        served; only the dispatch lag (system time) goes unmeasured."""
+        """Losing the resume claim leaves only the dispatch lag unmeasured, not the user wait."""
         resume.claim.return_value = False
         record = make_record()
         wait_before = REGISTRY.get_sample_value("hil_user_wait_seconds_count", {}) or 0.0
@@ -670,8 +660,7 @@ class TestHILWaitBenchmarks:
     async def test_a_closed_record_without_resume_context_still_measures_the_user_wait(
         self,
     ) -> None:
-        """A record closed in place (no run to resume) is still a decision the user
-        served: the wait must reach the histogram, not just dispatched approvals."""
+        """A record closed in place, with no run to resume, still reaches the wait histogram."""
         record = make_record(resume_item=None)
         wait_before = REGISTRY.get_sample_value("hil_user_wait_seconds_count", {}) or 0.0
         with (

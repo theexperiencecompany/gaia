@@ -37,21 +37,13 @@ export function retryDelays(budgetMs: number): number[] {
 }
 
 /**
- * Verifies a payment, tolerating the webhook-vs-redirect race: Dodo's
- * redirect can land the user on the result page before the
- * `subscription.active` webhook has been processed, so a single
- * "not completed" response is not a failure — it just means the record
- * has not landed yet.
+ * Verifies a payment, tolerating the webhook-vs-redirect race: a redirect can
+ * land the user before the webhook lands, so one "not completed" isn't a
+ * failure. Shares `CHECKOUT_CONFIRM_TOTAL_BUDGET_MS` with the in-app wizard —
+ * two budgets for one wait once told a paying user "not completed" 4 minutes early.
  *
- * The wait is the same `CHECKOUT_CONFIRM_TOTAL_BUDGET_MS` the in-app checkout
- * wizard spends on the identical race. Two budgets for one wait is how the
- * result page came to tell a paying user "Payment not completed" four minutes
- * before the wizard would have stopped believing in them.
- *
- * - Stops and returns as soon as a verify reports the payment completed.
- * - Retries both "not completed" results and thrown errors (network
- *   flakes included); whichever happened on the final attempt wins:
- *   the last not-completed result is returned, the last error is thrown.
+ * Stops on the first completed result; otherwise retries both "not completed"
+ * and thrown errors, and the final attempt's outcome wins either way.
  */
 export async function verifyPaymentWithRetry(
   verify: VerifyPaymentFn,

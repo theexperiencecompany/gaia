@@ -1,6 +1,4 @@
-"""
-Clean webhook models for Dodo Payments based on actual webhook format.
-"""
+"""Clean webhook models for Dodo Payments based on actual webhook format."""
 
 from datetime import datetime
 from enum import Enum, StrEnum
@@ -30,11 +28,9 @@ class DodoWebhookEventType(str, Enum):
     SUBSCRIPTION_ON_HOLD = "subscription.on_hold"
     SUBSCRIPTION_PLAN_CHANGED = "subscription.plan_changed"
 
-    # Events Dodo sends that GAIA acknowledges and ignores. They must parse:
-    # a legitimate event outside this enum failed validation and was recorded
-    # as a processing error instead of landing in the no-handler "ignored" path.
-    # subscription.updated carries field edits Dodo also reports through the
-    # status events above; GAIA acts on those and ignores this one.
+    # Events Dodo sends that GAIA acknowledges and ignores. Must parse here — an
+    # event outside this enum fails validation as a processing error rather than
+    # landing in the "ignored" path. subscription.updated duplicates the status events above.
     SUBSCRIPTION_UPDATED = "subscription.updated"
     REFUND_SUCCEEDED = "refund.succeeded"
     REFUND_FAILED = "refund.failed"
@@ -178,11 +174,11 @@ class DodoWebhookEvent(BaseModel):
 class WebhookProcessingStatus(StrEnum):
     """What GAIA did with a delivery, and what the sender is owed as a result.
 
-    ``PROCESSED`` and ``IGNORED`` are both final — the delivery is recorded
-    under its webhook id and acknowledged with a 200. ``FAILED`` is not: the
+    PROCESSED and IGNORED are both final — the delivery is recorded
+    under its webhook id and acknowledged with a 200. FAILED is not: the
     state change the event carried never landed and a retry can still land
     it, so the claim is handed back and the sender is asked to retry.
-    ``ABANDONED`` is a failure no retry can fix (no GAIA user behind the
+    ABANDONED is a failure no retry can fix (no GAIA user behind the
     subscription, a row that never arrived in the time it had, a body that
     does not validate): it is acknowledged so Dodo stops redelivering, the
     claim is released so a human can redeliver it by hand once the cause is

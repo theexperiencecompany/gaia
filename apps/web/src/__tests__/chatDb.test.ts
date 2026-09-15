@@ -1,14 +1,10 @@
 /**
  * Regression tests for the chat store's IndexedDB failure latch.
  *
- * iOS Safari refuses to open IndexedDB under private browsing / storage
- * pressure, and a transaction can still fail after a successful open. `ChatDexie`
- * answers both by latching the whole session to unavailable and returning each
- * method's documented fallback instead of leaking an uncaught rejection. These
- * pin that: once latched, no Dexie table is touched again.
- *
- * Dexie itself is mocked — the subject is the wrapper's gate, not IndexedDB
- * (which does not exist in the `node` test environment anyway).
+ * IndexedDB can fail to open (iOS Safari private mode) or a transaction can
+ * fail after a successful open; `ChatDexie` latches the session unavailable
+ * and returns each method's fallback instead of an uncaught rejection. Dexie
+ * is mocked here — not exercised against real IndexedDB.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

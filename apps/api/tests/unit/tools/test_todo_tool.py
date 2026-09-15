@@ -9,12 +9,8 @@ import pytest
 
 from app.models.todo_models import Priority, TodoLabelCount, TodoStats
 
-# ---------------------------------------------------------------------------
-# Module-level patch: ensure tiered_limiter.check_and_increment returns a
-# plain dict so the @with_rate_limiting decorator doesn't crash when
-# iterating usage_info.items() on an AsyncMock.
-# ---------------------------------------------------------------------------
-
+# Module-level patch: check_and_increment must return a plain dict, not an AsyncMock, so
+# @with_rate_limiting doesn't crash iterating usage_info.items().
 _rl_patch = patch(
     "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
     new_callable=AsyncMock,
@@ -32,12 +28,11 @@ MODULE = "app.agents.tools.todo_tool"
 
 
 class _UTCOnlyDateTime(datetime):
-    """datetime stand-in whose ``now(None)`` (local time) reads a different DATE
-    than ``now(UTC)``.
+    """datetime stand-in whose now(None) (local time) reads a different date than now(UTC).
 
-    The todo tools' day boundaries must follow the UTC calendar; this clock turns
-    a non-UTC read into a wrong window the exact-boundary assertions can see,
-    instead of relying on the run machine's timezone differing from UTC.
+    The todo tools' day boundaries must follow the UTC calendar; this clock makes a non-UTC read
+    produce a wrong window the exact-boundary assertions can see, without depending on the run
+    machine's own timezone differing from UTC.
     """
 
     @classmethod
@@ -703,10 +698,9 @@ class TestGetTodayTodos:
 
         assert result["error"] is None
         assert result["count"] == 1
-        # The query window is the full day "now" falls on, as naive datetimes
-        # (datetime.combine keeps time.min/max's null tzinfo) on the UTC clock's
-        # calendar date — pinned exactly against a fake clock so a local-time or
-        # None bound cannot slip through.
+        # The query window is the full day "now" falls on, as naive datetimes (datetime.combine
+        # keeps time.min/max's null tzinfo) on the UTC clock's calendar date — pinned exactly so a
+        # local-time or None bound cannot slip through.
         (user_arg, start, end), _ = mock_service.await_args
         assert user_arg == FAKE_USER_ID
         assert start == datetime(2026, 6, 15, 0, 0)
@@ -1376,13 +1370,9 @@ class TestGetTodosSummary:
         assert result["summary"] is None
 
 
-# ---------------------------------------------------------------------------
-# The priority argument is a closed set; the tool schema must say so.
-# ---------------------------------------------------------------------------
-# Prod, Sep 3 2026: `[TOOL] Error creating todo: 'normal' is not a valid
-# Priority`. The parameter was typed `str`, so the model only ever saw the
-# allowed values as prose in a description and guessed a synonym. With the
-# enum in the schema the API refuses the call before the tool body runs.
+# Prod, Sep 3 2026: "[TOOL] Error creating todo: 'normal' is not a valid Priority" — the
+# parameter was typed str, so the model only saw allowed values as prose and guessed a synonym;
+# the enum in the schema now refuses the call before the tool body runs.
 
 PRIORITY_TOOL_NAMES = ["create_todo", "list_todos", "update_todo", "semantic_search_todos"]
 

@@ -2,7 +2,7 @@
 
 These tools provide calendar functionality routed through Composio's proxy.
 The proxy attaches the user's OAuth token server-side, so tools only need to
-look up `user_id` from `auth_credentials`.
+look up user_id from auth_credentials.
 
 Note: Errors raised here propagate as exceptions; Composio wraps responses
 in {successful, data, error} format automatically.
@@ -63,13 +63,10 @@ _T = TypeVar("_T")
 def _run_sync(coro: Coroutine[Any, Any, _T], *, timeout: float | None = None) -> _T:
     """Run an async service call from a synchronous Composio custom-tool body.
 
-    The custom tools call async services (calendar_service, user_service) that
-    drive the loop-bound Motor client. In production the tool runs on a worker
-    thread with no running loop of its own, so the coroutine is dispatched onto
-    the server loop the client was built on — ``asyncio.run`` there would spin a
-    fresh loop and make Motor raise "attached to a different loop". When the tool
-    is already inside a running loop (nested-loop test harnesses), that loop can't
-    be blocked, so the coroutine is offloaded to a fresh thread + loop.
+    In production the tool runs on a worker thread with no loop, so the coroutine
+    dispatches onto the server's loop-bound Motor client (asyncio.run there makes
+    Motor raise "attached to a different loop"). Inside an already-running loop
+    (nested-loop test harnesses), it offloads to a fresh thread + loop instead.
     """
     try:
         asyncio.get_running_loop()

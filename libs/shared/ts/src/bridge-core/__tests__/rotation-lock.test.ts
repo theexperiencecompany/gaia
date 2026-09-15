@@ -82,10 +82,9 @@ describe("rotation lock", () => {
   it("waits on a live holder instead of stealing it", async () => {
     const { configureBridge, withRotationLock } = await freshModules();
     configureBridge({ stateDir });
-    // Fresh stamp = live holder that never releases on its own terms here;
-    // prove we do NOT steal it by asserting the stamp survives a contender
-    // that times out... (acquire timeout is 30s — instead assert a quick
-    // contender is still waiting, i.e. its body never ran.)
+    // Fresh stamp = live holder; prove we don't steal it by asserting a quick
+    // contender is still waiting (never ran) rather than waiting out the full
+    // 30s acquire timeout.
     const dir = join(stateDir, "credentials.lock");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "stamp"), String(Date.now()));

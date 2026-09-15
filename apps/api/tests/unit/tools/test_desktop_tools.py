@@ -250,9 +250,7 @@ class TestTakeScreenshot:
         )
 
     async def test_a_screenshot_that_could_not_be_saved_says_answer_from_it_now(self) -> None:
-        """The model cannot re-read a screenshot that never reached the workspace,
-        so the note has to tell it to answer from the pixels in front of it. Left
-        vague, the model defers to a file it will never find."""
+        """A screenshot that never reached the workspace can't be re-read, so the note must tell the model to answer from the pixels in front of it."""
         writer = MagicMock()
         with (
             patch(f"{MODULE}.get_stream_writer", MagicMock(return_value=writer)),

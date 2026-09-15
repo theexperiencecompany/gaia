@@ -514,22 +514,15 @@ export function VoiceGradient({
     if (!paused) resumeRef.current?.();
   }, [paused]);
 
-  // Use a ref callback (not useEffect) to manage the WebGL lifecycle. Ref
-  // callbacks fire on REAL DOM attach/detach — they completely bypass React
-  // 18 StrictMode's effect double-invocation, which was tearing down the
-  // GL context between two synthetic mount cycles and leaving the second
-  // mount with a context in an error state (shader compile returning null
-  // infolog). With this pattern, init runs exactly once when the canvas
-  // attaches and cleanup runs exactly once when it detaches.
+  // Ref callback (not useEffect) manages the WebGL lifecycle — it fires on
+  // REAL DOM attach/detach, bypassing StrictMode's effect double-invoke that
+  // left a torn-down GL context (null shader infolog) on the second mount.
   const cleanupRef = useRef<(() => void) | null>(null);
   const canvasRefCallback = useCallback((canvas: HTMLCanvasElement | null) => {
     if (canvas) {
-      // Defer GL init to the next macrotask. React 18 StrictMode's
-      // doubleInvokeEffectsInDEV fires the ref callback three times
-      // synchronously: (canvas) → (null) → (canvas). Without the defer,
-      // the second (canvas) call gets a GL context that was partially
-      // cleaned up by the (null) call, causing shader compile to return
-      // a null info log and the gradient to show a blank canvas.
+      // Defer GL init to the next macrotask: StrictMode's doubleInvokeEffectsInDEV
+      // fires the ref callback three times synchronously (canvas→null→canvas),
+      // so an undeferred init gets a partially-cleaned-up context and a blank canvas.
       let cancelled = false;
       const timerId = setTimeout(() => {
         if (!cancelled && canvas.isConnected) {
@@ -580,10 +573,9 @@ function initGL(
     return null;
   }
 
-  // Build wave + blit programs. If either silently fails (StrictMode
-  // double-init or Turbopack HMR race), retry once with fresh shaders;
-  // log permanent failure clearly so dev users see what went wrong rather
-  // than staring at a blank canvas.
+  // Build wave+blit programs; retry once with fresh shaders on silent
+  // failure (StrictMode double-init or Turbopack HMR race), logging a
+  // permanent failure clearly instead of a blank canvas.
   let waveProgram = buildProgram(gl, FRAG, "wave program");
   waveProgram ??= buildProgram(gl, FRAG, "wave program retry");
   let blitProgram = buildProgram(gl, BLIT_FRAG, "blit program");

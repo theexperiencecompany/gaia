@@ -1,7 +1,7 @@
 """Schema for the outbound message envelope published to the bot queues.
 
-Mirrors ``OutboundMessageEnvelope`` in
-``libs/shared/ts/src/bots/consumer/envelope.ts``. ``text`` is raw CommonMark —
+Mirrors OutboundMessageEnvelope in
+libs/shared/ts/src/bots/consumer/envelope.ts. text is raw CommonMark —
 the bot consumer converts it to the platform's native formatting before sending.
 """
 
@@ -34,12 +34,9 @@ class OutboundMessageEnvelope(BaseModel):
     # channel/group id and the bot must send to the channel — some platforms
     # (Discord, Slack) address a channel differently from a user DM.
     is_channel: bool = False
-    # A message carries a single ``text`` body, an ordered ``text_parts`` group,
-    # an attachment, or a combination. ``text_parts`` is how a multi-bubble
-    # notification (e.g. a workflow completion: header, result messages, footer)
-    # is delivered as ONE queue unit so the consumer sends its bubbles in order —
-    # publishing them as separate envelopes would let a concurrent consumer
-    # reorder them.
+    # A message carries text, an ordered text_parts group, an attachment, or a
+    # combination. text_parts keeps a multi-bubble notification as ONE queue
+    # unit so a concurrent consumer can't reorder the bubbles.
     text: str | None = Field(default=None, min_length=1)
     text_parts: list[str] | None = None
     attachment: OutboundAttachment | None = None

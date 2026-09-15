@@ -361,8 +361,7 @@ class TestBuildCommsGraph:
             deps["mocks"][f"{_MOD}.init_llm"].assert_called_once()
 
     async def test_comms_middleware_receives_the_chat_llm(self):
-        """build_comms_graph must forward chat_llm into the middleware stack —
-        the summarizer inside comms rides the conversation's model."""
+        """build_comms_graph must forward chat_llm into the middleware stack, so the summarizer rides the conversation's model."""
         with ExitStack() as stack:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_comms_graph
@@ -481,11 +480,7 @@ class TestBuildExecutorGraph:
                 assert graph is deps["compiled"]
 
     async def test_executor_is_built_with_the_completion_guard_and_skill_tool(self):
-        """Two things the executor cannot lose. ``require_finish_to_end`` is what
-        opts it into the harness-owned completion check — without it a plain-text
-        stop is taken at face value and the guard is inert. ``save_learned_skill``
-        is bound up front rather than retrieved, so a renamed id silently drops the
-        tool from the executor's initial set."""
+        """require_finish_to_end opts the executor into the completion check; save_learned_skill is bound up front, not retrieved."""
         with ExitStack() as stack:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_executor_graph
@@ -609,13 +604,7 @@ class TestBuildExecutorGraph:
             assert len(pre_model_hooks) == 4
 
     async def test_a_supplied_model_is_the_one_the_graph_is_built_with(self):
-        """A caller that hands in a model gets that model, not a freshly built one.
-
-        Every caller that supplies one is pinning the lane deliberately (a test
-        harness, a deployment on a custom endpoint). Rebuilding it here sends the
-        run to whatever the default provider is, which on a custom deployment is
-        a provider it has no key for.
-        """
+        """A caller that hands in a model gets that model, not a freshly built one — rebuilding could pick a provider with no key."""
         with ExitStack() as stack:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_executor_graph
@@ -629,12 +618,7 @@ class TestBuildExecutorGraph:
         assert call.args[0] is deps["llm"]
 
     async def test_it_checkpoints_to_postgres_unless_asked_not_to(self):
-        """In-memory checkpointing is opt-in, and the default must stay durable.
-
-        An executor built with an in-memory saver loses every conversation the
-        moment the worker restarts: the next turn resumes from nothing and the
-        run reads as a user who never said anything.
-        """
+        """In-memory checkpointing is opt-in; the default must stay durable, or a worker restart loses every conversation."""
         fake_checkpointer = MagicMock(name="postgres_checkpointer")
         fake_manager = MagicMock()
         fake_manager.get_checkpointer.return_value = fake_checkpointer

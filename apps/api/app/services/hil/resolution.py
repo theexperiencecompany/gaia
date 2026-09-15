@@ -2,11 +2,11 @@
 
 The single entry point for every decision source — approval buttons, a bot's
 interactive component, the conversational resolver, and the timeout sweep. Each
-supplies a ``DecisionKind``; everything else is identical.
+supplies a DecisionKind; everything else is identical.
 
 Two guarantees:
 
-* **Exactly once.** The ``pending -> decided`` transition is a conditional Mongo
+* **Exactly once.** The pending -> decided transition is a conditional Mongo
   update. A double click, a racing bot callback, and a sweep firing against an
   approval the user just answered all lose the race and resolve nothing.
 * **The run always continues.** Whatever the decision, the paused thread is
@@ -90,7 +90,7 @@ class ApprovalRequestForbiddenError(AppError):
 class ApprovalNotResumableError(AppError):
     """Raised (503) when the paused run's re-dispatch context is missing.
 
-    The record stays ``pending`` — committing the decision without a resumable
+    The record stays pending — committing the decision without a resumable
     run would tell the user "approved" about an action that can never execute.
     The sweep expires the record instead.
     """
@@ -188,18 +188,9 @@ async def abandon_conversation_approvals(
 async def cancel_conversation_approvals(conversation_id: str, user_id: str) -> list[str]:
     """Close a cancelled run's pending approvals so nothing can restart it.
 
-    ``cancel_executor`` stops the run and drops the conversation's busy lock, but the
-    approval records are the *decision* state, and they outlive both: left pending, a
-    later "Approve" — or the timeout sweep, with no user involved at all — re-dispatches
-    the very run the user stopped, on a fresh stream the cancel flag does not cover.
-    Deciding them here is what makes a cancel stick.
-
-    Deliberately does NOT resume, which is the whole difference from
-    ``abandon_conversation_approvals``: there the run must wake up to release the lock,
-    here it is already gone. ``mark_decided`` runs first because it is the exactly-once
-    mutex — only the caller that wins the transition owns the record and may clear its
-    ``resume_item``, so a decision landing at the same instant can never lose its
-    re-dispatch context.
+    Left pending, a later "Approve" or the timeout sweep would re-dispatch the very
+    run the user stopped, on a fresh stream the cancel flag doesn't cover. Deliberately
+    does NOT resume (unlike abandon_conversation_approvals) since the run is already gone.
     """
     cancelled: list[str] = []
     for record in await list_pending_for_conversation(conversation_id):
@@ -233,11 +224,10 @@ async def _resolve_or_close(
 ) -> None:
     """Resolve a record, or close it in place when no run can be resumed.
 
-    A record with no ``resume_item`` never had its pause registered — the executor died
-    between publishing the card and recording how to restart it. There is nothing to
-    resume, so resolving it would only raise. Closing it is what matters: a record left
-    pending goes on hijacking every later message in the conversation via the
-    conversational resolver.
+    A record with no resume_item never had its pause registered (the executor died
+    between publishing the card and recording how to restart it), so resolving it
+    would only raise. Closing it stops it from hijacking every later message via
+    the conversational resolver.
     """
     if record.resume_item is None:
         log.warning(
@@ -269,28 +259,16 @@ async def _resolve_record(
     """Authorize, transition exactly once, and resume — from an already-loaded record."""
     if record.user_id != user_id:
         raise ApprovalRequestForbiddenError()
-    # Checked BEFORE the decided-transition: a decision we cannot act on must
-    # fail the request (record stays pending; the sweep expires it), never
-    # report success for an action that will silently not run.
-    #
-    # Exception: a parked-subagent record (stamped ``subagent_thread_id``) decided
-    # BEFORE the executor reaches its join has no resume context yet — and needs
-    # none, PROVIDED a collector is actually alive. The busy lock is that proof:
-    # held means an executor run (running or parked) will reach a join and read
-    # this decision durably. A finished executor (fire-and-forget dispatch, or
-    # one that never called wait_for_subagents) means nobody will ever collect —
-    # accepting the decision then is a false "going ahead" for an action that
-    # will never run, so it must fail loudly instead.
+    # Checked BEFORE the decided-transition so an unactionable decision fails the
+    # request rather than reporting false success. Exception: a parked-subagent record
+    # decided before its executor's join needs no resume context, but only while the busy lock proves a collector is still alive to read it.
     if record.resume_item is None:
         collector_alive = record.subagent_thread_id is not None and await is_executor_busy(
             record.conversation_id
         )
-        # An APPROVE with no run to carry it out is a false "going ahead" (nobody would
-        # execute it), so fail loudly and let the sweep expire it. A deny/timeout/abandon
-        # needs no run at all, since its whole point is that the action does NOT happen, so
-        # it is safe to record even with no collector. Closing it here stops the pending
-        # record hijacking the conversation, which is what a batch "Decline all" over such
-        # a record used to do: it raised and orphaned the record pending.
+        # An APPROVE with no run to carry it out is a false "going ahead", so fail loudly
+        # and let the sweep expire it. A deny/timeout/abandon needs no run at all, since
+        # its whole point is that the action does NOT happen, so it's safe to record.
         if not collector_alive and kind == "approve":
             log.error(f"{LogTag.HIL} No resume context on record", approval_id=record.approval_id)
             raise ApprovalNotResumableError()
@@ -340,17 +318,10 @@ async def _dispatch_resume(
 ) -> None:
     """Re-dispatch the executor thread this approval paused.
 
-    ``prepare_run_from_item`` seizes the conversation's busy lock (the original
-    owner's process is long gone) and gives the resumed run its own stream, so the
-    frontend can watch it finish. ``mark_resumed`` stamps the record so the sweep
-    knows this decision made it to a run; a crash before the stamp is re-dispatched
-    by the sweep from ``resume_item``.
-
-    At most one resume runs per conversation: a batch pause has several approvals
-    sharing one executor thread, and two decisions landing close together must not
-    start two concurrent LangGraph runs on it (checkpoint corruption). The loser
-    of the claim skips dispatch — its decision is already durable on the record,
-    and the in-flight join round or the sweep collects it.
+    At most one resume runs per conversation, since two decisions landing close
+    together on a shared executor thread must not start two concurrent LangGraph
+    runs (checkpoint corruption); the loser skips dispatch since its decision is
+    already durable on the record.
     """
     if not await claim_resume_dispatch(record.conversation_id):
         log.info(
@@ -360,9 +331,8 @@ async def _dispatch_resume(
         )
         return
 
-    # set_resume_item is the only writer of this field and now takes an
-    # ExecutorRunItem, so the stored shape is correct by construction; Mongo just
-    # hands it back as a plain dict. cast rather than isinstance (item 12) —
+    # Correct by construction (set_resume_item's only writer takes an ExecutorRunItem;
+    # Mongo hands it back as a plain dict). cast rather than isinstance since
     # ExecutorRunItem is total=False, so {} is a valid empty item.
     prepared = await prepare_run_from_item(
         record.conversation_id, cast(ExecutorRunItem, record.resume_item or {})
@@ -377,10 +347,9 @@ async def _dispatch_resume(
             "status": resume_status,
             "feedback": feedback,
             "scope": scope,
-            # Identifies which gate this decision is for. A synchronous spawn/handoff
-            # that gated several calls in sequence replays the executor's resume list
-            # positionally on recovery; the driver matches on this to hand each gate
-            # its own decision instead of the first one (see subagent_runner.resume_for_gate).
+            # Identifies which gate this decision is for, since a sequence of gated
+            # calls replays the resume list positionally on recovery and the driver
+            # matches on this to hand each gate its own decision (subagent_runner.resume_for_gate).
             "approval_id": record.approval_id,
         }
     )
@@ -438,12 +407,10 @@ def _observe_hil_dispatch_lag(record: HILApprovalRecord) -> None:
 async def sweep_approvals() -> dict[str, int]:
     """Resolve expired approvals and re-dispatch crashed resumes. Cron-driven.
 
-    Two passes:
-    - pending past ``expires_at`` → resolved as timeout (the run resumes and is
-      told the request expired). Records that never got resume context — the
-      executor died before registering the pause — are closed directly.
-    - decided but never resumed (crash between the decided-transition and the
-      run spawn) → re-dispatched from the record's ``resume_item``.
+    Two passes: pending past expires_at resolve as timeout (or close directly if
+    the executor died before registering the pause); decided but never resumed
+    (crash between the decided-transition and the run spawn) re-dispatch from
+    the record's resume_item.
     """
     expired = 0
     for record in await list_expired_pending():

@@ -48,9 +48,7 @@ class TestActiveLane:
         )
 
     def test_a_bag_with_no_lane_falls_back_to_the_default_model(self) -> None:
-        """Queue items and stored HIL resume_items predate the lane key, so "no
-        lane" is a real state — and answering it wrong strips images from a run
-        that could have read them."""
+        """Queue items and stored HIL resume_items predate the lane key, so "no lane" is a real state."""
         assert active_lane(_config(None)) == (DEFAULT_LLM_PROVIDER, DEFAULT_MODEL_NAME)
 
     def test_a_lane_that_pins_no_model_answers_with_the_clients_default(self) -> None:
@@ -97,8 +95,7 @@ class TestMediaDeliveryPerLane:
         catalog.accepts_images.assert_awaited_once_with("vendor/sees")
 
     async def test_a_provider_with_no_catalog_never_gets_a_request_it_would_reject(self) -> None:
-        """The dev endpoint is neither Gemini nor in the OpenRouter catalog, so
-        nothing can establish that it takes pixels — send the description."""
+        """The dev endpoint is neither Gemini nor in the OpenRouter catalog, so nothing can establish it takes pixels."""
         delivery = await resolve_media_delivery(
             _config({"provider": LLMProviderName.CUSTOM, "model": "local/dev-model"})
         )
@@ -108,9 +105,7 @@ class TestMediaDeliveryPerLane:
     async def test_a_bogus_provider_fails_loudly_rather_than_silently_dropping_images(
         self,
     ) -> None:
-        """A lane names its provider as an ``LLMProviderName``. An unknown one is a
-        bug in whatever wrote the bag, and it must surface there rather than
-        degrade every image on the run to text."""
+        """An unknown provider is a bug in whatever wrote the bag and must surface, not degrade images to text."""
         with pytest.raises(ValueError, match="not a valid LLMProviderName"):
             await resolve_media_delivery(_config({"provider": "some-new-provider"}))
 

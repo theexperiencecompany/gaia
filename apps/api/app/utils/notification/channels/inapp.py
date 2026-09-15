@@ -15,7 +15,7 @@ from shared.py.wide_events import log
 
 
 class InAppActionPayload(TypedDict):
-    """One action button as it appears inside an ``InAppPayload``."""
+    """One action button as it appears inside an InAppPayload."""
 
     id: str
     type: ActionType
@@ -27,7 +27,7 @@ class InAppActionPayload(TypedDict):
 
 
 class InAppPayload(TypedDict):
-    """The ``notification.new`` WebSocket frame body."""
+    """The notification.new WebSocket frame body."""
 
     id: str
     title: str
@@ -43,14 +43,14 @@ class InAppChannelAdapter(ChannelAdapter[InAppPayload]):
     """In-app notification channel adapter.
 
     Pushes the notification payload to the connected client in real time via
-    WebSocket using the ``notification.new`` event.  This is the *delivery*
+    WebSocket using the notification.new event.  This is the *delivery*
     step for the in-app channel — the orchestrator subsequently fires a
-    separate ``notification.delivered`` broadcast that carries the full record
+    separate notification.delivered broadcast that carries the full record
     with channel-delivery statuses for all channels.  The two events serve
     different purposes and are not redundant:
 
-    * ``notification.new``       — immediate display of the notification content
-    * ``notification.delivered`` — status update after all channels have run
+    * notification.new       — immediate display of the notification content
+    * notification.delivered — status update after all channels have run
     """
 
     @property
@@ -59,15 +59,12 @@ class InAppChannelAdapter(ChannelAdapter[InAppPayload]):
 
     def can_handle(self, notification: NotificationRequest) -> bool:  # noqa: ARG002 -- polymorphic interface; implementations keep the full signature
         """Return True — in-app delivery is always available for any request."""
-        # In-app is always deliverable. The orchestrator decides targeting:
-        # explicit requests look adapters up by channel_type, and auto-injection
-        # always includes inapp — checking the request's channel list here would
-        # silently skip the real-time push whenever channels are auto-injected
-        # (the list is empty in that mode).
+        # The orchestrator decides targeting; checking the request's channel
+        # list here would silently skip the push when auto-injected (list is empty).
         return True
 
     async def transform(self, notification: NotificationRequest) -> InAppPayload:
-        """Build the WebSocket payload for the in-app ``notification.new`` event."""
+        """Build the WebSocket payload for the in-app notification.new event."""
         return {
             "id": notification.id,
             "title": notification.content.title,

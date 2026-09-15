@@ -20,11 +20,11 @@ async def generate_image(imageprompt: str) -> dict[str, str] | bytes:
 
 
 async def convert_image_to_text(image: UploadFile, message: str) -> str:
-    """Answer ``message`` about an uploaded image.
+    """Answer message about an uploaded image.
 
-    Runs on the same codec and vision model as the agent's `read` tool, so there
+    Runs on the same codec and vision model as the agent's read tool, so there
     is one way to turn an image into words rather than two that drift apart. The
-    upload's declared ``content_type`` is ignored — the codec sniffs the real
+    upload's declared content_type is ignored — the codec sniffs the real
     format from the bytes and transcodes anything a provider won't take.
     """
     data = await image.read(MAX_IMAGE_FILE_BYTES + 1)

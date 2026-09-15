@@ -63,7 +63,7 @@ def _make_response(
 
 
 def _noop_writer() -> MagicMock:
-    """Return a callable mock suitable for ``get_stream_writer``."""
+    """Return a callable mock suitable for get_stream_writer."""
     return MagicMock()
 
 
@@ -369,8 +369,7 @@ class TestMasterHooks:
 
 
 class TestCallIdentityResolution:
-    """master_before_execute_hook resolves the calling user from RunnableConfig
-    metadata — once, before any hook reads it."""
+    """master_before_execute_hook resolves the calling user from RunnableConfig metadata, once."""
 
     def _with_config(self, top_id: str | None, meta_id: str | None) -> Any:
         params = _make_params({"subject": "s"})
@@ -506,7 +505,7 @@ class TestCallIdentityResolution:
         assert "user_id" not in self._run(params)
 
     def _logged(self, params: Any) -> Any:
-        """The wide-event log calls the master hook made for one tool call."""
+        """Run master_before_execute_hook once and return the mocked wide-event log."""
         from app.utils.composio_hooks.registry import (
             hook_registry,
             master_before_execute_hook,

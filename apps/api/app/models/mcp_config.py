@@ -11,13 +11,13 @@ ProbedAuthType = Literal["none", "oauth", "bearer", "unknown"]
 
 
 class McpAuthChallenge(TypedDict, total=False):
-    """Parsed ``WWW-Authenticate`` challenge from a 401 on the MCP endpoint.
+    """Parsed WWW-Authenticate challenge from a 401 on the MCP endpoint.
 
-    A ``TypedDict``, not a model (Type Safety item 6): it never crosses a
-    validation boundary — ``extract_auth_challenge`` builds it field by field
+    A TypedDict, not a model (Type Safety item 6): it never crosses a
+    validation boundary — extract_auth_challenge builds it field by field
     from response headers — and every key is optional because a server may send
-    a bare ``WWW-Authenticate`` with none of the OAuth hints. An empty dict is
-    the "no auth required" signal, so ``total=False`` is load-bearing.
+    a bare WWW-Authenticate with none of the OAuth hints. An empty dict is
+    the "no auth required" signal, so total=False is load-bearing.
     """
 
     raw: str
@@ -30,11 +30,11 @@ class McpAuthChallenge(TypedDict, total=False):
 class McpProbeResult(TypedDict, total=False):
     """What probing an MCP server reports about its auth requirements.
 
-    ``TypedDict`` because the value stays a plain dict at runtime: it is
+    TypedDict because the value stays a plain dict at runtime: it is
     threaded through the integration-connection service and read with
-    ``.get()`` at several call sites (see Type Safety item 13 — a model here
-    would be a behaviour change, not a typing fix). ``oauth_challenge`` is
-    present only on the OAuth path; ``error`` only when the probe itself failed.
+    .get() at several call sites (see Type Safety item 13 — a model here
+    would be a behaviour change, not a typing fix). oauth_challenge is
+    present only on the OAuth path; error only when the probe itself failed.
     """
 
     requires_auth: bool
@@ -46,7 +46,7 @@ class McpProbeResult(TypedDict, total=False):
 class OAuthErrorResponse(TypedDict):
     """An OAuth error body parsed per RFC 6749 Section 5.2.
 
-    A ``TypedDict``, not a model: ``parse_oauth_error_response`` fills every key
+    A TypedDict, not a model: parse_oauth_error_response fills every key
     itself (falling back to the raw response text when the body is not JSON), so
     there is nothing left to validate.
     """
@@ -61,9 +61,9 @@ class DCRClientRegistration(TypedDict, total=False):
     """The two RFC 7591 registration fields GAIA reads back from storage.
 
     The full registration response is persisted verbatim as JSON, but only the
-    credentials are ever consumed. Naming them keeps ``.get("client_id")``
-    typed ``str | None`` instead of ``Any``; ``total=False`` because a server
-    that issues a public client returns no ``client_secret``.
+    credentials are ever consumed. Naming them keeps .get("client_id")
+    typed str | None instead of Any; total=False because a server
+    that issues a public client returns no client_secret.
     """
 
     client_id: str
@@ -71,10 +71,10 @@ class DCRClientRegistration(TypedDict, total=False):
 
 
 class MCPUseServerConfig(TypedDict, total=False):
-    """One entry under ``mcpServers`` in the config handed to ``mcp_use``.
+    """One entry under mcpServers in the config handed to mcp_use.
 
-    ``total=False`` mirrors how the config is assembled key by key: ``auth`` is
-    ``None`` for unauthenticated servers, and ``headers`` only appears when a
+    total=False mirrors how the config is assembled key by key: auth is
+    None for unauthenticated servers, and headers only appears when a
     bearer token or the Composio platform key has to be injected.
     """
 
@@ -85,20 +85,20 @@ class MCPUseServerConfig(TypedDict, total=False):
 
 
 class MCPUseConfig(TypedDict):
-    """The ``mcp_use`` client config: server entries keyed by integration id."""
+    """The mcp_use client config: server entries keyed by integration id."""
 
     mcpServers: dict[str, MCPUseServerConfig]
 
 
 class McpUiResourceDetails(TypedDict):
-    """An MCP App's HTML plus the content-level ``_meta.ui`` hints beside it.
+    """An MCP App's HTML plus the content-level _meta.ui hints beside it.
 
-    Stays a ``TypedDict``: the streaming layer in ``app/helpers/agent_helpers``
-    guards this value with ``isinstance(..., dict)`` before reading it, so a
-    model here would silently stop emitting ``mcp_app`` events (Type Safety
-    item 13). ``csp`` and ``permissions`` are whatever the MCP server put under
-    ``_meta.ui`` — the MCP Apps spec fixes neither shape, and both are forwarded
-    to the client verbatim — so they stay ``Any`` (item 8).
+    Stays a TypedDict: the streaming layer in app/helpers/agent_helpers
+    guards this value with isinstance(..., dict) before reading it, so a
+    model here would silently stop emitting mcp_app events (Type Safety
+    item 13). csp and permissions are whatever the MCP server put under
+    _meta.ui — the MCP Apps spec fixes neither shape, and both are forwarded
+    to the client verbatim — so they stay Any (item 8).
     """
 
     html: str
@@ -133,11 +133,9 @@ class MCPConfig(BaseModel):
     """Configuration for MCP (Model Context Protocol) integration."""
 
     server_url: str
-    # Canonical dedup key for the URL above (helpers.dedup_server_url_key):
-    # scheme/host lowercased, fragment dropped, trailing slash stripped — while
-    # server_url keeps the exact user-provided path for the connection itself
-    # (some servers distinguish /mcp from /mcp/). Uniquely indexed per creator
-    # (partial index, custom source only); absent on legacy docs until backfilled.
+    # Canonical dedup key (helpers.dedup_server_url_key): scheme/host lowercased, fragment
+    # dropped, trailing slash stripped, while server_url keeps the exact path (servers differ
+    # on /mcp vs /mcp/). Unique per creator (partial index, custom source only); absent on legacy docs until backfilled.
     server_url_normalized: str | None = None
     requires_auth: bool = False
     auth_type: Literal["none", "oauth", "bearer"] | None = None
@@ -184,21 +182,14 @@ class SubAgentConfig(BaseModel):
     # tool supersedes (e.g. GMAIL_FETCH_EMAILS -> GMAIL_FETCH_MESSAGES).
     exclude_tools: list[str] | None = None
     auto_bind_tools: list[str] | None = None
-    # Local/general tools (by name) to bind into this subagent's initial set AND
-    # its spawned chunk-reader children — e.g. query_json/grep for a subagent
-    # that offloads large results and must mine them sandbox-free. Unlike
-    # auto_bind_tools (provider tools, parent-only; children get the hardcoded
-    # read/bash/finish set), these propagate to spawned readers so a fan-out
-    # child can use them too. Declare per-integration here instead of branching
-    # on the provider name in the subagent factory.
+    # Local/general tools to bind into this subagent's initial set AND its
+    # spawned chunk-reader children (e.g. query_json/grep for an offloading
+    # subagent) — unlike auto_bind_tools, which is provider tools, parent-only.
     extra_initial_tools: list[str] | None = None
     memory_prompt: str | None = None
-    # When False, finish_task is omitted from the subagent's tool set. The
-    # subagent must terminate naturally with an AIMessage. The streaming
-    # layer's complete_message accumulator captures that text directly —
-    # no special-case extraction needed. Use False for read-only / answer-
-    # only subagents (e.g. doc fetchers). Default True preserves the
-    # explicit-completion contract for action subagents.
+    # When False, finish_task is omitted and the subagent must terminate
+    # naturally with an AIMessage, which complete_message captures directly.
+    # Use False for read-only/answer-only subagents (e.g. doc fetchers).
     include_finish_task: bool = True
 
 

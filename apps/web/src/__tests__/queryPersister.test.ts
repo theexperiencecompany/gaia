@@ -1,12 +1,10 @@
 /**
  * Regression tests for the React Query IndexedDB persister's failure latch.
  *
- * iOS Safari refuses to open IndexedDB under private browsing / storage
- * pressure, so `createIDBPersister` disables persistence for the whole session
- * after the FIRST failure. Untested, that latch is one `disabled = true` away
- * from either never engaging (every persist tick rejects as an uncaught
- * promise) or engaging spuriously. These pin both halves: the first failure
- * degrades, and nothing afterwards touches `idb-keyval` again.
+ * iOS Safari can refuse to open IndexedDB under storage pressure, so
+ * `createIDBPersister` disables persistence session-wide after the FIRST
+ * failure. Pins both halves: the first failure degrades, and nothing
+ * afterwards touches `idb-keyval` again.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -17,32 +17,17 @@ http_async_client = httpx.AsyncClient()
 async def prepare_weather_data(
     lat: float, lon: float, location_info: dict[str, Any], api_key: str
 ) -> dict[str, Any]:
-    """
-    Fetch and prepare weather data for a location.
-
-    Args:
-        lat (float): Latitude coordinate
-        lon (float): Longitude coordinate
-        location_info (Dict[str, Any]): Location information including city, country and region
-        api_key (str): OpenWeatherMap API key
-
-    Returns:
-        Dict[str, Any]: Formatted weather data
-    """
-    # Extract location details
+    """Fetch and prepare weather data for a location."""
     city = location_info.get("city")
     country = location_info.get("country")
     region = location_info.get("region")
 
-    # Fetch current weather and forecast data in parallel
     current_weather, forecast_data = await fetch_weather_data(lat, lon, api_key)
 
-    # Process forecast data to create a daily summary
     daily_forecasts = process_forecast_data(forecast_data)
 
     # Ensure required fields exist in 'sys' object to avoid validation errors
     if "sys" in current_weather:
-        # Make sure the country field is present in the sys object
         if "country" not in current_weather["sys"]:
             # If we have country information from geolocation, use it
             if country:
@@ -77,17 +62,7 @@ async def prepare_weather_data(
 
 
 async def fetch_weather_data(lat: float, lon: float, api_key: str) -> tuple[dict, dict]:
-    """
-    Fetch weather and forecast data in parallel using asyncio.
-
-    Args:
-        lat (float): Latitude coordinate
-        lon (float): Longitude coordinate
-        api_key (str): OpenWeatherMap API key
-
-    Returns:
-        Tuple[Dict, Dict]: A tuple containing (current_weather, forecast_data)
-    """
+    """Fetch weather and forecast data in parallel; returns (current_weather, forecast_data)."""
     weather_url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric"
     forecast_url = f"http://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid={api_key}&units=metric"
 
@@ -107,16 +82,7 @@ async def fetch_weather_data(lat: float, lon: float, api_key: str) -> tuple[dict
 async def get_location_data(
     ip_address: str | None = None, location_name: str | None = None
 ) -> dict[str, Any]:
-    """
-    Get location data either from a location name (via geocoding) or an IP address.
-
-    Args:
-        ip_address (str, optional): The user's IP address
-        location_name (str, optional): Name of a specific location
-
-    Returns:
-        Dict[str, Any]: Location data including coordinates and metadata
-    """
+    """Get location data either from a location name (via geocoding) or an IP address."""
     cache_key = None
     if location_name:
         # Create a cache key for this location
@@ -164,21 +130,7 @@ async def get_location_data(
 
 
 async def user_weather(location_name: str | None = None) -> dict[str, Any] | str:
-    """
-    Fetch weather data for a specified location.
-
-    This function has been modularized to separate concerns:
-    1. Get location data (either from IP or location name)
-    2. Check the cache for existing weather data
-    3. Fetch and format weather data if needed
-    4. Return the formatted response
-
-    Args:
-        location_name (str, optional): Name of a specific location to get weather for
-
-    Yields:
-        str: JSON-formatted weather data as server-sent events
-    """
+    """Fetch weather data for a specified location."""
     log.set(operation="user_weather", location_name=location_name)
     try:
         api_key = settings.OPENWEATHER_API_KEY
@@ -222,15 +174,7 @@ async def user_weather(location_name: str | None = None) -> dict[str, Any] | str
 
 
 def process_forecast_data(forecast_data: dict) -> list[dict]:
-    """
-    Process raw forecast data from OpenWeatherMap API into daily summaries.
-
-    Args:
-        forecast_data (Dict): Raw forecast data from OpenWeatherMap API
-
-    Returns:
-        List[Dict]: List of daily forecast summaries
-    """
+    """Process raw forecast data from OpenWeatherMap API into daily summaries."""
 
     daily_data = defaultdict(list)
 
@@ -298,22 +242,13 @@ def process_forecast_data(forecast_data: dict) -> list[dict]:
 
         daily_forecasts.append(daily_summary)
 
-    # Sort by date
     daily_forecasts.sort(key=lambda x: x["date"])
 
     return daily_forecasts
 
 
 async def geocode_location(location_name: str) -> dict[str, Any]:
-    """
-    Geocode a location name to latitude and longitude using OpenStreetMap Nominatim API.
-
-    Args:
-        location_name (str): The name of the location to geocode
-
-    Returns:
-        Dict[str, Any]: Dictionary containing location data including latitude and longitude
-    """
+    """Geocode a location name to latitude and longitude using OpenStreetMap Nominatim API."""
     log.set(operation="geocode_location", location_name=location_name)
     try:
         # OpenStreetMap Nominatim API follows usage policy requiring a valid user agent

@@ -87,10 +87,9 @@ async def remove_integration_from_workspace(
             user={"id": user_id},
             integration={"id": integration_id},
         )
-        # Removing a connected integration severs the connection, so attribute
-        # it the same as an explicit disconnect; a never-connected record is
-        # just removed. Analytics-only read: a failed status lookup must never
-        # block the removal itself.
+        # Removing a connected integration is attributed the same as an
+        # explicit disconnect. Analytics-only read: a failed status lookup
+        # must never block the removal itself.
         try:
             was_connected = await user_integration_repository.is_connected(user_id, integration_id)
         except Exception as e:

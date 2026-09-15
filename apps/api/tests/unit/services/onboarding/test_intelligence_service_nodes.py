@@ -1,6 +1,6 @@
 """Unit tests for the individual DAG nodes in intelligence_service.
 
-Each `_run_*` node is a fail-soft wrapper: it must emit its stage and return a
+Each _run_* node is a fail-soft wrapper: it must emit its stage and return a
 usable default even when its dependency raises, because the pipeline gathers all
 of them and a leaked exception would abort the personalization run. These tests
 pin that contract down, node by node, faking only the service/repository
@@ -784,8 +784,7 @@ class TestRunHoloCard:
         assert emit.await_args.args[1] is OnboardingStage.HOLO_READY
 
     async def test_done_line_reports_each_phase_duration(self, holo_stack: Any) -> None:
-        """The durations are the only trace of where holo-card time goes, so
-        each one is the rounded difference of its own bracket."""
+        """Each duration is the rounded difference of its own bracket, the only trace of where time goes."""
         clock = [0.0, 10.0, 10.5, 20.0, 21.2345, 30.0, 30.75, 31.0]
         with (
             patch(f"{MODULE}.time.monotonic", side_effect=clock),
@@ -836,8 +835,7 @@ class TestRunHoloCard:
         assert "Goal: grow the team" in summary
 
     async def test_only_the_top_five_contacts_reach_the_card(self, holo_stack: Any) -> None:
-        """The cap keeps the card prompt bounded; slipping it by one is invisible
-        in every fixture with fewer than six important emails."""
+        """Slipping the cap by one is invisible in every fixture with fewer than six important emails."""
         content, _, _ = holo_stack
         emails = [
             EmailSummary(sender=f"s{i}@x.com", subject="s", why_important="w") for i in range(6)

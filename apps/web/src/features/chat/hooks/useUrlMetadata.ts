@@ -94,13 +94,8 @@ const batchUrlRequest = (url: string): Promise<UrlMetadata> => {
 };
 
 /**
- * Custom hook to fetch URL metadata with React Query optimization
- * Features:
- * - Automatic caching with 5-minute stale time
- * - Deduplication of identical requests
- * - Background refetching for fresh data
- * - Error handling with retry logic
- * - Conditional fetching based on URL validity
+ * Fetches URL metadata via React Query, deduped and batched (1s window)
+ * across identical calls, with a 5-minute stale time.
  */
 export const useUrlMetadata = (url: string | undefined | null) => {
   const isValidUrl = url && isPreviewable(url);

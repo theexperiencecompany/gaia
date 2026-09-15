@@ -48,9 +48,7 @@ router = APIRouter()
 async def create_conversation_endpoint(
     conversation: ConversationModel, user: AuthenticatedUser = Depends(get_current_user)
 ) -> CreateConversationResponse:
-    """
-    Create a new conversation.
-    """
+    """Create a new conversation."""
     log.set(
         user={"id": user["user_id"], "plan": user.get("plan")},
         conversation={"operation": "create", "is_new": True},
@@ -84,9 +82,7 @@ async def get_conversations_endpoint(
         description="Number of conversations per page (1-100)",
     ),
 ) -> ConversationListResponse:
-    """
-    Retrieve paginated conversations for the authenticated user.
-    """
+    """Retrieve paginated conversations for the authenticated user."""
     log.set(
         user={"id": user["user_id"]},
         conversation={"operation": "list", "page": page, "limit": limit},
@@ -108,9 +104,7 @@ async def get_conversations_endpoint(
 async def batch_sync_conversations_endpoint(
     request: BatchSyncRequest, user: AuthenticatedUser = Depends(get_current_user)
 ) -> BatchSyncResponse:
-    """
-    Batch sync conversations - returns only stale conversations with messages.
-    """
+    """Batch sync conversations - returns only stale conversations with messages."""
     log.set(
         user={"id": user["user_id"]},
         conversation={"operation": "batch_sync"},
@@ -140,9 +134,7 @@ async def get_conversation_endpoint(
 async def update_messages_endpoint(
     request: UpdateMessagesRequest, user: AuthenticatedUser = Depends(get_current_user)
 ) -> UpdateMessagesResponse:
-    """
-    Update the messages of a conversation.
-    """
+    """Update the messages of a conversation."""
     log.set(
         user={"id": user["user_id"]},
         conversation={"operation": "update_messages"},
@@ -156,9 +148,7 @@ async def star_conversation_endpoint(
     body: StarredUpdate,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> StarConversationResponse:
-    """
-    Star or unstar a conversation.
-    """
+    """Star or unstar a conversation."""
     log.set(
         user={"id": user["user_id"]},
         conversation={
@@ -174,9 +164,7 @@ async def star_conversation_endpoint(
 async def delete_all_conversations_endpoint(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> DeleteAllConversationsResponse:
-    """
-    Delete all conversations for the authenticated user.
-    """
+    """Delete all conversations for the authenticated user."""
     log.set(
         user={"id": user["user_id"]},
         conversation={"operation": "delete_all"},
@@ -188,9 +176,7 @@ async def delete_all_conversations_endpoint(
 async def delete_conversation_endpoint(
     conversation_id: str, user: AuthenticatedUser = Depends(get_current_user)
 ) -> ConversationActionResponse:
-    """
-    Delete a specific conversation by its ID.
-    """
+    """Delete a specific conversation by its ID."""
     log.set(
         user={"id": user["user_id"]},
         conversation={"operation": "delete", "id": conversation_id},
@@ -205,9 +191,7 @@ async def pin_message_endpoint(
     body: PinnedUpdate,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> PinMessageResponse:
-    """
-    Pin or unpin a message within a conversation.
-    """
+    """Pin or unpin a message within a conversation."""
     log.set(
         user={"id": user["user_id"]},
         conversation={"operation": "pin_message", "id": conversation_id},
@@ -219,9 +203,7 @@ async def pin_message_endpoint(
 async def get_starred_messages_endpoint(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> PinnedMessagesResponse:
-    """
-    Retrieve all pinned messages across all conversations.
-    """
+    """Retrieve all pinned messages across all conversations."""
     log.set(
         user={"id": user["user_id"]},
         conversation={"operation": "get_pinned"},
@@ -235,9 +217,7 @@ async def update_conversation_description_endpoint(
     body: UpdateDescriptionRequest,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> UpdateDescriptionResponse:
-    """
-    Update the description of a specific conversation.
-    """
+    """Update the description of a specific conversation."""
     log.set(
         user={"id": user["user_id"]},
         conversation={"operation": "update_description", "id": conversation_id},
@@ -250,9 +230,7 @@ async def mark_as_read_endpoint(
     conversation_id: str,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> ConversationActionResponse:
-    """
-    Mark a conversation as read.
-    """
+    """Mark a conversation as read."""
     log.set(
         user={"id": user["user_id"]},
         conversation={"operation": "mark_read", "id": conversation_id},
@@ -265,9 +243,7 @@ async def mark_as_unread_endpoint(
     conversation_id: str,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> ConversationActionResponse:
-    """
-    Mark a conversation as unread.
-    """
+    """Mark a conversation as unread."""
     log.set(
         user={"id": user["user_id"]},
         conversation={"operation": "mark_unread", "id": conversation_id},

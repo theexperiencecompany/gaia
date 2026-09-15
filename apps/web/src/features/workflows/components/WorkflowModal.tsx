@@ -188,10 +188,9 @@ export default function WorkflowModal({
     dispatch,
   });
 
-  // Defer the form reset until after the modal's exit animation finishes —
-  // resetting synchronously on close blanks out the visible form fields while
-  // the modal is still fading out, which reads as an abrupt close. The delay
-  // matches HeroUI's modal exit transition.
+  // Defer the form reset until after the modal's exit animation (250ms, matching
+  // HeroUI's transition) — resetting synchronously would blank the visible
+  // fields while the modal is still fading out, reading as an abrupt close.
   useEffect(() => {
     if (isOpen) return;
     const timer = globalThis.setTimeout(() => {
@@ -218,13 +217,9 @@ export default function WorkflowModal({
     wasOpenRef.current = isOpen;
   }, [isOpen, actions.clearCreationError, mode]);
 
-  // Sync the local working copy from the prop only when a DIFFERENT workflow is
-  // passed (modal opens / switches workflow). A background list refetch (e.g.
-  // after save/regenerate) re-passes the SAME workflow with possibly-stale
-  // steps; syncing on every object change would clobber freshly-regenerated
-  // steps and flash the old ones. currentWorkflow is the edit-session truth.
-  // Adjusting during render (instead of in an effect) lets React discard the
-  // stale frame before anything paints.
+  // Sync the local copy from the prop only when a DIFFERENT workflow is passed
+  // — a background refetch re-passes the SAME workflow with possibly-stale
+  // steps, so syncing on every change would clobber freshly-regenerated ones; adjusting during render lets React discard the stale frame before painting.
   const [syncedWorkflowId, setSyncedWorkflowId] = useState<string | null>(null);
   const nextWorkflowId = existingWorkflow?.id ?? null;
   if (nextWorkflowId !== syncedWorkflowId) {

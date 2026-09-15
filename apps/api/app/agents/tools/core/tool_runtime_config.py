@@ -12,9 +12,9 @@ from app.override.langgraph_bigtool.agent_config import ToolRetrievalConfig
 class ToolRuntimeConfig:
     """Tool runtime behavior shared by parent and spawned child execution.
 
-    - `initial_tool_names`: regular tools bound immediately (e.g. read, bash)
-    - `enable_retrieve_tools`: whether retrieve_tools should be available
-    - `include_subagents_in_retrieve`: retrieve_tools discovery scope toggle
+    - initial_tool_names: regular tools bound immediately (e.g. read, bash)
+    - enable_retrieve_tools: whether retrieve_tools should be available
+    - include_subagents_in_retrieve: retrieve_tools discovery scope toggle
     """
 
     initial_tool_names: list[str] = field(default_factory=list)
@@ -30,7 +30,7 @@ def build_create_agent_tool_kwargs(
 ) -> dict[str, Any]:
     """Build create_agent tool config from shared tool runtime config.
 
-    `bindable_tool_names` is the set of tools the agent's graph can actually bind
+    bindable_tool_names is the set of tools the agent's graph can actually bind
     (its scoped registry). Pass it for scoped agents so retrieve_tools validates
     binding against what the graph honors; leave None for full-registry agents.
     """
@@ -77,10 +77,9 @@ def build_provider_parent_tool_runtime_config(
             "bash",
         ]
     else:
-        # Dynamic mode: provider tools are NOT pre-bound (they're retrieved on
-        # demand via retrieve_tools).  Include auto_bind_tool_names in full so
-        # latency-critical tools are immediately available at agent startup
-        # regardless of whether they're provider-space tools.
+        # Dynamic mode: provider tools are retrieved on demand via retrieve_tools.
+        # Include auto_bind_tool_names in full so latency-critical tools are
+        # available at agent startup regardless of provider-space status.
         extra_auto_bind = list(auto_bind_tool_names or [])
         initial = [
             "search_memory",
@@ -107,7 +106,7 @@ def build_child_tool_runtime_config(
 ) -> ToolRuntimeConfig:
     """Build spawned child tool runtime config from parent mode.
 
-    ``extra_initial_tool_names`` seeds extra tools into the child's initial bind
+    extra_initial_tool_names seeds extra tools into the child's initial bind
     set — used to hand a spawned reader the sandbox-free file miners
     (query_json/grep) so a chunk-read subagent mines the offloaded file directly
     instead of falling back to read-whole-file + bash.

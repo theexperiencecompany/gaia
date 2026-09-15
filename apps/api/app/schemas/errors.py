@@ -1,10 +1,10 @@
 """The one wire shape for every non-2xx body the API emits.
 
-Every error path — ``AppError``, ``HTTPException`` (string or structured
-``detail``), request validation, the unhandled-exception handler and the
-middlewares that answer before a route runs — renders an ``ErrorEnvelope``
-through ``error_response``. Clients narrow on ``code`` and display
-``message``; nothing is nested under ``detail`` anywhere.
+Every error path — AppError, HTTPException (string or structured
+detail), request validation, the unhandled-exception handler and the
+middlewares that answer before a route runs — renders an ErrorEnvelope
+through error_response. Clients narrow on code and display
+message; nothing is nested under detail anywhere.
 """
 
 from collections.abc import Mapping
@@ -52,7 +52,7 @@ class ErrorEnvelope(BaseModel):
 
     @classmethod
     def from_http_exception(cls, exc: StarletteHTTPException) -> "ErrorEnvelope":
-        """``detail`` is a string, or a mapping; one without a string ``message``
+        """detail is a string, or a mapping; one without a string message
         renders under the status phrase, Starlette's own default for a missing detail."""
         if not isinstance(exc.detail, Mapping):
             return cls._from_context({}, str(exc.detail))
@@ -76,10 +76,10 @@ def error_response(
     envelope: ErrorEnvelope,
     headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
-    """Serialize an envelope as the body of a ``status_code`` response.
+    """Serialize an envelope as the body of a status_code response.
 
     Unset optional fields are omitted; a key an error explicitly carries as
-    null (the 402's ``checkout_url``) stays present, because clients match on
+    null (the 402's checkout_url) stays present, because clients match on
     the full key set.
     """
     return JSONResponse(
@@ -100,7 +100,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 
 def error_responses(descriptions: Mapping[int, str]) -> dict[int | str, dict[str, Any]]:
-    """Route-level ``responses=`` that describe a status without losing the envelope as its body."""
+    """Route-level responses= that describe a status without losing the envelope as its body."""
     return {
         code: {"model": ErrorEnvelope, "description": text} for code, text in descriptions.items()
     }

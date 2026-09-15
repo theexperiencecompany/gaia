@@ -1,15 +1,10 @@
-"""
-Integration Inference Service.
+"""Generate marketplace category and detail-page copy for custom integrations.
 
-LLM-backed inference for published custom integrations: their marketplace
-``category`` and the rich detail-page ``content`` (use cases, how-it-works,
-FAQs). Native integrations ship both curated by hand in
-``app/config/oauth_content.py``; custom integrations get them generated here at
-publish time so they show tailored copy instead of the frontend's generic
-fallbacks.
-
-Both run on the default model via ``get_helper_llm`` + ``ainvoke_llm`` — the same
-path used for memory extraction, follow-ups, and research helpers.
+Native integrations ship both curated by hand in app/config/oauth_content.py;
+custom integrations get them generated here at publish time instead of the
+frontend's generic fallbacks. Both run on the default model via
+get_helper_llm + ainvoke_llm — the same path used for memory extraction,
+follow-ups, and research helpers.
 """
 
 import asyncio
@@ -40,7 +35,7 @@ _CATEGORY_INFERENCE_TIMEOUT_SECONDS = 10
 
 
 def _tools_summary(tools: list[dict[str, Any]], limit: int) -> str:
-    """Comma-joined names of the first ``limit`` tools, or "None" when empty."""
+    """Comma-joined names of the first limit tools, or "None" when empty."""
     names = [str(t.get("name")) for t in tools[:limit] if t.get("name")]
     return ", ".join(names) or "None"
 
@@ -59,9 +54,9 @@ async def infer_integration_category(
     tools: list[dict[str, Any]],
     server_url: str,
 ) -> str:
-    """Classify an integration into one ``INTEGRATION_CATEGORIES`` value.
+    """Classify an integration into one INTEGRATION_CATEGORIES value.
 
-    Falls back to ``"other"`` on any error or an unrecognized response.
+    Falls back to "other" on any error or an unrecognized response.
     """
     log.set(integration={"provider": name, "action": "infer_category"})
     prompt = CATEGORY_INFERENCE_PROMPT.format(
@@ -113,11 +108,11 @@ async def infer_integration_content(
     *,
     user_id: str,
 ) -> IntegrationContent | None:
-    """Generate rich marketplace content for an integration, or ``None``.
+    """Generate rich marketplace content for an integration, or None.
 
-    Best-effort: returns ``None`` on any failure, timeout, or when the result
-    does not satisfy the ``USE_CASES_COUNT`` / ``HOW_IT_WORKS_COUNT`` /
-    ``FAQ_COUNT`` contract, so the caller stays unblocked and the frontend falls
+    Best-effort: returns None on any failure, timeout, or when the result
+    does not satisfy the USE_CASES_COUNT / HOW_IT_WORKS_COUNT /
+    FAQ_COUNT contract, so the caller stays unblocked and the frontend falls
     back to its generic copy. Content is a nice-to-have, never a publish gate.
     """
     log.set(integration={"provider": name, "action": "infer_content"})

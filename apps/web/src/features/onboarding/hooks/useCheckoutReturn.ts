@@ -27,13 +27,11 @@ interface CheckoutReturn {
 }
 
 /**
- * A checkout started inside the wizard returns to `/onboarding?checkout=returned`
- * rather than the standalone result page, so the payment stage confirms the
- * charge in place. The checkout store runs the wait (its one confirmation
- * loop, here fed by the verify call that hands the server the subscription
- * id off the return URL); this hook reads Dodo's query once, starts that
- * wait, and reads a failed outcome straight off the URL. The query is
- * consumed on first render and removed from the address bar immediately.
+ * A checkout started inside the wizard returns to
+ * `/onboarding?checkout=returned` so the payment stage confirms in place. The
+ * checkout store runs the one confirmation loop (fed by the return URL's
+ * subscription id); this hook starts that wait and reads a failed outcome or
+ * timeout off Dodo's query, which is consumed once and stripped from the URL.
  */
 interface ReturnParams {
   returned: boolean;

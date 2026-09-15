@@ -2,12 +2,12 @@
 
 Two independent fixes, both applied at import time:
 
-1. ``composio.utils.shared.json_schema_to_pydantic_type``: anyOf options are
+1. composio.utils.shared.json_schema_to_pydantic_type: anyOf options are
    re-evaluated individually and combined into a plain union, instead of
    letting the library collapse them — the library's single-combiner path
-   yields ``dict`` for bare object options (useless to Pydantic tooling),
+   yields dict for bare object options (useless to Pydantic tooling),
    while the patch yields the generated model class.
-2. ``langchain_core.tools.base._handle_validation_error``: a ``True`` flag
+2. langchain_core.tools.base._handle_validation_error: a True flag
    surfaces the actual validation error text instead of swallowing it.
 """
 

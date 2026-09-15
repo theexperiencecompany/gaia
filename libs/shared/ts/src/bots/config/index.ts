@@ -10,14 +10,11 @@ export { injectInfisicalSecrets } from "./secrets";
 /**
  * Loads and validates the bot configuration from environment variables.
  *
- * Resolution order (first value wins):
- * 1. Existing process env vars (e.g. from Docker / CI)
- * 2. `apps/bots/.env` (shared file, one level up from bot cwd)
- * 3. `<bot>/.env` in cwd (legacy / Docker fallback)
- * 4. Infisical remote secrets (fills remaining gaps)
+ * Resolution order (first value wins): existing process env vars (Docker/CI) →
+ * `apps/bots/.env` (shared) → `<bot>/.env` in cwd (legacy/Docker fallback) →
+ * Infisical remote secrets (fills remaining gaps).
  *
- * @returns The validated BotConfig object.
- * @throws Error if required env vars are missing after all sources are checked.
+ * @throws Error listing which required vars are still missing after all sources are checked.
  */
 export async function loadConfig(): Promise<BotConfig> {
   // Runs inside boot()'s `bot_boot` boundary, so which env sources answered —
@@ -67,12 +64,9 @@ export async function loadConfig(): Promise<BotConfig> {
     );
   }
 
-  // BOT_LOG_HASH_SECRET is the HMAC-SHA256 key used to hash PII (phone numbers,
-  // platform user IDs) in logs. RFC 2104 recommends a key of at least the hash
-  // output size (32 bytes / 256 bits) to prevent brute-force recovery of hashed
-  // identifiers. We document hex-encoded keys, so enforce 64 characters
-  // (= 32 bytes when hex-decoded). A 32-char hex value would only be 16 bytes
-  // and falls below the RFC 2104 floor.
+  // HMAC-SHA256 key for hashing PII (phone numbers, platform user IDs) in logs. RFC 2104
+  // recommends a key >= the hash output size (32 bytes/256 bits); since we document hex-encoded
+  // keys, that's 64 chars (a 32-char hex value is only 16 bytes, below the RFC floor).
   if (botLogHashSecret!.length < 64) {
     throw new Error(
       "BOT_LOG_HASH_SECRET must be at least 64 characters (32 bytes / 256 bits). " +

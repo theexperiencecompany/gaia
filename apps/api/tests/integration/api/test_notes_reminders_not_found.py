@@ -1,11 +1,4 @@
-"""Regression tests: notes & reminders endpoints must surface 404, not 500.
-
-The endpoint handlers wrap the service call in a generic ``except Exception`` that
-raised a 500. A deliberate ``HTTPException(404, ...)`` from the service (or from
-the handler's own not-found check) was caught by that generic clause and masked
-as ``500 Failed to retrieve/update/delete``. The fix re-raises ``HTTPException``
-before the generic catch; these tests pin that a nonexistent id returns 404.
-"""
+"""Regression tests: notes & reminders endpoints must surface 404, not 500."""
 
 from unittest.mock import AsyncMock, patch
 

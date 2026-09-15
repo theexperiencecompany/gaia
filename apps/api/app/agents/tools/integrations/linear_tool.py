@@ -1,9 +1,9 @@
 """Linear tools using Composio custom tool infrastructure.
 
-Linear GraphQL calls go through `linear_utils.graphql_request`, which routes
-through Composio's proxy via `proxy_request_sync`. The proxy attaches the
-user's OAuth token server-side; tools only need `user_id` from
-`auth_credentials`.
+Linear GraphQL calls go through linear_utils.graphql_request, which routes
+through Composio's proxy via proxy_request_sync. The proxy attaches the
+user's OAuth token server-side; tools only need user_id from
+auth_credentials.
 
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """

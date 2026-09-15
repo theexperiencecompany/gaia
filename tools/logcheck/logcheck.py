@@ -174,7 +174,7 @@ def _check_framing(i: int, raw: str, strict_stream: bool) -> tuple[Any, list[Vio
 
 
 def _check_envelope(i: int, raw: str, event: dict[str, Any], surface: str) -> list[Violation]:
-    """The keys, types and limits every emitted line owes, boundary or not."""
+    """Check the keys, types and limits every emitted line owes, boundary or not."""
     out: list[Violation] = []
 
     # Python's json module both emits and accepts bare NaN/Infinity, so a line
@@ -262,7 +262,7 @@ def _check_leaks(i: int, event: dict[str, Any]) -> list[Violation]:
 
 
 def _check_boundary_identity(i: int, event: dict[str, Any]) -> list[Violation]:
-    """What makes a boundary event a boundary event, truncated or not."""
+    """Check what makes a boundary event a boundary event, truncated or not."""
     out: list[Violation] = []
     # Oversized lines are replaced by a minimal entry. Shedding bulk is
     # legitimate; shedding the event's identity and outcome is not — a caller
@@ -294,7 +294,7 @@ def _check_boundary_identity(i: int, event: dict[str, Any]) -> list[Violation]:
 
 
 def _check_bot_event(i: int, event: dict[str, Any]) -> list[Violation]:
-    """The bot boundary event's own shape (libs/shared/ts/src/bots)."""
+    """Check the bot boundary event's own shape (libs/shared/ts/src/bots)."""
     out: list[Violation] = []
     trace = event.get("trace_id")
     # withWideEvent mints the trace_id; app code that sets one of these via
@@ -332,7 +332,7 @@ def _check_bot_event(i: int, event: dict[str, Any]) -> list[Violation]:
 
 
 def _check_worker_event(i: int, event: dict[str, Any]) -> list[Violation]:
-    """The ARQ/background boundary event's own shape.
+    """Check the ARQ/background boundary event's own shape.
 
     ``libs/shared/py/wide_events.py::_wide_event_boundary`` sets ``task`` on
     entry and ``outcome`` on every exit path (success / cancelled / failed), so
@@ -371,7 +371,7 @@ def _check_worker_event(i: int, event: dict[str, Any]) -> list[Violation]:
 
 
 def _check_http_request(i: int, event: dict[str, Any]) -> list[Violation]:
-    """The HTTP boundary event's own shape, and the rule the whole effort exists for."""
+    """Check the HTTP boundary event's own shape, and the rule the whole effort exists for."""
     out = [
         Violation(i, "http-shape", f"missing {key!r}")
         for key in ("path", "method", "status_code")

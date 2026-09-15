@@ -1,14 +1,14 @@
 """Per-conversation executor queue and busy-lock mechanics.
 
 One executor runs per conversation at a time, guarded by the
-``executor:busy:{conversation_id}`` Redis lock. While the lock is held,
-``call_executor`` enqueues additional tasks onto
-``executor:queue:{conversation_id}``; when a run finishes, its finalize step
+executor:busy:{conversation_id} Redis lock. While the lock is held,
+call_executor enqueues additional tasks onto
+executor:queue:{conversation_id}; when a run finishes, its finalize step
 pops the next task here and spawns it.
 
 This module owns the Redis mechanics only — enqueue, pop/prepare, and lock
-value handling. ``pop_next_queued_run`` PREPARES the next run (lock overwrite,
-session registration, stream start, ``executor.stream_started`` WS event) and
+value handling. pop_next_queued_run PREPARES the next run (lock overwrite,
+session registration, stream start, executor.stream_started WS event) and
 returns it; the runner spawns it. That one-way dependency (runner → queue)
 keeps the import graph acyclic.
 """
@@ -54,11 +54,11 @@ QUEUED_STREAM_ID_PREFIX = "queued_"
 class ExecutorRunItem(TypedDict, total=False):
     """The serialized run context stored between an executor turn and its re-dispatch.
 
-    Written by :func:`build_run_item` into the Redis queue and into
-    ``HILApprovalRecord.resume_item``; read back by :func:`prepare_run_from_item`.
+    Written by :func:build_run_item into the Redis queue and into
+    HILApprovalRecord.resume_item; read back by :func:prepare_run_from_item.
 
-    ``total=False`` is the honest shape, not a shortcut: the HIL resume path
-    re-dispatches from ``record.resume_item or {}``, so an absent or empty item
+    total=False is the honest shape, not a shortcut: the HIL resume path
+    re-dispatches from record.resume_item or {}, so an absent or empty item
     is a real, handled input — every read below supplies a default.
     """
 
@@ -72,10 +72,8 @@ class ExecutorRunItem(TypedDict, total=False):
     #: sets it. Read back by ``prepare_run_from_item`` into ``ExecutorRun``.
     bot_message_id: str | None
     #: The workflow execution the run belongs to. It exists only on the workflow
-    #: task's wide event, and a queue pop or HIL resume rebuilds the run in some
-    #: other context (the previous run's finalize, the approval request), so the
-    #: item is the only thing that can carry it across. Read back into
-    #: ``ExecutorRun`` so the resumed run's model calls stay attributable.
+    #: task's wide event, so a queue pop or HIL resume — rebuilt in some other
+    #: context — needs this item to carry it across. Read back into ExecutorRun.
     workflow_execution_id: str | None
     #: Dispatch stamp from ``RunIdentity``; absent on pre-stamp items.
     t_dispatch_perf: float | None
@@ -137,14 +135,9 @@ async def try_acquire_lock(lock_key: str, lock_value: str) -> bool:
 async def get_lock_state(conversation_id: str, stream_id: str, task_id: str | None) -> LockState:
     """Classify the busy lock relative to this run.
 
-    OURS    — the lock still carries this run's value; we may pop/release.
-    FREE    — no lock (TTL expiry, or cancel_executor released it); a stranded
-              queue may need reclaiming, but only via NX so we never trample a
-              concurrent acquirer.
-    FOREIGN — a newer run owns it; a stale finalize must not touch the lock or
-              the queue (the owner's own finalize drains it).
-
-    Redis-unavailable degrades to OURS — the pre-ownership-check behavior.
+    OURS: still carries this run's value. FREE: no lock; a stranded queue may
+    need NX reclaiming, never trampling a concurrent acquirer. FOREIGN: a newer
+    run owns it — a stale finalize leaves it alone. Redis-down degrades to OURS.
     """
     if not redis_cache.client:
         return LockState.OURS
@@ -157,7 +150,7 @@ async def get_lock_state(conversation_id: str, stream_id: str, task_id: str | No
 
 
 async def get_lock_holder(conversation_id: str) -> str | None:
-    """The busy lock's current value, or None when no run holds it (or Redis is down)."""
+    """Return the busy lock's current value, or None when no run holds it (or Redis is down)."""
     if not redis_cache.client:
         return None
     raw = await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
@@ -167,7 +160,7 @@ async def get_lock_holder(conversation_id: str) -> str | None:
 async def is_executor_busy(conversation_id: str) -> bool:
     """Whether ANY executor run (running or parked) holds this conversation's lock.
 
-    Redis-unavailable degrades to ``False``: the caller (HIL early-decision) must
+    Redis-unavailable degrades to False: the caller (HIL early-decision) must
     treat "cannot tell" as "no collector is alive" and fail closed — recording a
     decision nobody will act on is a false promise to the user.
     """
@@ -179,11 +172,9 @@ async def is_executor_busy(conversation_id: str) -> bool:
 async def release_lock_if_owned(conversation_id: str, stream_id: str, task_id: str | None) -> None:
     """Delete the busy lock only while this run still owns it.
 
-    Unconditional deletion let a stale (e.g. cancelled-then-replaced) run's
-    finalize free a lock a NEWER run had acquired, enabling concurrent
-    executors in one conversation. The get→compare→delete here is not atomic,
-    but it closes the deterministic case; the residual window is the
-    microseconds between compare and delete.
+    Unconditional deletion let a stale (cancelled-then-replaced) run free a lock
+    a NEWER run had acquired, enabling concurrent executors. get→compare→delete
+    isn't atomic; the residual race window is microseconds between the two.
     """
     if await get_lock_state(conversation_id, stream_id, task_id) is LockState.OURS:
         await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
@@ -194,11 +185,9 @@ async def extend_lock_if_owned(
 ) -> bool:
     """Re-arm the busy lock's TTL while this run still owns it.
 
-    For a run that parks on a HIL approval: its lock's TTL has been counting down
-    since the run *started*, but the pause may outlive it, and a lock that lapses
-    under a checkpointed interrupt lets a new run take the thread and discard it.
-    Ownership-checked like ``release_lock_if_owned`` — a stale run must never
-    extend a lock a newer one now holds. Returns whether the TTL was re-armed.
+    A run parked on a HIL approval keeps counting down a TTL that started at run
+    start; a lapsed lock under a checkpointed interrupt lets a new run take the
+    thread. Ownership-checked like release_lock_if_owned. Returns whether re-armed.
     """
     if not redis_cache.client:
         return False
@@ -212,18 +201,10 @@ async def extend_lock_if_owned(
 async def reclaim_stranded_task(conversation_id: str) -> PreparedQueuedTask | None:
     """Claim a free lock and pop a task that would otherwise strand.
 
-    Two ways a queued task ends up with no lock holder to drain it:
-      - a call_executor enqueued in the race window between finalize's empty
-        pop and its lock release;
-      - cancel_executor freed the lock while tasks remained queued.
-    Without a reclaim pass the task sits in Redis until the next executor run
-    for that conversation — or silently expires with the queue TTL.
-
-    NX-claims the lock with a sentinel first, so a concurrent call_executor
-    acquirer always wins cleanly (their finalize will drain the queue instead).
-    The sentinel parses as a harmless no-op for cancel_executor. A task
-    enqueued after this pass's empty pop re-enters the same (vanishingly
-    rare) race; the next executor run drains it.
+    Two causes: call_executor enqueuing in the race window between finalize's
+    empty pop and lock release, or cancel_executor freeing the lock with tasks
+    still queued. NX-claims with a sentinel first so a concurrent call_executor
+    always wins cleanly; the sentinel is a harmless no-op for cancel_executor.
     """
     if not redis_cache.client:
         return None
@@ -243,7 +224,7 @@ async def reclaim_stranded_task(conversation_id: str) -> PreparedQueuedTask | No
 
 
 async def enqueue_task(queue_key: str, item: ExecutorRunItem) -> None:
-    """Push a run item (see :func:`build_run_item`) to the executor queue.
+    """Push a run item (see :func:build_run_item) to the executor queue.
 
     Takes the built item rather than its fields: the item is the one shape a
     queued run is rebuilt from, so the fields it carries belong in one place.
@@ -261,15 +242,9 @@ async def enqueue_collection_run(
 ) -> bool:
     """Queue a wake-up turn to collect landed background-subagent work.
 
-    The "rest" contract: an executor may end its turn while background subagents
-    are still running; when their work lands (result or HIL park) with no
-    executor alive to collect it, this queues a fresh turn whose task is to join
-    and report. The SETNX marker keeps it to one queued collection at a time —
-    the join clears it when it actually runs. Returns whether a run was queued.
-
-    ``thread_id`` is forced back to the conversation id: a subagent's
-    configurable carries the SUBAGENT thread, and the collection turn must run
-    on the executor's own thread.
+    An executor may end its turn while subagents keep running; when work lands
+    with none alive to collect it, this queues a join/report turn (SETNX limits
+    one queued collection). thread_id is forced to the conversation id, not the subagent's own.
     """
     if not redis_cache.client:
         return False
@@ -304,7 +279,7 @@ async def enqueue_collection_run(
 
 
 async def clear_collection_marker(conversation_id: str) -> None:
-    """A join is running — future landings may queue a fresh collection turn."""
+    """Clear the collection marker so a future landing can queue a fresh collection turn."""
     if redis_cache.client:
         await redis_cache.client.delete(f"{EXECUTOR_COLLECT_MARKER_PREFIX}{conversation_id}")
 
@@ -322,17 +297,10 @@ def decode_raw_item(raw: bytes | memoryview | str) -> str:
 async def pop_next_queued_run(conversation_id: str) -> PreparedQueuedTask | None:
     """Pop the next queued task for this conversation and prepare it for spawning.
 
-    Called from the runner's finalize step. Overwrites the executor busy lock
-    with the next task's value (no intervening delete) before returning, so the
-    queued run inherits the lock atomically and a concurrent call_executor
-    cannot acquire it via SET NX in a delete→re-set gap.
-
-    Registers the QUEUED session (with the executor pre-marked spawned — queued
-    runs have no chat_service to register for them), starts stream progress
-    tracking, and broadcasts ``executor.stream_started`` so the frontend opens a
-    live SSE subscription. Spawning is the caller's job.
-
-    Returns None if the queue was empty or unparseable (caller releases the lock).
+    Overwrites the busy lock with the next task's value (no intervening delete),
+    so the queued run inherits it atomically and a concurrent call_executor can't
+    sneak in via SET NX. Also registers the QUEUED session, starts stream tracking,
+    and broadcasts executor.stream_started; spawning is the caller's job.
     """
     if not redis_cache.client:
         return None
@@ -362,13 +330,12 @@ def build_run_item(
     identity: RunIdentity,
     workflow_execution_id: str | None = None,
 ) -> ExecutorRunItem:
-    """The one serialized run-context shape: written by the queue and the HIL
-    resume store, read back by ``prepare_run_from_item``. Add fields here, not
-    at the write sites, or a resumed run silently drops what a queued run keeps.
+    """Build the one serialized run-context shape, read back by prepare_run_from_item.
 
-    ``workflow_execution_id`` defaults to the execution in flight on the caller's
-    wide event — a run that already knows its own passes it explicitly, since a
-    pause is recorded from inside the run's boundary, not the workflow task's."""
+    Add fields here, not at the write sites, or a resumed run silently drops what
+    a queued run keeps. workflow_execution_id defaults to the in-flight execution
+    on the caller's wide event, since a pause is recorded inside the run's boundary.
+    """
     return {
         "task": task,
         "task_id": identity.task_id,
@@ -383,13 +350,11 @@ def build_run_item(
 
 
 def safe_configurable(configurable: AgentConfigurable) -> AgentConfigurable:
-    """The serializable subset of a ``configurable``, safe to persist and rebuild
-    a run from — the GAIA-owned keys minus the run-scoped ones.
+    """Keep the serializable, GAIA-owned, non-run-scoped subset of a configurable.
 
-    Every surviving key is an ``AgentConfigurable`` key by construction (Type
-    Safety item 12). A declared key holding an unserializable value is dropped
-    with a WARNING rather than in silence: silent dropping is how a queued run
-    quietly stopped being the run the user started.
+    Every surviving key is an AgentConfigurable key by construction (Type Safety
+    item 12). An unserializable value is dropped with a WARNING — silent dropping
+    is how a queued run quietly stopped being the run the user started.
     """
     kept: dict[str, Any] = {}
     for key, value in configurable.items():
@@ -428,11 +393,9 @@ async def prepare_run_from_item(
     user_id: str = configurable.get("user_id", "")
 
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-    # Overwrite the busy lock with this queued run's value using the RAW client,
-    # matching try_acquire_lock / get_lock_state. redis_cache.set() JSON-encodes
-    # the string (wrapping it in quotes), which get_lock_state's raw read would
-    # never match — so the queued run would see its own lock as FOREIGN, strand
-    # the queue, and leave the lock wedged until its TTL.
+    # Overwrite the busy lock with the RAW client, matching try_acquire_lock /
+    # get_lock_state — redis_cache.set() JSON-encodes the string (adds quotes),
+    # which would make the queued run see its own lock as FOREIGN and strand the queue.
     await redis_cache.client.set(
         lock_key,
         build_lock_value(queued_stream_id, task_id or ""),

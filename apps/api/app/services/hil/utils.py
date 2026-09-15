@@ -5,7 +5,7 @@ the graph state, the untrusted argument payload — is read through here, so the
 that make decisions stay about decisions.
 
 The graph-state readers deliberately expose tool *calls* and never message *content*: the
-assistant's prose must never reach its own gate (see ``intent.py``).
+assistant's prose must never reach its own gate (see intent.py).
 """
 
 from dataclasses import dataclass
@@ -48,11 +48,10 @@ class PriorCall:
 
 
 def unpack_tool_call(request: ToolCallRequest) -> GatedCall:
-    """The pending call, whether the framework handed it over as a dict or an object."""
-    # ToolCallRequest.tool_call is typed ToolCall (a dict), but dataclass fields
-    # aren't runtime-validated — some framework versions/call paths have handed
-    # this over as an object with .name/.id/.args instead. Widen to object so
-    # that branch stays a real, reachable fallback rather than dead code.
+    """Return the pending call, whether the framework handed it over as a dict or an object."""
+    # Some framework versions/call paths hand tool_call over as an object with
+    # .name/.id/.args instead of the typed dict; widen to object so that branch
+    # stays a real, reachable fallback rather than dead code.
     call = cast(object, request.tool_call)
     if isinstance(call, dict):
         return GatedCall(
@@ -76,7 +75,7 @@ def tool_description(tool: BaseTool | None) -> str:
 
 
 def configurable_of(request: ToolCallRequest) -> AgentConfigurable:
-    """The run's ``configurable``, under this module's HIL-facing vocabulary."""
+    """Return the run's configurable, under this module's HIL-facing vocabulary."""
     return runtime_configurable(request)
 
 
@@ -84,7 +83,7 @@ def configurable_of(request: ToolCallRequest) -> AgentConfigurable:
 
 
 def current_tool_calls(state: object) -> list[dict[str, Any]]:
-    """The tool calls of the AI message this node is executing (its last one).
+    """Return the tool calls of the AI message this node is executing (its last one).
 
     These are the pending call's *siblings* — what else the model asked for in the same
     turn. The gate needs them because a sibling that pauses re-runs this whole node.
@@ -97,15 +96,12 @@ def current_tool_calls(state: object) -> list[dict[str, Any]]:
 
 
 def prior_tool_calls(state: object, exclude_id: str) -> list[PriorCall]:
-    """The tool calls this run already made, oldest first — names and args only.
+    """Return the tool calls this run already made, oldest first — names and args only.
 
-    ``AIMessage.content`` (the assistant's prose) is deliberately never read: it is the
-    one channel through which the agent could argue with its own gate. Tool calls carry
-    the provenance the judge legitimately needs — "where did this recipient come from?" —
-    without carrying an argument.
-
-    ``exclude_id`` drops the pending call itself, which is already in state. Matched on
-    tool_call id, not name: an earlier call of the *same* tool is real prior context.
+    AIMessage.content (the assistant's prose) is deliberately never read, since it is
+    the one channel through which the agent could argue with its own gate. exclude_id
+    drops the pending call itself; matched on id, not name, since an earlier call of
+    the *same* tool is real prior context.
     """
     calls = [
         PriorCall(name=call.get("name", ""), args=call.get("args", {}) or {})
@@ -133,8 +129,11 @@ def _state_get(state: object, key: str) -> object:
 
 
 def args_preview(args: dict[str, Any]) -> str:
-    """The pending call's arguments, JSON-encoded so a quote or newline inside a value
-    cannot break out of the payload and read as prompt text."""
+    """JSON-encode the pending call's arguments.
+
+    JSON-encoding means a quote or newline inside a value cannot break out of the
+    payload and read as prompt text.
+    """
     return clip_text(json.dumps(args or {}, default=str), HIL_JUDGE_MAX_ARGS_CHARS)
 
 
@@ -150,7 +149,7 @@ def approval_window_label() -> str:
     """How long the gate waited, in words, for the expiry message to the model.
 
     The configured window, not a measured elapsed time: the sweep resolves an
-    approval within a tick of ``expires_at``, so the two agree to within a minute
+    approval within a tick of expires_at, so the two agree to within a minute
     out of hours. Threading a real duration through the resume payload would buy
     nothing the user could notice.
     """
@@ -162,7 +161,7 @@ def approval_window_label() -> str:
 
 
 def untrusted_fence() -> str:
-    """A per-call random marker around untrusted content in a judge prompt.
+    """Build a per-call random marker around untrusted content in a judge prompt.
 
     Random rather than a fixed tag: an attacker who has seen the prompt can close a fixed
     tag and break out into instruction context, but cannot guess this.

@@ -366,15 +366,7 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
       deferred: false,
     });
 
-    // We trigger handleInteraction indirectly through the InteractionCreate handler.
-    // Since handleInteraction is private, we invoke it via the event listener that
-    // the real registerEvents() wires up. Instead, we replicate the target creation
-    // by checking what the adapter does when a non-gaia command arrives.
-    //
-    // To test deferral: call dispatchCommand manually through the adapter's protected API.
-    // We do this by triggering the public-facing path that the adapter uses.
-
-    // Manually invoke the private handleInteraction via casting.
+    // handleInteraction is private; invoke via cast (registerEvents() wires it internally).
     await (
       adapter as unknown as {
         handleInteraction: (i: typeof interaction) => Promise<void>;

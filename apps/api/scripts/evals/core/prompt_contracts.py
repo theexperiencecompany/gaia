@@ -1,30 +1,17 @@
 """Eval contracts anchored to the prompt text GAIA actually ships.
 
-The problem this exists to kill: every judge rubric in this harness used to be
-hand-written YAML prose. A rubric like "the reply mirrors the user's tone" is a
-*paraphrase* of `COMMS_AGENT_PROMPT`, frozen at the moment someone typed it. Edit
-the prompt — soften the rule, rename the section, delete it outright — and not a
-single eval notices. The suite keeps grading a spec the product stopped shipping,
-and reports green while the thing it claims to measure has moved.
+Every judge rubric here used to be hand-written prose that paraphrased a
+prompt at the moment someone typed it; editing the prompt left the eval
+grading a spec the product no longer ships, silently green. A clause is a
+named, verbatim span of a live prompt constant, quoted instead of restated,
+so an edit changes what the evals grade with no YAML to update.
 
-A **clause** is a named, verbatim span of a live prompt constant. Rubrics quote
-the clause instead of restating it, so a prompt edit changes what the evals grade
-with no YAML to update. `suites/quality.py::openui_policy_criteria` proved the
-shape on the OpenUI surface policy; this module is that idea generalised, and it
-is where the OpenUI extraction converges once the harness freeze lifts.
+Resolution fails loud: a missing anchor raises ClauseResolutionError, with no
+cached copy, no default, and no "best effort" match. contract_failures turns
+that into a CI gate (tests/unit/evals/test_prompt_contracts.py).
 
-**Resolution fails loud, always.** A clause whose anchor no longer appears —
-section renamed, rule deleted, prompt restructured — raises
-:class:`ClauseResolutionError`. There is no cached copy, no default, no empty
-string, and no "best effort" match. A silent fallback would recreate precisely
-the bug this module exists to fix: an eval that keeps passing because it quietly
-stopped reading the prompt. :func:`contract_failures` turns that property into a
-CI gate (`tests/unit/evals/test_prompt_contracts.py`).
-
-Anchors are matched as **exact substrings, and must occur exactly once**.
-Ambiguity is treated as a failure rather than resolved by "first match": once an
-anchor matches two places, it no longer identifies the rule, and the extract
-would drift the next time either copy is edited.
+Anchors are exact substrings that must occur exactly once; a match in two
+places is a failure, not resolved by "first match".
 """
 
 from __future__ import annotations
@@ -34,13 +21,9 @@ from functools import cache
 import importlib
 import textwrap
 
-#: Prompt constants a clause may be anchored in, as ``(module, attribute)``.
-#:
-#: Loaded lazily by :func:`prompt_text` rather than at module import: importing
-#: ``openui_prompts`` pulls in app settings (Infisical, validators), and
-#: ``__main__`` imports every suite module eagerly, so an import-time failure
-#: here would take down every suite's run rather than just the cases that
-#: actually depend on a prompt.
+#: Prompt constants a clause may be anchored in, as (module, attribute).
+#: Loaded lazily by prompt_text, not at import time, since __main__ imports
+#: every suite eagerly and an early failure would take down every suite's run.
 PROMPT_SOURCES: dict[str, tuple[str, str]] = {
     "comms": ("app.agents.prompts.comms_prompts", "COMMS_AGENT_PROMPT"),
     "executor": ("app.agents.prompts.comms_prompts", "EXECUTOR_AGENT_PROMPT"),
@@ -65,17 +48,14 @@ class ClauseResolutionError(Exception):
 class Clause:
     """One named span of a live prompt.
 
-    ``starts_at`` and ``ends_before`` are verbatim substrings of the shipped
-    prompt. The span runs from the start of ``starts_at``'s line to the start of
-    ``ends_before``'s line; with no ``ends_before`` the clause is ``starts_at``'s
-    own line, which is the right extent for a single-line absolute.
+    starts_at and ends_before are verbatim substrings of the shipped prompt;
+    the span runs from starts_at's line to ends_before's line, or to the end
+    of starts_at's own line when ends_before is None.
 
-    Requiring an explicit end anchor (rather than inferring one from a header
-    regex) is deliberate. Header shapes differ per prompt file — ``—SECTION—``,
-    ``— SECTION``, ``## SECTION``, numbered rules — so one inferred rule would
-    silently mis-slice four of them, and a *changed* header shape would silently
-    change what the rubric quotes. An explicit end anchor cannot fail quietly:
-    the extent is contract-checked at both ends.
+    An explicit end anchor is required rather than inferred from a header
+    regex: header shapes differ per prompt file (—SECTION—, ## SECTION,
+    numbered rules), so one inferred rule would silently mis-slice some of
+    them, and a changed header shape would silently change what is quoted.
     """
 
     name: str
@@ -436,10 +416,10 @@ if len(_BY_REF) != len(CLAUSES):
 
 @cache
 def prompt_text(source: str) -> str:
-    """The live text of a registered prompt constant.
+    """Return the live text of a registered prompt constant.
 
     Cached because a run resolves dozens of clauses against the same handful of
-    prompts, and importing ``openui_prompts`` costs an app-settings boot.
+    prompts, and importing openui_prompts costs an app-settings boot.
     """
     entry = PROMPT_SOURCES.get(source)
     if entry is None:
@@ -468,7 +448,7 @@ def _line_start(text: str, index: int) -> int:
 
 
 def _locate(clause_obj: Clause, text: str, anchor: str, role: str) -> int:
-    """Index of ``anchor`` in ``text``, or a loud failure.
+    """Index of anchor in text, or a loud failure.
 
     Zero matches means the prompt no longer says this. Two or more means the
     anchor stopped identifying one rule, so the extracted span is arbitrary —
@@ -492,10 +472,10 @@ def _locate(clause_obj: Clause, text: str, anchor: str, role: str) -> int:
 
 
 def resolve(ref: str) -> str:
-    """The live prompt text of one clause, dedented and stripped.
+    """Return the live prompt text of one clause, dedented and stripped.
 
-    ``ref`` is ``"<source>.<name>"``. Raises :class:`ClauseResolutionError` if
-    the clause is unregistered or its anchors no longer resolve.
+    ref is "<source>.<name>"; raises ClauseResolutionError if the clause is
+    unregistered or its anchors no longer resolve.
     """
     clause_obj = _BY_REF.get(ref)
     if clause_obj is None:
@@ -520,7 +500,7 @@ def resolve(ref: str) -> str:
 
 
 def clause(source: str, name: str) -> str:
-    """The live prompt text of one clause, by source and name."""
+    """Return the live prompt text of one clause, by source and name."""
     return resolve(f"{source}.{name}")
 
 
@@ -564,7 +544,7 @@ def contract_failures() -> list[str]:
     """Every clause that no longer resolves, as ready-to-read failure messages.
 
     Collects instead of raising on the first break so one prompt edit surfaces
-    all of its damage in a single CI run. :func:`resolve` is still the loud path
+    all of its damage in a single CI run. :func:resolve is still the loud path
     for anything that runs during an eval.
     """
     failures: list[str] = []

@@ -20,9 +20,7 @@ from app.models.user_models import (
 
 
 class TestOnboardingRequestTimezone:
-    """The ``timezone`` field validator now delegates to the canonical
-    ``is_valid_timezone`` — it accepts IANA names, ±HH:MM offsets and UTC,
-    rejects junk, and passes None/empty through."""
+    """The timezone field validator delegates to the canonical is_valid_timezone."""
 
     def _build(self, timezone) -> OnboardingRequest:
         return OnboardingRequest(
@@ -62,11 +60,7 @@ class TestOnboardingRequestTimezone:
 
 @pytest.mark.unit
 class TestStoredPreferencesFromBeforeTheQ2Rewrite:
-    """Users who onboarded before the pain-based Q2 hold need values that no
-    longer exist ("todos", "briefings", "reach") and up to seven picks. Their
-    document is read back on every /user/me, at seeding, in the activation
-    context and by account_fs, so it must always load; strictness belongs to
-    the request model, not the stored one."""
+    """Users who onboarded before the pain-based Q2 hold need values that no longer exist ("todos", "briefings", "reach"), and that stored document must always load."""
 
     def test_unknown_need_values_are_dropped_in_order(self) -> None:
         prefs = OnboardingPreferences.model_validate(
@@ -103,9 +97,7 @@ class TestStoredPreferencesFromBeforeTheQ2Rewrite:
 
 @pytest.mark.unit
 class TestOnboardingSubdocument:
-    """``users.onboarding`` typed but still open: declared keys are coerced to
-    real types, and keys written by onboarding flows that no longer exist have
-    to survive a load/dump round trip untouched."""
+    """users.onboarding typed but still open: keys written by onboarding flows that no longer exist have to survive a load/dump round trip untouched."""
 
     def test_unknown_historical_keys_round_trip(self) -> None:
         doc = UserDocument.model_validate(
@@ -165,14 +157,7 @@ class TestOnboardingSubdocumentToleratesOldRows:
         assert doc.onboarding.bio_status is None
 
     def test_a_value_from_the_other_enum_reads_as_unset_instead_of_failing(self) -> None:
-        """Each field is guarded against its OWN enum, not the union of both.
-
-        ``"pending"`` is a real ``BioStatus`` and no ``OnboardingPhase`` at all
-        (and ``"initial"`` the reverse). Checked against one merged set of every
-        known value they both pass the guard untouched and then fail Pydantic's
-        coercion for the field's real type — a failed user read, which is a
-        silent permanent logout, from a row this guard promises to tolerate.
-        """
+        """Each field is guarded against its OWN enum, not the union of both — "pending" is a BioStatus, not an OnboardingPhase, and "initial" the reverse."""
         doc = UserDocument.model_validate(
             {
                 "id": "507f1f77bcf86cd799439011",
@@ -185,7 +170,7 @@ class TestOnboardingSubdocumentToleratesOldRows:
         assert doc.onboarding.bio_status is None
 
     def test_the_value_the_two_enums_share_still_coerces_on_both_fields(self) -> None:
-        """``"completed"`` is a genuine member of each — splitting must not drop it."""
+        """The value "completed" is a genuine member of each — splitting must not drop it."""
         doc = UserDocument.model_validate(
             {
                 "id": "507f1f77bcf86cd799439011",
@@ -221,9 +206,7 @@ class TestOnboardingSubdocumentToleratesOldRows:
         assert doc.onboarding.phase is OnboardingPhase.COMPLETED
 
     def test_a_non_mapping_preferences_blob_reads_as_unset(self) -> None:
-        """``onboarding.preferences`` is an untyped blob in stored rows. Typing
-        it put every authenticated read behind its validation, so a string or a
-        list there has to read as "no preferences" instead of failing the load."""
+        """A string or list stored in onboarding.preferences has to read as "no preferences" instead of failing the load."""
         for blob in ("brief", ["brief"], 7):
             doc = UserDocument.model_validate(
                 {

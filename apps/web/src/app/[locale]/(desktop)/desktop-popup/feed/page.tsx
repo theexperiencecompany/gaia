@@ -23,10 +23,9 @@ export default function DesktopPopupFeedPage() {
   useTransparentPopupChrome();
   usePopupEscapeDismiss();
 
-  // Report content height so the window grows with the conversation
-  // (main clamps to the screen budget and hides it when empty). An
-  // empty conversation reports 0 — padding alone must not summon an
-  // empty glass card.
+  // Report content height so the window grows with the conversation (main
+  // clamps to budget, hides when empty) — an empty conversation reports 0
+  // so padding alone can't summon an empty glass card.
   const { convoMessages } = useConversation();
   const { isLoading } = useActiveLoading();
   // A paid-only block is content too: a free user's very first send produces

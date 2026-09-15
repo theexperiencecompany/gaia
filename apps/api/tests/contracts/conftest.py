@@ -4,10 +4,10 @@ The contract suite runs against real Mongo + real Redis (never mocks) — that i
 what makes it a backend-agnostic certificate: the same contract classes will one
 day run against a Postgres repository and green-on-both proves equivalence.
 
-Isolation, so the default ``-n 4`` xdist run is safe:
+Isolation, so the default -n 4 xdist run is safe:
 - Mongo: a fresh Motor client per test on a uniquely-named collection in
-  ``gaia_test``, wired into the repository accessor and dropped on teardown.
-- Redis: the app's ``redis_cache`` singleton is repointed at a per-worker Redis
+  gaia_test, wired into the repository accessor and dropped on teardown.
+- Redis: the app's redis_cache singleton is repointed at a per-worker Redis
   DB and flushed per test.
 """
 
@@ -52,7 +52,7 @@ def redis_url() -> str:
 async def raw_collection(
     mongodb_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[AsyncIOMotorCollection]:
-    """A fresh, uniquely-named Motor collection wired into the repository accessor.
+    """Return a fresh, uniquely-named Motor collection wired into the repository accessor.
 
     Fresh client per test avoids event-loop cross-contamination; the unique name
     keeps parallel xdist workers from colliding. Every repository under test
@@ -83,7 +83,7 @@ async def raw_collection(
 
 @pytest.fixture(autouse=True)
 async def redis(redis_url: str, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Redis]:
-    """Real Redis repointed into ``redis_cache`` and flushed per test.
+    """Real Redis repointed into redis_cache and flushed per test.
 
     Autouse so no contract test can accidentally hit the developer's default
     Redis DB and leak cache state into the next test.

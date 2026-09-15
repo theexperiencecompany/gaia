@@ -427,9 +427,7 @@ class TestListIntegrations:
 class TestConnectIntegration:
     @pytest.fixture(autouse=True)
     def _never_expired(self) -> Iterator[None]:
-        """The connect prompt reads the stored status to choose its wording. These
-        tests are about the tool's own behaviour, so pin it to the never-connected
-        case — the expired wording is covered in test_integration_checker.py."""
+        """Pin the stored status to never-expired since these tests cover the tool's own behaviour, not the expired wording (see test_integration_checker.py)."""
         with patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=False)):
             yield
 
@@ -517,10 +515,7 @@ class TestConnectIntegration:
     async def test_the_connect_request_carries_this_integration_and_user(
         self, mock_check: AsyncMock, mock_gsw: MagicMock
     ) -> None:
-        """The sibling tests mint the link from a fixed-return mock, which cannot
-        tell a correct argument from a nulled one. Minting for the wrong user hands
-        one person another's connect flow, and losing the name leaves the agent
-        telling the user that "None" needs connecting."""
+        """Minting for the wrong user hands one person another's connect flow, and losing the name leaves the agent telling the user "None" needs connecting."""
         mock_gsw.return_value = _writer()
 
         async def _link(user_id: str, integration_id: str) -> str | None:

@@ -10,10 +10,9 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
-# The one prompt line allowed to contain the literal tells the prompt bans:
-# a literal cannot be forbidden without being named. Every other line is prose
-# the model imitates, so the dashes and stock phrases stay out of it.
-# `tests/unit/agents/prompts/test_comms_prompt_hygiene.py` enforces the split.
+# The one prompt line allowed to contain the literal tells the prompt bans —
+# a literal cannot be forbidden without being named. Enforced by
+# `tests/unit/agents/prompts/test_comms_prompt_hygiene.py`.
 BANNED_LITERALS_LINE_PREFIX = "- Banned literals"
 
 COMMS_AGENT_PROMPT = f"""
@@ -290,11 +289,9 @@ The user's name, preferences, memories, current platform, and local time arrive 
 """  # noqa: S608 # nosec B608 - natural-language prompt; ruff/bandit's SQL heuristic matches the words "select ... from" in prose, there is no SQL here
 
 
-# Markers that bracket the embedded OpenUI component-instructions section
-# inside ``COMMS_AGENT_PROMPT``. Used to strip the section for messaging
-# platforms (WhatsApp, Telegram, Discord, Slack) where ``:::openui`` fences
-# render as literal text and contradict the platform context message that
-# tells the model to use plain text only.
+# Markers bracketing the embedded OpenUI section inside ``COMMS_AGENT_PROMPT``.
+# Used to strip it for messaging platforms where ``:::openui`` fences render
+# as literal text and contradict the plain-text platform context message.
 _OPENUI_SECTION_START_MARKER = "## Rich UI Components (OpenUI), CRITICAL"
 _OPENUI_SECTION_END_MARKER = (
     "See the full OpenUI Lang reference with all components and "
@@ -303,14 +300,11 @@ _OPENUI_SECTION_END_MARKER = (
 
 
 def _strip_openui_section(prompt: str) -> str:
-    """Remove the embedded OpenUI component-instructions block from ``prompt``.
+    """Remove the embedded OpenUI component-instructions block from prompt.
 
-    The block is delimited by ``_OPENUI_SECTION_START_MARKER`` and
-    ``_OPENUI_SECTION_END_MARKER``. If either marker is missing we log a
-    loud warning and return ``prompt`` unchanged — silently re-introducing
-    the bug (plain prompt still telling the model to emit ``:::openui``)
-    would be far worse than logging a noisy startup warning that someone
-    edited the prompt and forgot to keep the markers in sync.
+    If either marker is missing, logs a loud warning and returns prompt
+    unchanged — silently re-introducing the :::openui bug would be worse
+    than a noisy warning that the markers drifted out of sync.
     """
     start = prompt.find(_OPENUI_SECTION_START_MARKER)
     if start == -1:

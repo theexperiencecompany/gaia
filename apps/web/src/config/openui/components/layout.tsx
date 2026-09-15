@@ -9,12 +9,8 @@ import { CopyableContentView } from "./CopyableContentView";
 import { FileTreeView } from "./FileTreeView";
 import { KbdRowView } from "./KbdRowView";
 
-// ---------------------------------------------------------------------------
-// Component definitions
-//
-// This module is the registration surface consumed by ../genericLibrary; the
-// views themselves live in their own files next to this one.
-// ---------------------------------------------------------------------------
+// Component definitions: the registration surface consumed by
+// ../genericLibrary — the views themselves live in their own files next to this one.
 
 export const copyableContentDef = defineComponent({
   name: "CopyableContent",

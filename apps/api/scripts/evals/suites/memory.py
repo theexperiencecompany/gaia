@@ -3,7 +3,7 @@
 Reuses scripts.memory_benchmark wholesale instead of reimplementing it:
 - dataset.SCENARIOS   — the 45 scenarios / 52 probes (10 weakness categories)
 - runner.run_scenario — fresh UUID user per case, ingestion at injected day
-  offsets (``_retain_at``), probes via memory_engine.recall, teardown
+  offsets (_retain_at), probes via memory_engine.recall, teardown
 - runner._score_probe — the benchmark's own substring verdicts, re-applied in
   score() so the stored run is independently re-judged
 - bootstrap — in-process Postgres/Chroma/Redis patch (no API server),
@@ -11,9 +11,9 @@ Reuses scripts.memory_benchmark wholesale instead of reimplementing it:
   chroma_store attribute (see _bootstrap_dbs)
 
 LLM lane: the memory write path (extraction / reconcile / episode summary)
-always calls ``ainvoke_structured`` -> ``client.get_default_llm``, which is
-hardcoded to Gemini. The harness pins the ``custom_llm`` lane per case via
-``pin_settings`` instead, so this suite swaps that seam for the pinned
+always calls ainvoke_structured -> client.get_default_llm, which is
+hardcoded to Gemini. The harness pins the custom_llm lane per case via
+pin_settings instead, so this suite swaps that seam for the pinned
 provider (see _patch_default_llm_to_pinned_provider).
 
 Scoring is the benchmark's deterministic substring checks — no LLM judge, so
@@ -57,11 +57,11 @@ class Probe(TypedDict):
 
 
 class Scenario(TypedDict):
-    """One ``memory_benchmark.dataset`` entry, as this suite consumes it.
+    """One memory_benchmark.dataset entry, as this suite consumes it.
 
-    The benchmark declares ``SCENARIOS: list[dict]``, which checks nothing. This
+    The benchmark declares SCENARIOS: list[dict], which checks nothing. This
     names the keys the suite actually reads so a dataset change that drops one
-    is a type error here rather than a ``KeyError`` mid-run.
+    is a type error here rather than a KeyError mid-run.
     """
 
     id: str
@@ -71,7 +71,7 @@ class Scenario(TypedDict):
 
 
 class ProbeResult(TypedDict):
-    """One probe's outcome, as ``memory_benchmark.runner.run_scenario`` returns it."""
+    """One probe's outcome, as memory_benchmark.runner.run_scenario returns it."""
 
     probe: str
     description: str
@@ -99,7 +99,7 @@ def _is_local(target: str) -> bool:
 def _refuse_non_development_target(env: str, postgres_url: str, chroma_host: str) -> None:
     """Refuse to bootstrap against anything but a local development stack.
 
-    ``_bootstrap_dbs`` runs ``Base.metadata.create_all`` and creates Chroma
+    _bootstrap_dbs runs Base.metadata.create_all and creates Chroma
     collections, and the suite then writes memory rows for 45 scenarios. Pointed
     at a staging or production environment by a stale shell, it would do all of
     that to real user data — silently, because none of those calls fail on a
@@ -122,9 +122,9 @@ async def _bootstrap_dbs() -> None:
     initialises inside a live FastAPI app; monkeypatching them directly lets
     the suite run without the API server. Replicated here (not imported)
     because the benchmark's copy still clears the pre-refactor
-    ``chroma_store._collections`` attribute, which no longer exists — the
-    collection cache is now per event loop (``_loop_collections`` /
-    ``_loop_locks``) and is what must be cleared so lookups re-bind to the
+    chroma_store._collections attribute, which no longer exists — the
+    collection cache is now per event loop (_loop_collections /
+    _loop_locks) and is what must be cleared so lookups re-bind to the
     patched client.
     """
 
@@ -192,11 +192,11 @@ async def _bootstrap_dbs() -> None:
 def _patch_default_llm_to_pinned_provider() -> None:
     """Route the default-model seam (memory's only LLM entry) to the pinned lane.
 
-    ``ainvoke_structured`` builds its model via ``client.get_default_llm``,
-    hardcoded to Gemini. The harness instead pins the ``custom_llm`` provider
+    ainvoke_structured builds its model via client.get_default_llm,
+    hardcoded to Gemini. The harness instead pins the custom_llm provider
     (DEV_LLM_* settings) before each transport call, so this factory swaps the
     seam: every memory LLM call lands on the pinned provider. The lazy
-    registry caches the instance, and ``pin_settings`` resets it on rotation,
+    registry caches the instance, and pin_settings resets it on rotation,
     so the build always reflects the active provider.
     """
 
@@ -222,15 +222,15 @@ def _patch_default_llm_to_pinned_provider() -> None:
 def _patch_structured_output_for_pinned_lane() -> None:
     """Swap the memory module's structured-output seam to json-object mode.
 
-    ``with_structured_output`` defaults to the function-calling method
-    (``tool_choice``) on OpenAI-wire clients; the opencode-go lane runs in
-    "thinking mode" and rejects ``tool_choice`` — and also
-    ``response_format: json_schema`` — with a 400, so extraction would
-    silently degrade to empty batches. Plain ``response_format:
-    json_object`` is accepted, but requires the prompt to mention json and
+    with_structured_output defaults to the function-calling method
+    (tool_choice) on OpenAI-wire clients; the opencode-go lane runs in
+    "thinking mode" and rejects tool_choice — and also
+    response_format: json_schema — with a 400, so extraction would
+    silently degrade to empty batches. Plain response_format:
+    json_object is accepted, but requires the prompt to mention json and
     does not carry the schema, so this seam appends the schema as a system
     message and parses the content back into it. The app-level fix belongs
-    in ``client.ainvoke_structured`` (lane-aware method choice); this patch
+    in client.ainvoke_structured (lane-aware method choice); this patch
     targets the memory module's import-time binding, its only consumer here.
     """
 

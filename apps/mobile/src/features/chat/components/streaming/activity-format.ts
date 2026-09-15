@@ -381,14 +381,10 @@ function collectGroupedToolCallIds(toolData: ToolDataEntry[]): Set<string> {
 }
 
 /**
- * Build the unified chronological chain for one AI turn:
- * - `tool_calls_data` entries flatten into tool rows (partials merged by id),
- *   with entries carrying `reasoning` becoming coalesced thinking rows;
- * - `subagent_group` entries become subagent items at their entry order,
- *   with nested tool lists kept inside the group;
- * - root-level duplicates of calls already nested in a group are dropped;
- * - a root-level spawn/handoff call attaches its task/output to the following
- *   subagent group instead of rendering as its own row.
+ * Build one AI turn's chronological chain: `tool_calls_data` flattens into rows
+ * (partials merged by id; `reasoning` entries coalesce to thinking rows);
+ * `subagent_group` entries become ordered items with nested tools kept inside;
+ * root-level duplicates already in a group are dropped, and a root spawn/handoff attaches to the next group.
  */
 export function buildTimeline(
   toolData: ToolDataEntry[] | undefined,

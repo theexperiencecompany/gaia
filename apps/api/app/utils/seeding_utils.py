@@ -67,11 +67,8 @@ async def seed_holo_card_conversation(user_id: str, message: str) -> str | None:
 async def seed_first_conversation(user_id: str, composed: FirstConversation) -> str | None:
     """Seed the "Getting started" conversation GAIA opens with after onboarding.
 
-    One unread conversation holding ONE bot message whose lines are joined by
-    the message breaker, so the web renders them as grouped bubbles that land one
-    after another with the same choreography every multi-bubble reply gets, and
-    the starting-job chips ride that message. Returns the conversation id, or
-    None if seeding failed — a missing welcome must never fail completion.
+    Returns the conversation id, or None if seeding failed — a missing
+    welcome must never fail completion.
     """
     log.set(operation="seed_first_conversation", user_id=user_id)
     try:
@@ -87,10 +84,8 @@ async def seed_first_conversation(user_id: str, composed: FirstConversation) -> 
         user_dict: AuthenticatedUser = {"user_id": user_id}
         await create_conversation_service(conversation, user_dict)
 
-        # Three bot messages, grouped by the web like iMessage. A message's
-        # cards render ABOVE its bubbles, so the buttons get a message of their
-        # own between the routines and the question, and the chips ride the
-        # question.
+        # A message's cards render ABOVE its bubbles, so the buttons get a
+        # message of their own between the routines and the question.
         messages = [
             MessageModel(type="bot", response=NEW_MESSAGE_BREAKER.join(composed.opening)),
             MessageModel(

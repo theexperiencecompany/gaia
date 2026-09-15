@@ -1,9 +1,9 @@
-"""Repository for the ``processed_webhooks`` collection — webhook idempotency.
+"""Repository for the processed_webhooks collection — webhook idempotency.
 
-Global, keyed by the business ``webhook_id``. The unique index on ``webhook_id``
+Global, keyed by the business webhook_id. The unique index on webhook_id
 is the once-only guarantee: a delivery is *claimed* by inserting its record
 before any handler runs, so two deliveries of the same id (sequential or
-racing) can never both act. A 30-day TTL on ``processed_at`` reaps old records.
+racing) can never both act. A 30-day TTL on processed_at reaps old records.
 """
 
 from datetime import UTC, datetime
@@ -49,8 +49,7 @@ class ProcessedWebhooksRepository(
         await self.update(webhook_id, outcome)
 
     async def release(self, webhook_id: str) -> None:
-        """Give a claim back after the handler failed, so the sender's retry
-        gets a clean run instead of an "already processed" skip."""
+        """Give a claim back after the handler failed, so a retry doesn't hit an "already processed" skip."""
         await self.delete(webhook_id)
 
 

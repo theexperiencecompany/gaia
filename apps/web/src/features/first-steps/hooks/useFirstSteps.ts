@@ -32,11 +32,8 @@ const hasOpenStep = (data: FirstStepsResponse): boolean =>
  * react-query cache so both surfaces show the same progress and collapse
  * together.
  *
- * Every `done` is server-derived, so the cache only goes stale when the user
- * completes a step somewhere else in the app. Window-focus refetching is off
- * globally and the widget stays mounted across routes, so freshness comes from
- * three places instead: arriving at a new route, mounting a surface, and — only
- * while a step is still open — a slow poll.
+ * Freshness comes from three places (route change, surface mount, and a slow
+ * poll while a step is open) since window-focus refetching is off globally.
  */
 export function useFirstSteps(): UseFirstSteps {
   const qc = useQueryClient();
@@ -57,9 +54,8 @@ export function useFirstSteps(): UseFirstSteps {
   }, [pathname, qc]);
 
   // Two quick clicks are two requests whose replies can land in either order.
-  // Each mutation takes a ticket; only the newest one may write the server's
-  // reply (or roll back) — a stale reply would put the checklist on the
-  // penultimate click, and a stale rollback would undo the newest one.
+  // Each mutation takes a ticket; only the newest may write the server's
+  // reply or roll back, so a stale reply/rollback can't undo the newest click.
   const latestCollapse = useRef(0);
   const collapseMutation = useMutation({
     mutationFn: firstStepsApi.setCollapsed,

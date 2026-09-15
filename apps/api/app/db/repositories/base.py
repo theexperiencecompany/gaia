@@ -1,9 +1,9 @@
 """Generic MongoDB repository base with automatic, generation-based caching.
 
 Public methods accept and return typed Pydantic models only — raw dicts,
-``ObjectId``, Mongo filters, and cache calls never cross this boundary. The
+ObjectId, Mongo filters, and cache calls never cross this boundary. The
 subclass primitives (leading underscore) are the internal seam where dict-shaped
-Mongo data is allowed. See ``app/db/repositories/CLAUDE.md``.
+Mongo data is allowed. See app/db/repositories/CLAUDE.md.
 """
 
 from __future__ import annotations
@@ -64,14 +64,9 @@ _REQUIRED_CLASSVARS = ("collection_name", "document_model", "update_model", "use
 def cached_query(result_model: type[Any]) -> Callable[[_TFinder], _TFinder]:
     """Cache a named finder's result under its scope's current generation.
 
-    Key is ``{method}:{hash(args)}`` under the scope (its ``user_id`` argument,
-    or ``"global"``). A write to that scope bumps the generation and orphans the
-    entry.
-
-    ``result_model`` is the shape stored under the key: the finder's return type
-    (e.g. ``list[NoteDocument]``), or — for a finder that may return ``None`` —
-    its non-``None`` part, since ``None`` is never cached. The decorator preserves
-    the finder's own signature, so an ``X | None`` finder stays ``X | None``.
+    Key is {method}:{hash(args)} under the scope (user_id, or "global"); a write to that
+    scope bumps the generation and orphans the entry. result_model is the finder's return
+    type, or its non-None part if it may return None, since None is never cached.
     """
 
     def decorator(fn: _TFinder) -> _TFinder:
@@ -107,8 +102,7 @@ def cached_query(result_model: type[Any]) -> Callable[[_TFinder], _TFinder]:
 
 
 class _BaseRepository(Generic[TDoc, TUpdate]):
-    """Shared CRUD + cache machinery. Do not subclass directly — use one of the
-    two public bases (``MongoRepository`` / ``UserScopedRepository``)."""
+    """Shared CRUD + cache machinery; subclass MongoRepository or UserScopedRepository, not this."""
 
     collection_name: ClassVar[str]
     document_model: type[TDoc]
@@ -119,11 +113,9 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     # by a business field (e.g. ``conversation_id``, a UUID ``id``) sets this so
     # get/update/delete filter on it and ``_id`` stays incidental.
     identity_field: ClassVar[str] = "_id"
-    # Whether the base auto-stamps ``created_at``/``updated_at`` on writes. A
-    # domain that stores its timestamps in a shape the base must not touch — e.g.
-    # legacy ISO-format strings, or a field it wants left unset on insert — turns
-    # this off and writes those fields itself. See the timestamp-normalization
-    # follow-up before flipping any existing collection.
+    # Whether the base auto-stamps created_at/updated_at on writes. A domain with
+    # timestamps in a shape the base must not touch (e.g. legacy ISO strings) turns
+    # this off and writes those fields itself.
     auto_stamp_timestamps: ClassVar[bool] = True
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs: object) -> None:
@@ -157,7 +149,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         return {self.identity_field: self._id_value(doc_id)}
 
     def _filter_doc_id(self, filter_: Mapping[str, object]) -> str | None:
-        """The doc id a raw filter targets, when it targets exactly one by identity."""
+        """Return the doc id a raw filter targets, when it targets exactly one by identity."""
         value = filter_.get(self.identity_field)
         return None if value is None or isinstance(value, Mapping) else str(value)
 
@@ -178,11 +170,11 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         return REPO_GLOBAL_SCOPE
 
     def _scope_filter(self, _scope: str) -> dict[str, object]:
-        """Extra Mongo filter constraining an operation to ``scope``.
+        """Extra Mongo filter constraining an operation to scope.
 
-        Empty for a global repository; ``{"user_id": scope}`` for a user-scoped
-        one, so the multi-document primitives (``_bulk_set``, ``_bulk_delete``)
-        never reach across users the way a raw ``{"_id": ...}`` filter would.
+        Empty for a global repository; {"user_id": scope} for a user-scoped
+        one, so the multi-document primitives (_bulk_set, _bulk_delete)
+        never reach across users the way a raw {"_id": ...} filter would.
         """
         return {}
 
@@ -214,11 +206,8 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         return await self._insert(doc, self._doc_scope(doc))
 
     async def _insert(self, doc: TDoc, scope: str) -> TDoc:
-        # Drop the placeholder ``id`` (it mirrors ``_id``) — but keep it when ``id``
-        # is itself the business identity (a caller-provided UUID). exclude_none so
-        # an unset optional field is absent, not stored as null: a later nested
-        # `$set` (onboarding.x) or `{$exists: false}` gate needs the container field
-        # absent, and absent reads back identically to null anyway.
+        # Drop the placeholder id (mirrors _id) unless id is itself the business identity.
+        # exclude_none so an unset optional field is absent, not stored as null.
         exclude = set() if self.identity_field == "id" else {"id"}
         data = doc.model_dump(exclude=exclude, exclude_none=True)
         now = datetime.now(UTC)
@@ -301,20 +290,11 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         return await get_async_collection(self.collection_name).count_documents(dict(filter_))
 
     async def _delete_many(self, filter_: Mapping[str, object], *, scope: str) -> int:
-        """Delete every document matching ``filter_`` in one round trip, then evict
-        each removed doc's entity-cache key and bump ``scope``'s generation. The
-        filter-based sibling of ``_bulk_delete`` (which deletes by id list) — for the
-        global-collection-with-a-guard case (e.g. ``{_id: {$in}, user_id}``) and
-        domain-level wipes like "all of a user's conversations".
+        """Delete every document matching filter_, evicting each one's entity-cache key.
 
-        Structurally cache-safe on any repository: when an entity cache exists, the
-        matched ids are resolved first, then deleted, then their entity keys evicted
-        — so the generation bump (which only orphans query caches) can't leave a
-        stale by-id read served from the entity cache. Evict happens AFTER the delete
-        so a concurrent read-through can't re-populate an entity we then leave stale
-        (a post-delete get misses Mongo and never re-caches). When ``cache_policy is
-        None`` there is no entity cache and no id pre-fetch: a single ``delete_many``.
-        Returns the deleted count."""
+        Filter-based sibling of _bulk_delete (by id list); IDs are resolved before the
+        delete and evicted after, so a concurrent read-through can't re-cache a deleted doc.
+        """
         collection = get_async_collection(self.collection_name)
         ids: list[str] = []
         if self.cache_policy is not None:
@@ -337,12 +317,11 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     # ---- subclass-only primitives (never called outside a repository) ----
 
     def _raw_collection(self) -> AsyncIOMotorCollection[dict[str, Any]]:
-        """The repository's own Motor handle, for the rare operator no base
-        primitive expresses (e.g. an aggregation-pipeline update or a filter
-        upsert). Resolves through this module's ``get_async_collection`` binding —
-        the seam the contract and service fixtures patch — so a subclass's raw
-        call can never drift off the test wiring the way a direct import would.
-        The caller owns any cache eviction the write implies."""
+        """Return the repository's own Motor handle for operators no base primitive expresses.
+
+        Resolves through this module's get_async_collection binding — the seam the contract
+        and service fixtures patch. The caller owns any cache eviction the write implies.
+        """
         return get_async_collection(self.collection_name)
 
     async def _find_one(self, filter_: Mapping[str, object]) -> TDoc | None:
@@ -375,13 +354,10 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         limit: int = 0,
         skip: int = 0,
     ) -> list[TDoc]:
-        """Like ``_find``, but a single row that fails model validation is skipped
-        and logged loudly rather than failing the whole read.
+        """Like _find, but a row that fails model validation is skipped and logged, not raised.
 
-        For user-facing LIST reads where one corrupt legacy document must not blank
-        the entire result. ``_find`` stays the strict default so single-document and
-        internal reads still fail loud — a validation error there surfaces the
-        corruption instead of hiding it.
+        For user-facing LIST reads where one corrupt legacy document must not blank the
+        whole result; _find stays strict for single-document and internal reads.
         """
         cursor = get_async_collection(self.collection_name).find(dict(filter_))
         if sort is not None:
@@ -413,8 +389,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         return [result_model.model_validate(raw) for raw in raw_results]
 
     async def _bulk_set(self, updates: Sequence[tuple[str, TUpdate]], *, scope: str) -> int:
-        """Apply many typed ``$set`` updates in one round trip. All ids must share
-        ``scope`` (the caller's user) so one generation bump invalidates them."""
+        """Apply many typed $set updates in one round trip; all ids must share scope."""
         if not updates:
             return 0
         stamp_updated_at = (
@@ -441,8 +416,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         return modified
 
     async def _bulk_delete(self, doc_ids: Sequence[str], *, scope: str) -> int:
-        """Delete many documents in one round trip. All ids must share ``scope``
-        (the caller's user) so one generation bump invalidates them together."""
+        """Delete many documents in one round trip; all ids must share scope."""
         if not doc_ids:
             return 0
         result = await get_async_collection(self.collection_name).delete_many(
@@ -469,21 +443,11 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         array_filters: Sequence[Mapping[str, object]] | None = None,
         upsert: bool = False,
     ) -> TDoc | None:
-        """Apply a raw Mongo update to one document, then refresh the entity cache
-        and bump the generation exactly like the typed ``update`` path. With
-        ``return_document=False`` the read-back is the BEFORE image, so the entity
-        key is evicted rather than stored — the cache is never seeded from it.
+        """Apply a raw Mongo update to one document, refreshing the cache like the typed path.
 
-        The typed ``$set``-from-model path (public ``update``) is preferred; this is
-        the internal seam for the operators a typed model cannot express —
-        ``$push``/``$pull``/``$addToSet`` on arrays, positional ``$set`` with
-        ``array_filters``, and ``$unset``. ``updated_at`` is stamped into ``$set``
-        automatically when the document declares it. ``scope`` names the cache scope
-        (usually the owning ``user_id``); ``extra_filter`` adds guards (e.g. a
-        ``vfs_path`` existence check) to ``filter_``. ``return_document`` selects the
-        AFTER (default) or BEFORE image. ``upsert`` inserts the document when the
-        filter matches nothing — for atomic get-or-create with ``$setOnInsert``
-        (returning BEFORE on an insert yields ``None``).
+        The internal seam for operators a typed model can't express ($push/$pull/$addToSet,
+        positional $set with array_filters, $unset). With return_document=False the
+        read-back is the BEFORE image, so the entity key is evicted rather than stored.
         """
         ops: dict[str, dict[str, object]] = {k: dict(v) for k, v in update.items()}
         if self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields:
@@ -497,10 +461,8 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             upsert=upsert,
         )
         if raw is None:
-            # The write matched no document. When the filter targeted one document
-            # by identity, that document is gone (or was never there) while a cached
-            # entity may still be served — evict it so the next read misses and
-            # re-reads Mongo instead of serving a deleted document indefinitely.
+            # No match: if the filter targeted one document by identity, evict its cache
+            # entry so the next read misses instead of serving a deleted document forever.
             targeted = self._filter_doc_id(filter_)
             if targeted is not None:
                 await self._cache_evict(scope, targeted)
@@ -526,20 +488,11 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         array_filters: Sequence[Mapping[str, object]] | None = None,
         upsert: bool = False,
     ) -> int:
-        """Apply a raw update via ``update_one`` WITHOUT reading the document back.
+        """Apply a raw update via update_one WITHOUT reading the document back.
 
-        The ``_apply_raw_update`` sibling pays a full ``find_one_and_update`` read
-        on every call; this is the seam for hot write paths where the after-image
-        is not needed — e.g. ``$push``-ing onto a large embedded array on every
-        chat turn, where reloading the whole document each time would be wasteful.
-        It is also the seam for an ``upsert`` whose inserted document must NOT be
-        validated as a full ``document_model`` — e.g. a tools-only stub that only
-        carries a business key and one field (``_apply_raw_update``'s read-back
-        would fail model validation on such a partial doc). Refreshes the cache
-        exactly like any other write: evicts the entity key when ``doc_id`` is
-        given and bumps the generation. ``updated_at`` is auto-stamped into
-        ``$set`` when the document declares it. Returns the matched count (0 = the
-        filter matched no existing document; an upsert-insert also reports 0).
+        For hot write paths where the after-image isn't needed (e.g. $push onto a large
+        array every chat turn) and for an upsert whose document must not be validated as
+        a full document_model. Returns the matched count (0 includes an upsert-insert).
         """
         ops: dict[str, dict[str, object]] = {k: dict(v) for k, v in update.items()}
         if self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields:
@@ -566,8 +519,8 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         """Read one document under a Mongo projection into a typed partial model.
 
         For reads that need only a slice of a document — a single field, or one
-        positional ``messages.$`` element — so a large embedded array is never
-        loaded in full. ``result_model`` describes exactly the projected shape.
+        positional messages.$ element — so a large embedded array is never
+        loaded in full. result_model describes exactly the projected shape.
         """
         raw = await get_async_collection(self.collection_name).find_one(
             dict(filter_), dict(projection)
@@ -601,7 +554,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         """Write hot fields without touching the cache or bumping the generation.
 
         A deliberate hole in the invalidation guarantee — only for fields whose
-        staleness is harmless (e.g. ``last_active_at``). Justify every use in the
+        staleness is harmless (e.g. last_active_at). Justify every use in the
         calling method's docstring; if unsure, use the normal update path.
         """
         await get_async_collection(self.collection_name).update_one(
@@ -626,9 +579,7 @@ class MongoRepository(_BaseRepository[TDoc, TUpdate], abstract=True):
 
 
 class UserScopedRepository(_BaseRepository[TUserDoc, TUpdate], abstract=True):
-    """User-scoped repository. Every public method requires ``user_id`` and every
-    Mongo filter includes ``{"user_id": user_id}`` — cross-user access returns
-    ``None``/``False``, never another user's data."""
+    """User-scoped repository; every filter includes user_id, so cross-user access returns None/False."""
 
     def _doc_scope(self, doc: TUserDoc) -> str:
         return doc.user_id

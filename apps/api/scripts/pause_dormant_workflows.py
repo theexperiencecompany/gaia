@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pause (or preview) the workflows of users who have gone dormant.
 
-The manual companion to the daily ``sweep_dormant_user_workflows`` cron — for
+The manual companion to the daily sweep_dormant_user_workflows cron — for
 running the backlog once, on demand, and seeing exactly who it would touch
 before anything is written.
 

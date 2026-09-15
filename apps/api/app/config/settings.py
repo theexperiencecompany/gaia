@@ -1,16 +1,16 @@
 """Application settings: load from env, validate, and expose typed access.
 
 Flow
-- `.env` loaded first, then external secrets via `inject_infisical_secrets()`.
-- Pick settings class by `ENV` (production/development).
-- Pydantic builds the object; `settings_validator` logs missing groups.
-- `get_settings()` memoizes the instance for fast imports.
+- .env loaded first, then external secrets via inject_infisical_secrets().
+- Pick settings class by ENV (production/development).
+- Pydantic builds the object; settings_validator logs missing groups.
+- get_settings() memoizes the instance for fast imports.
 
 Add env vars
-1) Add fields to `CommonSettings`/`ProductionSettings`/`DevelopmentSettings`.
+1) Add fields to CommonSettings/ProductionSettings/DevelopmentSettings.
 2) Use Optional[...] in dev if it’s not required there.
-3) If you want warnings, register a group in `config/settings_validator.py`.
-4) Read values via `from app.config.settings import settings`.
+3) If you want warnings, register a group in config/settings_validator.py.
+4) Read values via from app.config.settings import settings.
 """
 
 from functools import lru_cache
@@ -78,28 +78,20 @@ class BaseAppSettings(BaseSettings):
 class CommonSettings(BaseAppSettings):
     """Common settings required for all environments."""
 
-    # ----------------------------------------------
-    # Dev-only overrides — declared on the COMMON base so production code can
-    # safely read them (app/agents/llm/client.py evaluates GAIA_SIM_MODE in
-    # decorator args at import time; an AttributeError there crashes prod boot).
-    # get_settings() refuses to start in production when either is enabled.
-    # ----------------------------------------------
-    # Sim mode: every LLM factory resolves to the local scripted stub
-    # (tools/llm-stub) for deterministic, credential-free runs. `mise dev --sim`.
-    GAIA_SIM_MODE: bool = False
+    # Dev-only overrides, declared on the COMMON base so production code can
+    # safely read them (app/agents/llm/client.py evaluates GAIA_SIM_MODE at
+    # import time). get_settings() refuses to start in production if set.
+    GAIA_SIM_MODE: bool = False  # every LLM factory resolves to the local scripted stub
     # Where the scripted stub lives when sim mode is on; consumed only by
     # _sim_llm (defaults to SIM_STUB_BASE_URL when unset).
     OPENROUTER_BASE_URL: str | None = None
-    # Comma-separated OpenRouter provider slugs (tag form, e.g. "coreweave/fp8")
-    # to PREFER for the default-model lane — fallbacks stay enabled, so an
-    # outage degrades to the normal rotation. Empty (the default) leaves
-    # routing untouched. Set from the per-provider cache-hit table, not by
-    # guesswork; see _provider_order_kwargs in agents/llm/client.py.
+    # Comma-separated OpenRouter provider slugs to PREFER for the default-model
+    # lane — fallbacks stay enabled. Set from the per-provider cache-hit table;
+    # see _provider_order_kwargs in agents/llm/client.py.
     OPENROUTER_PROVIDER_ORDER: str | None = None
-    # Dev-only: lift every per-user rate limit (chat messages, uploads, ...).
-    # Eval harnesses drive thousands of legitimate requests per day against a
-    # free-plan dev user; without this they 429 at the free tier's 200/day.
-    # get_settings() refuses production boot when set (same guard as sim mode).
+    # Dev-only: lift every per-user rate limit. Eval harnesses drive thousands
+    # of requests/day against a free-plan dev user, which 429s at 200/day
+    # otherwise. get_settings() refuses production boot when set.
     DEV_UNLIMITED_RATE_LIMITS: bool = False
 
     # ----------------------------------------------
@@ -129,18 +121,11 @@ class CommonSettings(BaseAppSettings):
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/") if isinstance(v, str) else v
 
-    # ----------------------------------------------
-    # Outbound Email
-    # ----------------------------------------------
     # Key into the provider registry in app/services/email/providers.
     EMAIL_PROVIDER: str = "resend"
 
-    # ----------------------------------------------
-    # Payment Processing
-    # ----------------------------------------------
     # Optional coupon surfaced alongside the checkout link in every 402
-    # "subscription required" response (web and bots). Unset means no code
-    # is advertised.
+    # "subscription required" response. Unset means no code is advertised.
     PAYWALL_DISCOUNT_CODE: str | None = None
 
     # ----------------------------------------------
@@ -165,29 +150,14 @@ class CommonSettings(BaseAppSettings):
     ENABLE_PROFILING: bool = False  # Must be explicitly enabled via .env
     PROFILING_SAMPLE_RATE: float = 1.0  # 100% of requests by default
 
-    # ----------------------------------------------
-    # ARQ worker
-    # ----------------------------------------------
-    # Concurrent jobs PER WORKER. The 10 is sized for a single worker (mean task
-    # 10.9s at 0.72 tasks/s needs ~8 concurrent by Little's Law); being a
-    # per-process cap, M workers give a fleet ceiling of 10 x M — which is not
-    # more throughput, just more simultaneous load on shared limits. Scaling the
-    # worker out therefore means scaling this DOWN (~ceil(8/M)), which is why it
-    # is configurable rather than a literal.
-    #
-    # Postgres is the wall: each worker opens SQLAlchemy's pool (pool_size=5 +
-    # max_overflow=10) PLUS the LangGraph checkpointer pool (max_size=20) = 35
-    # connections, against a default max_connections of 100. Raise
-    # max_connections before adding the third worker, or connections get refused.
+    # Concurrent jobs PER WORKER; sized via Little's Law (mean task 10.9s at
+    # 0.72 tasks/s needs ~8). Fleet ceiling is 10 x M workers — scale this DOWN
+    # (~ceil(8/M)) per worker added, since pools sum to 35 conns vs max 100.
     ARQ_MAX_JOBS: int = 10
 
-    # ----------------------------------------------
-    # Crawl4AI (headless-browser scraping)
-    # ----------------------------------------------
-    # Process-wide cap on concurrent Chromium instances (see constants/search.py
-    # for context). Falls back to the default on non-integer input; clamped to
-    # at least ``CRAWL4AI_MIN_MAX_BROWSERS`` so a misconfigured 0/negative value
-    # can't deadlock all crawler access.
+    # Process-wide cap on concurrent Chromium instances (see constants/search.py).
+    # Falls back to the default on non-integer input; clamped to at least
+    # CRAWL4AI_MIN_MAX_BROWSERS so a 0/negative value can't deadlock all crawler access.
     CRAWL4AI_MAX_BROWSERS: int = CRAWL4AI_DEFAULT_MAX_BROWSERS
 
     @field_validator("CRAWL4AI_MAX_BROWSERS", mode="before")
@@ -201,13 +171,9 @@ class CommonSettings(BaseAppSettings):
             return CRAWL4AI_DEFAULT_MAX_BROWSERS
         return max(CRAWL4AI_MIN_MAX_BROWSERS, parsed)
 
-    # ----------------------------------------------
-    # Dev-only LLM overrides (honored only when ENV=development)
-    # ----------------------------------------------
-    # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage
-    # (e.g. Nous Research's discounted DeepSeek lane). All three must be set; the
-    # "custom" provider is registered exclusively in development (see
-    # register_llm_providers), so these have no effect in production.
+    # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage.
+    # All three must be set; the "custom" provider is registered exclusively in
+    # development (see register_llm_providers), so these have no effect in production.
     DEV_LLM_BASE_URL: str | None = None
     DEV_LLM_API_KEY: str | None = None
     DEV_LLM_MODEL: str | None = None
@@ -216,23 +182,13 @@ class CommonSettings(BaseAppSettings):
     # the endpoint above). An explicit selector choice still wins.
     DEV_DEFAULT_MODEL: str | None = None
 
-    # ----------------------------------------------
-    # Workflows
-    # ----------------------------------------------
-    # Delete a workflow conversation's LangGraph checkpoint threads before every
-    # run, so run N stops replaying runs 1..N-1 out of Postgres (one production
-    # workflow held 1.39 MB of message state across three threads). The previous
-    # run reaches the next one as a recorded trace instead. Kill switch: set to
-    # false to fall back to the replaying behaviour without a deploy.
+    # Deletes a workflow conversation's LangGraph checkpoint threads before every
+    # run, so run N stops replaying runs 1..N-1 (one production workflow held
+    # 1.39 MB across three threads). Kill switch: set false to disable without a deploy.
     WORKFLOW_THREAD_RESET_ENABLED: bool = True
 
-    # ----------------------------------------------
-    # GitHub Integration (for Skill Discovery)
-    # ----------------------------------------------
-    # Optional: Get a token at https://github.com/settings/tokens
-    # - No scopes needed (just public repo read)
-    # - Gives 5,000 API requests/hour vs 60/hour without token
-    # - Used for discovering and installing skills from GitHub
+    # Optional GitHub token (no scopes needed): 5,000 API requests/hour vs
+    # 60/hour without, for discovering and installing skills from GitHub.
     GITHUB_TOKEN: str | None = None
 
     # check_fields=False: E2B_DOMAIN is declared per-environment in the subclasses.
@@ -350,10 +306,8 @@ class ProductionSettings(CommonSettings):
     COMPOSIO_KEY: str
     FIRECRAWL_API_KEY: str
 
-    # Search providers (multi-provider failover; all optional — the chain skips
-    # any provider whose key/URL is unset). Exa is the primary free workhorse
-    # (20k/mo free); SearXNG is the self-hosted unlimited floor that can never
-    # bill us; Tavily/Brave are budget-capped boosters.
+    # Multi-provider failover, all optional. Exa is the primary free workhorse
+    # (20k/mo free); SearXNG is the self-hosted unlimited floor; Brave is a budget-capped booster.
     EXA_API_KEY: str | None = None
     BRAVE_API_KEY: str | None = None
     SEARXNG_BASE_URL: str | None = None
@@ -368,10 +322,9 @@ class ProductionSettings(CommonSettings):
     ELEVENLABS_TTS_MODEL: str
     GAIA_BACKEND_URL: str
     ELEVENLABS_VOICE_ID: str
-    # URL the SHARED voice agent should use to reach THIS backend, embedded
-    # per-room in the LiveKit participant metadata. Unset (default) keeps the
-    # agent on its boot-time GAIA_BACKEND_URL — set it in multi-backend
-    # deployments like staging previews (one agent, many preview APIs).
+    # URL the SHARED voice agent uses to reach THIS backend. Unset keeps the
+    # agent on its boot-time GAIA_BACKEND_URL — set in multi-backend deployments
+    # (one agent, many preview APIs).
     VOICE_AGENT_BACKEND_URL: str | None = None
 
     # ----------------------------------------------
@@ -391,14 +344,9 @@ class ProductionSettings(CommonSettings):
     E2B_API_KEY: str
     E2B_TEMPLATE_ID: str  # gaia-coder template ID (run scripts/build_e2b_template.py)
     E2B_DOMAIN: str
-    # Idle window before a sandbox is paused. A paused sandbox must resume +
-    # re-mount JuiceFS on the next turn, and the cold JuiceFS mount is the single
-    # most expensive step in an acquire (the metadata engine is remote). At 60s,
-    # any think-gap between turns paused the sandbox and made the *next* `bash`
-    # pay a full remount. 300s keeps the sandbox warm across normal conversation
-    # gaps so back-to-back turns reuse a live mount. Trade-off: more concurrently
-    # live sandboxes vs the E2B quota — the scalable fix is the warm pool
-    # (E2B_WARM_POOL_TARGET_RATIO), still a follow-up.
+    # A paused sandbox pays a full JuiceFS remount on resume. 60s paused too
+    # eagerly between turns; trade-off vs live-sandbox count is the E2B quota
+    # (scalable fix: the warm pool, E2B_WARM_POOL_TARGET_RATIO).
     E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 300
     E2B_DEFAULT_BASH_TIMEOUT: int = 120
     E2B_SANDBOX_EVICT_DAYS: int = 14
@@ -416,17 +364,14 @@ class ProductionSettings(CommonSettings):
     R2_BUCKET: str  # e.g. "gaia-workspaces"
     R2_ACCESS_KEY: str
     R2_SECRET_KEY: str
-    # Templated metadata URL: contains {shard} substituted at mount time.
-    # Redis (prod): "rediss://:pass@jfs-meta.heygaia.io:6380/{shard}" — {shard} is
-    # the DB number. Postgres: "postgres://juicefs:pass@host:5432/gaia_juicefs_{shard}".
-    # The password is split out into META_PASSWORD before reaching the sandbox
-    # (see _split_meta_url in services/sandbox/lifecycle.py).
+    # Templated metadata URL, {shard} substituted at mount time, e.g.
+    # "rediss://:pass@jfs-meta.heygaia.io:6380/{shard}". Password is split out
+    # into META_PASSWORD before reaching the sandbox (_split_meta_url in services/sandbox/lifecycle.py).
     JUICEFS_META_URL_TEMPLATE: str
     JUICEFS_NUM_SHARDS: int = 1  # Phase 1: 1, Phase 2: 16
-    # JuiceFS RSA-4096 private key in PEM form. Whole multi-line PEM stored as a
-    # single env var / Infisical secret; the entrypoint writes it to disk on
-    # boot so `juicefs format / mount` can pick it up. Optional — leave empty
-    # to skip client-side encryption (R2 at-rest encryption still applies).
+    # JuiceFS RSA-4096 private key (PEM), written to disk by the entrypoint on
+    # boot. Optional — leave empty to skip client-side encryption (R2 at-rest
+    # encryption still applies).
     JFS_ENCRYPTION_KEY: str | None = None
     JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"  # API container's sidecar mount
     # JuiceFS bootstrap supervisor (tune per env without a code change):
@@ -542,9 +487,6 @@ class DevelopmentSettings(CommonSettings):
     GOOGLE_USERINFO_URL: str = "https://www.googleapis.com/oauth2/v2/userinfo"
     GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
 
-    # ----------------------------------------------
-    # External API Integration Keys
-    # ----------------------------------------------
     # Search & Data Services
     TAVILY_API_KEY: str | None = None
     LLAMA_INDEX_KEY: str | None = None
@@ -606,14 +548,9 @@ class DevelopmentSettings(CommonSettings):
     E2B_API_KEY: str | None = None
     E2B_TEMPLATE_ID: str | None = None
     E2B_DOMAIN: str | None = None
-    # Idle window before a sandbox is paused. A paused sandbox must resume +
-    # re-mount JuiceFS on the next turn, and the cold JuiceFS mount is the single
-    # most expensive step in an acquire (the metadata engine is remote). At 60s,
-    # any think-gap between turns paused the sandbox and made the *next* `bash`
-    # pay a full remount. 300s keeps the sandbox warm across normal conversation
-    # gaps so back-to-back turns reuse a live mount. Trade-off: more concurrently
-    # live sandboxes vs the E2B quota — the scalable fix is the warm pool
-    # (E2B_WARM_POOL_TARGET_RATIO), still a follow-up.
+    # A paused sandbox pays a full JuiceFS remount on resume. 60s paused too
+    # eagerly between turns; trade-off vs live-sandbox count is the E2B quota
+    # (scalable fix: the warm pool, E2B_WARM_POOL_TARGET_RATIO).
     E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 300
     E2B_DEFAULT_BASH_TIMEOUT: int = 120
     E2B_SANDBOX_EVICT_DAYS: int = 14
@@ -676,10 +613,8 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     DEBUG_EMAIL_PROCESSING: bool = False
 
-    # Development-only auth bypass: every request is authenticated as this
-    # user (must exist in Mongo) with no WorkOS session, so agents and tools
-    # can drive the app end to end. get_settings() refuses to start in
-    # production when this is set.
+    # Every request authenticates as this Mongo user with no WorkOS session;
+    # get_settings() refuses to start in production when this is set.
     DEV_AUTH_BYPASS_EMAIL: str | None = None
 
     # GAIA_SIM_MODE and OPENROUTER_BASE_URL are declared on CommonSettings (the
@@ -751,21 +686,11 @@ def _ensure_infisical_loaded() -> None:
 
 @lru_cache(maxsize=1)
 def get_settings() -> Any:  # noqa: ANN401 -- framework contract
-    """
-    Get cached settings instance based on environment.
+    """Return the cached settings instance for the current environment.
 
-    This function uses LRU cache to ensure settings are instantiated only once,
-    avoiding expensive Pydantic validation on every import.
-
-    The return stays `Any`. Measured, don't re-litigate: annotating it
-    `-> CommonSettings` produced **129 new mypy errors** — the concrete keys live
-    on ProductionSettings/DevelopmentSettings or arrive via `extra="allow"`, so
-    every `settings.TAVILY_API_KEY` / `R2_*` / `JUICEFS_*` read across the
-    storage, search-provider and sandbox layers becomes `has no attribute`.
-    Narrowing means hoisting those declarations onto the common base, which is a
-    settings-model redesign, not a typing fix (Type Safety item 14). The same run
-    showed `from_env(**kwargs: object)` adds 4 more: `cls(**kwargs)` feeds
-    per-field types (`ENV: Literal[...]`, `SHOW_MISSING_KEY_WARNINGS: bool`).
+    The return stays Any: narrowing to CommonSettings produced 129 mypy errors
+    plus 4 more from from_env(**kwargs) — fixing that is a settings-model
+    redesign, not a typing fix.
     """
     log.info(f"{LogTag.STARTUP} Starting settings initialization...")
 
@@ -779,9 +704,7 @@ def get_settings() -> Any:  # noqa: ANN401 -- framework contract
         if env == "development":
             settings_obj = DevelopmentSettings.from_env()
         else:
-            # Hard block, not a warning: the dev auth bypass authenticates
-            # every request as a fixed user, so production must refuse to
-            # boot rather than run with it. Checked via os.getenv because
+            # Hard block, not a warning — checked via os.getenv because
             # from_env() downgrades pydantic validation errors to warnings.
             if os.getenv("DEV_AUTH_BYPASS_EMAIL"):
                 raise RuntimeError(
@@ -799,9 +722,8 @@ def get_settings() -> Any:  # noqa: ANN401 -- framework contract
                     "DEV_UNLIMITED_RATE_LIMITS is set but ENV=production — "
                     "lifting rate limits in production is never allowed."
                 )
-            # Same policy as the auth bypass: the OpenRouter base-URL override
-            # redirects the model to a local scripted stub, so production must
-            # refuse to boot rather than run against it.
+            # Same policy as the auth bypass: OPENROUTER_BASE_URL redirects the
+            # model to a local scripted stub, which must never run in production.
             if os.getenv("OPENROUTER_BASE_URL"):
                 raise RuntimeError(
                     "OPENROUTER_BASE_URL is set but ENV=production — "

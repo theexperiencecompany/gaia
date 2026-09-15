@@ -1,14 +1,14 @@
 """Gaia-tasks VFS projection: staleness, naming, hash gating, legacy cleanup.
 
-MongoDB is the truth; ``/workspace/gaia-tasks/`` is a derived copy the agent
+MongoDB is the truth; /workspace/gaia-tasks/ is a derived copy the agent
 reads as if it were the truth. Two failure classes matter and neither shows up
 in a log line: a projection that outlives its Mongo document (the agent acts on
 a task the user deleted) and a projection that writes outside the tree it owns
 (one user's data landing in another's, or a sibling projection getting wiped).
 
-``tmp_path`` is the real mount root — every path, mode bit and rmtree here is
+tmp_path is the real mount root — every path, mode bit and rmtree here is
 genuine filesystem behavior. Nothing is mocked except one deliberate mid-write
-failure injection; these functions take a ``Path`` and touch no network or DB.
+failure injection; these functions take a Path and touch no network or DB.
 """
 
 from __future__ import annotations
@@ -126,11 +126,9 @@ def test_the_legacy_cleanup_reports_nothing_on_a_brand_new_workspace(tmp_path: P
 def test_syncing_gaia_tasks_does_not_delete_the_users_live_todos_projection(
     tmp_path: Path,
 ) -> None:
-    # Migrating user: `.gaia/todos.v` is still on disk from the prior release,
-    # but `/todos/` now holds the *new* user-todos projection because a plain
-    # todo was written first (the two syncs are scheduled independently, from
-    # todo_service and tracked_todo_service, in no fixed order). The legacy
-    # cleanup keys off the marker alone and takes the live tree with it.
+    # Legacy cleanup keys off the marker alone: on a migrating user, `/todos/`
+    # already holds the new projection (synced independently, no fixed order),
+    # so cleanup takes that live tree too.
     (tmp_path / gtv.LEGACY_TODOS_MARKER).parent.mkdir(parents=True, exist_ok=True)
     (tmp_path / gtv.LEGACY_TODOS_MARKER).write_text("prior-release-sig\n")
     materialize_user_todos(tmp_path, [{"id": ID_B, "meta": {"title": "Buy milk"}}], "todo guide")
@@ -172,10 +170,9 @@ def test_projected_bodies_are_read_only_so_a_raw_edit_cannot_silently_desync_the
 
 
 def test_the_task_folder_is_read_only_so_sed_i_cannot_replace_a_body(tmp_path: Path) -> None:
-    # `sed -i` and `write` via rename never open the 0444 file: they create a
-    # temp file and rename over it, which only needs write permission on the
-    # DIRECTORY. Seen on the dockered stack: `sed -i` on canvas.md exited 0 and
-    # left a 0644 file the hash gate would never repaint.
+    # sed -i and rename-based writes never open the 0444 file — they only need
+    # write permission on the directory. Seen on the dockered stack: sed -i on
+    # canvas.md exited 0 and left a 0644 file the hash gate would never repaint.
     materialize_gaia_tasks(tmp_path, [task(ID_A)], GUIDE)
 
     folder = tmp_path / gtv.GAIA_TASKS_DIRNAME / "ship-the-release-00000001"
@@ -321,12 +318,9 @@ def test_a_renamed_task_keeps_exactly_one_marker(tmp_path: Path) -> None:
 def test_two_tasks_created_in_the_same_second_with_the_same_slug_get_separate_folders(
     tmp_path: Path, title_a: str, title_b: str
 ) -> None:
-    # The "shortid" is an ObjectId's 4-byte timestamp prefix, so it carries zero
-    # entropy between docs minted in the same second (a bulk create). Two such
-    # tasks whose titles slugify alike — identical, or agreeing on the first 40
-    # characters — collapse into one folder: the second body overwrites the
-    # first, index.md points both of its entries at that one path, and both
-    # markers get stamped so no later sync ever repairs it.
+    # shortid is an ObjectId's 4-byte timestamp prefix: zero entropy within the
+    # same second. Titles that slugify alike then collapse into one folder —
+    # second body wins, and both markers get stamped so no later sync repairs it.
     docs = [task(SAME_SECOND_A, title_a), task(SAME_SECOND_B, title_b)]
 
     materialize_gaia_tasks(tmp_path, docs, GUIDE)

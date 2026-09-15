@@ -1,16 +1,10 @@
 /**
- * A viewer's relationship to a single pricing plan card.
- *
- * PricingCard used to take three independent booleans — `isCurrentPlan`,
- * `hasActiveSubscription`, `isSubscriptionStatusUnknown` — but they were
- * never orthogonal: only one of "status not yet known", "this is my active
- * plan", "I'm actively subscribed to a different plan", or "I'm not actively
- * subscribed to this plan" can be true for a given card at a time. Threading
- * them separately let PricingCard represent combinations that can't happen
- * (e.g. "current plan" AND "status unknown") and pushed the component over
- * react-doctor's boolean-prop limit. `PlanViewerState` makes the impossible
- * combinations unrepresentable; PricingCards derives it once per card via
- * `getPlanViewerState`, PricingCard just switches on it.
+ * A viewer's relationship to a single pricing plan card. Replaces three
+ * booleans (`isCurrentPlan`, `hasActiveSubscription`, `isSubscriptionStatusUnknown`)
+ * that were never orthogonal — they could represent impossible combinations
+ * (e.g. "current plan" AND "status unknown") and pushed PricingCard over
+ * react-doctor's boolean-prop limit. Derived once per card via
+ * `getPlanViewerState`; PricingCard just switches on it.
  */
 export type PlanViewerState =
   | "unknown" // subscription status not yet resolved (cold cache / rehydrating store) — never treat as "available"

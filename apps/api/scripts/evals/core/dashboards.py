@@ -9,15 +9,15 @@ so this module is the whole truth about what exists.
 Three rules decide what gets built, and they are the reason the previous version
 was unreadable:
 
-**Nothing is drawn that was not measured first.** :func:`read_suite` runs the
+**Nothing is drawn that was not measured first.** :func:read_suite runs the
 exact query each candidate panel would run, and a panel is emitted only when its
 own query came back with rows. There is no panel that *should* have data. This
 is what removes "No data" from the boards: a sub-metric that does not exist in a
-project (``overall`` is absent from LongMemEval), a breakdown with no groups, a
+project (overall is absent from LongMemEval), a breakdown with no groups, a
 gate nothing scored — each one silently produced an empty card before, and now
 simply is not created.
 
-**A hard panel budget of** :data:`PANEL_BUDGET` **per board.** The old internal
+**A hard panel budget of** :data:PANEL_BUDGET **per board.** The old internal
 board carried 125 widgets across 25 sections; the four boards together carried
 211. Every one of them is a live query that the frontend also *re-polls every 30
 seconds*, against a browser that will open six connections to the host — which
@@ -33,25 +33,25 @@ and costs no query. Panels are reserved for what the reader will want to slice
 by date or click through into.
 
 Five schema facts silently produce empty or unreadable panels when wrong. They
-are read from the frontend the container actually serves (``App-*.js``), not
+are read from the frontend the container actually serves (App-*.js), not
 assumed:
 
 * the grid is **6 columns wide**, not 12;
-* the config must declare ``version = DASHBOARD_VERSION``. A lower version makes
+* the config must declare version = DASHBOARD_VERSION. A lower version makes
   the frontend run its migrations, and the v3→v4 migration overwrites every
-  widget's ``projectId`` with an empty string — the widget then renders "Project
+  widget's projectId with an empty string — the widget then renders "Project
   not configured";
-* a widget resolves its project from its own ``projectId``, a project **UUID**;
+* a widget resolves its project from its own projectId, a project **UUID**;
   a workspace dashboard supplies no runtime project to fall back on;
 * a chart shows **whole-period totals only when its breakdown carries a
-  sub-metric and ``aggregateTotal``**. The frontend derives the sub-metric from
+  sub-metric and aggregateTotal**. The frontend derives the sub-metric from
   a single selected score/percentile/usage key, so a breakdown next to two
   selected scores is dropped *and* the chart falls back to the dashboard's date
   interval — which is daily. That is why every breakdown chart here selects
   exactly one score;
 * a stat card whose filter matches nothing gets an **empty stats array** back
   and renders "No data available" — not "0". A zero has to come from a metric
-  that is always present (``error_count``), never from a filtered count.
+  that is always present (error_count), never from a filtered count.
 """
 
 from __future__ import annotations
@@ -93,11 +93,9 @@ DEFAULT_RANGE_DAYS = 29
 
 ChartKind = Literal["line", "bar"]
 
-# A project holds two kinds of trace: the eval records this harness writes
-# (`case-<id>`, carrying the run metadata) and the `evaluation_task` / scorer
-# traces opik.evaluation.evaluate writes during finalize. Only the former are
-# cases, so every widget is scoped to them — otherwise counts, durations and
-# cost all double-count the scoring machinery.
+# A project holds two kinds of trace: eval records this harness writes
+# (case-<id>) and evaluation_task/scorer traces opik writes during finalize.
+# Only the former are cases, so widgets scope to them, or counts and cost double-count scoring.
 CASE_FILTER: list[dict[str, str]] = [
     {
         "id": "case-traces",
@@ -122,21 +120,18 @@ STATUS_MEANINGS: dict[str, str] = {
 
 # What Opik names the group of traces carrying no error at all.
 NO_FAULT = "No Error"
-# The metrics endpoint returns at most ten groups and lumps the rest under this
-# name. It is a remainder, not a category — printing it in a category listing
-# invents one that does not exist, and counting it as a category understates how
-# many there really are.
+# The metrics endpoint returns at most ten groups and lumps the rest under
+# this name — a remainder, not a category. Printing it invents a category
+# that doesn't exist and understates how many there really are.
 OTHERS_GROUP = "__others__"
 
 # The scores that stand for a whole case rather than one aspect of it, most
 # meaningful first. Anything else grades a single gate, which is a poor headline.
 AGGREGATE_SCORERS: tuple[str, ...] = ("overall", "probes", "gaia_exact")
 
-#: What every shared score actually checks, in the reader's words rather than
-#: the scorer's name. A board that plots `bubble_boundary` without this is the
-#: complaint that started this rewrite. Sourced one-for-one from the scorer that
-#: implements each name (``core/scorers.py``, ``core/prompt_gates.py``, and the
-#: per-suite gates) — a name absent here is deliberately not charted.
+#: What every shared score actually checks, in the reader's words rather
+#: than the scorer's name, sourced from the scorer implementing each name
+#: (core/scorers.py, core/prompt_gates.py, per-suite gates); a name absent here is not charted.
 SCORE_MEANINGS: dict[str, str] = {
     "overall": (
         "the mean of the case's own gates — the share of its checks that passed. "
@@ -242,7 +237,7 @@ class Suite:
     """Everything one project actually holds, read back from Opik.
 
     Every field here was produced by the same query a panel would run, which is
-    what lets :func:`suite_sections` decide a panel's existence from evidence
+    what lets :func:suite_sections decide a panel's existence from evidence
     rather than from hope.
     """
 
@@ -277,7 +272,7 @@ class Suite:
 
     @property
     def label(self) -> str:
-        """The suite's name without the `gaia-` prefix every project carries."""
+        """The suite's name without the gaia- prefix every project carries."""
         return self.project.removeprefix("gaia-")
 
     @property
@@ -289,7 +284,7 @@ class Suite:
     def gate_scores(self) -> dict[str, float]:
         """The shared gates this suite scored, without its case aggregate.
 
-        Restricted to names :data:`SCORE_MEANINGS` can explain, which is what
+        Restricted to names :data:SCORE_MEANINGS can explain, which is what
         keeps the memory suite's 51 per-probe scores out of the legend — they
         are one score per probe of one scenario and explain nothing on their own.
         """
@@ -334,13 +329,12 @@ class Panels:
         return f"{self.suite.project}-{slug}"
 
     def stat(self, slug: str, title: str, metric: str, x: int, y: int, w: int = 2) -> Widget:
-        """A single live number, unfiltered.
+        """Return a single live number, unfiltered.
 
-        Deliberately never filtered: a filtered stat that matches nothing comes
-        back with an empty stats array and renders "No data available", which is
-        precisely the dead panel this rebuild exists to remove. Counts that need
-        a filter are drawn as a breakdown chart instead, where an absent group
-        is simply an absent bar.
+        Deliberately never filtered: a filtered stat that matches nothing
+        comes back "No data available", precisely the dead panel this
+        rebuild removes. Counts needing a filter are drawn as a breakdown
+        chart instead, where an absent group is simply an absent bar.
         """
         config: dict[str, object] = {
             "source": "traces",
@@ -366,14 +360,12 @@ class Panels:
         group_by: str | None = None,
         group_field: str = "metadata",
     ) -> Widget:
-        """One grouped whole-period total per bar.
+        """Return one grouped whole-period total per bar.
 
-        ``group_by`` names a trace-metadata key; ``group_field`` swaps that for
-        one of Opik's built-in breakdowns (``error_type``, ``name``, ``model``).
-        ``aggregateTotal`` is always set, and a FEEDBACK_SCORES chart always
-        selects exactly one score, because those two together are what make the
-        frontend collapse the series to a single total instead of drawing one
-        point per day.
+        group_by names a trace-metadata key; group_field swaps that for a
+        built-in breakdown (error_type, name, model). aggregateTotal is
+        always set, and a FEEDBACK_SCORES chart always selects one score —
+        together these make the frontend show one total instead of one point per day.
         """
         breakdown: dict[str, object] = {"field": group_field, "aggregateTotal": True}
         if group_by is not None:
@@ -391,13 +383,12 @@ class Panels:
 
 
 def markdown(wid: str, content: str, x: int, y: int, w: int) -> Widget:
-    """A text card tall enough for its own content and no taller.
+    """Build a text card tall enough for its own content and no taller.
 
-    The frontend renders markdown in an ``overflow-auto`` box, so content past
-    the widget's height scrolls rather than being lost — but a card that has to
-    be scrolled is a card that gets skimmed. Height follows the text it holds,
-    wrapping at roughly the column width, and is clamped to the frontend's own
-    maximum; a body longer than that is a signal to split it into two cards.
+    The frontend renders markdown in an overflow-auto box, so content past
+    height scrolls rather than being lost — but a scrolled card gets skimmed.
+    Height follows the text, wrapping at roughly the column width, clamped
+    to the frontend's own maximum.
     """
     columns = max(1, CHARS_PER_COLUMN * w)
     lines = sum(1 + len(line) // columns for line in content.splitlines())
@@ -406,7 +397,7 @@ def markdown(wid: str, content: str, x: int, y: int, w: int) -> Widget:
 
 
 def _verdict_note(suite: Suite) -> str:
-    """The pass rate, spelled out, with what each verdict means."""
+    """Explain the pass rate, with what each verdict means."""
     present = [s for s in (PASSED, FAILED, ERRORED, SKIPPED) if suite.statuses.get(s)]
     split = " · ".join(f"**{suite.statuses[s]}** {s}" for s in present)
     lines = [
@@ -429,14 +420,12 @@ def _verdict_note(suite: Suite) -> str:
 
 
 def _error_note(suite: Suite) -> str:
-    """The machine-error line, which has to survive traces written before the fix.
+    """Return the machine-error line, which has to survive traces written before the fix.
 
-    ``error_count`` counts traces carrying an error envelope; the sink now
-    writes one only for a case journalled ``errored``. Traces seeded before that
-    fix carry an envelope on *failed* cases too, so the two numbers disagree —
-    and quoting the raw count as "machine errors" would blame the backend for
-    wrong answers. Comparing them says which of the two situations this is, and
-    the sentence corrects itself once the project is re-seeded.
+    error_count counts traces carrying an error envelope; the sink now
+    writes one only for a case journalled errored. Traces seeded before that
+    fix carry an envelope on failed cases too, so the numbers disagree, and
+    quoting the raw count would blame the backend for wrong answers.
     """
     errored = suite.statuses.get(ERRORED, 0)
     if not suite.error_count and not errored:
@@ -459,7 +448,7 @@ def _error_note(suite: Suite) -> str:
 
 
 def _score_note(suite: Suite) -> str:
-    """What each feedback score on this project's traces actually means."""
+    """Explain what each feedback score on this project's traces actually means."""
     if not suite.score_means:
         return "_No feedback score is attached to any case in this project._"
     lines = [
@@ -608,7 +597,7 @@ def _built_note() -> str:
 
 
 def _header(suite: Suite) -> tuple[str, str]:
-    """The board's read-me, as two columns rather than one long scroll.
+    """Build the board's read-me, as two columns rather than one long scroll.
 
     Left is what happened and how it was graded; right is how to get from a bar
     to a case, and what the run cost. Both are text, so neither can fail to load.
@@ -667,7 +656,7 @@ def _headline_panels(suite: Suite, panels: Panels, row: int) -> list[Widget]:
 def suite_panels(suite: Suite, panels: Panels, row: int) -> list[Widget]:
     """Every chart this suite has the measured data to fill, in priority order.
 
-    Each entry states the precondition that was measured in :func:`read_suite`.
+    Each entry states the precondition that was measured in :func:read_suite.
     A panel with no evidence behind it is never appended, which is the whole
     mechanism preventing an empty card from reaching a board.
     """
@@ -759,7 +748,7 @@ def suite_panels(suite: Suite, panels: Panels, row: int) -> list[Widget]:
 
 
 def suite_sections(suite: Suite) -> list[Section]:
-    """A whole board for one suite: read-me, headline, then the questions."""
+    """Build a whole board for one suite: read-me, headline, then the questions."""
     panels = Panels(suite)
     verdict, guide = _header(suite)
     half = GRID_COLUMNS // 2
@@ -895,22 +884,20 @@ BOARDS: tuple[Board, ...] = (
 
 
 def _shared_board_sections(board: Board, suites: list[Suite]) -> list[Section]:
-    """Six suites: a written guide each, and two panels each.
+    """Build six suites: a written guide each, and two panels each.
 
-    A per-suite deep dive is what turned this board into 125 widgets. What a
-    reader needs from a shared board is which suite is in trouble and which of
-    its categories is dragging; everything past that is one click into the
-    suite's own project. The guides carry what would otherwise be panels — every
-    gate with its meaning and its measured pass rate — for free.
+    A per-suite deep dive is what turned this board into 125 widgets. A
+    reader needs which suite is in trouble and which category is dragging;
+    the guides carry what would otherwise be panels — gate meaning and
+    measured pass rate — for free.
     """
     header = markdown("internal-about", _roll_up(suites, board.blurb), 0, 0, GRID_COLUMNS)
     sections = [Section("internal-s0", "Every internal suite at a glance", [header])]
     for suite in suites:
         panels = Panels(suite)
-        # The score guide is text, not a panel: it costs no query, so every suite
-        # can carry one without touching the budget — and a list of gate names
-        # with their meaning and their measured pass rate is more use than a bar
-        # chart of the same names with neither.
+        # The score guide is text, not a panel: it costs no query, so every
+        # suite can carry one without touching the budget — a list of gate
+        # names with meaning and pass rate beats a bar chart of the same names.
         guide = markdown(
             f"{suite.project}-guide",
             "\n\n".join(
@@ -976,7 +963,7 @@ def _shared_board_sections(board: Board, suites: list[Suite]) -> list[Section]:
 
 
 def board_sections(board: Board, suites: dict[str, Suite]) -> list[Section]:
-    """The sections for one board, from the suites it could actually read."""
+    """Return the sections for one board, from the suites it could actually read."""
     present = [suites[name] for name in board.projects if name in suites]
     if not present:
         return []
@@ -986,7 +973,7 @@ def board_sections(board: Board, suites: dict[str, Suite]) -> list[Section]:
 
 
 def _window() -> tuple[datetime, datetime]:
-    """The frontend's default date window, which every read here mirrors."""
+    """Return the frontend's default date window, which every read here mirrors."""
     end = datetime.now(UTC)
     return end - timedelta(days=DEFAULT_RANGE_DAYS), end
 
@@ -1103,7 +1090,7 @@ def read_suite(client: opik.Opik, project: str, project_id: str) -> Suite:
     primary = next((name for name in AGGREGATE_SCORERS if name in score_means), "")
 
     def primary_by(key: str, filters: list[dict[str, str]] | None = None) -> dict[str, float]:
-        """The primary score grouped one way — the query its panel would run."""
+        """Return the primary score grouped one way — the query its panel would run."""
         if not primary:
             return {}
         return _grouped(

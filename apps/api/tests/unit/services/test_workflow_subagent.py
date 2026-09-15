@@ -3,7 +3,7 @@
 The runner replaces the prepare/execute pair the oauth-registered subagents use,
 so the two things every handoff has to get right are its own here: it must
 inherit the executor's configurable (and with it the run's resolved lane), and it
-must never hand ``create_workflow`` an empty string as if it were a draft.
+must never hand create_workflow an empty string as if it were a draft.
 """
 
 from dataclasses import dataclass
@@ -28,7 +28,7 @@ _TEXT_DEPRECATION = "ignore::langchain_core._api.deprecation.LangChainDeprecatio
 
 
 class _NoTextChunk(AIMessageChunk):
-    """A chunk whose ``text`` attribute is absent, forcing the str(content) path."""
+    """A chunk whose text attribute is absent, forcing the str(content) path."""
 
     @property
     def text(self) -> str:
@@ -96,8 +96,7 @@ class TestTheDraftItHandsBack:
         assert run.result == '{"title": "Inbox digest"}'
 
     async def test_an_empty_answer_becomes_a_terminal_string_not_an_empty_draft(self) -> None:
-        """``create_workflow`` reads this as the agent's answer; "" would look like
-        a successful run that produced nothing."""
+        """create_workflow reads this as the agent's answer; "" would look like a successful run producing nothing."""
         run = await _execute("")
 
         assert run.result == "Task completed"
@@ -106,8 +105,7 @@ class TestTheDraftItHandsBack:
 @pytest.mark.unit
 class TestTheLaneItInherits:
     async def test_it_runs_on_its_parents_configurable(self) -> None:
-        """The executor's bag carries the run's resolved lane, so without this a
-        pro user's workflow authoring silently drops to the default model."""
+        """The executor's bag carries the run's resolved lane, or a pro user's authoring silently drops to the default model."""
         parent = {"user_id": "u1", "lane": {"provider": "openrouter", "model": "paid/model"}}
 
         run = await _execute('{"title": "x"}', base_configurable=parent)
@@ -126,16 +124,14 @@ class TestTheLaneItInherits:
         }
 
     async def test_authoring_runs_on_a_capped_step_budget(self) -> None:
-        """A wandering model must reach the forced-finalize fallback quickly rather
-        than burning a full agent's recursion budget first."""
+        """A wandering model must reach the forced-finalize fallback quickly, not burn a full agent's recursion budget."""
         run = await _execute('{"title": "x"}')
 
         config = run.stream_turn.call_args.args[2]
         assert config["recursion_limit"] == WORKFLOW_SUBAGENT_RECURSION_LIMIT
 
     async def test_the_context_stream_writer_reaches_the_streaming_loop(self) -> None:
-        """The caller's writer is what forwards tool entries to the chat UI; a
-        runner that drops it streams nothing without any error anywhere."""
+        """The caller's writer forwards tool entries to the chat UI; a runner that drops it streams nothing, silently."""
         writer = MagicMock()
         with (
             patch(
@@ -284,8 +280,7 @@ class TestConsumeMessageChunk:
 
     @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
     def test_a_block_list_content_is_unwrapped_via_text_not_str(self) -> None:
-        """``text()`` extracts the blocks' text; ``str(content)`` would ship the
-        raw repr of the block list to the user."""
+        """text() extracts the blocks' text; str(content) would ship the raw repr of the block list to the user."""
         chunk = AIMessageChunk(content=[{"type": "text", "text": "abc", "index": 0}])
 
         result = WorkflowSubagentRunner._consume_message_chunk((chunk, {}), None, "")
@@ -302,8 +297,7 @@ class TestConsumeMessageChunk:
 
     @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
     def test_a_falsy_tool_message_is_skipped_like_any_falsy_chunk(self) -> None:
-        """Only real message chunks reach the writer; a falsey value must not
-        slip through the guard as a tool output."""
+        """Only real message chunks reach the writer; a falsey value must not slip through the guard as a tool output."""
         writer = MagicMock()
         falsy_tool = _FalsyToolMessage(content="", tool_call_id="tc1")
 
@@ -401,9 +395,7 @@ class TestStreamTurnModes:
 
     @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
     async def test_the_dedup_set_and_writer_are_forwarded_intact(self) -> None:
-        """The caller's emitted-tool-calls set and stream writer must reach the
-        per-event handlers — a dropped set would re-stream already-seen tool
-        entries, and a dropped writer silently kills all streaming."""
+        """A dropped emitted-tool-calls set re-streams already-seen entries; a dropped writer silently kills streaming."""
         writer = MagicMock()
         dedup = {"tc0"}
         with (

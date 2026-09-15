@@ -1,4 +1,4 @@
-"""Persistent `write` tool — overwrite files in the user's E2B workspace."""
+"""Persistent write tool — overwrite files in the user's E2B workspace."""
 
 from __future__ import annotations
 
@@ -140,9 +140,8 @@ async def write(
         session_id=session_id,
     )
 
-    # Real-time artifact push: the instant a `artifacts/` file is written we
-    # publish to the artifacts channel. The chat stream's forwarder relays it as
-    # an SSE `artifact_data` chunk *during the active turn*, so the card renders
+    # Real-time artifact push: the chat stream's forwarder relays this as an
+    # SSE `artifact_data` chunk during the active turn, so the card renders
     # immediately — no polling, no dependence on the sandbox-side watcher.
     await publish_artifact_write(
         user_id, role, role_conv, abs_path, content, len(encoded), real_mtime

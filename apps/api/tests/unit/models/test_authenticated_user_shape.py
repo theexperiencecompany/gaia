@@ -1,14 +1,14 @@
-"""``AuthenticatedUser`` must not drift from ``UserDocument``.
+"""AuthenticatedUser must not drift from UserDocument.
 
-``build_user_context()`` spreads an entire ``UserDocument`` into
-``request.state.user`` and layers auth-context fields on top, so
-``AuthenticatedUser`` has to stay a superset of the document's fields. It can't
-simply BE ``UserDocument``: the auth context adds keys the document doesn't have
-(``auth_provider``, the per-path flags) and ~205 call sites read the value with
-``user["user_id"]``, which a Pydantic model would break at runtime.
+build_user_context() spreads an entire UserDocument into
+request.state.user and layers auth-context fields on top, so
+AuthenticatedUser has to stay a superset of the document's fields. It can't
+simply BE UserDocument: the auth context adds keys the document doesn't have
+(auth_provider, the per-path flags) and ~205 call sites read the value with
+user["user_id"], which a Pydantic model would break at runtime.
 
 That leaves the field list duplicated, so this test is the guard: add a field to
-``UserDocument`` without adding it here and CI fails instead of the TypedDict
+UserDocument without adding it here and CI fails instead of the TypedDict
 silently going stale.
 """
 

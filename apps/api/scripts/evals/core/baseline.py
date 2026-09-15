@@ -5,7 +5,7 @@ produced a number floating in space and a regression shipped silently. This is
 the comparison: it answers "did this change make it worse", which is the only
 question an eval suite exists to answer.
 
-Re-baselining is deliberate (``--rebaseline``). A baseline that updates itself
+Re-baselining is deliberate (--rebaseline). A baseline that updates itself
 absorbs every regression it was meant to catch.
 """
 
@@ -192,7 +192,7 @@ def _reject_unbaselineable(meta: RunMeta, run_id: str) -> None:
     """Refuse to enshrine a run whose numbers are known not to mean anything.
 
     Both of these have already happened: a run whose token accounting was wrong
-    was kept for the record with ``excluded`` set, and a run aborted by a dead
+    was kept for the record with excluded set, and a run aborted by a dead
     backend holds only the cases that ran before the outage. Either one, made
     the baseline, becomes the bar every later run is judged against.
     """
@@ -210,7 +210,7 @@ def _reject_unbaselineable(meta: RunMeta, run_id: str) -> None:
 def for_run(journal: RunJournal, *, rebaseline: bool = False, provisional: str = "") -> Comparison:
     """Judge a run against its suite's baseline, or record it as the new one.
 
-    The single path both the live run loop and the offline ``compare`` command
+    The single path both the live run loop and the offline compare command
     take, so a verdict cannot differ depending on which one asked.
     """
     run_id = journal.dir.name

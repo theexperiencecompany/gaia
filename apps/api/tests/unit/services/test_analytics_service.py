@@ -132,15 +132,14 @@ class TestCaptureEvent:
 
 
 class TestCaptureEventDedupe:
-    """``dedupe_key`` is the only thing standing between a retryable worker
-    task and a double-counted milestone: it becomes a stable event uuid, and
-    PostHog stores the same uuid once. Nothing exercised it, so every way of
-    getting that uuid wrong was invisible.
+    """dedupe_key is the only thing standing between a retryable worker task and a double count.
+
+    It becomes a stable event uuid, and PostHog stores the same uuid once. Nothing
+    exercised it, so every way of getting that uuid wrong was invisible.
     """
 
     def test_no_dedupe_key_sends_no_uuid(self, mock_posthog):
-        """An ordinary capture must stay un-deduped — a uuid derived from
-        nothing would collapse genuinely repeated user actions into one."""
+        """A uuid derived from nothing would collapse genuinely repeated user actions into one."""
         capture_event("user1", "test:event", {"key": "value"})
 
         assert "uuid" not in mock_posthog.capture.call_args.kwargs
@@ -156,8 +155,7 @@ class TestCaptureEventDedupe:
         assert UUID(kwargs["uuid"]).version == 5
 
     def test_the_same_capture_twice_carries_the_same_uuid(self, mock_posthog):
-        """The retry case: an ARQ task re-runs its whole body, so the second
-        pass must produce a uuid PostHog recognises as already stored."""
+        """The retry case: an ARQ task re-runs its whole body and must produce a matching uuid."""
         capture_event("user1", "test:event", {"key": "value"}, dedupe_key="run-1")
         capture_event("user1", "test:event", {"key": "other"}, dedupe_key="run-1")
 
@@ -165,8 +163,7 @@ class TestCaptureEventDedupe:
         assert first == second
 
     def test_the_uuid_changes_with_event_user_and_key(self, mock_posthog):
-        """A uuid that ignores any of its three inputs deduplicates events
-        that are not repeats — silently deleting real data."""
+        """A uuid that ignores any of its three inputs silently deduplicates events that are not repeats."""
         capture_event("user1", "test:event", dedupe_key="run-1")
         capture_event("user1", "other:event", dedupe_key="run-1")
         capture_event("user2", "test:event", dedupe_key="run-1")
@@ -176,8 +173,7 @@ class TestCaptureEventDedupe:
         assert len(set(uuids)) == 4
 
     def test_a_deduped_capture_failure_is_reported_loudly(self, mock_posthog):
-        """Analytics never raises into the caller, so a broken deduped capture
-        can only be seen through the wide event's errors[]."""
+        """Analytics never raises into the caller, so this failure is visible only via the wide event."""
         mock_posthog.capture.side_effect = RuntimeError("PostHog error")
 
         with patch("app.services.analytics_service.log") as mock_log:
@@ -215,8 +211,7 @@ class TestCaptureContextEvent:
         assert "timestamp" in props
 
     def test_sends_no_distinct_id_so_the_request_context_supplies_it(self, mock_posthog):
-        """Passing one here would override the identified context and is the
-        difference between this helper and capture_event."""
+        """Passing one here would override the identified context this helper relies on."""
         capture_context_event("test:event", {"key": "value"})
 
         call = mock_posthog.capture.call_args
@@ -230,9 +225,7 @@ class TestCaptureContextEvent:
         assert "timestamp" in props
 
     def test_the_timestamp_is_offset_aware_utc(self, mock_posthog):
-        """`datetime.now()` without UTC yields naive local time, which
-        isoformats without an offset — PostHog then reads it as whatever the
-        runner's timezone happens to be."""
+        """datetime.now() without UTC yields naive local time; PostHog then reads the runner's own timezone."""
         capture_context_event("test:event")
 
         stamped = mock_posthog.capture.call_args.kwargs["properties"]["timestamp"]
@@ -241,8 +234,7 @@ class TestCaptureContextEvent:
         assert parsed.utcoffset() == timedelta(0)
 
     def test_captures_nothing_when_no_client_is_configured(self, mock_posthog_none):
-        """A token-less environment must no-op, not raise — the SILENT
-        provider strategy is what lets local dev run without analytics."""
+        """The SILENT provider strategy is what lets a token-less local dev run without analytics."""
         capture_context_event("test:event", {"key": "value"})
 
     def test_a_failing_client_does_not_propagate(self, mock_posthog):
@@ -252,9 +244,7 @@ class TestCaptureContextEvent:
         capture_context_event("test:event")
 
     def test_a_failing_client_is_reported_loudly(self, mock_posthog):
-        """Swallowed silently, a broken PostHog client looks exactly like a
-        quiet product. log.error lands in the wide event's errors[], so the
-        payload is queryable — and therefore assertable."""
+        """log.error lands in the wide event's errors[], or a broken PostHog client looks like a quiet product."""
         mock_posthog.capture.side_effect = RuntimeError("PostHog error")
 
         with patch("app.services.analytics_service.log") as mock_log:
@@ -333,8 +323,7 @@ class TestTrackSubscriptionEvent:
         assert props["currency"] == "USD"
 
     async def test_the_wide_event_names_the_plan_that_was_billed(self, mock_posthog):
-        """Billing support reads the request's wide event, not PostHog — a
-        subscription field under the wrong key is invisible to every query."""
+        """Billing support reads the wide event, not PostHog; a field under the wrong key is invisible."""
         async with captured_wide_event() as event:
             track_subscription_event(
                 "user1",

@@ -1,7 +1,7 @@
 """Which integrations a user has connected, read once and cached.
 
-Below ``oauth_service`` on purpose: the workflow layer asks this question
-(``integration_requirements``) and ``oauth_service`` imports the workflow
+Below oauth_service on purpose: the workflow layer asks this question
+(integration_requirements) and oauth_service imports the workflow
 layer for pause/resume, so the reader lives where both can import it.
 """
 
@@ -26,23 +26,13 @@ from shared.py.wide_events import OAuthContext, log
 
 @Cacheable(ttl=86400, key_pattern=f"{OAUTH_STATUS_KEY}:{{user_id}}")
 async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
-    """
-    Get status for ALL integrations for a user. This is the ONLY cached function.
+    """Return connection status for every integration for user_id.
 
-    Strategy:
-    1. Query MongoDB user_integrations first (canonical source for user connections)
-    2. For platform integrations not in user_integrations, check external services
-       (supports legacy users who connected before user_integrations existed)
-
-    Args:
-        user_id: The user ID to check status for
-
-    Returns:
-        dict[str, bool]: Mapping of integration_id -> connection status for ALL integrations
+    Checks MongoDB user_integrations first (canonical), falling back to
+    external services for platform integrations connected before it existed.
     """
     result = {}
 
-    # Step 1: Get all user_integrations from MongoDB (canonical source)
     user_ints = await user_integration_repository.list_for_user(user_id, limit=100)
     mongo_status = {
         ui.integration_id: ui.status == INTEGRATION_STATUS_CONNECTED for ui in user_ints
@@ -73,7 +63,6 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
         elif integration.managed_by == MANAGED_BY_SELF:
             result[integration.id] = await _self_managed_connected(user_id, integration)
 
-    # Step 2: Batch check Composio integrations not in MongoDB
     if composio_providers:
         result.update(
             await _composio_connected(user_id, composio_providers, composio_id_to_provider)
@@ -89,8 +78,7 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
 
 
 async def _self_managed_connected(user_id: str, integration: OAuthIntegration) -> bool:
-    """A self-managed (Google) integration is connected when its stored token
-    carries every scope the integration needs; no token reads as not connected."""
+    """Return True when the stored token carries every scope the integration needs."""
     try:
         token = await token_repository.get_token(
             user_id, integration.provider, renew_if_expired=True
@@ -111,8 +99,7 @@ async def _self_managed_connected(user_id: str, integration: OAuthIntegration) -
 async def _composio_connected(
     user_id: str, providers: list[str], id_to_provider: dict[str, str]
 ) -> dict[str, bool]:
-    """One batched Composio status check for the integrations Mongo does not
-    know; a failed check reads every one of them as not connected."""
+    """Batch-check Composio status; a failed check reads every one as not connected."""
     try:
         status_map = await get_composio_service().check_connection_status(providers, user_id)
     except Exception as e:

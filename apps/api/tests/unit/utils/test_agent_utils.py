@@ -1,4 +1,4 @@
-"""Tests for app/utils/agent_utils.py"""
+"""Tests for app/utils/agent_utils.py."""
 
 import json
 from typing import Any
@@ -279,9 +279,7 @@ class TestFormatToolCallEntry:
 
 
 # ---------------------------------------------------------------------------
-# format_tool_call_entry -> _resolve_mcp_icon_name (custom MCP integration
-# icon/name lazy-fill; only reached when integration_id + user_id are set,
-# the tool isn't a core tool, and no icon_url was pre-supplied)
+# _resolve_mcp_icon_name: reached only for non-core tools with integration_id+user_id, no icon_url
 # ---------------------------------------------------------------------------
 
 
@@ -361,15 +359,12 @@ class TestResolveMcpIconName:
 
 
 def _no_known_handoff_target() -> Any:
-    """Neither a platform subagent nor a custom integration answers to the id, so
-    the display name falls through to the title-cased id itself."""
+    """Fall back to the title-cased id when no subagent or integration claims it."""
     return patch("app.utils.agent_utils.get_subagent_by_id", return_value=None)
 
 
 class TestSpecialToolDisplay:
-    """A ``handoff`` card names the target agent. The args it reads come straight
-    off the model's tool call, so both the missing-``args`` and the
-    missing-``subagent_id`` shapes are routine, not malformed input."""
+    """Missing-args and missing-subagent_id are routine tool-call shapes, not malformed input."""
 
     @pytest.mark.asyncio
     async def test_a_handoff_with_no_args_at_all_still_renders(self) -> None:
@@ -437,9 +432,7 @@ def _mcp_lookup(integration_id: str = "notion_int") -> Any:
 
 
 class TestGeneralToolCategory:
-    """A core tool running inside an MCP subagent keeps its own category, so the
-    card shows the tool's icon rather than the subagent's logo. Everything here
-    turns on whether the registry category counts as core."""
+    """A core tool running inside an MCP subagent keeps its own category, not the subagent's."""
 
     @pytest.mark.asyncio
     async def test_a_core_tool_keeps_its_category_and_never_consults_the_mcp_client(self) -> None:
@@ -505,8 +498,7 @@ def _registry_tool(name: str, tool: Any) -> Any:
 
 
 class TestRegistryMcpUiMetadata:
-    """The global registry is the first of two mcp_ui sources; a miss here has to
-    read as "nothing found" so the per-user MCPClient fallback still runs."""
+    """A registry miss must read as not-found so the per-user MCPClient fallback still runs."""
 
     def test_a_tool_the_registry_does_not_hold_yields_two_nones(self) -> None:
         registry = MagicMock()
@@ -515,8 +507,7 @@ class TestRegistryMcpUiMetadata:
         assert _registry_mcp_ui_metadata(registry, "ui_tool") == (None, None)
 
     def test_a_tool_carrying_no_metadata_is_normal_and_not_logged_as_a_failure(self) -> None:
-        """A plain platform tool simply has no ``metadata``. Reading that as a
-        registry outage buries the real outages in noise."""
+        """Treating missing metadata as an outage would bury genuine registry failures in noise."""
 
         class _PlainTool:
             pass
@@ -531,8 +522,7 @@ class TestRegistryMcpUiMetadata:
         mock_log.debug.assert_not_called()
 
     def test_metadata_that_is_not_a_dict_is_ignored_rather_than_duck_typed(self) -> None:
-        """Only a real dict is metadata. Anything else that happens to expose
-        ``.get`` would otherwise hand the frontend an arbitrary object as mcp_ui."""
+        """Only a real dict is metadata — anything else with a .get would leak as mcp_ui."""
 
         class _LooksLikeAMapping:
             def get(self, key: str) -> str:
@@ -586,8 +576,7 @@ class TestFormatToolCallEntryCategoryWiring:
 
     @pytest.mark.asyncio
     async def test_the_calling_user_is_carried_into_the_mcp_provenance_lookup(self) -> None:
-        """Without the user there is no MCPClient to ask, and every MCP tool would
-        fall back to an empty category — the frontend's "no icon" state."""
+        """No user id means no MCPClient to ask; the category falls back to the frontend's empty state."""
         registry_patch, ui_patch, icon_patch = self._patches(_FakeRegistry({}))
         with registry_patch, ui_patch, icon_patch, _mcp_lookup():
             result = await format_tool_call_entry(
@@ -676,17 +665,13 @@ class TestWrapAgentPayload:
         )
 
     def test_a_payload_with_no_producing_agent_carries_no_attribute(self) -> None:
-        """Only a subagent result is attributed; an executor result naming an
-        empty agent would be a tag the strip pattern still matches but a reader
-        cannot parse."""
+        """A tag with an empty agent attribute still matches the strip pattern but reads as broken markup."""
         assert wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "done", agent=None) == (
             "<executor_result>\ndone\n</executor_result>\n"
         )
 
     def test_consecutive_blocks_concatenate_without_running_together(self) -> None:
-        """Callers build a message by string-joining blocks, so the trailing
-        newline is load-bearing: without it a close tag and the next open tag
-        land on one line and the frame stops reading as structure."""
+        """The trailing newline is load-bearing: without it, joined blocks' tags land on one line."""
         joined = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "a card is up") + (
             wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "3 unread")
         )
@@ -704,8 +689,7 @@ class TestStripInternalAgentTags:
         assert strip_internal_agent_tags(text) == "you have 3 unread"
 
     def test_a_lone_closing_tag_is_stripped(self) -> None:
-        """The common half-leak: the model writes its own reply and then closes
-        the block it was handed."""
+        """Covers the common half-leak: the model writes its reply then closes the handed block."""
         assert strip_internal_agent_tags("3 unread</executor_result>") == "3 unread"
 
     def test_an_attributed_tag_is_stripped(self) -> None:
@@ -718,15 +702,12 @@ class TestStripInternalAgentTags:
         assert strip_internal_agent_tags("<Executor_Result> done") == "done"
 
     def test_ordinary_markup_in_a_reply_survives(self) -> None:
-        """The pattern names the internal tags exactly — a reply that legitimately
-        contains angle brackets (code, HTML, a comparison) must come through
-        untouched, or the backstop starts eating the answer."""
+        """A reply with legitimate angle brackets (code, HTML, comparisons) must pass through untouched."""
         reply = "use `<div>` for that, and 3 < 5 is true"
 
         assert strip_internal_agent_tags(reply) == reply
 
     @pytest.mark.parametrize("tag", list(AgentTag))
     def test_every_declared_tag_is_covered_by_the_strip(self, tag: AgentTag) -> None:
-        """Drift guard: a tag added to ``AgentTag`` extends the backstop for free.
-        A hand-listed pattern would leak the new tag on its first use."""
+        """Drift guard: a new AgentTag member extends the backstop for free, unlike a hand-listed pattern."""
         assert strip_internal_agent_tags(wrap_agent_payload(tag, "payload")) == "payload"

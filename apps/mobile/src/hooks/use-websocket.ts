@@ -2,18 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { wsManager } from "@/lib/websocket-client";
 
 /**
- * Subscribe to a specific WebSocket event type and receive a live
- * `isConnected` flag reflecting the current connection state.
- *
- * The hook wires up / cleans up the subscription automatically so callers
- * never need to interact with the manager directly.
- *
- * @example
- * ```tsx
- * const { isConnected } = useWebSocket('notification.delivered', (data) => {
- *   console.log('New notification', data);
- * });
- * ```
+ * Subscribe to a WebSocket event type and get a live `isConnected` flag; the
+ * hook wires up and cleans up the subscription automatically.
  */
 export function useWebSocket(
   eventType: string,

@@ -1,9 +1,9 @@
-"""`download` — pull a file off a public URL into the workspace for the agent to read.
+"""download — pull a file off a public URL into the workspace for the agent to read.
 
 The general form of the workspace-as-I/O-surface pattern: anything the model needs
-to look at becomes a file, and `read` is the one lens onto it. This runs host-side
+to look at becomes a file, and read is the one lens onto it. This runs host-side
 (straight to JuiceFS, no sandbox spin-up) and hands the SSRF + size guarding to
-`url_download`; per-lane image delivery is `read`'s job downstream.
+url_download; per-lane image delivery is read's job downstream.
 """
 
 from typing import Annotated
@@ -50,10 +50,8 @@ async def download(
     if not urlparse(url).scheme:
         url = f"https://{url}"
 
-    # Always refetch. The on-disk name is knowable from the URL alone, so an
-    # existing file could be returned without hitting the network — but nothing
-    # invalidates it, so "download it again, it changed" would hand the agent the
-    # stale bytes with no way to ask for the current ones.
+    # Always refetch: nothing invalidates the URL-derived on-disk name, so reusing
+    # it risks handing the agent stale bytes.
     try:
         result = await download_public_url(url)
     except DownloadError as e:

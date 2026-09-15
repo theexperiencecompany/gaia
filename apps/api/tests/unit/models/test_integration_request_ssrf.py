@@ -1,6 +1,6 @@
 """SSRF shape validation on custom-integration request schemas.
 
-The ``server_url`` field validator is the first SSRF gate for user-supplied MCP
+The server_url field validator is the first SSRF gate for user-supplied MCP
 endpoints. If it is removed or weakened, a create/update request pointing at the
 cloud-metadata endpoint or a private host must still be rejected at parse time.
 """

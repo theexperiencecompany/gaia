@@ -1,14 +1,14 @@
 """Unit tests for app.agents.tools.integrations.google_sheets_tool.
 
-Only the true I/O boundary is faked: `proxy_request_sync`, patched in both this
-module and `google_sheets_utils`, is routed through a single fake Sheets/Drive
+Only the true I/O boundary is faked: proxy_request_sync, patched in both this
+module and google_sheets_utils, is routed through a single fake Sheets/Drive
 API. Everything else — A1 parsing, sheet/column resolution, request assembly —
 runs for real, so the assertions below are against the exact JSON Google would
 receive.
 
 Several production bugs were found while writing these tests and fixed at the
-root in `google_sheets_tool.py`, `google_sheets_utils.py` and
-`google_sheets_models.py`; the tests pinning them down are marked "BUG:".
+root in google_sheets_tool.py, google_sheets_utils.py and
+google_sheets_models.py; the tests pinning them down are marked "BUG:".
 """
 
 from typing import Any, cast
@@ -317,10 +317,9 @@ class TestShareSpreadsheet:
         assert result["shared"][0]["permission_id"] is None
         assert result["total_shared"] == 1
 
-    # BUG: the per-recipient `errors` list was built and then dropped from the
-    # response, so a partial failure reported `total_failed: 1` with no way to
-    # tell the user which address failed or why — and the tool's own docs
-    # promised an `errors` field.
+    # BUG: the per-recipient errors list was built and then dropped from the response, so a
+    # partial failure reported total_failed: 1 with no way to tell which address failed or why —
+    # despite the tool's own docs promising an errors field.
     def test_partial_failure_reports_which_recipient_failed_and_why(
         self, tools: Any, api: Any
     ) -> None:

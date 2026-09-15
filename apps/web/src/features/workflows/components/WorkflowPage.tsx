@@ -216,12 +216,9 @@ export default function WorkflowPage() {
     loadCommunityWorkflows();
   }, []);
 
-  // Open the modal from a deep link (`?id=`). This must react ONLY to a genuine
-  // `workflowId` change — not to `workflows` list refreshes. The list is a
-  // dependency only because on initial load it may be empty when the id is read,
-  // so we wait for it to populate. Without the ref guard, any background refetch
-  // (e.g. the one fired after toggling activation) would re-run this and clobber
-  // a selection the user has since navigated to.
+  // Open the modal from a deep link (`?id=`), reacting ONLY to a genuine
+  // `workflowId` change — `workflows` is a dependency only because it may be
+  // empty on initial load; the ref guard stops a background refetch from clobbering a selection the user has since navigated away from.
   const openedWorkflowIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!workflowId) {

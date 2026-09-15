@@ -27,11 +27,9 @@ PROFESSION_MAX_LENGTH = 80
 def clean_profession(value: str) -> str:
     """One rule for every surface that stores a job title.
 
-    Q1's "Other" field asks "What do you do?", and people answer in sentences
-    ("I'm a founder, building a startup"), so punctuation and digits are fine.
-    What is not fine is a second line: the text is spoken back inside GAIA's
-    first message. The completion request and the preferences PATCH once had
-    different rules here, and the wizard hung on the stricter one.
+    Q1 answers are sentences ("I'm a founder, building a startup"), so
+    punctuation/digits are fine; a second line is not — it's spoken back in
+    GAIA's first message. Completion and preferences PATCH once diverged here.
     """
     cleaned = value.strip()
     if not cleaned:
@@ -44,18 +42,11 @@ def clean_profession(value: str) -> str:
 
 
 def _known_enum_value_or_unset(value: object, enum: type[Enum]) -> object:
-    """A stored value that is a member of ``enum`` today, else ``None``.
+    """A stored value that is a member of enum today, else None.
 
-    A historical row with a value outside today's enum is an unset field, not a
-    failed auth read; only our own code writes these, but the read must never
-    depend on that. Enum members are ``str``, so they pass as themselves, and a
-    dict or an int in the slot reads as unset rather than raising.
-
-    Each field is checked against its OWN enum. One merged set of every known
-    value looks equivalent and is not: ``OnboardingPhase`` and ``BioStatus``
-    both carry ``"completed"``, so a value belonging to the other enum passes
-    the guard and then fails Pydantic's coercion for the field's real type —
-    producing exactly the failed read the guard exists to prevent.
+    A historical value outside today's enum reads as unset, not a failed read.
+    Check against the field's OWN enum: OnboardingPhase and BioStatus both have
+    "completed", so a merged set would let a cross-enum value pass, then fail Pydantic.
     """
     return value if isinstance(value, str) and value in {m.value for m in enum} else None
 
@@ -68,7 +59,7 @@ def clean_other_need(value: str | None) -> str | None:
 
 
 class OnboardingPhase(str, Enum):
-    """Tracks the current phase of user onboarding"""
+    """Tracks the current phase of user onboarding."""
 
     INITIAL = "initial"  # Name, profession, timezone entered
     PERSONALIZATION_PENDING = "personalization_pending"  # Waiting for bio, house, etc.
@@ -78,7 +69,7 @@ class OnboardingPhase(str, Enum):
 
 
 class BioStatus(str, Enum):
-    """Tracks the status of bio generation"""
+    """Tracks the status of bio generation."""
 
     PENDING = "pending"  # Not yet started
     PROCESSING = "processing"  # Actively generating from memories
@@ -104,7 +95,7 @@ class OnboardingNeed(StrEnum):
     """The pains the user handed GAIA during onboarding (Q2, up to three picks).
 
     Six are shown to everyone; the rest come in pairs, one pair per Q1 role, and
-    only that role sees its pair (``ROLE_NEEDS``). Each value is a different job
+    only that role sees its pair (ROLE_NEEDS). Each value is a different job
     GAIA can start on, so the picks carry signal into the first thread, the
     bot opener and the comms playbooks.
     """
@@ -138,9 +129,8 @@ class OnboardingNeed(StrEnum):
 
 
 #: The two role-specific pains each Q1 slug unlocks. Keys are the
-#: ``professionOptions`` values in apps/web onboarding constants; a typed
-#: profession ("other") unlocks none. Mirrored one-for-one by
-#: ``roleNeedOptions`` on the web.
+#: professionOptions values in apps/web onboarding constants ("other" unlocks
+#: none); mirrored one-for-one by roleNeedOptions on the web.
 ROLE_NEEDS: dict[str, tuple[OnboardingNeed, OnboardingNeed]] = {
     "founder": (OnboardingNeed.FOUNDER_TEAM_UPDATES, OnboardingNeed.FOUNDER_COMPETITORS),
     "executive": (OnboardingNeed.EXECUTIVE_REPORTS, OnboardingNeed.EXECUTIVE_DECISIONS),
@@ -159,16 +149,15 @@ _NEED_ROLE: dict[OnboardingNeed, str] = {
 
 
 def role_of_need(need: OnboardingNeed) -> str | None:
-    """The Q1 role a need belongs to, or ``None`` for the six everyone sees."""
+    """The Q1 role a need belongs to, or None for the six everyone sees."""
     return _NEED_ROLE.get(need)
 
 
 class OnboardingPreferences(BaseModel):
     profession: str | None = Field(
-        # `default=` by keyword: mypy's dataclass-transform support does not read
-        # a positional default, so `Field(None, ...)` typed as REQUIRED while the
-        # runtime defaulted it — a caller omitting it was red for mypy and green
-        # for pydantic. The keyword form is the one both agree on.
+        # default= by keyword: mypy's dataclass-transform support ignores a
+        # positional default, so Field(None, ...) typed as REQUIRED while runtime
+        # defaulted it — red for mypy, green for pydantic. Keyword form both agree on.
         default=None,
         description="User's profession or main area of focus",
     )
@@ -184,7 +173,7 @@ class OnboardingPreferences(BaseModel):
         """A stored document must always load: users who onboarded before the
         pain-based Q2 hold values the enum no longer has and up to seven picks.
         Unknown values are dropped and the list is cut to the cap, first picks
-        first. The strict check lives on ``OnboardingRequest``."""
+        first. The strict check lives on OnboardingRequest."""
         if not isinstance(v, list):
             return v
         known = {need.value for need in OnboardingNeed}
@@ -320,7 +309,7 @@ class OnboardingRequest(BaseModel):
 
 
 class LogoutResponse(ResponseModel):
-    """``POST /user/logout``: where the client sends the browser next."""
+    """POST /user/logout: where the client sends the browser next."""
 
     logout_url: str | None = Field(None, description="Identity-provider logout URL to redirect to")
 
@@ -337,29 +326,24 @@ class OnboardingPhaseUpdateRequest(BaseModel):
     @field_validator("phase")
     @classmethod
     def validate_phase_progression(cls, v: OnboardingPhase) -> OnboardingPhase:
-        """Ensure phase values are valid"""
+        """Ensure phase values are valid."""
         # Phase validation is handled by the enum type
         # Additional business logic validation should be in the service layer
         return v
 
 
 class AuthenticatedUser(TypedDict, total=False):
-    """``request.state.user`` — what every ``Depends(get_current_user)`` yields.
+    """request.state.user — what every Depends(get_current_user) yields.
 
-    A ``TypedDict``, not a ``BaseModel``, on purpose (Type Safety item 6): this
-    shape never crosses a validation boundary — ``build_user_context`` assembles
-    it in-process from an already-validated ``UserDocument`` — and ~205 call
-    sites read it with ``user["user_id"]``. A ``TypedDict`` is still a plain dict
-    at runtime, so those keep working untouched while mypy starts checking every
-    key; swapping to a model would have been a behaviour change (item 13) for no
-    extra safety.
+    TypedDict, not BaseModel (Type Safety item 6): never crosses a validation
+    boundary (build_user_context assembles it from an already-validated
+    UserDocument), and ~205 call sites read it via user["user_id"] — swapping to
+    a model would be a behaviour change (item 13) for no extra safety.
 
-    ``total=False`` because the auth paths genuinely populate different subsets:
-    a WorkOS session sets none of the flags, the agent-token path sets
-    ``impersonated``, bots set ``bot_authenticated``, the dev bypass sets
-    ``dev_bypass``, and the legacy bot dict carries ``_id`` where the rest carry
-    ``user_id``. Fields mirror ``UserDocument`` because ``build_user_context``
-    spreads the whole document.
+    total=False: auth paths populate different subsets (WorkOS sets no flags,
+    agent-token sets impersonated, bots set bot_authenticated, dev bypass sets
+    dev_bypass); the legacy bot dict carries _id where the rest carry user_id,
+    and fields otherwise mirror the UserDocument build_user_context spreads.
     """
 
     # Auth context layered on by build_user_context()/user_to_legacy_dict().
@@ -412,13 +396,13 @@ class AuthenticatedUser(TypedDict, total=False):
 
 
 class PlatformLinkRecord(TypedDict, total=False):
-    """One ``users.platform_links.{platform}`` entry — the bot-account link.
+    """One users.platform_links.{platform} entry — the bot-account link.
 
-    A ``TypedDict``, not a model (Type Safety item 6): it is written and read
+    A TypedDict, not a model (Type Safety item 6): it is written and read
     in-process against an already-persisted subdocument, and the read path has to
     keep tolerating legacy rows that stored a bare id instead of this mapping, so
-    validating it would add a failure mode without adding safety. ``total=False``
-    because only ``id`` is always written — ``username``/``display_name`` are
+    validating it would add a failure mode without adding safety. total=False
+    because only id is always written — username/display_name are
     stored only when the platform's profile supplied them.
     """
 
@@ -481,19 +465,19 @@ class OnboardingSubdocument(BaseModel):
     @field_validator("phase", mode="before")
     @classmethod
     def an_unknown_phase_reads_as_unset(cls, value: object) -> object:
-        """A stored ``phase`` outside today's enum is an unset field, not a failed read."""
+        """A stored phase outside today's enum is an unset field, not a failed read."""
         return _known_enum_value_or_unset(value, OnboardingPhase)
 
     @field_validator("bio_status", mode="before")
     @classmethod
     def an_unknown_bio_status_reads_as_unset(cls, value: object) -> object:
-        """The same guard for ``bio_status``, against its own enum."""
+        """The same guard for bio_status, against its own enum."""
         return _known_enum_value_or_unset(value, BioStatus)
 
     @field_validator("preferences", mode="before")
     @classmethod
     def a_non_mapping_preferences_blob_reads_as_unset(cls, value: object) -> object:
-        """``onboarding.preferences`` is an untyped blob in stored rows: a string
+        """onboarding.preferences is an untyped blob in stored rows: a string
         or a list there must read as "no preferences", not fail the whole user
         read. Typing the field moved that blast radius from one account
         projection to every authenticated request, so the leniency has to live
@@ -505,19 +489,11 @@ class OnboardingSubdocument(BaseModel):
     @field_validator("preferences", mode="before")
     @classmethod
     def a_stored_profession_todays_rules_reject_reads_as_unset(cls, value: object) -> object:
-        """A profession the input rules would refuse today is an unset field, not
-        a failed auth read.
+        """A profession the input rules refuse today reads as unset, not a failed read.
 
-        ``OnboardingPreferences`` is both this stored subdocument's type and the
-        request body of ``PATCH /preferences``, so every tightening of
-        ``clean_profession`` applies retroactively: it re-judges rows the older,
-        laxer validator already accepted. When it refuses one, ``_to_model``
-        raises on the single-document read (``base.py``'s lenient guard covers
-        only the list read), ``authenticate_workos_session`` catches it and
-        returns an empty ``user_info``, and the caller is 401'd — WorkOS says they
-        are signed in, we say they are not, and signing in again lands in the same
-        loop with no self-service fix. Dropping the value keeps the account
-        readable; the write path stays strict, so nobody can type one of these in.
+        Tightenings to clean_profession apply retroactively; a refusal here would
+        401-loop the user with no self-service fix. Dropping it keeps the account
+        readable — the write path stays strict, so nobody can type one in.
         """
         if not isinstance(value, Mapping):
             return value
@@ -533,29 +509,20 @@ class OnboardingSubdocument(BaseModel):
                 pass
             else:
                 return value
-        # Anything that is not readable text drops out: a non-str never reaches
-        # clean_profession at all, because ``profession: str | None`` rejects it
-        # at the type level first and fails the same read this guard exists to
-        # keep alive.
+        # Anything not readable text drops out: a non-str never reaches
+        # clean_profession, since profession: str | None rejects it at the type
+        # level first, failing the same read this guard exists to keep alive.
         return {**value, "profession": None}
 
 
 class UserDocument(MongoDocument):
     """A user as stored in MongoDB.
 
-    ``extra="allow"`` (not the usual ``ignore``): the auth layer's
-    ``build_user_context`` spreads the *entire* user document into
-    ``request.state.user``, and ``GET /me`` and the onboarding endpoints spread it
-    straight into their HTTP responses. Dropping undeclared fields here would
-    silently strip them from those payloads with no error anywhere. Declared
-    fields are all Optional so a legacy/partial row never fails an auth read.
-
-    The write side is now a closed set — every writer routes through
-    ``UserRepository`` and every field it can set is declared, so no *new*
-    undeclared field can appear. Tightening to ``ignore`` is still blocked on the read side:
-    it would drop whatever historical fields production rows carry, and that
-    inventory cannot be established from a dev sample. Flip it only after scanning
-    the production collection for undeclared top-level fields.
+    extra="allow", not ignore: build_user_context spreads the whole document into
+    request.state.user, and GET /me and the onboarding endpoints spread it into responses,
+    so dropping undeclared fields would silently strip them. Declared fields are Optional so
+    legacy rows never fail an auth read. Writes are closed (UserRepository declares every
+    field); flip to ignore only after scanning production rows for undeclared top-level fields.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -602,12 +569,9 @@ class UserDocument(MongoDocument):
     nurture: dict[str, Any] | None = None
     # Activation checklist collapse (first_steps_service).
     first_steps: FirstStepsState | None = None
-    # Signup's two outbound ESP deliveries, stamped when each one lands (see
-    # app/workers/tasks/signup_email_tasks.py). These attribute names must keep
-    # matching the values of ``constants.email.SignupDelivery``, which is what
-    # the repository and the recovery sweep address them by. A missing stamp
-    # means the delivery is still owed; a dev-minted user is owed neither and is
-    # stamped at creation so the sweep never mails a seeded account.
+    # Signup's two outbound ESP deliveries, stamped when each lands (see
+    # signup_email_tasks.py). Names must match constants.email.SignupDelivery,
+    # which the repository/sweep key on; dev-minted users are pre-stamped to skip the sweep.
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
 
@@ -623,10 +587,9 @@ class OnboardingStatusResponse(BaseModel):
 
     completed: bool
     completed_at: datetime | None
-    # `str`, not OnboardingPhase: this is whatever is persisted, and the only
-    # consumer (mobile) treats an error response as "onboarding complete" — so a
-    # validation failure on an unrecognised historical value would silently skip
-    # a user past onboarding. A loose string is the safer honest type here.
+    # str, not OnboardingPhase: mobile treats an error response as "onboarding
+    # complete", so a validation failure on an unrecognised historical value
+    # would silently skip a user past onboarding — a loose string is safer here.
     phase: str | None
     preferences: OnboardingPreferences
     # The pre-relocation holo-card conversation. Still served because users who
@@ -748,7 +711,7 @@ class UserUpdate(BaseModel):
 
 
 def user_to_legacy_dict(user: UserDocument) -> dict[str, Any]:
-    """Raw-style user dict (string ``_id``) for consumers not yet migrated off
+    """Raw-style user dict (string _id) for consumers not yet migrated off
     the pre-repository dict shape — auth context building, bot resolution. A
-    transitional bridge; removed once those consumers take ``UserDocument``."""
+    transitional bridge; removed once those consumers take UserDocument."""
     return {**user.model_dump(exclude={"id"}, exclude_none=True), "_id": user.id}

@@ -1,6 +1,6 @@
 """Shared isolation for tests that drive the real eval run loop.
 
-``run_suite`` writes journals, pins provider settings and talks to Opik. Every
+run_suite writes journals, pins provider settings and talks to Opik. Every
 test that exercises it needs the same four things neutralised, so they live here
 once rather than being re-monkeypatched per test.
 """
@@ -18,7 +18,7 @@ from scripts.evals.core.types import ProviderHealth
 
 
 def eval_config() -> EvalConfig:
-    """A single fake provider on a dead port — nothing here may reach a network."""
+    """Build a single fake provider on a dead port — nothing here may reach a network."""
     provider = ProviderConfig(
         name="fake",
         lane="custom",

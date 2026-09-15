@@ -55,9 +55,7 @@ async def test_gate_runs_before_the_socket_is_accepted() -> None:
 
 
 async def test_the_close_is_attributed_to_the_paywall_in_the_wide_event() -> None:
-    """The reason string is the only way a support ticket ("my daemon keeps
-    dropping") is told apart from a revoke or a bad token in Loki, so it is a
-    queried value, not narration — asserted exactly."""
+    """The reason string tells apart a support ticket from a revoke or bad token in Loki, so it is a queried value, asserted exactly."""
     websocket = _socket()
     with (
         patch(f"{MODULE}.verify_device_token", return_value=TOKEN_INFO),
@@ -84,9 +82,7 @@ async def test_gate_asks_about_the_tokens_own_user() -> None:
 
 
 async def test_a_user_who_just_paid_connects_off_the_row_not_the_stale_cache() -> None:
-    """The daemon dials the moment the user pays; the cache can still say
-    FREE for five minutes. Reading it alone closed a paying user's tunnel
-    with the paywall code on every reconnect until the TTL ran out."""
+    """The daemon dials the moment a user pays, but the cache can still say FREE for five minutes; reading it alone paywalled a paying user until the TTL ran out."""
     websocket = _socket()
     with (
         patch(f"{MODULE}.verify_device_token", return_value=TOKEN_INFO),

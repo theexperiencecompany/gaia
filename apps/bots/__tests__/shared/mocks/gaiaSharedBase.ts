@@ -102,9 +102,8 @@ export function makeGaiaSharedMock(
       return { platform: this.platform, platformUserId: userId, channelId };
     }
 
-    // --- Base helpers added for the class-based pattern. Stubbed with real-ish
-    // behavior so adapter tests exercise the adapter's own wiring; the real
-    // implementations are covered by shared tests (media.test.ts, base behavior).
+    // Base helpers stubbed with real-ish behavior so adapter tests exercise the
+    // adapter's own wiring; real implementations are covered by shared tests.
 
     private readonly _welcomed = new Set<string>();
     protected shouldSendWelcome(userId: string): boolean {
@@ -179,10 +178,8 @@ export function makeGaiaSharedMock(
     ),
     handleStreamingChat: vi.fn().mockResolvedValue(undefined),
     STREAMING_DEFAULTS: streamingDefaults,
-    // renderForPlatform is the shared non-streaming chokepoint. In adapter tests
-    // @gaia/shared is mocked, so conversion does not actually happen here — the
-    // identity mock returns RAW text and the real conversion is covered by the
-    // shared formatters tests.
+    // Shared non-streaming chokepoint; mocked as identity here (returns raw text) —
+    // real conversion is covered by the shared formatters tests.
     renderForPlatform: vi.fn((text: string) => text),
     richMessageToMarkdown: vi.fn().mockReturnValue(defaultRichMarkdown),
     parseTextArgs: vi.fn((text: string) => ({

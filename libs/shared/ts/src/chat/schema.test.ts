@@ -2,9 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ChatStreamFrameSchema } from "./schema";
 
 // Verbatim `bash_data` frames captured off the wire, one per emit site in
-// `apps/api/app/agents/tools/coding/bash_tool.py`. They arrive top-level (the
-// chat pipeline only unwraps `tool_data`), so an unmodeled shape here is what
-// made a plain `bash` turn log a schema error for every output chunk.
+// `apps/api/app/agents/tools/coding/bash_tool.py`. They arrive top-level (chat pipeline
+// only unwraps `tool_data`), so an unmodeled shape here logged a schema error per chunk.
 const bashFrames = [
   {
     bash_data: {

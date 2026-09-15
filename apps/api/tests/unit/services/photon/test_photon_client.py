@@ -1,4 +1,4 @@
-"""Tests for app/services/photon/photon_client.py"""
+"""Tests for app/services/photon/photon_client.py."""
 
 from base64 import b64encode
 from collections.abc import Iterator

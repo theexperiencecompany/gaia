@@ -98,10 +98,9 @@ export function UsageView({
 
 // --- Hero: the one big number + the one big bar ----------------------------
 
-// One percentage per window, driven entirely by the rolling cost budget — the
-// single wall every plan is measured against now that chat is priced by usage,
-// not message counts. Free has only a daily budget (its wall); pro adds a
-// monthly compute allowance, so only pro shows the month window.
+// One percentage per window, driven by the rolling cost budget — the single
+// wall every plan is measured against now that chat is priced by usage. Free
+// has only a daily budget; pro adds a monthly allowance, so only pro shows month.
 function heroWindow(
   summary: UsageSummary,
   win: Period,
@@ -114,25 +113,111 @@ function heroWindow(
   };
 }
 
-function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
-  // Free has no monthly allowance to show, so its hero is daily-only.
-  const [win, setWin] = useState<Period>(isPro ? "month" : "day");
-  const R = useRecharts();
-  const { percent, resetIso } = heroWindow(summary, win);
-  const used = Math.min(100, Math.round(percent));
+interface HeroGaugeState {
+  used: number;
+  showPace: boolean;
+  willExceed: boolean;
+  cos: number;
+  sin: number;
+}
 
+function heroGauge(
+  percent: number,
+  resetIso: string | undefined,
+  win: Period,
+): HeroGaugeState {
   const elapsed = resetIso ? elapsedFraction(resetIso, win) : 0;
   const pace = elapsed * 100;
   const projected = elapsed > 0.05 ? percent / elapsed : percent;
-  const willExceed = !!resetIso && percent < 100 && projected >= 100;
-  const showPace = !!resetIso && pace > 2 && pace < 98;
-  // The gauge shows what's USED, so the pace tick marks where usage "should"
-  // be at an even burn rate: the share of the window already elapsed.
-  // Recharts maps value 0→startAngle(230°), 100→-50°; radii in the 100x100
-  // viewBox match innerRadius 70% / outerRadius 100%.
+  // The pace tick marks where usage "should" be at an even burn rate. Recharts
+  // maps 0→230°/100→-50° in the 100x100 viewBox (innerRadius 70%, outerRadius 100%).
   const theta = ((230 - pace * 2.8) * Math.PI) / 180;
-  const cos = Math.cos(theta);
-  const sin = Math.sin(theta);
+  return {
+    used: Math.min(100, Math.round(percent)),
+    showPace: !!resetIso && pace > 2 && pace < 98,
+    willExceed: !!resetIso && percent < 100 && projected >= 100,
+    cos: Math.cos(theta),
+    sin: Math.sin(theta),
+  };
+}
+
+function heroResetText(win: Period, resetIso: string | undefined): string {
+  if (!resetIso) return "";
+  return win === "day"
+    ? `Resets at ${fmtTime(resetIso)}`
+    : `Resets ${formatDate(resetIso, "short")}`;
+}
+
+function HeroGauge({
+  percent,
+  gauge,
+}: {
+  percent: number;
+  gauge: HeroGaugeState;
+}) {
+  const R = useRecharts();
+  const { used, showPace, willExceed, cos, sin } = gauge;
+  return (
+    <div className="relative size-32 shrink-0">
+      {R ? (
+        <ChartContainer config={{}} className="aspect-square size-32">
+          <R.RadialBarChart
+            data={[{ value: used }]}
+            innerRadius="76%"
+            outerRadius="100%"
+            startAngle={230}
+            endAngle={-50}
+          >
+            <R.PolarAngleAxis
+              type="number"
+              domain={[0, 100]}
+              tick={false}
+              axisLine={false}
+            />
+            <R.RadialBar
+              dataKey="value"
+              cornerRadius={10}
+              background={{ fill: "#27272a" }}
+              fill={severityColor(percent)}
+            />
+          </R.RadialBarChart>
+        </ChartContainer>
+      ) : (
+        <div className="aspect-square size-full rounded-full bg-zinc-800/60" />
+      )}
+      {/* Pace tick: where usage "should" be at an even burn. Amber if ahead of it. */}
+      {showPace && (
+        <svg
+          viewBox="0 0 100 100"
+          className="pointer-events-none absolute inset-0 h-full w-full"
+          aria-hidden="true"
+        >
+          <title>Usage pace indicator</title>
+          <line
+            x1={50 + 37 * cos}
+            y1={50 - 37 * sin}
+            x2={50 + 46 * cos}
+            y2={50 - 46 * sin}
+            stroke={willExceed ? NEAR : "rgba(255,255,255,0.9)"}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+          />
+        </svg>
+      )}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-2xl font-semibold leading-none tracking-tight text-white tabular-nums">
+          {used}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
+  // Free has no monthly allowance to show, so its hero is daily-only.
+  const [win, setWin] = useState<Period>(isPro ? "month" : "day");
+  const { percent, resetIso } = heroWindow(summary, win);
+  const isDay = win === "day";
 
   return (
     <section className={cn(CARD, "relative flex items-center gap-5 p-4")}>
@@ -155,78 +240,21 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
           <Tab key="day" title="Today" />
         </Tabs>
       )}
-      <div className="relative size-32 shrink-0">
-        {R ? (
-          <ChartContainer config={{}} className="aspect-square size-32">
-            <R.RadialBarChart
-              data={[{ value: used }]}
-              innerRadius="76%"
-              outerRadius="100%"
-              startAngle={230}
-              endAngle={-50}
-            >
-              <R.PolarAngleAxis
-                type="number"
-                domain={[0, 100]}
-                tick={false}
-                axisLine={false}
-              />
-              <R.RadialBar
-                dataKey="value"
-                cornerRadius={10}
-                background={{ fill: "#27272a" }}
-                fill={severityColor(percent)}
-              />
-            </R.RadialBarChart>
-          </ChartContainer>
-        ) : (
-          <div className="aspect-square size-full rounded-full bg-zinc-800/60" />
-        )}
-        {/* Pace tick: where usage "should" be at an even burn. Amber if ahead of it. */}
-        {showPace && (
-          <svg
-            viewBox="0 0 100 100"
-            className="pointer-events-none absolute inset-0 h-full w-full"
-            aria-hidden="true"
-          >
-            <title>Usage pace indicator</title>
-            <line
-              x1={50 + 37 * cos}
-              y1={50 - 37 * sin}
-              x2={50 + 46 * cos}
-              y2={50 - 46 * sin}
-              stroke={willExceed ? NEAR : "rgba(255,255,255,0.9)"}
-              strokeWidth={2.5}
-              strokeLinecap="round"
-            />
-          </svg>
-        )}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-2xl font-semibold leading-none tracking-tight text-white tabular-nums">
-            {used}%
-          </span>
-        </div>
-      </div>
+      <HeroGauge percent={percent} gauge={heroGauge(percent, resetIso, win)} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <p className="text-sm font-medium text-zinc-400">
-            {win === "day" ? "Today" : "This month"}
+            {isDay ? "Today" : "This month"}
           </p>
           <InfoTip text="How much of your usage allowance you've used this window, based on the AI compute your activity has consumed." />
         </div>
         <p className="mt-1 text-xl font-semibold text-white">
-          {win === "day"
+          {isDay
             ? "of your daily allowance used"
             : "of your monthly allowance used"}
         </p>
         <p className="mt-2 text-[13px] text-zinc-500">
-          {win === "day"
-            ? resetIso
-              ? `Resets at ${fmtTime(resetIso)}`
-              : ""
-            : resetIso
-              ? `Resets ${formatDate(resetIso, "short")}`
-              : ""}
+          {heroResetText(win, resetIso)}
         </p>
       </div>
     </section>
@@ -254,11 +282,9 @@ function Stats({
   // Chat is cost-priced (no daily count allowance), so this averages plain
   // message activity per day rather than a share of any count limit.
   const { dailyAvg, activeDays, elapsedDays } = useMemo(() => {
-    // Days elapsed this month (today included) is a calendar fact — it is never
-    // zero, and it is the denominator BOTH metrics are reported against. Compute
-    // it before any early return, or a user with no history yet reads
-    // "0 of 0 days this month" on their first visit. Only the derived counts
-    // may collapse to zero.
+    // Days elapsed this month (today included) is a calendar fact, never zero,
+    // and the denominator both metrics use — compute it before any early return
+    // or a fresh user reads "0 of 0 days"; only the derived counts may collapse to zero.
     const elapsedDays = new Date().getUTCDate();
     const empty = { dailyAvg: 0, activeDays: 0, elapsedDays };
     const resetIso = summary.features[primary]?.periods.month?.reset_time;
@@ -550,12 +576,9 @@ function Trend({
       if (!resetIso) return empty;
       const window = currentMonthWindow(resetIso);
       const byDom = cumulativeByDay(history, window, primary);
-      // Today's point comes from the LIVE month counter — the same number the
-      // hero gauge shows — so the two widgets can never disagree about "now"
-      // (snapshots lag up to an hour behind the live Redis counter). The
-      // cumulative series must never DECREASE: if the live counter reads lower
-      // than history (counter eviction/reset), keep the historical maximum
-      // instead of drawing an impossible cliff.
+      // Today's point comes from the LIVE month counter (matching the hero gauge)
+      // so the two never disagree about "now". The series must never DECREASE —
+      // if the counter reads lower than history (eviction/reset), keep the historical max instead of an impossible cliff.
       if (liveMonthUsed !== undefined) {
         const historicalMax = Math.max(0, ...byDom.values());
         byDom.set(

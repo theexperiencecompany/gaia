@@ -1,9 +1,9 @@
 """Workspace-archiving summarization middleware.
 
-Wraps LangChain's `SummarizationMiddleware` so we archive the full message
+Wraps LangChain's SummarizationMiddleware so we archive the full message
 history to the persistent workspace before summarization happens. The agent
-can recover any detail by reading `/workspace/sessions/{conv}/archives/...`
-with the `read` tool.
+can recover any detail by reading /workspace/sessions/{conv}/archives/...
+with the read tool.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
 
     Drop-in replacement for the previous VFS-backed middleware. The archive
     path is injected into the summary message so the agent can fetch detail
-    on demand via the `read` tool.
+    on demand via the read tool.
     """
 
     def __init__(
@@ -73,14 +73,12 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         return result
 
     def _should_trigger_summarization(self, state: AgentState[Any]) -> bool:
-        """Whether the archive should be written before ``super().abefore_model`` runs.
+        """Return whether the archive should be written before super().abefore_model runs.
 
-        Delegates the threshold decision to the parent's ``_should_summarize`` so
-        the archive gate fires in exact lockstep with summarization. Re-deriving
-        the thresholds here drifted from the parent in four ways (strict ``>``
-        instead of ``>=`` at the boundary, and no support for list, mapping, or
-        provider-reported-token triggers), each of which summarized history away
-        with no archive to recover it from.
+        Delegates to the parent's _should_summarize so the archive gate fires
+        in exact lockstep with summarization — re-deriving the thresholds here
+        once drifted from the parent and summarized history away with no
+        archive to recover it from.
         """
         filtered = [
             m
@@ -91,12 +89,9 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
 
     async def _archive(self, state: AgentState[Any]) -> str:
         messages = state.get("messages", [])
-        # The `runtime` handed to a middleware hook carries no config — LangGraph's
-        # `Runtime` deliberately omits it (see its class docstring). Reading it from
-        # there yielded an empty configurable on every real run, so the archive
-        # raised "requires 'user_id'" and was swallowed by the caller's handler:
-        # no history was ever archived. `get_config()` is the supported accessor,
-        # and is what LLMAccountingMiddleware already uses for the same reason.
+        # `runtime` carries no config (LangGraph's `Runtime` deliberately omits
+        # it) — reading it from there once raised "requires 'user_id'" silently.
+        # `get_config()` is the supported accessor, as LLMAccountingMiddleware uses.
         configurable = agent_configurable(get_config())
         user_id = configurable.get("user_id")
         thread_id = configurable.get("thread_id")
@@ -148,9 +143,9 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         return history
 
     def _inject_archive_path(self, result: dict[str, Any], archive_path: str) -> None:
-        """Annotate the summary HumanMessage in ``result`` with the archive path.
+        """Annotate the summary HumanMessage in result with the archive path.
 
-        Mutates ``result``'s messages in place.
+        Mutates result's messages in place.
         """
         messages = result.get("messages", [])
         for msg in messages:

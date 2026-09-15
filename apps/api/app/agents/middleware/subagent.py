@@ -1,10 +1,10 @@
 """SubagentMiddleware - Provides spawn_subagent tool for lightweight parallel task execution.
 
 A spawned subagent is a real compiled graph (see
-``app/agents/core/subagents/spawn_agent.py``), run imperatively on a disposable
+app/agents/core/subagents/spawn_agent.py), run imperatively on a disposable
 thread of its own. That is what gives it the full middleware stack — including
 the HIL gate, so a gated tool inside a spawn pauses for the user's approval and
-bubbles that pause up to the parent, exactly as ``handoff`` does.
+bubbles that pause up to the parent, exactly as handoff does.
 """
 
 from collections.abc import Callable, Mapping, Sequence
@@ -63,11 +63,11 @@ from shared.py.wide_events import log
 class SpawnGraphProvider(Protocol):
     """Compiles the graph a spawn runs on.
 
-    A Protocol rather than ``Callable[..., ...]`` because this is an injection
+    A Protocol rather than Callable[..., ...] because this is an injection
     seam: every call site passes these six by keyword, and an erased signature
-    turns a renamed or dropped argument into a runtime ``TypeError`` instead of a
-    type error. Satisfied by ``core.subagents.spawn_agent.get_spawn_graph``,
-    which is injected rather than imported (see :meth:`set_spawn_graph_provider`).
+    turns a renamed or dropped argument into a runtime TypeError instead of a
+    type error. Satisfied by core.subagents.spawn_agent.get_spawn_graph,
+    which is injected rather than imported (see :meth:set_spawn_graph_provider).
     """
 
     async def __call__(
@@ -83,7 +83,7 @@ class SpawnGraphProvider(Protocol):
 
 @dataclass(frozen=True)
 class SubagentMiddlewareConfig:
-    """Construction settings for :class:`SubagentMiddleware`.
+    """Construction settings for :class:SubagentMiddleware.
 
     One object rather than ten constructor arguments: these are all build-time
     wiring for the same middleware, and every field keeps the default the
@@ -261,10 +261,9 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     }
                 )
 
-        # The thread deliberately outlives the run: a later sibling in this same AI
-        # message can still pause, which replays the tool node from the top, and the
-        # checkpoint is what tells the replay this spawn already finished instead of
-        # redoing its whole task. The nightly sweep reclaims it once it is stale.
+        # The thread deliberately outlives the run: a later sibling in this
+        # same AI message can still pause and replay the tool node from the
+        # top, and the checkpoint tells the replay this spawn already finished.
         return outcome.text
 
     async def _drive(
@@ -276,12 +275,10 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
     ) -> SubagentOutcome:
         """Run the graph, bubbling every HIL pause up to the parent.
 
-        The spawn is invoked imperatively, so its GraphInterrupt never reaches the
-        parent's runtime — each pause is re-raised here with ``interrupt()``. A LOOP,
-        not an if: one task can gate several destructive calls in sequence, and each
-        must suspend the parent again. ``resume_for_gate`` raises on the first pass and
-        returns that gate's own decision on the replay (matching the recovered park, not
-        an earlier gate's already-applied decision).
+        The spawn is invoked imperatively, so its GraphInterrupt never reaches
+        the parent's runtime — each pause is re-raised here with interrupt().
+        A LOOP, not an if: one task can gate several destructive calls in
+        sequence, each suspending the parent again.
         """
         recovered = await recover_from_checkpoint(ctx) if probe_parked else None
         outcome = recovered or await execute_subagent_stream(
@@ -325,12 +322,9 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             middleware_factory=lambda: middleware_factory(tool_space),
         )
 
-        # One thread per spawn call, never reused. ``tool_call_id`` is unique per call
-        # AND stable across node replays (it lives in the checkpointed AI message),
-        # which is what lets a resumed spawn find its own run — parked or finished —
-        # instead of starting a second one. The ``spawn_`` prefix is what
-        # workers/tasks/checkpoint_retention_tasks.py selects on to reclaim these once
-        # stale; the conversation uuid keeps them collectable with the conversation.
+        # One thread per spawn call, never reused: ``tool_call_id`` is unique
+        # and stable across replays. ``spawn_`` prefix lets
+        # checkpoint_retention_tasks.py reclaim these once stale.
         thread_id = f"{SPAWN_THREAD_PREFIX}{conversation_id}_{tool_call_id}"
 
         spawn_config = await build_agent_config(
@@ -390,7 +384,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
     def set_spawn_graph_provider(self, provider: SpawnGraphProvider) -> None:
         """Wire the builder that compiles the graph a spawn runs on.
 
-        Injected rather than imported: the graph builder pulls in ``create_agent``,
+        Injected rather than imported: the graph builder pulls in create_agent,
         which imports this package, so importing it from here would close a cycle.
         """
         self._spawn_graph_provider = provider

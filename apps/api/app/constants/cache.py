@@ -31,20 +31,14 @@ SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
 ACTIVE_PLANS_CACHE_KEY = "plans:active"
 ALL_PLANS_CACHE_KEY = "plans:all"
 PLANS_CACHE_KEYS = (ACTIVE_PLANS_CACHE_KEY, ALL_PLANS_CACHE_KEY)
-# Payment verification found none of the user's recorded checkout sessions
-# paid. The result page retries the verify eight times over about fifty
-# seconds (verifyPaymentWithRetry.ts); without this each retry re-asked Dodo
-# about every session. The TTL covers that window and nothing more — the row
-# the webhook creates is read before the cache on every verify, and minting a
-# new session drops the key.
+# The result page retries payment verification 8 times over ~50s
+# (verifyPaymentWithRetry.ts); this TTL covers that window so each retry
+# doesn't re-ask Dodo about every session. Minting a new session drops the key.
 CHECKOUT_SCAN_MISS_CACHE_PREFIX = "checkout_scan_miss:"
 CHECKOUT_SCAN_MISS_TTL = 60
-# A minted Dodo checkout session, per user and billing cycle. Reused rather than
-# re-minted so a user who asks to upgrade twice — or hits a limit repeatedly —
-# doesn't leave a trail of abandoned sessions in Dodo.
-# The tracked-todo summary injected into comms context. Deliberately short: the
-# list changes as the agent works, and a stale pin is worse than the lookup it
-# saves. Keyed by user alone, so only the unpinned summary may use it.
+# The tracked-todo summary injected into comms context. Deliberately short-TTL:
+# the list changes as the agent works, and a stale pin is worse than the lookup
+# it saves. Keyed by user alone, so only the unpinned summary may use it.
 TRACKED_TODOS_SUMMARY_CACHE_KEY = "tracked_todos:summary:{user_id}"
 TRACKED_TODOS_SUMMARY_CACHE_TTL = 60
 OAUTH_STATE_TTL = TEN_MINUTES_TTL
@@ -78,10 +72,9 @@ SUBAGENT_GRAPH_CACHE_MAX_SIZE = 100
 SUBAGENT_GRAPH_CACHE_TTL_SECONDS = TEN_MINUTES_TTL
 SUBAGENT_GRAPH_CLEANUP_INTERVAL_SECONDS = 60
 
-# Repository layer — semantic aliases over the shared TTLs (single source of
-# truth). Entity rows are hot and long-lived; query caches are shorter because
-# they fan out per argument set. The generation counter (not a TTL) is what
-# actually invalidates them, so these bounds only cap worst-case staleness.
+# Repository layer aliases: entity rows are hot/long-lived; query caches are
+# shorter (fan out per argument set). The generation counter, not the TTL,
+# actually invalidates them — these bounds only cap worst-case staleness.
 REPO_ENTITY_TTL = ONE_DAY_TTL
 REPO_QUERY_TTL = ONE_HOUR_TTL
 # Scope segment for non-user-scoped (global) repositories.
@@ -112,12 +105,9 @@ OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"
 OAUTH_DISCOVERY_PREFIX = "mcp_oauth_discovery_v2"
 OAUTH_STATUS_KEY = "OAUTH_STATUS"
 
-# Every cache that derives from a user's integration set. Whenever a user's
-# integrations change (add / remove / status flip), ALL of these must be busted
-# together — otherwise one cache lags behind another and the views diverge (a
-# stale OAUTH_STATUS hid a freshly-connected MCP from retrieve_tools while the
-# tools:user:* caches already showed it). Single source so no mutation path can
-# forget one. `{user_id}` is substituted by CacheInvalidator at call time.
+# Every cache derived from a user's integration set; ALL must be busted
+# together on any change or the views diverge (a stale OAUTH_STATUS once hid a
+# freshly-connected MCP). `{user_id}` is substituted by CacheInvalidator at call time.
 USER_INTEGRATION_CACHE_PATTERNS = [
     "tools:user:{user_id}:*",
     "tool_namespaces:{user_id}",
@@ -128,10 +118,8 @@ USER_SKILLS_CACHE_KEY = "skills:user:{user_id}:agent:{agent_name}"
 # v2: the listing now merges in-memory builtin skills; bump busts stale empty entries.
 SKILLS_TEXT_CACHE_KEY = "skills:text:v2:{user_id}:{agent_name}"
 INTEGRATION_INSTRUCTIONS_CACHE_KEY = "integration_instructions:{user_id}"
-# Conversation-level artifact registry (single source of truth for a
-# conversation's agent-written files). Long TTL with event-driven invalidation
-# on every upsert/remove — a chat turn reads it once instead of re-scanning the
-# costly JuiceFS dir.
+# Conversation-level artifact registry; long TTL with event-driven invalidation
+# on every upsert/remove — a chat turn reads it once instead of re-scanning the costly JuiceFS dir.
 CONV_ARTIFACTS_CACHE_PATTERN = "conv_artifacts:{user_id}:{conv_id}"
 # A user's uploaded-file listings; busted on every file upload/update/delete.
 FILES_CACHE_PATTERN = "files:{user_id}:*"
@@ -153,10 +141,8 @@ STATE_KEY_PREFIX = "oauth_state"
 CONNECT_LINK_PREFIX = "connect_link"
 PLATFORM_LINK_TOKEN_PREFIX = "platform_link_token"  # nosec B105
 PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL
-# One-tap onboarding linking, the opposite direction to the token above: the WEB
-# mints this code at the platform-pick step and the BOT redeems it on the user's
-# first contact. code -> {user_id, first_message}. Longer TTL than the token
-# because the user may sit on the platform-pick screen before tapping through.
+# Opposite direction to the token above: the WEB mints this at the
+# platform-pick step, the BOT redeems it on first contact. code -> {user_id, first_message}.
 PLATFORM_LINK_CODE_PREFIX = "platform_link_code"  # nosec B105
 PLATFORM_LINK_CODE_TTL = THIRTY_MINUTES_TTL
 # Held for one redemption, not for the code's life: it makes a redemption
@@ -173,29 +159,21 @@ DESKTOP_RESULT_CHANNEL_PREFIX = "desktop:result:"
 DESKTOP_RELEASE_CACHE_KEY = "desktop:release:latest"
 DESKTOP_RELEASE_CACHE_TTL = THIRTY_MINUTES_TTL
 # The ownership key's TTL is derived per-call from the awaiting tool's timeout
-# plus this grace, so the key always outlives the wait (a fixed TTL could be
-# outrun by a longer custom timeout, expiring mid-wait and dropping a valid
-# late result). The tool deletes the key as soon as it resolves, so this TTL
-# only bounds the orphaned-on-crash case.
+# plus this grace, so it always outlives the wait. The tool deletes the key as
+# soon as it resolves, so this only bounds the orphaned-on-crash case.
 DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
 # Remembers a declined call for the rest of the turn (keyed by stream_id) so a
 # retrying agent is auto-denied instead of re-prompting the user for the same
 # action.
 HIL_DECLINED_PREFIX = "hil:declined:"
-# One workflow's "you're out of runs / out of budget" notice, keyed by
-# user+workflow. The wall it reports is a daily one, so it is the same true
-# statement for every occurrence until the reset — worth exactly one message,
-# not one per fire (a production thread ran to six in a row).
+# One workflow's "out of runs / budget" notice, keyed by user+workflow. The
+# daily wall it reports is worth exactly one message, not one per fire (a production thread ran to six).
 WORKFLOW_LIMIT_NOTICE_PREFIX = "workflow:limit-notice:"
 WORKFLOW_LIMIT_NOTICE_TTL = ONE_DAY_TTL
 
-# One bot user's personalised Dodo upgrade link. Same shape as the workflow
-# notice above and a different subject: what is gated here is the MINT, not the
-# message. A lapsed user keeps typing, and every blocked turn used to cost a
-# get_plans call, a Dodo round-trip and a checkout_sessions insert for a link
-# nobody tapped. An hour, not a day: the window has to be short enough that a
-# user coming back later still gets a one-tap link, because a Dodo session is
-# single-use and re-handing out an old one is worse than not having it.
+# One bot user's personalised Dodo upgrade link; gates the MINT, not the
+# message, so a lapsed user's blocked turns don't each cost a get_plans call
+# and a checkout_sessions insert. An hour, not a day, since a Dodo session is single-use.
 BOT_UPGRADE_LINK_PREFIX = "bot:upgrade-link:"
 BOT_UPGRADE_LINK_TTL = ONE_HOUR_TTL
 
@@ -207,10 +185,9 @@ EXECUTOR_QUEUE_TTL = ONE_HOUR_TTL  # Tasks expire if not picked up within 1 hour
 # whatever tool events were collected. Matches the busy lock TTL — the executor
 # cannot outlive its lock, so waiting longer would be pointless.
 EXECUTOR_WAIT_TIMEOUT = THIRTY_MINUTES_TTL
-#: How long a background (workflow) turn waits for the executor it dispatched.
-#: Shorter than the worker's job timeout on purpose: a wait as long as the job
-#: means the job is cut first, mid-bookkeeping, and the fire is never closed
-#: out. Seen live: an executor that stopped mid-run left a record 'running'.
+#: Shorter than the worker's job timeout on purpose: waiting as long as the job
+#: means the job gets cut first mid-bookkeeping. Seen live: a stopped-mid-run
+#: executor left a record stuck 'running'.
 BACKGROUND_EXECUTOR_WAIT_TIMEOUT = 25 * 60
 # ElevenLabs voice lists (account + shared library) cached for the voice picker.
 ELEVENLABS_VOICES_CACHE_KEY = "voice:elevenlabs_voices"
@@ -224,11 +201,9 @@ VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
 # so a degraded pro user is told once per month, not once per turn.
 COST_BUDGET_NOTIFIED_KEY = "cost_budget_notified:{user_id}:{window}"
 
-# The onboarding question written ahead of time. Keyed by user plus a hash of
-# the answers it was written from, so re-answering Q1/Q2 with anything different
-# reads a key that was never written rather than a stale question. Two hours is
-# the gap between the answers being saved and completion being pressed, with
-# room for a wizard someone walked away from.
+# Keyed by user plus a hash of the answers it was written from, so a changed
+# Q1/Q2 answer reads a never-written key rather than a stale question. Two
+# hours covers a wizard someone walked away from before pressing completion.
 FIRST_QUESTION_CACHE_PREFIX = "onboarding:first_question:"
 FIRST_QUESTION_CACHE_TTL = 2 * ONE_HOUR_TTL
 #: Prefix of the tiered rate limiter's per-user counters: ``{prefix}:{user_id}:{feature}:{period}:{window}``.

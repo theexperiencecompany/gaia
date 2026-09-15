@@ -34,8 +34,8 @@ class VoiceAgentSettings(BaseAppSettings):
 def get_settings() -> VoiceAgentSettings:
     """Return the cached settings instance, constructing it on first call.
 
-    ``VoiceAgentSettings`` reads ``os.environ`` at construction time, so
-    Infisical secrets must already be injected (``start_worker()`` does this)
+    VoiceAgentSettings reads os.environ at construction time, so
+    Infisical secrets must already be injected (start_worker() does this)
     before the first call — otherwise the cached instance is built from an
     incomplete environment.
     """

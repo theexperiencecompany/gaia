@@ -2,13 +2,13 @@
 
 Some Composio tools take a file as a path/URL string (Outlook send/draft,
 Slack uploads) that Composio fetches during execution — but it cannot read
-sandbox ``/workspace/...`` paths (auto-upload is off), so a workspace-local
+sandbox /workspace/... paths (auto-upload is off), so a workspace-local
 value would fail downstream. Minting a grant URL here gives Composio something
 fetchable: an unguessable, minutes-lived, single-file bearer on our own API
 that serves the bytes directly (Composio's fetcher refuses redirects, so no
 302-to-CDN hop is possible).
 
-``mint_share_url`` is sync on purpose: hook functions (the only mint callers)
+mint_share_url is sync on purpose: hook functions (the only mint callers)
 run in Composio's synchronous modifier chain and cannot await. Everything it
 touches synchronously is fast (path containment stat check + HMAC sign); the
 redeem side is async because it reads file bytes.
@@ -42,7 +42,7 @@ _SALT = "file-share-grant"
 
 
 def _configured_secret() -> str | None:
-    """The share signing secret, or None if it is unset or too short to use."""
+    """Return the share signing secret, or None if it is unset or too short to use."""
     secret: object = settings.SHARE_GRANT_SECRET
     return secret if isinstance(secret, str) and len(secret) >= 32 else None
 
@@ -66,9 +66,9 @@ def _serializer() -> URLSafeTimedSerializer:
 def _assert_secure_host() -> None:
     """Refuse to mint a bearer URL over cleartext in production (CWE-319).
 
-    The grant token rides in the URL; over ``http://`` it would reach Composio in
+    The grant token rides in the URL; over http:// it would reach Composio in
     cleartext. Enforced in production only — local dev serves the grant over
-    ``http://localhost``, where no secret leaves the machine.
+    http://localhost, where no secret leaves the machine.
     """
     if settings.ENV == "production" and not settings.HOST.startswith("https://"):
         raise AppError(
@@ -125,7 +125,7 @@ def mint_share_url(
 async def redeem_share_grant(token: str) -> tuple[bytes, str, str] | None:
     """Validate a bearer token and read the granted file.
 
-    Returns ``(content, filename, mimetype)``, or None for every failure mode
+    Returns (content, filename, mimetype), or None for every failure mode
     (tampered, expired, missing, oversized, mount unavailable) — the route maps
     all of them to one uniform 404 so failures give no oracle.
     """

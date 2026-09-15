@@ -168,21 +168,17 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * - POST /webhook → verifies Kapso HMAC signature, dispatches message
    */
   protected async registerEvents(): Promise<void> {
-    // One wide event per inbound webhook. Everything this handler does — body
-    // caps, signature verification, batch fan-out — happens before the 200 and
-    // outside any dispatch, so without a boundary here its audit line lands on
-    // no event at all. Per-message processing is enqueued after the response
-    // and opens its own boundary inside dispatchCommand/handleStreamingChat.
+    // One wide event per inbound webhook: body caps, signature verification, and
+    // batch fan-out all happen before the 200 and outside any dispatch, so without
+    // this boundary their audit lines would land on no event at all.
     this.botServer.app.post("/webhook", async (c) =>
       withWideEvent(
         "webhook",
         { platform: "whatsapp", component: "adapter" },
         async () => {
-          // Reject oversized bodies. Kapso payloads are small; anything above the cap
-          // signals an attempt to exhaust memory. The Content-Length header is only a
-          // cheap fast-path — a request can omit it, send 0, or use chunked transfer
-          // encoding to slip past a header-only check — so the real defense is the
-          // bounded stream read below, which aborts once actual bytes exceed the cap.
+          // Reject oversized bodies (Kapso payloads are small; above-cap signals abuse).
+          // Content-Length is only a fast-path — it can be omitted, zeroed, or bypassed
+          // via chunked encoding — so the bounded stream read below is the real defense.
           const contentLength = Number(c.req.header("content-length"));
           if (
             Number.isFinite(contentLength) &&
@@ -379,19 +375,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Shows the WhatsApp "typing…" indicator and keeps it alive for the whole
-   * generation.
-   *
-   * The WhatsApp Cloud API typing indicator (emitted by marking the inbound
-   * message read) auto-dismisses after ~25s or when the reply is sent. A single
-   * emit therefore leaves the user staring at a dead chat whenever generation
-   * runs long — markdown-heavy answers routinely exceed 25s. So we re-emit every
-   * {@link TYPING_REFRESH_MS} (well under the 25s ceiling) until {@link stop} is
-   * called from the request's `finally`. Re-emitting while the indicator is still
-   * active extends the window instead of flickering it.
-   *
-   * `refresh` forces an immediate re-emit (used to re-show it right after an
-   * interstitial message such as the welcome); `stop` cancels the keep-alive.
+   * Show the WhatsApp "typing…" indicator and keep it alive for the whole
+   * generation. The Cloud API indicator auto-dismisses after ~25s or on reply, so
+   * it's re-emitted every {@link TYPING_REFRESH_MS} (under that ceiling) until
+   * `stop` is called in the request's `finally`; `refresh` forces an immediate
+   * re-emit (e.g. right after an interstitial message like the welcome).
    */
   private startWhatsAppTyping(
     waId: string,
@@ -531,14 +519,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Dispatches an incoming WhatsApp message to the appropriate handler.
-   *
-   * Shows a typing indicator immediately (mark-as-read + typing via Kapso API),
-   * then routes:
-   * - Messages starting with "/" are parsed as commands
-   * - `/gaia <text>` invokes streaming chat
-   * - Other `/command` messages invoke the unified command dispatcher
-   * - Plain text messages are treated as implicit `/gaia` chat
+   * Dispatch an incoming WhatsApp message to the appropriate handler. Shows a
+   * typing indicator immediately (mark-as-read + typing via Kapso), then routes
+   * `/gaia <text>` to streaming chat, other `/command` text to the unified
+   * dispatcher, and plain text as implicit `/gaia` chat.
    */
   private async handleIncomingMessage(
     waId: string,
@@ -611,16 +595,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Sends the user's message to the GAIA streaming endpoint.
-   *
-   * WhatsApp streaming is disabled (STREAMING_DEFAULTS.whatsapp.streaming = false),
-   * so the full response is accumulated and sent as a single message. The caller's
-   * typing keep-alive (see {@link startWhatsAppTyping}) keeps "typing…" visible for
-   * the whole generation and is cancelled in the caller's `finally`.
-   *
-   * @param attachments - Files already uploaded to GAIA's storage (via
-   *   {@link GaiaClient.uploadFile}) that should accompany this message so
-   *   the agent can ground its reply in their contents.
+   * Send the user's message to the GAIA streaming endpoint. WhatsApp streaming is
+   * disabled (`STREAMING_DEFAULTS.whatsapp.streaming = false`), so the full
+   * response accumulates and sends as one message. The caller's typing keep-alive
+   * (see {@link startWhatsAppTyping}) stays visible for the whole generation and
+   * is cancelled in the caller's `finally`.
    */
   private async handleStreamingMessage(
     waId: string,
@@ -715,15 +694,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Sends a welcome message to a first-time WhatsApp user.
-   *
-   * Adapted from Discord's DM welcome embed — rendered as WhatsApp markdown
-   * since WhatsApp has no native embed/button support.
-   *
-   * Gated by platform_links check via `gaia.checkAuthStatus` (2s timeout) — linked
-   * users skip the welcome entirely and are cached in {@link linkedUsers} for the
-   * process lifetime. Unlinked users receive it once per process restart at
-   * most, gated by the shared {@link BaseBotAdapter.shouldSendWelcome}.
+   * Send a welcome message to a first-time WhatsApp user. Adapted from Discord's
+   * DM welcome embed, rendered as WhatsApp markdown (no embed/button support).
+   * Gated by a platform_links check via `gaia.checkAuthStatus` (2s timeout); linked
+   * users skip it and are cached in {@link linkedUsers}; unlinked users get it once
+   * per process restart via {@link BaseBotAdapter.shouldSendWelcome}.
    */
   private async sendWelcome(waId: string): Promise<void> {
     const text =
@@ -752,14 +727,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Handles an inbound media message (image, audio, voice note, or document).
-   *
-   * Platform-specific responsibilities only: typing indicator, welcome gate,
-   * downloading the bytes via Kapso, and mapping the Kapso descriptor onto the
-   * shared {@link IncomingMedia} shape. The actual decision (transcribe vs
-   * upload vs reject, size caps, prompts) lives in {@link processBotMedia} so
-   * Telegram and WhatsApp behave identically. The reply path then folds back
-   * into {@link handleStreamingMessage}, identical to plain text.
+   * Handle inbound media (image, audio, voice note, or document): typing
+   * indicator, welcome gate, download via Kapso, and map onto the shared
+   * {@link IncomingMedia} shape. The transcribe/upload/reject decision lives in
+   * {@link processBotMedia} (shared with Telegram); the reply then folds into
+   * {@link handleStreamingMessage} like plain text.
    */
   private async handleMediaMessage(
     waId: string,
@@ -948,10 +920,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     try {
       await this.sendWhatsAppText(destinationId, text);
     } catch (err) {
-      // Free-form send failed — most often the 24-hour window is closed. Fall
-      // back to the approved template (sendable any time); if it also fails it
-      // rethrows so the consumer dead-letters it. The original error is logged
-      // so a non-window failure stays visible.
+      // Free-form send failed — usually the 24-hour window is closed. Fall back to
+      // the approved template (sendable any time); a template failure rethrows so
+      // the consumer dead-letters it. Original error logged for visibility.
       this.adapterLogger.info("outbound_template_fallback", {
         user_hash: hashLogIdentifier(destinationId),
         ...sanitizeErrorForLog(err),

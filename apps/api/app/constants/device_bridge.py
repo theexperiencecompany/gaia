@@ -1,7 +1,7 @@
 """Constants for the device bridge — the outbound tunnel from a user's machine.
 
-A paired device (the ``gaia bridge`` CLI daemon) holds one outbound WebSocket to
-``/ws/device`` and relays MCP JSON-RPC over it. These constants govern pairing,
+A paired device (the gaia bridge CLI daemon) holds one outbound WebSocket to
+/ws/device and relays MCP JSON-RPC over it. These constants govern pairing,
 device connect-token lifetime, and the Redis routing channels that let any worker
 reach the pod that owns a device's socket.
 """
@@ -29,19 +29,16 @@ USER_CODE_ALPHABET: Final[str] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 PAIRING_TTL_SECONDS: Final[int] = 15 * 60  # user has 15 min to approve
 PAIRING_POLL_INTERVAL_SECONDS: Final[int] = 5  # RFC 8628 poll cadence hint
 
-# Upper bound on ACTIVE devices one user may hold at once. Bounds credential
-# sprawl (each device holds a long-lived refresh token) and abuse of the
-# one-call self-pair path. Enforced in the shared device-creation path, so both
-# the browser-approval and desktop self-pair flows reject creation past it.
+# Upper bound on ACTIVE devices one user may hold at once — bounds credential
+# sprawl and self-pair abuse. Enforced in the shared device-creation path, so
+# both browser-approval and desktop self-pair reject creation past it.
 MAX_ACTIVE_DEVICES_PER_USER: Final[int] = 20
 
 # --- Device refresh credential (long-lived, rotates on every token exchange) ---
 REFRESH_TOKEN_BYTES: Final[int] = 32  # 256-bit opaque refresh token
-# Lost-response grace: after a rotation, the just-consumed credential can be
-# re-exchanged for this long and gets the SAME replacement back (idempotent
-# retry), instead of tripping reuse detection. Covers a dropped token response
-# or a daemon killed before it persisted the new token. A replay after this
-# window still revokes.
+# Lost-response grace: after rotation, the just-consumed credential can be
+# re-exchanged within this window for the SAME replacement (idempotent retry)
+# instead of tripping reuse detection. A replay after this window still revokes.
 REFRESH_TOKEN_RETRY_GRACE_SECONDS: Final[int] = 60
 # Redis key holding a just-issued token so an in-grace retry can be replayed it.
 DEVICE_REFRESH_RETRY_PREFIX: Final[str] = "device:refreshretry:"
@@ -57,10 +54,8 @@ DEVICE_PRESENCE_TTL_SECONDS: Final[int] = 90
 # Downstream (any worker -> owning pod -> device socket): one channel per device.
 DEVICE_DOWN_CHANNEL_PREFIX: Final[str] = "device:down:"
 # Upstream (device socket -> owning pod -> waiting worker): ONE channel per
-# consumer pod, not per session. Up-frames carry the consumer pod id (the ``pod``
-# envelope field, echoed by the daemon from mcp.open) so the owning pod addresses
-# the reply to exactly the pod running the session — no per-session subscription,
-# no fleet-wide fan-out. A single shared per-pod listener dispatches by ``sid``.
+# consumer pod, not per session — up-frames carry the pod id so the owning pod
+# addresses the reply directly; a single shared per-pod listener dispatches by `sid`.
 DEVICE_UP_POD_CHANNEL_PREFIX: Final[str] = "device:up:pod:"
 # Revocation fan-out: publish a device_id here to force any owning pod to drop it.
 # One shared per-pod listener watches this channel (not one per connection).
@@ -80,11 +75,8 @@ DEVICE_HEARTBEAT_TIMEOUT_SECONDS: Final[float] = 75.0
 MCP_SESSION_OPEN_TIMEOUT_SECONDS: Final[float] = 30.0
 
 # --- Device server warmup coalescing ---
-# Repeat warmups for identical work inside this window collapse instead of
-# queueing: a registration storm plus the online transition otherwise each
-# enqueue an overlapping job, and their unconditional status writes race. A
-# failed warmup suppresses retry for at most this long; the next connect
-# re-drives it, so recovery is bounded by reconnects, not by this TTL.
+# Repeat warmups for identical work inside this window collapse instead of racing on status writes.
+# A failed warmup suppresses retry for at most this long; the next connect re-drives it.
 DEVICE_WARMUP_COALESCE_SECONDS: Final[int] = 60
 DEVICE_WARMUP_COALESCE_PREFIX: Final[str] = "device:warmup:"
 # How long the online WS handler waits for the down-relay subscription before
@@ -95,10 +87,8 @@ DEVICE_RELAY_READY_TIMEOUT_SECONDS: Final[float] = 5.0
 MCP_SESSION_CALL_TIMEOUT_SECONDS: Final[float] = 120.0
 
 # --- exec-over-bridge session (run_on_device) ---
-# Hard ceiling on a single device command; the daemon kills the process here.
-# Kept below the generic per-tool guard (TOOL_EXECUTION_TIMEOUT_SECONDS = 120s in
-# constants/llm.py) so the cloud collector (this + a short grace) returns its own
-# partial-output result BEFORE that guard fires with a generic timeout message.
+# Hard ceiling before the daemon kills the process. Kept below the 120s
+# TOOL_EXECUTION_TIMEOUT_SECONDS (constants/llm.py) so the collector's partial-output result returns first.
 DEVICE_EXEC_TIMEOUT_SECONDS: Final[float] = 90.0
 # Total captured output (stdout+stderr) per exec before the daemon truncates and
 # stops streaming — bounds a runaway command from flooding the tunnel.

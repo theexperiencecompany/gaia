@@ -2,7 +2,7 @@
 
 Pins the payload validation, the in-app notification wiring, and — the fix for
 reminders being invisible to later turns — the delivery of a fired reminder into
-the user's chat platforms via the shared ``deliver_result_to_platforms`` path,
+the user's chat platforms via the shared deliver_result_to_platforms path,
 which records it into the conversation's langgraph thread.
 """
 
@@ -115,12 +115,7 @@ async def test_reminder_failure_does_not_capture() -> None:
 
 
 async def test_a_failed_reminder_names_the_user_it_failed_for() -> None:
-    """A reminder failure nobody can attribute to a user is close to useless.
-
-    Every other line in this handler carries ``user_id``; the error path is the
-    one that gets read during an incident, and "some reminder failed" does not
-    let you tell whether one account is broken or the provider is.
-    """
+    """Without user_id, an incident can't tell whether one account or the provider is broken."""
     log.reset()
     with (
         patch(
@@ -146,14 +141,7 @@ async def test_a_failed_reminder_names_the_user_it_failed_for() -> None:
 
 
 async def test_a_reminder_with_no_id_is_refused_and_named_in_the_wide_event() -> None:
-    """An id-less reminder is unfireable, and the event is the only way to find it.
-
-    ``execute_reminder_by_agent`` raises before the gate, so nothing downstream
-    ever sees this reminder — no notification, no status write, no analytics.
-    ``log.error`` writes message AND kwargs into the event's ``errors[]``
-    (libs/shared/py/wide_events.py), and the reminder has no id to search by, so
-    the owner and the agent are the only handles an operator has on it.
-    """
+    """With no id to search by, user_id and agent type are the operator's only handles on this failure."""
     reminder = _reminder()
     reminder.id = None
     log.reset()
@@ -183,16 +171,15 @@ async def test_a_reminder_with_no_id_is_refused_and_named_in_the_wide_event() ->
 
 
 class TestReminderReachesChatPlatforms:
-    """A fired reminder must be delivered into the user's chat platforms through
-    the SAME path a finished workflow uses (``deliver_result_to_platforms``), which
-    records the delivery into the conversation's langgraph thread. Before this fix
-    the reminder was sent only as a notification and left no trace in the thread,
-    so a later turn had no memory it fired and could not backtrack to it."""
+    """Reminder delivery must use deliver_result_to_platforms, the same path a finished workflow uses.
 
-    # Not @regression: this file imports _deliver_reminder_to_platforms /
-    # _reminder_result_text at module scope (they don't exist on base), so a
-    # prove-on-base run can't collect it. The genuine pre-existing-bug regression
-    # for the recording path is test_platform_delivery_recording_e2e.py.
+    Before this fix, a fired reminder was only sent as a notification and left no trace in the
+    conversation's langgraph thread, so a later turn had no memory it fired and couldn't backtrack to it.
+    """
+
+    # Not @regression: this file imports _deliver_reminder_to_platforms/_reminder_result_text at
+    # module scope, which don't exist on base, so a prove-on-base run can't collect it — see
+    # test_platform_delivery_recording_e2e.py for the actual pre-existing-bug regression.
     async def test_fired_reminder_is_delivered_to_platforms_with_backtrackable_origin(
         self,
     ) -> None:
@@ -242,10 +229,7 @@ class TestReminderReachesChatPlatforms:
         deliver.assert_not_awaited()
 
     async def test_platform_delivery_failure_never_fails_the_reminder(self) -> None:
-        """The platform delivery is a side channel — the in-app badge is the
-        primary delivery. A transient user-lookup failure (get_user_by_id raises
-        HTTPException) must be swallowed, not propagated: the reminder still
-        completes and is captured, and a recurring one is not skipped."""
+        """A transient user-lookup failure must be swallowed, not propagated — the reminder still completes and is captured."""
         reminder = _reminder()
 
         with (
@@ -272,8 +256,7 @@ class TestReminderReachesChatPlatforms:
 
 
 class TestReminderResultText:
-    """The exact text GAIA voices into a chat: bold title, then body, one blank
-    segment dropped. Asserted exactly so a changed marker or separator is caught."""
+    """GAIA voices bold title then body with one blank segment dropped; asserted exactly so a changed marker or separator is caught."""
 
     def test_title_and_body(self) -> None:
         assert _reminder_result_text(StaticReminderPayload(title="Take pills", body="2 now")) == (
@@ -293,9 +276,7 @@ class TestReminderResultText:
 
 
 class TestDeliverReminderToPlatforms:
-    """Direct tests of the side-channel helper: it resolves the owner, stamps the
-    user_id the delivery needs, frames a backtrackable origin, and never lets a
-    failure escape. Asserts exact values so a mutated arg, guard, or log is caught."""
+    """Direct tests of the side-channel helper: resolves the owner, stamps user_id, frames a backtrackable origin, and never lets a failure escape."""
 
     async def test_stamps_user_id_and_passes_exact_delivery_args(self) -> None:
         reminder = _reminder()

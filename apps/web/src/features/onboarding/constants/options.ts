@@ -21,12 +21,9 @@ export const professionOptions = [
 
 /**
  * Q2 options everyone sees: pains in the user's words, each a different job
- * GAIA can start on, so the picks mean something downstream (the seeded
- * thread's chips, the connect-link order, the bot's opener).
- * `value` mirrors the backend `OnboardingNeed` StrEnum
+ * GAIA can start on. `value` mirrors the backend `OnboardingNeed` StrEnum
  * (`apps/api/app/models/user_models.py`) one-for-one — the API rejects
- * anything outside that set, so the two lists must stay in lockstep. The
- * first-person phrasing lives in `first_message.py` next to the enum.
+ * anything outside that set, so the two lists must stay in lockstep.
  */
 export const needOptions = [
   { value: "inbox", label: "Inbox out of control" },

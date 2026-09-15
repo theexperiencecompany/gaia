@@ -1,9 +1,8 @@
-"""Unit tests for onboarding service, post-onboarding service and the
-Gmail-personalization job slot.
+"""Unit tests for onboarding service, post-onboarding service, and the Gmail-personalization job slot.
 
 Since the intelligence pipeline moved off onboarding and onto Gmail connect,
-submitting the form IS completion: nothing is queued, nothing is seeded, and the
-phase lands on PERSONALIZATION_COMPLETE in one write.
+submitting the form IS completion: nothing is queued, nothing is seeded, and
+the phase lands on PERSONALIZATION_COMPLETE in one write.
 """
 
 import asyncio
@@ -83,11 +82,11 @@ def sample_onboarding_request() -> OnboardingRequest:
 
 @pytest.fixture
 async def arq_pool() -> AsyncIterator[ArqRedis]:
-    """A real ArqRedis on fakeredis, installed as the process pool.
+    """Install a real ArqRedis on fakeredis as the process pool.
 
-    Real arq rather than a mock so "nothing was queued" is answered by the
-    queue itself: any enqueue re-introduced anywhere under the call lands in
-    the sorted set and fails the assertion.
+    Real arq rather than a mock, so "nothing was queued" is answered by the
+    queue itself: an enqueue anywhere under the call lands in the sorted set
+    and fails the assertion.
     """
     fake = fakeredis.aioredis.FakeRedis()
     pool = ArqRedis(connection_pool=fake.connection_pool)
@@ -99,8 +98,7 @@ async def arq_pool() -> AsyncIterator[ArqRedis]:
 
 
 async def queued_job_calls(pool: ArqRedis) -> list[tuple[str, tuple[Any, ...]]]:
-    """Every queued job as (task name, positional args) — the args carry which
-    user the pipeline will actually run for."""
+    """Every queued job as (task, args); the args show which user the pipeline runs for."""
     calls: list[tuple[str, tuple[Any, ...]]] = []
     for raw in await pool.zrange(default_queue_name, 0, -1):
         job_id = raw.decode() if isinstance(raw, bytes) else raw
@@ -136,9 +134,12 @@ def sample_user(sample_user_id: str) -> UserDocument:
 
 @pytest.fixture
 def persisting_repo(mock_repo: MagicMock, sample_user_id: str) -> MagicMock:
-    """A repository that echoes the phase it was asked to write, so the value
-    the endpoint returns is the value the service persisted — not a fixture
-    constant that would stay right if the service wrote the wrong phase."""
+    """Echo the phase argument back as if it were persisted.
+
+    Real echo instead of a fixture constant, so the returned value is what
+    the service actually wrote — a constant would look right even if the
+    service wrote the wrong phase.
+    """
 
     async def _write(user_id: str, **fields: Any) -> UserDocument:
         return UserDocument.model_validate(
@@ -159,8 +160,11 @@ def persisting_repo(mock_repo: MagicMock, sample_user_id: str) -> MagicMock:
 
 @pytest.fixture(autouse=True)
 def no_llm_question() -> Iterator[MagicMock]:
-    """No unit test reaches a model or Redis. The default is the static
-    conversation; the two cases that care patch the return value themselves."""
+    """Stub the first-question resolver so no test reaches a model or Redis.
+
+    Default returns the static conversation; the two tests that care patch
+    the return value themselves.
+    """
     with patch(f"{SERVICE}.resolve_first_question", AsyncMock(return_value=None)) as mock:
         yield mock
 
@@ -174,8 +178,7 @@ class TestCompleteOnboarding:
         sample_user: UserDocument,
         no_llm_question: MagicMock,
     ) -> None:
-        """The chips ride the question they answer, so a seeded turn keeping the
-        static ones would offer answers to a question nobody asked."""
+        """The chips ride the question they answer — static ones would answer a question nobody asked."""
         mock_repo.complete_onboarding.return_value = sample_user
         mock_repo.set_first_conversation_id = AsyncMock(return_value=None)
         no_llm_question.return_value = FirstQuestion(
@@ -231,8 +234,7 @@ class TestCompleteOnboarding:
         sample_user_id: str,
         sample_onboarding_request: OnboardingRequest,
     ) -> None:
-        """Submitting the form is completion. Any non-terminal phase parks the
-        user on onboarding waiting for a pipeline that will never run."""
+        """Submitting the form is completion; any non-terminal phase parks the user on a pipeline that will never run."""
         result = await complete_onboarding(sample_user_id, sample_onboarding_request)
 
         assert (
@@ -249,9 +251,7 @@ class TestCompleteOnboarding:
         sample_onboarding_request: OnboardingRequest,
         sample_user: UserDocument,
     ) -> None:
-        """The pipeline, the starter todo and the seeded conversation are all
-        earned by connecting Gmail now. Queueing or seeding anything here gives
-        every user a holo-card conversation and todos they never earned."""
+        """The pipeline, starter todo, and seeded conversation are now earned only by connecting Gmail."""
         mock_repo.complete_onboarding.return_value = sample_user
 
         with patch(
@@ -270,9 +270,7 @@ class TestCompleteOnboarding:
         sample_onboarding_request: OnboardingRequest,
         sample_user: UserDocument,
     ) -> None:
-        """The web routes the freshly onboarded user into this conversation, so
-        an id that never reaches `onboarding.getting_started_conversation_id`
-        drops them on an empty composer instead."""
+        """The web routes a freshly onboarded user into this conversation by its persisted id."""
         mock_repo.complete_onboarding.return_value = sample_user
         mock_repo.set_first_conversation_id = AsyncMock(
             return_value=_completed_user(
@@ -300,9 +298,7 @@ class TestCompleteOnboarding:
         sample_onboarding_request: OnboardingRequest,
         no_llm_question: AsyncMock,
     ) -> None:
-        """All three are the cache key the answers PATCH prewarmed under. Resolve
-        on the wrong user, the wrong answers or the wrong platform and it is a
-        miss at best, and another user's question at worst."""
+        """User, answers, and platform together are the cache key the PATCH prewarmed under."""
         user = _completed_user(sample_user_id)
         user.platform_links = {"telegram": {"id": "tg-1"}}
         mock_repo.complete_onboarding.return_value = user
@@ -324,8 +320,7 @@ class TestCompleteOnboarding:
         sample_onboarding_request: OnboardingRequest,
         sample_user: UserDocument,
     ) -> None:
-        """Swallowed so completion still succeeds, so this warning is the only
-        trace that the user landed without their opening conversation."""
+        """Swallowed so completion still succeeds; this warning is the only trace the seed failed."""
         mock_repo.complete_onboarding.return_value = sample_user
 
         with (
@@ -351,9 +346,7 @@ class TestCompleteOnboarding:
         sample_onboarding_request: OnboardingRequest,
         no_llm_question: MagicMock,
     ) -> None:
-        """The link lands on the user doc before the answers are submitted, so the
-        platform is read from the document completion just wrote, no second read,
-        and handed to the model that writes the starting jobs."""
+        """The platform link lands on the user doc before submission, so completion reads it from that write."""
         user = _completed_user(sample_user_id)
         user.platform_links = {"telegram": {"id": "tg-1"}}
         mock_repo.complete_onboarding.return_value = user
@@ -372,8 +365,7 @@ class TestCompleteOnboarding:
         sample_onboarding_request: OnboardingRequest,
         sample_user: UserDocument,
     ) -> None:
-        """Completion already landed. Failing the request here would bounce the
-        user back into the wizard over a welcome message."""
+        """Completion already landed; failing the request here would bounce the user back into the wizard."""
         mock_repo.complete_onboarding.return_value = sample_user
         mock_repo.set_first_conversation_id = AsyncMock()
 
@@ -409,8 +401,7 @@ class TestCompleteOnboarding:
         sample_user_id: str,
         sample_user: UserDocument,
     ) -> None:
-        """The milestone is emitted here now that nothing runs afterwards, keyed
-        on the user so a retried POST cannot count it twice."""
+        """Keyed on the user, so a retried POST cannot count the milestone twice."""
         mock_repo.complete_onboarding.return_value = sample_user
         request = OnboardingRequest(profession="Engineer", needs=["reminders", "inbox"])
 
@@ -461,8 +452,7 @@ class TestCompleteOnboarding:
         sample_user_id: str,
         sample_onboarding_request: OnboardingRequest,
     ) -> None:
-        """The atomic gate loses, so this POST completed nothing — counting it
-        would double the milestone for every user who retried."""
+        """The atomic gate loses here, so counting this POST would double the milestone for a retry."""
         mock_repo.complete_onboarding.return_value = None
         mock_repo.get.return_value = sample_user
 
@@ -575,9 +565,12 @@ class TestCompleteOnboarding:
 
 
 class TestResetOnboarding:
-    """Reset has to tear down both seeded conversations — the legacy
-    first-message one and the holo card one — or a user who resets keeps a
-    conversation pointing at personalization that no longer exists."""
+    """Reset tears down every seeded conversation.
+
+    The legacy first-message one and the holo-card one — a user who resets
+    must not keep a conversation pointing at personalization that no longer
+    exists.
+    """
 
     @pytest.fixture
     def deleted_conversations(self, sample_user_id: str) -> Iterator[list[str]]:
@@ -638,8 +631,7 @@ class TestResetOnboarding:
         mock_repo: MagicMock,
         sample_user_id: str,
     ) -> None:
-        """The product's Restart button is the full reset: the user's connected
-        integrations and memories go with the onboarding state, scoped to them."""
+        """The product's Restart button is the full reset — integrations and memories go too, scoped to that user."""
         mock_repo.get.return_value = _completed_user(sample_user_id)
         integrations = AsyncMock()
         integrations.list_for_user.return_value = []
@@ -687,9 +679,7 @@ class TestResetOnboarding:
         deleted_conversations: list[str],
         sample_user_id: str,
     ) -> None:
-        """A returning user can carry all three at once. Reset has to take the
-        Getting-started one as well, or the next run seeds a second copy and
-        the first is orphaned in the sidebar forever."""
+        """A returning user can carry all three; skipping getting-started seeds a second copy and orphans the first."""
         mock_repo.get.return_value = _completed_user(
             sample_user_id,
             first_message_conversation_id="conv-legacy",
@@ -742,9 +732,7 @@ class TestResetOnboarding:
         deleted_conversations: list[str],
         sample_user_id: str,
     ) -> None:
-        """Read off that exact key: the pre-relocation flow generated real
-        workflows with scheduled executions and Composio triggers behind them,
-        and only the service teardown unwinds those."""
+        """Pre-relocation workflows carry scheduled executions and Composio triggers that only the service teardown unwinds."""
         mock_repo.get.return_value = _completed_user(
             sample_user_id, suggested_workflows=["wf-1", "wf-2"]
         )
@@ -764,8 +752,7 @@ class TestResetOnboarding:
         deleted_conversations: list[str],
         sample_user_id: str,
     ) -> None:
-        """The reset still reports success, so this warning is the only sign the
-        workflow (and its schedule) is still live."""
+        """The reset still reports success, so this warning is the only sign the workflow is still live."""
         mock_repo.get.return_value = _completed_user(sample_user_id, suggested_workflows=["wf-1"])
 
         with (
@@ -803,8 +790,7 @@ class TestResetOnboarding:
         deleted_conversations: list[str],
         sample_user_id: str,
     ) -> None:
-        """Counted as zero and reported as success, so without this warning the
-        onboarding todos silently survive into the user's fresh run."""
+        """Counted as zero and reported as success, so without this warning the todos silently survive."""
         mock_repo.get.return_value = _completed_user(sample_user_id)
 
         with (
@@ -828,9 +814,7 @@ class TestResetOnboarding:
         deleted_conversations: list[str],
         sample_user_id: str,
     ) -> None:
-        """The reset carries on and reports success, so this warning is the only
-        sign a live pipeline is still running and may write stage events onto
-        the document that was just wiped."""
+        """The reset reports success regardless, so this warning is the only sign a live pipeline is still writing to the wiped document."""
         mock_repo.get.return_value = _completed_user(sample_user_id)
 
         with (
@@ -855,8 +839,7 @@ class TestResetOnboarding:
         deleted_conversations: list[str],
         sample_user_id: str,
     ) -> None:
-        """A surviving job keeps writing stages onto the socket of a user who
-        already restarted."""
+        """A surviving job keeps writing stages onto the socket of a user who already restarted."""
         mock_repo.get.return_value = _completed_user(sample_user_id)
 
         with patch(f"{SERVICE}.abort_active_intelligence_job", new_callable=AsyncMock) as abort:
@@ -904,7 +887,7 @@ class TestResetOnboarding:
 
 @pytest.fixture
 def store(sample_user_id: str) -> Iterator[dict[str, Any]]:
-    """The user's onboarding subdocument, behind a user-scoped fake repository."""
+    """Provide the user's onboarding subdocument behind a user-scoped fake repository."""
     onboarding: dict[str, Any] = {}
     doc = {"id": sample_user_id, "email": "test@example.com", "onboarding": onboarding}
 
@@ -922,9 +905,12 @@ def store(sample_user_id: str) -> Iterator[dict[str, Any]]:
 
 
 class TestEnqueueGmailPersonalization:
-    """The marker is what stands between a Gmail reconnect and a second full
-    personalization run; the per-user job id is what stands between two
-    connects and two runs at once."""
+    """Guard against double-running Gmail personalization.
+
+    The marker stops a reconnect from re-running a completed
+    personalization; the per-user job id stops two simultaneous connects
+    from running it twice.
+    """
 
     async def test_a_first_connect_enqueues_the_pipeline_once(
         self, arq_pool: ArqRedis, store: dict[str, Any], sample_user_id: str
@@ -939,9 +925,7 @@ class TestEnqueueGmailPersonalization:
     async def test_a_reconnect_while_the_run_is_live_joins_it(
         self, arq_pool: ArqRedis, store: dict[str, Any], sample_user_id: str
     ) -> None:
-        """Two live pipelines would interleave their stage events on one
-        WebSocket; the second connect must not start one, and must not kill the
-        healthy one either."""
+        """Two live pipelines would interleave stage events on one WebSocket, so the second connect must join, not start or kill."""
         first = await enqueue_gmail_personalization(sample_user_id)
 
         second = await enqueue_gmail_personalization(sample_user_id)
@@ -980,8 +964,7 @@ class TestEnqueueGmailPersonalization:
     async def test_a_queue_that_hands_back_no_job_reports_it(
         self, arq_pool: ArqRedis, store: dict[str, Any], sample_user_id: str
     ) -> None:
-        """ARQ returning nothing with no live run is a dropped enqueue, and has
-        to be visible in the wide event — nothing else reports it."""
+        """ARQ returning nothing with no live run is a dropped enqueue, visible only in the wide event."""
         async with captured_wide_event() as event:
             with patch(
                 "app.services.onboarding.intelligence_job.enqueue_worker_job",
@@ -1001,8 +984,7 @@ class TestEnqueueGmailPersonalization:
     async def test_a_reconnect_after_the_marker_enqueues_nothing(
         self, arq_pool: ArqRedis, store: dict[str, Any], sample_user_id: str
     ) -> None:
-        """Reconnecting Gmail is a no-op once the pipeline has run: a second run
-        rewrites the holo card and seeds a second announcement conversation."""
+        """Reconnecting Gmail is a no-op once the pipeline has run — a second run would rewrite the holo card."""
         first = await enqueue_gmail_personalization(sample_user_id)
         store[GMAIL_PERSONALIZATION_MARKER] = "2026-08-01T00:00:00Z"
 
@@ -1015,8 +997,7 @@ class TestEnqueueGmailPersonalization:
     async def test_a_legacy_user_with_a_house_but_no_marker_enqueues_nothing(
         self, arq_pool: ArqRedis, store: dict[str, Any], sample_user_id: str
     ) -> None:
-        """Users who finished the pre-relocation onboarding already have their
-        card; they carry `house` and no marker, and must not be re-run."""
+        """Users who finished pre-relocation onboarding carry house and no marker, and must not be re-run."""
         store["house"] = "explorer"
 
         job_id = await enqueue_gmail_personalization(sample_user_id)
@@ -1036,10 +1017,12 @@ class TestEnqueueGmailPersonalization:
 
 
 class TestIsIntelligenceJobLive:
-    """`is_intelligence_job_live` is what the stuck-user sweep asks before
-    re-enqueueing, so a wrong answer either starves a user of their
-    personalization or runs two pipelines onto one WebSocket. Every case below
-    is driven by real arq job state on the pool, never by mocking the function."""
+    """Verify is_intelligence_job_live against real arq job state, never mocked.
+
+    The stuck-user sweep asks this before re-enqueueing; a wrong answer either
+    starves a user of personalization or runs two pipelines onto one
+    WebSocket.
+    """
 
     async def test_a_job_still_in_the_queue_is_live(
         self, arq_pool: ArqRedis, store: dict[str, Any], sample_user_id: str
@@ -1053,8 +1036,7 @@ class TestIsIntelligenceJobLive:
     async def test_a_job_a_worker_has_picked_up_is_live(
         self, arq_pool: ArqRedis, store: dict[str, Any], sample_user_id: str
     ) -> None:
-        """in_progress is the state the queued-only check misses: the worker has
-        already popped the job off the queue, and it is very much still running."""
+        """in_progress is the state the queued-only check misses — popped off the queue but still running."""
         job_id = await enqueue_gmail_personalization(sample_user_id)
         assert job_id is not None
         await arq_pool.zrem(default_queue_name, job_id)
@@ -1066,8 +1048,7 @@ class TestIsIntelligenceJobLive:
     async def test_a_finished_job_is_not_live(
         self, arq_pool: ArqRedis, store: dict[str, Any], sample_user_id: str
     ) -> None:
-        """Treating a finished run as live would block the stuck-user sweep from
-        ever re-queueing."""
+        """Treating a finished run as live would block the stuck-user sweep from ever re-queueing."""
         job_id = await enqueue_gmail_personalization(sample_user_id)
         assert job_id is not None
         await arq_pool.zrem(default_queue_name, job_id)
@@ -1128,8 +1109,7 @@ class TestUpdateOnboardingPreferences:
     async def test_saving_the_answers_starts_writing_the_question(
         self, mock_repo: MagicMock, sample_user_id: str
     ) -> None:
-        """The wizard's remaining screens are the whole latency budget for the
-        one model call completion needs, so it has to start here, detached."""
+        """The wizard's remaining screens are the whole latency budget for the model call, so it starts here, detached."""
         mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
             {"id": sample_user_id, "platform_links": {"telegram": {"id": "tg-1"}}}
         )
@@ -1150,8 +1130,7 @@ class TestUpdateOnboardingPreferences:
     async def test_a_user_with_no_linked_platform_prewarms_without_one(
         self, mock_repo: MagicMock, sample_user_id: str
     ) -> None:
-        """Linking is optional and happens on a later screen. With no default for
-        the lookup, the save raises instead of prewarming."""
+        """Linking is optional and happens on a later screen, so a user may have none yet."""
         mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
             {"id": sample_user_id}
         )
@@ -1195,8 +1174,7 @@ class TestUpdateOnboardingPreferences:
     async def test_a_failed_prewarm_is_reported_with_its_cause(
         self, mock_repo: MagicMock, sample_user_id: str
     ) -> None:
-        """Swallowed by design, so this warning is the only trace. Without the
-        error and its type it says a prewarm failed and nothing about why."""
+        """Swallowed by design, so this warning is the only trace of why the prewarm failed."""
         mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
             {"id": sample_user_id}
         )
@@ -1219,9 +1197,7 @@ class TestUpdateOnboardingPreferences:
     async def test_a_long_prewarm_failure_is_truncated_before_it_reaches_the_event(
         self, mock_repo: MagicMock, sample_user_id: str
     ) -> None:
-        """The cause is attacker-influenced text of any length (a provider body,
-        a stack of nested messages). Unbounded, one failed prewarm can dominate
-        the wide event it shares with the rest of the request."""
+        """The cause is attacker-influenced text of unbounded length that could otherwise dominate the shared wide event."""
         mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
             {"id": sample_user_id}
         )

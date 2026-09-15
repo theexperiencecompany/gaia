@@ -10,17 +10,10 @@ from shared.py.wide_events import log
 async def rescan_pending_scheduled_tasks(_ctx: dict[str, Any]) -> str:
     """Re-enqueue any SCHEDULED task that is due but whose ARQ job was lost.
 
-    The startup scan (``scan_and_schedule_pending_tasks``) only runs once per boot,
-    so a deferred job lost mid-run (Redis eviction/flush) would otherwise sit until
-    the next restart. This periodic pass is the safety net. The deterministic ARQ
-    ``_job_id`` makes re-enqueueing idempotent, so it overlaps harmlessly with jobs
-    that are already queued.
-
-    It also reaps BOTH workflows and reminders wedged in EXECUTING (a fire claimed the
-    row but its worker died before re-arming) back to SCHEDULED so they resume. Without
-    the reminder half, a reminder whose worker was SIGKILLed mid-run stayed EXECUTING
-    forever: the due-scan filters on ``status="scheduled"``, so nothing could ever see
-    it again and it simply never fired.
+    Safety net for the once-per-boot startup scan; re-enqueueing is idempotent
+    via the deterministic _job_id. Also reaps workflows AND reminders wedged in
+    EXECUTING back to SCHEDULED — without the reminder half, a SIGKILLed one
+    stayed EXECUTING forever and never fired again.
     """
     reaped = await workflow_scheduler.reap_stale_executing()
     reaped += await reminder_scheduler.reap_stale_executing()

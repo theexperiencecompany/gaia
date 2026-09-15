@@ -2,7 +2,7 @@
 
 Deterministic and model-free here: the same answers always produce the same two
 bubbles. The only model-written part, the four starting jobs offered as chips,
-comes from :mod:`first_question` at Q2 and is merged by :func:`with_starting_jobs`;
+comes from :mod:first_question at Q2 and is merged by :func:with_starting_jobs;
 when that call failed there are no job chips, only the escape hatch.
 
 This is post-onboarding, not a pitch. The user has just sat through the wizard,
@@ -28,7 +28,7 @@ CALENDAR_INTEGRATION_ID = "googlecalendar"
 
 
 def connect_link(integration_id: str) -> str:
-    """The integrations page with that app's connect flow opened on arrival."""
+    """Return the integrations page with that app's connect flow opened on arrival."""
     return f"{INTEGRATIONS_PATH}?connect={integration_id}"
 
 
@@ -100,7 +100,7 @@ class FirstConversation(BaseModel):
 
 
 def platform_label(connected_platform: str) -> str:
-    """The platform's friendly name for user-facing copy and prompt text."""
+    """Return the platform's friendly name for user-facing copy and prompt text."""
     source = ConversationSource.coerce(connected_platform)
     if source is None:
         return connected_platform.capitalize()
@@ -114,9 +114,7 @@ def _handover_line(connected_platform: str | None) -> str:
 
 
 def _handover(profession: str | None) -> str:
-    """ "Since you're a founder" for a pick, "Since you run a bakery" for a typed
-    sentence, "Since you're a plumber" for a typed title, and the plain question
-    when they skipped it or picked Other."""
+    """Build the handover line ("Since you're a founder..."), or the plain question if skipped/Other."""
     cleaned = (profession or "").strip().rstrip(".!")
     key = cleaned.lower()
     if not cleaned or key == "other":
@@ -138,8 +136,11 @@ def _handover(profession: str | None) -> str:
 def compose_first_conversation(
     preferences: OnboardingPreferences, connected_platform: str | None
 ) -> FirstConversation:
-    """The bubbles GAIA opens with. The escape-hatch chip is always offered;
-    the model-written jobs join it in :func:`with_starting_jobs`."""
+    """Build the bubbles GAIA opens with.
+
+    The escape-hatch chip is always offered; model-written jobs join it in
+    with_starting_jobs.
+    """
     return FirstConversation(
         opening=[
             WELCOME,
@@ -152,8 +153,7 @@ def compose_first_conversation(
 
 
 def with_starting_jobs(composed: FirstConversation, chips: list[str]) -> FirstConversation:
-    """The same conversation with the model-written starting jobs ahead of the
-    escape hatch."""
+    """Return composed with the model-written starting jobs ahead of the escape hatch."""
     return FirstConversation(
         opening=composed.opening[:],
         question=composed.question,

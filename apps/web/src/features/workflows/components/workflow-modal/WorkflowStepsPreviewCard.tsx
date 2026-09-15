@@ -2,10 +2,9 @@
 
 import WorkflowSteps from "../shared/WorkflowSteps";
 
-// Shared surface for every "steps" card (the tabbed Steps/History panel and the
-// read-only previews) so they never drift in background or radius. `lg:h-full`
-// (not `h-full`) so that when the layout stacks vertically the card grows to its
-// content and the page scrolls, instead of being trapped at a fixed height.
+// Shared surface for every "steps" card (tabbed Steps/History panel, read-only
+// previews) so they never drift in background/radius. `lg:h-full` (not
+// `h-full`) so a vertically stacked layout grows to content and the page scrolls.
 export const STEPS_CARD_SURFACE =
   "flex min-h-0 w-full flex-col overflow-hidden rounded-2xl bg-zinc-800/50 p-4 lg:h-full";
 

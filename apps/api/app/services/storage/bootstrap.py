@@ -1,29 +1,18 @@
 """JuiceFS bootstrap — mounts the host-side sidecar at app startup.
 
-Why this lives in Python (not the docker entrypoint):
-Production secrets are pulled by `inject_infisical_secrets()` during Pydantic
-settings load. By that point the bash entrypoint has already exec-ed Python,
-so the R2/JuiceFS env vars are only available *inside* the Python process.
+Lives in Python, not the docker entrypoint: production secrets are pulled by
+inject_infisical_secrets() during Pydantic settings load, after bash has
+already exec-ed Python, so R2/JuiceFS env vars are only available inside the
+Python process.
 
-Design (production-manageable):
-- **Non-blocking**: the lazy provider spawns a daemon thread and returns
-  immediately. App startup is never gated on the mount; the storage helpers
-  already soft-fail (`JuiceFSUnavailable`) until `/mnt/jfs` is ready, and
-  converge automatically once it is.
-- **Supervised foreground mount**: we run `juicefs mount` in the foreground
-  as a detached child and poll the mountpoint ourselves, instead of relying
-  on `juicefs mount --background`'s aggressive internal 10s readiness check
-  (which FATALs under high managed-Postgres meta latency even though the
-  mount would have succeeded).
-- **Retry with backoff** on transient meta failures (serverless Postgres
-  cold-starts, DNS/AAAA flaps, transient network blips) — a real production
-  concern with Neon/Supabase, not just a local quirk.
-- **Env-tunable**: timeout / attempts / backoff are settings, so prod can
-  tune behavior without a code change or redeploy.
-- **Idempotent + soft-fail**: safe to run anywhere; never raises.
-
-If the binary is missing or required settings aren't populated, it logs and
-returns — the storage helpers treat the missing mount as a soft-fail.
+Non-blocking: the lazy provider spawns a daemon thread and returns
+immediately; storage helpers soft-fail (JuiceFSUnavailable) until /mnt/jfs is
+ready. We run juicefs mount in the foreground and poll the mountpoint
+ourselves rather than trust mount --background's aggressive internal 10s
+readiness check, which FATALs under high managed-Postgres meta latency even
+when the mount would have succeeded. Retries with backoff on transient meta
+failures (Postgres cold-starts, DNS flaps), a real concern with Neon/Supabase.
+Timeout/attempts/backoff are env-tunable; never raises.
 """
 
 from __future__ import annotations
@@ -53,13 +42,9 @@ _CACHE_SIZE_MB = 4096
 _BUFFER_SIZE_MB = 600
 _MAX_UPLOADS = 20
 
-# Failure classification is allowlist-by-permanent: only an explicit,
-# clearly-permanent misconfiguration should make bootstrap give up. Anything
-# else — transient network blips, serverless-Postgres (Neon) cold-starts,
-# *and opaque juicefs process crashes* (Go runtime aborts during meta
-# NewSession show up as a register dump, not a tidy error string) — is
-# retried with backoff. A spurious retry is cheap; giving up on a flaky
-# managed-DB dependency that demonstrably works on a later attempt is not.
+# Allowlist-by-permanent: only an explicit misconfiguration gives up.
+# Everything else — transient blips, Neon cold-starts, opaque juicefs crashes
+# (a Go runtime abort is a register dump, not a tidy error) — retries with backoff.
 _PERMANENT_MARKERS = (
     "authentication failed",
     "password authentication failed",
@@ -72,10 +57,9 @@ _PERMANENT_MARKERS = (
     "unknown authority",
     "certificate is not valid",
 )
-# NOTE: DNS failures ("no such host", "server misbehaving", NXDOMAIN) are
-# deliberately NOT permanent — Docker's embedded resolver (and serverless
-# providers) intermittently fail to resolve an external meta host that
-# resolves fine on a later attempt. Treat as transient and retry.
+# DNS failures ("no such host", "server misbehaving", NXDOMAIN) are
+# deliberately NOT permanent — Docker's embedded resolver intermittently
+# fails to resolve a meta host that resolves fine on a later attempt.
 
 
 def _classify(text: str) -> str:
@@ -87,14 +71,10 @@ def _classify(text: str) -> str:
 def _meta_err_tail(stderr: str) -> str:
     """Return the most diagnostic slice of a juicefs CLI failure.
 
-    juicefs logs a banner ("Meta address: postgres://...") first and the actual
-    cause last, on a ``<FATAL>``/``<ERROR>`` line — so head-truncating the stderr
-    (``[:300]``) drops exactly the reason and leaves only the (masked) URL.
-
-    The pgx/pgconn driver wraps the real cause (``dial tcp ... i/o timeout``,
-    ``connection refused``, ``too many connections``, ...) on *continuation*
-    lines below the ``<FATAL>:`` header, so a single-line grab clips it right at
-    the trailing colon. Keep the FATAL/ERROR line through the end of stderr.
+    juicefs logs a banner ("Meta address: postgres://...") first and the real
+    cause last on a <FATAL>/<ERROR> line, with the pgx/pgconn driver's actual
+    error wrapped on continuation lines below it — so keep from that line
+    through the end of stderr rather than head- or single-line-truncating.
     """
     text = (stderr or "").strip()
     if not text:
@@ -150,11 +130,9 @@ _MountState = Literal["present", "absent", "broken"]
 def _mount_state(path: Path) -> _MountState:
     """Classify a mountpoint path by stat-ing it directly.
 
-    On Python 3.12 ``Path.exists()`` only swallows ENOENT/ENOTDIR/EBADF/ELOOP;
-    a disconnected FUSE mountpoint ("Transport endpoint is not connected")
-    makes stat raise ENOTCONN, which would otherwise escape the mount checks
-    and make the stale-mount recovery below unreachable. Unexpected OSErrors
-    still propagate — they are failures, not "not mounted".
+    Path.exists() only swallows ENOENT/ENOTDIR/EBADF/ELOOP, so a disconnected
+    FUSE mountpoint's ENOTCONN would otherwise escape the mount checks and
+    make the stale-mount recovery below unreachable. Other OSErrors propagate.
     """
     try:
         path.stat()
@@ -218,11 +196,9 @@ def _run(
 ) -> subprocess.CompletedProcess[str]:
     """Run a short-lived subprocess and capture output for logging.
 
-    When ``env`` is provided, it is merged onto the inherited environment
-    (rather than replacing it) so the child still sees PATH / LD_LIBRARY_PATH
-    / etc. We use this to feed R2 credentials via env instead of argv when
-    invoking ``juicefs format`` — argv is visible to anyone with shell on the
-    host via ``ps auxww`` during the format window.
+    env is merged onto the inherited environment, not replacing it, so the
+    child still sees PATH etc. Used to feed R2 credentials via env instead of
+    argv for juicefs format — argv is visible via ps auxww.
     """
     merged_env: dict[str, str] | None = None if env is None else {**os.environ, **env}
     return subprocess.run(  # nosec B603 - argv list, no shell
@@ -258,11 +234,8 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
             detail=_meta_err_tail(status.stderr),
         )
         return "fatal"
-    # Non-zero status with no permanent marker == "not formatted yet" (or a
+    # Non-zero status with no permanent marker == not formatted yet (or a
     # transient blip); attempt format — it will surface its own outcome.
-    # R2 credentials ride in env (the JuiceFS CLI honours the standard AWS
-    # variables when --access-key/--secret-key are absent), so they do not
-    # appear in argv visible to `ps auxww` during the format window.
     log.info(f"{LogTag.STORAGE} formatting filesystem", bucket_url=_bucket_url())
     r2_key = (settings.R2_ACCESS_KEY or "").strip()
     r2_secret = (settings.R2_SECRET_KEY or "").strip()
@@ -317,27 +290,20 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
 
 
 def _mount(meta_url: str, mount_path: Path) -> str:
-    """Daemonize `juicefs mount` and supervise readiness by polling.
+    """Daemonize juicefs mount and supervise readiness by polling.
 
-    `juicefs mount --background` forks a detached child + watchdog. Its
-    supervisor self-exits non-zero after an internal ~10s mountpoint-ready
-    check, but the *detached child keeps initializing* and the mount appears
-    seconds later — so we ignore the invocation's exit code and poll the
-    mountpoint ourselves for a generous, env-tunable window. (Foreground
-    mode is worse: the same 10s check kills the child outright.)
-
-    Returns "ok" | "transient" | "fatal".
+    juicefs mount --background's supervisor self-exits non-zero after an
+    internal ~10s mountpoint-ready check, but the detached child keeps
+    initializing and the mount appears later — so we ignore the exit code and
+    poll the mountpoint ourselves for a generous, env-tunable window.
     """
     if _is_mounted(mount_path):
         log.info(f"{LogTag.STORAGE} already mounted at", mount_path=mount_path)
         return "ok"
 
-    # If the directory exists but is a broken/stale FUSE mountpoint (left over
-    # from a prior container run), JuiceFS will detect it and try a normal umount
-    # that can time out for 3 seconds and still fail. Lazy-unmount proactively so
-    # the mount call gets a clean directory instead of fighting a stale endpoint.
-    # `_mount_state` (not `Path.exists()`) so a disconnected FUSE endpoint —
-    # which makes stat raise ENOTCONN — deterministically reaches this cleanup.
+    # A broken/stale FUSE mountpoint from a prior container run makes JuiceFS's
+    # normal umount time out and fail; lazy-unmount proactively instead. Uses
+    # `_mount_state`, not `Path.exists()`, so ENOTCONN reaches this cleanup.
     if _mount_state(mount_path) != "absent":
         _run(["fusermount", "-u", "-z", str(mount_path)], timeout=5)
 
@@ -494,7 +460,7 @@ async def init_juicefs_mount() -> str:
 
     Startup is never blocked on the mount: a daemon thread formats (if
     needed) and mounts with retry/backoff while the app serves traffic. The
-    storage helpers raise `JuiceFSUnavailable` until `/mnt/jfs` converges,
+    storage helpers raise JuiceFSUnavailable until /mnt/jfs converges,
     which every caller already treats as a soft-fail.
     """
     # settings is Any (app.config.settings.get_settings() is untyped upstream);

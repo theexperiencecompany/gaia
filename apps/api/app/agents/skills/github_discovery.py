@@ -48,16 +48,8 @@ async def _fetch_git_tree(
 ) -> tuple[list[dict], str]:
     """Fetch entire repository tree using Git Tree API.
 
-    Uses recursive=1 to get all files in a single API call.
-    Returns (tree_entries, resolved_branch).
-
-    Args:
-        owner: Repository owner
-        repo: Repository name
-        branch: Branch to fetch (default: main)
-
-    Returns:
-        Tuple of (list of tree entries, resolved branch name)
+    Uses recursive=1 to get all files in a single API call. Returns
+    (tree_entries, resolved_branch).
     """
     url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/trees/{branch}"
     params = {"recursive": "1"}
@@ -88,17 +80,7 @@ async def _fetch_single_file_content(
     path: str,
     branch: str,
 ) -> tuple[str, str] | None:
-    """Fetch raw file content from GitHub.
-
-    Args:
-        owner: Repository owner
-        repo: Repository name
-        path: File path
-        branch: Branch name
-
-    Returns:
-        Tuple of (file_path, content) or None if failed
-    """
+    """Fetch raw file content from GitHub. Returns (file_path, content), or None if failed."""
     url = f"{GITHUB_RAW_BASE}/{owner}/{repo}/{branch}/{path}"
 
     try:
@@ -125,17 +107,7 @@ async def _fetch_file_contents_batch(
     paths: list[str],
     branch: str,
 ) -> list[tuple[str, str]]:
-    """Fetch multiple file contents in parallel.
-
-    Args:
-        owner: Repository owner
-        repo: Repository name
-        paths: List of file paths to fetch
-        branch: Branch name
-
-    Returns:
-        List of (path, content) tuples for successful fetches
-    """
+    """Fetch multiple file contents in parallel. Returns (path, content) tuples for successful fetches."""
     tasks = [_fetch_single_file_content(owner, repo, path, branch) for path in paths]
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -181,22 +153,14 @@ async def discover_skills_from_repo(
 ) -> list[DiscoveredSkill]:
     """Discover all available skills in a GitHub repository.
 
-    Uses Git Tree API for efficient discovery in a single API call,
-    then batches content fetches using raw URLs.
-
-    Args:
-        repo_url: GitHub repo (owner/repo or full URL)
-        branch: Branch to search (default: main)
-
-    Returns:
-        List of DiscoveredSkill objects
+    Uses Git Tree API for efficient discovery in a single API call, then
+    batches content fetches using raw URLs.
     """
     owner, repo = parse_github_url(repo_url)
     full_repo_url = f"https://github.com/{owner}/{repo}"
     log.set(skill=SkillContext(operation="list"))
     log.info(f"{LogTag.SKILLS} Discovering skills in repo", owner=owner, repo=repo)
 
-    # Step 1: Fetch entire repo tree in one API call
     tree_entries, resolved_branch = await _fetch_git_tree(owner, repo, branch)
 
     if not tree_entries:
@@ -211,7 +175,6 @@ async def discover_skills_from_repo(
         branch=resolved_branch,
     )
 
-    # Step 2: Find all SKILL.md files in the tree
     skill_files = find_skill_files(tree_entries)
 
     if not skill_files:
@@ -220,13 +183,10 @@ async def discover_skills_from_repo(
 
     log.info(f"{LogTag.SKILLS} Found potential skill files", skill_file_count=len(skill_files))
 
-    # Step 3: Sort by priority (standard folders first)
     skill_files.sort(key=get_folder_priority)
 
-    # Step 4: Batch fetch all skill file contents
     contents = await _fetch_file_contents_batch(owner, repo, skill_files, resolved_branch)
 
-    # Step 5: Parse each skill file
     all_skills: list[DiscoveredSkill] = []
 
     for file_path, content in contents:
@@ -261,11 +221,6 @@ async def get_skill_from_repo(
     """Get a specific skill by name from a GitHub repository.
 
     Uses the same efficient tree-based discovery as discover_skills_from_repo.
-
-    Args:
-        repo_url: GitHub repo (owner/repo or full URL)
-        skill_name: Name of the skill to find
-        branch: Branch to search (default: main)
 
     Returns:
         DiscoveredSkill if found, None otherwise

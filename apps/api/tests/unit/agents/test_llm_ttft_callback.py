@@ -111,10 +111,7 @@ def test_error_cleans_up_run_state() -> None:
 
 
 def test_each_call_is_labelled_by_its_own_label_not_the_runs_agent() -> None:
-    """One turn makes several streaming calls under one callback list — the
-    user-facing comms call plus title, follow-up and memory side calls. The
-    agent label must be the CALL's, or the side calls pollute the comms TTFT
-    p95 and the decomposition the metric exists for is lost."""
+    """One turn's title, follow-up and memory side calls share the comms callback list."""
     cb = LLMTtftCallback()
     before = _count("ttft-model-d", "ttft-lane-d", "follow_up_actions")
     run_id = uuid4()
@@ -149,8 +146,7 @@ class _StartRecorder(BaseCallbackHandler):
 
 
 async def test_ainvoke_llm_stamps_its_label_onto_the_call_metadata() -> None:
-    """The label every call site already passes is what reaches the callbacks —
-    the one seam every provider call goes through, so no site can forget it."""
+    """The label every call site already passes reaches the callbacks through this one seam."""
     recorder = _StartRecorder()
     model = GenericFakeChatModel(messages=iter([AIMessage(content="ok")]))
     await ainvoke_llm(
@@ -165,8 +161,7 @@ async def test_ainvoke_llm_stamps_its_label_onto_the_call_metadata() -> None:
 
 
 def test_missing_lane_and_label_metadata_observe_unknown() -> None:
-    """Every fallback label is the literal "unknown" — a recased literal would
-    silently mint a second series for the same call."""
+    """Every fallback label is the literal "unknown"; a recased one would mint a second series."""
     cb = LLMTtftCallback()
     before = _count("unknown", "unknown", "unknown")
     run_id = uuid4()
@@ -243,8 +238,7 @@ def test_llm_error_clears_the_run_state() -> None:
 
 
 def test_llm_end_removes_the_start_entry_when_no_token_arrived() -> None:
-    """A non-streaming call leaves a start entry for on_llm_end to clear; the
-    pop must target the run's own key or the entry leaks into the next run."""
+    """A non-streaming call's start entry is popped by its own run key, or it leaks."""
     cb = LLMTtftCallback()
     run_id = uuid4()
     cb.on_chat_model_start({}, [], run_id=run_id, metadata={})

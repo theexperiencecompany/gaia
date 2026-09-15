@@ -1,17 +1,17 @@
 """MongoDB-backed canvas/activity/log storage for tracked todos.
 
-Canvas (`canvas.md`), activity (`activity.md`) and log (`log.md`) content live
-as fields on the todo document itself: ``canvas_content``, ``activity_content``
-and ``log_content``. Reading, writing, and appending go through the todos
+Canvas (canvas.md), activity (activity.md) and log (log.md) content live
+as fields on the todo document itself: canvas_content, activity_content
+and log_content. Reading, writing, and appending go through the todos
 repository — no FUSE mount or JuiceFS required, so tracked todos work in every
 dev mode.
 
 Every successful canvas/activity write re-embeds the todo in ChromaDB here, so
 all writers (agent file tools, code-written run markers) keep search fresh.
 
-The legacy ``vfs_path`` field on the todo doc is retained as a stable
-display label (``/workspace/gaia-tasks/{todo_id}``) but is no longer a
-real filesystem path. It never carries the host-side ``/users/<uid>``
+The legacy vfs_path field on the todo doc is retained as a stable
+display label (/workspace/gaia-tasks/{todo_id}) but is no longer a
+real filesystem path. It never carries the host-side /users/<uid>
 prefix — the LLM only ever sees the sandbox-visible workspace path.
 """
 
@@ -32,7 +32,7 @@ def build_vfs_label(todo_id: str, *, archived: bool = False) -> str:
 
 
 def embedding_text(doc: TodoDocument) -> str:
-    """The text embedded for canvas search: canvas + activity, skipping empties."""
+    """Build the text embedded for canvas search: canvas + activity, skipping empties."""
     parts = [p for p in (doc.canvas_content, doc.activity_content) if p]
     return "\n\n".join(parts)
 

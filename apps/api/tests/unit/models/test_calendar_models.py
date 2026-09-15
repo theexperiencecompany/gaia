@@ -10,7 +10,6 @@ from app.models.calendar_models import (
     BatchEventDeleteRequest,
     BatchEventUpdateRequest,
     CalendarEventsQueryRequest,
-    # CalendarEventToolRequest,  # Unwired as of 2026-06; see calendar_models.py
     CalendarPreferencesUpdateRequest,
     CreateEventInput,
     DeleteEventInput,
@@ -349,9 +348,7 @@ class TestRecurrenceRuleToRruleString:
 
 
 class TestUntilRruleValueUnparseableFallbacks:
-    """The RFC 5545 formatter's fallbacks for `until` values that slip past
-    validation (e.g. constructed via model_construct): a bare date degrades to
-    its compact form, an unparseable datetime is passed through verbatim."""
+    """The RFC 5545 formatter's fallbacks for until values that slip past validation: a bare date degrades to its compact form, an unparseable datetime passes through verbatim."""
 
     def test_unparseable_bare_date_degrades_to_its_compact_form(self):
         m = RecurrenceRule.model_construct(frequency="DAILY", until="31-12-2025")
@@ -498,13 +495,7 @@ class TestEventCreateRequest:
         assert m.is_all_day is True
 
     def test_valid_unpadded_date_is_accepted(self):
-        """The date-only fallback (strptime %Y-%m-%d) accepts unpadded dates.
-
-        fromisoformat rejects e.g. "2025-6-1", but the fallback's lenient parse
-        accepts it — that acceptance is the fallback branch's only observable
-        language, and the only thing that distinguishes the format string from
-        a mutated lookalike (so a corrupted format is caught).
-        """
+        """The fromisoformat parser rejects "2025-6-1"; the strptime %Y-%m-%d fallback accepts it."""
         m = EventCreateRequest(
             summary="Holiday",
             start="2025-6-1",

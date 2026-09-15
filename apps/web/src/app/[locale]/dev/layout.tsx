@@ -5,19 +5,12 @@ import { Toaster } from "@/components/ui/Toaster";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 
 /**
- * Dev-only routes live under [locale]/dev/. The check is on
- * `process.env.NODE_ENV` which Next.js inlines at build time — production
- * bundles drop the children entirely and render a 404 instead.
+ * Dev-only routes live under [locale]/dev/, gated on build-time NODE_ENV.
  *
- * HeroUIProvider and QueryProvider are mounted at the locale root
- * (RootProviders), so dev pages inherit them without re-wrapping here.
- * LazyMotion is added because dev pages render real app components that
- * animate via `motion/react-m`'s `<m.*>`, which stay invisible (stuck at
- * their `initial` props) without it.
- *
- * The (main)/(landing) provider layouts also own the app's Toaster, but /dev
- * is a sibling segment — so we mount one here too, for the toast playground
- * and any dev page that fires toasts.
+ * Production inlines the check and drops the children, 404-ing instead.
+ * HeroUIProvider/QueryProvider come from the locale root already; LazyMotion
+ * is required for dev pages' `motion/react-m` `<m.*>` to animate; Toaster is
+ * mounted here too since /dev is a sibling of (main)/(landing), which own theirs.
  */
 export default function DevLayout({ children }: { children: ReactNode }) {
   if (process.env.NODE_ENV !== "development") {

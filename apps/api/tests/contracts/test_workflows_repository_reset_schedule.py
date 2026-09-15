@@ -1,12 +1,12 @@
-"""``reset_system_workflow`` must rewrite the top-level schedule, not just the trigger.
+"""reset_system_workflow must rewrite the top-level schedule, not just the trigger.
 
-Its own file, and not part of ``test_workflows_repository.py``, for one reason:
-these are ``@pytest.mark.regression`` tests, so ``pytest.sh regression-proof``
+Its own file, and not part of test_workflows_repository.py, for one reason:
+these are @pytest.mark.regression tests, so pytest.sh regression-proof
 runs them against the PR's base to prove they fail there. That file imports
-``WorkflowRearm``, which this PR introduces, so on base it cannot even be
+WorkflowRearm, which this PR introduces, so on base it cannot even be
 collected — and a collection error is not proof, it only shows the harness
 broke. Everything imported here resolves on both revisions:
-``SystemWorkflowDefinition`` is defined in ``db.repositories.workflows`` on base
+SystemWorkflowDefinition is defined in db.repositories.workflows on base
 and re-exported from it here, so this path is stable across the move.
 """
 
@@ -64,15 +64,7 @@ class TestResetRewritesTheSchedule:
     async def test_reset_repersists_the_top_level_schedule_fields(
         self, repo: WorkflowsRepository, raw_collection: AsyncIOMotorCollection
     ) -> None:
-        """A reset must rewrite ``repeat``/``scheduled_at``, not just ``trigger_config``.
-
-        The re-arm path reads the top-level fields: ``_rearm_if_scheduled`` gates
-        on ``workflow.repeat`` and ``handle_recurring_task`` computes every next
-        occurrence from it, while ``schedule_task`` only enqueues — so the
-        repository ``$set`` is the only writer. Rewriting only ``trigger_config``
-        restored the first fire from the new cron and every later one from the
-        old, surfacing as "reset to default did not restore my schedule".
-        """
+        """Regression: rewriting only trigger_config left the top-level repeat/scheduled_at stale, restoring the first fire from the new cron but every later one from the old."""
         # Mongo stores datetimes at millisecond resolution; drop the microseconds
         # so the round-trip compares exactly instead of on a truncation artifact.
         next_run = (datetime.now(UTC) + timedelta(hours=1)).replace(microsecond=0)
@@ -101,9 +93,7 @@ class TestResetRewritesTheSchedule:
     async def test_reset_to_a_non_schedule_definition_clears_the_schedule_fields(
         self, repo: WorkflowsRepository
     ) -> None:
-        """A definition whose trigger is no longer a schedule must leave nothing
-        armable behind — a stale ``repeat`` would keep re-arming a workflow the
-        default definition says is manual."""
+        """A non-schedule definition must leave nothing armable behind, or a stale repeat keeps re-arming a workflow meant to be manual."""
         wf = await repo.create(_scheduled_system_workflow())
         assert wf.repeat == ORIGINAL_CRON
 

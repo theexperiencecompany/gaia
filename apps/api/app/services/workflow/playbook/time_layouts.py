@@ -1,10 +1,10 @@
 """The date and time layouts a tool argument is written in, told apart by example.
 
 A playbook's time placeholders render to ISO 8601. Tools do not all take ISO
-8601: the reminder tool wants ``YYYY-MM-DD HH:MM:SS`` and says so only in
+8601: the reminder tool wants YYYY-MM-DD HH:MM:SS and says so only in
 prose. The authoring run already sent each tool the value it accepted, so the
 layout of that value is the specification, and a placeholder standing in for
-it renders in the same layout at replay (``TimeSlot.format``).
+it renders in the same layout at replay (TimeSlot.format).
 """
 
 from __future__ import annotations
@@ -42,10 +42,10 @@ ISO_DATETIME_LAYOUT = "%Y-%m-%dT%H:%M:%S%z"
 
 
 def detect_layout(value: object) -> str | None:
-    """The strftime layout a recorded string argument is written in, or ``None``.
+    """Return the strftime layout a recorded string argument is written in, or None.
 
-    Text around the date is part of the layout: ``"Plan for September 5, 2026"``
-    is ``"Plan for %B %d, %Y"``, so a slot written from it renders the same
+    Text around the date is part of the layout: "Plan for September 5, 2026"
+    is "Plan for %B %d, %Y", so a slot written from it renders the same
     words again. Seen live (D4): the bare-date hint had the model drop the
     words, and the replay made a todo titled by the date alone.
     """
@@ -73,5 +73,5 @@ def _layout_of(text: str) -> str | None:
 
 
 def render_iso(moment: datetime, *, date_only: bool) -> str:
-    """The evaluator's default rendering: a date, or a datetime to the second."""
+    """Return the evaluator's default rendering: a date, or a datetime to the second."""
     return moment.date().isoformat() if date_only else moment.isoformat(timespec="seconds")

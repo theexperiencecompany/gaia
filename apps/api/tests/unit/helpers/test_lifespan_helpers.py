@@ -1,4 +1,4 @@
-"""Tests for app/helpers/lifespan_helpers.py"""
+"""Tests for app/helpers/lifespan_helpers.py."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 

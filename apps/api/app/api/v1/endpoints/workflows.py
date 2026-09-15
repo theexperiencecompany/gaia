@@ -97,10 +97,9 @@ async def create_workflow(
         workflow = await WorkflowService.create_workflow(
             request, user["user_id"], user_timezone=user_timezone
         )
-        # The trigger type lives on the REQUEST (the pre-create log above reads
-        # request.trigger_config.type) — the created Workflow model does not
-        # carry a trigger_type attribute, so reading it off the workflow would
-        # always yield None. Both fields are required, so no guard needed.
+        # trigger_type lives on the REQUEST — the created Workflow model has no
+        # trigger_type attribute, so reading it off the workflow would always
+        # yield None.
         trigger_type = request.trigger_config.type.value
         log.set(
             workflow=WorkflowContext(
@@ -451,10 +450,9 @@ async def regenerate_workflow_steps(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except WorkflowStepGenerationError as e:
-        # The model lane failed or produced nothing usable. This is not a bug in
-        # the request, so it must not read as one — the modal shows this detail
-        # verbatim, and "Failed to regenerate workflow steps" told the user
-        # nothing they could act on.
+        # The model lane failed; this is not a bug in the request, so it must
+        # not read as one — the modal shows this detail verbatim, unlike the
+        # unactionable generic "Failed to regenerate workflow steps".
         log.error(
             f"{LogTag.WORKFLOW} Step generation failed",
             workflow_id=workflow_id,

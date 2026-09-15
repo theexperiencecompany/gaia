@@ -1,6 +1,6 @@
 """Contract tests for ProcessedWebhooksRepository — webhook idempotency.
 
-The unique index on ``webhook_id`` is the real once-only guarantee, so the
+The unique index on webhook_id is the real once-only guarantee, so the
 fixture creates it on the throwaway collection to mirror production before
 asserting that a delivery can be claimed exactly once.
 """

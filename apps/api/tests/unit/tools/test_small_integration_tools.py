@@ -1,20 +1,8 @@
-"""Unit tests for smaller Composio integration tools.
+"""Unit tests for smaller Composio integration tools: github, airtable, slack, todoist, asana, clickup, google_tasks, trello, urgency.
 
-Covers:
-- github_tool.py
-- airtable_tool.py
-- slack_tool.py
-- todoist_tool.py
-- asana_tool.py
-- clickup_tool.py
-- google_tasks_tool.py
-- trello_tool.py
-- urgency_tool.py
-
-Strategy: Each register_*_custom_tools() function decorates inner functions with
-@composio.tools.custom_tool(). We mock the Composio instance with a capturing
-decorator, call register_*_custom_tools() to capture the inner functions,
-then invoke them directly with mock auth_credentials and request objects.
+Each register_*_custom_tools() decorates inner functions with @composio.tools.custom_tool();
+tests mock the Composio instance with a capturing decorator, call register_*_custom_tools() to
+capture the inner functions, then invoke them directly with mock auth_credentials and request objects.
 """
 
 from collections.abc import Callable
@@ -55,9 +43,7 @@ def _make_capturing_composio() -> tuple[MagicMock, dict[str, Callable[..., Any]]
 
 
 class _UTCOnlyDateTime(datetime):
-    """datetime stand-in whose local-time ``now(None)`` reads the previous day,
-    so an overdue check that computes "today" off a non-UTC clock fails these
-    boundary assertions deterministically instead of depending on machine TZ."""
+    """datetime stand-in whose local-time now(None) reads the previous day, so an overdue check that computes "today" off a non-UTC clock fails these boundary assertions deterministically."""
 
     @classmethod
     def now(cls, tz: datetime | None = None) -> datetime:  # type: ignore[override]  # mirrors datetime.now's optional-tz signature deliberately
@@ -404,8 +390,7 @@ class TestTodoistGatherContext:
     @patch(f"{TODOIST_MODULE}.datetime", _UTCOnlyDateTime)
     @patch(f"{TODOIST_MODULE}.execute_tool")
     def test_overdue_boundary_is_the_utc_today(self, mock_exec: MagicMock) -> None:
-        """A task due today is not yet overdue; yesterday is. Pinned to a fake UTC
-        clock so a local-time read or a mangled date format fails here."""
+        """A task due today is not yet overdue; yesterday is. Pinned to a fake UTC clock so a local-time read or a mangled date format fails here."""
         mock_exec.return_value = {
             "items": [
                 {"id": "1", "content": "Due today", "due": {"date": "2026-06-15"}},
@@ -468,8 +453,7 @@ class TestAsanaGatherContext:
     @patch(f"{ASANA_MODULE}.datetime", _UTCOnlyDateTime)
     @patch(f"{ASANA_MODULE}.execute_tool")
     def test_overdue_boundary_is_the_utc_today(self, mock_exec: MagicMock) -> None:
-        """A task due today is not yet overdue; yesterday is. Pinned to a fake UTC
-        clock so a local-time read or a mangled date format fails here."""
+        """A task due today is not yet overdue; yesterday is. Pinned to a fake UTC clock so a local-time read or a mangled date format fails here."""
         mock_exec.return_value = {
             "data": [
                 {"gid": "1", "name": "Due today", "due_on": "2026-06-15"},
@@ -607,8 +591,7 @@ class TestGoogleTasksGatherContext:
     @patch(f"{GOOGLE_TASKS_MODULE}.datetime", _UTCOnlyDateTime)
     @patch(f"{GOOGLE_TASKS_MODULE}.execute_tool")
     def test_overdue_boundary_is_the_utc_today(self, mock_exec: MagicMock) -> None:
-        """A task due today is not yet overdue; yesterday is. Pinned to a fake UTC
-        clock so a local-time read or a mangled date format fails here."""
+        """A task due today is not yet overdue; yesterday is. Pinned to a fake UTC clock so a local-time read or a mangled date format fails here."""
         mock_exec.return_value = {
             "items": [
                 {"id": "1", "title": "Due today", "due": "2026-06-15"},

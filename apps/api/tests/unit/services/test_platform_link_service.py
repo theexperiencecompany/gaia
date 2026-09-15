@@ -1,6 +1,6 @@
 """Unit tests for PlatformLinkService.
 
-The service now delegates persistence to ``user_repository`` (link/unlink/lookup
+The service now delegates persistence to user_repository (link/unlink/lookup
 behaviour against real Mongo is covered by the UserRepository contract tests).
 These tests mock the repository singleton and cover the service's own logic:
 conflict detection, profile assembly, the legacy dict it returns to bot consumers,
@@ -338,9 +338,7 @@ class TestUnlinkAccount:
     async def test_a_pending_number_that_differs_is_released_too(
         self, mock_repo, mock_pending_repo, sample_user_id
     ):
-        """A re-run of connect registers a second number while the first stays
-        linked. Deleting that pending record without releasing its number
-        stranded the seat where even the sweep could not find it."""
+        """Deleting a pending record without releasing its number used to strand the seat where even the sweep could not find it."""
         mock_repo.get.return_value = _user(
             id=sample_user_id, platform_links={"imessage": {"id": "+15551234567"}}
         )
@@ -365,9 +363,7 @@ class TestUnlinkAccount:
     async def test_a_number_photon_would_not_release_stays_tracked_for_the_sweep(
         self, mock_repo, mock_pending_repo, sample_user_id
     ):
-        """The sweep only scans pending records. Deleting the record after a
-        failed release left the linked number registered on Photon with nothing
-        in GAIA referencing it, so it could never be retried."""
+        """The sweep only scans pending records — deleting one after a failed release orphans the number on Photon forever."""
         mock_repo.get.return_value = _user(
             id=sample_user_id, platform_links={"imessage": {"id": "+15551234567"}}
         )
@@ -400,8 +396,7 @@ class TestUnlinkAccount:
     async def test_a_pending_record_for_the_linked_number_is_released_once(
         self, mock_repo, mock_pending_repo, sample_user_id
     ):
-        """The linked number is usually also the pending one; releasing it twice
-        would hand Photon a second delete for a seat it no longer holds."""
+        """The linked number is usually also the pending one; releasing it twice would hand Photon a delete for a seat it no longer holds."""
         mock_repo.get.return_value = _user(
             id=sample_user_id, platform_links={"imessage": {"id": "+15551234567"}}
         )
@@ -421,8 +416,7 @@ class TestUnlinkAccount:
     async def test_a_second_unreleasable_number_is_named_rather_than_dropped(
         self, mock_repo, mock_pending_repo, sample_user_id
     ):
-        """Only one number fits on the pending record. The other cannot be
-        retried by the sweep, so it has to be shouted about rather than lost."""
+        """Only one number fits on the pending record; the other can't be retried by the sweep, so it must be reported, not lost."""
         mock_repo.get.return_value = _user(
             id=sample_user_id, platform_links={"imessage": {"id": "+15551234567"}}
         )
@@ -491,11 +485,7 @@ class TestUnlinkAccount:
     async def test_each_release_is_attributed_to_the_user_unlinking(
         self, mock_repo, mock_pending_repo, sample_user_id
     ):
-        """The release helper is handed the user id, not just the number.
-
-        It is what the audit line and the failure warning are keyed on — a
-        release that cannot say whose seat it freed is unauditable.
-        """
+        """The release helper is handed the user id, not just the number — the audit line and failure warning key on it."""
         mock_repo.get.return_value = _user(
             id=sample_user_id, platform_links={"imessage": {"id": "+15551234567"}}
         )
@@ -691,11 +681,7 @@ class TestReapAbandonedImessageRegistrations:
     async def test_a_number_that_is_now_linked_is_never_released(
         self, mock_repo, mock_pending_repo, sample_user_id
     ):
-        """The link landed after the record was written — releasing now kills a live link.
-
-        Two records, linked one first: the sweep must skip it and keep going, not
-        stop at the first skip and leave every later seat allocated.
-        """
+        """With two pending records, the sweep must skip the one now linked and keep going, not stop at the first skip."""
         mock_pending_repo.find_older_than.return_value = [
             _pending(sample_user_id, "+15551234567"),
             _pending(sample_user_id, "+15550000001"),
@@ -862,8 +848,7 @@ class TestStartPlatformConnect:
         assert result.model_fields_set == {"auth_url", "auth_type", "instructions", "action_link"}
 
     async def test_unconfigured_discord_is_501_even_when_slack_oauth_exists(self):
-        """An unconfigured platform must raise, not fall into the other
-        platform's OAuth branch — the and/or gate keeps each flow its own."""
+        """An unconfigured platform must raise, not fall into the other platform's OAuth branch."""
         with patch("app.services.platform_link_service.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = "client_slack"
@@ -918,8 +903,7 @@ class TestStartPlatformConnect:
         assert result.model_fields_set == {"auth_url", "auth_type", "instructions", "action_link"}
 
     async def test_imessage_without_phone_is_a_422_carrying_photon_context(self):
-        """The why/fix are the only explanation the caller gets for why a phone
-        is mandatory — they must arrive intact, not defaulted away."""
+        """The why/fix fields are the caller's only explanation that a phone is mandatory — they must arrive intact."""
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             pytest.raises(AppError) as exc_info,

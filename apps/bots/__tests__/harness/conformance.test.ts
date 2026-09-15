@@ -118,10 +118,8 @@ function makeGaia(script: StreamScript) {
   };
 }
 
-// ---------------------------------------------------------------------------
 // Canonical reduction: a keyed set of bubbles (create then update in place),
 // plus every text delivered by any channel (bubbles + ephemerals + DMs).
-// ---------------------------------------------------------------------------
 
 type Op =
   | { op: "create"; id: string; text: string }

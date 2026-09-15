@@ -1,19 +1,16 @@
 """Stress: webhook replay — duplicate delivery of the same signed payload.
 
 Real code under test:
-1. The Composio webhook endpoint (``app/api/v1/endpoints/webhook_composio.py``)
-   with the REAL HMAC-SHA256 signature verification (``webhook_utils``) and the
-   REAL ``webhook-id`` dedup claim (``SET webhook:composio:{id} NX EX 3600``).
-   The endpoint is exercised over HTTP via the ASGI test client; Redis is an
-   in-process fake with genuine SET-NX semantics, so exactly-one-claim is
-   deterministic. Handlers are faked (they reach into workflow queueing).
-2. ``PaymentWebhookService.process_webhook``
-   (``app/services/payments/payment_webhook_service.py``) — Dodo payment
-   webhooks dedup on ``webhook_id`` against the processed-webhook store.
-   Repositories are stateful fakes; the handler logic is the real code.
+1. The Composio webhook endpoint (app/api/v1/endpoints/webhook_composio.py) with the
+   REAL HMAC-SHA256 verification (webhook_utils) and REAL dedup claim (SET
+   webhook:composio:{id} NX EX 3600), exercised over HTTP with an in-process fake
+   Redis (genuine SET-NX semantics). Handlers are faked.
+2. PaymentWebhookService.process_webhook (app/services/payments/payment_webhook_service.py)
+   — Dodo webhooks dedup on webhook_id against the processed-webhook store, with
+   stateful fake repositories but real handler logic.
 
-The invariant everywhere: duplicate delivery — sequential or concurrent —
-produces exactly one side effect.
+The invariant everywhere: duplicate delivery — sequential or concurrent — produces
+exactly one side effect.
 """
 
 import asyncio
@@ -40,9 +37,9 @@ TIMESTAMP = "2025-01-01T00:00:00Z"
 class _FakeRedisClient:
     """In-process Redis stand-in with real SET-NX semantics.
 
-    No ``await`` between the existence check and the set — exactly like Redis's
+    No await between the existence check and the set — exactly like Redis's
     single-threaded command execution, so of N concurrent claims precisely one
-    sees ``True``.
+    sees True.
     """
 
     def __init__(self) -> None:
@@ -61,8 +58,7 @@ class _FakeRedisClient:
 
 
 def _sign_composio(webhook_id: str, timestamp: str, body: bytes, secret: str) -> str:
-    """Real signature per ``app/utils/webhook_utils.py``: HMAC-SHA256 over
-    ``webhook_id.timestamp.body``, base64-encoded, prefixed ``v1,``."""
+    """HMAC-SHA256 over webhook_id.timestamp.body, base64-encoded, prefixed v1, (webhook_utils.py)."""
     signed_content = webhook_id.encode() + b"." + timestamp.encode() + b"." + body
     digest = hmac.new(secret.encode(), signed_content, hashlib.sha256).digest()
     return f"v1,{base64.b64encode(digest).decode()}"
@@ -102,8 +98,7 @@ def _webhook_handler() -> MagicMock:
 
 
 async def _settle_webhook_handler(handler: MagicMock) -> None:
-    """The endpoint acks before its fire-and-forget handler task runs; yield
-    until the handler has been invoked (mirrors tests/integration/real/test_webhook_composio.py)."""
+    """Yield until the fire-and-forget handler task has been invoked (mirrors tests/integration/real/test_webhook_composio.py)."""
     for _ in range(1000):
         if handler.process_event.await_count:
             break
@@ -139,8 +134,7 @@ class TestComposioWebhookReplay:
         handler.process_event.assert_awaited_once()
 
     async def test_concurrent_duplicate_deliveries_claim_exactly_once(self, client: AsyncClient):
-        """Two webhooks racing to claim the same id: the SET-NX dedup lets
-        exactly one through — the double-claims invariant at the webhook edge."""
+        """The SET-NX dedup lets exactly one of two racing claims for the same id through."""
         webhook_id = "wh-replay-race-001"
         body, headers = _signed_delivery(webhook_id)
         handler = _webhook_handler()
@@ -166,8 +160,7 @@ class TestComposioWebhookReplay:
     async def test_same_payload_with_different_webhook_ids_is_not_deduplicated(
         self, client: AsyncClient
     ):
-        """Dedup keys on the delivery id, not the payload: two genuinely
-        distinct deliveries of the same content are both legitimate."""
+        """Dedup keys on the delivery id, not the payload content."""
         handler = _webhook_handler()
         fake_redis = _FakeRedisClient()
 
@@ -188,9 +181,7 @@ class TestComposioWebhookReplay:
 
 
 class _FakeProcessedWebhookRepository:
-    """Stateful store with the unique index's semantics: the round trip to the
-    server yields once, then the insert decides atomically, so of N racing
-    claims for one id exactly one sees True."""
+    """Mimics the unique index: the round trip yields once, then the insert decides atomically, so exactly one of N racing claims for one id sees True."""
 
     def __init__(self) -> None:
         self._claimed: set[str] = set()
@@ -302,9 +293,7 @@ class TestDodoWebhookReplay:
         invalidate_cache.assert_awaited_once()
 
     async def test_racing_duplicate_deliveries_activate_one_subscription(self):
-        """Dodo redelivers on a slow ack, so two copies of one webhook can be in
-        flight together. The claim, not a check-then-act, is what keeps the
-        second from reaching the handler."""
+        """The atomic claim, not a check-then-act, is what keeps the redelivered copy from reaching the handler."""
         payload = _dodo_subscription_active_payload()
         processed_repo = _FakeProcessedWebhookRepository()
         subs_repo = _FakeSubscriptionRepository()

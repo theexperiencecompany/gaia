@@ -1,7 +1,4 @@
-"""Bot Models
-
-Pydantic models for bot chat, sessions, and related operations.
-"""
+"""Pydantic models for bot chat, sessions, and related operations."""
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -249,13 +246,13 @@ class BotSettingsResponse(BaseModel):
 
 class BotSessionDocument(MongoDocument):
     """A bot chat session — the mapping from a platform conversation to a GAIA
-    ``conversation_id``, keyed by a unique ``session_key``.
+    conversation_id, keyed by a unique session_key.
 
-    ``created_at``/``updated_at`` are ISO-format STRINGS (the collection's TTL
+    created_at/updated_at are ISO-format STRINGS (the collection's TTL
     anchor), written raw by the repository rather than as BSON dates. Modelling
-    them as ``str`` is what lets the DM-session merge compare recency across the
-    typed boundary; the repository sets ``auto_stamp_timestamps = False`` so the
-    base never replaces them with a ``datetime`` and breaks the TTL.
+    them as str is what lets the DM-session merge compare recency across the
+    typed boundary; the repository sets auto_stamp_timestamps = False so the
+    base never replaces them with a datetime and breaks the TTL.
     """
 
     session_key: str

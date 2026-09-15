@@ -11,14 +11,8 @@ from app.constants.log_tags import LogTag
 from app.models.trigger_config import TriggerOptionsQuery
 from tests.helpers import captured_wide_event
 
-# ---------------------------------------------------------------------------
-# Break the circular import: triggers.__init__ -> handlers -> base ->
-# workflow.queue_service -> workflow.__init__ -> workflow.service ->
-# workflow.trigger_service -> triggers (not yet finished)
-#
-# Strategy: pre-seed `app.services.workflow` as a fully-loaded stub module
-# BEFORE anything in the triggers package tries to import from it.
-# ---------------------------------------------------------------------------
+# Break the cycle triggers -> handlers -> base -> workflow -> triggers by pre-seeding
+# app.services.workflow as a stub module before triggers imports from it.
 
 _api_root = Path(__file__).resolve().parents[3]
 

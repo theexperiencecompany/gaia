@@ -1,6 +1,6 @@
 """Compaction middleware: query_json/grep auto-bind on offload.
 
-The bind appends the mining tools to `selected_tool_ids` (append-only reducer)
+The bind appends the mining tools to selected_tool_ids (append-only reducer)
 only when a tool result carries an offload marker, deduped against what's already
 selected, and it fires even for tools excluded from compaction (gmail self-offload).
 """

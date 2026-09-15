@@ -11,17 +11,12 @@ import { FIELD_NAMES } from "../constants";
 import type { OnboardingState, Stage } from "../state/types";
 
 /**
- * Submits the onboarding answers exactly once, when the flow reaches its
- * final stage. Submitting here (rather than as soon as the questions are
- * answered) is what keeps the user inside the flow: the server marks
- * onboarding complete, and completion is precisely what the onboarding
- * guard uses to route them out into `/c`.
+ * Submits the onboarding answers exactly once, at the flow's final stage —
+ * submitting only here (not as questions are answered) keeps the user inside
+ * the flow, since the onboarding guard routes on server completion.
  *
- * Idempotency needs both the in-flight ref AND the persisted `completed`
- * flag — a remount creates a fresh ref.
- *
- * A failure is said out loud: the stage shows "One sec, starting our first chat…"
- * with nothing else on screen, so a swallowed error is a wizard that hangs.
+ * Idempotency needs both the in-flight ref AND the persisted `completed` flag,
+ * since a remount creates a fresh ref. Failures surface — a swallowed error would hang the wizard on "One sec…" silently.
  */
 export function useOnboardingSubmission(
   state: OnboardingState,

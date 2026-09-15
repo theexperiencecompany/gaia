@@ -1,21 +1,12 @@
 /**
  * The live-update seam behind the integrations page.
  *
- * When Composio revokes a grant the backend broadcasts
- * `integration_status_update` so an open page flips "Connected" -> "Reconnect"
- * without a refresh. The handler must invalidate the integrations *and* tools
- * caches on a real update and ignore a malformed broadcast (invalidating on one
- * would blow away the whole catalog for nothing); the subscription must hand
- * back the teardown for that exact handler (a leaked one multiplies
- * invalidations on every navigation).
- *
- * Fidelity note: this workspace has no jsdom/happy-dom and no
- * `@testing-library/react`, so there is no renderer and `renderHook` is
- * unavailable. These tests therefore drive the two pieces the hook composes
- * directly, against a real `QueryClient` whose cache state is asserted after
- * invalidation. What is NOT exercised: that the hook wires them together, and
- * React's dependency-array scheduling — i.e. nothing here catches a
- * re-subscribe loop caused by an unstable handler identity.
+ * On `integration_status_update` the handler must invalidate both the
+ * integrations and tools caches (never on a malformed broadcast), and the
+ * subscription must return that handler's own teardown or invalidations
+ * multiply on every navigation. Fidelity: no renderer here (no jsdom, no
+ * `renderHook`) — these drive the hook's two pieces directly against a real
+ * `QueryClient`; hook wiring and dependency-array re-subscribe aren't exercised.
  */
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";

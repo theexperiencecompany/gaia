@@ -1,4 +1,4 @@
-"""Unit tests for ``app.services.mcp.oauth_callback``.
+"""Unit tests for app.services.mcp.oauth_callback.
 
 The MCPClient is the seam: every test hands the service a mock client and
 asserts what it did with it and what it handed back to the route.

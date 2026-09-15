@@ -78,13 +78,9 @@ STALE_THREAD = [
 
 @pytest.mark.unit
 class TestSystemBlockIsLeadingAndContiguous:
-    """``langchain-google-genai`` promotes a ``SystemMessage`` to
-    ``system_instruction`` only while the system block is leading and unbroken.
-    The first non-system message ends the block, and every later system message
-    is silently discarded — taking the entire persona with it.
+    """langchain-google-genai keeps a SystemMessage as system_instruction only while the system block leads and is unbroken; every later system message is silently dropped once broken.
 
-    This binds on the GEMINI lane. The OpenAI wire has no such rule, and the tail
-    layout spends exactly that freedom (see ``TestTheTailLayoutOnTheOpenAIWire``).
+    Binds on the GEMINI lane only — the OpenAI wire has no such rule (see TestTheTailLayoutOnTheOpenAIWire).
     """
 
     @pytest.mark.parametrize("tier", list(AgentTier))
@@ -135,9 +131,7 @@ class TestTheTailLayoutOnTheOpenAIWire:
 
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_the_stable_block_still_leads(self, tier: AgentTier) -> None:
-        """The point of moving the churn to the tail is that everything ahead of
-        the conversation is byte-stable — if a stable slot slipped behind it, the
-        prefix would end at the static prompt again."""
+        """If a stable slot slipped behind the conversation, the prefix would end at the static prompt again."""
         messages = await effective_context(
             tier, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
         )
@@ -150,9 +144,7 @@ class TestTheTailLayoutOnTheOpenAIWire:
 
 @pytest.mark.unit
 class TestStaticPromptIsUserIndependent:
-    """The static prefix is byte-identical across users so the first user of the
-    day on a channel warms the cache for everyone after them. Leaking one user's
-    name into it costs every other user their turn-1 cache hit."""
+    """The static prefix is byte-identical across users, so the first user of the day warms the cache for everyone after them."""
 
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_two_users_share_a_byte_identical_static_prompt(self, tier: AgentTier) -> None:
@@ -196,9 +188,7 @@ class TestStaticPromptIsUserIndependent:
 
 @pytest.mark.unit
 class TestClockPlacement:
-    """The clock ticks every minute. In ``system_instruction`` it would push the
-    cache boundary back to just before the timestamp on every call, so it rides
-    a ``HumanMessage`` at the very tail of contents instead."""
+    """The clock rides a HumanMessage at the tail of contents, not system_instruction, so its per-minute tick doesn't push back the cache boundary."""
 
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_clock_is_the_final_message_and_is_human(self, tier: AgentTier) -> None:
@@ -245,13 +235,7 @@ class TestOneMessagePerSlot:
 
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_the_survivor_is_the_latest(self, tier: AgentTier) -> None:
-        """Every message in ``STALE_THREAD`` carries recognisable stale text, so a
-        survivor of a slot this turn refilled is unmistakable.
-
-        Only slots the current turn actually produces are checked. The background
-        -executor and executor-status frames are injected by other paths and have
-        no current-turn copy to displace, so a stale one legitimately survives.
-        """
+        """Only slots the current turn actually produces are checked — the background-executor and executor-status frames have no current-turn copy to displace."""
         messages = await effective_context(
             tier, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
         )
@@ -268,8 +252,7 @@ class TestOneMessagePerSlot:
     async def test_slots_appear_in_canonical_order(
         self, tier: AgentTier, provider: LLMProviderName
     ) -> None:
-        """Canonical means "the order this provider's layout declares" — the two
-        differ, and sorting by the enum alone would only ever check one of them."""
+        """Canonical means the order this provider's layout declares — the two providers differ."""
         messages = await effective_context(
             tier,
             ContextSeed(
@@ -308,13 +291,7 @@ class TestLegacyMarkersStillResolve:
         assert legacy not in messages, "the legacy block competes for the stable slot and loses"
 
     async def test_marker_in_model_extra_resolves(self) -> None:
-        """A marker passed as a bare constructor kwarg lands in ``model_extra``,
-        not ``additional_kwargs``.
-
-        Asserted on the slot directly. Inferring it from "the message did not
-        survive" cannot fail: a misresolved message competes for the *static*
-        slot and loses there too, so the array looks identical either way.
-        """
+        """Asserted on the slot directly: a misresolved message would compete for the static slot and lose there too, so the array would look identical either way."""
         legacy = SystemMessage(content="legacy ctx", memory_message=True)
 
         assert legacy.model_extra == {"memory_message": True}, (
@@ -331,10 +308,7 @@ class TestLegacyMarkersStillResolve:
 
 @pytest.mark.unit
 class TestWorkspaceSessionNeverGuesses:
-    """``vfs_session_id`` is the executor's pin to the conversation thread.
-    ``thread_id`` is the ``executor_<conv>`` wrapper — using it would state
-    ``/workspace/sessions/executor_<conv>/``, sending the agent's deliverables
-    outside the directory the artifact watcher scans, where they are lost."""
+    """thread_id is the executor_<conv> wrapper — using it as a fallback would point deliverables outside the directory the artifact watcher scans."""
 
     @pytest.mark.parametrize(
         "tier", [AgentTier.EXECUTOR, AgentTier.PROVIDER_SUBAGENT, AgentTier.SPAWN]
@@ -383,15 +357,9 @@ COMMS_CONTEXT = SectionContext(
 
 @pytest.mark.unit
 class TestOneFailingSourceCostsOnlyItsOwnSection:
-    """Sections are gathered concurrently, so a section that raises instead of
-    degrading takes the whole gather down with it — and the assembly-wide
-    fallback then serves an *empty* stable block. A transient error on one
-    enrichment read therefore strips the user's name, timezone, preferences,
-    connected integrations and memories from the same turn.
+    """Sections are gathered concurrently, so one raising instead of degrading takes the whole gather down and serves an empty stable block.
 
-    ``build_tracked_todos_block`` was the one fetcher that left its service call
-    unguarded, so a Mongo blip on the todo service silently cost a comms turn
-    every other piece of context it had.
+    build_tracked_todos_block was the one fetcher that left its service call unguarded, costing a comms turn every other piece of context on a Mongo blip.
     """
 
     @pytest.mark.parametrize(("target", "own_text"), FALLIBLE_SOURCES)
@@ -411,8 +379,7 @@ class TestOneFailingSourceCostsOnlyItsOwnSection:
 
     @pytest.mark.parametrize(("target", "own_text"), FALLIBLE_SOURCES)
     async def test_only_the_failing_section_is_missing(self, target: str, own_text: str) -> None:
-        """Guards the test above from passing vacuously: if a patched target
-        were not actually on the section's path, nothing would have degraded."""
+        """Guards the test above from passing vacuously if the patched target were not actually on the section's path."""
         with (
             fake_context_sources(RICH_SOURCES),
             patch(target, AsyncMock(side_effect=RuntimeError("source down"))),
@@ -425,14 +392,9 @@ class TestOneFailingSourceCostsOnlyItsOwnSection:
 
 @pytest.mark.unit
 class TestAnAssemblyDefectDegradesToAByteStableEmptyBlock:
-    """The whole-assembly fallback is kept deliberately — a defect in the
-    assembler must not cost a user their turn — and keeping it is what obliges
-    proving it does exactly what it claims. Per-section failures are contained
-    upstream, so this path only fires on a real defect, and every property below
-    is one the fallback could silently get wrong: the block still has to hold
-    the stable slot, and it has to be the SAME bytes every time or a persistent
-    failure invalidates the prompt cache on every call on top of the original
-    problem.
+    """The whole-assembly fallback is kept deliberately so a defect in the assembler doesn't cost a user their turn.
+
+    Per-section failures are contained upstream, so this path only fires on a real defect; the fallback block must still hold the stable slot and be byte-identical every time, or a persistent failure would also invalidate the prompt cache.
     """
 
     @staticmethod
@@ -451,9 +413,7 @@ class TestAnAssemblyDefectDegradesToAByteStableEmptyBlock:
         assert assembled.messages() == [assembled.stable]
 
     async def test_the_empty_block_still_holds_the_stable_slot(self) -> None:
-        """Unmarked it would not resolve to the slot, so the pruning node would
-        leave a *stale* dynamic block from an earlier turn standing beside it —
-        serving outdated identity rather than none."""
+        """Unmarked, the pruning node would leave a stale dynamic block from an earlier turn standing beside it."""
         with self._defective_gather():
             assembled = await assemble_context(COMMS_CONTEXT)
 
@@ -470,9 +430,7 @@ class TestAnAssemblyDefectDegradesToAByteStableEmptyBlock:
         assert first.stable.additional_kwargs == second.stable.additional_kwargs
 
     async def test_the_defect_reaches_the_wide_event_with_the_tier_and_user(self) -> None:
-        """Silent degradation is what makes this fallback dangerous. An empty
-        context looks exactly like a user with nothing stored, so the only way
-        anyone learns it happened is this error — and it has to name the turn."""
+        """An empty context looks exactly like a user with nothing stored, so this error is the only way anyone learns it happened."""
         async with captured_wide_event() as event:
             with self._defective_gather():
                 await assemble_context(COMMS_CONTEXT)
@@ -490,11 +448,7 @@ class TestAnAssemblyDefectDegradesToAByteStableEmptyBlock:
 
 @pytest.mark.unit
 class TestTheGatherSlotsEachSectionWhereItDeclared:
-    """The gather runs every section as one flat list and splits the results
-    back apart by position. Nothing about that is self-checking: get the split
-    wrong and per-turn content silently lands in the byte-stable prefix, which
-    is the exact regression this whole package exists to prevent.
-    """
+    """The gather runs every section as one flat list and splits the results back apart by position — nothing about that is self-checking."""
 
     async def test_stable_and_volatile_content_do_not_cross_over(self) -> None:
         with fake_context_sources(RICH_SOURCES):
@@ -520,21 +474,7 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
     async def test_the_whole_memory_core_sits_behind_the_conversation(
         self,
     ) -> None:
-        """``get_core_context`` renders the documents, the agenda and the activity
-        journal as one string, and ALL of it now rides behind the conversation.
-
-        The agenda and journal were split off first, because they obviously churn
-        per turn. The documents were left in the cached prefix on the assumption
-        that only the consolidation pass rewrites them, "not per turn". Measured
-        on the real graph, that assumption is false: consolidation runs DURING a
-        conversation, so the documents move inside the prefix and evict the entire
-        conversation behind them.
-
-        Moving them out costs the documents their own caching — they are re-sent
-        uncached every turn now — and buys the conversation's caching instead. The
-        conversation is the bigger block and it grows, so the trade pays:
-        comms 46.0% -> 59.3%, executor 64.8% -> 75.8%, total 48.4% -> 59.3%.
-        Nothing is dropped; the model still receives the whole core."""
+        """Measured on the real graph: consolidation runs DURING a conversation, so leaving the memory-core documents in the cached prefix evicted the conversation behind them; moving them out trades their own caching for the conversation's, paying comms 46.0% -> 59.3%, executor 64.8% -> 75.8%, total 48.4% -> 59.3%."""
         core = (
             "- Prefers short answers.\n\n"
             "## Current agenda\n- Ship the merge by Friday\n\n"
@@ -555,9 +495,7 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
         assert "Asked about the invoice at 14:02" in volatile
 
     async def test_an_empty_section_leaves_no_blank_gap(self) -> None:
-        """Sections that render nothing are dropped, not joined as empty
-        strings — otherwise every absent section adds a stray separator and the
-        block arrives padded with blank lines."""
+        """Sections that render nothing are dropped, not joined as empty strings."""
         with fake_context_sources(ContextSources()):
             assembled = await assemble_context(COMMS_CONTEXT)
 
@@ -565,13 +503,7 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
 
     @staticmethod
     async def _volatile_driven_by_todos(text: str) -> str:
-        """The volatile block with ``text`` as the only per-turn content.
-
-        Driven through the tracked-todo summary: it is retrieved per turn and
-        grows with the user's todo list, so it is one of the sections this cap
-        exists for. (``skills`` used to play this role and no longer can — it
-        is byte-stable and now sits in the cached prefix.)
-        """
+        """Drive the volatile block through the tracked-todo summary, one of the sections the cap below exists for (skills used to play this role and no longer can)."""
         with fake_context_sources(ContextSources(tracked_todos=text)):
             assembled = await assemble_context(replace(COMMS_CONTEXT, tier=AgentTier.EXECUTOR))
         return text_of(assembled.volatile)
@@ -586,8 +518,7 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
         return len(await self._volatile_driven_by_todos("x")) - 1
 
     async def test_the_volatile_block_is_bounded_however_big_its_sections_get(self) -> None:
-        """Sections are emitted whole; this is the backstop on their SUM, so one
-        runaway section cannot blow the context window and the bill."""
+        """Sections are emitted whole; this is the backstop on their SUM."""
         volatile = await self._volatile_driven_by_todos("- ship the refactor\n" * 2000)
 
         assert len(volatile) <= VOLATILE_BLOCK_MAX_CHARS + len(VOLATILE_BLOCK_TRUNC_MARKER)
@@ -603,10 +534,7 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
         assert VOLATILE_BLOCK_TRUNC_MARKER not in volatile
 
     async def test_an_oversized_volatile_block_keeps_head_and_tail_verbatim(self) -> None:
-        """Over the ceiling: head + the exact truncation marker + tail, nothing
-        else. The marker's own bytes are asserted whole — a marker that grew
-        extra characters would still satisfy a substring check while changing
-        what every request sends."""
+        """The marker's own bytes are asserted whole — a substring check would miss a marker that grew extra characters."""
         head_filler = "H" * (VOLATILE_BLOCK_HEAD_CHARS - await self._section_wrapper_len())
         tail = "T" * VOLATILE_BLOCK_TAIL_CHARS
         expected_head = await self._volatile_driven_by_todos(head_filler)
@@ -627,10 +555,7 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
 
 @pytest.mark.unit
 class TestTheAssemblyIsRecordedOnTheWideEvent:
-    """``dynamic_context`` is how anyone answers "what did the agent actually
-    see?" for a turn that already happened. A wrong field here does not break a
-    prompt, so nothing else would ever catch it — it just makes every later
-    investigation quietly lie."""
+    """A wrong dynamic_context field does not break a prompt, so nothing else would ever catch it — it just makes every later investigation quietly lie."""
 
     async def test_it_records_what_each_slot_received(self) -> None:
         async with captured_wide_event() as event:
@@ -666,8 +591,7 @@ class TestTheAssemblyIsRecordedOnTheWideEvent:
         assert record["stable_chars"] > 0
 
     async def test_the_real_channel_is_recorded_when_there_is_one(self) -> None:
-        """``web`` is the default for a turn with no channel, not a label to
-        stamp on every turn — a Slack turn recorded as web is unfindable."""
+        """Web is the default for a turn with no channel, not a label stamped on every turn."""
         async with captured_wide_event() as event:
             with fake_context_sources(ContextSources()):
                 await assemble_context(replace(COMMS_CONTEXT, source="slack"))
@@ -688,12 +612,7 @@ class TestTheAssemblyIsRecordedOnTheWideEvent:
 
 @pytest.mark.unit
 class TestEachBlockDeclaresItsOwnSlot:
-    """``manage_system_prompts_node`` resolves a message to a slot by its
-    marker, not by where it sits. An unmarked block is not recognised as the
-    slot's holder, so the stale copy from the previous turn is never replaced —
-    the thread stacks dynamic blocks and the cache prefix shatters, which is the
-    exact regression the pruning node exists to prevent.
-    """
+    """manage_system_prompts_node resolves a message to a slot by its marker, not by where it sits, so an unmarked block's stale copy is never replaced."""
 
     async def test_the_stable_block_declares_the_stable_slot(self) -> None:
         with fake_context_sources(RICH_SOURCES):
@@ -703,9 +622,7 @@ class TestEachBlockDeclaresItsOwnSlot:
         assert assembled.stable.additional_kwargs[DYNAMIC_CONTEXT_MARKER] is True
 
     async def test_the_stable_block_also_answers_to_the_pre_split_marker(self) -> None:
-        """Threads checkpointed before the stable/volatile split carry only the
-        legacy key; dropping it strands every one of them with an unresolvable
-        block that never gets replaced."""
+        """Threads checkpointed before the stable/volatile split carry only the legacy key."""
         with fake_context_sources(RICH_SOURCES):
             assembled = await assemble_context(COMMS_CONTEXT)
 
@@ -722,9 +639,7 @@ class TestEachBlockDeclaresItsOwnSlot:
 
 @pytest.mark.unit
 class TestAWorkerTierRecordsItsOwnSections:
-    """Comms is given no skills section at all, so the skills field can only be
-    proven on a tier that actually has one — asserted on comms it would read as
-    ``False`` whatever the code did."""
+    """Comms is given no skills section, so the skills field can only be proven true on a tier that has one."""
 
     async def test_the_executor_records_the_skills_it_was_given(self) -> None:
         async with captured_wide_event() as event:

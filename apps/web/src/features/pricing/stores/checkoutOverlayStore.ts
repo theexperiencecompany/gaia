@@ -14,18 +14,13 @@ import {
 import { closeDodoOverlay, openDodoOverlay } from "../lib/dodoOverlay";
 
 /**
- * Where an embedded checkout is in its life.
+ * Where an embedded checkout is in its life. The webhook is the single source
+ * of truth for subscription state — overlay events only say *when to start
+ * asking the server*, so `redirect` lands in `confirming`, not success.
  *
- * The webhook remains the single source of truth for subscription state — the
- * overlay's events only tell us *when to start asking the server*, never what
- * the answer is. That is why `redirect` lands in `confirming` rather than
- * declaring success: it fires before our webhook has landed.
- *
- * A `closed` is weaker evidence still, and is treated as such: a charge that
- * went through leaves via Dodo's return URL, so an overlay that closed on us
- * is a checkout the user walked away from. It gets a short grace in
- * `confirming` for the rare charge that landed without the redirect, then the
- * plans come back — see `CHECKOUT_DISMISS_CONFIRM_BUDGET_MS`.
+ * `closed` is weaker evidence still: a real charge leaves via Dodo's return
+ * URL, so a closed overlay gets a short `confirming` grace
+ * (`CHECKOUT_DISMISS_CONFIRM_BUDGET_MS`) before falling back to the plans.
  */
 export type CheckoutPhase =
   | "idle"
@@ -191,12 +186,9 @@ export const useCheckoutOverlayStore = create<CheckoutOverlayStore>()(
                 set({ phase: "idle" }, false, "overlayDismissed");
                 break;
               }
-              // Pressing pay is not evidence of having paid — a charge that
-              // goes through leaves via the return URL rather than closing
-              // the sheet on us. So this is almost always someone changing
-              // their mind, and holding the whole surface hostage to a
-              // five-minute spinner is a lie. Give a charge already in
-              // flight its short grace, then hand the plans back.
+              // Pressing pay isn't evidence of having paid — a real charge leaves
+              // via the return URL, not by closing the sheet, so this is almost
+              // always changing their mind; give an in-flight charge a short grace, then hand the plans back.
               set({ phase: "confirming" }, false, "confirmingDismissed");
               void confirmPayment(
                 subscriptionIsActive,

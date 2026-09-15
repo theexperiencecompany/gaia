@@ -1,14 +1,11 @@
 // @vitest-environment jsdom
 /**
  * The onboarding funnel is only as good as the order its events arrive in.
- * Three things were wrong and each is pinned below:
- *   - `onboarding:started` fired on mount, a render before the persisted
- *     state was applied, so a resumed session always claimed `has_saved_state:
- *     false`;
- *   - the payment stage being cleared was reported only once the receipt had
- *     been acknowledged, and reaching the receipt itself was never reported;
- *   - a restart replayed the flow with every once-per-stage guard still shut,
- *     so the second run emitted no stage steps at all.
+ *
+ * `onboarding:started` fired pre-hydration, always claiming
+ * `has_saved_state: false`; payment-cleared reported only after receipt ack
+ * (reaching the receipt itself went unreported); and a restart replayed
+ * once-per-stage guards already shut, emitting no stage steps at all.
  */
 
 import { renderHook } from "@testing-library/react";

@@ -1,6 +1,4 @@
-"""
-Payment and billing constants.
-"""
+"""Payment and billing constants."""
 
 from datetime import timedelta
 from enum import StrEnum
@@ -9,18 +7,14 @@ from enum import StrEnum
 # billing portal; the agent only ever needs "what have I been charged lately".
 PAYMENT_HISTORY_LIMIT = 10
 
-# How many of a user's recent checkout sessions payment verification asks Dodo
-# about before giving up. It scans instead of reading only the newest because
-# every paywall block mints a fresh session, so the one that was actually paid
-# is routinely buried under later ones; the cap bounds the Dodo round trips a
-# single verify can make (the scan stops at the first session Dodo calls paid,
-# so a user who just paid normally costs one).
+# How many recent checkout sessions payment verification asks Dodo about. It
+# scans, not just the newest, because every paywall block mints a fresh session
+# so the paid one is often buried under later ones; the scan stops at the first paid session.
 CHECKOUT_SESSION_SCAN_LIMIT = 10
 
-# How long a lifecycle webhook (renewed, cancelled, ...) for a subscription GAIA
-# has no row for is still asked to be retried. ``subscription.active`` is its
-# own delivery with its own retries and may simply be behind; past this age it
-# is not coming, and asking Dodo to keep redelivering only masks that.
+# How long a lifecycle webhook for a subscription GAIA has no row for is still
+# retried; subscription.active is a separate delivery that may just be behind.
+# Past this age it is not coming, and redelivery only masks that.
 WEBHOOK_ROW_WAIT_MAX = timedelta(hours=1)
 
 
@@ -49,12 +43,9 @@ SUBSCRIPTION_WORKFLOW_SYNC_RETRY_DELAY = timedelta(minutes=2)
 
 NO_USER_MESSAGE = "Could not identify the user, so their billing state is unavailable."
 
-#: Everything a checkout opened outside production prefills, so a developer
-#: only types the test card. The country matters: Dodo's documented test card
-#: (4242 4242 4242 4242) is a US Visa and the Indian rail declines it, so an
-#: overlay placed on the Indian rail by the developer's IP could not pay with
-#: the card the docs name. The address is a real US one so validation passes;
-#: the customer can still edit every field.
+#: Everything a checkout opened outside production prefills. The country
+#: matters: Dodo's test card (4242 4242 4242 4242) is a US Visa, and the
+#: Indian rail (chosen by the developer's IP) declines it.
 DODO_TEST_MODE_BILLING_ADDRESS: dict[str, str] = {
     "country": "US",
     "street": "548 Market St",

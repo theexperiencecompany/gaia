@@ -2,12 +2,10 @@
 /**
  * Signing in on a second device must not re-ask Q1 and Q2.
  *
- * The wizard's draft lives in localStorage only, so a phone after a laptop —
- * or the same browser with its storage cleared — found no cache and started
- * at question one, even though the answers were already on the account
- * (`PATCH /onboarding/preferences` writes them the moment Q2 is confirmed).
- * Answering again overwrote the stored profession and needs that the platform
- * opener and the agent's context are composed from.
+ * The wizard's draft lives only in localStorage, so a new device (or cleared
+ * storage) found no cache and restarted at Q1 even though the answers were
+ * already on the account (`PATCH /onboarding/preferences` on Q2 confirm).
+ * Answering again overwrote the stored profession and needs.
  */
 import { renderHook } from "@testing-library/react";
 import { useReducer } from "react";

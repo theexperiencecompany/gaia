@@ -63,9 +63,9 @@ from shared.py.wide_events import log
 class AgentRunOptions:
     """The optional settings of one agent run, shared by every entry point.
 
-    ``trigger_context`` is the workflow/todo/trigger data of a background run;
-    ``usage_metadata_callback`` collects token usage; ``source`` names the
-    surface the turn came from; the two ``langfuse_*`` fields seed the trace.
+    trigger_context is the workflow/todo/trigger data of a background run;
+    usage_metadata_callback collects token usage; source names the
+    surface the turn came from; the two langfuse_* fields seed the trace.
     """
 
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None
@@ -77,9 +77,11 @@ class AgentRunOptions:
 
 @dataclass(frozen=True)
 class StreamMessageIds:
-    """The ids a streaming turn carries: the stream (for cancellation), the
-    user's message (for reply linking) and the assistant's message (for the
-    Langfuse trace and HIL resume)."""
+    """The ids a streaming turn carries.
+
+    The stream (for cancellation), the user's message (for reply linking)
+    and the assistant's message (for the Langfuse trace and HIL resume).
+    """
 
     stream_id: str | None = None
     user_message_id: str | None = None
@@ -95,22 +97,8 @@ async def _core_agent_logic(
     """Shared setup for streaming and silent execution.
 
     Constructs messages, initializes the graph, builds state, and kicks off
-    background memory storage.
-
-    Args:
-        request: Message request with conversation history and file data
-        conversation_id: Unique identifier for the conversation thread
-        user: User information dictionary with ID, email, name, and home timezone
-        trigger_context: Optional context data from workflow triggers
-        langfuse_trace_id: Seed for the Langfuse trace; forwarded into the
-            config metadata + configurable so child agents inherit it.
-        langfuse_tags: Tags applied to the Langfuse trace root.
-
-    Returns:
-        Tuple containing:
-        - graph: Initialized LangGraph instance ready for execution
-        - initial_state: Prepared state dictionary with all context
-        - config: Configuration dictionary with user settings and tokens
+    background memory storage. langfuse_trace_id is forwarded into the
+    config metadata + configurable so child agents inherit it.
     """
     options = options or AgentRunOptions()
     trigger_context = options.trigger_context
@@ -167,10 +155,8 @@ async def _core_agent_logic(
         else None
     )
 
-    # Established here (comms already has the full user document) so the
-    # executor and every subagent it hands off to inherit it — the worker
-    # tiers' context sections read it off configurable, not off a user doc
-    # they never have.
+    # Established here (comms has the full user document) so the executor and
+    # every subagent inherit it — worker tiers read it off configurable.
     user_preferences, writing_style = onboarding_preferences(user.get("onboarding"))
 
     # This is the top-level run, so build_agent_config resolves the comms lane
@@ -246,19 +232,11 @@ async def call_agent(
     options: AgentRunOptions | None = None,
     ids: StreamMessageIds | None = None,
 ) -> AsyncGenerator[str, None]:
-    """
-    Execute agent in streaming mode for interactive chat.
+    """Execute agent in streaming mode for interactive chat.
 
-    Args:
-        stream_id: Optional stream ID for Redis-based cancellation checking.
-                   When provided, streaming can be cancelled via stream_manager.
-        user_message_id: Optional user message ID for reply-to linking in
-                         background notifications.
-        bot_message_id: Assistant message ID used to seed the Langfuse
-                        trace_id so /messages/{id}/feedback can re-derive
-                        the same trace_id to attach scores.
-
-    Returns an AsyncGenerator that yields SSE-formatted streaming data.
+    ids.bot_message_id seeds the Langfuse trace_id so
+    /messages/{id}/feedback can re-derive it to attach scores. Returns an
+    AsyncGenerator yielding SSE-formatted streaming data.
     """
     options = options or AgentRunOptions()
     ids = ids or StreamMessageIds()
@@ -361,19 +339,11 @@ async def call_agent_silent(
     user: AuthenticatedUser,
     options: AgentRunOptions | None = None,
 ) -> SilentRunResult:
-    """
-    Execute agent in silent mode for background processing.
+    """Execute agent in silent mode for background processing.
 
-    The comms agent may delegate to the executor, which runs as a detached
-    background task. We register an executor capture for this run's stream_id,
-    wait for the executor to finish, then merge its (and its subagents') grouped
-    tool_data into the returned tool_data — so background/workflow runs render
-    tool calls identically to live chat.
-
-    When that delegation was queued behind an in-flight run for the same
-    conversation, nothing ran this turn and the result carries the queued
-    ``task_id`` — read off the stream's session before it is torn down, since
-    the session is this function's own and no caller can reach it.
+    Comms may delegate to a detached background executor; this waits for it
+    and merges its tool_data so background/workflow runs render like live
+    chat, or carries the queued task_id if delegation was queued instead.
     """
     options = options or AgentRunOptions()
     usage_metadata_callback = options.usage_metadata_callback
@@ -394,12 +364,9 @@ async def call_agent_silent(
             ),
         )
 
-        # Mirror the live-chat path: comms delegates to the executor (which runs
-        # detached and delivers its result as its own message), then we wait for
-        # it to finish and fold its reconstructed tool_data onto this comms
-        # message — exactly like chat_service attaches it to the comms ack. Bind
-        # the stream_id + register the collector before the graph runs so the
-        # executor's tool events are captured.
+        # Mirror the live-chat path: wait for the detached executor and fold
+        # its tool_data onto this message. Bind stream_id + register the
+        # collector before the graph runs so tool events are captured.
         cast(AgentConfigurable, config["configurable"])["stream_id"] = stream_id
         register_executor_capture(stream_id)
 

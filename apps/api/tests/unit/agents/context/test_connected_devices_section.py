@@ -1,5 +1,8 @@
-"""The always-live connected-device context: names the user's machines + servers
-so the agent routes local-file work to the device instead of the cloud sandbox."""
+"""The always-live connected-device context.
+
+Names the user's machines + servers so the agent routes local-file work to
+the device instead of the cloud sandbox.
+"""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch

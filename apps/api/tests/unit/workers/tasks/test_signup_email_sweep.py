@@ -46,8 +46,7 @@ def _candidates(*user_ids: str):
 
 class TestSweepUndeliveredSignupEmails:
     async def test_a_lost_enqueue_is_finished_later(self):
-        """The signup whose enqueue never reached Redis: no job, no stamps, and
-        until this sweep ran, no record anywhere that anything was owed."""
+        """The signup whose enqueue never reached Redis had no job, no stamps, and no record anything was owed."""
         pool = _pool()
         with (
             _candidates(USER_ID, OTHER_USER_ID),
@@ -62,14 +61,7 @@ class TestSweepUndeliveredSignupEmails:
         ]
 
     async def test_the_run_reports_how_many_of_how_many_it_recovered(self):
-        """Three owed, one already queued, so two were actually recovered.
-
-        The two counts are deliberately different here. Equal numbers would let
-        a swapped, doubled or negated counter still read as correct, and this
-        summary is the only signal that says whether the backlog is draining —
-        a sweep silently recovering nothing looks exactly like one with
-        nothing to do.
-        """
+        """Three owed, one already queued: unequal counts catch a swapped, doubled, or negated counter."""
         pool = _pool()
         # Third candidate dedups against a job signup already queued.
         pool.enqueue_job = AsyncMock(side_effect=[MagicMock(), MagicMock(), None])
@@ -85,8 +77,7 @@ class TestSweepUndeliveredSignupEmails:
         assert event["enqueued"] == 2
 
     async def test_each_candidate_is_enqueued_exactly_once_per_user(self):
-        """Deduped on the same per-user id signup itself uses, so a sweep that
-        overlaps a still-queued signup job cannot produce a second send."""
+        """Dedups on the same per-user job id, so an overlapping sweep can't produce a second send."""
         pool = _pool()
         with (
             _candidates(USER_ID, OTHER_USER_ID),
@@ -100,8 +91,7 @@ class TestSweepUndeliveredSignupEmails:
         ]
 
     async def test_a_deduped_enqueue_is_not_counted_as_recovered(self):
-        """ARQ returns None when the job is already queued. Counting that as a
-        recovery would report the backlog as drained while it still is not."""
+        """ARQ returns None for an already-queued job; counting that as recovered would misreport the backlog."""
         pool = _pool()
         pool.enqueue_job = AsyncMock(return_value=None)
         with (
@@ -113,8 +103,7 @@ class TestSweepUndeliveredSignupEmails:
         assert result == "sweep_undelivered_signup_emails enqueued 0 of 1 undelivered signup(s)"
 
     async def test_the_lookback_window_bounds_which_signups_are_swept(self):
-        """Without this bound the first run mails every user who ever signed up:
-        they all predate the stamps, so they all read as undelivered."""
+        """Without this bound, the first run would mail every user ever signed up as undelivered."""
         pool = _pool()
         before = datetime.now(UTC)
         with (

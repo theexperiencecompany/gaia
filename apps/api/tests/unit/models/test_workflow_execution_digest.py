@@ -22,10 +22,7 @@ pytestmark = pytest.mark.unit
 
 class TestADigestNeverShedsAListToNothing:
     def test_one_oversized_element_is_cut_harder_rather_than_dropped(self) -> None:
-        """Five wide messages under a 1.2 KB bound used to come out as
-        ``{"data":{"messages":[]}}``: the first element did not fit even after
-        the first string trim, so every element was shed and a full result was
-        recorded as an empty one, which the empty-result checks then believed."""
+        """Five wide messages under a 1.2 KB bound used to shed to {"data":{"messages":[]}}, recording a full result as empty."""
         wide = {"id": "m1", **{f"field_{n}": "x" * 9_000 for n in range(8)}}
         huge = {"data": {"messages": [wide] * 5}}
 
@@ -41,9 +38,7 @@ class TestADigestNeverShedsAListToNothing:
 
 
 class TestTheBoundIsInclusive:
-    """Every ``<=`` here decides what a result exactly at its limit becomes. Off by
-    one and a result that fits is re-serialised, re-trimmed, or marked as cut —
-    which is a digest that says the tool returned something it did not."""
+    """Every <= here decides what a result exactly at its limit becomes; off by one and a fitting result is re-serialised, re-trimmed, or marked as cut."""
 
     def test_a_non_string_result_is_rendered_from_the_value_itself(self) -> None:
         assert build_result_digest({"count": 2}) == "{'count': 2}"
@@ -75,9 +70,7 @@ class TestTheStringLimitLaddersDownToZero:
     def test_the_last_rung_cuts_strings_away_entirely_before_slicing_as_text(
         self,
     ) -> None:
-        """A dict of short values can never be shed (no list) and never fits, so the
-        ladder runs to its end. Stopping a rung early records the one-character
-        prefixes instead of the fully cut ones."""
+        """A dict of short values can never be shed (no list) and never fits, so the ladder runs to its end."""
         assert _bounded_json({"a": "PQ", "b": "RS"}, 10) == '{"a":"\\u20'
 
     def test_the_limit_halves_rather_than_stepping_by_any_other_ratio(self) -> None:
@@ -104,11 +97,7 @@ class TestTheSheddableListIsChosenOnce:
 
 @pytest.mark.unit
 class TestCarriesNoData:
-    """What "this call returned nothing" means, against every result shape seen
-    in production and in live driving. ``largest_list_len`` answers a different
-    question and must not be used for this: it finds the largest list anywhere,
-    so a record's own empty attribute reads as an empty result.
-    """
+    """largest_list_len must not be used for this: it finds the largest list anywhere, so a record's own empty attribute reads as an empty result."""
 
     @pytest.mark.parametrize(
         ("raw", "empty", "why"),

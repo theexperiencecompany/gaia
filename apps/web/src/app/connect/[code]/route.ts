@@ -5,14 +5,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 /**
  * Login-free integration-connect deep link.
  *
- * Bots hand the user a short `heygaia.io/connect/<code>` URL. This server-side
- * redirect forwards the opaque, single-use code to the API connect-link
- * endpoint, which consumes it and bounces the browser straight into the
- * provider's OAuth flow. Doing it server-side (not a client page) keeps the
- * code out of any document `Referer`, and `no-store` keeps it uncached.
- *
- * Excluded from the i18n middleware (see `middleware.ts`) so it isn't rewritten
- * into the `[locale]` tree — this is a locale-invariant redirect, not a page.
+ * Forwards the opaque `heygaia.io/connect/<code>` to the API connect-link
+ * endpoint, which consumes it and redirects into the provider's OAuth flow.
+ * Server-side keeps the code out of any `Referer`; `no-store` keeps it
+ * uncached; excluded from i18n middleware as a locale-invariant redirect.
  */
 export async function GET(
   _request: Request,

@@ -1,6 +1,6 @@
 """Unit tests for app.workers.tasks.session_tasks.
 
-``prune_inactive_sessions`` deletes on-disk chat session directories inactive
+prune_inactive_sessions deletes on-disk chat session directories inactive
 past the retention window — the backstop for sessions whose conversation was
 deleted while JuiceFS was unreachable. Per-session failures are logged and
 must never abort the rest of the batch.

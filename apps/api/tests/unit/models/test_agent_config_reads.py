@@ -1,8 +1,8 @@
 """Reading a run's config from outside the run must not raise.
 
-``current_run_config`` and ``agent_configurable`` are how middleware and helpers
-reach the ambient LangGraph config: the hooks are called as ``(state, runtime)``
-or ``(request, handler)`` and never receive it as a parameter. Both are reached
+current_run_config and agent_configurable are how middleware and helpers
+reach the ambient LangGraph config: the hooks are called as (state, runtime)
+or (request, handler) and never receive it as a parameter. Both are reached
 from sync fallback paths and from code that also runs outside a graph, so an
 empty answer is the contract — a raise there would take down a turn over a
 missing dict.

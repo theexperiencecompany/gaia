@@ -41,9 +41,9 @@ def _api_status_error(
 ) -> APIStatusError:
     """Build the exception the Composio client raises for a non-2xx delete.
 
-    `error_cls` mirrors the SDK's own status→class mapping: 410 has no dedicated
+    error_cls mirrors the SDK's own status→class mapping: 410 has no dedicated
     subclass and arrives as a bare APIStatusError. The message mirrors the SDK's
-    format (`Error code: N - <body>`) — what reaches Sentry, and all a
+    format (Error code: N - <body>) — what reaches Sentry, and all a
     substring-based check would ever see.
     """
     response = httpx.Response(
@@ -94,11 +94,7 @@ class TestUnregister:
     async def test_non_410_error_whose_body_mentions_410_is_a_failure(
         self, composio_delete: MagicMock
     ) -> None:
-        """A real failure must not be swallowed just because "410" appears in its text.
-
-        Composio echoes the trigger id back in the error body, so any id containing
-        the digits 410 made a substring check report a live trigger as deleted.
-        """
+        """A substring check on "410" is wrong: Composio echoes the trigger id in the error body, and an id containing 410 isn't a delete."""
         composio_delete.side_effect = _api_status_error(
             500, '{"error":{"message":"upstream failed for ti_410abc"}}', InternalServerError
         )
@@ -119,8 +115,7 @@ class TestUnregister:
 
 
 class TestQueueOneWorkflowDispatch:
-    """The coalescing decision in _queue_one_workflow — the seam every
-    integration webhook passes through, so no entry point can route around it."""
+    """The coalescing decision in _queue_one_workflow — the seam every integration webhook passes through."""
 
     @staticmethod
     def _workflow(trigger_name: str, trigger_data: object) -> Workflow:
@@ -227,8 +222,7 @@ class TestQueueOneWorkflowDispatch:
         )
 
     async def test_any_positive_window_batches_even_one_second(self) -> None:
-        """The boundary is zero, exactly: any positive window means the trigger
-        declared a cadence and its events belong to a batch."""
+        """The boundary is zero, exactly: any positive window means the trigger declared a cadence and belongs in a batch."""
         workflow = self._workflow("stub_trigger", None)
         buffer = AsyncMock(return_value=True)
         queue = AsyncMock()
@@ -256,7 +250,7 @@ class TestQueueOneWorkflowDispatch:
 class TestTodoDispatchHandoff:
     """The tap that makes a todo-only event survive.
 
-    ``process_event`` returns early when no workflow matches, and that return is
+    process_event returns early when no workflow matches, and that return is
     what drops the reply a todo has been waiting for. The hand-off has to happen
     before it.
     """

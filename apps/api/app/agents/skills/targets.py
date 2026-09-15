@@ -1,7 +1,7 @@
 """Skill targets - the places a skill can run.
 
-A skill's ``target`` is either the general ``executor`` or a connected
-integration subagent's ``agent_name``. The settings UI offers exactly these as
+A skill's target is either the general executor or a connected
+integration subagent's agent_name. The settings UI offers exactly these as
 options, and the REST endpoints validate writes against them so a skill can
 never be scoped to an integration the user hasn't connected.
 """
@@ -17,7 +17,7 @@ async def get_skill_targets(user_id: str) -> list[SkillTarget]:
 
     Always includes the executor (the general assistant). Adds one entry per
     connected integration that exposes a subagent, using the subagent registry
-    as the single source of truth for its ``agent_name`` and display name.
+    as the single source of truth for its agent_name and display name.
     """
     targets: list[SkillTarget] = [
         SkillTarget(

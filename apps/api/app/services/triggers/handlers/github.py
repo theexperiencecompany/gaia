@@ -1,6 +1,4 @@
-"""
-GitHub trigger handler.
-"""
+"""GitHub trigger handler."""
 
 import asyncio
 from typing import Any, ClassVar
@@ -130,14 +128,7 @@ class GitHubTriggerHandler(TriggerHandler):
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
-        """Register GitHub triggers with parallel execution and rollback.
-
-        If any trigger registration fails, all successfully created triggers
-        are rolled back to maintain atomicity.
-
-        Raises:
-            TriggerRegistrationError: If any trigger registration fails
-        """
+        """Register GitHub triggers in parallel, rolling back all on any failure."""
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
             raise TriggerRegistrationError(

@@ -569,11 +569,7 @@ class TestDeleteConnectedAccount:
 
     @pytest.mark.asyncio
     async def test_delete_invalidates_proxy_cache(self):
-        """Disconnect must flush the proxy_client connected_account_id cache.
-
-        Otherwise the 10-minute TTL keeps the deleted account ID in memory and
-        every subsequent proxy request fails until the entry expires.
-        """
+        """Disconnect must flush the proxy_client cache, or its 10-minute TTL keeps serving the deleted account id."""
         svc = _make_service()
         config = MagicMock()
         config.auth_config_id = "auth_gmail"
@@ -604,11 +600,7 @@ class TestDeleteConnectedAccount:
 
     @pytest.mark.asyncio
     async def test_delete_invalidates_proxy_cache_when_no_active_account(self):
-        """Even idempotent disconnects (no active account) must flush the cache.
-
-        A previous session may have cached an ID that has since been revoked
-        outside this code path; the next request should re-resolve.
-        """
+        """Even an idempotent disconnect with no active account must flush the cache, since a prior session may have cached a since-revoked id."""
         svc = _make_service()
         config = MagicMock()
         config.auth_config_id = "auth_gmail"
@@ -695,9 +687,9 @@ class TestGetComposioService:
 
 
 class TestAuthHeaders:
-    """The `_auth_headers` helper was removed in the Composio proxy migration.
+    """The _auth_headers helper was removed in the Composio proxy migration.
 
-    Gmail tools now route every request through `proxy_request_sync`, which
+    Gmail tools now route every request through proxy_request_sync, which
     Composio authenticates server-side. Bearer-token construction is no longer
     a Gmail-tools concern, so the helper and its tests no longer exist.
     See test_composio_gmail_tools.py for the replacement coverage.
@@ -761,9 +753,6 @@ class TestRegisterGmailCustomTools:
         assert len(result) == 9
 
 
-# Behavior tests for MARK_AS_READ / STAR_EMAIL / GET_UNREAD_COUNT /
-# GET_CONTACT_LIST live in test_composio_gmail_tools.py — they invoke the
-# registered tool functions with the proxy mocked at the module boundary.
-# The previous tests here duplicated production logic inline (constructing
-# payloads in the test body instead of calling the tool), which provided
-# false confidence; they have been removed in the Composio proxy migration.
+# Behavior tests for MARK_AS_READ/STAR_EMAIL/GET_UNREAD_COUNT/GET_CONTACT_LIST
+# live in test_composio_gmail_tools.py. Removed here: they duplicated
+# production logic inline, giving false confidence.

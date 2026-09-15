@@ -1,10 +1,10 @@
-"""Unit tests for ``manage_system_prompts_node`` pure logic.
+"""Unit tests for manage_system_prompts_node pure logic.
 
-These tests call ``app.agents.core.nodes.manage_system_prompts`` directly
+These tests call app.agents.core.nodes.manage_system_prompts directly
 (input dict → output dict) rather than through the compiled graph, verifying
 the node's contract in isolation. Graph-wiring coverage (that the node is
-registered as a pre-model hook inside ``create_agent``) lives in
-``tests/e2e/test_multi_tool_scenario.py`` (``TestMultiToolScenario``).
+registered as a pre-model hook inside create_agent) lives in
+tests/e2e/test_multi_tool_scenario.py (TestMultiToolScenario).
 """
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -22,11 +22,6 @@ class TestManageSystemPromptsNodeUnit:
     """
 
     def test_manage_system_prompts_keeps_only_latest_non_memory_prompt(self):
-        """manage_system_prompts_node must remove all but the latest non-memory SystemMessage.
-
-        Given two non-memory SystemMessages, only the last one should remain.
-        This is the core contract of manage_system_prompts_node.
-        """
         old_prompt = SystemMessage(content="Old system prompt from turn 1")
         new_prompt = SystemMessage(content="New system prompt from turn 2")
         human = HumanMessage(content="What is the weather?")
@@ -44,11 +39,7 @@ class TestManageSystemPromptsNodeUnit:
         assert system_messages[0].content == "New system prompt from turn 2"
 
     def test_manage_system_prompts_preserves_memory_messages(self):
-        """manage_system_prompts_node must preserve SystemMessages marked as memory.
-
-        Memory system messages use additional_kwargs={'memory_message': True}.
-        They must never be removed, even when there are multiple non-memory prompts.
-        """
+        """Memory messages are marked via additional_kwargs={"memory_message": True}."""
         memory_prompt = SystemMessage(
             content="User prefers concise answers.",
             additional_kwargs={"memory_message": True},

@@ -371,7 +371,7 @@ class TestReconstructSubagentGroups:
 
 @pytest.mark.unit
 def test_a_groups_stable_subagent_id_comes_from_its_start_event() -> None:
-    """The row id is per dispatch; ``subagent`` is what a playbook names."""
+    """The row id is per dispatch; subagent is what a playbook names."""
     accumulated: dict[str, Any] = {
         "tool_data": [],
         "subagent_starts": {

@@ -1,4 +1,4 @@
-"""SSRF guard behaviour for ``app.utils.url_safety``.
+"""SSRF guard behaviour for app.utils.url_safety.
 
 These tests are the regression fence for the SSRF policy: if a future edit
 loosens the scheme allowlist, drops one of the reserved-range checks, or stops

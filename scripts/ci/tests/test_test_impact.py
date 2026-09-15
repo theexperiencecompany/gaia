@@ -121,7 +121,7 @@ def test_an_unrelated_script_outside_scripts_ci_is_not_suite_config() -> None:
 
 @pytest.fixture
 def two_slice_suite(tmp_path: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
-    """A map shaped like unit-a's directories plus the rest of unit-b's."""
+    """Return a map shaped like unit-a's directories plus the rest of unit-b's."""
     files = {
         "app/svc.py": ["tests/unit/services/test_svc.py::test_a"],
         "app/util.py": ["tests/unit/util/test_util.py::test_a"],

@@ -1,18 +1,14 @@
-"""Shared execution for the read-only `grep` file-mining tool.
+"""Shared execution for the read-only grep file-mining tool.
 
-Resolves a workspace path with the same canonical resolver `read` uses, then runs
-the binary over a SINGLE workspace file. Hardening (this runs in the API process,
-not the sandbox):
+Resolves a workspace path with the same canonical resolver read uses, then
+runs the binary over a SINGLE workspace file. Hardening (this runs in the
+API process, not the sandbox):
 
-- **No shell.** ``create_subprocess_exec`` takes an argv list, so the model's
-  pattern is data, never parsed by a shell (`;`, `|`, `$()`, backticks, redirects
-  cannot escape). The file is a separate, absolute-path arg, so it can't be read
-  as a flag.
-- **No inherited environment.** The child gets a minimal, secret-free env, so it
-  can't exfiltrate the process environment (DB creds, Infisical secrets).
-- **No stdin, absolute binary.** stdin is closed; the binary is resolved to an
-  absolute path so PATH can't be hijacked.
-- **Bounded.** A wall-clock timeout, a hard output cap, and child rlimits stop a
+- **No shell.** create_subprocess_exec takes an argv list, so the pattern is
+  data, never shell-parsed; the file is a separate, absolute-path arg.
+- **No inherited environment.** The child gets a minimal, secret-free env.
+- **No stdin, absolute binary.** stdin closed; PATH can't be hijacked.
+- **Bounded.** A wall-clock timeout, output cap, and child rlimits stop a
   pathological pattern (ReDoS) from hanging or OOMing the process.
 """
 
@@ -53,13 +49,9 @@ _BIN_CACHE: dict[str, str] = {}
 def _apply_child_limits() -> None:
     """Cap the child's memory/CPU/file-writes (runs post-fork, pre-exec).
 
-    Defense-in-depth for the grep child: bound address space (RLIMIT_AS) and CPU,
-    and RLIMIT_FSIZE=0 to enforce the read-only contract (stdout is a pipe, so it
-    is unaffected).
-
-    Each limit is set independently and tolerantly: macOS (dev) rejects
-    ``RLIMIT_AS``, and a failure here would otherwise abort the whole exec. The
-    memory ceiling is the one that matters in prod (Linux), where it applies.
+    Bounds RLIMIT_AS and CPU, and sets RLIMIT_FSIZE=0 for the read-only
+    contract. Each limit is set independently and tolerantly: macOS (dev)
+    rejects RLIMIT_AS, and a failure here would abort the whole exec.
     """
     limits = [
         (resource.RLIMIT_CPU, FILTER_TIMEOUT_SECONDS + 5),
@@ -103,10 +95,10 @@ async def run_file_filter(
     empty_message: str,
     error_label: str,
 ) -> str:
-    """Run ``binary args… <file>`` over ONE workspace file and return its output.
+    """Run binary args… <file> over ONE workspace file and return its output.
 
-    ``ok_returncodes`` lists non-error exit codes (e.g. grep returns 1 for "no
-    match"); ``empty_message`` is returned when the run succeeds with no output.
+    ok_returncodes lists non-error exit codes (e.g. grep returns 1 for "no
+    match"); empty_message is returned when the run succeeds with no output.
     """
     try:
         user_id = get_user_id(config)
@@ -177,17 +169,10 @@ async def _run(
 async def _read_bounded(proc: asyncio.subprocess.Process) -> tuple[bytes, bytes, bool]:
     """Drain stdout (to the cap, killing on overrun) and stderr CONCURRENTLY.
 
-    Reading stdout fully before stderr would deadlock: a child that fills the
-    stderr pipe (64 KiB on Linux) blocks on its stderr write and never closes
-    stdout, so the stdout read never sees EOF and the call wastes the full
-    timeout. Draining both in parallel — and continuing to drain (discard) BOTH
-    pipes past the kept cap — ensures the child can never back-pressure.
-
-    Draining past the cap is what makes the overrun kill safe. asyncio pauses a
-    pipe transport once its buffer passes the high-water mark and only completes
-    ``wait()`` once every pipe has seen EOF, so reaping the child from inside
-    this loop — while stdout sits paused and unread — hangs until the timeout.
-    Signal the child, keep reading to EOF, and let the caller reap it.
+    Reading stdout fully before stderr would deadlock: a full stderr pipe
+    blocks the child and stdout never sees EOF. Draining both in parallel,
+    and past the kept cap, avoids back-pressure — signal and keep draining
+    rather than reaping from inside this loop.
     """
     if proc.stdout is None:
         return b"", b"", False
@@ -240,7 +225,7 @@ def _kill(proc: asyncio.subprocess.Process) -> None:
 async def _kill_and_reap(proc: asyncio.subprocess.Process) -> None:
     """Kill the child and reap it, for callers that are no longer draining it.
 
-    ``communicate()`` rather than ``wait()``: asyncio completes ``wait()`` only
+    communicate() rather than wait(): asyncio completes wait() only
     once every pipe transport has seen EOF, so a child whose stdout is still
     buffered would never be reaped. The child is already dead, so what is left to
     read is bounded by the pipe and the reader's buffer.

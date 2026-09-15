@@ -158,6 +158,24 @@ async function resolveRegistration(
   };
 }
 
+/** Configure the channel and HIL action category, then fetch the push token. */
+async function prepareExpoPushToken(): Promise<PushTokenResult> {
+  await ensureAndroidChannel();
+
+  // Interactive HIL approval actions — approve/deny straight from the
+  // notification (iOS action buttons; Android shows them where supported).
+  await Notifications.setNotificationCategoryAsync("hil_approval", [
+    { identifier: "approve", buttonTitle: "Approve" },
+    {
+      identifier: "deny",
+      buttonTitle: "Deny",
+      options: { isDestructive: true },
+    },
+  ]);
+
+  return acquireExpoPushToken();
+}
+
 export function useNotifications(): UseNotificationsReturn {
   const router = useRouter();
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
@@ -171,64 +189,45 @@ export function useNotifications(): UseNotificationsReturn {
   const responseListener = useRef<Notifications.Subscription | null>(null);
 
   useEffect(() => {
-    let isMounted = true;
+    // Set in cleanup so a superseded run never writes state after an await.
+    let ignore = false;
 
     async function setupNotifications() {
-      try {
-        setIsLoading(true);
+      setIsLoading(true);
 
-        // Skip push notification setup in Expo Go on Android (not supported since SDK 53)
-        if (isExpoGo && Platform.OS === "android") {
-          setError(
-            "Push notifications are not supported in Expo Go. Use a development build.",
-          );
-          setIsLoading(false);
-          return;
-        }
-
-        // Setup Android notification channel
-        await ensureAndroidChannel();
-
-        // Interactive HIL approval actions — approve/deny straight from the
-        // notification (iOS action buttons; Android shows them where supported).
-        await Notifications.setNotificationCategoryAsync("hil_approval", [
-          { identifier: "approve", buttonTitle: "Approve" },
-          {
-            identifier: "deny",
-            buttonTitle: "Deny",
-            options: { isDestructive: true },
-          },
-        ]);
-
-        const tokenResult = await acquireExpoPushToken();
-        if (tokenResult.error !== undefined) {
-          setError(tokenResult.error);
-          setIsLoading(false);
-          return;
-        }
-
-        const token = tokenResult.token;
-        if (!isMounted) return;
-
-        setExpoPushToken(token);
-
-        const { registered, error: regError } =
-          await resolveRegistration(token);
-        setIsRegistered(registered);
-        setError(regError);
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        if (isMounted) {
-          setError(errorMsg);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+      // Skip push notification setup in Expo Go on Android (not supported since SDK 53)
+      if (isExpoGo && Platform.OS === "android") {
+        setError(
+          "Push notifications are not supported in Expo Go. Use a development build.",
+        );
+        setIsLoading(false);
+        return;
       }
+
+      const tokenResult = await prepareExpoPushToken();
+      if (ignore) return;
+      if (tokenResult.error !== undefined) {
+        setError(tokenResult.error);
+        setIsLoading(false);
+        return;
+      }
+
+      setExpoPushToken(tokenResult.token);
+
+      const { registered, error: regError } = await resolveRegistration(
+        tokenResult.token,
+      );
+      if (ignore) return;
+      setIsRegistered(registered);
+      setError(regError);
+      setIsLoading(false);
     }
 
-    setupNotifications();
+    setupNotifications().catch((err: unknown) => {
+      if (ignore) return;
+      setError(err instanceof Error ? err.message : String(err));
+      setIsLoading(false);
+    });
 
     // Setup listeners (skip in Expo Go on Android)
     if (!(isExpoGo && Platform.OS === "android")) {
@@ -249,10 +248,9 @@ export function useNotifications(): UseNotificationsReturn {
           const approvalId =
             typeof data.approval_id === "string" ? data.approval_id : null;
 
-          // Approve/Deny action button: relay the decision without opening the
-          // app. A 410 (already resolved) is swallowed by postApprovalDecision;
-          // false means the submit genuinely failed — tell the user, or they'll
-          // believe they approved an action that never ran.
+          // Approve/Deny action: relay the decision without opening the app. A 410
+          // (already resolved) is swallowed by postApprovalDecision; false means
+          // the submit genuinely failed — tell the user, or they'll think it worked.
           if (
             data.type === "hil_approval" &&
             approvalId &&
@@ -282,7 +280,7 @@ export function useNotifications(): UseNotificationsReturn {
     }
 
     return () => {
-      isMounted = false;
+      ignore = true;
       notificationListener.current?.remove();
       responseListener.current?.remove();
     };

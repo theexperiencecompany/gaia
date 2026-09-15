@@ -73,14 +73,9 @@ vi.mock("grammy", () => ({
 
 vi.mock("@grammyjs/types", () => ({}));
 
-// ---------------------------------------------------------------------------
-// Mock @gaia/shared via the shared factory. The factory's BaseBotAdapter stub
-// supplies shouldSendWelcome / startTypingIndicator / resolveIncomingMedia and
-// the common helpers; we layer the Telegram-specific exports the adapter pulls
-// in (the HTML converter chokepoint, htmlToPlainText fallback, media helpers,
-// extractSubcommandArgs) on top via `converters` — these are spread last into
-// the returned module, so we never touch the shared mock file.
-// ---------------------------------------------------------------------------
+// Mocks @gaia/shared via the shared factory (BaseBotAdapter stub + common
+// helpers), layering Telegram-specific exports (HTML converter, htmlToPlainText,
+// media helpers, extractSubcommandArgs) on top via `converters`.
 
 vi.mock("@gaia/shared/bots", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
@@ -715,14 +710,8 @@ describe("TelegramAdapter - HTML fallback retry (editMessage callback)", () => {
   });
 
   it("HTML fallback also applies to sendNewMessage (reply with new message)", async () => {
-    // The sendNewMessage callback attempts ctx.reply with parse_mode: "HTML"
-    // first. If that throws "can't parse entities", it falls back to ctx.reply
-    // with the tag-stripped plain text and no options.
-    //
-    // Call sequence for replyFn:
-    //   1st call: ctx.reply("Thinking...")  → succeeds (message_id: 42)
-    //   2nd call: ctx.reply(html, { parse_mode: "HTML" }) → fails (parse error)
-    //   3rd call: ctx.reply(plainText)      → succeeds (message_id: 99, fallback)
+    // sendNewMessage tries ctx.reply with parse_mode: "HTML" first; on "can't parse
+    // entities" it falls back to ctx.reply with tag-stripped plain text and no options.
     const replyFn = vi
       .fn()
       .mockResolvedValueOnce({ message_id: 42 }) // Thinking...

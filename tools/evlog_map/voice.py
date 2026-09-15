@@ -34,7 +34,7 @@ def _call_name(node: ast.expr) -> str | None:
 
 
 def _worker_option_entries(agent_module: Path) -> frozenset[str]:
-    """Function names wired into ``WorkerOptions(entrypoint_fnc=…, prewarm_fnc=…)``."""
+    """Return function names wired into ``WorkerOptions(entrypoint_fnc=…, prewarm_fnc=…)``."""
     tree = ast.parse(agent_module.read_text(encoding="utf-8"))
     names: set[str] = set()
     for node in ast.walk(tree):

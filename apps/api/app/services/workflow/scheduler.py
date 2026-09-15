@@ -1,6 +1,4 @@
-"""
-Workflow scheduler extending BaseSchedulerService for robust scheduling.
-"""
+"""Workflow scheduler extending BaseSchedulerService for robust scheduling."""
 
 from datetime import datetime, timedelta
 from typing import Any
@@ -20,17 +18,14 @@ from app.services.scheduler_service import BaseSchedulerService
 from app.utils.occurrence import occurrence_stamp
 from shared.py.wide_events import log
 
-# How long a workflow may sit in EXECUTING before the recovery scan treats it as a
-# crashed fire (worker died after claiming, before re-arming) and resets it to
-# SCHEDULED. Set well above any real workflow run so a legitimately long execution is
-# never reaped out from under itself.
+# How long a workflow may sit in EXECUTING before the recovery scan treats it
+# as a crashed fire and resets it to SCHEDULED. Set well above any real
+# workflow run so a legitimately long execution is never reaped.
 STALE_EXECUTING_THRESHOLD = timedelta(hours=1)
 
-# The run-states a WORKFLOW may legitimately hold. The shared ScheduledTaskStatus
-# enum also carries `failed`/`paused`/`cancelled` for the reminder subsystem, but a
-# workflow encodes liveness via `activated` and uses `status` purely as run-state:
-# scheduled (armed/idle) -> executing (claimed fire) -> scheduled (re-armed) or
-# completed (terminal). Writing any other value is a bug.
+# The run-states a WORKFLOW may legitimately hold: scheduled (armed/idle) ->
+# executing (claimed fire) -> scheduled (re-armed) or completed (terminal).
+# A workflow encodes liveness via `activated`, not `status`; other values are a bug.
 WORKFLOW_RUN_STATUSES: frozenset[ScheduledTaskStatus] = frozenset(
     {
         ScheduledTaskStatus.SCHEDULED,
@@ -61,15 +56,12 @@ class WorkflowScheduler(BaseSchedulerService):
         return "execute_workflow_by_id"
 
     def _build_job_args(self, task_id: str, scheduled_at: datetime) -> tuple[str, dict[str, Any]]:
-        """Mark scheduler-originated fires so the executor re-arms the next
-        occurrence; manual "run now" executions pass their own context and so are
-        never tagged as scheduled.
+        """Mark scheduler-originated fires so the executor re-arms the next occurrence.
 
-        ``scheduled_for`` pins the occurrence this job was armed for. ARQ has no
-        job cancellation, so after a reschedule the old deferred job still fires;
-        the worker compares the stamp against the workflow's current
-        ``trigger_config.next_run`` and skips the stale fire instead of running
-        the workflow at its original time.
+        scheduled_for pins the occurrence this job was armed for — ARQ has no
+        job cancellation, so after a reschedule the old deferred job still
+        fires; the worker compares the stamp against trigger_config.next_run
+        and skips stale fires instead of running at the original time.
         """
         return (
             task_id,
@@ -84,24 +76,10 @@ class WorkflowScheduler(BaseSchedulerService):
     ) -> bool:
         """Atomically claim a live, idle workflow for a fire (SCHEDULED -> EXECUTING).
 
-        The claim verifies BOTH axes at once: liveness (`activated=True`) and
-        run-state (`status="scheduled"`). Returns False — and the caller skips the
-        fire — when either fails:
-        - a concurrent recovery scan already claimed it (status != scheduled), or
-        - the workflow has been deactivated (`activated=False`) but a deferred ARQ
-          job for an earlier-armed occurrence is still in Redis and fires anyway.
-
-        ``expected_next_run`` adds the freshness axis: a fire armed for an
-        occurrence that has since been rescheduled away (the old deferred ARQ job
-        firing after the cron changed) is rejected because
-        ``trigger_config.next_run`` no longer matches. Legacy jobs without a stamp
-        pass None and claim exactly as before.
-
-        Keeping liveness (`activated`) and run-state (`status`) as independent fields
-        is deliberate: deactivate/reactivate only flips `activated`, so a reactivated
-        workflow is still status="scheduled" and immediately claimable — no stale
-        status can wedge it. The re-arm at the end of execution returns the row to
-        "scheduled" with its next run time.
+        Verifies both liveness (activated) and run-state (status="scheduled");
+        False if either fails (already claimed, or deactivated with a stale
+        ARQ job still queued). expected_occurrence also rejects a fire since
+        rescheduled away; legacy jobs without a stamp claim as before.
         """
         return await workflow_repository.claim_for_execution(
             task_id, expected_next_run=expected_occurrence
@@ -172,10 +150,8 @@ class WorkflowScheduler(BaseSchedulerService):
             )
 
         try:
-            # BaseSchedulerService (and the re-arm paths) hand a dict; thread its
-            # known keys through the typed repository method. ``updated_at`` is
-            # auto-stamped by the repository; scheduled_at / trigger_config.next_run
-            # use the UNSET sentinel because None is a meaningful clear (reap).
+            # scheduled_at / trigger_config.next_run use the UNSET sentinel
+            # because None is a meaningful clear (reap).
             data = update_data or {}
             matched = await workflow_repository.set_status(
                 task_id,
@@ -213,18 +189,12 @@ class WorkflowScheduler(BaseSchedulerService):
             return False
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
-        """Recurring (cron) workflows that are due and activated.
+        """Return recurring (cron) workflows that are due and activated.
 
-        The ``repeat`` filter is load-bearing: ``Workflow`` extends
-        ``BaseScheduledTask``, so EVERY workflow defaults to status="scheduled" and
-        gets ``scheduled_at = now`` at creation when it has no ``next_run`` (manual,
-        integration and todo workflows all do). Without ``repeat``, the recovery scan
-        would match those non-scheduled workflows and re-run the agent on every pass.
-        ``repeat`` (the cron the scheduler actually re-arms on) is the precise,
-        serialization-robust discriminator for "scheduler-managed". The
-        ``status="scheduled"`` and ``scheduled_at <= now`` due-filter lives on the
-        repository (``find_pending_before``), sharing the ``$lte`` semantics with the
-        reminder scan.
+        The repeat filter is load-bearing: every Workflow defaults to
+        status="scheduled" (even non-cron ones), so without it the recovery
+        scan would re-run them every pass. The due-filter itself lives on
+        find_pending_before, shared with the reminder scan.
         """
         pending: list[BaseScheduledTask] = []
         pending.extend(await workflow_repository.find_pending_before(current_time))
@@ -326,9 +296,9 @@ class WorkflowScheduler(BaseSchedulerService):
             return False
 
     async def find_stale_executing(self, cutoff: datetime) -> list[BaseScheduledTask]:
-        """Activated workflows wedged in EXECUTING since before ``cutoff``.
+        """Activated workflows wedged in EXECUTING since before cutoff.
 
-        ``activated`` is the workflow-only liveness axis: a deactivated workflow
+        activated is the workflow-only liveness axis: a deactivated workflow
         must stay parked rather than be re-armed by the shared reaper.
         """
         return list(await workflow_repository.find_stale_executing(cutoff))

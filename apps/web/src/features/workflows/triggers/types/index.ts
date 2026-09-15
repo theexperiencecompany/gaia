@@ -19,14 +19,10 @@ export type { TriggerSchema } from "./base";
 // =============================================================================
 
 /**
- * Flexible trigger configuration type.
- *
- * Instead of a strict discriminated union, we use a base interface
- * with an index signature to allow any trigger-specific properties.
- * This enables:
- * - Adding new triggers without changing types
- * - Backend as source of truth for validation
- * - Spreading/merging config objects freely
+ * Flexible trigger configuration type: a base interface with an index
+ * signature instead of a strict discriminated union, so any trigger-specific
+ * properties are allowed — new triggers need no type change, the backend stays
+ * the source of validation truth, and configs can be spread/merged freely.
  */
 
 /**

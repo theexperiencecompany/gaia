@@ -1,6 +1,6 @@
 """Desktop app endpoints.
 
-Two concerns share the ``/desktop`` prefix:
+Two concerns share the /desktop prefix:
 
 - the tool bridge (authed): the Electron app POSTs results of desktop-executed
   tool actions here, and the endpoint relays them to the awaiting agent tool;

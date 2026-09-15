@@ -64,7 +64,6 @@ async def test_mcp_connection(
 
     server_url = resolved.mcp_config.server_url
 
-    # Probe the server
     probe_result = await client.probe_connection(server_url)
     log.set(
         probe={

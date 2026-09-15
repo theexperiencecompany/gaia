@@ -42,8 +42,7 @@ TOOL_CALL = GatedCall(id="call-1", name="send_email", args={"to": "bob@example.c
 
 @pytest.fixture
 def bridge():
-    """The publish side: the store's created/not-created verdict, the SSE stream, the
-    session collector, and the out-of-band notifier."""
+    """Patch the publish side: the store's verdict, the SSE stream, the session collector, and the notifier."""
     session = MagicMock(tool_events=[])
     with (
         patch(f"{MODULE}.log") as log,
@@ -160,7 +159,7 @@ class TestDualDelivery:
 
 
 class TestTheOutcomeSettlesTheCard:
-    """The card is live UI, published ``pending`` BEFORE the run parks on interrupt().
+    """The card is live UI, published pending BEFORE the run parks on interrupt().
 
     When the decision lands and the run resumes, the same card has to be republished in
     its settled state. Skip it and the action really happens — or is really refused —
@@ -211,13 +210,12 @@ class TestTheOutcomeSettlesTheCard:
 
 
 class TestTheDecisionSettlesThePersistedFrame:
-    """``publish_decision`` also writes the decided status straight onto the stored
-    message. Final delivery reconciles too, but a run can pause again on a LATER gate
-    before it ever gets there — and a revisit in that window re-renders an Approve/Deny
-    prompt for something the user already decided, inviting them to decide it twice.
+    """publish_decision also settles the status on the stored message, not just the live frame.
 
-    Not the same write as the settled card above: that one replaces the live frame on
-    the stream the user is watching now, this one repairs the turn they scroll back to.
+    A run can pause again on a later gate before final delivery reconciles, so without this a
+    revisit re-renders an Approve/Deny prompt for a decision already made. This write repairs
+    the turn the user scrolls back to; the settled-card write above replaces the live frame
+    they are watching now.
     """
 
     async def settle(self, status: HILApprovalStatus = HILApprovalStatus.APPROVED) -> None:
@@ -276,8 +274,7 @@ class TestTheDecisionSettlesThePersistedFrame:
 
 
 class TestDeclineMemory:
-    """Keyed on stream + tool + arguments. Both directions of getting that wrong are
-    user-visible: too loose auto-denies a correction, too strict re-asks a refusal."""
+    """Keyed on stream, tool and arguments: too loose auto-denies a correction, too strict re-asks a refusal."""
 
     @pytest.fixture(autouse=True)
     def redis(self):
@@ -358,8 +355,7 @@ class TestDeclineMemory:
 
 
 class TestSummary:
-    """The one line the user reads before approving. It is built deterministically — no
-    LLM on the gate's hot path — so its job is to be honest and short."""
+    """The one line the user reads before approving, built deterministically with no LLM on the hot path."""
 
     def test_the_tool_and_integration_are_both_named(self) -> None:
         summary = build_summary("send_email", {}, "Gmail")

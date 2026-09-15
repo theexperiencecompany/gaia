@@ -1,6 +1,4 @@
-"""
-Pydantic models for tool-related operations.
-"""
+"""Pydantic models for tool-related operations."""
 
 from pydantic import BaseModel
 

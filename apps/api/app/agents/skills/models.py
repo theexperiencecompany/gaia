@@ -113,7 +113,7 @@ class Skill(MongoDocument, ResponseModel):
     All metadata fields (name, description, target, etc.) live at the
     top level alongside ownership and installation tracking fields.
     System skills use user_id="system"; user skills use the actual user ID.
-    ``id`` (the stringified ``_id``, a UUID) is inherited from ``MongoDocument``.
+    id (the stringified _id, a UUID) is inherited from MongoDocument.
     """
 
     # Ownership
@@ -193,8 +193,7 @@ class Skill(MongoDocument, ResponseModel):
 
 
 class SkillUpdate(BaseModel):
-    """Editable fields of a stored skill (metadata patch). ``updated_at`` is
-    stamped by the repository, not passed here."""
+    """Editable fields of a stored skill; the repository stamps updated_at."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -264,8 +263,8 @@ class SkillToggleResponse(BaseModel):
 class SkillTarget(ResponseModel):
     """A place a skill can run: the executor, or a connected integration subagent.
 
-    ``value`` is the subagent ``agent_name`` written to a skill's ``target``;
-    ``icon`` is the integration id (``executor`` for the general bucket) so the
+    value is the subagent agent_name written to a skill's target;
+    icon is the integration id (executor for the general bucket) so the
     UI can reuse the integration logo set.
     """
 

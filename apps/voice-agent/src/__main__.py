@@ -7,7 +7,7 @@ def main() -> None:
     """Dispatch the voice-agent CLI commands.
 
     Imports are deferred per command (the sanctioned inline-import exception for
-    this CLI dispatcher) so ``download-files`` does not require Infisical secrets.
+    this CLI dispatcher) so download-files does not require Infisical secrets.
     Errors are left to propagate so failures surface with a full traceback.
     """
     if len(sys.argv) < 2:

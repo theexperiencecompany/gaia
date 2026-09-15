@@ -39,14 +39,11 @@ from shared.py.wide_events import log
 
 
 def _serialize_user(user: UserDocument) -> dict[str, Any]:
-    """The JSON-serializable user dict the onboarding endpoints return.
+    """Return the JSON-serializable user dict the onboarding endpoints return.
 
-    Stays a ``dict[str, Any]`` deliberately: ``UserDocument`` is ``extra="allow"``
-    precisely so these endpoints can spread the whole stored document into their
-    response, and the frontend's ``UserInfo`` reads it that way. Narrowing this to
-    a declared model would silently strip whatever undeclared fields production
-    rows carry — a change to data returned to an external consumer, which is a
-    product decision, not a typing fix (Type Safety item 14).
+    dict[str, Any] is deliberate: UserDocument is extra="allow" so this can spread
+    undeclared fields into the response the frontend's UserInfo reads — narrowing
+    it would silently drop production fields (Type Safety item 14).
     """
     data = user.model_dump(mode="json", exclude={"id"})
     data["_id"] = user.id
@@ -58,12 +55,13 @@ async def complete_onboarding(
     user_id: str,
     onboarding_data: OnboardingRequest,
 ) -> dict[str, Any]:
-    """Complete a user's onboarding submission. Idempotent under concurrent
-    retries via an atomic `onboarding.completed` gate in the repository.
+    """Complete a user's onboarding submission.
 
+    Idempotent under concurrent retries via an atomic onboarding.completed gate.
     Submitting the answers IS completion: nothing is generated here, so the
-    phase lands on COMPLETED and the user is routed straight into chat. The
-    intelligence pipeline runs when Gmail is connected, whenever that is."""
+    phase lands on COMPLETED and the user goes straight into chat. The
+    intelligence pipeline runs whenever Gmail is connected.
+    """
     log.set(auth={"user_id": user_id})
 
     try:
@@ -96,10 +94,9 @@ async def complete_onboarding(
             )
             return _serialize_user(existing)
 
-        # `dedupe_key` guards against a retried POST re-counting the milestone.
-        # The typed need is free text, so only its presence travels; the
-        # profession is a picked value (or a short typed job) and goes onto the
-        # person profile so cohorts can cut by it.
+        # `dedupe_key` prevents a retried POST from re-counting the milestone.
+        # The typed need is free text (only presence travels); profession goes
+        # onto the person profile so cohorts can cut by it.
         capture_event(
             user_id,
             AnalyticsEvents.ONBOARDING_COMPLETED,
@@ -149,9 +146,8 @@ async def _seed_first_conversation(
         # who skipped that step simply gets no platform line.
         connected_platform = next(iter(linked_platforms_of(user)), None)
         composed = compose_first_conversation(preferences, connected_platform)
-        # Almost always a Redis read: the answers PATCH that preceded this
-        # fired the model call in the background, so the user pays for it while
-        # they are still clicking. A miss costs at most two seconds, and a
+        # Almost always a Redis read: the PATCH that preceded this fired the
+        # model call in the background. A miss costs at most two seconds; a
         # failed call means no chips rather than invented ones.
         jobs = await resolve_first_question(user_id, preferences, connected_platform)
         if jobs is not None:
@@ -205,35 +201,18 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
 async def update_onboarding_preferences(
     user_id: str, preferences: OnboardingPreferences
 ) -> dict[str, Any]:
-    """
-    Update user's onboarding preferences (for settings page).
-    Uses atomic operations for data consistency.
-
-    Args:
-        user_id: The user's MongoDB ID
-        preferences: Updated preferences
-
-    Returns:
-        Updated user data
-
-    Raises:
-        HTTPException: If user not found or update fails
-    """
+    """Update a user's onboarding preferences (for the settings page)."""
     try:
-        # PATCH semantics (applied by the repository, which writes only the fields
-        # the caller actually set, each at its own dotted path): different settings
-        # surfaces (Preferences vs. Custom Instructions) own disjoint fields, so a
-        # partial save from one cannot clobber a field owned by the other. Values
-        # are already normalized by the OnboardingPreferences validators (empty
-        # string -> None, length capped), so they are persisted as-is.
+        # PATCH semantics: the repository writes only fields the caller set, each
+        # at its own dotted path, so Preferences and Custom Instructions (disjoint
+        # fields) can't clobber each other.
         updated_user = await user_repository.update_onboarding_preferences(user_id, preferences)
         if updated_user is None:
             raise HTTPException(status_code=404, detail="User not found")
 
         # Detached on purpose: the wizard's next screens are the latency budget
-        # for the one model call the seeded conversation needs, and the PATCH
-        # that saved the answers is where that budget starts. Failures stay
-        # inside the task; a settings save must never fail over a nicety.
+        # for the model call the seeded conversation needs. Failures stay inside
+        # the task; a settings save must never fail over a nicety.
         try:
             spawn_background_task(
                 prewarm_first_question(
@@ -275,11 +254,11 @@ async def reset_onboarding(
     user_id: str, *, keep_connections: bool = False
 ) -> OnboardingResetCounts:
     """Fully reset a user's onboarding so they can run the flow from scratch.
-    Returns counts of what was deleted.
 
-    ``keep_connections`` leaves connected integrations and memories in place and
+    keep_connections leaves connected integrations and memories in place and
     only tears down onboarding state — the local dev reset, not the product's
-    Restart button."""
+    Restart button.
+    """
     log.set(auth={"user_id": user_id}, onboarding={"operation": "reset"})
 
     user = await user_repository.get(user_id)

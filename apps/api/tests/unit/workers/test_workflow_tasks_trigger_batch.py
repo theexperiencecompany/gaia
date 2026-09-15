@@ -95,8 +95,7 @@ class TestTriggerBatchDrain:
         coalesce.assert_called_once_with(workflow.trigger_config)
 
     async def test_empty_batch_skips_the_run_entirely(self) -> None:
-        """Another run already drained these events — executing again would
-        spend the user's budget re-processing nothing."""
+        """A drained batch must not spend the user's budget re-processing nothing."""
         result, _drain, run_chat, refill, log_mock, _coalesce, _wf = await _run_task(
             {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf-1"}, []
         )
@@ -121,8 +120,7 @@ class TestTriggerBatchDrain:
 
 class TestGatesRunBeforeTheDrain:
     async def test_budget_walled_run_leaves_the_buffer_intact(self) -> None:
-        """A rejected run must not consume the batch — the events belong to a
-        future run after the budget resets, not to the void."""
+        """A rejected run must not consume the batch; those events belong to a future run."""
         result, drain, run_chat, _refill, _log, _coalesce, _wf = await _run_task(
             {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf-1"},
             [{"id": 1}],
@@ -135,9 +133,7 @@ class TestGatesRunBeforeTheDrain:
 
 class TestRefillOnEveryExit:
     async def test_a_budget_walled_run_still_reschedules_refill_arrivals(self) -> None:
-        """Events that land while a gate-rejected run holds the job id would be
-        stranded without the finally — a failed run must strand them no more
-        than a successful one."""
+        """A failed, gate-rejected run must not strand arrivals any more than a successful one."""
         result, _drain, _run_chat, refill, _log, _coalesce, _wf = await _run_task(
             {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf-1"},
             [{"id": 1}],
@@ -149,8 +145,7 @@ class TestRefillOnEveryExit:
         assert (wf_id, batch_key, window_seconds) == ("wf-1", "trigger_batch:wf-1", 900)
 
     async def test_a_refill_scheduling_error_never_masks_the_run_result(self) -> None:
-        """The finally is best-effort: a Redis blip while scheduling the
-        follow-up must not turn a successful run into a failure."""
+        """The refill is best-effort: a Redis blip scheduling it must not fail a successful run."""
         events = [{"id": 1}]
         with patch(
             f"{MODULE}.reschedule_if_refilled",
@@ -200,8 +195,7 @@ class TestRefillOnEveryExit:
         )
 
     async def test_a_run_with_no_context_never_touches_batching(self) -> None:
-        """Scheduled fires pass no context at all — nothing batch-shaped may
-        run for them, including the finally's refill check."""
+        """Scheduled fires pass no context, so no batch-shaped logic may run for them."""
         result, drain, _run_chat, refill, _log, coalesce, _wf = await _run_task(None, [])
 
         assert result == "Workflow wf-1 executed successfully"
@@ -212,8 +206,7 @@ class TestRefillOnEveryExit:
 
 class TestDrainUnavailable:
     async def test_redis_down_at_drain_never_claims_the_batch_was_empty(self) -> None:
-        """None from the drain means "could not look" — the run must exit
-        without consuming, and the finally still schedules the follow-up."""
+        """None from the drain means "could not look"; the run must exit without consuming."""
         result, drain, run_chat, refill, log_mock, _coalesce, _wf = await _run_task(
             {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf-1"},
             None,  # drain_trigger_batch returns None

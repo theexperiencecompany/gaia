@@ -44,17 +44,14 @@ interface UseNotificationsReturn {
   updateNotification: (notification: NotificationView) => void;
 }
 
-// `offset` is deliberately not accepted by the hook: the UI does not page. The
-// query key does carry offset (see `notificationKeys.list`), so adding a paged
-// caller later is a new key, not a cache collision — the failure the old
-// single-entry store could not avoid.
+// `offset` is deliberately not accepted: the UI does not page. The query key
+// still carries offset (notificationKeys.list), so a future paged caller gets
+// a new key, not the cache collision the old single-entry store couldn't avoid.
 type UseNotificationsHookOptions = Omit<UseNotificationsOptions, "offset">;
 
-// One canonical request for the whole app: the first unfiltered page, at the
-// API's maximum size. Caller options never reach the wire — status, channel and
-// limit are view-level and applied client-side in the memo below. Sending a
-// caller's `limit` here would fetch a page that doesn't match what the other
-// mounts expect, and would 422 for any value above the API's ceiling.
+// One canonical request for the whole app: the first unfiltered page at the
+// API's max size. Caller status/channel/limit are view-level, applied
+// client-side below — a caller's `limit` here would mismatch other mounts and could 422 above the API's ceiling.
 const CANONICAL_FILTERS: UseNotificationsOptions = {
   limit: NOTIFICATION_PAGE_SIZE,
 };

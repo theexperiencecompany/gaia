@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-"""
-Populate GAIA's knowledge base in ChromaDB from content.md file.
-"""
+"""Populate GAIA's knowledge base in ChromaDB from content.md file."""
 
 import argparse
 import asyncio
@@ -31,30 +29,13 @@ from app.services.gaia_knowledge_service import (
 
 
 def clean_markdown_header(text: str) -> str:
-    """
-    Remove markdown header symbols (#, ##, ###) from text.
-
-    Args:
-        text: Text that may contain markdown headers
-
-    Returns:
-        Cleaned text without header symbols
-    """
+    """Remove markdown header symbols (#, ##, ###) from text."""
     # Remove markdown headers (one or more # followed by space)
     return re.sub(r"^#{1,6}\s+", "", text).strip()
 
 
 def split_markdown_by_headers(content: str) -> list[tuple[str, str]]:
-    """
-    Split markdown content into sections based on headers.
-
-    Args:
-        content: The markdown content to split
-
-    Returns:
-        List of (header, content) tuples where header is the markdown header
-        line and content is the text between headers
-    """
+    """Split markdown content into (header, content) sections at each header line."""
     sections = []
     lines = content.split("\n")
     current_header = ""
@@ -79,18 +60,9 @@ def split_markdown_by_headers(content: str) -> list[tuple[str, str]]:
 
 
 def prepare_knowledge_items(sections: list[tuple[str, str]], min_length: int = 50) -> list[dict]:
-    """
-    Prepare knowledge items using hierarchical chunking strategy.
+    """Prepare knowledge items, combining sections hierarchically (H1 with H2, H2 with H3) to preserve context.
 
-    Strategy: Combine related sections hierarchically (H1 with H2, H2 with H3)
-    to preserve context and provide more comprehensive search results.
-
-    Args:
-        sections: List of (header, content) tuples from split_markdown_by_headers
-        min_length: Minimum character length for a section to be included
-
-    Returns:
-        List of dicts with 'content' and 'metadata' keys ready for batch insert
+    min_length is the minimum character length for a section to be included.
     """
     items = []
 
@@ -102,7 +74,6 @@ def prepare_knowledge_items(sections: list[tuple[str, str]], min_length: int = 5
         if not section_content.strip():
             continue
 
-        # Clean the header
         clean_header = clean_markdown_header(header)
 
         # Determine header level
@@ -230,7 +201,6 @@ async def populate_knowledge(content_path: str | None = None, clear_first: bool 
     sections = split_markdown_by_headers(content)
     print(f"📚 Found {len(sections)} sections\n")
 
-    # Prepare items
     batch_items = prepare_knowledge_items(sections)
 
     # Preview items
@@ -287,7 +257,7 @@ async def _test_knowledge_search() -> None:
 
 
 def main() -> None:
-    """Main entry point."""
+    """Populate GAIA's knowledge base."""
     parser = argparse.ArgumentParser(description="Populate GAIA knowledge base from content.md")
     parser.add_argument(
         "--content",

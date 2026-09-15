@@ -48,15 +48,10 @@ export function registerProtocol(): void {
 }
 
 /**
- * Create a `.desktop` file for Linux development environments.
- *
- * Without this file `xdg-mime` has nothing to associate the
- * `x-scheme-handler/gaia` MIME type with, so `setAsDefaultProtocolClient`
- * alone is not enough.  The file is rewritten on every launch so the
- * `Exec` path stays current after `node_modules` reinstalls.
- *
- * No-ops on non-Linux platforms and in packaged (production) builds
- * where the installer handles registration.
+ * Create a `.desktop` file for Linux dev environments — without it, `xdg-mime`
+ * has nothing to associate `x-scheme-handler/gaia` with. Rewritten on every
+ * launch so `Exec` stays current after `node_modules` reinstalls. No-ops on
+ * non-Linux platforms and packaged builds (installer handles registration).
  */
 export function registerLinuxDevProtocol(): void {
   if (process.platform !== "linux" || app.isPackaged) return;
@@ -85,11 +80,9 @@ export function registerLinuxDevProtocol(): void {
 
     writeFileSync(desktopFile, content);
 
-    // Rebuild the MIME cache — this is what xdg-open actually reads.
-    // xdg-mime default only writes to mimeapps.list; without rebuilding
-    // mimeinfo.cache the system falls back to the app store.
-    // Use spawnSync with an explicit args array (no shell) to avoid
-    // command injection and PATH-hijacking risks.
+    // Rebuild the MIME cache (what xdg-open reads) — xdg-mime default only writes
+    // mimeapps.list. spawnSync uses an explicit args array (no shell) to avoid
+    // command injection / PATH-hijacking.
     spawnSync("update-desktop-database", [appsDir], { shell: false });
 
     // Also write the mimeapps.list entry explicitly so it takes precedence

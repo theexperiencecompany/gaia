@@ -325,10 +325,9 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     for (const section of MENU_SECTIONS) {
       const items: CommandMenuItem[] = [];
       for (const item of section.items) {
-        // Filter out the "upgrade" item once we know the user is paid, and
-        // also while the plan status is still unknown — showing an upgrade
-        // prompt is exactly the free-tier UI a paying user reloading mid-
-        // fetch must never see.
+        // Filter out "upgrade" once the user is paid, and also while status is
+        // unknown — showing an upgrade prompt is exactly the free-tier UI a
+        // paying user reloading mid-fetch must never see.
         if (item.hideWhenSubscribed && (isUnknown || isPaid)) {
           continue;
         }

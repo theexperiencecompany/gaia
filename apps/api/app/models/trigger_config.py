@@ -41,9 +41,9 @@ class WorkflowTriggerSchema(BaseModel):
 
 
 class WorkflowTriggerResponse(WorkflowTriggerSchema):
-    """A ``WorkflowTriggerSchema`` plus the identifiers of the integration that owns it.
+    """A WorkflowTriggerSchema plus the identifiers of the integration that owns it.
 
-    The `/triggers/schema` wire contract consumed by web and mobile.
+    The /triggers/schema wire contract consumed by web and mobile.
     """
 
     provider: str

@@ -1,10 +1,10 @@
 """Outlook attachment hook: workspace-local paths become grant URLs.
 
-OUTLOOK_SEND_EMAIL / OUTLOOK_CREATE_DRAFT take `attachment` as a path string
+OUTLOOK_SEND_EMAIL / OUTLOOK_CREATE_DRAFT take attachment as a path string
 Composio fetches itself. URL values and missing keys pass through untouched;
 every workspace-local path triggers a mint — whether it arrives bare or inside
 a list, since both reach Composio the same way (fail-closed abort when the user
-is missing or the mint fails). The `user_id` strip keeps model-supplied
+is missing or the mint fails). The user_id strip keeps model-supplied
 identity out of hook params (mirrors gmail).
 """
 

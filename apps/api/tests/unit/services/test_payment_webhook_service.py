@@ -1,9 +1,6 @@
-"""``PaymentWebhookService`` — signature verification, the once-only claim,
-and what each delivery is owed: acknowledge, retry, or give up.
+"""PaymentWebhookService — signature verification, the once-only claim, and what each delivery is owed: acknowledge, retry, or give up.
 
-The subscription state changes themselves are the reducer's
-(``test_subscription_events.py``); these tests pin how a delivery reaches it
-and what comes back.
+The subscription state changes themselves are the reducer's (test_subscription_events.py); these tests pin how a delivery reaches it and what comes back.
 """
 
 from datetime import UTC, datetime
@@ -105,7 +102,6 @@ class TestVerifyWebhookSignature:
         mock_verifier.verify.assert_called_once()
 
     def test_production_invalid_signature_returns_false(self):
-        """In production with invalid signature, returns False."""
         with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.DODO_WEBHOOK_PAYMENTS_SECRET = "whsec_test123"
             mock_settings.ENV = "production"
@@ -212,8 +208,7 @@ class TestProcessWebhookIdempotency:
         mock_track_subscription,
         mock_deactivate_workflows,
     ):
-        """Dodo can redeliver the same webhook id. The idempotency check must stop
-        the second delivery before it deactivates the user's workflows again."""
+        """The idempotency check must stop a redelivered webhook id before it deactivates workflows again."""
         event_data = _make_webhook_event("subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD)
 
         first = await webhook_service.process_webhook(event_data, "wh_cancel_replay")
@@ -294,9 +289,7 @@ class TestProcessWebhookIdempotency:
         )
 
     async def test_every_event_type_dodo_can_send_parses(self) -> None:
-        """Drift guard against the SDK: a real Dodo event outside our enum failed
-        validation and was logged as a processing error (seen live with
-        subscription.updated on 2026-09-06). The SDK's literal is the contract."""
+        """Drift guard: an unknown Dodo event type failed validation live (subscription.updated, 2026-09-06)."""
         sdk_types = set(get_args(WebhookEventType))
         ours = {member.value for member in DodoWebhookEventType}
         assert ours == sdk_types
@@ -306,8 +299,7 @@ class TestProcessWebhookIdempotency:
         webhook_service,
         mock_processed_webhook_repository,
     ):
-        """subscription.updated fires on every Dodo-side edit; we neither act on
-        it nor treat it as an error, and it is recorded so a redelivery is a no-op."""
+        """subscription.updated fires on every edit and is recorded, not treated as an error, so a redelivery is a no-op."""
         event_data = _make_webhook_event("subscription.updated", {})
         result = await webhook_service.process_webhook(event_data, "wh_updated")
         assert result.status == "ignored"
@@ -319,9 +311,7 @@ class TestProcessWebhookIdempotency:
         webhook_service,
         mock_processed_webhook_repository,
     ):
-        """An envelope missing its required fields is abandoned — it will not
-        validate any better on a retry — and the claim is handed back so a
-        corrected manual redelivery is not turned away as a replay."""
+        """It will not validate any better on a retry, so the claim is released for a corrected manual redelivery."""
         bad_data = {"type": "payment.succeeded", "data": {}}
         with pytest.raises(ValidationError) as rejected:
             DodoWebhookEvent(**bad_data)
@@ -379,13 +369,8 @@ class TestHandlePaymentSucceeded:
         event_data = _make_webhook_event("payment.succeeded", PAYMENT_DATA_PAYLOAD)
         await webhook_service.process_webhook(event_data, "wh_pay_002")
 
-        # Every argument, not just the ids. Dodo bills in minor units, so the
-        # money that reaches PostHog is a division this is the only test of:
-        # turning it into a multiplication reports $999.00 for a $9.99 charge
-        # and every revenue number downstream is wrong by 10,000x, with nothing
-        # failing. The currency has to be asserted for the same reason — dropped
-        # or blanked, the amount is a bare number and the dashboards silently
-        # add dollars to rupees.
+        # Dodo bills in minor units; a wrong division/multiplication is off by 10,000x silently.
+        # Currency must be asserted too, or dashboards silently mix currencies.
         mock_track_payment.assert_called_once_with(
             user_id=FAKE_USER_ID,
             event_type=AnalyticsEvents.PAYMENT_SUCCEEDED,
@@ -429,9 +414,7 @@ class TestHandlePaymentSucceeded:
         webhook_service,
         mock_processed_webhook_repository,
     ):
-        """Payment data that can't be parsed raises ValueError in the handler;
-        process_webhook abandons the delivery rather than asking for a retry
-        that would fail the same way."""
+        """process_webhook abandons the delivery rather than retrying a parse failure that would repeat."""
         bad_payload = {"incomplete": True}
         event_data = _make_webhook_event("payment.succeeded", bad_payload)
 
@@ -509,8 +492,7 @@ class TestHandlePaymentCancelled:
 
 
 class TestHandleSubscriptionActive:
-    """``subscription.active`` through process_webhook: the one event that
-    may create the row."""
+    """subscription.active through process_webhook: the one event that may create the row."""
 
     @pytest.fixture(autouse=True)
     def _no_row_yet(self, mock_webhook_subscription_repository):
@@ -700,13 +682,7 @@ class TestHandleSubscriptionRenewed:
         mock_webhook_subscription_repository,
         mock_track_subscription,
     ):
-        """A renewal that omits the billing dates must leave the stored ones alone.
-
-        Passing them to SubscriptionUpdate marks them in model_fields_set even
-        when None, so the repository's model_dump(exclude_unset=True) emits
-        ``next_billing_date: None`` and the $set overwrites good stored values
-        with null.
-        """
+        """Passing None still marks the field in model_fields_set, so exclude_unset=True would emit it as null anyway."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
             return_value=_row(status="on_hold")
         )
@@ -733,10 +709,7 @@ class TestHandleSubscriptionRenewed:
         mock_webhook_subscription_repository,
         mock_track_subscription,
     ):
-        """Nothing was renewed, so nothing is captured — a renewal event for a
-        subscription GAIA has no row for is a failure to mirror, not a renewal.
-        ``TestAFailedHandlerReleasesItsClaim`` covers what that failure costs
-        the delivery."""
+        """A renewal with no matching row is a mirror failure, not a renewal — see TestAFailedHandlerReleasesItsClaim for the cost."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(return_value=None)
         event_data = _make_webhook_event("subscription.renewed", SUBSCRIPTION_DATA_PAYLOAD)
         event_data["timestamp"] = _now_iso()
@@ -850,8 +823,7 @@ class TestHandleSubscriptionCancelled:
         mock_track_subscription,
         mock_deactivate_workflows,
     ):
-        """A cancel-at-next-billing-date keeps the subscription active and just
-        records the flag — the user retains Pro access until the period ends."""
+        """A cancel-at-next-billing-date keeps the subscription active and just records the flag."""
         payload = {
             **SUBSCRIPTION_DATA_PAYLOAD,
             "status": "active",
@@ -876,8 +848,7 @@ class TestHandleSubscriptionCancelled:
         mock_track_subscription,
         mock_deactivate_workflows,
     ):
-        """Even if Dodo ever reported status "cancelled" in a scheduled-cancel
-        payload, the user is not downgraded early — status stays untouched."""
+        """Even a payload status of "cancelled" must not downgrade the user early — status stays untouched."""
         payload = {
             **SUBSCRIPTION_DATA_PAYLOAD,
             "status": "cancelled",
@@ -900,8 +871,7 @@ class TestHandleSubscriptionCancelled:
         mock_track_subscription,
         mock_deactivate_workflows,
     ):
-        """An immediate cancellation (no cancel_at_next_billing_date) drops the
-        user from Pro right away, so their workflows must be turned off now."""
+        """An immediate cancellation drops the user from Pro right away, so workflows must turn off now."""
         event_data = _make_webhook_event("subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD)
 
         await webhook_service.process_webhook(event_data, "wh_cancel_sub_007")
@@ -916,8 +886,7 @@ class TestHandleSubscriptionCancelled:
         mock_track_subscription,
         mock_deactivate_workflows,
     ):
-        """A cancel scheduled for period end keeps the user on Pro (and their
-        workflows running) until `subscription.expired` actually fires."""
+        """A cancel scheduled for period end keeps the user's workflows running until subscription.expired fires."""
         payload = {**SUBSCRIPTION_DATA_PAYLOAD, "cancel_at_next_billing_date": True}
         event_data = _make_webhook_event("subscription.cancelled", payload)
 
@@ -933,8 +902,7 @@ class TestHandleSubscriptionCancelled:
         mock_track_subscription,
         mock_deactivate_workflows,
     ):
-        """A broken workflow deactivation must not turn an otherwise-successful
-        billing webhook into a "failed" result that Dodo would retry forever."""
+        """A broken workflow deactivation must not turn a successful billing webhook into a result Dodo retries forever."""
         mock_deactivate_workflows.side_effect = RuntimeError("mongo down")
         event_data = _make_webhook_event("subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD)
 
@@ -1000,8 +968,7 @@ class TestHandleSubscriptionExpired:
         mock_track_subscription,
         mock_deactivate_workflows,
     ):
-        """No local subscription row matched the Dodo id: there is no user to
-        resolve, so nothing is deactivated instead of raising on a None id."""
+        """With no user to resolve, nothing is deactivated instead of raising on a None id."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(return_value=None)
         event_data = _make_webhook_event("subscription.expired", SUBSCRIPTION_DATA_PAYLOAD)
 
@@ -1146,9 +1113,7 @@ class TestPaymentWebhookServiceInit:
     def test_every_handler_is_for_an_event_dodo_sends_and_the_acted_on_set_is_explicit(
         self, webhook_service
     ):
-        """The enum is everything Dodo can send (drift-guarded against the SDK);
-        the handlers are the subset GAIA acts on. Anything else is acknowledged
-        and ignored, never a processing error."""
+        """The enum is drift-guarded against the SDK; anything outside the handler subset is acknowledged, never an error."""
         assert set(webhook_service.handlers) <= set(DodoWebhookEventType)
         assert set(webhook_service.handlers) == {
             DodoWebhookEventType.PAYMENT_SUCCEEDED,
@@ -1166,8 +1131,7 @@ class TestPaymentWebhookServiceInit:
 
 
 class TestWebhookAccountSync:
-    """process_webhook schedules a workspace account sync for the metadata user
-    after an event is processed — and only then."""
+    """process_webhook schedules a workspace account sync for the metadata user only after an event is processed."""
 
     @pytest.fixture
     def mock_schedule_sync(self):
@@ -1198,8 +1162,7 @@ class TestWebhookAccountSync:
         mock_track_payment,
         mock_schedule_sync,
     ):
-        """Only processed billing changes refresh the projection — a failed
-        handler must not, even when the payload carries a user id."""
+        """Only processed billing changes refresh the projection — a failed handler must not, even with a user id in the payload."""
         failed = DodoWebhookProcessingResult(
             event_type=DodoWebhookEventType.PAYMENT_SUCCEEDED.value,
             status="failed",
@@ -1240,17 +1203,14 @@ class TestWebhookAccountSync:
 
 
 class TestASilentSkipIsOnTheRecord:
-    """The payment's analytics id simply does nothing when it misses. A miss
-    produced no event and no log — so the only visible symptom was a metric
-    that looked healthy while a real payment went unrecorded."""
+    """A missing analytics id produced no event and no log — a metric that looked healthy while a payment went unrecorded."""
 
     async def test_a_payment_with_no_user_id_is_not_captured_anonymously(
         self,
         webhook_service,
         mock_track_payment,
     ):
-        """Attributing it to anyone else would split the user's funnel in two,
-        so it is not sent — and that gap is the thing worth logging."""
+        """Attributing it to anyone else would split the user's funnel in two, so it is not sent, only logged."""
         payload = {**PAYMENT_DATA_PAYLOAD, "metadata": {}}
         event = DodoWebhookEvent(**_make_webhook_event("payment.succeeded", payload))
 
@@ -1275,11 +1235,7 @@ class TestASilentSkipIsOnTheRecord:
 
 
 class TestAFailedHandlerReleasesItsClaim:
-    """The bug: ``record_outcome`` is an update, so a handler that *returned*
-    ``failed`` (rather than raising) kept its webhook-id claim while the
-    endpoint answered 200. Dodo does not resend a 200, and a manual redelivery
-    of the same id is turned away at the claim — so a state change that never
-    landed had no way left to be re-driven."""
+    """record_outcome is an update: a handler that returned (not raised) failed kept its webhook-id claim under a 200, blocking a manual redelivery from ever re-driving it."""
 
     @pytest.mark.parametrize(
         "event_type",
@@ -1301,20 +1257,7 @@ class TestAFailedHandlerReleasesItsClaim:
         mock_deactivate_workflows,
         webhook_side_effects_stubbed,
     ):
-        """No row matched means Dodo's state was never mirrored. The row may
-        still be on its way — ``subscription.active`` is a separate delivery
-        with its own retries — so acknowledging drops the change for good and
-        leaves the user on a tier they no longer have.
-
-        Asserted down to the two error entries and every field of the result,
-        not just ``status == "failed"``. Whoever picks this up in Grafana has
-        only the wide event: which delivery, which subscription, and why it was
-        handed back. Nineteen mutants lived in exactly those fields — blanking
-        the reason to ``None``, dropping ``subscription_id`` from the log, or
-        rewriting the message — because a status-only assertion cannot see any
-        of it. Both entries land on one event: the handler reports the miss,
-        then ``process_webhook`` records that it is releasing the claim.
-        """
+        """Asserted down to every field of both wide-event error entries — a status-only check would miss mutants blanking the reason, dropping subscription_id, or rewriting the message."""
         webhook_id = f"wh_{event_type}_unmatched"
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(return_value=None)
         event_data = _make_webhook_event(event_type, SUBSCRIPTION_DATA_PAYLOAD)
@@ -1399,8 +1342,7 @@ class TestTheHandlerHandsTheReducerTheEventAsDodoSentIt:
     async def test_the_reducer_receives_the_events_own_timestamp(
         self, webhook_service, mock_processed_webhook_repository
     ) -> None:
-        """Ordering is by Dodo's clock; a handler stamping its own time would
-        let a late redelivery look newer than the state it should not undo."""
+        """Ordering is by Dodo's clock; a handler stamping its own time would let a late redelivery look newer than it should."""
         applied = SubscriptionEventResult(SubscriptionEventOutcome.APPLIED, FAKE_USER_ID)
         event_data = _make_webhook_event("subscription.renewed", SUBSCRIPTION_DATA_PAYLOAD)
         event_data["timestamp"] = "2025-03-04T05:06:07Z"
@@ -1435,10 +1377,7 @@ class TestAnUnlistedEventTypeIsAcknowledged:
     async def test_a_type_outside_the_enum_is_ignored_with_a_warning_not_failed(
         self, webhook_service, mock_processed_webhook_repository
     ) -> None:
-        """Dodo adds event types without asking. The strict enum turned an
-        unknown one into a validation error, the blanket handler into
-        ``failed``, and the endpoint into a 503 — so Dodo redelivered an event
-        GAIA would never act on, on every retry, until it gave up."""
+        """An unknown event type used to validation-error into a 503, so Dodo retried forever an event GAIA never acts on."""
         event_data = _make_webhook_event("subscription.brand_new_thing", {})
 
         async with captured_wide_event() as wide:
@@ -1458,11 +1397,7 @@ class TestAnUnlistedEventTypeIsAcknowledged:
 
 
 class TestAPermanentFailureIsAbandonedNotRetried:
-    """``failed`` asks Dodo to redeliver, which only helps when a retry can
-    succeed. An activation for a subscription no GAIA user owns, or a lifecycle
-    event for a row that has had an hour to arrive and never did, fails the
-    same way on every redelivery — so it is abandoned: acknowledged, claim
-    released so a human can re-drive it, and on the wide event at error level."""
+    """An activation with no owning user, or a lifecycle event whose row never arrived, fails identically on every retry — so it is abandoned: acknowledged, claim released, logged at error level."""
 
     async def test_an_ownerless_activation_is_abandoned(
         self,
@@ -1489,8 +1424,7 @@ class TestAPermanentFailureIsAbandonedNotRetried:
         mock_processed_webhook_repository,
         mock_webhook_subscription_repository,
     ) -> None:
-        """``subscription.active`` is its own delivery with its own retries;
-        while it may still be on its way, the row-less renewal is owed one."""
+        """subscription.active is its own delivery with its own retries, so a row-less renewal is still owed a retry."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(return_value=None)
         event_data = _make_webhook_event("subscription.renewed", SUBSCRIPTION_DATA_PAYLOAD)
         event_data["timestamp"] = _now_iso()
@@ -1507,9 +1441,7 @@ class TestAPermanentFailureIsAbandonedNotRetried:
         mock_processed_webhook_repository,
         mock_webhook_subscription_repository,
     ) -> None:
-        """The bound is "older than"; an event exactly one hour old still gets
-        its retry — the boundary is where a one-character slip would abandon
-        a delivery an hour early."""
+        """The bound is strictly "older than"; an event exactly one hour old still gets its retry."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(return_value=None)
         now = datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
         event_data = _make_webhook_event("subscription.renewed", SUBSCRIPTION_DATA_PAYLOAD)

@@ -1,6 +1,4 @@
-"""
-Google Sheets trigger handler with cascading dropdown support.
-"""
+"""Google Sheets trigger handler with cascading dropdown support."""
 
 import asyncio
 from collections.abc import Sequence
@@ -62,7 +60,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
     ) -> Sequence[TriggerOption | TriggerOptionGroup]:
         """Get dynamic options for Google Sheets trigger config fields.
 
-        ``spreadsheet_ids`` yields flat options; ``sheet_names`` yields one
+        spreadsheet_ids yields flat options; sheet_names yields one
         group per parent spreadsheet.
         """
         try:
@@ -208,14 +206,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
-        """Register Google Sheets triggers with parallel execution and rollback.
-
-        All triggers are registered in parallel. If any fail, all successfully
-        created triggers are rolled back (deleted) to maintain atomicity.
-
-        Raises:
-            TriggerRegistrationError: If any trigger registration fails
-        """
+        """Register Google Sheets triggers in parallel, rolling back all on any failure."""
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
             log.error(

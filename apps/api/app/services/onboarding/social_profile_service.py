@@ -139,7 +139,7 @@ def _is_generic_url(url: str) -> bool:
 
 
 def _extract_handle(remainder: str) -> str | None:
-    """Take the handle out of the URL remainder produced by `_match_platform`."""
+    """Take the handle out of the URL remainder produced by _match_platform."""
     handle = remainder.split("/", maxsplit=1)[0].removeprefix("@")
     if not handle or len(handle) > _MAX_HANDLE_LEN:
         return None
@@ -151,8 +151,7 @@ async def extract_social_profiles_from_emails(
     user_name: str | None,
     user_email: str | None,
 ) -> list[SocialProfile]:
-    """Extract social profiles from emails: broad URL harvest + LLM ownership
-    filter to keep only profiles owned by the user."""
+    """Extract social profiles from emails via broad URL harvest + LLM ownership filter."""
     candidates: dict[tuple[str, str], _ProfileCandidate] = {}
 
     for email in emails:

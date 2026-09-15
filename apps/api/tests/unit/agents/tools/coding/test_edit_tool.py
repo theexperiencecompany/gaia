@@ -1,16 +1,16 @@
-"""Unit tests for the persistent `edit` coding tool (edit_tool.py).
+"""Unit tests for the persistent edit coding tool (edit_tool.py).
 
 Pins the tool's own contract: which inputs are rejected before touching a
 sandbox, the exact occurrence-counting / replacement semantics, the exact
 bytes and messages it reports, and the exact payloads it passes to the
 sandbox, stream-event, and artifact-publish seams. Only the E2B/sandbox
-boundary and the emit seams are mocked (``acquire_sandbox``,
-``atomic_write``, ``safe_emit``, ``publish_artifact_write``, the
-rate-limiter's Redis seams); ``_read_editable_content``, ``canonical_path``,
-``get_user_id``/``get_session_id`` and ``fs_timer`` run real, so the
+boundary and the emit seams are mocked (acquire_sandbox,
+atomic_write, safe_emit, publish_artifact_write, the
+rate-limiter's Redis seams); _read_editable_content, canonical_path,
+get_user_id/get_session_id and fs_timer run real, so the
 rejection branches (path escape, read-only uploads, missing user) and the
-read-decoding logic exercise production code. ``atomic_write``,
-``canonical_path`` and ``publish_artifact_write`` have their own layer-2
+read-decoding logic exercise production code. atomic_write,
+canonical_path and publish_artifact_write have their own layer-2
 tests (test_atomic_write.py, test_canonical_path.py, test_artifact_publish.py);
 this file only checks how edit routes through them.
 """
@@ -72,7 +72,7 @@ def _patch(old_string: str, new_string: str, replace_all: bool = False) -> EditP
 
 @pytest.fixture(autouse=True)
 def _rate_limit_passes() -> None:
-    """The @with_rate_limiting seam (not under test) — fixed to pass.
+    """Fix the @with_rate_limiting seam (not under test) to pass.
 
     edit is invoked with a chat-shaped config, so the wrapper's user-context
     branch runs; its Redis lookups are the seam, not edit's logic.
@@ -91,7 +91,7 @@ def _rate_limit_passes() -> None:
 
 
 def _sbx(content: bytes = b"", *, read_error: Exception | None = None) -> AsyncMock:
-    """A sandbox whose native filesystem read returns fixed content or raises."""
+    """Build a sandbox whose native filesystem read returns fixed content or raises."""
     sbx = AsyncMock()
     if read_error is not None:
         sbx.files.read = AsyncMock(side_effect=read_error)
@@ -115,7 +115,7 @@ def _sandbox_cm(sbx: AsyncMock) -> Callable[[str], AsyncIterator[AsyncMock]]:
 async def _do_edit_env(
     content: bytes = b"", *, read_error: Exception | None = None
 ) -> AsyncIterator[tuple[AsyncMock, AsyncMock, MagicMock, AsyncMock]]:
-    """Patch the emit seams for direct `_do_edit` runs; yields (sbx, atomic, emit, publish)."""
+    """Patch the emit seams for direct _do_edit runs; yields (sbx, atomic, emit, publish)."""
     sbx = _sbx(content, read_error=read_error)
     with (
         patch(f"{MODULE}.atomic_write", AsyncMock(return_value=MTIME)) as mock_atomic,

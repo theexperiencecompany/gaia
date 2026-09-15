@@ -48,7 +48,7 @@ def _progress_dict(**overrides: Any) -> dict[str, Any]:
     """Return a dict that mirrors what Redis stores for StreamProgress.
 
     Pass any field as a keyword to override its default, e.g.
-    ``_progress_dict(is_cancelled=True)``.
+    _progress_dict(is_cancelled=True).
     """
     return {
         "conversation_id": "conv-1",
@@ -714,8 +714,7 @@ class TestUpdateProgress:
         patcher.stop()
 
     async def test_appends_message_chunk_to_the_unsettled_message(self) -> None:
-        """Streamed text is held until its message ends: a message that turns
-        out to announce a tool call is a preamble the user is told to drop."""
+        """Streamed text is held until its message ends: a tool-call announcement is a preamble the user is told to drop."""
         self.progress["pending_message"] = "Hello "
         await StreamManager.update_progress("s1", message_chunk="World")
 
@@ -732,9 +731,7 @@ class TestUpdateProgress:
         assert saved["pending_message"] == ""
 
     async def test_a_discarded_preamble_never_reaches_the_reply(self) -> None:
-        """The exact production artifact: "let me start by gathering context"
-        was streamed, retracted by its boundary, and still recovered from
-        Redis glued onto the real answer."""
+        """The exact production artifact: a retracted preamble was still recovered from Redis glued onto the real answer."""
         self.progress["complete_message"] = ""
         self.progress["pending_message"] = "Let me start by gathering context."
         await StreamManager.settle_message_progress("s1", discarded=True)
@@ -787,9 +784,7 @@ class TestUpdateProgress:
         assert saved["pending_message"] == "first"
 
     async def test_a_record_predating_the_pending_field_starts_from_empty(self) -> None:
-        """A progress record written before ``pending_message`` existed is still
-        in Redis under its TTL, so the read has to supply the empty string
-        itself — the first chunk of the turn IS the whole unsettled message."""
+        """A progress record written before pending_message existed must have the read supply the empty string itself."""
         del self.progress["pending_message"]
         await StreamManager.update_progress("s1", message_chunk="first token")
 
@@ -797,8 +792,7 @@ class TestUpdateProgress:
         assert saved["pending_message"] == "first token"
 
     async def test_settling_a_record_without_a_pending_field_keeps_the_reply(self) -> None:
-        """Same record, settled instead of appended to: there is nothing held,
-        so the already-settled reply must survive the boundary untouched."""
+        """Same record, settled instead of appended to: the already-settled reply must survive the boundary untouched."""
         del self.progress["pending_message"]
         self.progress["complete_message"] = "The answer."
         await StreamManager.settle_message_progress("s1", discarded=False)
@@ -808,8 +802,7 @@ class TestUpdateProgress:
         assert saved["pending_message"] == ""
 
     async def test_the_first_kept_bubble_is_the_whole_reply(self) -> None:
-        """Nothing settled yet, so the bubble is the reply verbatim — no
-        separator and no leading text in front of it."""
+        """Nothing settled yet, so the bubble is the reply verbatim, with no separator or leading text."""
         del self.progress["complete_message"]
         self.progress["pending_message"] = "Here it is."
         await StreamManager.settle_message_progress("s1", discarded=False)
@@ -818,9 +811,7 @@ class TestUpdateProgress:
         assert saved["complete_message"] == "Here it is."
 
     async def test_settle_writes_this_streams_progress_key_with_the_full_ttl(self) -> None:
-        """A settled boundary must land on the turn's own progress key and
-        re-arm the full TTL: a shortened one expires the record mid-turn and a
-        reloading client is told no turn is running."""
+        """A settled boundary must re-arm the full TTL, or a shortened one expires the record mid-turn."""
         self.progress["pending_message"] = "Done."
         await StreamManager.settle_message_progress("s1", discarded=False)
 

@@ -177,10 +177,9 @@ function handleParsedStreamEvent(
       handleToolCallsData(parsed.entry, callbacks);
       return false;
     case "tool_output":
-      // Web parity — the backend emits tool execution results on a
-      // separate event keyed by tool_call_id. Hand it to the caller so
-      // it can merge `output` into the matching tool_data entry
-      // (mergeToolOutputIntoToolData from @gaia/shared/chat).
+      // Web parity — backend emits tool execution results on a separate event
+      // keyed by tool_call_id; hand to the caller to merge `output` into the
+      // matching tool_data entry (mergeToolOutputIntoToolData from @gaia/shared/chat).
       callbacks.onToolOutput?.(parsed.output);
       return false;
     case "follow_up_actions":
@@ -197,10 +196,9 @@ function handleParsedStreamEvent(
       emitImageData(parsed.payload, callbacks);
       return false;
     default:
-      // keepalive, token_usage, main_response_complete,
-      // conversation_description — intentionally ignored. reasoning,
-      // subagent_start, subagent_end and todo_progress are forwarded via
-      // onStreamEvent above; the turn accumulator owns their state.
+      // keepalive/token_usage/main_response_complete/conversation_description are
+      // intentionally ignored; reasoning/subagent_start/subagent_end/todo_progress
+      // are forwarded via onStreamEvent above (the turn accumulator owns their state).
       return false;
   }
 }

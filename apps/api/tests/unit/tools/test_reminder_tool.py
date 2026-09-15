@@ -366,8 +366,7 @@ class TestUpdateReminderTool:
 
     @patch(f"{MODULE}.reminder_scheduler")
     async def test_update_with_incomplete_payload_rejected(self, mock_scheduler: MagicMock) -> None:
-        """A payload missing ``body`` never reaches the scheduler — StaticReminderPayload
-        requires both fields, and the reminder document would be unreadable without it."""
+        """A payload missing body never reaches the scheduler — StaticReminderPayload requires both fields, and the reminder document would be unreadable without it."""
         mock_scheduler.update_reminder = AsyncMock(return_value=True)
 
         from app.agents.tools.reminder_tool import update_reminder_tool

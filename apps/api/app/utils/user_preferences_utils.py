@@ -1,8 +1,3 @@
-"""
-User preferences utilities for formatting and processing user data.
-Provides functions to format user preferences for agent system prompts.
-"""
-
 from typing import Any
 
 from app.constants.log_tags import LogTag
@@ -13,15 +8,11 @@ from shared.py.wide_events import log
 def onboarding_preferences(
     onboarding: OnboardingSubdocument | dict[str, Any] | None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    """The ``(preferences, writing_style)`` pair off a user's onboarding data.
+    """Return the (preferences, writing_style) pair off a user's onboarding data.
 
-    Every root call site that hands a user's onboarding data to
-    ``build_agent_config`` or a comms ``SectionContext`` reads the same two keys
-    — pulled out once so that reading doesn't drift between call sites. Takes
-    both shapes because ``UserDocument.onboarding`` is the typed subdocument
-    while ``AuthenticatedUser.onboarding`` is still the raw Mongo dict the auth
-    layer spreads, and returns dicts because the prompt formatters below and the
-    context fetchers consume them that way.
+    Pulled out once so reading doesn't drift between call sites. Takes both
+    shapes since UserDocument.onboarding is typed while AuthenticatedUser's
+    is a raw Mongo dict.
     """
     if not onboarding:
         return None, None

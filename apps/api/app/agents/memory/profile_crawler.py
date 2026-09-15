@@ -20,7 +20,7 @@ from shared.py.wide_events import log
 
 
 class ProfileCrawlResult(TypedDict):
-    """Outcome of one profile crawl. Exactly one of ``content``/``error`` is set."""
+    """Outcome of one profile crawl. Exactly one of content/error is set."""
 
     url: str
     platform: str
@@ -31,26 +31,15 @@ class ProfileCrawlResult(TypedDict):
 async def crawl_profile_url(
     url: str, platform: str, semaphore: asyncio.Semaphore
 ) -> ProfileCrawlResult:
-    """
-    Crawl a single profile URL using crawl4ai.
-
-    Args:
-        url: Profile URL to crawl
-        platform: Platform name (e.g., 'twitter', 'github')
-        semaphore: Concurrency control semaphore
-
-    Returns:
-        Dict with url, platform, content (markdown), and error if failed
-    """
+    """Crawl a single profile URL using crawl4ai."""
     async with semaphore:
         start_time = time.time()
         try:
             log.info(f"{LogTag.MEMORY} Crawling profile", platform=platform, url=url)
 
             # Process-wide cap on live Chromium instances (shared with
-            # crawl4ai_utils) so concurrent profile crawls can't fan out into
-            # dozens of browsers; managed_crawler guarantees the browser is
-            # torn down even when this task is cancelled mid-crawl.
+            # crawl4ai_utils); managed_crawler tears the browser down even
+            # if this task is cancelled mid-crawl.
             async with (
                 get_browser_semaphore(),
                 managed_crawler(context_name=f"{platform} profile crawl") as crawler,

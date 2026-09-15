@@ -2,7 +2,7 @@
 
 A one-off maintenance pass: re-runs the categorize LLM on every live memory
 (ignoring the user's current — possibly polluted — folder tree so the canonical
-taxonomy decides fresh) and updates ``category_path`` where it changed. Updating
+taxonomy decides fresh) and updates category_path where it changed. Updating
 the folder also refreshes the generated FTS column, and the next consolidation
 rebuilds the core documents from the corrected folders.
 

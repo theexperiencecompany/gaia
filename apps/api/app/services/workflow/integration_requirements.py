@@ -19,11 +19,9 @@ from app.utils.trigger_utils import get_integration_for_trigger
 def _category_to_integration() -> dict[str, str]:
     """Map category names to integration IDs using the static OAUTH catalog.
 
-    Covers both registry categories (via subagent_config.tool_space) and
-    subagent integration IDs used directly as step categories.
-
-    Internal integrations (todos, reminders, …) are excluded — they are
-    always available and never require the user to connect anything.
+    Covers registry categories (via subagent_config.tool_space) and subagent
+    integration IDs used as step categories. Internal integrations (todos,
+    reminders, …) are excluded — always available, no connection needed.
     """
     result: dict[str, str] = {}
     for integration in OAUTH_INTEGRATIONS:
@@ -73,9 +71,11 @@ def build_integration_refs(
     required: set[str],
     status_map: dict[str, bool],
 ) -> tuple[list[IntegrationRef], list[IntegrationRef]]:
-    """Split `required` into (all required refs, missing refs) against a connection
-    status map. Pure — the caller owns the (cached) status fetch, so a workflow list
-    resolves every row from a single `get_all_integrations_status` call."""
+    """Split required into (all required refs, missing refs) against a connection status map.
+
+    Pure — the caller owns the (cached) status fetch, so a workflow list
+    resolves every row from a single get_all_integrations_status call.
+    """
     name_map = _integration_name_map()
     required_refs = [
         IntegrationRef(id=iid, name=name_map.get(iid, iid)) for iid in sorted(required)
@@ -97,17 +97,12 @@ async def compute_missing_integrations(
 
 
 async def confirm_disconnected(user_id: str, integration_ids: Sequence[str]) -> list[str]:
-    """The subset of ``integration_ids`` the user genuinely has not connected.
+    """Return the subset of integration_ids the user genuinely has not connected.
 
-    Unlike everything else in this module, the ids here do not come from the
-    workflow's declared steps — they come from a run reporting what it actually
-    found, and a run is a model. It can name an integration that does not exist,
-    or one that is connected and failed for some unrelated reason. Either would
-    pause a working workflow, so the claim is checked against real connection
-    status first: the run proposes, this disposes.
-
-    Unknown ids are dropped rather than reported missing. An id GAIA has no
-    integration for cannot be the thing the user needs to go and connect.
+    Unlike the rest of this module, these ids come from a run's own claim, not
+    declared steps — a model can misname an integration or blame a connected
+    one, so this checks against real status before trusting it. Unknown ids
+    are dropped rather than reported missing.
     """
     if not integration_ids:
         return []
@@ -125,8 +120,10 @@ async def compute_integration_refs(
     trigger_config: TriggerConfig | None,
     user_id: str,
 ) -> tuple[list[IntegrationRef], list[IntegrationRef]]:
-    """Resolve (required, missing) refs for one workflow in a single status fetch —
-    the read-path helper for enriching a workflow response."""
+    """Resolve (required, missing) refs for one workflow in a single status fetch.
+
+    The read-path helper for enriching a workflow response.
+    """
     required = compute_required_integrations(steps, trigger_config)
     if not required:
         return [], []

@@ -1,6 +1,6 @@
-"""``openui: false`` must be able to go red.
+"""openui: false must be able to go red.
 
-The branch returned ``1.0`` with the reason "not expected" without reading the
+The branch returned 1.0 with the reason "not expected" without reading the
 output at all, so a case declaring "no component belongs in this reply" scored a
 pass whatever the agent emitted — a check that cannot fail, carrying the
 authority of one that can. It was invisible to both safety nets: the forgery

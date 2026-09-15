@@ -1,4 +1,4 @@
-"""``reset_playbook_declines``: the one-off that gives back chances blocked runs spent."""
+"""reset_playbook_declines: the one-off that gives back chances blocked runs spent."""
 
 from __future__ import annotations
 
@@ -63,8 +63,7 @@ class TestResetPlaybookDeclines:
     async def test_apply_clears_the_tally_and_the_hash_together(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """The hash goes with the count: left behind, the next decline would read
-        as a continuation of a tally that no longer exists."""
+        """The hash must clear with the count, or the next decline reads as a continuation of a dead tally."""
         collection = _workflows(affected=4, at_limit=1)
         with patch(f"{MODULE}.MongoDB", _database(collection)):
             await script._run(_args(apply=True))

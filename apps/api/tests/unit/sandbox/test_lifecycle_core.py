@@ -1,15 +1,15 @@
 """Layer 3 — lifecycle core: create/resume/acquire, mount script, canary, watcher.
 
-The sibling files cover death-eviction (`test_lifecycle_eviction`), pause
-scheduling (`test_lifecycle_pause`) and cached-entry reuse
-(`test_lifecycle_reuse`). This one attacks what they leave untouched: the
+The sibling files cover death-eviction (test_lifecycle_eviction), pause
+scheduling (test_lifecycle_pause) and cached-entry reuse
+(test_lifecycle_reuse). This one attacks what they leave untouched: the
 credential split that keeps the JuiceFS meta password out of a world-readable
-`/proc/<pid>/cmdline`, the mount-script shipping path, the canary staleness
-protocol, fresh-create vs resume routing in `_acquire_or_create`, and the
+/proc/<pid>/cmdline, the mount-script shipping path, the canary staleness
+protocol, fresh-create vs resume routing in _acquire_or_create, and the
 failure modes that must not leave a half-built sandbox in the pool or a lock
 held forever.
 
-Boundaries mocked: the e2b `AsyncSandbox` (create/connect/commands/files), the
+Boundaries mocked: the e2b AsyncSandbox (create/connect/commands/files), the
 Mongo repository, the tiered rate limiter, and the host-side JuiceFS seeding.
 The pooling and lifecycle state machine is the real production code.
 """
@@ -51,7 +51,7 @@ def _cmd_result(exit_code: int = 0, stdout: str = "", stderr: str = "") -> Simpl
 
 
 def _fake_sandbox(sandbox_id: str = "sbx-1") -> AsyncMock:
-    """An AsyncSandbox that is alive, mounts cleanly and accepts file writes."""
+    """Build an AsyncSandbox that is alive, mounts cleanly and accepts file writes."""
     sbx = AsyncMock()
     sbx.sandbox_id = sandbox_id
     sbx.commands.run = AsyncMock(return_value=_cmd_result())
@@ -73,7 +73,7 @@ def _fake_watcher(alive: bool = True, stop_error: Exception | None = None) -> Ar
 
 
 def _sandbox_class(sbx: AsyncMock) -> MagicMock:
-    """Replacement for the module-level `AsyncSandbox` symbol."""
+    """Return a replacement for the module-level AsyncSandbox symbol."""
     cls = MagicMock()
     cls.create = AsyncMock(return_value=sbx)
     cls.connect = AsyncMock(return_value=sbx)
@@ -86,10 +86,9 @@ def _sandbox_class(sbx: AsyncMock) -> MagicMock:
 
 
 def test_meta_password_never_stays_in_the_url_handed_to_the_juicefs_daemon() -> None:
-    # The juicefs daemon long-lives with this URL spliced into its argv, and
-    # /proc/<pid>/cmdline is world-readable inside the sandbox. Leaving the
-    # password in the URL hands the unprivileged sandbox user the metadata-DB
-    # credentials with one `cat`.
+    # /proc/<pid>/cmdline is world-readable in the sandbox, and the juicefs daemon
+    # long-lives with this URL in its argv — leaving the password in it hands the
+    # unprivileged sandbox user the metadata-DB credentials with one `cat`.
     url, password = lifecycle._split_meta_url("postgres://gaia:s3cr3t@db.internal:5432/jfs0")
     assert "s3cr3t" not in url, "the meta password must not survive in the URL argv"
     assert password == "s3cr3t", "the password must still be delivered out of band"
@@ -130,12 +129,9 @@ def test_empty_meta_url_yields_an_empty_pair_instead_of_raising() -> None:
 def test_a_percent_encoded_meta_password_is_decoded_before_it_reaches_the_env(
     raw: str, expected: str
 ) -> None:
-    # urlsplit().password does NOT decode. Inline in the URL the driver would
-    # decode it, but we hand it to JuiceFS out-of-band as META_PASSWORD, which
-    # it treats as the literal password. So any meta-DB password containing a
-    # reserved char authenticated with the WRONG string, the mount failed, and
-    # mount.sh fell through to its ephemeral branch — a silently non-durable
-    # /workspace instead of a loud error.
+    # urlsplit().password does NOT decode; JuiceFS receives it out-of-band as
+    # META_PASSWORD and treats it literally, so a reserved char in the password
+    # authenticated wrong and mount.sh silently fell back to an ephemeral /workspace.
     _, password = lifecycle._split_meta_url(f"postgres://gaia:{raw}@db:5432/jfs0")
     assert password == expected
 
@@ -985,12 +981,9 @@ async def test_concurrent_acquisitions_for_one_user_do_not_overlap() -> None:
 
 
 async def test_a_users_recorded_shard_is_honoured_instead_of_being_recomputed() -> None:
-    # shard_router's docstring: the Mongo doc records the shard "so we never
-    # re-shard a user without an explicit migration". But the shard was always
-    # recomputed from the CURRENT JUICEFS_NUM_SHARDS and the recorded value had
-    # no read site at all — so raising the shard count silently pointed an
-    # existing user at a different meta DB, and their whole workspace read as
-    # empty. Pin the recorded shard.
+    # shard_router's doc says never re-shard a user without a migration, but the
+    # recorded shard had no read site — raising JUICEFS_NUM_SHARDS silently pointed
+    # an existing user at a different meta DB, reading their whole workspace as empty.
     uid = _uid()
     sbx = _fake_sandbox("sbx-old")
     repo = AsyncMock()

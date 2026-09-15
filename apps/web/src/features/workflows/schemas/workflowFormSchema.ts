@@ -118,10 +118,9 @@ export const getDefaultFormValues = (): WorkflowFormData => ({
 export const workflowToFormData = (workflow: Workflow): WorkflowFormData => {
   const triggerType = workflow.trigger_config.type;
 
-  // For integration triggers, try multiple locations for the specific trigger slug:
-  // 1. trigger_name at top level (new format)
-  // 2. trigger_data.trigger_name (properly structured format)
-  // 3. type field itself (old format, where type contained the specific slug)
+  // For integration triggers, the specific trigger slug may live at
+  // `trigger_name` (new format), `trigger_data.trigger_name` (structured), or
+  // in `type` itself (old format) — check all three for backward compat.
   const triggerName = (workflow.trigger_config as { trigger_name?: string })
     .trigger_name;
   const triggerDataName = (

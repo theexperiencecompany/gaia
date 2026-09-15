@@ -15,16 +15,9 @@ import simpleGit from "simple-git";
 type ProgressCallback = (progress: number, phase?: string) => void;
 
 /**
- * Sets up a repository by cloning or pulling updates.
- * Provides real-time progress updates during the clone operation.
- * @param targetDir - Directory to clone into
- * @param repoUrl - Git repository URL to clone from
- * @param onProgress - Callback function for progress updates
- * @throws Error if git clone fails
- * @example
- * await setupRepo('./my-repo', 'https://github.com/org/repo.git', (progress, phase) => {
- *   console.log(`${progress}% - ${phase}`);
- * });
+ * Sets up a repository by cloning or pulling updates, reporting progress via `onProgress`.
+ *
+ * @throws Error if git clone fails.
  */
 export async function setupRepo(
   targetDir: string,

@@ -37,10 +37,9 @@ function OnboardingMessagesImpl({ messages }: OnboardingMessagesProps) {
           }}
         >
           {message.type === "bot" ? (
-            // The question being asked right now is paced out like a person
-            // typing; answered turns are history and render at once. Both go
-            // through the same component so answering a question never
-            // remounts (and so replays) the bubbles already on screen.
+            // The current question paces out like someone typing; answered turns
+            // are history and render at once. Both go through the same component
+            // so answering never remounts (and replays) the bubbles already on screen.
             <OnboardingBotBubbles
               lines={message.content.split(NEW_MESSAGE_BREAK_TOKEN)}
               revealKey={questionRevealKey(message.id)}

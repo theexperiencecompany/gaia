@@ -6,12 +6,12 @@ Wide event logging — one context-rich structured event per request.
 ║                                                                          ║
 ║ This file is ONE HALF of GAIA's wide-event shape. The other half is      ║
 ║   libs/shared/ts/src/bots/utils/wide-events.ts                           ║
-║ (`withWideEvent` / `wideLog` / `BotWideEventFields`), which the four      ║
+║ (withWideEvent / wideLog / BotWideEventFields), which the four      ║
 ║ TypeScript bots use. One LogQL query has to span both surfaces, so the   ║
 ║ two MUST agree on key names and value types. Today's shared contract:    ║
 ║                                                                          ║
-║   task        the boundary's unit-of-work name (NOT `operation` —        ║
-║               `operation` is the domain verb app code sets, on both      ║
+║   task        the boundary's unit-of-work name (NOT operation —        ║
+║               operation is the domain verb app code sets, on both      ║
 ║               sides, and would clobber the boundary identity)            ║
 ║   trace_id    16 lowercase hex chars                                     ║
 ║   duration_ms number, milliseconds, 2 decimals                           ║
@@ -19,12 +19,12 @@ Wide event logging — one context-rich structured event per request.
 ║   final_level loguru level name — "WARNING", never "WARN"                ║
 ║   errors[] / warnings[] / audit[]                                        ║
 ║               entries shaped {msg, ...kwargs}; an exception contributes  ║
-║               error_type=<class name>, error=<str(exception)>. `error`   ║
+║               error_type=<class name>, error=<str(exception)>. error   ║
 ║               is a STRING on every surface — never a nested object.      ║
 ║                                                                          ║
 ║ If you are an agent editing ONLY this file, before you finish:           ║
 ║  1. Open libs/shared/ts/src/bots/utils/wide-events.ts and make the       ║
-║     matching change (`emitWideEvent`, `record`, `BotWideEventFields`).   ║
+║     matching change (emitWideEvent, record, BotWideEventFields).   ║
 ║  2. Update scripts/ci/wide-event-conformance/contract.json, the single   ║
 ║     shared description both runtimes are checked against.                ║
 ║  3. Run: python3 scripts/ci/wide-event-conformance/run.py                ║
@@ -32,8 +32,8 @@ Wide event logging — one context-rich structured event per request.
 ║     skipping step 1 or 2 is a red CI lane, not a silent drift.           ║
 ║                                                                          ║
 ║ The line envelope (time/level/env/service/commit/logger/message) is NOT  ║
-║ this file's job — it is stamped by the sink, `_build_json_entry` in      ║
-║ libs/shared/py/logging.py, whose counterpart is `buildRecord` in         ║
+║ this file's job — it is stamped by the sink, _build_json_entry in      ║
+║ libs/shared/py/logging.py, whose counterpart is buildRecord in         ║
 ║ libs/shared/ts/src/bots/utils/logger.ts. Never re-add it here.           ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -77,13 +77,13 @@ class _EventState:
 
     The ContextVar below holds this object, and every write path MUTATES it
     in place rather than rebinding the var. That distinction is load-bearing:
-    Starlette's ``BaseHTTPMiddleware`` runs the downstream app in a task with
+    Starlette's BaseHTTPMiddleware runs the downstream app in a task with
     a *copy* of the middleware's context, so a rebound ContextVar value in a
-    handler is invisible to the middleware after ``call_next`` — with the old
-    immutable-rebind design every handler/service ``log.set()`` was silently
+    handler is invisible to the middleware after call_next — with the old
+    immutable-rebind design every handler/service log.set() was silently
     dropped from the emitted HTTP event. A context copy still references the
     same state object, so in-place mutation crosses that boundary, while each
-    request's ``reset()`` binds a fresh object, keeping requests isolated.
+    request's reset() binds a fresh object, keeping requests isolated.
     """
 
     __slots__ = ("fields", "max_level")
@@ -195,9 +195,9 @@ class MemoryContext(TypedDict, total=False):
 
     Covers the HTTP endpoints, agent tools, and background write/consolidation
     paths so a single LogQL query can chart memory activity across all three.
-    Always set ``operation`` and (for anything that returns or affects a count)
-    the canonical ``result_count`` — operation-specific counts are additive,
-    never replacements for ``result_count``.
+    Always set operation and (for anything that returns or affects a count)
+    the canonical result_count — operation-specific counts are additive,
+    never replacements for result_count.
     """
 
     # Operation identity — use these exact canonical names:
@@ -359,9 +359,9 @@ class SandboxContext(TypedDict, total=False):
 
     Accumulated across the multi-step acquire path (cache reuse → resume →
     create → mount → canary), so callers must MERGE into this namespace rather
-    than overwrite it. ``source`` is the headline field: how the live sandbox
+    than overwrite it. source is the headline field: how the live sandbox
     serving this request was obtained. Per-stage latency lives separately on the
-    ``fs`` field (``fs.sbx_create``, ``fs.sbx_connect_resume`` …).
+    fs field (fs.sbx_create, fs.sbx_connect_resume …).
     """
 
     operation: str  # "acquire"|"pause"|"evict"|"mark_dead"|"sweep"
@@ -596,16 +596,16 @@ class WideEventLogger:
     """
     Drop-in replacement for a Loguru logger that accumulates a wide event.
 
-    The accumulator is a mutable ``_EventState`` held in a ContextVar: each
+    The accumulator is a mutable _EventState held in a ContextVar: each
     request binds a fresh state (isolation), and every write mutates it in
-    place so fields set inside ``BaseHTTPMiddleware``'s context-copied handler
-    task still reach the middleware's emit (see ``_EventState``).
+    place so fields set inside BaseHTTPMiddleware's context-copied handler
+    task still reach the middleware's emit (see _EventState).
     """
 
     # --- Primary API ---
 
     def _state(self) -> _EventState:
-        """The current accumulator; a throwaway when no boundary is active.
+        """Return the current accumulator; a throwaway when no boundary is active.
 
         Deliberately does NOT bind the throwaway into the context: a lazily
         bound ambient state gets inherited by every task spawned from that
@@ -614,7 +614,7 @@ class WideEventLogger:
         jobs inheriting the main context). Outside a boundary every write is
         discarded either way — a fresh throwaway makes that leak-free and
         isolation-safe. Accumulation requires a boundary: the HTTP middleware,
-        ``wide_task``, ``log_context`` or ``spawn_logged_task``.
+        wide_task, log_context or spawn_logged_task.
         """
         state = _event_state.get()
         if state is None:
@@ -627,17 +627,17 @@ class WideEventLogger:
         A namespace dict is merged INTO whatever is already on the event rather
         than replacing it, so every layer of a request accumulates onto one
         namespace instead of the last writer silently winning. A flat
-        ``fields.update()`` here is what erased ``trigger_type`` from 34,247 of
-        34,413 production workflow fires: the final ``set(workflow={...})``
-        carried no ``trigger_type``, so it took the whole namespace with it.
+        fields.update() here is what erased trigger_type from 34,247 of
+        34,413 production workflow fires: the final set(workflow={...})
+        carried no trigger_type, so it took the whole namespace with it.
         The merge is one level deep and dict-into-dict only — a scalar still
         overwrites, because accumulating a namespace is the goal, not making
         fields immutable.
 
-        ``trace_id`` is the one field that also lives outside the event: it
-        backs the ``_trace_id`` ContextVar that ``get_trace_id()`` returns and
-        that ``spawn_logged_task`` hands to child work. Setting only the field
-        (which is what adopting an upstream ``x-trace-id`` header does) would
+        trace_id is the one field that also lives outside the event: it
+        backs the _trace_id ContextVar that get_trace_id() returns and
+        that spawn_logged_task hands to child work. Setting only the field
+        (which is what adopting an upstream x-trace-id header does) would
         emit an event under one id while every task spawned from it correlates
         under another, so the write is routed through both here — there is no
         second, easy-to-forget way to adopt a trace id.
@@ -654,9 +654,9 @@ class WideEventLogger:
                 fields[key] = value
 
     def set_ns(self, namespace: str, **kwargs: Any) -> None:
-        """Merge ``kwargs`` into a nested ``namespace`` dict on the wide event.
+        """Merge kwargs into a nested namespace dict on the wide event.
 
-        Identical to ``set(namespace={...})`` — kept because naming the namespace
+        Identical to set(namespace={...}) — kept because naming the namespace
         explicitly reads better on a multi-step path, and because it is used
         widely. It delegates so the two can never drift apart again.
         """
@@ -682,21 +682,21 @@ class WideEventLogger:
         _loguru.opt(depth=1).bind(**kwargs).info(message)
 
     def warning(self, message: str, /, **kwargs: Any) -> None:
-        """Log a warning, append it to the event's ``warnings`` and raise its max level."""
+        """Log a warning, append it to the event's warnings and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).warning(message)
         self._append("warnings", message, **kwargs)
         self._bump("WARNING")
 
     def error(self, message: str, /, **kwargs: Any) -> None:
-        """Log an error, append it to the event's ``errors`` and raise its max level."""
+        """Log an error, append it to the event's errors and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).error(message)
         self._append("errors", message, **kwargs)
         self._bump("ERROR")
 
     def critical(self, message: str, /, **kwargs: Any) -> None:
-        """Log a critical error, append it to the event's ``errors`` and raise its max level."""
+        """Log a critical error, append it to the event's errors and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).critical(message)
         self._append("errors", message, **kwargs)
@@ -706,12 +706,12 @@ class WideEventLogger:
         """Record an audit-trail entry for a sensitive operation (auth, money, PII).
 
         Emits a real-time AUDIT-level line (level registered in
-        ``shared.py.logging``) and appends ``{"msg": message, **kwargs}`` to the
-        event's ``audit`` array. The key is absent when nothing was audited, and
-        bare ``| json`` drops arrays anyway, so the query that finds every
+        shared.py.logging) and appends {"msg": message, **kwargs} to the
+        event's audit array. The key is absent when nothing was audited, and
+        bare | json drops arrays anyway, so the query that finds every
         request that performed an audited operation is
-        `{...} | json first_audit="audit[0].msg" | first_audit != ""`
-        (or just `{..., level="AUDIT"}` for the real-time lines). Does not bump
+        {...} | json first_audit="audit[0].msg" | first_audit != ""
+        (or just {..., level="AUDIT"} for the real-time lines). Does not bump
         the event's severity — an audit entry is a record, not a problem.
 
         Usage:
@@ -722,9 +722,9 @@ class WideEventLogger:
         self._append("audit", message, **kwargs)
 
     def bind(self, **kwargs: Any) -> "WideEventLogger":
-        """Loguru-compat shim: merges ``kwargs`` into the wide event and returns self.
+        """Loguru-compat shim: merges kwargs into the wide event and returns self.
 
-        Unlike loguru's ``bind``, this does NOT attach fields to subsequent
+        Unlike loguru's bind, this does NOT attach fields to subsequent
         real-time lines — the fields land on the request's wide event only.
         """
         self.set(**kwargs)
@@ -791,17 +791,17 @@ async def _wide_event_boundary(
 ) -> AsyncIterator[WideEventLogger]:
     """Bind a fresh wide event for non-request work and flush one canonical line.
 
-    Shared core for ``wide_task`` and ``log_context``. Mirrors the HTTP
+    Shared core for wide_task and log_context. Mirrors the HTTP
     middleware: it resets the ContextVar accumulator, stamps env/service/commit
     and the initial context, then on exit (success or exception) emits exactly
-    one structured JSON event so every ``log.set()`` field reaches Loki.
+    one structured JSON event so every log.set() field reaches Loki.
 
-    ``event_name`` is the log message dashboards filter on; ``logger_name`` is
-    the ``logger`` field. Keeping these explicit lets worker rollups stay on
-    ``message = "worker_task"`` while ad-hoc background work uses its own name.
+    event_name is the log message dashboards filter on; logger_name is
+    the logger field. Keeping these explicit lets worker rollups stay on
+    message = "worker_task" while ad-hoc background work uses its own name.
 
-    Boundaries nest. ``log.reset()`` rebinds the accumulator in the *caller's*
-    context (an ``asynccontextmanager`` body is not a task, so it gets no
+    Boundaries nest. log.reset() rebinds the accumulator in the *caller's*
+    context (an asynccontextmanager body is not a task, so it gets no
     context copy), so without restoring it an inner boundary would keep the
     outer one's ContextVar pointed at the inner state — the outer event would
     emit the inner's fields twice and lose its own. The enclosing accumulator
@@ -855,10 +855,10 @@ async def _wide_event_boundary(
 
 
 def current_workflow_execution_id() -> str | None:
-    """The workflow execution the code in flight belongs to, if any.
+    """Return the workflow execution the code in flight belongs to, if any.
 
-    The workflow task stamps ``workflow.execution_id`` on its boundary and
-    nothing else carries it — it is not in ``config.configurable``. Anything
+    The workflow task stamps workflow.execution_id on its boundary and
+    nothing else carries it — it is not in config.configurable. Anything
     that needs to attribute work to a run (the ledger, a run spawned from
     inside the workflow) reads it from here, so the two can never disagree.
     """
@@ -883,10 +883,10 @@ def wide_task(
             async with wide_task("nightly_sweep", trace_id=get_trace_id() or None):
                 log.set(swept=await sweep())
 
-    GAIA's ARQ tasks do not call this themselves — ``app.workers.task_envelope``
+    GAIA's ARQ tasks do not call this themselves — app.workers.task_envelope
     applies it once per task at registration so the trace id propagated by the
-    enqueuer and ARQ's ``job_id``/``job_try`` land on every task's event without
-    21 call sites having to remember. Task bodies just call ``log.set(...)``.
+    enqueuer and ARQ's job_id/job_try land on every task's event without
+    21 call sites having to remember. Task bodies just call log.set(...).
     """
     return _wide_event_boundary(
         task_name,
@@ -905,9 +905,9 @@ def log_context(
 
     Code that runs outside an HTTP request — fire-and-forget asyncio tasks,
     post-OAuth background connects, callbacks — has no logging middleware to
-    bind/flush the wide event accumulator, so every ``log.set()`` field is
-    silently discarded. Wrap that work in ``log_context`` and the accumulated
-    fields are emitted as one canonical ``background_task`` JSON line on exit
+    bind/flush the wide event accumulator, so every log.set() field is
+    silently discarded. Wrap that work in log_context and the accumulated
+    fields are emitted as one canonical background_task JSON line on exit
     (success or exception), exactly like the HTTP middleware does per request.
 
     Usage:
@@ -930,13 +930,13 @@ _spawned_tasks: set[asyncio.Task[Any]] = set()
 def spawn_logged_task(
     operation: str, coro: Coroutine[Any, Any, Any], **initial_context: Any
 ) -> asyncio.Task[Any]:
-    """``asyncio.create_task`` with a wide-event boundary and GC-safe bookkeeping.
+    """asyncio.create_task with a wide-event boundary and GC-safe bookkeeping.
 
     The sanctioned way to spawn fire-and-forget work from a request handler or
-    service: without a boundary the task's ``log.set()`` fields are silently
+    service: without a boundary the task's log.set() fields are silently
     discarded (the request's event has already emitted by the time it runs).
-    The spawned work emits one ``background_task`` event carrying the spawning
-    request's ``trace_id``, and the task reference is retained until done so
+    The spawned work emits one background_task event carrying the spawning
+    request's trace_id, and the task reference is retained until done so
     it cannot be garbage-collected mid-flight.
     """
 

@@ -1,7 +1,7 @@
 """Configuration dataclasses for the overridden langgraph create_agent.
 
 Lives in its own module so consumers that build configs (e.g.
-``app.agents.tools.core.tool_runtime_config``) can import the types without
+app.agents.tools.core.tool_runtime_config) can import the types without
 importing the graph builder itself — create_agent pulls in the whole agent
 stack, and a config-only import must not.
 """

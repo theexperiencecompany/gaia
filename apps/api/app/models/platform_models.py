@@ -1,8 +1,3 @@
-"""Platform Models
-
-Pydantic models for platform account linking and authentication.
-"""
-
 from datetime import datetime
 from typing import Annotated, TypedDict
 
@@ -36,15 +31,15 @@ class InitiatePlatformConnectRequest(BaseModel):
 class PlatformLinkEntry(TypedDict):
     """One linked platform account — the single shape for this entry.
 
-    A ``TypedDict`` rather than a model (Type Safety item 6) because it has two
+    A TypedDict rather than a model (Type Safety item 6) because it has two
     consumers with different needs, and this type serves both without a rival
-    copy. ``PlatformLinkService.get_linked_platforms`` assembles it in-process
-    from an already-loaded ``UserDocument``, and the outbound-delivery paths
-    read it tolerating a legacy non-string ``platformUserId`` (Telegram stores
+    copy. PlatformLinkService.get_linked_platforms assembles it in-process
+    from an already-loaded UserDocument, and the outbound-delivery paths
+    read it tolerating a legacy non-string platformUserId (Telegram stores
     chat_id as an int) which they coerce at the envelope; validating there would
     start raising on those rows — a behaviour change (item 13). Pydantic still
-    validates it as a field of ``GetPlatformLinksResponse`` below, so the HTTP
-    boundary rejects the same values a ``BaseModel`` here would.
+    validates it as a field of GetPlatformLinksResponse below, so the HTTP
+    boundary rejects the same values a BaseModel here would.
     """
 
     platform: Annotated[str, Field(description="Platform name")]
@@ -129,7 +124,7 @@ class PendingPlatformRegistrationDocument(MongoDocument):
     """A platform handle provisioned upstream but not yet linked to the GAIA user.
 
     iMessage is the only producer today: connecting registers the number on
-    Photon's shared pool before the user proves ownership by texting ``/auth``.
+    Photon's shared pool before the user proves ownership by texting /auth.
     The record is what lets an abandoned registration be found and released —
     without it the pool seat is allocated with nothing in GAIA pointing at it.
     """

@@ -33,11 +33,9 @@ from app.schemas.errors import (
 )
 from app.services import latency_metrics as _latency_metrics  # noqa: F401 -- side effects
 
-# Eager-import the FsOps metrics module so its Prometheus collectors register
-# on the default registry at app startup. Without this the storage layer is
-# lazy-imported on first use, and /metrics omits the fs_op_* metadata lines
+# Eager-import so Prometheus collectors register at startup; otherwise the
+# storage layer lazy-imports on first use and /metrics omits fs_op_* metadata
 # until the first FS-shaped operation runs.
-# Imported for router-registration side effects.
 from app.services.storage import metrics as _fs_metrics  # noqa: F401 -- side effects
 from app.utils.errors import AppError
 from shared.py.wide_events import log as wide_log
@@ -71,14 +69,9 @@ def create_app() -> FastAPI:
 
     configure_middleware(app)
 
-    # Expose /metrics for Prometheus scraping.
-    # In production, guard with a bearer token so /metrics is not publicly readable.
-    # The LoggingMiddleware already skips /metrics so it won't pollute request logs.
-    # `latency_lowr_buckets` defaults to (0.1, 0.5, 1), and histogram_quantile
-    # cannot return a value above the highest finite bucket — so p95 was capped
-    # at 1.0s and the Grafana latency alerts (>1s warning, >3s critical) could
-    # never fire. These buckets straddle both thresholds so the alerts work and
-    # the latency panels stop flat-lining at 1s.
+    # Default buckets (0.1, 0.5, 1) capped p95 at 1.0s, so Grafana's >1s/>3s
+    # latency alerts never fired; these straddle both thresholds. LoggingMiddleware
+    # already skips /metrics, so exposing it here won't pollute request logs.
     instrumentator = Instrumentator().instrument(
         app, latency_lowr_buckets=(0.1, 0.25, 0.5, 1, 2.5, 5, 10)
     )
@@ -103,7 +96,7 @@ def create_app() -> FastAPI:
         """Convert AppError into a structured JSON response with wide event context.
 
         Emits an explicit error log so the wide-event final_level flips to ERROR
-        and downstream LogQL filters (e.g. `errors!="[]"`, `level="ERROR"`) catch
+        and downstream LogQL filters (e.g. errors!="[]", level="ERROR") catch
         it. Without this the AppError only showed up in Sentry and was invisible
         to Loki searches that look for application errors by level.
         """
@@ -142,16 +135,10 @@ def create_app() -> FastAPI:
     async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> Response:
         """Record the failure on the wide event, then render it as the envelope.
 
-        Starlette's ExceptionMiddleware converts an HTTPException into a
-        response INSIDE call_next, so LoggingMiddleware's except path never
-        sees it: every `raise HTTPException(500, ...)` emitted a wide event
-        whose `errors` key was absent entirely. The status said 500 but the
-        event carried no record of what failed, and the exception the handler
-        had caught was nowhere in the telemetry.
-
-        Like FastAPI's default handler this preserves `exc.headers`
-        (WWW-Authenticate on 401, Retry-After on 429) and drops the body for
-        statuses that may not carry one (204/304).
+        Starlette's ExceptionMiddleware converts HTTPException into a response
+        inside call_next, so LoggingMiddleware's except path never sees it —
+        without this, every HTTPException(500) wide event had no errors[] entry.
+        Preserves exc.headers and drops the body for statuses that forbid one (204/304).
         """
         failure: dict[str, Any] = {
             "status_code": exc.status_code,
@@ -185,19 +172,14 @@ def create_app() -> FastAPI:
         calls would land on an orphan state. The shared PostHog client is
         initialized during lifespan startup and records the exception centrally.
         """
-        # Guard like PostHogRequestContextMiddleware: this handler runs even in
-        # apps built without the production lifespan (tests, scripts), where the
-        # provider is never registered — providers.get would raise KeyError and
-        # a raising 500-handler turns the JSON body into a bare Starlette 500.
+        # Guard like PostHogRequestContextMiddleware: without the production lifespan
+        # (tests, scripts) the provider is never registered, so providers.get raises
+        # KeyError, turning this 500-handler's JSON body into a bare Starlette 500.
         posthog_client = providers.get("posthog") if providers.is_available("posthog") else None
         if posthog_client is not None:
-            # Attribute explicitly. PostHogRequestContextMiddleware identifies
-            # inside `with new_context():` around call_next, so an exception
-            # propagating out of it unwinds that context before reaching this
-            # handler in ServerErrorMiddleware — every 500 would otherwise land
-            # on a fresh anonymous profile, making crashes unattributable to the
-            # user who hit them. request.state survives because it lives on the
-            # request object, not a contextvar.
+            # Attribute explicitly: PostHogRequestContextMiddleware's identify context
+            # unwinds before an exception reaches this handler in ServerErrorMiddleware,
+            # so every 500 would otherwise land on an anonymous profile.
             user = getattr(request.state, "user", None)
             user_id = user.get("user_id") if user else None
             if user_id:

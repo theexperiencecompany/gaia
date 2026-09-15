@@ -1,25 +1,18 @@
-"""The one grammar for a playbook's ``$placeholders``.
+"""The one grammar for a playbook's $placeholders.
 
-The validator (``parser.py``) and the evaluator (``evaluator.py``) both read
-placeholders out of a step's arguments, and they have to find exactly the same
-ones: a token the validator misses is one the evaluator substitutes unchecked,
-and a token the validator checks but the evaluator ignores reaches a tool as
-literal text. One scanner, used by both, is what keeps them from disagreeing.
+The validator (parser.py) and the evaluator (evaluator.py) both read
+placeholders from a step's arguments and must find exactly the same ones —
+one scanner, shared by both, keeps them from disagreeing.
 
-A ``$word`` whose root is not one of the namespaces below is NOT a token: it is
-literal text on both sides — the validator does not check it and the evaluator
-leaves it untouched. A recorded ``bash`` step legitimately says ``echo $HOME``,
-and refusing every ``$identifier`` at write time would refuse that playbook.
-``$ask`` is deliberately absent: text a model writes at replay is no longer a
-reference into a table but an inline ``{"$ask": ...}`` value standing where the
-argument goes, so ``$ask.anything`` in a string is now plain text like any other
+A $word whose root is not a known namespace is literal text on both sides
+(e.g. a bash step's echo $HOME), not a token. $ask is deliberately absent:
+once a model writes an answer, it's an inline {"$ask": ...} value, not a
+reference — so $ask.anything in a string becomes plain text like any other
 unknown root.
 
-``$item`` is the one root that only means something somewhere: it addresses the
-element a ``for_each`` step is currently on, so it resolves inside such a step
-and is an error anywhere else. It is a root rather than a per-step convention
-because the validator and the evaluator have to agree on it like any other
-token, and a second grammar for one field is how the two drift apart.
+$item only means something inside a for_each step (the element it's
+currently on) and is an error elsewhere; it's a root, not a per-step
+convention, so the validator and evaluator can't drift apart on it.
 """
 
 from collections.abc import Iterator, Mapping
@@ -34,10 +27,8 @@ PLACEHOLDER_ROOTS: frozenset[str] = frozenset(
 _ROOT_ALTERNATION = "|".join(sorted(PLACEHOLDER_ROOTS, key=len, reverse=True))
 
 #: One token: ``$``, a KNOWN root (ended by a non-identifier character, so
-#: ``$nowhere`` is text rather than ``$now`` + ``here``), an optional dotted path,
-#: and (meaningful only for the two time roots) an optional signed offset and an
-#: optional clock time (``$today + 1d 09:00``: tomorrow at nine). Used to match,
-#: never to build code — the match groups are read as data.
+#: ``$nowhere`` is text rather than ``$now`` + ``here``), an optional dotted
+#: path, and an optional signed offset and clock time for the two time roots.
 PLACEHOLDER_TOKEN = re.compile(
     rf"\$(?P<root>{_ROOT_ALTERNATION})(?![A-Za-z0-9_])"
     r"(?P<path>(?:\.[A-Za-z0-9_-]+)*)"

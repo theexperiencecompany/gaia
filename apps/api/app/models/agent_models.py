@@ -8,17 +8,9 @@ from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_config
 
-#: One entry of an agent's middleware stack.
-#:
-#: ``AgentMiddleware``'s ``StateT`` is erased here because a stack is genuinely
-#: heterogeneous — ``SubagentMiddleware`` is typed over ``SubagentState``, the
-#: rest over the base ``AgentState`` — and ``StateT`` is invariant, so no
-#: narrower common element type exists. This still checks that every entry IS an
-#: ``AgentMiddleware``, which the ``Any`` it replaces did not.
-#:
-#: It lives here, rather than beside the factory that builds stacks, because
-#: both that factory and the spawn-graph builder that consumes one need it, and
-#: those two must not import each other (see ``spawn_agent``'s module docstring).
+#: One entry of an agent's middleware stack. ``StateT`` is erased since a
+#: stack is genuinely heterogeneous, but this still checks every entry IS an
+#: ``AgentMiddleware``. Lives here since the stack factory and spawn-graph builder must not import each other.
 AnyAgentMiddleware = AgentMiddleware[Any, Any, Any]
 
 #: An agent's middleware stack, in execution order.
@@ -26,17 +18,17 @@ AgentMiddlewareStack = list[AnyAgentMiddleware]
 
 
 class AgentUserContext(TypedDict, total=False):
-    """The user fields ``build_agent_config`` reads — nothing more.
+    """The user fields build_agent_config reads — nothing more.
 
-    Deliberately narrower than :class:`~app.models.user_models.AuthenticatedUser`,
+    Deliberately narrower than :class:~app.models.user_models.AuthenticatedUser,
     which is assignable to it: only the top-level entries (chat, background
     narration) hold a real request auth context. Every child agent — executor,
     handoff subagents, spawn, the workflow author — reconstructs a bare identity
-    bag from its parent's ``configurable``, and typing those as
-    ``AuthenticatedUser`` would claim they carry auth-path flags and the whole
+    bag from its parent's configurable, and typing those as
+    AuthenticatedUser would claim they carry auth-path flags and the whole
     user document, which they do not.
 
-    ``total=False`` because those child bags omit ``timezone`` (they inherit the
+    total=False because those child bags omit timezone (they inherit the
     resolved zone from the parent configurable instead).
     """
 
@@ -52,27 +44,13 @@ ExecutionMode = Literal["interactive", "background"]
 
 
 class AgentConfigurable(TypedDict, total=False):
-    """Every key GAIA puts in a run's ``config["configurable"]`` — the whole agreement.
+    """Every key GAIA puts in a run's config["configurable"] — the whole agreement.
 
-    This is the one place the bag is described. Anything an agent, tool,
-    middleware or node expects to find in ``configurable`` is declared here, so
-    a reader can answer "what is actually in this thing" without grepping, and
-    mypy rejects a subscript for a key nobody writes.
-
-    ``total=False`` is the honest shape, not a shortcut. ``build_agent_config``
-    is the main producer and fills nearly all of it, but several paths
-    legitimately construct a partial bag — a bare ``{"thread_id": ...}`` to
-    address a checkpoint, ``{"user_id": ...}`` for a one-off silent run, the
-    queue's serializable subset — and every consumer already reads through
-    ``.get()`` with a fallback.
-
-    It stays a ``TypedDict`` over a plain dict (not a Pydantic model) because
-    LangGraph owns the object at runtime: it merges its own keys in
-    (``checkpoint_ns``, ``checkpoint_id``, ``__pregel_*``), passes it to
-    ``llm.with_config(configurable=...)``, and checkpoints it. Declaring the
-    GAIA-owned keys describes that bag without trying to own it — read
-    :func:`agent_configurable` for how consumers get here from a
-    ``RunnableConfig``.
+    total=False is the honest shape: build_agent_config fills nearly all of
+    it, but several paths legitimately construct a partial bag, and every
+    consumer already reads through .get() with a fallback. A TypedDict, not
+    a Pydantic model, since LangGraph owns the runtime object (merges in its
+    own keys, checkpoints it) — this only describes the GAIA-owned keys.
     """
 
     # --- identity: who and which conversation ------------------------------
@@ -92,49 +70,30 @@ class AgentConfigurable(TypedDict, total=False):
     #: judge grounds gated calls against these, so they are never an agent's
     #: paraphrase of the request.
     user_messages: list[str] | None
-    #: The live turn's request, exactly as the user typed it and NOT clipped
-    #: (``user_messages`` is capped at ``HIL_JUDGE_MAX_TURN_CHARS`` per turn, so it
-    #: cannot serve as the verbatim copy). Established once by comms and inherited
-    #: parent-overrides, same rule as ``user_messages``. ``call_executor`` folds it
-    #: into the executor brief so the worker tier always sees the user's own words
-    #: next to the comms agent's paraphrase of them. Absent for non-chat roots
-    #: (workflow/trigger runs), which have no literal user turn.
+    #: The live turn's request, exactly as typed and NOT clipped (unlike
+    #: ``user_messages``, which is capped per turn). Established once by comms
+    #: and inherited parent-overrides. Absent for non-chat roots.
     user_request: str | None
     user_message_id: str
-    #: The live comms turn's own bot message id (chat stream's ``state.bot_message_id``).
-    #: Threaded into ``call_executor`` so a HIL pause that later resumes can reconcile
-    #: its result onto this SAME message instead of minting a rival one — see
-    #: ``ExecutorRun.bot_message_id`` and ``executor_runner._record_pause``.
+    #: The live comms turn's own bot message id. Threaded into ``call_executor``
+    #: so a resumed HIL pause reconciles onto this SAME message, not a new one.
     bot_message_id: str
-    #: Onboarding preferences / writing style, established once at the root of
-    #: a run tree (wherever a full user document is already in hand — comms,
-    #: background narration, the dev direct-invoke entrypoint) and inherited
-    #: unchanged by every child agent, same as ``user_messages``. Absent when
-    #: the root itself had none; the context sections that read them degrade
-    #: to no section rather than guessing.
+    #: Onboarding preferences / writing style, established once at a run tree's
+    #: root and inherited unchanged by every child agent. Absent when the root
+    #: had none; the context sections that read them degrade to no section.
     user_preferences: dict[str, Any] | None
     writing_style: dict[str, Any] | None
-    #: One id for the WHOLE user turn: minted at the top-level
-    #: ``build_agent_config`` call and inherited by every child agent (executor,
-    #: handoff subagents, spawn loops). The accounting middleware keys the
-    #: request tree's aggregate token ceiling on it, so the per-request ceiling
-    #: binds across the tree instead of resetting per graph.
+    #: One id for the WHOLE user turn, minted at the top-level
+    #: ``build_agent_config`` call and inherited by every child agent, so the
+    #: accounting middleware's token ceiling binds across the tree.
     root_request_id: str
 
     # --- model selection ----------------------------------------------------
-    #: THE model selection: a serialized :class:`~app.agents.llm.lane.ModelLane`,
-    #: resolved once per turn and inherited verbatim by every child agent, queue
-    #: hop and HIL resume. **This is the only model key GAIA code reads.**
-    #:
-    #: Absent on a bag written before lanes existed (an in-flight queue item, a
-    #: stored HIL ``resume_item``); ``ModelLane.from_configurable`` returns
-    #: ``None`` for those and the caller resolves a fresh lane.
+    #: THE model selection, resolved once per turn and inherited verbatim.
+    #: **This is the only model key GAIA code reads.**
     lane: dict[str, Any]
-    #: LangChain's own binding keys, written from the lane by
-    #: ``build_agent_config`` and read ONLY by LangChain's field resolution:
-    #: ``provider`` selects the configurable_alternative, the rest are
-    #: ConfigurableFields. Never read these in GAIA code — they are the
-    #: expansion, not the decision. Read ``lane``.
+    #: LangChain's own binding keys, written from ``lane`` and read ONLY by
+    #: LangChain's field resolution — the expansion, not the decision.
     provider: str
     model: str
     model_kwargs: dict[str, Any]
@@ -158,21 +117,18 @@ class AgentConfigurable(TypedDict, total=False):
     #: category (``SourceCategory`` value).
     conversation_source: str | None
     source_category: str
-    #: The user's resolved plan tier (``PlanType`` value), stamped by
-    #: ``resolve_lane`` on the top-level configurable and inherited by
-    #: children. The accounting middleware's budget wall reads it to avoid a
-    #: Redis plan lookup on the hot path; absent, the wall derives the tier
-    #: from the cached plan itself.
+    #: The user's resolved plan tier, stamped by ``resolve_lane`` and inherited
+    #: by children; the budget wall reads it to avoid a Redis lookup, and
+    #: derives the tier from the cached plan itself when absent.
     plan_type: str
 
     # --- workflow context (must survive queueing) ---------------------------
     workflow_id: str
     workflow_title: str
     workflow_notify_on_completion: bool
-    #: A playbook replay stopped partway in THIS fire and the agent is finishing
-    #: it: the replay's own record of what already ran. Carried to the executor
-    #: verbatim (``call_executor`` folds it into the heal brief) because comms
-    #: cannot be trusted to transcribe "do not repeat these" into its task.
+    #: A playbook replay stopped partway and the agent is finishing it: the
+    #: replay's own record of what already ran, carried verbatim to the
+    #: executor since comms can't be trusted to transcribe it into its task.
     playbook_fallback: str | None
     #: The calls a stopped replay made this fire, as ``RecordedCall`` dumps, so a
     #: rewrite may freeze them. See ``PLAYBOOK_REPLAYED_CALLS_KEY``.
@@ -189,19 +145,16 @@ class AgentConfigurable(TypedDict, total=False):
     #: a replayed call from a fresh one. Keyed by ``HIL_RESUME_CONFIG_KEY``.
     hil_resume_replay: bool
     #: DEV-ONLY: the DEV_MODEL_OPTIONS key picked for the executor in the dev
-    #: model switcher. The executor builds its own configurable rather than
-    #: inheriting comms's lane wholesale, so the choice rides down here.
+    #: model switcher, since the executor builds its own configurable.
     dev_executor_model: str
 
 
 def current_run_config() -> RunnableConfig:
-    """The active ``RunnableConfig`` for the current graph run.
+    """Return the active RunnableConfig for the current graph run.
 
-    LangChain's middleware hooks are called as ``(state, runtime)`` and
-    ``(request, handler)`` — neither hands the config in as a parameter.
-    ``get_config()`` reads it from LangGraph's context-var, the same mechanism
-    nodes use. Returns an empty config outside a runnable context, so callers on
-    a sync fallback path never have to guard.
+    LangChain's middleware hooks don't hand the config in as a parameter, so
+    this reads it from LangGraph's context-var instead. Returns an empty
+    config outside a runnable context, so callers never have to guard.
     """
     try:
         return get_config()
@@ -210,21 +163,11 @@ def current_run_config() -> RunnableConfig:
 
 
 def agent_configurable(config: RunnableConfig | None) -> AgentConfigurable:
-    """The GAIA-owned keys of a run's ``configurable``, typed.
+    """Return the GAIA-owned keys of a run's configurable, typed — the single way to READ one.
 
-    The single way to READ a ``configurable``. Every consumer used to inline
-    ``config.get("configurable", {}).get(key)``, which yields ``Any`` and so
-    checks neither the key nor the value type.
-
-    A ``cast`` rather than a validation step: the dict is built by
-    ``build_agent_config`` as an :class:`AgentConfigurable` and is correct by
-    construction (Type Safety item 12). LangGraph's own runtime keys ride along
-    in the same dict and are simply not part of this view.
-
-    Reads only. The ``or {}`` means a config with no ``configurable`` yields a
-    throwaway dict, so a write through it would be silently dropped — the few
-    sites that mutate a live bag index ``config["configurable"]`` directly and
-    keep today's ``KeyError`` when it is absent.
+    A cast, not a validation step: the dict is built by build_agent_config
+    and correct by construction. Reads only — the or {} means a write
+    through the result would be silently dropped.
     """
     return cast(AgentConfigurable, (config or {}).get("configurable") or {})
 
@@ -242,13 +185,10 @@ def config_agent_name(config: RunnableConfig | None) -> str:
 
 
 def runtime_configurable(request: ToolCallRequest) -> AgentConfigurable:
-    """The same view as :func:`agent_configurable`, reached through a middleware
-    ``ToolCallRequest``.
+    """Same view as agent_configurable, reached through a middleware ToolCallRequest.
 
-    A tool intercepted by middleware gets its config off ``request.runtime``
-    rather than as an injected ``RunnableConfig``, and that attribute is typed
-    loosely enough that it may not be a mapping at all — hence the guard.
-    Returns an empty view outside a graph.
+    request.runtime.config is typed loosely enough that it may not be a
+    mapping at all, hence the guard; returns an empty view outside a graph.
     """
     runtime = getattr(request, "runtime", None)
     config = getattr(runtime, "config", None)
@@ -258,18 +198,18 @@ def runtime_configurable(request: ToolCallRequest) -> AgentConfigurable:
 
 
 class AgentRunnableConfig(RunnableConfig):
-    """What ``build_agent_config`` returns: a ``RunnableConfig`` plus ``agent_name``.
+    """What build_agent_config returns: a RunnableConfig plus agent_name.
 
-    ``agent_name`` is GAIA's own key, not LangGraph's — the graph drivers gate
-    text accumulation on ``config["agent_name"] == "comms_agent"`` so only the
+    agent_name is GAIA's own key, not LangGraph's — the graph drivers gate
+    text accumulation on config["agent_name"] == "comms_agent" so only the
     user-facing agent's tokens reach the client. Subclassing rather than a
-    parallel type keeps the value directly passable to ``graph.astream(config=...)``.
+    parallel type keeps the value directly passable to graph.astream(config=...).
 
-    ``configurable`` keeps LangGraph's ``dict[str, Any]`` annotation because a
+    configurable keeps LangGraph's dict[str, Any] annotation because a
     TypedDict field cannot be narrowed in a subclass without making the result
-    unassignable to ``RunnableConfig`` — which is the whole point of
-    subclassing. :class:`AgentConfigurable` names what is inside it, and
-    :func:`agent_configurable` is how you read it.
+    unassignable to RunnableConfig — which is the whole point of
+    subclassing. :class:AgentConfigurable names what is inside it, and
+    :func:agent_configurable is how you read it.
     """
 
     agent_name: str
@@ -277,13 +217,13 @@ class AgentRunnableConfig(RunnableConfig):
 
 @dataclass(frozen=True)
 class SilentRunResult:
-    """What one ``call_agent_silent`` turn produced.
+    """What one call_agent_silent turn produced.
 
-    ``queued_task_id`` is set when the turn's comms agent delegated to the
+    queued_task_id is set when the turn's comms agent delegated to the
     executor and that dispatch was QUEUED behind an in-flight run for the same
-    conversation instead of running. The ``message`` is then an acknowledgement
+    conversation instead of running. The message is then an acknowledgement
     of work that has not started, so a caller must not record the turn as work
-    done. It is ``None`` whenever an executor actually ran.
+    done. It is None whenever an executor actually ran.
     """
 
     message: str

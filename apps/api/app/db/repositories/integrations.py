@@ -1,9 +1,9 @@
-"""Repository for the ``integrations`` collection.
+"""Repository for the integrations collection.
 
 Global (non-user-scoped) catalog of custom + community MCP integrations. Identity
-is the business key ``integration_id`` (unique index); the Mongo ``_id`` (ObjectId)
+is the business key integration_id (unique index); the Mongo _id (ObjectId)
 is incidental and dropped on read. Timestamps are not auto-stamped — the collection
-leaves ``updated_at`` unset on insert and only ``update_custom`` writes it, so the
+leaves updated_at unset on insert and only update_custom writes it, so the
 repository mirrors that on-disk reality rather than stamping every write.
 """
 
@@ -43,7 +43,7 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
     async def find_by_id_prefix_or_name(self, search: str) -> Integration | None:
         """Resolve a partial id or exact name to an integration.
 
-        Matches ``integration_id`` by case-insensitive prefix, or ``name`` by
+        Matches integration_id by case-insensitive prefix, or name by
         case-insensitive exact match — the disambiguation used by handoff/agent
         metadata lookups where the caller may hold either a short id or a name.
         """
@@ -58,7 +58,7 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         )
 
     async def find_by_id_prefix(self, prefix: str) -> Integration | None:
-        """Resolve a partial ``integration_id`` (case-insensitive prefix) to an integration."""
+        """Resolve a partial integration_id (case-insensitive prefix) to an integration."""
         escaped = re.escape(prefix)
         return await self._find_one({"integration_id": {"$regex": f"^{escaped}", "$options": "i"}})
 
@@ -67,11 +67,11 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         return await self._find({"integration_id": {"$in": integration_ids}, "source": "custom"})
 
     async def get_custom(self, integration_id: str) -> Integration | None:
-        """A custom-source integration by id (the delete-ownership check reads this)."""
+        """Return a custom-source integration by id (the delete-ownership check reads this)."""
         return await self._find_one({"integration_id": integration_id, "source": "custom"})
 
     async def get_custom_for_user(self, integration_id: str, user_id: str) -> Integration | None:
-        """A custom integration owned by ``user_id`` — the creator-only edit guard."""
+        """Return a custom integration owned by user_id — the creator-only edit guard."""
         return await self._find_one(
             {"integration_id": integration_id, "source": "custom", "created_by": user_id}
         )
@@ -79,13 +79,9 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
     async def find_custom_by_server_url(
         self, server_url: str, created_by: str
     ) -> Integration | None:
-        """A user's custom integration at this server URL (normalization-insensitive).
+        """Find a user's custom integration at this server URL, normalization-insensitive.
 
-        Matches on the stored ``mcp_config.server_url_normalized`` dedup key, so
-        ``https://host/mcp/`` finds a server stored as ``https://host/mcp`` (and
-        vice versa) regardless of which creation path wrote the row. The input is
-        normalized here — callers pass the URL as they have it. An unusable URL
-        matches nothing (rather than raising out of a finder).
+        Matches on the stored server_url_normalized dedup key; an unusable URL matches nothing rather than raising.
         """
         key = dedup_server_url_key(server_url)
         if key is None:
@@ -99,15 +95,16 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         )
 
     async def delete_custom(self, integration_id: str, created_by: str) -> bool:
-        """Delete a custom integration only if ``created_by`` owns it (creator-only)."""
+        """Delete a custom integration only if created_by owns it (creator-only)."""
         return await self._remove(
             integration_id, REPO_GLOBAL_SCOPE, {"source": "custom", "created_by": created_by}
         )
 
     async def list_public_custom(self, category: str | None = None) -> list[Integration]:
-        """Public custom integrations for the marketplace, newest first, optionally
-        filtered by category. Lenient: a single corrupt legacy doc is skipped, not
-        fatal to the whole listing (mirrors the old per-doc try/except)."""
+        """Public custom integrations for the marketplace, newest first, optionally by category.
+
+        Lenient: a single corrupt legacy doc is skipped, not fatal to the whole listing.
+        """
         filter_: dict[str, object] = {"source": "custom", "is_public": True}
         if category and category != "all":
             filter_["category"] = category
@@ -165,8 +162,8 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
     ) -> None:
         """Sync the legacy top-level auth mirror to match the authoritative mcp_config.
 
-        Writes the ad-hoc ``requires_auth`` / ``auth_type`` document-root fields that
-        predate mcp_config; kept as a raw ``$set`` because they are not part of the
+        Writes the ad-hoc requires_auth / auth_type document-root fields that
+        predate mcp_config; kept as a raw $set because they are not part of the
         typed update surface."""
         await self._apply_raw_update_unfetched(
             {"integration_id": integration_id},
@@ -182,9 +179,9 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         """Join each integration's creator (name/picture) from the users collection.
 
         The single canonical creator-lookup, folded in from the two divergent copies
-        that used to live in integration_helpers and integration_service. ``created_by``
-        holds a user's ObjectId-as-string; ``$convert`` tolerates a missing/invalid
-        value (``creator`` becomes ``None``) rather than failing the pipeline.
+        that used to live in integration_helpers and integration_service. created_by
+        holds a user's ObjectId-as-string; $convert tolerates a missing/invalid
+        value (creator becomes None) rather than failing the pipeline.
         """
         return [
             {
@@ -222,7 +219,7 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         ]
 
     async def get_public_by_slug(self, slug: str) -> IntegrationWithCreator | None:
-        """A published integration by exact slug, with creator info joined."""
+        """Return a published integration by exact slug, with creator info joined."""
         results = await self._aggregate(
             [{"$match": {"slug": slug, "is_public": True}}, *self._creator_lookup_stages()],
             IntegrationWithCreator,
@@ -230,8 +227,7 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         return results[0] if results else None
 
     async def get_public_by_id_prefix(self, short_id: str) -> IntegrationWithCreator | None:
-        """A published integration by ``integration_id`` prefix (legacy hash slugs),
-        with creator info joined."""
+        """Return a published integration by integration_id prefix (legacy hash slugs), with creator joined."""
         escaped = re.escape(short_id)
         results = await self._aggregate(
             [
@@ -248,8 +244,10 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         return results[0] if results else None
 
     async def community_by_ids(self, integration_ids: list[str]) -> list[IntegrationWithCreator]:
-        """Published integrations among the given ids, creator joined (semantic-search hits).
-        Caller reorders to match the search ranking."""
+        """Return published integrations among the given ids, creator joined (semantic-search hits).
+
+        Caller reorders to match the search ranking.
+        """
         return await self._aggregate(
             [
                 {"$match": {"integration_id": {"$in": integration_ids}, "is_public": True}},
@@ -321,11 +319,11 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
     # ---- publish / connection-status writes ----
 
     async def get_public(self, integration_id: str) -> Integration | None:
-        """A published integration by id (the public add-to-workspace read)."""
+        """Return a published integration by id (the public add-to-workspace read)."""
         return await self._find_one({"integration_id": integration_id, "is_public": True})
 
     async def get_by_creator(self, integration_id: str, created_by: str) -> Integration | None:
-        """An integration by id constrained to its creator (publish conflict check)."""
+        """Return an integration by id constrained to its creator (publish conflict check)."""
         return await self._find_one({"integration_id": integration_id, "created_by": created_by})
 
     async def increment_clone_count(self, integration_id: str) -> None:
@@ -360,7 +358,7 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         )
 
     async def ensure_unique_slug(self, name: str, category: str, integration_id: str) -> str:
-        """A marketplace slug unique across published integrations.
+        """Return a marketplace slug unique across published integrations.
 
         Appends -2, -3, … to the canonical slug until a free one is found (the
         slug-uniqueness probe, folded in from generate_unique_integration_slug).
@@ -390,8 +388,11 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         content: IntegrationContent | None,
         clone_count: int,
     ) -> bool:
-        """Publish a creator's unpublished custom integration. Returns False when the
-        guarded filter matches nothing (already public, or not the creator's custom)."""
+        """Publish a creator's unpublished custom integration.
+
+        Returns False when the guarded filter matches nothing (already
+        public, or not the creator's custom).
+        """
         matched = await self._apply_raw_update_unfetched(
             {
                 "integration_id": integration_id,
@@ -429,10 +430,9 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
     # ---- global MCP tool metadata (frontend display) ----
 
     async def store_tools(self, integration_id: str, tools: list[StoredIntegrationTool]) -> None:
-        """Upsert the stored tool metadata for an integration (creating a tools-only
-        stub document if the integration doc does not exist yet).
+        """Upsert the stored tool metadata for an integration, creating a tools-only stub if needed.
 
-        Uses the unfetched upsert: a tools-only stub is not a full ``Integration``,
+        Uses the unfetched upsert: a tools-only stub is not a full Integration,
         so it must never be read back through model validation.
         """
         await self._apply_raw_update_unfetched(
@@ -454,7 +454,7 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
             await self.store_tools(integration_id, tools)
 
     async def get_tools(self, integration_id: str) -> list[StoredIntegrationTool]:
-        """The stored tool metadata for an integration (empty when none stored)."""
+        """Return the stored tool metadata for an integration (empty when none stored)."""
         slice_ = await self._find_one_projected(
             {"integration_id": integration_id}, {"tools": 1}, IntegrationToolsSlice
         )

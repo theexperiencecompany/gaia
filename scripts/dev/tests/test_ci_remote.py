@@ -412,7 +412,7 @@ def stack_rollup(*prs: tuple[int, str]) -> dict[str, Any]:
 
 @pytest.fixture
 def stacked(wire, monkeypatch: pytest.MonkeyPatch):
-    """A two-PR stack; the second GraphQL call returns the rollup payload."""
+    """Set up a two-PR stack whose second GraphQL call returns the rollup payload."""
 
     def install(*prs: tuple[int, str]) -> FakeGh:
         fake = FakeGh(checks=[PASSED_CHECK])
@@ -604,8 +604,7 @@ def test_an_aggregate_gate_job_gets_its_own_log_not_another_lanes_verdict(
 def test_a_red_lane_with_no_verdict_never_reads_as_nothing_blocking(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Advice was empty when the only failures had no verdict, so a 3-lane-red
-    PR printed "Nothing blocking on GitHub's side"."""
+    """Advice was empty when only no-verdict failures existed, so a red PR read as clean."""
     wire(FakeGh(checks=[FAILED_CHECK]))
     assert run_cli(monkeypatch, []) == 1
     out = capsys.readouterr().out

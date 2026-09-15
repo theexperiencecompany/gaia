@@ -1,34 +1,16 @@
 """LangChain memory tools backed by the GAIA memory engine (plan F4).
 
-Every tool streams one structured event to the frontend via the LangGraph
-stream writer under the single registry key ``memory_data``. The payload is
-discriminated on ``action`` — these exact JSON shapes are the frontend
-contract (the tool cards mirror them):
+Every tool streams one structured event via the LangGraph stream writer under
+registry key memory_data, discriminated on action — exact JSON shapes are the
+frontend's tool-card contract: add {memories, folder, outcome:
+new|updated|extended|duplicate, message}; search {query, folder|null,
+memories, message}; update {memories, message}; forget {memory_id, reason,
+message}; journal {query|null, episodes, message}; document {document,
+updated, message}.
 
-    add      {"action": "add", "memories": [MemoryEntry], "folder": str,
-              "outcome": "new" | "updated" | "extended" | "duplicate",
-              "message": str}
-    search   {"action": "search", "query": str, "folder": str | null,
-              "memories": [MemoryEntry], "message": str}
-    update   {"action": "update", "memories": [MemoryEntry], "message": str}
-    forget   {"action": "forget", "memory_id": str, "reason": str,
-              "message": str}
-    journal  {"action": "journal", "query": str | null,
-              "episodes": [{"date": "YYYY-MM-DD",
-                            "entries": [{"time": str | null, "text": str,
-                                         "source": str | null}],
-                            "summary": str | null}],
-              "message": str}
-    document {"action": "document",
-              "document": {"doc_type": str, "content": str, "version": int,
-                           "updated_at": str},
-              "updated": bool, "message": str}
-
-``MemoryEntry`` items are serialized exactly as the REST API serializes
-``app.models.memory_models.MemoryEntry`` (``model_dump(mode="json")``,
-snake_case keys), with ``content`` capped at MEMORY_TOOL_CONTENT_MAX_CHARS.
-Document ``content`` is capped at MEMORY_TOOL_DOCUMENT_MAX_CHARS. ``doc_type``
-is a ``MemoryDocType`` value (``user_md`` ... ``people_md``).
+MemoryEntry mirrors MemoryEntry.model_dump(mode="json") (snake_case),
+content capped at MEMORY_TOOL_CONTENT_MAX_CHARS, document content at
+MEMORY_TOOL_DOCUMENT_MAX_CHARS.
 """
 
 from datetime import date as date_type
@@ -72,12 +54,9 @@ from shared.py.wide_events import MemoryContext, UserContext, log
 _ERR_NO_USER_ID = "Error: user_id not found in config"
 
 
-# ---------------------------------------------------------------------------
-# The ``memory_data`` payload vocabulary — the frontend contract described in
-# the module docstring, as a union discriminated on ``action``. Plain
-# TypedDicts: these are built here and handed straight to the stream writer,
-# so there is nothing to validate or coerce at runtime.
-# ---------------------------------------------------------------------------
+# The memory_data payload vocabulary from the module docstring, as a union
+# discriminated on action. Plain TypedDicts: built here and handed straight to
+# the stream writer, with nothing to validate or coerce at runtime.
 
 # A ``MemoryEntry``/``MemoryEpisodeEntry`` serialized with ``model_dump(mode="json")``
 # — an arbitrary JSON object by the time it reaches the payload.
@@ -85,7 +64,7 @@ SerializedEntry: TypeAlias = dict[str, Any]
 
 
 class JournalLinePayload(TypedDict):
-    """One journal line inside an ``episodes`` entry."""
+    """One journal line inside an episodes entry."""
 
     time: str | None
     text: str
@@ -93,7 +72,7 @@ class JournalLinePayload(TypedDict):
 
 
 class EpisodePayload(TypedDict):
-    """One journal day of the ``journal`` payload."""
+    """One journal day of the journal payload."""
 
     date: str
     entries: list[JournalLinePayload]
@@ -101,7 +80,7 @@ class EpisodePayload(TypedDict):
 
 
 class DocumentPayload(TypedDict):
-    """The core document carried by the ``document`` payload."""
+    """The core document carried by the document payload."""
 
     doc_type: str
     content: str
@@ -186,7 +165,7 @@ _DOC_TYPE_CHOICES = ", ".join(
 
 
 def _stream_memory_data(payload: MemoryDataPayload) -> None:
-    """Emit one ``memory_data`` event to the frontend (no-op outside a run)."""
+    """Emit one memory_data event to the frontend (no-op outside a run)."""
     try:
         writer = get_stream_writer()
     except RuntimeError:
@@ -197,12 +176,10 @@ def _stream_memory_data(payload: MemoryDataPayload) -> None:
 def _stream_memory_limit_card() -> None:
     """Emit the in-chat rate-limit card for the free memory cap.
 
-    Same ``rate_limit_data`` payload :func:`build_rate_limit_card` builds for
-    ``@with_rate_limiting`` (see app/decorators/rate_limiting.py), so the frontend
-    RateLimitCard with its upgrade CTA renders with zero new frontend work. The
-    explicit ``message`` matters: memory is NOT plan-gated (free includes a capped
-    amount), so the card must say the cap is full rather than the generic
-    "not included in your plan" copy.
+    Reuses build_rate_limit_card's rate_limit_data payload so the frontend
+    RateLimitCard renders with no new frontend work. Memory is NOT plan-gated
+    (free includes a capped amount), so the message says the cap is full
+    rather than "not included in your plan".
     """
     try:
         writer = get_stream_writer()
@@ -237,7 +214,7 @@ def _entry_payload(entry: MemoryEntry) -> SerializedEntry:
 
 
 def _episode_payload(episode: MemoryEpisode) -> EpisodePayload:
-    """Serialize a journal day for the ``journal`` tool-data payload."""
+    """Serialize a journal day for the journal tool-data payload."""
     return EpisodePayload(
         date=episode.date,
         entries=[
@@ -253,7 +230,7 @@ def _episode_payload(episode: MemoryEpisode) -> EpisodePayload:
 
 
 def _document_payload(document: MemoryDocument) -> DocumentPayload:
-    """Serialize a core document for the ``document`` tool-data payload."""
+    """Serialize a core document for the document tool-data payload."""
     return DocumentPayload(
         doc_type=document.doc_type.value,
         content=_cap(document.content, MEMORY_TOOL_DOCUMENT_MAX_CHARS),
@@ -443,11 +420,9 @@ async def update_memory(
     if not user_id:
         return _ERR_NO_USER_ID
 
-    # A bad id RAISES (MemoryNotFoundError) rather than returning an error
-    # string. The string version read back to the model as an ordinary result:
-    # it typo'd an id, got "Error: ... not found", and told the user the
-    # memory was fixed. A superseded id is not a failure — the engine resolves
-    # it to the live head of its chain.
+    # A bad id RAISES (MemoryNotFoundError) instead of returning an error string:
+    # the string version read back to the model as success on a typo'd id. A
+    # superseded id is not a failure — the engine resolves it to the live head.
     try:
         entry = await memory_engine.update_memory(user_id, memory_id, new_content)
     except Exception as e:

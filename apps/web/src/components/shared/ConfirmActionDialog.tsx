@@ -74,20 +74,6 @@ export function ConfirmActionDialog({
           },
         };
 
-      // case "delete_account":
-      //   return {
-      //     title: "Delete Account",
-      //     description:
-      //       "Are you sure you want to permanently delete your account? This action cannot be undone and all your data will be lost.",
-      //     confirmText: "Delete account",
-      //     cancelText: "Cancel",
-      //     variant: "destructive",
-      //     handler: async () => {
-      //       // TODO: Implement delete account logic
-      //       console.log("Delete account");
-      //     },
-      //   };
-
       default:
         return null;
     }

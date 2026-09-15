@@ -1,8 +1,8 @@
 """LongMemEval benchmark runner against the real GAIA memory pipeline.
 
-Replays each question's haystack sessions through ``memory_engine.retain``
-(real extraction + reconciliation, timestamped via the ``now`` seam), answers
-the question from ``recall`` + journal results only, and grades with an
+Replays each question's haystack sessions through memory_engine.retain
+(real extraction + reconciliation, timestamped via the now seam), answers
+the question from recall + journal results only, and grades with an
 LLM judge. Reference points on this benchmark (full 500, GPT-4o judge):
 Hindsight 94.6%, mem0 ~68%.
 
@@ -50,7 +50,7 @@ class CostMeter(BaseCallbackHandler):
 
     Attached to the memory module's silent config so it captures all four call
     types (extraction, reconcile, answer, judge). When projected cost crosses
-    ``max_usd`` it flips ``exceeded`` — the run loop checks this between
+    max_usd it flips exceeded — the run loop checks this between
     questions and stops, so the run can never blow past the budget.
     """
 

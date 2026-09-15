@@ -135,10 +135,9 @@ class TestSplitLegacyCanvas:
 
         new_canvas, activity = split_legacy_canvas(canvas)
 
-        # Exact output, not just relative order: this pins the sort key (a
-        # lambda over the timestamp) and the blank-line join separator. A
-        # looser `index()` check let the sort-key and join-separator mutants
-        # survive.
+        # Exact output, not just relative order: pins the sort key (a lambda over
+        # the timestamp) and the blank-line join separator — a looser index()
+        # check let those mutants survive.
         assert activity == (
             "### 2026-08-20\n- rescued early\n\n"
             "- 2026-08-21T10:00:00+00:00 timeline middle\n\n"
@@ -153,32 +152,28 @@ class TestSplitLegacyCanvas:
         assert activity is not None
 
     def test_blank_section_at_start_yields_leading_newline_not_none(self):
-        """A section removed with no preceding content leaves `"\\n"`, not
-        `""`/`None` — pins the `before` empty check in `_remove_section`."""
+        """A section removed with no preceding content leaves a leading newline, not empty or None."""
         new_canvas, activity = split_legacy_canvas("## Timeline\n- a")
 
         assert new_canvas == "\n"
         assert activity == "- a"
 
     def test_undated_block_is_kept_verbatim_and_trailing_lines_join_with_newline(self):
-        """A `### ` block with no date is undated; the surrounding text is
-        re-joined with `\\n`, not concatenated — pins both branches."""
+        """A ### block with no date is undated; the surrounding text rejoins with a newline, not concatenation."""
         dated, undated = _extract_entries("### nope\ntail one\ntail two")
 
         assert dated == []
         assert undated == ["### nope", "tail one", "tail two"]
 
     def test_undated_dated_block_keeps_the_block_text(self):
-        """A `### `-headed block whose date does not parse is kept verbatim in
-        the undated list (not dropped, not `None`)."""
+        """A ###-headed block whose date does not parse is kept verbatim in the undated list, not dropped to None."""
         dated, undated = _extract_entries("### 2026-13-99\n- nonsense")
 
         assert dated == []
         assert undated == ["### 2026-13-99\n- nonsense"]
 
     def test_naive_timestamps_are_tagged_utc(self):
-        """A timeline line with no offset is assumed UTC; an aware one is kept
-        as-is. Pins the `stamp.tzinfo is None` branch and the `.replace` tz."""
+        """A timeline line with no offset is assumed UTC; an aware one is kept as-is."""
         assert _line_timestamp("- 2026-08-21T09:00:00 rest") == datetime(
             2026, 8, 21, 9, 0, tzinfo=UTC
         )
@@ -187,18 +182,14 @@ class TestSplitLegacyCanvas:
         )
 
     def test_root_level_section_removal_has_no_extra_blank_line(self):
-        """A section that is the FIRST heading has no preceding content, so the
-        blank-line preservation must not fire. Pins `before and ...` (an `or`
-        would insert an extra leading newline)."""
+        """The first heading has no preceding content, so blank-line preservation must not fire."""
         new_canvas, activity = split_legacy_canvas("## Timeline\n- a\n\n## B\n2\n")
 
         assert new_canvas == "\n## B\n2\n"
         assert activity == "- a"
 
     def test_multiple_dated_blocks_and_undated_text_merge(self):
-        """Multiple dated blocks through the matcher: each `### `-headed block
-        is captured whole, and the text after the last block is scanned for
-        standalone entries."""
+        """Each ###-headed block is captured whole, and text after the last block is scanned for standalone entries."""
         dated, undated = _extract_entries(
             "### 2026-01-01\n- early\ntail one\ntail two\n### 2026-01-02\n- late"
         )
@@ -210,8 +201,7 @@ class TestSplitLegacyCanvas:
         assert undated == []
 
     def test_blank_line_before_dated_content_does_not_stop_the_scan(self):
-        """Blank lines are skipped, not a stop signal — an entry after one is
-        still collected."""
+        """Blank lines are skipped, not a stop signal — an entry after one is still collected."""
         dated, undated = _extract_entries(
             "note\n\n- 2026-01-02T00:00:00+00:00 late\n- 2026-01-03T00:00:00+00:00 later"
         )
@@ -223,9 +213,7 @@ class TestSplitLegacyCanvas:
         assert undated == ["note"]
 
     def test_dated_entries_merge_chronologically_across_sections(self):
-        """Entries from two sections arrive out of order and with labels whose
-        alphabetical order is the reverse of their date order, so the output
-        pins the date sort key (not the entry text) — and that the sort runs."""
+        """Entries from two sections, deliberately out of order and reverse-alphabetical, pin sorting by date not text."""
         _, activity = split_legacy_canvas(
             "## Activity Log\n"
             "- 2026-08-24T10:00:00+00:00 alpha\n"
@@ -245,9 +233,7 @@ class TestSplitLegacyCanvas:
         )
 
     def test_same_timestamp_entries_keep_source_order(self):
-        """Two entries with the same date must stay in source order (stable
-        sort on the timestamp); a sort on the entry text would swap them, and
-        sorting with no key would raise."""
+        """Same-date entries keep source order (stable sort on timestamp) — sorting by text would swap them."""
         _, activity = split_legacy_canvas(
             "## Activity Log\n- 2026-08-20T10:00:00+00:00 zulu\n- 2026-08-20T10:00:00+00:00 alpha\n"
         )
@@ -255,8 +241,7 @@ class TestSplitLegacyCanvas:
         assert activity == ("- 2026-08-20T10:00:00+00:00 zulu\n\n- 2026-08-20T10:00:00+00:00 alpha")
 
     def test_undated_entry_sorts_after_a_same_date_dated_entry(self):
-        """An undated line whose text sorts before a dated entry's line still
-        follows it: the key is the timestamp, not the rendered entry."""
+        """An undated line whose text sorts first still follows a same-date entry — the key is the timestamp."""
         _, activity = split_legacy_canvas(
             "## Activity Log\n- a-note\n- 2026-08-20T10:00:00+00:00 z\n"
         )
@@ -264,16 +249,13 @@ class TestSplitLegacyCanvas:
         assert activity == "- 2026-08-20T10:00:00+00:00 z\n\n- a-note"
 
     def test_trailing_whitespace_before_a_removed_section_is_preserved(self):
-        """Only newlines are stripped from the preceding text — a trailing
-        space stays. Pins `rstrip("\\n")` (rstrip with no argument would eat
-        the space)."""
+        """Only newlines are stripped from the preceding text — a trailing space stays."""
         new_canvas, _ = split_legacy_canvas("# T \n\n## Timeline\n- a\n\n## B\n2\n")
 
         assert new_canvas == "# T \n\n## B\n2\n"
 
     def test_trailing_non_newline_whitespace_chars_are_preserved(self):
-        """Only the newline is stripped: a trailing space or X before it stays
-        (rstrip with a multi-char set would eat them)."""
+        """Only the newline is stripped: a trailing space or char before it stays."""
         assert (
             split_legacy_canvas("# T X\n\n## Timeline\n- a\n\n## B\n2\n")[0] == "# T X\n\n## B\n2\n"
         )
@@ -282,15 +264,13 @@ class TestSplitLegacyCanvas:
         )
 
     def test_a_rescued_block_with_an_unparseable_date_is_kept_verbatim(self):
-        """A `### YYYY-MM-DD`-shaped block whose date does not parse (month 13)
-        is rescued as undated text, not dropped to `None`."""
+        """A ### YYYY-MM-DD block whose date fails to parse (month 13) is rescued as undated text, not dropped to None."""
         _, activity = split_legacy_canvas("# T\n\n## Learnings\n\n### 2026-13-99\n- nonsense\n")
 
         assert activity == "### 2026-13-99\n- nonsense"
 
     def test_section_between_content_keeps_blank_line_before_the_next_heading(self):
-        """A removed section with content both before and after — pins the
-        `before and after.startswith("\\n## ")` blank-line branch."""
+        """A removed section with content both before and after preserves the blank line before the next heading."""
         new_canvas, activity = split_legacy_canvas("pre\n\n## Timeline\n- a\n\n## B\n2\n")
 
         assert new_canvas == "pre\n\n## B\n2\n"

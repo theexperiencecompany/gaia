@@ -230,8 +230,7 @@ class TestRejection:
 
 
 class TestNormalize:
-    """`_normalize` is the field-name matcher; both sides of the compare run through
-    it, so a broken normalize can hide behind the fuzzy fallback. Pin it directly."""
+    """_normalize is the field-name matcher for both sides of the compare; a break could hide behind the fuzzy fallback."""
 
     def test_it_lowercases_and_strips_non_alphanumerics(self) -> None:
         assert _normalize("Thread Id") == "threadid"
@@ -293,8 +292,7 @@ class TestControlFlow:
 
 
 class TestNumberCoercion:
-    """The NUMBER field type (e.g. calendar minutes_until_start) has its own
-    coercion path, distinct from INTEGER — a broken float() silently drops it."""
+    """The NUMBER field type (e.g. calendar minutes_until_start) has its own coercion path; a broken float() would drop it."""
 
     def test_an_integer_value_is_kept_as_a_float(self) -> None:
         outcome = validate_conditions(

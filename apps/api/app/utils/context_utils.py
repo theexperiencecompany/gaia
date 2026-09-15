@@ -13,10 +13,9 @@ from shared.py.wide_events import log
 
 PROVIDER_TIMEOUT_SECONDS = 30
 
-# Dedicated pool for provider context fetching — isolated from the default
-# asyncio thread pool so that slow Composio calls don't starve async I/O.
-# max_workers=4: limits concurrent Composio provider calls per process.
-# Do NOT use this pool as the outer run_in_executor target — see context_tool.py.
+# Dedicated pool, isolated from the default asyncio thread pool, so slow
+# Composio calls don't starve async I/O; max_workers=4 caps concurrent calls.
+# Do NOT use as the outer run_in_executor target — see context_tool.py.
 _CONTEXT_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ctx-fetch")
 
 
@@ -29,20 +28,7 @@ def execute_tool(
     user_id: str,
     output_model: type[BaseModel] | None = None,
 ) -> dict[str, Any]:
-    """Execute a Composio tool directly (bypasses hook pipeline) and return its data dict.
-
-    Args:
-        tool_name: Composio tool name, e.g. "GMAIL_FETCH_MESSAGES".
-        params: Parameters to pass to the tool.
-        user_id: User ID used for authentication.
-        output_model: Optional Pydantic model to validate the response data.
-
-    Returns:
-        The ``data`` payload from the tool response.
-
-    Raises:
-        Exception: If the tool execution fails.
-    """
+    """Execute a Composio tool directly (bypasses hook pipeline) and return its data dict; raises if the call fails."""
     # Deferred import: heavy Composio SDK service stack loads only when context enrichment executes a tool
     from app.services.composio.composio_service import (  # noqa: PLC0415 -- deferred
         get_composio_service,
@@ -90,8 +76,8 @@ def fetch_all_providers(
 ) -> dict[str, Any]:
     """Fetch all providers in parallel by calling each CUSTOM_GATHER_CONTEXT tool.
 
-    Values stay ``dict[str, Any]``: each is a provider's raw
-    ``CUSTOM_GATHER_CONTEXT`` payload, whose shape is the provider's own and
+    Values stay dict[str, Any]: each is a provider's raw
+    CUSTOM_GATHER_CONTEXT payload, whose shape is the provider's own and
     differs per integration (Type Safety item 8).
     """
 
@@ -144,14 +130,7 @@ async def resolve_providers(
     provider_tools: dict[str, str],
     namespace_fn: Callable[[str], str],
 ) -> list[str]:
-    """Return the list of providers to query based on request + connected integrations.
-
-    Args:
-        requested: Explicit provider list from the caller, or None for auto-detect.
-        user_id: User ID used to look up connected integrations.
-        provider_tools: Registry mapping provider key -> tool slug.
-        namespace_fn: Callable that derives a namespace from a tool slug.
-    """
+    """Return the list of providers to query: the request, or connected integrations when requested is None."""
     log.set(user_id=user_id, requested_providers=requested)
     if requested:
         return [p.lower() for p in requested if p.lower() in provider_tools]

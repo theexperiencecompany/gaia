@@ -52,7 +52,7 @@ class _FakeAsyncClient:
 
 
 class TestPlatformOAuthCallback:
-    """GET /api/v1/platform-auth/{platform}/callback"""
+    """GET /api/v1/platform-auth/{platform}/callback."""
 
     async def test_discord_callback_captures_connected_event(self, client: AsyncClient) -> None:
         completion = PlatformLinkCompletion(
@@ -90,12 +90,9 @@ class TestPlatformOAuthCallback:
         mock_validate.assert_called_once_with("s1")
         assert resp.status_code in (302, 307)
         assert "oauth_success=true" in resp.headers["location"]
-        # Explicit user id, not the request context: the platform OAuth
-        # redirect carries no WorkOS session, so a context capture would land
-        # the link on an anonymous profile.
-        # One implementation of the link's follow-through (greeting, account
-        # sync, analytics) for every route that creates a link: this one used
-        # to inline three of the four and skip the sync.
+        # Explicit user id, not the request context: the OAuth redirect carries
+        # no WorkOS session. One shared follow-through implementation for every
+        # route that creates a link; this one used to inline three and skip the sync.
         mock_complete.assert_awaited_once()
         assert mock_complete.await_args.args == ("uid1", "discord", "DISC1")
 
@@ -321,7 +318,7 @@ class _RecordingGetClient(_FakeAsyncClient):
 
 
 class _RecordingExtractor:
-    """An ``extract_user_id`` that records exactly how it was called."""
+    """An extract_user_id that records exactly how it was called."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
@@ -348,7 +345,7 @@ def _config_with(extractor: _RecordingExtractor, *, user_info_url: str | None):
 
 
 class TestExchangeCodeSlackEnvelope:
-    """Slack answers 200 with an ``ok`` flag; the flag, not the status, decides."""
+    """Slack answers 200 with an ok flag; the flag, not the status, decides."""
 
     def setup_method(self) -> None:
         _RecordingClient.posts = []

@@ -49,10 +49,9 @@ from shared.py.wide_events import log
 # corrected draft before giving up (the persist-time filter is the final backstop).
 MAX_DRAFT_CORRECTIONS = 2
 
-# When the authoring loop exhausts its step budget (a wandering model that keeps
-# calling discovery tools without answering), we force one final turn with this
-# directive. The step budget resets and filter_messages_node drops the dangling
-# tool calls, so the model can only reply with text.
+# Forced final turn when the authoring loop exhausts its step budget. The
+# budget resets and filter_messages_node drops dangling tool calls, so the
+# model can only reply with text.
 FORCE_FINALIZE_DIRECTIVE = (
     "You have already gathered enough information. STOP calling tools now. "
     "Reply with your final answer as exactly one fenced ```json block and nothing "
@@ -111,10 +110,9 @@ async def get_workflow_subagent() -> CompiledStateGraph:
 
     llm = init_llm()
 
-    # Authoring-only: the workflow assistant emits a draft, it does not execute.
-    # This strips the always-available execution tools (bash/read/web/research),
-    # the plan_tasks/spawn_subagent machinery, and finish_task, so it can only
-    # use its discovery tools and then return the finalized JSON.
+    # Authoring-only: strips the always-available execution tools, the
+    # plan_tasks/spawn_subagent machinery, and finish_task — only discovery
+    # tools remain, so the agent emits a draft rather than executing.
     _workflow_subagent_graph = await SubAgentFactory.create_provider_subagent(
         provider="workflow",
         name="workflow_agent",
@@ -159,7 +157,7 @@ class WorkflowSubagentRunner:
     ) -> str:
         """Execute the workflow subagent with streaming, returning the complete response text.
 
-        ``base_configurable`` is the parent (executor) configurable so the subagent
+        base_configurable is the parent (executor) configurable so the subagent
         inherits its plan tier, plan-routed model, provider pin, and root_request_id
         — keeping pro users on the paid model and the budget wall enforced across the
         whole turn tree, exactly like other handoff subagents.
@@ -195,10 +193,8 @@ class WorkflowSubagentRunner:
         )
         configurable = agent_configurable(config)
 
-        # Authoring only needs a few discovery calls before it emits JSON. Cap the
-        # loop below a full agent's budget so a wandering model can't burn ~20 tool
-        # cycles, and so the forced-finalize fallback (see the execute loop) kicks
-        # in quickly instead of after a long stall.
+        # Cap below a full agent's budget so a wandering model can't burn ~20
+        # tool cycles before the forced-finalize fallback kicks in.
         config["recursion_limit"] = WORKFLOW_SUBAGENT_RECURSION_LIMIT
 
         # Build messages
@@ -216,10 +212,8 @@ class WorkflowSubagentRunner:
             )
         )
 
-        # Compact ground truth (which integrations THIS user has connected) folded
-        # into the task. It must NOT be a separate SystemMessage: it would occupy
-        # the static slot and evict WORKFLOW_AGENT_SYSTEM_PROMPT, losing the whole
-        # role/rules/output-format prompt.
+        # Must NOT be a separate SystemMessage: it would occupy the static slot
+        # and evict WORKFLOW_AGENT_SYSTEM_PROMPT, losing the whole prompt.
         hint = await build_connected_integrations_hint(user_id)
         human_message = HumanMessage(
             content=f"{hint}\n\n---\n\nRequest: {task}",
@@ -408,8 +402,10 @@ class WorkflowSubagentRunner:
 
     @staticmethod
     async def _draft_correction_needed(text: str) -> str | None:
-        """If the agent's reply is a finalized/parseable draft with only real integration
-        ids, return None. Otherwise return a correction instruction to hand back to it."""
+        """Return None if the reply is a finalized draft with only real integration ids.
+
+        Otherwise return a correction instruction to hand back to the agent.
+        """
         result = parse_subagent_response(text)
         if result.mode == "parse_error":
             return (

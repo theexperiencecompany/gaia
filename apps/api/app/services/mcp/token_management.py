@@ -19,7 +19,7 @@ from shared.py.wide_events import log
 
 
 def _endpoint_host(url: str | None) -> str | None:
-    """Return `scheme://host` of an endpoint URL for safe logging."""
+    """Return scheme://host of an endpoint URL for safe logging."""
     if not url:
         return None
     parsed = urlparse(url)

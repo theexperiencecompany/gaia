@@ -1,4 +1,4 @@
-"""Content-type handling in the session artifact/upload server (``_serve``).
+"""Content-type handling in the session artifact/upload server (_serve).
 
 Regression fence for the stored-XSS fix: script-capable artifact types must be
 served with a sandbox CSP *and* forced to download, while known-safe media may

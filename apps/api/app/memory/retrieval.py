@@ -1,13 +1,13 @@
 """Hybrid recall — the zero-LLM read path (plan F3, target <150ms P95).
 
-``recall`` fuses dense ANN (Chroma) and weighted FTS (Postgres) with RRF,
+recall fuses dense ANN (Chroma) and weighted FTS (Postgres) with RRF,
 cross-encoder reranks the fused candidates, blends recency and importance
 boosts, and optionally expands one hop through the entity graph.
 
-Episode journal lines are deliberately NOT fused into ``recall``: they are
+Episode journal lines are deliberately NOT fused into recall: they are
 activity logs, not atomic facts, and surfacing them as pseudo-memories would
 pollute the contract (no lineage, no category, no importance). Tools that
-want "when did I last talk about X" use ``recall_episodes`` instead, which
+want "when did I last talk about X" use recall_episodes instead, which
 combines verbatim entry matching over the last 14 days with semantic search
 over day summaries.
 """
@@ -75,15 +75,11 @@ class EpisodeHit:
 
 
 def _recall_cache_key(_func_name: str, *args: object, **kwargs: object) -> str:
-    """Cache key for ``recall``: user:{id}:memories:{digest}.
+    """Build the cache key for recall: user:{id}:memories:{digest}.
 
-    The ``user:{user_id}:memories:*`` prefix must match
-    ``MEMORY_SEARCH_CACHE_PATTERN`` — every ingestion invalidates that
-    pattern. All non-user parameters are digested so calls that differ in
-    any knob (limit, folder, kinds, expansion) never collide.
-
-    ``user_id``/``query`` are read positionally or by keyword so callers may
-    use either calling convention without breaking key generation.
+    The prefix must match MEMORY_SEARCH_CACHE_PATTERN, invalidated on every
+    ingestion. All non-user parameters are digested so calls differing in
+    any knob never collide. Args are read positionally or by keyword.
     """
     user_id = args[0] if args else kwargs["user_id"]
     query = args[1] if len(args) > 1 else kwargs["query"]
@@ -141,10 +137,8 @@ async def recall(
         if include_graph_expansion and candidates
         else []
     )
-    # The rerank budget caps the BASE pool only. Siblings are appended last, so
-    # capping the combined pool would discard every sibling as soon as base
-    # retrieval alone fills the budget — silently disabling graph expansion for
-    # exactly the corpus sizes where it matters.
+    # The rerank budget caps the BASE pool only; capping the combined pool would
+    # discard every sibling once base retrieval alone fills the budget.
     candidates = candidates[:RERANK_CANDIDATES] + siblings
     timings["hydrate_ms"] = _elapsed_ms(stage)
 
@@ -185,7 +179,7 @@ async def recall_episodes(
 ) -> list[EpisodeHit]:
     """Search the journal: verbatim recent entries first, then day summaries.
 
-    Entry hits (token ILIKE over the last ``EPISODE_SEARCH_DAYS`` days) are
+    Entry hits (token ILIKE over the last EPISODE_SEARCH_DAYS days) are
     exact evidence of recent activity, so they outrank semantic summary hits,
     which extend coverage to any past day whose rollover summary matches.
     """
@@ -276,8 +270,8 @@ async def _hydrate_candidates(
 ) -> list[MemoryRecord]:
     """Resolve fused ids to rows (reusing FTS rows) and apply read-time filters.
 
-    The read-time filter re-checks ``is_latest`` / ``is_forgotten`` /
-    ``forget_after`` on the hydrated rows because Chroma metadata can lag
+    The read-time filter re-checks is_latest / is_forgotten /
+    forget_after on the hydrated rows because Chroma metadata can lag
     Postgres by one flag update.
     """
     rows_by_id: dict[str, MemoryRecord] = {str(row.id): row for row, _ in fts_hits}
@@ -306,8 +300,8 @@ async def _hydrate_candidates(
 class _ScoredCandidate:
     """A candidate with its blended relevance, boosted score, and confidence verdict.
 
-    ``base`` is the blended pre-boost relevance and decides ordering together
-    with the boosts folded into ``score``; ``relevance`` is the cross-encoder's
+    base is the blended pre-boost relevance and decides ordering together
+    with the boosts folded into score; relevance is the cross-encoder's
     calibrated (sigmoid) verdict alone and decides survival against the
     relevance dropoff — the blend's cosine leg is proportional to the pool's
     best cosine, which floors every candidate high and cannot tell an
@@ -329,26 +323,12 @@ async def _rerank_and_boost(
     ann_similarity: dict[str, float],
     fts_ids: set[str],
 ) -> list[_ScoredCandidate]:
-    """Blend cross-encoder relevance with retrieval rank, then apply boosts.
+    """Blend cross-encoder relevance with retrieval rank (base), then apply recency/importance boosts.
 
-    The two signals are complementary and either alone fails on real queries:
-    the cross-encoder misjudges some implicit pairs ("book a vet appointment"
-    vs the dog fact) that dense retrieval ranks highly, and retrieval misses
-    paraphrases the cross-encoder nails.
-
-        base  = RERANK_BLEND_WEIGHT * rerank_norm
-              + (1 - RERANK_BLEND_WEIGHT) * retrieval_norm
-        final = base * recency_boost * importance_boost
-
-    Both normalizations are absolute-preserving: the cross-encoder logit maps
-    through a sigmoid (calibrated 0-1 relevance) and the dense cosine divides
-    by the pool's best cosine, so proportions between candidates survive and a
-    hair-thin raw gap stays hair-thin — min-max scaling would stretch it to
-    1.0 vs 0.0 and guarantee the runner-up falls under the relevance dropoff.
-    FTS-only candidates (no cosine) fall back to their fused rank position.
-    Each candidate also gets an absolute-confidence verdict (strong cosine,
-    strong raw logit, or a keyword anchor) used to cap weak results
-    downstream.
+    Both normalizations are absolute-preserving (sigmoid logit; cosine over
+    the pool's best), not min-max, so a hair-thin gap doesn't get stretched
+    past the relevance dropoff. Each candidate also gets a confidence verdict
+    (strong cosine/logit or a keyword anchor) used to cap weak results downstream.
     """
     if not candidates:
         return []
@@ -462,13 +442,10 @@ async def _graph_siblings(
 ) -> list[MemoryRecord]:
     """1-hop entity siblings for the candidate pool, excluding the pool itself.
 
-    The top ``GRAPH_EXPANSION_SOURCE_RESULTS`` candidates supply source
-    entities; their other memories join the pool so the reranker scores them on
-    real query relevance. A genuinely related sibling (another fact about the
-    same person) ranks high and survives; an incidental one (the user's
-    hometown, pulled in only because they co-occur on a fact) ranks low and is
-    dropped. Siblings pass the ``kinds`` filter; crossing category boundaries is
-    the point, so ``category_prefix`` is not applied here.
+    The top GRAPH_EXPANSION_SOURCE_RESULTS candidates supply source entities;
+    their other memories join the pool so the reranker scores them on real
+    query relevance. Siblings pass the kinds filter, but not category_prefix,
+    since crossing category boundaries is the point.
     """
     source_ids = [row.id for row in candidates[:GRAPH_EXPANSION_SOURCE_RESULTS]]
     entities_by_memory = await pg_store.get_entities_for_memories(source_ids)
@@ -489,11 +466,9 @@ async def _graph_siblings(
 async def _build_entries(scored: list[tuple[MemoryRecord, float]]) -> list[MemoryEntry]:
     """Map reranked (record, score) pairs to API entries with their entities.
 
-    Entries that superseded an older version also carry that version's content
-    (``previous_content``) so "what was it before / where did I initially..."
-    questions are answerable straight from recalled context. A parent the user
-    explicitly forgot (or whose ``forget_after`` expired) is excluded — deleted
-    content must never ride back into the prompt via its successor.
+    A superseded entry also carries its parent's content (previous_content),
+    unless that parent is forgotten or expired — deleted content must never
+    ride back into the prompt via its successor.
     """
     entities_by_memory = await pg_store.get_entities_for_memories([row.id for row, _ in scored])
     parent_ids = [
@@ -530,7 +505,7 @@ async def recall_transcripts(
 ) -> list[tuple[str, str, float]]:
     """Search raw conversation chunks: (date, chunk_text, similarity), best first.
 
-    The verbatim tier behind ``recall``: when the user references an exact
+    The verbatim tier behind recall: when the user references an exact
     detail from a past conversation ("that list you gave me", "the move you
     suggested"), the compressed fact store may not hold it but the transcript
     chunk does.
@@ -561,7 +536,7 @@ async def _episode_summary_search(user_id: str, query: str, limit: int) -> list[
 
 
 def _episode_id_to_date(episode_id: str) -> date_type | None:
-    """Parse the date out of a ``{user_id}:{YYYY-MM-DD}`` episode vector id."""
+    """Parse the date out of a {user_id}:{YYYY-MM-DD} episode vector id."""
     try:
         return date_type.fromisoformat(episode_id.rsplit(":", 1)[-1])
     except ValueError:
@@ -578,22 +553,12 @@ def _tokenize(query: str) -> list[str]:
 
 
 def _drop_below_relevance(scored: list[_ScoredCandidate]) -> list[_ScoredCandidate]:
-    """Trim the weak-match tail (and low-score graph siblings) below the cliff.
+    """Trim the weak-match tail (and low-score graph siblings) below the relevance cliff.
 
-    Hybrid recall produces a sharp relevance cliff — a few strong matches, then
-    a long tail of faintly-related facts. Injecting that tail into every prompt
-    is noise: a query about a gift for the user's partner does not need their
-    GitHub bio or hometown.
-
-    Survival reads the CROSS-ENCODER's calibrated relevance, not the blended
-    base and not the boosted score: the blend's cosine leg is proportional to
-    the pool's best cosine, so it floors every candidate high (measured on the
-    real models: an off-topic entity sibling kept 72% of the top's blended
-    base while its calibrated relevance ratio was 9%). Boosts reorder, never
-    save. A CONFIDENT candidate (absolute cosine, strong raw logit, or a
-    keyword anchor) is never dropped — that is the existing escape hatch for
-    the query shapes the cross-encoder misjudges, which is the whole reason
-    the blend exists for ordering.
+    Survives on the CROSS-ENCODER's calibrated relevance, not the blended or
+    boosted score: the blend's cosine leg floors every candidate high
+    (measured: an off-topic sibling kept 72% blended base at 9% relevance).
+    A CONFIDENT candidate is never dropped regardless of relevance.
     """
     if not scored:
         return scored

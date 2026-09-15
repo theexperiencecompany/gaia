@@ -1,7 +1,7 @@
-"""Repository for the ``bot_sessions`` collection — platform→conversation mapping.
+"""Repository for the bot_sessions collection — platform→conversation mapping.
 
-Global, keyed by a unique ``session_key``. ``claim_session`` is an atomic
-get-or-create: the ``conversation_id`` is minted exactly once via ``$setOnInsert``
+Global, keyed by a unique session_key. claim_session is an atomic
+get-or-create: the conversation_id is minted exactly once via $setOnInsert
 under the unique index, so two racing first-messages can never fork a session.
 """
 
@@ -10,12 +10,8 @@ from app.db.repositories.base import MongoRepository
 from app.models.bot_models import BotSessionDocument, BotSessionUpdate
 from app.utils.errors import AppError
 
-#: The suffix a retired key derivation gave a channel-less session (``channel_id
-#: or "dm"``). A DM now keys off the platform user id, so nothing writes this any
-#: more — see ``BotService.build_session_key``. Only rows minted before that fix
-#: carry it, and ``app.scripts.merge_legacy_dm_bot_sessions`` retires them; this
-#: constant and ``list_legacy_dm_sessions`` go with the script once it has run
-#: everywhere.
+#: Suffix a retired key derivation gave channel-less sessions; only pre-fix rows carry it.
+#: app.scripts.merge_legacy_dm_bot_sessions retires them, and this constant goes with it.
 LEGACY_DM_SESSION_KEY_SUFFIX = ":dm"
 
 
@@ -39,11 +35,11 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         candidate_conversation_id: str,
         timestamp: str,
     ) -> BotSessionDocument:
-        """Atomically reuse or create the session for ``session_key``.
+        """Atomically reuse or create the session for session_key.
 
-        On an existing session the stored ``conversation_id`` is returned and the
-        ``candidate`` is discarded; on a fresh session the candidate is committed
-        via ``$setOnInsert``. ``timestamp`` is an ISO-format string (the TTL anchor),
+        On an existing session the stored conversation_id is returned and the
+        candidate is discarded; on a fresh session the candidate is committed
+        via $setOnInsert. timestamp is an ISO-format string (the TTL anchor),
         written raw so the on-disk string shape is preserved."""
         session = await self._apply_raw_update(
             {"session_key": session_key},
@@ -69,24 +65,23 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         return session
 
     async def get_by_session_key(self, session_key: str) -> BotSessionDocument | None:
-        """The session on this key, or ``None``. Read-only counterpart to
-        ``claim_session`` for callers that must not mint one on a miss."""
+        """Return the session on this key, or None — read-only, never mints one on a miss."""
         return await self._find_one({"session_key": session_key})
 
     async def get_by_conversation_id(self, conversation_id: str) -> BotSessionDocument | None:
-        """The bot session whose conversation this is, or ``None`` for a non-bot
-        (web/mobile) conversation. Carries the ``channel_id`` a proactive delivery
-        needs to reach the group/channel the chat lives in. Indexed on
-        ``conversation_id`` (see ``app/db/mongodb/indexes.py``)."""
+        """Return the bot session for this conversation, or None for a non-bot conversation.
+
+        Carries the channel_id a proactive delivery needs; indexed on conversation_id.
+        """
         return await self._find_one({"conversation_id": conversation_id})
 
     async def list_legacy_dm_sessions(
         self, *, platform: str | None = None
     ) -> list[BotSessionDocument]:
-        """Every session still keyed with the retired ``:dm`` suffix.
+        """Every session still keyed with the retired :dm suffix.
 
         Anchored at the end of the key on purpose: a live Slack or Discord channel
-        id can CONTAIN ``dm``, and rewriting one of those would fork the very chat
+        id can CONTAIN dm, and rewriting one of those would fork the very chat
         this repairs.
         """
         filter_: dict[str, object] = {"session_key": {"$regex": f"{LEGACY_DM_SESSION_KEY_SUFFIX}$"}}
@@ -97,11 +92,9 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
     async def rename_session_key(
         self, *, session_key: str, new_session_key: str, channel_id: str
     ) -> bool:
-        """Move a session onto a different key, restamping the channel it belongs
-        to. False when the filter matched nothing.
+        """Move a session onto a different key, restamping its channel; False if unmatched.
 
-        The unique index on ``session_key`` makes this safe only against a key
-        nothing else holds — the caller checks that first.
+        Safe only against a key nothing else holds — the caller checks that first.
         """
         matched = await self._apply_raw_update_unfetched(
             {"session_key": session_key},
@@ -111,8 +104,7 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         return matched > 0
 
     async def repoint_conversation(self, *, session_key: str, conversation_id: str) -> bool:
-        """Point an existing session at a different conversation. False when the
-        filter matched nothing."""
+        """Point an existing session at a different conversation; False when unmatched."""
         matched = await self._apply_raw_update_unfetched(
             {"session_key": session_key},
             {"$set": {"conversation_id": conversation_id}},
@@ -121,8 +113,7 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         return matched > 0
 
     async def delete_by_session_key(self, session_key: str) -> int:
-        """Remove the session on this key. Returns how many rows went — a caller
-        repairing data needs to know a delete matched nothing."""
+        """Remove the session on this key, returning how many rows were deleted."""
         return await self._delete_many({"session_key": session_key}, scope=REPO_GLOBAL_SCOPE)
 
 

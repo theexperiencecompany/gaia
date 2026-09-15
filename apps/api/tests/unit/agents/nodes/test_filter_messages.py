@@ -126,22 +126,7 @@ class TestFilterMessages:
         assert len(filtered_ai.tool_calls) == 0
 
     def test_tool_call_answered_by_later_message_in_sequence(self):
-        """Set-based matching must correctly pair ToolMessages with the right
-        AIMessage regardless of position.
-
-        Layout:
-          AIMessage1  tool_call_id="A"   <- answered by ToolMessage below
-          AIMessage2  tool_call_id="B"   <- NOT answered
-          ToolMessage tool_call_id="A"
-
-        Expected outcome:
-          AIMessage1 keeps tool call "A"  (its ToolMessage is present)
-          AIMessage2 loses tool call "B"  (no ToolMessage for "B")
-
-        A position-dependent (rather than set-based) implementation would
-        wrongly attribute the ToolMessage to AIMessage2 because it appears
-        after AIMessage2 in the list.
-        """
+        """Matching is set-based, so the ToolMessage pairs with its own AIMessage regardless of position."""
         ai1 = AIMessage(
             content="",
             tool_calls=[{"id": "A", "name": "tool_a", "args": {}}],
@@ -166,11 +151,7 @@ class TestFilterMessages:
         assert len(ai2_filtered.tool_calls) == 0
 
     def test_malformed_tool_call_degrades_to_unchanged_state_and_logs(self):
-        """A tool_call that is not a dict — the shape a corrupted checkpoint
-        payload produces — must not take the graph down. The node runs on every
-        agent turn, so it swallows the failure, logs it with the cause, and
-        hands back the exact state it was given.
-        """
+        """A tool_call that is not a dict (a corrupted checkpoint shape) is swallowed, logged, and state is returned unchanged."""
         malformed = AIMessage.model_construct(content="", tool_calls=["not-a-dict"])
         messages = [HumanMessage(content="hello"), malformed]
         state = self._make_state(messages)
@@ -190,9 +171,7 @@ class TestFilterMessages:
         )
 
     async def test_node_emits_latency_span_labelled_by_agent(self):
-        """Driven through a compiled graph, not a hand-built config: LangGraph's
-        ``ensure_config`` relocates GAIA's top-level ``agent_name`` into
-        ``configurable`` before the node runs, and the label must survive that."""
+        """ensure_config relocates top-level agent_name into configurable; the label survives it."""
         config = {
             "agent_name": "node-test-agent",
             "configurable": {"user_id": "u1", "thread_id": "t1"},

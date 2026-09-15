@@ -55,12 +55,9 @@ WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
 async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
     """Tool names exposed by the user's live MCPClient.
 
-    The resilience rewrite moved per-user MCP tool storage out of the global
-    ToolRegistry, so `retrieve_tools` can't rely on `get_tool_names()` alone
-    for discovery filtering or binding validation. This helper supplies the
-    missing slice — read straight from the MCPClient that owns the live
-    connectors for `user_id`. Returns an empty set on any failure so the
-    surrounding logic degrades cleanly.
+    The resilience rewrite moved per-user MCP tools out of the global
+    ToolRegistry, so this reads straight from the live MCPClient connectors
+    instead. Returns an empty set on any failure, degrading cleanly.
     """
     if not user_id:
         return set()
@@ -80,16 +77,11 @@ async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
 
 
 def _is_platform_tool_space(tool_space: str) -> bool:
-    """True if `tool_space` belongs to a hardcoded platform integration.
+    """True if tool_space belongs to a hardcoded platform integration.
 
-    Platform integrations (github, gmail, slack, ...) are defined in
-    OAUTH_INTEGRATIONS and have a fixed `subagent_config.tool_space`.
-    Their tool descriptions are not user-owned, so it is safe to search
-    them without checking that the caller's `user_namespaces` lists them.
-
-    Custom MCPs and user-added integrations have dynamic, user-owned
-    namespaces (e.g. URL-derived). Those MUST stay gated by user_namespaces
-    so one user cannot search another user's MCP tools.
+    Platform integrations (github, gmail, slack, ...) have fixed, non-user-owned
+    tool_spaces, safe to search without a user_namespaces check. Custom MCPs and
+    user-added integrations have dynamic, user-owned namespaces that MUST stay gated.
     """
     return any(
         integration.available is True
@@ -99,12 +91,9 @@ def _is_platform_tool_space(tool_space: str) -> bool:
     )
 
 
-# ---------------------------------------------------------------------------
-# retrieve_tools docstring (doubles as LLM-facing tool description)
-# ---------------------------------------------------------------------------
-# The base docstring covers discovery and binding modes. The subagent section
-# is appended only when include_subagents=True so that provider/spawned
-# subagents never see delegation guidance they can't act on.
+# retrieve_tools docstring (doubles as LLM-facing tool description). Base
+# covers discovery/binding; the subagent section is appended only when
+# include_subagents=True, so provider/spawned subagents never see it.
 
 _RETRIEVE_TOOLS_BASE_DOC = """\
 Discover and load tools for execution. Supports two modes: discovery and binding.
@@ -214,7 +203,7 @@ Discovery may also return subagent tools alongside regular tools.
 class ScoredToolHit(TypedDict):
     """One ranked discovery hit, threaded from a search result to the final list.
 
-    ``id`` is either a tool name or a ``subagent:<id> (Name)`` key; ``score`` is
+    id is either a tool name or a subagent:<id> (Name) key; score is
     the backing store's relevance, absent on stores that don't rank.
     """
 
@@ -222,10 +211,9 @@ class ScoredToolHit(TypedDict):
     score: float | None
 
 
-# What one entry of the gathered search fan-out yields: Chroma's typed
-# ``SearchItem``s from the tool namespaces, or the public-integration store's
-# raw dicts. Kept as a union because the two backends genuinely differ; the
-# consumer discriminates on the first element and narrows with ``cast``.
+# What one search-fan-out entry yields: Chroma's typed SearchItems, or the
+# public-integration store's raw dicts. Kept as a union since the backends
+# differ; the consumer discriminates on the first element and narrows with cast.
 SearchTaskResult: TypeAlias = Union[list[SearchItem], list[dict[str, Any]]]
 
 
@@ -262,19 +250,12 @@ async def _get_user_context(
     """Get user's available namespaces and connected integrations.
 
     When include_subagents is False, skips computing subagent-related data
-    entirely — no integration queries, no internal subagent resolution.
-
-    Returns:
-        Tuple of (user_namespaces, connected_integrations, internal_subagents)
-        where connected_integrations maps canonical integration id -> display name.
+    entirely. Returns (user_namespaces, connected_integrations, internal_subagents);
+    connected_integrations maps canonical integration id to display name.
     """
-    # Seed namespaces:
-    # - "general" is always available (core tools).
-    # - tool_space is seeded ONLY when it belongs to a platform integration
-    #   (hardcoded in OAUTH_INTEGRATIONS). For custom MCPs / user-owned
-    #   integrations the namespace is user-scoped, so it must come from
-    #   user_namespaces and not be implicitly granted by the seed —
-    #   otherwise one user could search another user's MCP tools.
+    # "general" is always available; tool_space is seeded only for platform
+    # integrations (OAUTH_INTEGRATIONS) — a custom MCP's namespace is user-scoped
+    # and must come from user_namespaces, or one user could search another's tools.
     user_namespaces: set[str] = {"general"}
     if _is_platform_tool_space(tool_space):
         user_namespaces.add(tool_space)
@@ -323,12 +304,9 @@ def _build_search_tasks(
 ) -> list[Awaitable[SearchTaskResult]]:
     """Build list of search tasks to execute.
 
-    The `tool_space in user_namespaces` gate is the security boundary that
-    keeps a user from searching another user's custom MCP tools. We never
-    bypass it here — _get_user_context is responsible for ensuring
-    user_namespaces contains tool_space whenever the caller is entitled
-    to search it (always for platform integrations, only when the user
-    has the integration connected for custom MCPs).
+    tool_space in user_namespaces is the security boundary against searching
+    another user's custom MCP tools. Never bypassed here — _get_user_context
+    ensures user_namespaces contains tool_space whenever the caller is entitled.
     """
     search_tasks: list[Awaitable[SearchTaskResult]] = []
 
@@ -527,7 +505,6 @@ def _deduplicate_and_sort(
 
 
 def _split_subagent_entry(entry: str) -> tuple[str, str | None]:
-    """``subagent:<id> (Name)`` -> (id, name)."""
     tail = entry[len("subagent:") :]
     if " (" in tail and tail.endswith(")"):
         subagent_id, name = tail.split(" (", 1)
@@ -547,7 +524,7 @@ def _render_discovery_response(
     """Render discovery hits as JSON in three buckets: bind, handoff, connect.
 
     Availability is the only axis that changes what the model may do next, so it
-    is the top-level split. ``internal_subagents`` is required to tell a built-in
+    is the top-level split. internal_subagents is required to tell a built-in
     capability (always usable) from an integration the user has not connected —
     without it every built-in was reported as needing a connection it has none of.
     """
@@ -629,12 +606,9 @@ def _inject_available_subagents(
 ) -> list[str]:
     """Inject available subagents that user has access to.
 
-    Every subagent entry is rendered as ``subagent:<id> (Name)`` whenever a name
-    is known, so the model can tell what ``subagent:<uuid>`` actually is. Names
-    come from the connected-integrations map first, then the in-memory registry.
-    Semantic-search hits often arrive unnamed (a ``subagent:`` key from a tool
-    namespace, or a store that didn't return the value); they get upgraded here
-    and deduped by canonical id so the named and unnamed forms collapse to one.
+    Every entry renders as subagent:<id> (Name) whenever a name is known, so the
+    model can tell what subagent:<uuid> is. Names come from connected-integrations
+    first, then the registry; unnamed hits get upgraded and deduped by canonical id.
     """
     if not include_subagents:
         return discovered_tools
@@ -695,39 +669,19 @@ def get_retrieve_tools_function(
 ) -> Callable[..., Awaitable[RetrieveToolsResult]]:
     """Get a retrieve_tools function configured for specific context.
 
-    The ``...`` in the return type is deliberate (Type Safety items 11/14): the
-    result is handed to ``create_agent(retrieve_tools_coroutine=...)``, which
-    wraps it in a ``StructuredTool``. LangGraph then calls it by keyword with
-    ``store``/``config`` injected and the rest supplied by the model, so pinning
-    a parameter list here would describe a call shape that never happens.
-
-    This unified function handles both tool discovery (semantic search) and tool binding.
-    - When `query` is provided: Returns tool names for discovery (not bound)
-    - When `exact_tool_names` is provided: Binds and returns validated tool names
-
-    Args:
-        tool_space: Namespace to search for tools
-        include_subagents: Whether to include subagent results in search
-        limit: Maximum number of tool results for semantic search
-        bindable_tool_names: The set of tool names this agent's graph can actually
-            bind and execute. When set (scoped agents like provider subagents),
-            binding validates against it instead of the global registry, so a tool
-            the graph can't execute is never reported as a successful bind. None ->
-            validate against the global registry (main executor/comms carry it).
-
-    Returns:
-        Configured retrieve_tools coroutine that returns RetrieveToolsResult
+    Handles both discovery (query -> tool names, unbound) and binding
+    (exact_tool_names -> validated, bound names). bindable_tool_names scopes
+    binding validation to what the agent's graph can actually execute (provider
+    subagents); None validates against the global registry (main executor/comms).
     """
 
     async def retrieve_tools(
         store: Annotated[BaseStore, InjectedStore],
         config: RunnableConfig,
         query: str | None = None,
-        # Non-nullable array on purpose. A `list[str] | None` annotation emits an
-        # `anyOf: [{array}, {null}]` JSON schema, and MiniMax M3 cannot populate an
-        # array wrapped in that nullable union: it sends `exact_tool_names: []`
-        # however many names it intends to bind. A plain array schema fixes it, and
-        # "no exact tools" is an empty list, not null, so nothing is lost.
+        # Non-nullable on purpose: a `list[str] | None` emits an anyOf JSON schema
+        # that MiniMax M3 can't populate — it sends exact_tool_names: [] regardless
+        # of how many names it means to bind. A plain array schema fixes it.
         exact_tool_names: list[str] = Field(default_factory=list),
     ) -> RetrieveToolsResult:
         log.info(
@@ -740,10 +694,9 @@ def get_retrieve_tools_function(
             or config.get("metadata", {}).get("user_id"),
         )
         if not query and not exact_tool_names:
-            # A no-usable-argument call (commonly retrieve_tools(exact_tool_names=[]),
-            # an empty list) must NOT crash the run — that aborts the whole executor
-            # turn over a recoverable model slip. Return a corrective hint so the
-            # caller self-corrects on its next step instead.
+            # A no-usable-argument call (e.g. exact_tool_names=[]) must NOT crash
+            # the run — that aborts the whole turn over a recoverable model slip.
+            # Return a corrective hint so the caller self-corrects next step.
             return RetrieveToolsResult(
                 tools_to_bind=[],
                 response=[
@@ -809,11 +762,9 @@ def get_retrieve_tools_function(
             renamed_tools: dict[str, str] = {}
             for tool_name in exact_tool_names:
                 if tool_name.startswith("subagent:"):
-                    # Subagents are handed off to, never bound. When subagents are
-                    # available here we surface corrective guidance in the response
-                    # instead of echoing the name back as if it bound — that made a
-                    # model slip look like a successful bind and relied on downstream
-                    # filtering. When subagents aren't available, it's just unknown.
+                    # Subagents are handed off to, never bound. Surface corrective
+                    # guidance instead of echoing the name back as a bind — that made
+                    # a model slip look successful and relied on downstream filtering.
                     if include_subagents:
                         requested_subagents.append(tool_name)
                     else:
@@ -922,10 +873,9 @@ def get_retrieve_tools_function(
 
         results = await asyncio.gather(*search_tasks, return_exceptions=True)
 
-        # Surface search failures instead of treating them as empty namespaces.
-        # A partial outage degrades to the namespaces that answered; a total
-        # outage must raise so the select_tools retry policy (and ultimately
-        # the caller) sees a failure, not a silent "no tools found".
+        # Surface search failures instead of treating them as empty namespaces:
+        # a partial outage degrades to the namespaces that answered, but a total
+        # outage must raise so the retry policy sees a failure, not silent emptiness.
         failures = [r for r in results if isinstance(r, BaseException)]
         for failure in failures:
             log.error(
@@ -937,9 +887,8 @@ def get_retrieve_tools_function(
             raise failures[0]
 
         # MCP tool names don't live in the global registry anymore (resilience
-        # rewrite removed the per-user mcp_{iid}_{user_id} categories). Union
-        # the registry names with the user's live MCPClient tool names so the
-        # discovery-mode filter doesn't drop every PostHog/Notion/etc. hit.
+        # rewrite removed the per-user categories) — union with the live MCPClient
+        # names so the discovery filter doesn't drop every PostHog/Notion/etc. hit.
         available_tool_names_set = set(available_tool_names) | await _user_mcp_tool_names(user_id)
 
         chroma_hits = 0
@@ -976,7 +925,6 @@ def get_retrieve_tools_function(
             if len(chroma_preview) >= 10:
                 break
 
-        # Process results
         all_results = await _process_search_results(
             results,
             available_tool_names_set,
@@ -985,7 +933,6 @@ def get_retrieve_tools_function(
             tool_space,
         )
 
-        # Deduplicate and sort
         discovered_tools = _deduplicate_and_sort(all_results, limit)
 
         # Inject available subagents (no-op when include_subagents=False)

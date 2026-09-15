@@ -44,7 +44,7 @@ ALL_PROMPTS = {**COMMS_PROMPT_BY_SOURCE, "executor": EXECUTOR_PROMPT_TEMPLATE}
 
 
 def prose_of(prompt: str) -> str:
-    """The prompt minus the one line allowed to quote the literals it bans."""
+    """Return the prompt minus the one line allowed to quote the literals it bans."""
     return "\n".join(
         line
         for line in prompt.splitlines()
@@ -77,8 +77,7 @@ def test_prompt_prose_has_no_banned_tells(source: str) -> None:
 
 @pytest.mark.parametrize("source", MESSAGING_SOURCES)
 def test_messaging_prompts_restate_the_bubble_rule_in_the_addendum(source: str) -> None:
-    """The platform addendum is the last thing the model reads, so the bubble
-    rule has to be there and not only 27k characters earlier."""
+    """The bubble rule must be in the addendum, not only 27k characters earlier."""
     addendum = COMMS_PROMPT_BY_SOURCE[source].split("Platform Context")[-1]
     assert "<NEW_MESSAGE_BREAK>" in addendum
     assert "bubble" in addendum.lower()

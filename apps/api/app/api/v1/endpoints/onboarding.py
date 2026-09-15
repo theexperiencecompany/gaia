@@ -157,9 +157,7 @@ async def reset_user_onboarding(
 async def get_onboarding_status(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> OnboardingStatusResponse:
-    """
-    Get the current user's onboarding status and preferences.
-    """
+    """Get the current user's onboarding status and preferences."""
     log.set(
         user={"id": user["user_id"]},
         onboarding={"operation": "get_status"},
@@ -305,7 +303,7 @@ async def update_user_preferences(
 async def _resolve_account_identity(
     user_doc: UserDocument, onboarding: OnboardingSubdocument
 ) -> tuple[int, str]:
-    """The stored account number and join date, derived from ``created_at`` on
+    """The stored account number and join date, derived from created_at on
     the first read (both are backfilled together or not at all)."""
     account_number = onboarding.account_number
     member_since = onboarding.member_since

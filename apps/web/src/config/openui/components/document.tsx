@@ -6,10 +6,9 @@ import React from "react";
 import type { z } from "zod";
 import { textDocumentSchema } from "../promptSpecs";
 
-// The schema lives in the Node-safe `../promptSpecs` single source. The actual
-// editor (with tiptap, BubbleMenu, etc.) lives in `DocumentEditor.tsx` and only
-// loads on the client via `dynamic({ ssr: false })` — that keeps tiptap out of
-// handler.mjs.
+// Schema lives in Node-safe `../promptSpecs`; the actual editor (tiptap,
+// BubbleMenu) lives in `DocumentEditor.tsx`, loaded client-only via
+// `dynamic({ ssr: false })` to keep tiptap out of handler.mjs.
 
 const TextDocumentEditor = dynamic(
   () => import("./DocumentEditor").then((m) => m.TextDocumentView),
@@ -25,10 +24,9 @@ const TextDocumentEditor = dynamic(
   },
 );
 
-// TextDocumentView stays file-private on purpose: this module's public
-// surface is the `textDocumentDef` registration below (consumed by
-// ../genericLibrary). Exporting the component alongside that def breaks Fast
-// Refresh (react-refresh/only-export-components).
+// TextDocumentView stays file-private: this module's public surface is
+// the `textDocumentDef` registration below. Exporting the component
+// alongside that def breaks Fast Refresh (react-refresh/only-export-components).
 
 function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
   return <TextDocumentEditor {...props} />;

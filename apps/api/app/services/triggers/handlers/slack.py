@@ -1,6 +1,4 @@
-"""
-Slack trigger handler.
-"""
+"""Slack trigger handler."""
 
 import asyncio
 from typing import Any, ClassVar
@@ -65,13 +63,10 @@ class SlackTriggerHandler(TriggerHandler):
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
-        """Register Slack triggers with parallel execution and rollback.
+        """Register Slack triggers in parallel, rolling back all on any failure.
 
         For each message type NOT excluded, registers the corresponding
-        specific Composio trigger. If any fail, all are rolled back.
-
-        Raises:
-            TriggerRegistrationError: If any trigger registration fails
+        specific Composio trigger.
         """
         if trigger_name not in self.SUPPORTED_TRIGGERS:
             raise TriggerRegistrationError(
@@ -187,7 +182,7 @@ class SlackTriggerHandler(TriggerHandler):
     def _register_single_trigger_sync(
         self, user_id: str, composio_slug: str, trigger_config: dict[str, Any]
     ) -> list[str]:
-        """Helper to register a single Composio trigger synchronously."""
+        """Register a single Composio trigger synchronously."""
         try:
             composio = get_composio_service()
             result = composio.composio.triggers.create(
@@ -244,10 +239,8 @@ class SlackTriggerHandler(TriggerHandler):
                     else:
                         config_dict = dict(trigger_config)
 
-                    # Get trigger_data
                     trigger_data = config_dict.get("trigger_data", {})
 
-                    # Filter by channel_ids if specified
                     channel_ids_str = trigger_data.get("channel_ids", "")
                     if channel_ids_str:
                         # Parse comma-separated channel IDs

@@ -238,10 +238,9 @@ export function NotificationsList({
   }
 
   if (notifications.length === 0) {
-    // Web parity (NotificationsList.tsx empty state):
-    //   16×16 zinc-900/50 ring zinc-800 circle, NotificationIcon
-    //   title: text-base font-semibold text-white
-    //   desc:  text-sm text-zinc-500
+    // Web parity (NotificationsList.tsx empty state): 16×16 zinc-900/50 ring
+    // zinc-800 circle + NotificationIcon, title text-base font-semibold
+    // text-white, desc text-sm text-zinc-500.
     return (
       <View
         style={{

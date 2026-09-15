@@ -1,13 +1,4 @@
-"""Integration tests for user integration management API endpoints.
-
-Tests the integration endpoints with mocked service layer to verify routing,
-auth enforcement, and response codes.
-
-Route layout:
-  GET  /api/v1/integrations/me                          → config.py (MyIntegrationsResponse)
-  POST /api/v1/integrations/users/me/integrations       → user.py
-  DELETE /api/v1/integrations/users/me/integrations/{id} → user.py
-"""
+"""Integration tests for user integration management API endpoints."""
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
@@ -321,11 +312,7 @@ class TestUserIntegrationEndpoints:
         assert call_args.args[1] == "slack"
 
 
-# ---------------------------------------------------------------------------
-# Auth enforcement tests
-# These tests verify that ALL endpoints reject unauthenticated requests with
-# 401. If auth enforcement is removed, these tests MUST fail.
-# ---------------------------------------------------------------------------
+# Auth enforcement tests: verify ALL endpoints reject unauthenticated requests with 401.
 
 
 @pytest.mark.integration
@@ -353,12 +340,8 @@ class TestIntegrationEndpointAuthEnforcement:
         assert response.status_code == 401
 
 
-# ---------------------------------------------------------------------------
-# Endpoint logic tests – mock at the immediate dependency boundary
-# These test that the endpoint's OWN branching logic (not just service results)
-# produces the correct HTTP status codes. The service is mocked at the point
-# where the endpoint calls it so the endpoint's error mapping is exercised.
-# ---------------------------------------------------------------------------
+# Endpoint logic tests: mock at the immediate dependency boundary so the
+# endpoint's own error-mapping branching is exercised, not just service results.
 
 
 @pytest.mark.integration
@@ -376,11 +359,7 @@ class TestIntegrationEndpointLogic:
         new_callable=AsyncMock,
     )
     async def test_add_already_connected_integration_returns_400(self, mock_add, test_client):
-        """POST with an already-connected integration must return 400.
-
-        The endpoint maps ValueError to 400. If that mapping is removed,
-        this test fails.
-        """
+        """POST with an already-connected integration must return 400."""
         mock_add.side_effect = ValueError("Integration 'gmail' already added to workspace")
 
         response = await test_client.post(_BASE, json={"integration_id": "gmail"})
@@ -394,12 +373,7 @@ class TestIntegrationEndpointLogic:
         new_callable=AsyncMock,
     )
     async def test_remove_nonexistent_integration_returns_404(self, mock_remove, test_client):
-        """DELETE a non-existent integration must return 404.
-
-        The endpoint checks the bool return value of remove_user_integration
-        and raises HTTPException(404) when False. If that check is removed,
-        this test fails because a 200 would be returned instead.
-        """
+        """DELETE a non-existent integration must return 404."""
         mock_remove.return_value = False
 
         response = await test_client.delete(f"{_BASE}/does-not-exist")
@@ -413,11 +387,7 @@ class TestIntegrationEndpointLogic:
         new_callable=AsyncMock,
     )
     async def test_remove_existing_integration_does_not_return_404(self, mock_remove, test_client):
-        """DELETE an existing integration must NOT return 404.
-
-        Complements test_remove_nonexistent_integration_returns_404 – ensures
-        the 404 is only raised when remove returns False, not on success.
-        """
+        """DELETE an existing integration must NOT return 404."""
         mock_remove.return_value = True
 
         response = await test_client.delete(f"{_BASE}/gmail")
@@ -429,11 +399,7 @@ class TestIntegrationEndpointLogic:
         new_callable=AsyncMock,
     )
     async def test_add_integration_unknown_id_returns_400(self, mock_add, test_client):
-        """POST with unknown integration_id must return 400, not 404 or 500.
-
-        The service raises ValueError for unknown IDs; the endpoint must map
-        this to a 400 response.
-        """
+        """POST with unknown integration_id must return 400, not 404 or 500."""
         mock_add.side_effect = ValueError("Integration 'unknown-xyz' not found")
 
         response = await test_client.post(_BASE, json={"integration_id": "unknown-xyz"})

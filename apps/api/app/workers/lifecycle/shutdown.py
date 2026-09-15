@@ -1,6 +1,4 @@
-"""
-ARQ worker shutdown functionality.
-"""
+"""ARQ worker shutdown functionality."""
 
 import asyncio
 from typing import Any
@@ -15,7 +13,7 @@ from shared.py.wide_events import log, log_context
 async def shutdown(ctx: dict[str, Any]) -> None:
     """ARQ worker shutdown function with proper cleanup.
 
-    Own boundary for the same reason as ``startup``: ARQ provides none, so a
+    Own boundary for the same reason as startup: ARQ provides none, so a
     cleanup that hangs or raises would otherwise leave no event behind.
     """
     async with log_context("worker_shutdown", component="arq_lifecycle"):

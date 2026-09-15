@@ -1,4 +1,4 @@
-"""Core-context assembly (``app.memory.context``) — journal labels on the user's local day."""
+"""Core-context assembly (app.memory.context) — journal labels on the user's local day."""
 
 from datetime import UTC, date as date_type, datetime
 from types import SimpleNamespace

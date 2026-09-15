@@ -165,7 +165,6 @@ def rich_text_to_markdown(rich_text: list[dict[str, Any]]) -> str:
         plain_text = content.get("plain_text", "")
         annotations = content.get("annotations", {})
 
-        # Apply annotations
         plain_text = _apply_annotations(plain_text, annotations)
 
         # Add link if present
@@ -333,18 +332,10 @@ def blocks_to_markdown(
     nesting_level: int = 0,
     include_block_ids: bool = False,
 ) -> str:
-    """
-    Convert a list of Notion blocks to a markdown string.
+    """Convert a list of Notion blocks to a markdown string.
 
-    Args:
-        blocks: List of Notion block objects
-        nesting_level: Current nesting level for indentation
-        include_block_ids: If True, prepend block IDs as HTML comments
-                          (e.g., <!-- block:abc123 -->) so LLM can reference
-                          them for insertion positioning with `after` parameter.
-
-    Returns:
-        Markdown formatted string
+    include_block_ids prepends block IDs as HTML comments (<!-- block:abc123
+    -->) so an LLM can reference them via the after parameter.
     """
     if not blocks:
         return ""
@@ -483,24 +474,12 @@ def extract_plain_text(blocks: list[dict[str, Any]]) -> str:
 
 
 def markdown_to_notion_blocks(markdown: str) -> list[dict[str, Any]]:
-    """
-    Convert markdown string to NOTION_ADD_MULTIPLE_PAGE_CONTENT format.
+    """Convert markdown to NOTION_ADD_MULTIPLE_PAGE_CONTENT format.
 
-    Returns a list of content blocks in the simpler unwrapped format:
-    [{"block_property": "paragraph", "content": "text"}, ...]
-
-    The Composio tool automatically parses markdown formatting in content.
-
-    Supported markdown:
-    - # ## ### headings
-    - Paragraphs
-    - - bullet lists
-    - 1. numbered lists
-    - - [ ] / - [x] todo items
-    - > quotes
-    - ``` code blocks (with language)
-    - --- dividers
-    - Inline: **bold**, *italic*, ~~strikethrough~~, `code`, [links](url)
+    Returns unwrapped content blocks ({"block_property": ..., "content":
+    ...}); the Composio tool parses markdown formatting in content itself.
+    Supports headings, paragraphs, bullet/numbered/todo lists, quotes, code
+    blocks, dividers, and inline bold/italic/strikethrough/code/links.
     """
     blocks: list[dict[str, Any]] = []
     lines = markdown.split("\n")

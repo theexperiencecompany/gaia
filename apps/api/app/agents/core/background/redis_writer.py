@@ -29,18 +29,10 @@ from shared.py.wide_events import log
 def _collect(session: StreamSession, data: dict[str, Any]) -> None:
     """Append an event to the session collector, coalescing reasoning deltas.
 
-    Reasoning arrives one event per model chunk — effectively per token — and
-    everything in this list is persisted onto the message verbatim, which is how
-    one production conversation ended up carrying ~22k reasoning entries. The
-    frontend renders a step's thinking as one block regardless.
-
-    So the collector keeps ONE entry per contiguous run of thinking: any other
-    event between two deltas (a tool call announced, a tool result, a subagent
-    boundary) closes the block, and the end of the run closes the last one by
-    simply never extending it. Deltas are still published individually above —
-    the live stream must stay token by token; only what gets persisted is
-    batched. Same-``subagent_id`` only, so two subagents thinking concurrently
-    on one stream never merge into each other.
+    Reasoning arrives one event per token and persists verbatim, which once
+    grew one conversation to ~22k reasoning entries. Keeps ONE entry per
+    contiguous run of thinking (any other event closes the block); same
+    subagent_id only, so concurrent subagents never merge.
     """
     reasoning = data.get("reasoning")
     if not isinstance(reasoning, dict):
@@ -59,15 +51,9 @@ def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]
     """Return a sync callable that publishes tool events directly to Redis.
 
     Matches the stream_writer protocol expected by execute_subagent_stream().
-    Safe to call from sync code running inside an async context.
-
-    Also appends each event to the stream session's tool-event collector (if a
-    session is registered) so chat_service can capture executor tool_data /
-    tool_output / todo_progress for MongoDB persistence after the notifier
-    returns. The SSE publish happens regardless — the session is a side-channel
-    only for the save path, not for re-publishing — and it publishes every event
-    verbatim, including each reasoning delta, which ``_collect`` coalesces for
-    the save path alone.
+    Also appends each event to the session's tool-event collector (if
+    registered); the SSE publish itself is unbatched, only the save-path
+    copy is coalesced by _collect.
     """
 
     def writer(data: dict[str, Any]) -> None:

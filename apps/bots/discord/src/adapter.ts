@@ -125,11 +125,9 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         async () => {
           this.startStatusRotation(c.user);
-          // Pre-warm DM channels for linked users. discord.js cannot reconstruct
-          // a DM channel from a cold MESSAGE_CREATE payload (it lacks
-          // type/recipients), so an uncached DM channel makes inbound DMs
-          // silently dropped after a restart. Opening each linked user's DM
-          // caches it so their DMs resolve.
+          // discord.js can't reconstruct a DM channel from a cold MESSAGE_CREATE
+          // (no type/recipients), so an uncached channel drops DMs after a
+          // restart; pre-warm each linked user's DM to cache it.
           await this.prewarmDmChannels();
         },
       );
@@ -457,12 +455,9 @@ export class DiscordAdapter extends BaseBotAdapter {
     header: string,
   ): Promise<void> {
     let replied = false;
-    // The header owns the deferred reply; every bubble of the answer is its own
-    // follow-up. Editing the reply for extra bubbles (as this used to) silently
-    // overwrote the previous bubble, so a multi-bubble or over-length answer
-    // arrived as only its last piece. Keeping the header out of the streamed
-    // content also keeps the bubbles inside Discord's 2000-char limit, which
-    // the shared streamer sizes them against.
+    // Header owns the deferred reply; each bubble is its own follow-up (editing
+    // the reply for extra bubbles used to silently overwrite the prior one).
+    // Keeping the header out of streamed content keeps bubbles under Discord's 2000-char limit.
     await interaction.editReply({ content: `**${header}**` });
     let lastFollowUp: Message | null = null;
     await handleStreamingChat(

@@ -1,6 +1,6 @@
 """Tavily AI search (https://tavily.com) — booster (1k req/mo free).
 
-Uniquely returns an LLM-ready ``answer`` and inline images alongside results.
+Uniquely returns an LLM-ready answer and inline images alongside results.
 """
 
 import asyncio
@@ -22,7 +22,7 @@ class TavilyProvider(SearchProvider):
         self._client: TavilyClient | None = None
 
     def is_configured(self) -> bool:
-        """True when a Tavily API key is configured."""
+        """Return True when a Tavily API key is configured."""
         return bool(settings.TAVILY_API_KEY)
 
     def _get_client(self) -> TavilyClient:

@@ -3,21 +3,13 @@
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 /**
- * Recovery for stale-asset `ChunkLoadError`s.
+ * Recovery for stale-asset `ChunkLoadError`s: a browser holding a previous
+ * deploy's document references evicted content-hashed chunk filenames, so a
+ * lazy chunk fetch 404s and Turbopack throws — as an *unhandled* rejection
+ * that never reaches a React error boundary.
  *
- * Every deploy emits `/_next/static/chunks/*` assets under content-hashed
- * filenames. A browser holding an already-loaded (or CDN-cached) document from
- * a previous deploy still references the old filenames; once those assets are
- * evicted from the CDN, the next lazy chunk fetch — during a route transition,
- * hydration, or a `next/dynamic` import — 404s and Turbopack's runtime throws a
- * `ChunkLoadError`, breaking the route. These surface as *unhandled* rejections
- * (Turbopack rejects the chunk-load promise and nothing awaits it), so they
- * never reach a React error boundary.
- *
- * Recovery is a single reload: a fresh document references current chunk
- * filenames. The reload is guarded by a short time window so a chunk that is
- * genuinely unrecoverable (still missing right after a fresh load) surfaces as
- * a retryable error instead of an infinite reload loop.
+ * Recovery is a single reload, guarded by a short time window so a genuinely
+ * unrecoverable chunk surfaces as retryable instead of looping forever.
  */
 
 // sessionStorage key holding the epoch-ms of the last recovery reload. Scoped
@@ -28,10 +20,9 @@ const RECOVERY_TIMESTAMP_KEY = "gaia:chunk-recovery-at";
 // did not fix it — stop reloading and let the error surface as retryable.
 const RECOVERY_WINDOW_MS = 10_000;
 
-// Turbopack throws with `name === "ChunkLoadError"`; the message reads
-// "Failed to load chunk /_next/static/chunks/<hash>.js from module <id>". The
-// message regex is a fallback for cases where the error `name` was lost while
-// the rejection crossed an async boundary.
+// Turbopack throws with `name === "ChunkLoadError"`; the message regex is a
+// fallback for when the error name was lost crossing an async boundary
+// ("Failed to load chunk /_next/static/chunks/<hash>.js from module <id>").
 const CHUNK_ERROR_NAME = "ChunkLoadError";
 const CHUNK_ERROR_MESSAGE =
   /Failed to load chunk|Loading chunk [\w-]+ failed|error loading dynamically imported module|Failed to fetch dynamically imported module/i;
@@ -74,12 +65,9 @@ export type ChunkRecoveryResult = "reloading" | "terminal" | "ignored";
 /**
  * Attempt to recover from a `ChunkLoadError`.
  *
- * @returns
- * - `"reloading"` — a recovery reload was triggered; the page is navigating
- *   away, so callers should stop rendering (no error UI).
- * - `"terminal"`  — a reload was already attempted within the recovery window
- *   and the chunk is still missing; callers should show a retryable error.
- * - `"ignored"`   — not a chunk error (or no `window`); handle it normally.
+ * Returns `"reloading"` (a reload was triggered — stop rendering),
+ * `"terminal"` (already reloaded within the window and still missing — show a
+ * retryable error), or `"ignored"` (not a chunk error, or no `window`).
  */
 export function recoverFromChunkError(error: unknown): ChunkRecoveryResult {
   if (typeof window === "undefined" || !isChunkLoadError(error)) {

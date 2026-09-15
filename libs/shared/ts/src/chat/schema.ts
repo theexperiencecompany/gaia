@@ -1,17 +1,13 @@
 import { z } from "zod";
 
 /**
- * Zod mirror of the chat SSE event vocabulary. The single source of truth for
- * the wire shapes lives on the backend at
- * `apps/api/app/models/stream_events.py`; this file documents the same frames
- * for the frontend and is used to validate each `data:` frame at the parse
+ * Zod mirror of the chat SSE event vocabulary; the source of truth is the backend at
+ * `apps/api/app/models/stream_events.py`. Used to validate each `data:` frame at the parse
  * boundary (see `parseChatStreamEvent`).
  *
- * Validation is advisory: on a mismatch the parser logs and falls through to
- * the existing duck-typed extraction, so runtime behavior for valid frames is
- * unchanged. Schemas therefore mirror what the parser *accepts* — permissive
- * where the parser is permissive (e.g. `tool_data` entries carry an open shape
- * so `mcp_app`, `todo_progress`, and per-tool variants all validate).
+ * Validation is advisory: on a mismatch the parser logs and falls through to the existing
+ * duck-typed extraction, so schemas mirror what the parser *accepts* — permissive where it is
+ * (e.g. `tool_data` entries carry an open shape so `mcp_app`/`todo_progress`/per-tool variants validate).
  */
 
 // ---------------------------------------------------------------------------
@@ -112,13 +108,10 @@ const ConversationDescriptionFrameSchema = z.object({
 });
 
 /**
- * Live output of one `bash` tool run. Emitted top-level (not under
- * `tool_data`) by `safe_emit` in `apps/api/app/agents/tools/coding/bash_tool.py`
- * and passed straight through by `process_data_chunk`, which only unwraps tool
- * data. One `starting` frame carries the command, then a `running` frame per
- * stdout/stderr chunk, then one terminal `exited` / `error` frame — or a single
- * `background_started` frame for a detached run. `session_id` is stamped on by
- * `safe_emit`. Kept loose because the shape is per-status.
+ * Live output of one `bash` tool run, emitted top-level (not under `tool_data`) by `safe_emit`
+ * in bash_tool.py and passed through unmodified by `process_data_chunk`. One `starting` frame
+ * carries the command, then `running` per stdout/stderr chunk, then one terminal `exited`/`error`
+ * — or a single `background_started` for a detached run. Kept loose: shape is per-status.
  */
 const BashDataFrameSchema = z.object({
   bash_data: z

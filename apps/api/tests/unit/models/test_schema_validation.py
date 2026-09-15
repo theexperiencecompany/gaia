@@ -233,9 +233,7 @@ class TestOnboardingRequest:
         assert [n.value for n in r.needs] == ["student_exams", "inbox"]
 
     def test_a_role_need_is_rejected_for_another_role(self) -> None:
-        """The student pair is only ever shown to students; a founder sending it
-        is a replayed or hand-built request, and the playbooks would coach the
-        wrong job."""
+        """The student pair is only ever shown to students; a founder sending it is a replayed or hand-built request."""
         with pytest.raises(ValidationError, match="only offered to student"):
             OnboardingRequest(profession="founder", needs=["student_exams"])
         with pytest.raises(ValidationError, match="only offered to student"):
@@ -420,8 +418,7 @@ class TestOnboardingPreferences:
             assert p.model_dump()["needs"] == [need.value]
 
     def test_needs_drop_a_key_the_enum_no_longer_has(self):
-        """Stored documents from before the Q2 rewrite carry retired values;
-        the strict check is on OnboardingRequest, the stored model must load."""
+        """Stored documents from before the Q2 rewrite carry retired values that the stored model must still load."""
         assert [n.value for n in OnboardingPreferences(needs=["inbox", "telepathy"]).needs] == [
             "inbox"
         ]

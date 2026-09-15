@@ -80,12 +80,12 @@ def _subagent(
 
 
 def _lookup(subagent: Subagent):
-    """A registry lookup that answers only for the id it actually holds."""
+    """Build a registry lookup that answers only for the id it actually holds."""
     return lambda subagent_id: subagent if subagent_id == subagent.id else None
 
 
 def _composio_integration(integration_id: str) -> MagicMock:
-    """The OAuth integration a Composio subagent's toolkit is read from."""
+    """Build the OAuth integration a Composio subagent's toolkit is read from."""
     assert integration_id == SUBAGENT_ID
     integration = MagicMock()
     integration.composio_config.toolkit = SUBAGENT_ID
@@ -93,7 +93,7 @@ def _composio_integration(integration_id: str) -> MagicMock:
 
 
 def _mcp_client(tools: list[BaseTool]):
-    """A client that hands back ``tools`` only for this user and this subagent."""
+    """Build a client that hands back tools only for this user and this subagent."""
 
     async def ensure_connected(subagent_id: str) -> list[BaseTool]:
         assert subagent_id == SUBAGENT_ID
@@ -118,11 +118,7 @@ class TestSubagentResolution:
             yield
 
     async def test_a_composio_subagent_on_a_cold_worker_loads_its_toolkit_first(self) -> None:
-        """The live handoff registers a Composio toolkit on demand. A replay on a
-        worker that has never handed off to that subagent must do the same, or it
-        resolves an empty space and stops at the first real step (seen live:
-        "no tool named 'GMAIL_FETCH_MESSAGES' is available" three minutes after
-        a worker restart)."""
+        """A replay on a worker that never handed off to this subagent must register its Composio toolkit too, or it stops at the first step ("no tool named 'GMAIL_FETCH_MESSAGES' is available" three minutes after a restart)."""
         subagent = _subagent(mcp=False)
         registry = ToolRegistry()
 
@@ -149,22 +145,12 @@ class TestSubagentResolution:
         assert REGISTRY_TOOL in space.tools
 
     async def test_an_unknown_subagent_resolves_to_nothing(self) -> None:
-        """A handoff naming a subagent that does not exist has no tool space at all.
-
-        The caller distinguishes "no such subagent" from "subagent with no
-        reachable tools", and only the first is an authoring mistake worth
-        refusing the playbook over.
-        """
+        """A handoff naming a nonexistent subagent has no tool space; that must be distinguished from a real subagent with no reachable tools."""
         with patch(f"{MODULE}.get_subagent_by_id", _lookup(_subagent(mcp=False))):
             assert await resolve_subagent_tools("not_a_subagent", USER_ID, _registry()) is None
 
     async def test_a_non_mcp_subagent_resolves_to_its_registry_scoped_tools(self) -> None:
-        """A Composio-style subagent's space comes from the registry category.
-
-        This is the path the validator takes for most handoffs, so a step naming
-        a tool in the category must resolve, and the ids the subagent binds at
-        startup must come back with it.
-        """
+        """A Composio-style subagent's space comes from its registry category, and its startup-bound ids must come back with it."""
         subagent = _subagent(mcp=False)
 
         with patch(f"{MODULE}.get_subagent_by_id", _lookup(subagent)):
@@ -176,11 +162,7 @@ class TestSubagentResolution:
         assert space.subagent is subagent
 
     async def test_a_subagent_that_never_finishes_explicitly_binds_no_finish_task(self) -> None:
-        """``include_finish_task`` is honoured, not assumed.
-
-        A read-only subagent terminates with an AIMessage instead; binding
-        finish_task anyway would let a replay name a tool the live run cannot.
-        """
+        """include_finish_task is honoured, not assumed: a read-only subagent terminates with a plain AIMessage instead."""
         subagent = _subagent(mcp=False, include_finish_task=False)
 
         with patch(f"{MODULE}.get_subagent_by_id", _lookup(subagent)):
@@ -215,11 +197,7 @@ class TestMcpBackedSubagent:
         assert space.subagent is subagent
 
     async def test_the_live_tools_are_also_in_the_ids_the_handoff_binds(self) -> None:
-        """Being in the space is not enough. The runner builds the handoff's
-        runtime config from ``initial_tool_ids``, and a subagent that cannot
-        retrieve refuses every tool outside that set — so a live MCP tool merged
-        only into ``tools`` was accepted by the validator and then refused by the
-        replay as "outside the bound tool set"."""
+        """Regression: a live MCP tool merged only into tools was accepted by the validator, then refused by the replay as "outside the bound tool set"."""
         subagent = _subagent(mcp=True)
 
         with (
@@ -244,11 +222,7 @@ class TestMcpBackedSubagent:
         assert space.initial_tool_ids == [REGISTRY_TOOL, FINISH_TASK_NAME]
 
     async def test_an_unreachable_integration_yields_an_empty_tool_set(self) -> None:
-        """A briefly down integration must not kill authoring or replay.
-
-        The caller decides what an empty tool space means. Raising here would
-        instead fail the whole workflow run over a transient connection error.
-        """
+        """A briefly down integration must yield an empty tool space, not raise and fail the whole workflow run."""
         subagent = _subagent(mcp=True)
 
         async def unreachable(user_id: str) -> MagicMock:
@@ -272,12 +246,7 @@ class TestMcpBackedSubagent:
         assert space.subagent is subagent
 
     async def test_the_unreachable_warning_names_the_subagent_and_the_failure(self) -> None:
-        """An empty tool space is indistinguishable from a real one without this.
-
-        A playbook refused because an integration was down and one refused
-        because the tool was never there produce the same user-visible outcome,
-        so the wide event is the only way to tell them apart in production.
-        """
+        """The wide event is the only way to tell an integration-down refusal apart from a tool that was never there."""
         subagent = _subagent(mcp=True)
 
         async def unreachable(user_id: str) -> MagicMock:
@@ -298,10 +267,7 @@ class TestMcpBackedSubagent:
 
 @pytest.mark.unit
 class TestToolSpaceDenial:
-    """One answer to "may this step run here", read by the validator at write
-    time and the runner at replay. A subagent's scoped dict holds more than it
-    can bind (the always-available tools), so membership alone accepted
-    playbooks the replay then refused at the first child step."""
+    """One answer to "may this step run here", read by the validator at write time and the runner at replay: membership alone once let the replay refuse a playbook the validator had accepted."""
 
     ALWAYS_AVAILABLE = "grep"
 
@@ -337,10 +303,7 @@ class TestToolSpaceDenial:
         assert REGISTRY_TOOL in space.runtime.initial_tool_names
 
     def test_the_handoff_runtime_binds_exactly_what_the_subagent_declares(self) -> None:
-        """The validator and the runner build this runtime from the same call, so
-        the bound set has to be the subagent's own: its auto-bind tools and its
-        finish_task, in the order the builder produces them. A set that quietly
-        loses either is a playbook accepted at write time and refused at replay."""
+        """The bound runtime set must be exactly the subagent's own auto-bind tools plus finish_task, in the builder's order."""
         space = self._space(_subagent(mcp=False, auto_bind_tools=["posthog_fast"]))
 
         assert space.runtime is not None
@@ -353,9 +316,7 @@ class TestToolSpaceDenial:
         ]
 
     def test_an_answer_only_subagent_binds_no_finish_task(self) -> None:
-        """``include_finish_task=False`` is how an answer-only subagent terminates
-        with a plain message; defaulting it back to True binds a tool the live
-        subagent never had."""
+        """include_finish_task=False must not default back to True and bind a tool the live answer-only subagent never had."""
         space = self._space(_subagent(mcp=False, include_finish_task=False))
 
         assert space.runtime is not None

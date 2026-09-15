@@ -2,7 +2,7 @@
 
 The prompt is byte-identical across users so the implicit prompt cache hits on
 every subagent invocation. Everything per-user — provider metadata, custom
-instructions, memories — is assembled separately by ``app.agents.context`` and
+instructions, memories — is assembled separately by app.agents.context and
 delivered in its own messages, deliberately not in this string.
 """
 

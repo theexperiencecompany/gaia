@@ -1,7 +1,7 @@
 """Unit tests for the paid-only-gate workflow-deactivation migration.
 
-Two behaviors decide whether a production run is safe: `--dry-run` (the
-default) must never write, and `--execute` must touch exactly the users with
+Two behaviors decide whether a production run is safe: --dry-run (the
+default) must never write, and --execute must touch exactly the users with
 no active subscription — never a paying user's workflows.
 """
 
@@ -38,9 +38,7 @@ def _repos(users: list[str], workflows: list[MagicMock]) -> tuple[MagicMock, Mag
 
 class TestFindFreeUserCandidates:
     async def test_never_touches_the_system_template_owner(self) -> None:
-        """Public template workflows are owned by user_id "system"; it has no
-        subscription, so without this exclusion the migration would deactivate
-        every template in production."""
+        """Public templates are owned by user_id "system", which has no subscription and must never be a candidate."""
         workflow_repo, subscription_repo = _repos(["system", FREE_USER], [_workflow("wf-1")])
         with (
             patch(f"{MODULE}.workflow_repository", workflow_repo),
@@ -94,9 +92,7 @@ class TestFindFreeUserCandidates:
         assert [c.user_id for c in candidates] == [FREE_USER]
 
     async def test_skips_a_free_user_with_no_activated_workflows(self) -> None:
-        """distinct_users_with_activated_workflows already filters this, but the
-        candidate build must not blow up or fabricate an entry if it ever returns
-        a user whose workflows were deactivated between the two reads."""
+        """The candidate build must not fabricate an entry for a user with zero activated workflows."""
         workflow_repo = MagicMock()
         with (
             patch(f"{MODULE}.workflow_repository", workflow_repo),
@@ -182,12 +178,7 @@ class TestRunMigration:
         deactivate.assert_awaited_once_with(FREE_USER)
 
     async def test_a_user_who_subscribes_mid_run_is_not_deactivated(self) -> None:
-        """The candidate scan is a snapshot taken before any write.
-
-        A user who subscribes between the scan and their turn in the execute
-        loop must be re-checked, because the reactivation handler that would
-        have undone this has already run — nothing re-enables them afterwards.
-        """
+        """A user who subscribes between the scan and their turn in the execute loop must be re-checked."""
         workflow_repo = MagicMock()
         subscribed_after_scan = {FREE_USER: [None, MagicMock()]}
 

@@ -116,16 +116,10 @@ export interface SlashCommandKeyContext {
 }
 
 /**
- * The single key map for the slash-command dropdown. Two surfaces route keys
- * here — the composer textarea, which keeps focus while you type, and the
- * dropdown itself, which takes focus when opened via the button. They used to
- * carry separate copies of this switch, and the copies drifted: one indexed
- * activation into the unlocked list and the other into the full filtered list,
- * so Enter inserted a different tool than the highlighted one on whichever
- * surface had the stale copy.
- *
- * Returns true when the key was consumed, so a caller can fall through to its
- * own handling otherwise.
+ * The single key map for the slash-command dropdown, shared by the composer
+ * textarea and the dropdown itself so their switches can't drift out of sync
+ * (previously two copies indexed different lists, so Enter could insert the
+ * wrong tool). Returns true when the key was consumed.
  */
 export function handleSlashCommandKey(
   e: React.KeyboardEvent,
@@ -159,10 +153,9 @@ export function handleSlashCommandKey(
     case "Enter":
     case "Tab": {
       e.preventDefault();
-      // selectedIndex is an unlocked-row position (see clampSelection) and the
-      // rendered highlight compares against that same space, so activation has
-      // to index the unlocked list. Locked rows are absent from it by
-      // construction, which is what keeps a locked tool unactivatable.
+      // selectedIndex indexes the unlocked-row list (see clampSelection), matching
+      // the rendered highlight; locked rows are absent from it by construction,
+      // which is what keeps a locked tool unactivatable.
       const unlockedMatches = filterMatchesByCategory(
         ctx.selectedCategory,
         ctx.matches,

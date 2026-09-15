@@ -1,9 +1,9 @@
 """Model pricing: the in-code rate card and token cost arithmetic.
 
-Regression anchor: in production, ``gemini-3.1-flash-lite`` (the vision and
+Regression anchor: in production, gemini-3.1-flash-lite (the vision and
 memory model) was priced at DEFAULT_PRICING — ~10x its real input rate —
-because its row was missing from the prod ``ai_models`` Mongo collection and
-nothing enforced the seed. Pricing now ships in code (``MODEL_PRICING``), so a
+because its row was missing from the prod ai_models Mongo collection and
+nothing enforced the seed. Pricing now ships in code (MODEL_PRICING), so a
 runtime-referenced model without a rate fails this suite instead of silently
 distorting COGS in prod.
 """
@@ -40,10 +40,8 @@ def _fresh_wide_event() -> None:
     log.reset()
 
 
-# Every model id the runtime actually meters: the graph lane on both tiers, the
-# aux one-shot alias, and the memory/vision model. A new runtime model constant
-# belongs in MODEL_PRICING — the coverage test below is what turns a forgotten
-# rate into a red build instead of a prod log line.
+# Every model id the runtime actually meters. A new runtime model constant
+# must be added to MODEL_PRICING, or the coverage test below catches it.
 RUNTIME_MODEL_IDS = sorted(
     {DEFAULT_MODEL_NAME, PAID_MODEL_NAME, AUX_MODEL_NAME, MEMORY_MODEL_NAME, VISION_MODEL_NAME}
 )
@@ -68,13 +66,11 @@ class TestEveryRuntimeModelIsPriced:
 
     @pytest.mark.parametrize("model_id", RUNTIME_MODEL_IDS)
     def test_a_referenced_model_never_falls_back_to_default_pricing(self, model_id: str) -> None:
-        """DEFAULT_PRICING is ~10x the real rate of the cheap models; a runtime
-        model resolving to it means its COGS numbers are fiction."""
+        """DEFAULT_PRICING is ~10x the real rate of the cheap models; a runtime model resolving to it means its COGS numbers are fiction."""
         assert get_model_pricing(model_id) is not DEFAULT_PRICING
 
     def test_the_memory_and_vision_model_carries_its_real_rate(self) -> None:
-        """The exact production regression: gemini-3.1-flash-lite priced at
-        $0.001/1k input instead of $0.0001, with no database row to depend on."""
+        """The exact production regression: gemini-3.1-flash-lite priced at $0.001/1k input instead of $0.0001."""
         pricing = get_model_pricing("gemini-3.1-flash-lite")
 
         assert pricing.input_cost_per_1k == 0.0001
@@ -92,10 +88,7 @@ class TestEveryRuntimeModelIsPriced:
         assert get_model_pricing("some-model-nobody-registered") == DEFAULT_PRICING
 
     def test_the_fallback_logs_the_mispricing(self) -> None:
-        """DEFAULT_PRICING is not the model's real rate, so serving it must
-        never pass quietly — the error line is what surfaced the prod bug.
-        Asserted exactly: the message is what an operator greps for, and the
-        model_name field is what tells them WHICH model is mispriced."""
+        """DEFAULT_PRICING is not the model's real rate, so serving it must log the message an operator greps for plus the model_name field."""
         with patch("app.config.model_pricing.log") as mock_log:
             get_model_pricing("some-model-nobody-registered")
 
@@ -110,29 +103,24 @@ class TestEveryRuntimeModelIsPriced:
         assert not log.get().get("errors", [])
 
     def test_the_onboarding_declaration_matches_the_rate_card(self) -> None:
-        """OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT is the model-onboarding gate's one
-        place of declaration; every id in it must also carry a rate, and the
-        default model stays declared text-only (its tool media routes through
-        the caption fallback — flipping this to True without the live gate run
-        would 400 real turns mid-stream)."""
+        """Every id in OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT must carry a rate; the default model stays text-only, or flipping it without the live gate run would 400 real turns mid-stream."""
         assert OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT == {DEFAULT_MODEL_NAME: False}
         assert set(OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT) <= set(MODEL_PRICING)
 
     def test_no_table_entry_accidentally_equals_the_fallback(self) -> None:
-        """An entry equal to DEFAULT_PRICING is indistinguishable from a missing
-        one — someone pasted the fallback instead of the real rate."""
+        """An entry equal to DEFAULT_PRICING is indistinguishable from a missing one — someone pasted the fallback instead of the real rate."""
         for model_id, pricing in MODEL_PRICING.items():
             assert pricing != DEFAULT_PRICING, model_id
 
 
 class TestAuxModelPricing:
-    """The aux lane runs on the SAME model id as the graph, isolated by session
-    suffixes rather than by a second model id. Measured, both halves: the old
-    separate id's provider pool could not cache or hold session affinity for
-    tool-carrying requests (fixed sessions read [1536,0]/[0,0]/[0,0]) while the
-    0731 pool chains perfectly ([0,1792,1792]/[1792,1792,1792]) — and every
-    structured one-shot carries a tool. Pricing follows: aux spend meters at
-    the default rate, which is what the calls are actually billed at."""
+    """The aux lane runs on the same model id as the graph, isolated by session suffixes rather than a second model id.
+
+    Measured: the old separate id's provider pool could not hold session
+    affinity for tool-carrying requests (fixed sessions read
+    [1536,0]/[0,0]/[0,0]) while the 0731 pool chains perfectly
+    ([0,1792,1792]/[1792,1792,1792]); pricing follows at the default rate.
+    """
 
     def test_aux_resolves_to_the_default_model_id(self) -> None:
         assert AUX_MODEL_NAME == DEFAULT_MODEL_NAME
@@ -141,9 +129,7 @@ class TestAuxModelPricing:
         assert get_model_pricing(AUX_MODEL_NAME) == get_model_pricing(DEFAULT_MODEL_NAME)
 
     def test_the_retired_aux_id_still_meters_at_its_served_rate(self) -> None:
-        """Historical llm_call events and mid-deploy stragglers on the old
-        "0423" id must price at the rate they were actually served at, never
-        fall through to DEFAULT_PRICING."""
+        """Historical llm_call events on the old "0423" id must price at the rate they were actually served at, never fall through to DEFAULT_PRICING."""
         retired = get_model_pricing("deepseek/deepseek-v4-flash")
 
         assert retired.input_cost_per_1k == 0.00006426
@@ -151,9 +137,7 @@ class TestAuxModelPricing:
         assert retired != DEFAULT_PRICING
 
     def test_aux_cached_tokens_meter_at_the_cached_rate_end_to_end(self) -> None:
-        """The point of moving the lane: cached input at ~1/10th. A metering
-        bug that billed cached tokens at the full rate would silently erase the
-        saving this campaign exists to bank."""
+        """Cached input prices at ~1/10th; a metering bug billing it at the full rate would silently erase that saving."""
         result = calculate_token_cost(
             AUX_MODEL_NAME, input_tokens=100_000, output_tokens=2_000, cached_tokens=80_000
         )
@@ -228,8 +212,7 @@ class TestCalculateTokenCost:
         assert result["total_cost"] == pytest.approx(0.0046)
 
     def test_cached_tokens_never_exceed_input_tokens(self) -> None:
-        """A provider reporting more cached than prompt tokens must not produce a
-        negative uncached cost."""
+        """A provider reporting more cached than prompt tokens must not produce a negative uncached cost."""
         with _with_rate(
             ModelPricing(
                 input_cost_per_1k=0.01, output_cost_per_1k=0.0, cached_input_cost_per_1k=0.001

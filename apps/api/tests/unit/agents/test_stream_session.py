@@ -115,8 +115,7 @@ class TestExecutorLifecycleFlags:
 
 
 class TestQueuedWithoutRun:
-    """``queued_without_run`` is the "nothing happened yet" signal the turn's
-    final message is built from, so each of its three answers is load-bearing."""
+    """queued_without_run is the "nothing happened yet" signal the turn's final message is built from."""
 
     def test_a_stream_with_no_session_reports_nothing(self) -> None:
         # A stream nobody registered has no queued dispatch to report, and the
@@ -300,9 +299,7 @@ class TestToolOutputOwnership:
 
 @pytest.mark.regression
 class TestExecutorRunCarriesWorkflowExecution:
-    """The execution id lives only on the workflow task's wide event, never in
-    ``configurable``; the run built inside that boundary has to pick it up or
-    every executor call it makes is unattributable to the run in the ledger."""
+    """The execution id lives only on the workflow task's wide event, never in configurable."""
 
     async def test_from_configurable_reads_the_execution_id_off_the_boundary(self) -> None:
         from shared.py.wide_events import WorkflowContext, log, wide_task

@@ -1,8 +1,8 @@
-"""Hermetic unit tests for ``IntegrationsRepository.find_custom_by_server_url``.
+"""Hermetic unit tests for IntegrationsRepository.find_custom_by_server_url.
 
-Dedup matches on the stored normalized key, so ``https://host/mcp/`` finds a
-row stored as ``https://host/mcp`` no matter which creation path wrote it.
-The driver is mocked at ``app.db.repositories.base.get_async_collection``;
+Dedup matches on the stored normalized key, so https://host/mcp/ finds a
+row stored as https://host/mcp no matter which creation path wrote it.
+The driver is mocked at app.db.repositories.base.get_async_collection;
 the real-Mongo proof (including the partial unique index) belongs in the
 contracts tier.
 """

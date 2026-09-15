@@ -1,12 +1,8 @@
 /**
- * Idle timer for a live SSE turn.
- *
- * The backend follows its event log forever, emitting a keepalive whenever the
- * log is quiet, so a background task that dies without publishing leaves the
- * connection open and silent. Nothing else in the client bounds that: without a
- * watchdog the spinner runs until the tab closes. Every inbound frame —
- * keepalives included — kicks the timer; the window elapsing means the stream
- * went silent even by its own liveness signal.
+ * Idle timer for a live SSE turn: the backend emits a keepalive whenever its
+ * event log is quiet, so a background task that dies without publishing
+ * leaves the connection open and silent with nothing else bounding it. Every
+ * inbound frame, keepalives included, kicks the timer.
  */
 export class StallWatchdog {
   private handle: ReturnType<typeof setTimeout> | null = null;

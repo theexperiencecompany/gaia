@@ -12,10 +12,8 @@ from app.models.agent_models import AgentConfigurable
 # Must match VOICE_TTS_KEY in apps/voice-agent/src/constants.py — the voice
 # agent matches on this exact string to decide what to speak.
 VOICE_TTS_KEY = "voice_tts"
-# SSE frame key carrying the saved bot message's id alongside the voice answer,
-# so the voice agent can forward a display frame keyed by it and the frontend
-# reconciles it with the WebSocket push. Must match MESSAGE_ID_KEY in
-# apps/voice-agent/src/constants.py.
+# SSE frame key carrying the saved bot message's id alongside the voice answer.
+# Must match MESSAGE_ID_KEY in apps/voice-agent/src/constants.py.
 MESSAGE_ID_KEY = "message_id"
 
 # User-facing error text when the executor exhausts its recursion budget
@@ -35,10 +33,9 @@ EXECUTOR_APPROVAL_LOST_MESSAGE = (
     "I couldn't set up the approval for that action, so I've stopped. Please try again."
 )
 
-# Task text for the wake-up turn queued when background-subagent work lands after
-# the executor rested (finished its turn without collecting). The queued run's
-# join gathers results and pauses for any approvals; SubagentJoinMiddleware
-# backstops it if the model tries to end without collecting.
+# Task text for the wake-up turn queued when background-subagent work lands
+# after the executor rested. SubagentJoinMiddleware backstops it if the model
+# tries to end without collecting.
 EXECUTOR_COLLECTION_TASK = (
     "Background subagent work has finished or is waiting for the user's approval. "
     "Call wait_for_subagents() to collect the outcomes, then report them to the user."
@@ -51,14 +48,9 @@ EXECUTOR_COLLECT_MARKER_PREFIX = "executor:collect_queued:"
 EXECUTOR_COLLECT_MARKER_TTL = 600
 
 
-# What survives a queue hop / HIL resume. Every GAIA-owned configurable key is
-# safe to carry by construction, so AgentConfigurable IS the allowlist: the
-# hand-maintained list this replaces had fallen behind it and was dropping the
-# OpenRouter provider pin, plan_type, root_request_id, langfuse_trace_id and the
-# HIL intent judge's user_messages — a queued run was not a smaller run, it was a
-# different one. What must still be filtered is LangGraph's own runtime keys
-# (checkpoint_ns, checkpoint_id, __pregel_*, Runtime objects), which are exactly
-# the keys NOT declared on AgentConfigurable.
+# What survives a queue hop / HIL resume. AgentConfigurable IS the allowlist: a
+# hand-maintained list this replaces had fallen behind it, dropping fields like
+# the OpenRouter provider pin. Still filtered: LangGraph's own runtime keys (checkpoint_ns, __pregel_*).
 CONFIGURABLE_OWNED_KEYS: frozenset[str] = frozenset(AgentConfigurable.__annotations__)
 
 # Owned keys that are nonetheless scoped to ONE dispatch and must not ride along

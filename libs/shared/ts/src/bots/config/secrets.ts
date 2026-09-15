@@ -27,16 +27,13 @@ const INFISICAL_VARS = [
 ] as const;
 
 export async function injectInfisicalSecrets(): Promise<void> {
-  // ENV doubles as the Infisical environment slug (development/staging/
-  // production). Unlike the Python loader — which defaults an absent ENV to
-  // production — a bare bot checkout resolves to development, because
-  // apps/bots/.env.example has never required ENV and defaulting to production
-  // would break every existing local setup on the next pull.
-  //
-  // Deployment never relies on that fallback: apps/bots/Dockerfile bakes
-  // ENV=production into the image and docker-compose.prod.yml sets it again per
-  // service, so a container can only ever resolve production. NODE_ENV is kept
-  // as a third layer for images built outside this Dockerfile.
+  // ENV doubles as the Infisical environment slug. Unlike the Python loader (which defaults an
+  // absent ENV to production), a bare bot checkout defaults to development: apps/bots/.env.example
+  // never required ENV, and defaulting to production would break every existing local setup.
+
+  // Deployment never relies on that fallback: apps/bots/Dockerfile bakes ENV=production into the
+  // image and docker-compose.prod.yml sets it again per service. NODE_ENV is a third layer for
+  // images built outside this Dockerfile.
   const env =
     process.env.ENV ??
     (process.env.NODE_ENV === "production" ? "production" : "development");

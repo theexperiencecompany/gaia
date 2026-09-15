@@ -14,8 +14,7 @@ from app.services.integrations.my_integrations import get_my_integrations
 
 
 async def match_my_integrations(user_id: str, query: str | None) -> list[MyIntegrationItem]:
-    """The user's available integrations (platform and their own custom ones)
-    matching ``query``, connected ones first. No query means all of them."""
+    """Return the user's integrations matching query, connected ones first; no query means all."""
     mine = (await get_my_integrations(user_id)).integrations
     matches = build_search_matcher(query)
     matched = [
@@ -33,9 +32,11 @@ async def match_my_integrations(user_id: str, query: str | None) -> list[MyInteg
 async def match_public_integrations(
     query: str, *, exclude_ids: set[str], limit: int
 ) -> list[CommunityIntegrationItem]:
-    """Marketplace integrations matching ``query`` that are not in ``exclude_ids``,
-    at most ``limit``. Over-fetches by the excluded count so an excluded entry
-    ranking above the limit cannot crowd out a valid one."""
+    """Return up to limit marketplace integrations matching query, excluding exclude_ids.
+
+    Over-fetches by the excluded count so an excluded entry ranking above the
+    limit cannot crowd out a valid one.
+    """
     excluded = {integration_id.lower() for integration_id in exclude_ids}
     community = await list_community_integrations(search=query, limit=limit + len(excluded))
     return [item for item in community.integrations if item.integration_id.lower() not in excluded][

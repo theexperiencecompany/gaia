@@ -50,34 +50,14 @@ async def construct_langchain_messages(
     conversation_id: str | None = None,
     source: str | None = None,
 ) -> list[AnyMessage]:
+    """Construct LangChain messages for agent interaction.
+
+    Builds a conversation from system prompt + optional memory + human
+    message. LangChain checkpointer handles history, so only current input
+    is processed here.
     """
-    Construct LangChain messages for agent interaction.
-
-    Builds a conversation from system prompt + optional memory + human message.
-    LangChain checkpointer handles conversation history, so we only process current input.
-
-    Args:
-        messages: Raw message history (only latest user message is used)
-        files_data: Available file objects
-        currently_uploaded_file_ids: IDs of files to include in context
-        user_id: For retrieving user preferences and memories
-        user_name: Personalization for system prompt
-        user_dict: Complete user dictionary with timezone, preferences, etc. (from auth)
-        query: Search query for memory retrieval (typically latest user message)
-        selected_tool: Tool chosen via slash command (overrides normal flow)
-        selected_workflow: Workflow to execute (overrides everything else)
-        selected_calendar_event: Calendar event selected for context
-        reply_to_message: Message being replied to (adds conversation thread context)
-        trigger_context: Email/automation context for workflows
-        agent_type: Type of agent - "comms", "executor", or "main" (legacy)
-
-    Returns:
-        List of LangChain messages ready for agent processing
-    """
-    # Static per-channel main prompt — byte-identical across every user on
-    # this channel, so the provider's implicit prompt cache can match across
-    # users. Web/mobile/desktop get the OpenUI-capable variant; text-only
-    # platforms get their formatting-restrictions variant.
+    # Static per-channel main prompt, byte-identical across users on this
+    # channel so the provider's implicit prompt cache matches across users.
     system_msg = create_system_message(
         user_id=user_id,
         user_name=user_name,
@@ -112,10 +92,9 @@ async def construct_langchain_messages(
         )
     )
 
-    # Its own slot, not the dynamic one. Tagged `memory_message` it competed with
-    # the stable identity block for a single-occupant slot and — being emitted
-    # later — won, so every onboarding turn silently reached the model with no
-    # user name, timezone, preferences or integrations manifest.
+    # Its own slot, not the dynamic one: tagged `memory_message` it once
+    # competed with the stable identity block for a single-occupant slot and
+    # won, silently dropping user name/timezone/preferences from the model.
     onboarding_msg: SystemMessage | None = None
     if user_id and conversation_id:
         onboarding_prompt = await get_onboarding_system_prompt_if_applicable(
@@ -156,10 +135,9 @@ async def construct_langchain_messages(
     if reply_to_message:
         content = format_reply_context(reply_to_message, content)
 
-    # Append file context if files are uploaded. The summary is read server-side
-    # from MongoDB (authoritative) — never trusted from the inbound request — in
-    # a single batched query, then surfaced inline so comms knows each file's
-    # content without a tool round-trip.
+    # File summaries are read server-side from MongoDB (authoritative, never
+    # trusted from the request) in one batched query, surfaced inline so
+    # comms knows each file's content without a tool round-trip.
     if currently_uploaded_file_ids and files_data and user_id:
         descriptions = await FileService.get_descriptions(currently_uploaded_file_ids, user_id)
         for file in files_data:

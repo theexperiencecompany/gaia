@@ -1,31 +1,18 @@
-"""Stop ``model_name`` from being concatenated with itself across merged AI message
-chunks.
+"""Stop model_name from being concatenated with itself across merged AI message chunks.
 
-``langchain_core.utils._merge.merge_dicts`` already treats a handful of string keys
-("id", "output_version", "model_provider") as idempotent when both sides carry the
-same value — but not "model_name". ``ChatOpenRouter._astream``/``_stream``
-(langchain_openrouter) can legitimately stamp ``response_metadata["model_name"]`` on
-more than one chunk of the same stream (deepseek reasoning models emit a finish event
-for the reasoning block and another for the final content block, both carrying the
-same model name). ``AIMessageChunk.__add__`` (``langchain_core.messages.ai``) merges
-those chunks' ``response_metadata`` via ``merge_dicts``, and since "model_name" isn't
-in the idempotent set, two equal values get string-concatenated instead of collapsed:
+langchain_core.utils._merge.merge_dicts treats id/output_version/model_provider
+as idempotent when both sides match, but not model_name — so when
+ChatOpenRouter legitimately stamps response_metadata["model_name"] on two
+chunks of the same stream (e.g. deepseek's reasoning + content finish
+events), AIMessageChunk.__add__ concatenates the equal strings instead of
+collapsing them: "x" + "x" -> "xx". UsageMetadataCallbackHandler then reads
+that doubled string as the pricing lookup key, silently billing every such
+call at DEFAULT_PRICING instead of its real rate.
 
-    "deepseek/deepseek-v4-flash-0731" + "deepseek/deepseek-v4-flash-0731"
-    -> "deepseek/deepseek-v4-flash-0731deepseek/deepseek-v4-flash-0731"
-
-``UsageMetadataCallbackHandler`` reads that doubled string as the model id
-(``langchain_core.callbacks.usage``), and ``_record_auxiliary_usage``
-(``app/agents/llm/client.py``) uses it as the pricing lookup key. The doubled id
-matches nothing in the pricing catalog, so every auxiliary call metered this way is
-silently charged at ``DEFAULT_PRICING`` instead of its real (much cheaper) rate.
-
-This copies ``merge_dicts`` verbatim from ``langchain_core.utils._merge`` and adds
-"model_name" to the existing idempotent-string-key set, then rebinds the name in
-every module that imported it directly (a module-level ``from x import merge_dicts``
-holds its own reference — patching ``_merge.merge_dicts`` alone does not reach them).
-Unreported upstream as of langchain-core 1.x. Drop this patch once "model_name" joins
-the upstream idempotent set.
+Copies merge_dicts verbatim and adds model_name to the idempotent set, then
+rebinds the name in every module that imported it directly (patching
+_merge.merge_dicts alone doesn't reach them). Unreported upstream as of
+langchain-core 1.x; drop once model_name joins the upstream idempotent set.
 """
 
 from typing import Any
@@ -42,10 +29,9 @@ from langchain_core.utils import _merge as _merge_module
 
 _IDEMPOTENT_STRING_KEYS = frozenset({"id", "output_version", "model_provider", "model_name"})
 
-# Modules that did `from ._merge import merge_dicts`, so each holds its own
-# reference that patching `_merge` alone cannot reach. Typed as Any because the
-# rebind below writes an attribute typeshed does not declare on them — the whole
-# point of a monkeypatch — and `ModuleType` would reject the assignment.
+# Modules that did `from ._merge import merge_dicts` hold their own reference,
+# so patching _merge alone doesn't reach them. Typed Any: the rebind writes an
+# attribute typeshed doesn't declare, which ModuleType would reject.
 _REBIND_TARGETS: tuple[Any, ...] = (
     _ai_messages,
     _base_messages,
@@ -58,9 +44,7 @@ _REBIND_TARGETS: tuple[Any, ...] = (
 
 
 def merge_dicts(left: dict[str, Any], *others: dict[str, Any]) -> dict[str, Any]:
-    r"""Merge dictionaries, treating equal-valued identity/metadata strings
-    (id, output_version, model_provider, model_name) as idempotent instead of
-    concatenating them. Otherwise identical to the upstream implementation."""
+    """Merge dicts like upstream, but treat id/output_version/model_provider/model_name as idempotent strings."""
     merged = left.copy()
     for right in others:
         for right_k, right_v in right.items():
@@ -101,7 +85,7 @@ def merge_dicts(left: dict[str, Any], *others: dict[str, Any]) -> dict[str, Any]
 
 
 def apply() -> None:
-    """Rebind the module-level `merge_dicts` name everywhere it was imported."""
+    """Rebind the module-level merge_dicts name everywhere it was imported."""
     _merge_module.merge_dicts = merge_dicts
     for module in _REBIND_TARGETS:
         module.merge_dicts = merge_dicts

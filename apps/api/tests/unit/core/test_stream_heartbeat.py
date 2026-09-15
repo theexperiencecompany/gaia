@@ -1,9 +1,9 @@
-"""Tests for `with_heartbeat` — the socket-level SSE keepalive.
+"""Tests for with_heartbeat — the socket-level SSE keepalive.
 
-`subscribe_stream` keeps the connection alive only while the Redis event log is
+subscribe_stream keeps the connection alive only while the Redis event log is
 IDLE. That is not the same as the socket being idle: the bot translator drops
 every web-only frame, so a busy turn can produce a long silence on the wire and
-a reverse proxy will hang up on it (nginx's stock `proxy_read_timeout` is 60s —
+a reverse proxy will hang up on it (nginx's stock proxy_read_timeout is 60s —
 this is what killed the Discord turns on 2026-08-18). These tests pin the
 guarantee that no silence longer than the interval can reach the socket.
 """
@@ -25,11 +25,7 @@ async def _drain(frames: AsyncGenerator[str, None]) -> list[str]:
 
 @pytest.mark.asyncio
 async def test_silent_producer_still_writes_to_the_socket() -> None:
-    """A producer that yields nothing for several intervals is padded.
-
-    This is the regression: the bot translator swallows web-only frames, so the
-    inner generator can be busy and silent at the same time.
-    """
+    """A producer that yields nothing for several intervals is padded, since the bot translator swallows web-only frames."""
 
     async def silent_then_speak() -> AsyncGenerator[str, None]:
         await asyncio.sleep(INTERVAL * 3.5)
@@ -85,15 +81,7 @@ async def test_producer_errors_propagate() -> None:
 
 @pytest.mark.asyncio
 async def test_closing_mid_heartbeat_closes_the_wrapped_producer() -> None:
-    """A disconnect while a read is in flight must still tear the read down.
-
-    This is the ordinary disconnect for the case the heartbeat exists to serve:
-    the turn is quiet (busy with tool work), so a pull from the event log is
-    always in flight when the client drops. Cancelling that pull without
-    awaiting it leaves the wrapped generator running, and `aclose()` then
-    raises "asynchronous generator is already running" — the subscription is
-    left to GC instead of being closed here.
-    """
+    """A disconnect while a read is in flight must still tear the read down, or aclose() raises "already running" and leaks to GC."""
     closed = asyncio.Event()
 
     async def never_speaks() -> AsyncGenerator[str, None]:

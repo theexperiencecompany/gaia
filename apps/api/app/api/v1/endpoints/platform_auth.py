@@ -30,7 +30,7 @@ def _discord_style_profile(user_data: dict[str, Any]) -> dict[str, str | None]:
 class PlatformOAuthConfig:
     """Configuration for platform-specific OAuth flows.
 
-    The provider payloads (``token_data``, ``user_data``) stay ``dict[str, Any]``
+    The provider payloads (token_data, user_data) stay dict[str, Any]
     on purpose: they are Discord's and Slack's response bodies, and the accessors
     below read only the two or three keys each flow needs. Modelling the rest
     would be inventing a third-party schema from the fields we happen to touch.
@@ -99,7 +99,7 @@ def _bounce(path: str, **params: str) -> RedirectResponse:
 
 
 class _CallbackRefused(Exception):
-    """A step of the callback turned the user away; ``oauth_error`` names why."""
+    """A step of the callback turned the user away; oauth_error names why."""
 
     def __init__(self, oauth_error: str) -> None:
         super().__init__(oauth_error)
@@ -107,7 +107,7 @@ class _CallbackRefused(Exception):
 
 
 async def _exchange_code(config: PlatformOAuthConfig, code: str) -> dict[str, Any]:
-    """The provider's token response for ``code``."""
+    """The provider's token response for code."""
     async with httpx.AsyncClient() as client:
         token_response = await client.post(
             config.token_url,

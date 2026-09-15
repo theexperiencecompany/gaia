@@ -1,8 +1,8 @@
-"""Contract tests for ``app.utils.composio_hooks.all_hooks``.
+"""Contract tests for app.utils.composio_hooks.all_hooks.
 
 The module exists purely for its import side effects: importing it pulls in
-every hook module so their ``@register_*`` decorators run against the global
-``hook_registry``. These tests pin exactly that contract — the import succeeds,
+every hook module so their @register_* decorators run against the global
+hook_registry. These tests pin exactly that contract — the import succeeds,
 every hook module is re-exported, and the hooks actually land in the registry.
 """
 

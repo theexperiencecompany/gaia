@@ -73,10 +73,8 @@ export function NotificationCard({
     onSelectToggle,
   });
 
-  // Web background tones (EnhancedNotificationCard.tsx line 100):
-  //   isUnread → bg-zinc-800/70  (zinc-800 = #27272a → rgba(39,39,42,0.7))
-  //   read     → bg-zinc-800/30
-  //   selected → primary tint
+  // Web background tones (EnhancedNotificationCard.tsx line 100): unread =
+  // bg-zinc-800/70 (#27272a @ 70%), read = bg-zinc-800/30, selected = primary tint.
   const cardBg = isSelected
     ? "rgba(0,187,255,0.10)"
     : isUnread

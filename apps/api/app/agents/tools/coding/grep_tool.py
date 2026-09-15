@@ -1,7 +1,7 @@
-"""`grep` tool — search a single offloaded workspace file.
+"""grep tool — search a single offloaded workspace file.
 
-Runs the `grep` binary over one workspace file. Execution hardening
-(argv/no-shell, secret-free env, output cap, timeout) lives in `_filter.py`.
+Runs the grep binary over one workspace file. Execution hardening
+(argv/no-shell, secret-free env, output cap, timeout) lives in _filter.py.
 """
 
 from __future__ import annotations

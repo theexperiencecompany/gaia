@@ -1,17 +1,17 @@
-"""The graph a ``spawn_subagent`` call runs.
+"""The graph a spawn_subagent call runs.
 
-The generic counterpart to ``SubAgentFactory.create_provider_subagent``: no
+The generic counterpart to SubAgentFactory.create_provider_subagent: no
 provider, no integration, whatever tool space its parent hands down. It is a real
 compiled graph rather than a hand-rolled loop so a spawned subagent gets the same
 middleware every other agent has — above all the HIL gate, which is what lets a
 gated tool inside a spawn pause for the user's approval instead of being refused.
 
 Cached per (tool_space, tool-runtime signature): the tool registry is global, so
-the graph is user-agnostic — the same assumption ``build_executor_graph`` makes.
+the graph is user-agnostic — the same assumption build_executor_graph makes.
 
 The middleware stack arrives as a factory rather than being built here: the
 module that composes middleware stacks is also the one that constructs
-``SubagentMiddleware``, so importing it from this side would close a cycle.
+SubagentMiddleware, so importing it from this side would close a cycle.
 """
 
 import asyncio
@@ -50,13 +50,11 @@ _cache_lock = asyncio.Lock()
 def _cache_key(
     llm: LanguageModelLike, tool_space: str, runtime: ToolRuntimeConfig
 ) -> SpawnGraphCacheKey:
-    """What makes two spawn graphs interchangeable.
+    """Return what makes two spawn graphs interchangeable.
 
-    The model belongs in the key: it is bound into the compiled graph, so two
-    parents that differ only by model must not share one. Keyed by model identity
-    rather than object identity because per-run model selection still happens
-    through ``llm.with_config(configurable=...)`` inside the model node — two
-    handles on the same model are genuinely interchangeable.
+    The model belongs in the key since it's bound into the compiled graph.
+    Keyed by model identity, not object identity: two handles on the same
+    model (via llm.with_config(configurable=...)) are genuinely interchangeable.
     """
     model = getattr(llm, "model_name", None) or getattr(llm, "model", None) or type(llm).__name__
     return (
@@ -76,7 +74,7 @@ async def get_spawn_graph(
     runtime: ToolRuntimeConfig,
     middleware_factory: Callable[[], Sequence[AnyAgentMiddleware]],
 ) -> CompiledStateGraph:
-    """The compiled graph for this parent's spawn configuration, built once."""
+    """Return the compiled graph for this parent's spawn configuration, built once."""
     key = _cache_key(llm, tool_space, runtime)
     cached = _graph_cache.get(key)
     if cached is not None:

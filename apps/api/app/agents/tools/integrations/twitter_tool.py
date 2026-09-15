@@ -1,7 +1,7 @@
 """Twitter custom tools using Composio custom tool infrastructure.
 
-Direct Twitter API v2 calls go through Composio's proxy via `proxy_request_sync`.
-The proxy attaches OAuth server-side; tools only need `user_id` from `auth_credentials`.
+Direct Twitter API v2 calls go through Composio's proxy via proxy_request_sync.
+The proxy attaches OAuth server-side; tools only need user_id from auth_credentials.
 
 Custom tools:
 - CUSTOM_BATCH_FOLLOW: Follow multiple users at once

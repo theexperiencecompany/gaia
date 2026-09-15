@@ -559,8 +559,7 @@ class TestStoreEmailsToMemory:
 
 
 class TestMarkEmailProcessingComplete:
-    """Tests for mark_email_processing_complete() — delegates to the repository
-    (the persisted fields/timestamp are covered by the UserRepository contract)."""
+    """mark_email_processing_complete() delegates to the repository (fields covered by its contract)."""
 
     @patch(
         "app.helpers.email_helpers.user_repository.mark_email_processing_complete",

@@ -141,10 +141,9 @@ export default function TodoListPage({
   const { selectedTodoId, selectTodo, clearSelection } = useUrlTodoSelection();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Deep-link fallback: a task opened via ?todoId= may not be in the loaded
-  // (filtered/paginated) list — e.g. a dormant task linked from a notification.
-  // In that case we fetch it by id so the sidebar still opens. `notFoundId`
-  // records an id confirmed missing (404) so we clear instead of refetching.
+  // Deep-link fallback: a task opened via ?todoId= may be missing from the
+  // loaded (filtered/paginated) list, so fetch it by id to still open the
+  // sidebar; `notFoundId` records a confirmed-404 id so we clear instead of refetching.
   const [fetchedTodo, setFetchedTodo] = useState<Todo | null>(null);
   const [notFoundId, setNotFoundId] = useState<string | null>(null);
 

@@ -1,18 +1,4 @@
-"""record_platform_delivery must actually land in a REAL comms thread.
-
-The unit tests for the platform-delivery feature mock the graph, so they never
-ran the real ``aupdate_state`` write — which is exactly how the bug shipped: the
-write used ``as_node="agent"``, whose ``should_continue`` branch needs a ``store``
-that ``aupdate_state`` cannot inject, so every checkpoint write raised
-"Missing required config key 'store'" and was swallowed (best-effort). Workflow
-AND reminder results were being delivered to platforms but never recorded, so
-GAIA had no memory of them on the next turn — the very thing the feature exists
-to fix.
-
-This test drives ``record_platform_delivery`` against the real compiled comms
-graph and asserts the frame is present in the thread the next turn reads. It
-goes red if the write reverts to ``as_node="agent"``.
-"""
+"""Guards the bug where record_platform_delivery's write used as_node="agent", whose store-dependent branch made aupdate_state raise and get silently swallowed, so delivered results were never recorded for the next turn."""
 
 from __future__ import annotations
 
@@ -57,8 +43,7 @@ async def test_record_platform_delivery_lands_in_the_real_thread() -> None:
 
 
 async def test_as_node_agent_needs_a_store_the_write_cannot_supply() -> None:
-    """Pins WHY the write uses as_node="tools": the agent node's outgoing branch
-    requires a store aupdate_state can't inject, so as_node="agent" raises."""
+    """Pins why the write uses as_node="tools": the agent node's outgoing branch needs a store aupdate_state can't inject, so as_node="agent" raises."""
     thread_id = f"conv-{uuid4()}"
     async with comms_graph(["ok"]) as graph:
         with pytest.raises(ValueError, match="store"):

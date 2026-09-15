@@ -24,10 +24,9 @@ FAILED_LABEL: Final[str] = "failed"
 # follow-up, so the UI can surface it for attention.
 NEEDS_FOLLOW_UP_LABEL: Final[str] = "needs-follow-up"
 
-# Labels that mean "this todo is waiting on something outside GAIA". The
-# maintenance sweep reads them to decide whether an overdue todo is genuinely
-# stuck, and the trigger-subscription paths set and clear them — so they live
-# here rather than inside either consumer.
+# Labels meaning "this todo is waiting on something outside GAIA". The sweep
+# reads them to judge whether an overdue todo is genuinely stuck, and
+# trigger-subscription paths set/clear them, so they live here, not a consumer.
 WAITING_FOR_REPLY_LABEL: Final[str] = "waiting-for-reply"
 WAITING_FOR_APPROVAL_LABEL: Final[str] = "waiting-for-approval"
 BLOCKING_LABEL: Final[str] = "blocked"

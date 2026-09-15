@@ -14,10 +14,9 @@ import {
   siteConfig,
 } from "@/lib/seo";
 
-// ISR: give the homepage a stable incremental-cache entry so OpenNext's cache
-// interception serves it without booting the full Next server (the worker
-// cold-start path). Also refreshes the time-of-day seed hourly instead of
-// freezing it at build time.
+// ISR: gives the homepage a stable incremental-cache entry so OpenNext's
+// cache interception serves it without a full Next server cold-start, and
+// refreshes the time-of-day seed hourly instead of freezing it at build time.
 export const revalidate = 3600;
 
 export const metadata: Metadata = generatePageMetadata({

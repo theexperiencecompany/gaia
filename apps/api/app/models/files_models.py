@@ -29,11 +29,11 @@ PageWiseSummary = list[dict[str, Any]] | dict[str, Any] | str | None
 
 
 class FileDocument(UserScopedDocument):
-    """An uploaded file's metadata as stored in the ``files`` collection.
+    """An uploaded file's metadata as stored in the files collection.
 
-    User-scoped and addressed by the business ``file_id`` (a UUID); the Mongo
-    ``_id`` (ObjectId) rides along as ``id`` because the update endpoint still
-    returns it. ``updated_at`` is stamped by the base on every write.
+    User-scoped and addressed by the business file_id (a UUID); the Mongo
+    _id (ObjectId) rides along as id because the update endpoint still
+    returns it. updated_at is stamped by the base on every write.
     """
 
     file_id: str

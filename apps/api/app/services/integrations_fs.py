@@ -3,10 +3,10 @@
 Re-materializes a user's SKILL.md / instructions catalog when their connected
 integration set changes (connect or disconnect). Mirrors the gaia-tasks and
 user-todos glue modules: a fire-and-forget, hash-gated scheduler keyed on
-``user_id`` (see :func:`app.services._vfs_scheduler.make_scheduler`).
+user_id (see :func:app.services._vfs_scheduler.make_scheduler).
 
-Wired into the integration status chokepoints (``update_user_integration_status``
-on connect, ``disconnect_integration`` on disconnect) so the workspace reflects
+Wired into the integration status chokepoints (update_user_integration_status
+on connect, disconnect_integration on disconnect) so the workspace reflects
 integrations the moment they change — not on the next chat turn.
 """
 

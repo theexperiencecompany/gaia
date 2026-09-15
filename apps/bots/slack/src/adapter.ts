@@ -452,16 +452,10 @@ export class SlackAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Creates a {@link RichMessageTarget} for Slack slash command responses.
+   * Create a {@link RichMessageTarget} for Slack slash command responses.
    *
-   * Uses Bolt's `respond` function for ephemeral replies and the
-   * Web API `client` for public messages. Rich messages are rendered
-   * as markdown since Slack has no native embed format.
-   *
-   * @param userId - The Slack user ID.
-   * @param channelId - The Slack channel ID.
-   * @param client - The Slack Web API client.
-   * @param respond - The Bolt respond function (for ephemeral replies).
+   * Uses Bolt's `respond` for ephemeral replies and the Web API `client` for
+   * public messages; rich messages render as markdown (Slack has no embeds).
    */
   private createCommandTarget(
     userId: string,

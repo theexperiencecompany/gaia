@@ -112,7 +112,7 @@ def _todo_filters_applied(query: TodoListQuery) -> list[str]:
 
 
 def _resolve_todo_date_range(query: TodoListQuery) -> tuple[datetime | None, datetime | None]:
-    """Resolve ``due_today`` / ``due_this_week`` into an explicit date range."""
+    """Resolve due_today / due_this_week into an explicit date range."""
     if query.due_today:
         today = datetime.now(UTC).date()
         return (
@@ -147,10 +147,9 @@ def _todo_search_params(
 
 @router.get("/todos", response_model=TodoListResponse)
 async def list_todos(
-    # Bound as a dependency, not Query(): FastAPI does not flatten
-    # query-models through include_router, so a Query()-bound model 422s every
-    # request expecting a JSON body. Depends() binds each field as its own
-    # flattened query param (same wire as the individual Query() params it replaces).
+    # Bound as a dependency, not Query(): FastAPI doesn't flatten query-models
+    # through include_router, so a Query()-bound model 422s every request. Depends()
+    # binds each field as its own flattened query param (same wire as Query() params).
     query: Annotated[TodoListQuery, Depends()],
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> TodoListResponse:
@@ -221,11 +220,9 @@ async def create_todo(
         ) from e
 
 
-# Bulk Operations
-# These literal ``/todos/bulk`` paths MUST be declared before the parameterized
-# ``/todos/{todo_id}`` routes below: FastAPI matches in declaration order, so if
-# ``PUT/DELETE /todos/{todo_id}`` came first they would capture ``/todos/bulk``
-# with todo_id="bulk" and 500 instead of running the bulk operation.
+# These literal /todos/bulk paths MUST be declared before /todos/{todo_id}:
+# FastAPI matches in declaration order, so {todo_id} first would capture
+# /todos/bulk with todo_id="bulk" and 500 instead of running the bulk op.
 @router.put("/todos/bulk", response_model=BulkOperationResponse)
 @tiered_rate_limit("todo_operations")
 async def bulk_update_todos(
@@ -497,7 +494,7 @@ async def get_workflow_status(
     Returns the workflow if it exists, otherwise returns None.
     Detects generating state when:
     - Workflow generation is queued (Redis flag)
-    - Workflow exists but has no steps yet
+    - Workflow exists but has no steps yet.
     """
     response.headers["Cache-Control"] = "private, max-age=15"
     log.set(

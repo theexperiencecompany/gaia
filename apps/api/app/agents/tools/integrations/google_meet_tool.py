@@ -48,10 +48,9 @@ def register_google_meet_custom_tools(composio: Composio) -> list[str]:
                 f"{LogTag.TOOL} Google Meet userinfo fetch failed", error_type=type(e).__name__
             )
 
-        # The calendar fetch may fail if the GOOGLEMEET connection lacks
-        # calendar scope. The legacy tool gated on status_code == 200 and
-        # returned an empty list — preserve that behavior so the whole tool
-        # doesn't error out when only the profile is accessible.
+        # The calendar fetch may fail if the GOOGLEMEET connection lacks calendar
+        # scope; match the legacy tool's status_code == 200 gate and empty-list
+        # fallback so the tool still works with only profile access.
         events_data: dict[str, Any] = {}
         now = datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z")
         try:

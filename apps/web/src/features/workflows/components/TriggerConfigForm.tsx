@@ -68,11 +68,9 @@ export function TriggerConfigForm({
   const handler = getTriggerHandler(normalizedSlug);
   const SettingsComponent = handler?.SettingsComponent;
 
-  // When the trigger's integration isn't connected, the settings can't load
-  // (their option fetches need the connection) and the connect call-to-action
-  // lives in the modal's top banner — so don't render the settings/inline
-  // prompt here. Resolved the same way as that banner (integration of the
-  // selected trigger's schema) so the two never disagree.
+  // When the trigger's integration isn't connected, settings can't load (their
+  // option fetches need it) and the connect CTA lives in the modal's banner —
+  // resolved the same way as that banner so the two never disagree.
   const triggerIntegration = selectedSchema?.integration_id
     ? integrations.find((i) => i.id === selectedSchema.integration_id)
     : undefined;

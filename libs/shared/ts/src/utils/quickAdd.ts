@@ -14,20 +14,12 @@ export type {
 } from "./quickAdd.types";
 
 /**
- * A pure quick-add parser that mirrors the rules used by the web client's
- * `useTextProcessor` hook so that web and mobile share a single source of
- * truth.
- *
- * Tokens recognised (each requires a trailing whitespace to be considered a
- * complete token, matching the web behaviour where in-progress typing must
- * not flicker out from under the user):
- *  - `@projectname ` (case-insensitive). Attempts to match against the
- *    supplied `projects` list; falls back to a free-form name if none match.
- *  - `#labelname ` — multiple allowed.
- *  - Priority: `p1`/`p2`/`p3` first; otherwise `high|urgent|important`,
- *    `medium|normal`, `low`. First match wins.
- *  - Date tokens: `today`, `tomorrow`, `yesterday`, `in N days`, `next week`,
- *    `this weekend`, `next monday` (and other day names).
+ * A pure quick-add parser mirroring the web client's `useTextProcessor` hook, so web and
+ * mobile share one source of truth. Each token needs a trailing whitespace to complete (so
+ * in-progress typing doesn't flicker): `@projectname ` (matches `projects`, else free-form),
+ * `#labelname ` (multiple allowed), priority (`p1-3` first, then `high|urgent|important` /
+ * `medium|normal` / `low`, first match wins), and date tokens (`today`, `tomorrow`, `yesterday`,
+ * `in N days`, `next week`, `this weekend`, `next monday`, etc).
  */
 
 const DAY_MS = 86_400_000;

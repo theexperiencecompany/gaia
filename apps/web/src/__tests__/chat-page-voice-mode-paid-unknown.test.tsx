@@ -230,10 +230,8 @@ describe("ChatPage voice-mode gate — plan status unknown vs. known-free", () =
 
     act(() => capturedComposerProps?.voiceModeActive());
 
-    // The critical assertion: before the fix, this read `subscriptionStatus
-    // ?.is_subscribed` directly off the raw (disabled/never-fetched) query,
-    // which is `undefined` in this exact window — falsy, so a paying user
-    // reloading mid-fetch got the upgrade paywall instead of their call.
+    // Before the fix this read `subscriptionStatus?.is_subscribed` off the raw
+    // query — `undefined` mid-fetch — so a paying user got the paywall here.
     expect(openUpgradeModal).not.toHaveBeenCalled();
     expect(enterVoiceMode).toHaveBeenCalledTimes(1);
   });
@@ -259,8 +257,5 @@ describe("ChatPage voice-mode gate — plan status unknown vs. known-free", () =
   });
 });
 
-// ---------------------------------------------------------------------------
-// Onboarding's web first message. Mounted here rather than in a file of its own
-// because ChatPage is the component under test in both cases and its mock
-// preamble above is the only harness that boots it.
-// ---------------------------------------------------------------------------
+// Onboarding's web first message: mounted here (not its own file) because
+// ChatPage's mock preamble above is the only harness that boots it.

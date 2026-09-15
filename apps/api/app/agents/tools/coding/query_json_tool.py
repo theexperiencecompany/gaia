@@ -1,10 +1,10 @@
-"""`query_json` tool — filter/project/aggregate an offloaded JSON/JSONL file.
+"""query_json tool — filter/project/aggregate an offloaded JSON/JSONL file.
 
 Runs entirely in the API process over the parsed records: filter by field
 conditions, project fields, sort, limit, count, dedupe, group-count. It is safe
 by construction — pure dict/list operations with no code execution, no file or
 network access beyond the one workspace file, and bounded input/output. This is
-the in-process, sandbox-free replacement for running `jq` on the host.
+the in-process, sandbox-free replacement for running jq on the host.
 """
 
 from __future__ import annotations
@@ -135,8 +135,8 @@ async def query_json(
 def _load_records(target: Path) -> tuple[list[JSONRecord], int, bool]:
     """Read a JSON-array or JSONL file into a list of dict records (bounded).
 
-    Reads AT MOST ``MAX_QUERY_INPUT_BYTES`` (never the whole file — a multi-GB file
-    would OOM the process) and parses AT MOST ``MAX_QUERY_RECORDS`` records.
+    Reads AT MOST MAX_QUERY_INPUT_BYTES (never the whole file — a multi-GB file
+    would OOM the process) and parses AT MOST MAX_QUERY_RECORDS records.
     """
     with target.open("rb") as fh:
         raw = fh.read(MAX_QUERY_INPUT_BYTES + 1)  # cap+1 to detect overflow, no more

@@ -3,7 +3,7 @@
 Journal rows keep UTC instants, but the DAY an entry files under — and the
 clock time shown next to it — follows the user's home timezone, so a 2am
 IST chat lands in the user's today rather than UTC's yesterday. A missing
-or invalid stored timezone falls back to UTC (``Timezone.parse`` logs a
+or invalid stored timezone falls back to UTC (Timezone.parse logs a
 warning for an unrecognized value instead of raising), so a bad preference
 can never crash ingestion.
 """
@@ -16,11 +16,11 @@ from shared.py.wide_events import log
 
 
 async def resolve_user_timezone(user_id: str) -> Timezone:
-    """The user's home timezone from their profile; UTC when missing or invalid.
+    """Return the user's home timezone from their profile; UTC when missing or invalid.
 
     Timezone resolution is enrichment: a repository failure (malformed id, an
     infra hiccup) degrades to UTC instead of failing the retain that asked —
-    the same trade ``consolidation._get_user_name`` makes for the same lookup.
+    the same trade consolidation._get_user_name makes for the same lookup.
     """
     try:
         user = await user_repository.get(user_id)

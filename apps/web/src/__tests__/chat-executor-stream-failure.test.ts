@@ -1,14 +1,9 @@
 /**
- * Regression test for a background executor run that dies mid-stream.
- *
- * A failed run publishes an error frame and then closes. The close is byte-for-byte
- * a clean one, so the handler finalized the placeholder with no error — status
- * `sent` — and a dead run rendered as a finished answer with no Retry.
- *
- * The suite missed it because nothing exercised the executor SSE path at all:
- * `chat-turn-failure.test.ts` covers the live chat turn's equivalent seam
- * (`resolveTurnOutcome`), and the executor path reaches the same outcome through
- * completely separate code.
+ * Regression: a failed background executor run publishes an error frame then
+ * closes byte-for-byte like a clean close, so the handler finalized the
+ * placeholder with no error (status `sent`) — a dead run rendered as finished
+ * with no Retry. Missed because nothing exercised the executor SSE path;
+ * `chat-turn-failure.test.ts` covers the live chat turn's equivalent seam instead.
  */
 import type { EventSourceMessage } from "@microsoft/fetch-event-source";
 import { beforeEach, describe, expect, it, vi } from "vitest";

@@ -196,7 +196,7 @@ def parse_show_blocks(text: str) -> dict[str, str]:
 
 
 def diff_hunk(diff: str) -> tuple[list[str], list[str]]:
-    """The diff's before/after line blocks, markers stripped.
+    """Return the diff's before/after line blocks, markers stripped.
 
     `before` is context + removed lines, `after` is context + added — the two
     texts that must swap for the mutation to be applied.
@@ -276,7 +276,7 @@ def _trim_common_lines(removed: list[str], added: list[str]) -> tuple[list[str],
 
 
 def _token_change(before: str, after: str) -> str | None:
-    """The token that changed between two versions of ONE line.
+    """Return the token that changed between two versions of ONE line.
 
     None when the difference vanishes once stripped (a whitespace-only edit):
     the caller then falls back to naming the lines, because "` → `" is not an
@@ -305,7 +305,7 @@ def _token_change(before: str, after: str) -> str | None:
 
 
 def _describe(old: str, new: str) -> str:
-    """`a → b`, or the one-sided form when the edit only removed or only added."""
+    """Return `a → b`, or the one-sided form when the edit only removed or only added."""
     old, new = old.strip(), new.strip()
     if old and new:
         return f"{_clip(old)} → {_clip(new)}"
@@ -348,7 +348,7 @@ def locate_hunk(source: list[str], before: list[str], hint: int | None) -> int:
 
 
 def apply_hunk(source: list[str], diff: str, hint: int | None) -> tuple[list[str], int]:
-    """The file's lines with this mutation applied, and the mutated line number."""
+    """Return the file's lines with this mutation applied, and the mutated line number."""
     before, after = diff_hunk(diff)
     start = locate_hunk(source, before, hint)
     patched = source[:start] + after + source[start + len(before) :]
@@ -391,7 +391,7 @@ def group_by_line(survivors: list[Survivor]) -> list[tuple[int | None, list[Surv
 
 
 def summary_line(verdict: ModuleVerdict) -> str:
-    """The one line a human reads first, and the only one the gate table shows."""
+    """Return the one line a human reads first, and the only one the gate table shows."""
     if verdict.status == "survivors":
         groups = len(group_by_line(verdict.survivors))
         text = (
@@ -411,7 +411,7 @@ def summary_line(verdict: ModuleVerdict) -> str:
 
 
 def advice(verdict: ModuleVerdict) -> list[str]:
-    """What to actually do, one sentence each — never a restatement of the status."""
+    """Return what to actually do, one sentence each — never a restatement of the status."""
     if verdict.status == "survivors":
         out = [
             f"Assert what {verdict.path}:{line} does — {len(group)} mutant(s) survive there "
@@ -441,7 +441,7 @@ def advice(verdict: ModuleVerdict) -> list[str]:
 
 
 def first_surviving_line(verdict: ModuleVerdict) -> int | None:
-    """The first line the replay advice should point at."""
+    """Return the first line the replay advice should point at."""
     for line, _group in group_by_line(verdict.survivors):
         if line is not None:
             return line
@@ -451,7 +451,7 @@ def first_surviving_line(verdict: ModuleVerdict) -> int | None:
 def emit_command(
     verdict: ModuleVerdict, repo_root: Path, detail_dir: Path, out_dir: Path
 ) -> list[str]:
-    """The `verdict.py emit` call that reports this module to the gate.
+    """Return the `verdict.py emit` call that reports this module to the gate.
 
     One finding per surviving LINE, not per mutant: the gate's table and the
     PR's diff view each get one entry per thing to fix, and the line's mutants
@@ -511,7 +511,7 @@ def emit_shared_verdict(verdict: ModuleVerdict, repo_root: Path, out_dir: Path) 
 
 
 def _as_list(value: object) -> list[dict[str, object]]:
-    """A JSON field that must be a list, or a loud failure — never a silent empty."""
+    """Return a JSON field that must be a list, failing loudly — never a silent empty."""
     if value is None:
         return []
     if not isinstance(value, list):
@@ -559,7 +559,7 @@ def _survivor_from_dict(item: dict[str, object]) -> Survivor:
 
 
 def render_report(verdict: ModuleVerdict) -> str:
-    """The human verdict: one heading per surviving source line, not a name list."""
+    """Return the human verdict: one heading per surviving source line, not a name list."""
     lines: list[str] = []
     groups = group_by_line(verdict.survivors)
     lines.append(
@@ -595,12 +595,12 @@ def render_report(verdict: ModuleVerdict) -> str:
 
 
 def _change_list(group: list[Survivor]) -> str:
-    """The distinct one-line changes on one source line, in the order found."""
+    """Return the distinct one-line changes on one source line, in the order found."""
     return "; ".join(dict.fromkeys(survivor.change for survivor in group))
 
 
 def step_summary(verdicts: list[ModuleVerdict]) -> str:
-    """The shard's own block: which modules it ran and how they came out.
+    """Return the shard's own block: which modules it ran and how they came out.
 
     Counts only. Every finding already has a step-summary block of its own,
     written by `verdict.py emit` per module — repeating them here would put the
@@ -673,7 +673,7 @@ def cmd_module(args: argparse.Namespace) -> int:
 
 
 def _section_status(section: str) -> tuple[str, str | None, list[int]]:
-    """A module's log section -> (status, reason, unreachable line numbers)."""
+    """Parse a module's log section into (status, reason, unreachable line numbers)."""
     if "MUTATION FAILED — changed code no test reaches" in section:
         match = _GAP_LINES.search(section)
         lines = [int(part) for part in match.group("lines").split()] if match else []
@@ -691,7 +691,7 @@ def _section_status(section: str) -> tuple[str, str | None, list[int]]:
 
 
 def split_shard_log(text: str) -> list[tuple[str, str]]:
-    """A shard log -> [(module, its section)], split on the `=== module ===` markers."""
+    """Split a shard log into [(module, its section)] on the `=== module ===` markers."""
     sections: list[tuple[str, str]] = []
     current: str | None = None
     body: list[str] = []
@@ -789,7 +789,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
 
 
 def write_record_set(path: Path, verdicts: list[ModuleVerdict]) -> None:
-    """The shard's replay artifact: every module's record in one file.
+    """Return the shard's replay artifact: every module's record in one file.
 
     Beside shard.log and NOT under verify-logs/verdicts: `consolidate` reads
     every JSON in that tree as a lane verdict, and this is not one.
@@ -909,7 +909,7 @@ def _replay_one(
 
 
 def _fallback_testfiles(repo_root: Path, module: str) -> list[str]:
-    """The lane's own module -> test-file mapping, for a verdict that carries none."""
+    """Return the lane's own module -> test-file mapping, for a verdict that carries none."""
     matrix = repo_root / "scripts" / "ci" / "lib" / "mutation_matrix.py"
     if not matrix.exists():
         return []
@@ -980,7 +980,7 @@ def _assert_tree_untouched(before: str, after: str, repo_root: Path, api_root: P
 
 
 def _git_status(repo_root: Path) -> str:
-    """The working tree's dirt, snapshotted so the replay can prove it added none."""
+    """Snapshot the working tree's dirt so the replay can prove it added none."""
     result = subprocess.run(
         ["git", "status", "--porcelain"],
         cwd=repo_root,

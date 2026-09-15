@@ -125,8 +125,7 @@ class TestFetchEmailProfile:
         assert ttl == 24 * 60 * 60
 
     async def test_searches_both_people_surfaces_through_the_users_gmail_proxy(self, mock_http):
-        """Saved contacts and other-contacts are each one GET through the user's
-        Gmail connection; the request shape is the People API contract."""
+        """Saved contacts and other-contacts are each one GET through the user's Gmail connection, per the People API contract."""
         mock_http.proxy.side_effect = _proxy_side_effect(_search_result(_person()), {})
 
         await fetch_email_profile(USER_ID, EMAIL)
@@ -218,8 +217,7 @@ class TestFetchEmailProfile:
         assert response.website_name == GRAVATAR_SOURCE_NAME
 
     async def test_empty_search_triggers_warmup_retry(self, mock_http):
-        """Google's search endpoints go cold after inactivity — the service must
-        warm up (empty query) and retry before giving up."""
+        """A cold Google search endpoint must be warmed up (empty query) and retried before giving up."""
         calls = {"n": 0}
 
         async def fake_proxy_request(request: ProxyRequest) -> dict:

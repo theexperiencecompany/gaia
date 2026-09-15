@@ -209,10 +209,9 @@ const DRAW_STAGGER_S = 0.09;
 export function Signature({ active, scale = 1.6, className }: SignatureProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const reduceMotion = useReducedMotion();
-  // Paths start hidden (offset = dasharray) and flip to 0 inside a
-  // requestAnimationFrame, guaranteeing the hidden state was committed and
-  // painted first: CSS transitions need a previous computed value to animate
-  // from, and a state flip in the same commit as mount would skip the draw.
+  // Paths start hidden (offset = dasharray) and flip to 0 inside an rAF, so
+  // the hidden state is committed and painted first — CSS transitions need a
+  // prior computed value, and a same-commit flip would skip the draw.
   const [draw, setDraw] = useState(false);
 
   useEffect(() => {

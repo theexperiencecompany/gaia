@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """Developer tool: send every LOCAL user back through onboarding from scratch.
 
-For each user in the local Mongo this runs the ``reset_onboarding`` behind the
-product's "Restart onboarding" button with ``keep_connections``: seeded
+For each user in the local Mongo this runs the reset_onboarding behind the
+product's "Restart onboarding" button with keep_connections: seeded
 conversations, onboarding todos and legacy suggested workflows are deleted and
-the ``onboarding`` subdocument is unset, while connected integrations and
+the onboarding subdocument is unset, while connected integrations and
 memories stay. Every subscription record of the user is deleted too, so the
 wizard shows the paywall again, and every linked chat platform (Telegram,
 WhatsApp, iMessage, ...) is unlinked so the one-tap link can be tested fresh (the Dodo test-mode side is untouched: run a
-fresh test checkout, with ``dodo wh listen`` pointed at this API so the
+fresh test checkout, with dodo wh listen pointed at this API so the
 activation webhook lands). It then empties the local Redis so no cached user
 document, cached plan, rate-limit bucket or link code survives.
 
 The wizard also keeps in-progress answers in the browser under
-``gaia-onboarding-state-v3:<userId>``; clear site data (or use the product's
+gaia-onboarding-state-v3:<userId>; clear site data (or use the product's
 Restart button once) if a stale draft resurfaces.
 
-Refuses to run unless ``ENV`` is development and both ``MONGO_DB`` and
-``REDIS_URL`` point at this machine. It is not a migration and must never see
+Refuses to run unless ENV is development and both MONGO_DB and
+REDIS_URL point at this machine. It is not a migration and must never see
 production credentials.
 
 Run from the repo root so Infisical's dev secrets are injected:
@@ -60,8 +60,8 @@ class NotALocalStackError(RuntimeError):
 def is_local_url(url: str) -> bool:
     """Whether every host in a Mongo/Redis URL is a loopback address.
 
-    Mongo URLs may list several ``host:port`` pairs separated by commas; all of
-    them must be local. ``mongodb+srv://`` is a DNS seed list and is never local.
+    Mongo URLs may list several host:port pairs separated by commas; all of
+    them must be local. mongodb+srv:// is a DNS seed list and is never local.
     """
     parts = urlsplit(url)
     if parts.scheme == "mongodb+srv":

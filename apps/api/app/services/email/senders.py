@@ -264,7 +264,7 @@ async def send_badge_earned_email(
 ) -> None:
     """Congratulate a user the first time they reach an activity badge tier.
 
-    Send-once semantics live with the caller (``sync_activity_tiers`` promotes
+    Send-once semantics live with the caller (sync_activity_tiers promotes
     monotonically), so this stays a dumb sender like the rest of this module.
     """
     html_content = render_email_template(
@@ -293,11 +293,11 @@ LIMIT_EMAIL_WINDOW = timedelta(days=7)
 
 
 async def _limit_email_recipient(user_id: str) -> UserDocument | None:
-    """The user a limit email may go to, or None (missing/no email/weekly dedupe).
+    """Return the user a limit email may go to, or None (missing/no email/weekly dedupe).
 
     Both limit emails — the interactive upsell and the background
     workflows-paused note — share this one weekly window via
-    ``last_limit_email_sent``, so a user never gets more than one limit email
+    last_limit_email_sent, so a user never gets more than one limit email
     of any kind in a 7-day span.
     """
     user = await user_repository.get(user_id)
@@ -308,11 +308,9 @@ async def _limit_email_recipient(user_id: str) -> UserDocument | None:
         )
         return None
 
-    # One nudge per week: a daily 429 toast is expected UX; a daily email is spam.
-    # The window is CLAIMED, not merely read: both senders share it, and reading
-    # eligibility here then stamping it after the send let two concurrent hits
-    # both pass and both send. The claim is a conditional update, so exactly one
-    # caller wins; the loser returns None and sends nothing.
+    # The window is CLAIMED via a conditional update, not read-then-stamped after
+    # the send — that let two concurrent hits both pass and both send. Exactly
+    # one caller wins the claim; the loser returns None and sends nothing.
     claimed = await user_repository.claim_limit_email_slot(
         user_id, stale_before=datetime.now(UTC) - LIMIT_EMAIL_WINDOW
     )
@@ -368,11 +366,9 @@ async def send_limit_reached_email(
 async def send_workflows_paused_email(user_id: str) -> bool:
     """Tell a FREE user their background workflows are taking a break today.
 
-    Sent when a workflow run — not a user action — hits the daily usage wall,
-    so the copy explains what happened to the work GAIA does for them in the
-    background instead of claiming they personally hit a limit. Shares the
-    weekly dedupe window with the interactive upsell email. Returns True if
-    sent, False if skipped (dedupe or missing user/email).
+    Sent when a workflow run, not a user action, hits the daily usage wall, so the
+    copy explains what happened to their background work rather than claiming they
+    personally hit a limit. Shares the weekly dedupe window with the upsell email.
     """
     user = await _limit_email_recipient(user_id)
     if user is None:

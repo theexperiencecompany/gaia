@@ -77,9 +77,7 @@ class TestSeedFirstConversation:
         assert question.follow_up_actions == composed.follow_ups
 
     async def test_the_messages_are_written_to_that_conversation_for_that_user(self) -> None:
-        """The id and owner are what route the write. Sent as None — or dropped —
-        the turn lands on nobody's conversation, and the caller still gets an id
-        back, so nothing downstream notices the user opening an empty chat."""
+        """Both id and owner route the write — dropping either loses the turn silently."""
         create = AsyncMock()
         append = AsyncMock(return_value=["m1"])
 
@@ -98,8 +96,7 @@ class TestSeedFirstConversation:
         assert append.await_args.kwargs["user_id"] == "user-1"
 
     async def test_the_wide_event_names_the_operation_and_the_user(self) -> None:
-        """The seed is fire-and-forget: this context is the only way to find the
-        run in the logs when a user reports landing on an empty conversation."""
+        """Fire-and-forget: this context is the only way to find the run in the logs."""
         with (
             patch(f"{MODULE}.create_conversation_service", AsyncMock()),
             patch(
@@ -123,9 +120,7 @@ class TestSeedFirstConversation:
             assert await seed_first_conversation("user-1", _composed()) is None
 
     async def test_a_vanished_conversation_is_reported_with_both_ids(self) -> None:
-        """Returning None is silent by design, so this error line is the only
-        signal that the conversation was created and then lost its messages —
-        without both ids it names no user and no conversation to go look at."""
+        """The error log is the only signal of a silently-lost write; it must name both ids."""
         create = AsyncMock()
 
         with (
@@ -154,9 +149,7 @@ class TestSeedFirstConversation:
 
 @pytest.mark.unit
 class TestSeedHoloCardConversation:
-    """The holo card announcement is a one-shot reward turn: written once, never
-    regenerated, and delivered with no user turn to answer it. Nothing else
-    exercised this seeder, so every field it writes was unasserted."""
+    """The holo card announcement is a one-shot reward turn: written once, never regenerated."""
 
     async def test_seeds_one_unread_bot_turn_holding_the_composed_message(self) -> None:
         create = AsyncMock()
@@ -184,9 +177,7 @@ class TestSeedHoloCardConversation:
         assert messages[0].response == "Your card is here"
 
     async def test_each_seed_gets_its_own_random_conversation_id(self) -> None:
-        """The id is minted here, and every user's card is seeded through this
-        one call. A constant id would make the second user's card land in the
-        first user's conversation instead of their own."""
+        """A constant id would land the second user's card in the first user's conversation."""
         create = AsyncMock()
 
         with (
@@ -204,8 +195,7 @@ class TestSeedHoloCardConversation:
         assert first != second
 
     async def test_the_conversation_is_created_for_that_user(self) -> None:
-        """The owner is what routes the write; seeded for anyone else the user
-        never sees the card and the caller still gets an id back."""
+        """The owner routes the write; the wrong owner means the user never sees the card."""
         create = AsyncMock()
 
         with (
@@ -233,8 +223,7 @@ class TestSeedHoloCardConversation:
         assert append.await_args.kwargs["user_id"] == "user-1"
 
     async def test_the_wide_event_names_the_operation_and_the_user(self) -> None:
-        """Fire-and-forget, so this context is the only handle on a run that
-        left a user without their card."""
+        """Fire-and-forget, so this context is the only handle on a run that left a user without their card."""
         with (
             patch(f"{MODULE}.create_conversation_service", AsyncMock()),
             patch(
@@ -258,8 +247,7 @@ class TestSeedHoloCardConversation:
             assert await seed_holo_card_conversation("user-1", "Your card is here") is None
 
     async def test_a_vanished_conversation_is_reported_with_both_ids(self) -> None:
-        """None is returned silently by design, so this error line is the only
-        signal that the conversation was created and then lost its message."""
+        """The error log is the only signal that the conversation was created and then lost its message."""
         create = AsyncMock()
 
         with (
@@ -279,8 +267,7 @@ class TestSeedHoloCardConversation:
         )
 
     async def test_a_failure_is_swallowed_and_named_with_its_cause(self) -> None:
-        """The announcement is a reward, never a reason to fail the pipeline —
-        but a swallowed error that names no cause cannot be diagnosed."""
+        """The announcement is a reward, never a reason to fail the pipeline, but the error must name its cause."""
         with (
             patch(
                 f"{MODULE}.create_conversation_service",

@@ -58,10 +58,7 @@ class TestComposeTaskBrief:
         )
 
     def test_the_brief_layout_is_exact(self):
-        """The executor reads this back as its own instructions, so the layout is
-        the contract: sections separated by a blank line, criteria one per line.
-        Run the criteria together and the definition of done becomes one unreadable
-        line the model is asked to satisfy item by item."""
+        """The layout is the contract: sections separated by a blank line, criteria one per line."""
         out = compose_executor_brief(
             "triage my inbox",
             ["promos archived", "offer flagged"],
@@ -112,7 +109,7 @@ class TestVerbatimRequestComesFromTheServer:
     Routing it through the model made it a model output: asked to emit the full
     task AND re-transcribe a request that may run to MAX_MESSAGE_LENGTH, the
     comms model degenerates — repeating tokens and spilling the schema's own key
-    names into `acceptance_criteria`. The server already holds the user's words,
+    names into acceptance_criteria. The server already holds the user's words,
     so the model is no longer asked for them.
     """
 
@@ -129,9 +126,7 @@ class TestVerbatimRequestComesFromTheServer:
         assert "verbatim_request" not in call_executor.args
 
     async def test_a_long_request_is_carried_unclipped(self):
-        """`user_messages` is clipped to HIL_JUDGE_MAX_TURN_CHARS (800); the verbatim
-        backstop must not be, or long asks — exactly the ones that broke the model —
-        silently lose their tail."""
+        """user_messages is clipped to HIL_JUDGE_MAX_TURN_CHARS (800); the verbatim backstop must not be."""
         long_request = "archive the promo from " + ", ".join(
             f"sender{n}@example.com" for n in range(200)
         )
@@ -156,8 +151,10 @@ class TestVerbatimRequestComesFromTheServer:
 
 
 class TestPreviousRunReachesTheExecutor:
-    """A workflow run's checkpoint threads are dropped before it starts, so the
-    previous run reaches the worker tier here or not at all."""
+    """A workflow run's checkpoint threads are dropped before it starts.
+
+    The previous run reaches the worker tier here or not at all.
+    """
 
     async def test_a_workflow_run_carries_its_previous_run_into_the_brief(self):
         last_run = '<last_run>\nGMAIL_FETCH({"query": "is:unread"})\n</last_run>\n'
@@ -175,9 +172,7 @@ class TestPreviousRunReachesTheExecutor:
         assert '<last_run>\nGMAIL_FETCH({"query": "is:unread"})\n</last_run>' in dispatched_task
 
     async def test_the_playbook_check_is_asked_about_this_workflow_and_this_user(self):
-        """The check reads the workflow's playbook and the user's own run history —
-        asked about the wrong one (or about nobody), it answers about a run that
-        never happened and the executor writes a playbook from it."""
+        """Asked about the wrong workflow or user, the check answers about a run that never happened."""
         with (
             patch(
                 "app.agents.tools.executor_tool.get_last_run_brief",

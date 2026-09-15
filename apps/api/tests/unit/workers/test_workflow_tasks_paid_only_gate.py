@@ -42,8 +42,7 @@ def _patch_scheduler(workflow: MagicMock):
 
 @pytest.fixture(autouse=True)
 def _onboarded_user():
-    """Keep the onboarding gate out of the way — this file is about the
-    subscription gate, which runs before it."""
+    """Keep the onboarding gate out of the way — this file is about the subscription gate, which runs before it."""
     user = UserDocument.model_validate({"onboarding": {"completed": True}})
     with patch(f"{MODULE}.user_repository.get", AsyncMock(return_value=user)):
         yield
@@ -85,8 +84,7 @@ class TestPaidOnlyGateBlocksFreeUsers:
         )
 
     async def test_free_user_run_is_skipped_for_manual_trigger_too(self) -> None:
-        """Not just scheduled fires — a manual "run now" from a lapsed user is
-        gated at the exact same choke point."""
+        """Not just scheduled fires — a manual "run now" from a lapsed user is gated at the same choke point."""
         workflow = _make_workflow(user_id="user-free-2")
         scheduler, p_scheduler = _patch_scheduler(workflow)
 
@@ -103,9 +101,7 @@ class TestPaidOnlyGateBlocksFreeUsers:
         mock_execute_chat.assert_not_called()
 
     async def test_free_user_run_is_skipped_for_integration_trigger_too(self) -> None:
-        """Composio/email trigger fires drain their batch via the same
-        function — the gate must sit before that drain, not after, so a
-        lapsed user's buffered events are never spent on a run."""
+        """The gate must sit before drain_trigger_batch, not after, so a lapsed user's buffered events aren't spent."""
         workflow = _make_workflow(user_id="user-free-3")
         scheduler, p_scheduler = _patch_scheduler(workflow)
 
@@ -126,9 +122,7 @@ class TestPaidOnlyGateBlocksFreeUsers:
         mock_drain.assert_not_called()
 
     async def test_gate_checks_the_workflow_owner_not_a_stale_context_user(self) -> None:
-        """is_paid must be asked about the workflow's actual
-        owner (workflow.user_id) — not any id that happens to be lying around
-        in the trigger context."""
+        """is_paid must be asked about the workflow's actual owner (workflow.user_id), not a stale context id."""
         workflow = _make_workflow(user_id="the-real-owner")
         scheduler, p_scheduler = _patch_scheduler(workflow)
 
@@ -146,15 +140,14 @@ class TestPaidOnlyGateBlocksFreeUsers:
 class TestTheBlockReachesTheFunnel:
     """A skipped run is a paywall block like any other, and must be countable.
 
-    This gate cannot go through ``require_active_subscription`` — that raises,
+    This gate cannot go through require_active_subscription — that raises,
     and a worker must skip and re-arm — so the event it would have fired has to
     be fired here. Without it, "how many users lost a workflow run to the wall"
     is unanswerable while every HTTP and bot surface answers it.
     """
 
     async def test_a_skipped_run_is_captured_against_the_owners_own_profile(self) -> None:
-        """A worker has no request context: an implicit distinct_id would strand
-        the block on an anonymous profile that never joins the user's funnel."""
+        """A worker has no request context: an implicit distinct_id would strand the block on an anonymous profile."""
         workflow = _make_workflow(user_id="user-free-7")
         scheduler, p_scheduler = _patch_scheduler(workflow)
 
@@ -195,8 +188,7 @@ class TestTheBlockReachesTheFunnel:
 
 class TestTheGateReadsTheRowWhenTheCacheSaysFree:
     async def test_a_user_who_just_paid_runs_off_the_row_not_the_stale_cache(self) -> None:
-        """The real gate, not a stub of it: the cache says FREE, the row says
-        PRO, and the run goes ahead."""
+        """The real gate, not a stub of it: the cache says FREE, the row says PRO, and the run goes ahead."""
         workflow = _make_workflow(user_id="user-paid-stale-3")
         scheduler, p_scheduler = _patch_scheduler(workflow)
 
@@ -256,10 +248,11 @@ class TestPaidOnlyGateLetsProUsersThrough:
 
 
 class TestTheGateNeverDestroys:
-    """Found in review: the gate deactivated every workflow the user owned off a
-    five-minute-stale cache read. Deactivation belongs to the billing webhook;
-    the gate only skips (``is_paid`` asks the database before it does — see
-    ``TestTheGateReadsTheRowWhenTheCacheSaysFree``)."""
+    """Found in review: the gate deactivated every workflow the user owned off a five-minute-stale cache read.
+
+    Deactivation belongs to the billing webhook; the gate only skips (is_paid asks the database
+    first — see TestTheGateReadsTheRowWhenTheCacheSaysFree).
+    """
 
     async def test_a_skipped_scheduled_run_is_re_armed_not_deactivated(self) -> None:
         workflow = _make_workflow(user_id="user-free-4")
@@ -276,8 +269,7 @@ class TestTheGateNeverDestroys:
         service.deactivate_workflow.assert_not_called()
 
     async def test_the_re_arm_names_the_workflow_it_could_not_arm(self) -> None:
-        """A re-arm failure is logged against the workflow id; a lost id is an
-        unattributable error in the worker log."""
+        """A re-arm failure is logged against the workflow id; a lost id is an unattributable error in the log."""
         workflow = _make_workflow(user_id="user-free-6")
         workflow.repeat = "daily"
         scheduler, p_scheduler = _patch_scheduler(workflow)

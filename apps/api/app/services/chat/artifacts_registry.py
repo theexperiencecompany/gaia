@@ -1,11 +1,10 @@
-"""Conversation-level artifact registry — the single source of truth for a
-conversation's agent-written files.
+"""Conversation-level artifact registry: the single source of truth for a conversation's files.
 
-Each artifact is stored once on the conversation's ``artifacts[]`` array, keyed
-by ``path`` (upsert-by-path), so the same file never lands in two places and an
+Each artifact is stored once on the conversation's artifacts[] array, keyed
+by path (upsert-by-path), so the same file never lands in two places and an
 edit updates the one record everywhere. Reads are Redis-cached so a chat turn
 reads the registry once instead of re-scanning the costly JuiceFS dir; every
-write busts that cache. ``$currentDate {updatedAt}`` on each write is what makes
+write busts that cache. $currentDate {updatedAt} on each write is what makes
 the frontend's batch-sync staleness check refetch the conversation afterwards.
 """
 
@@ -20,8 +19,11 @@ from app.models.artifact_models import ArtifactRegistryEntry
 
 
 class ArtifactRegistryPatch(TypedDict, total=False):
-    """The subset of an entry a re-emit rewrites — every key optional so a
-    body-less watcher event never clears an inlined body."""
+    """The subset of an entry a re-emit rewrites.
+
+    Every key is optional so a body-less watcher event never clears an
+    inlined body.
+    """
 
     size_bytes: int | None
     mtime: float | None
@@ -32,14 +34,11 @@ class ArtifactRegistryPatch(TypedDict, total=False):
 
 @CacheInvalidator(key_patterns=[CONV_ARTIFACTS_CACHE_PATTERN])
 async def upsert_conversation_artifact(user_id: str, conv_id: str, payload: dict[str, Any]) -> None:
-    """Upsert one artifact onto the conversation registry, keyed by ``path``.
+    """Upsert one artifact onto the conversation registry, keyed by path.
 
-    ``body`` is written only when the payload carries one, so a body-less watcher
-    re-emit never wipes an inline preview saved by an earlier tool-sourced write.
-
-    ``payload`` is the raw artifact event; its wire contract is owned by
-    :mod:`app.services.artifact_events`, so it stays an untyped dict here rather
-    than gaining a rival shape (Type Safety item 14).
+    body is written only when the payload carries one, so a body-less
+    re-emit never wipes an inline preview. payload stays an untyped dict;
+    its wire contract is owned by app.services.artifact_events.
     """
     now_iso = datetime.now(UTC).isoformat()
     path = payload["path"]
@@ -70,7 +69,7 @@ async def upsert_conversation_artifact(user_id: str, conv_id: str, payload: dict
 
 @CacheInvalidator(key_patterns=[CONV_ARTIFACTS_CACHE_PATTERN])
 async def remove_conversation_artifact(user_id: str, conv_id: str, path: str) -> None:
-    """Remove an artifact from the conversation registry by ``path``."""
+    """Remove an artifact from the conversation registry by path."""
     await conversation_repository.remove_artifact(conv_id, user_id=user_id, path=path)
 
 

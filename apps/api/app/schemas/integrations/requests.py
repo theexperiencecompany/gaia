@@ -33,7 +33,7 @@ class CreateCustomIntegrationRequest(BaseModel):
     @field_validator("server_url")
     @classmethod
     def validate_server_url(cls, v: str) -> str:
-        """Block SSRF: reject non-HTTP(S) or literal-private ``server_url`` values.
+        """Block SSRF: reject non-HTTP(S) or literal-private server_url values.
 
         Cheap shape check only — the DNS-resolving guard runs on the async
         probe/connect path so request parsing never blocks on a DNS lookup.
@@ -43,7 +43,7 @@ class CreateCustomIntegrationRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_auth_type(self) -> Self:
-        """Require an explicit ``auth_type`` whenever ``requires_auth`` is set."""
+        """Require an explicit auth_type whenever requires_auth is set."""
         if self.requires_auth and not self.auth_type:
             raise ValueError("auth_type must be specified when requires_auth is True")
         return self
@@ -62,7 +62,7 @@ class UpdateCustomIntegrationRequest(BaseModel):
     @field_validator("server_url")
     @classmethod
     def validate_server_url(cls, v: str | None) -> str | None:
-        """Block SSRF: reject non-HTTP(S) or literal-private ``server_url`` values.
+        """Block SSRF: reject non-HTTP(S) or literal-private server_url values.
 
         Cheap shape check only — the DNS-resolving guard runs on the async
         probe/connect path so request parsing never blocks on a DNS lookup.

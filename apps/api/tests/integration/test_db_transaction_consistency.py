@@ -6,7 +6,7 @@ multi-step operations: conversation CRUD, todo creation with subtasks,
 message ordering, concurrent updates, partial failure handling, and
 bulk operations.
 
-All tests mock at the repository boundary (the typed ``*_repository``
+All tests mock at the repository boundary (the typed *_repository
 singletons) while exercising real service logic. The repositories return typed
 document models, exactly as they do at runtime; assertions target the resulting
 data state and the documents handed to the repository, not mock call counts.
@@ -57,8 +57,7 @@ FAKE_USER: dict[str, Any] = {"user_id": USER_ID}
 
 
 def _stored_todo(document: TodoDocument, **overrides: Any) -> TodoDocument:
-    """Echo a to-be-created ``TodoDocument`` back as the repository would after a
-    write: same fields, plus a stored id and creation/update timestamps."""
+    """Echo a to-be-created TodoDocument back as the repository would after a write: same fields, plus a stored id and timestamps."""
     now = datetime.now(UTC)
     data = {
         **document.model_dump(),
@@ -401,7 +400,7 @@ class TestMessageOrdering:
 
     Insertion ordering and id assignment now live inside the repository and are
     asserted end-to-end against real Mongo in
-    ``tests/contracts/test_conversations_repository.py::TestMessages::test_append_returns_ids_and_persists``.
+    tests/contracts/test_conversations_repository.py::TestMessages::test_append_returns_ids_and_persists.
     """
 
     async def test_forwards_all_messages_in_order(self) -> None:

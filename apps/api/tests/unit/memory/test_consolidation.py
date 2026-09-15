@@ -241,13 +241,7 @@ class TestVerificationPass:
     async def test_a_struck_line_is_removed_even_when_the_model_left_it_in(
         self, boundaries: MagicMock
     ) -> None:
-        """The verifier returns two correlated outputs — the cleaned document
-        and the struck list — and the real model desyncs them: probed live, it
-        listed the corrupted partner line as struck while returning the
-        document with the line still in it, which is exactly how "Khyal
-        Shetal" survived every verification pass in production. The strike
-        list is the verdict; the code must enforce it on the document instead
-        of trusting the model's copy."""
+        """The strike list is the verdict — a desync let "Khyal Shetal" survive production verification."""
         corrupted = "- Partner: Khyal Shetal (anniversary Oct 19, 2026)"
         boundaries.rewrite.return_value = f"# About\n- Sam is vegetarian\n{corrupted}"
         boundaries.verify.return_value = VerifiedDocument(
@@ -264,9 +258,7 @@ class TestVerificationPass:
     async def test_a_heading_is_never_removed_even_if_marked_struck(
         self, boundaries: MagicMock
     ) -> None:
-        """Headings are structure, not claims — the prompt tells the model to
-        keep them all, so a heading in the struck list is a model error the
-        enforcement must not amplify."""
+        """Headings are structure, not claims — a struck heading is a model error enforcement must not amplify."""
         boundaries.rewrite.return_value = "# About\n## Identity\n- a supported line"
         boundaries.verify.return_value = VerifiedDocument(
             content="# About\n## Identity\n- a supported line",
@@ -280,9 +272,7 @@ class TestVerificationPass:
     async def test_an_indented_heading_survives_a_struck_verdict(
         self, boundaries: MagicMock
     ) -> None:
-        """The heading guard reads the line PAST its indentation — a nested
-        heading the model both indented and struck is still structure and must
-        stay, indentation intact."""
+        """The heading guard reads past indentation, so an indented struck heading stays, indentation intact."""
         doc = "# About\n  ## Identity\n- a supported line"
         boundaries.rewrite.return_value = doc
         boundaries.verify.return_value = VerifiedDocument(content=doc, struck=["## Identity"])
@@ -365,10 +355,7 @@ class TestVerificationPass:
     async def test_a_placeholder_answer_does_not_replace_the_document(
         self, boundaries: MagicMock
     ) -> None:
-        """This is the run that cost a real profile. The verifier answered with
-        the literal placeholder '## Document\\n...document body...' and struck
-        nothing. It is neither None nor empty, so it was written over a 3,077
-        character user.md, and every prompt after that carried 31 characters."""
+        """Production: placeholder '## Document\\n...' overwrote a 3,077-char user.md, leaving 31 chars."""
         profile = "# About the user\n" + "\n".join(f"- fact number {i}" for i in range(80))
         boundaries.verify.return_value = VerifiedDocument(
             content="## Document\n...document body...", struck=[]
@@ -436,10 +423,7 @@ class TestVerificationPass:
     async def test_the_profile_that_was_actually_destroyed_is_refused(
         self, boundaries: MagicMock
     ) -> None:
-        """Verbatim from production: user 6a7a69f9's user.md, 168 characters,
-        replaced by 30 characters of the model narrating its own work. A flat
-        200-character allowance swallowed this entire document, which is why the
-        tolerance is proportional."""
+        """Production: 6a7a69f9's 168-char user.md became 30 chars — tolerance is proportional, not flat 200."""
         profile = (
             "# About the user\n## Identity\n- Gonzalo Blasco\n- GAIA account on the free "
             "plan (daily usage limit). (as of 2026-08-13)\n\n## Work & projects\n\n"
@@ -507,12 +491,7 @@ class TestVerificationPass:
     async def test_a_struck_line_buys_exactly_its_own_length_and_newline(
         self, boundaries: MagicMock
     ) -> None:
-        """The well-behaved case at the exact budget boundary: the model's copy
-        genuinely removed the struck line and additionally trimmed the full
-        tolerance — lost == explained + tolerance is accepted, and the copy
-        comes back intact (the mechanical strike pass finds nothing left to
-        remove). The desynced case — struck listed but line still present —
-        is pinned separately by the strike-enforcement regression test."""
+        """At the exact boundary, lost == explained + tolerance is accepted; desync has its own regression test."""
         line = "- " + "y" * 60
         document = f"# About\n{line}\n" + "x" * 900
         without = ("# About\n" + "x" * 900).strip()
@@ -544,8 +523,7 @@ class TestVerificationPass:
         assert kept == document
 
     async def test_a_line_the_document_never_had_buys_nothing(self, boundaries: MagicMock) -> None:
-        """Otherwise a model could claim any budget it liked by inventing the
-        lines it says it struck."""
+        """A model could otherwise claim unlimited budget by inventing struck lines it never removed."""
         document = "# About\n" + "x" * 900
         invented = "- " + "z" * 400
         boundaries.verify.return_value = VerifiedDocument(

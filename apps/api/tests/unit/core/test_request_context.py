@@ -1,8 +1,8 @@
-"""Unit tests for ``app.core.request_context.resolve_caller``.
+"""Unit tests for app.core.request_context.resolve_caller.
 
 The decorator-facing caller-resolution function: request-scoped context first,
-then an explicit ``user`` kwarg, then the first positional dict carrying
-``user_id``. Direct, exact-value tests — this used to be exercised only
+then an explicit user kwarg, then the first positional dict carrying
+user_id. Direct, exact-value tests — this used to be exercised only
 indirectly through the decorators that call it.
 """
 
@@ -43,8 +43,7 @@ class TestResolveCaller:
         assert resolve_caller(("just a string", 1, None), {}) is None
 
     def test_a_falsy_user_kwarg_does_not_short_circuit_positional_fallback(self):
-        """An explicit ``user=None``/``user={}`` kwarg must not stop the search —
-        it is falsy, so the positional dict is still tried."""
+        """An explicit user=None/user={} kwarg is falsy and must not stop the search; the positional dict is still tried."""
         candidate = {"user_id": "positional-user"}
         assert resolve_caller((candidate,), {"user": None}) == candidate
         assert resolve_caller((candidate,), {"user": {}}) == candidate

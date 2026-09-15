@@ -3,11 +3,8 @@ const SHARE_URL = "https://heygaia.io";
 /** The X share copy — one builder shared by both the rendered image-card path
  *  and the text-only fallback so they can never drift apart.
  *
- *  `tierLabel` is null for an unranked user, which is the COMMON case (most
- *  users hold no badge) and therefore the sentence this must get right: there
- *  is no "top X%" to claim, so the clause is dropped rather than filled with a
- *  placeholder. A zero-day streak likewise drops its clause instead of boasting
- *  "a 0-day streak". */
+ *  `tierLabel` null (the common case, most users unranked) drops the "top X%"
+ *  clause rather than filling a placeholder; a zero-day streak likewise drops its clause instead of boasting "a 0-day streak". */
 export function buildTweetText(
   tierLabel: string | null,
   streak: number,

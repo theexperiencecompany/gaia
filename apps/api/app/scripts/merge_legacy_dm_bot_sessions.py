@@ -1,40 +1,19 @@
 #!/usr/bin/env python3
-"""Fold legacy ``:dm`` bot sessions onto the canonical DM session key.
+"""Fold legacy :dm bot sessions onto the canonical DM session key.
 
-``BotService.build_session_key`` used to key a channel-less session as the
-literal ``"dm"``, so one Telegram DM lived under two keys at once —
-``telegram:<id>:<id>`` written by the inbound chat (Telegram sends the private
-chat id, which IS the user id) and ``telegram:<id>:dm`` written by workflow
-platform delivery, which has no channel. The user's chat silently forked into a
-second conversation with none of the history. The key derivation is fixed; this
-retires the rows the old format left behind so no lookup can resurrect them.
+BotService.build_session_key used to key a channel-less DM as the literal
+"dm", so one Telegram DM lived under two keys (telegram:<id>:<id> from
+inbound chat, telegram:<id>:dm from workflow delivery) and silently forked.
+The key derivation is fixed; this retires the stale :dm rows it left behind.
 
-Per legacy row, one of three actions against the canonical key:
+Per legacy row: rename (canonical key free — move it), repoint (legacy used
+more recently — canonical repoints at it, legacy dropped), or drop (canonical
+used more recently — legacy dropped). Message histories are NOT merged; the
+losing conversation stays in Mongo, just unreferenced. Idempotent — leaves no
+:dm row behind.
 
-- **rename** — nothing sits on the canonical key, so the legacy row moves onto
-  it and keeps its conversation. Nothing is lost.
-- **repoint** — both rows exist and the LEGACY one was used more recently, so the
-  canonical row is repointed at the legacy conversation and the legacy row is
-  dropped.
-- **drop** — both rows exist and the canonical one was used more recently, so the
-  legacy row is simply dropped.
-
-Message histories are NOT merged — deliberately out of scope. The losing
-conversation stays in Mongo, just unreferenced by any session; only which
-conversation the platform's next message continues changes.
-
-Idempotent: it leaves no ``:dm`` row behind, so a second run finds nothing.
-
-Usage::
-
-    cd apps/api
-    uv run python -m app.scripts.merge_legacy_dm_bot_sessions          # dry run
-    uv run python -m app.scripts.merge_legacy_dm_bot_sessions --apply  # commit
-
-Flags::
-
-    --apply             Persist changes to MongoDB (otherwise dry run only).
-    --platform <name>   Restrict to one platform.
+Usage: uv run python -m app.scripts.merge_legacy_dm_bot_sessions [--apply]
+[--platform <name>].
 """
 
 from __future__ import annotations
@@ -58,9 +37,9 @@ from shared.py.wide_events import log
 
 
 def canonical_key_for(session: BotSessionDocument) -> str:
-    """The key this session's DM belongs under today.
+    """Return the key this session's DM belongs under today.
 
-    Derived through ``BotService.build_session_key`` rather than a format restated
+    Derived through BotService.build_session_key rather than a format restated
     here, so the migration can never disagree with the code that will do the next
     lookup.
     """

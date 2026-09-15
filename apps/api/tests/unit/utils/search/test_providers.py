@@ -2,7 +2,7 @@
 
 Each provider is exercised against a representative upstream payload (mocked with
 respx — no real network) to prove the JSON/HTML is mapped onto the shared
-``SearchResultItem`` shape correctly.
+SearchResultItem shape correctly.
 """
 
 import httpx

@@ -187,8 +187,7 @@ class TestCacheableValidation:
 
 
 class TestCacheableKeyGeneratorArgs:
-    """The generator is called with (func_name, *args, **kwargs) — every part
-    load-bearing, since two call sites share the helper."""
+    """The generator is called with (func_name, *args, **kwargs) — every part load-bearing, since two call sites share the helper."""
 
     async def test_sync_generator_receives_func_name_args_and_kwargs(self):
         seen: dict[str, Any] = {}
@@ -305,8 +304,7 @@ class TestCacheableUnresolvedKeyGuard:
 
 
 class TestCacheInvalidatorKeyGeneratorArgs:
-    """Both generator flavours receive (func.__name__, *args, **kwargs) and
-    their return decides exactly which keys get busted."""
+    """Both generator flavours receive (func.__name__, *args, **kwargs) and their return decides exactly which keys get busted."""
 
     async def test_async_generator_receives_func_name_args_and_kwargs(self):
         seen: dict[str, Any] = {}

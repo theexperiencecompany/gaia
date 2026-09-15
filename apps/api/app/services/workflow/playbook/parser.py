@@ -1,21 +1,15 @@
 """Check a playbook against the live tool registry, and render it for reading.
 
-``validate_playbook`` asks the registry whether an authored document could
-actually run: the tools exist, their args are real, and every reference points
-at something the document already declared. Its messages are read back by the
-authoring agent, so each one names the offending step and says what would be
-valid rather than reporting "invalid".
+validate_playbook asks whether an authored document could actually run: the
+tools exist, their args are real, and every reference resolves. Messages
+name the offending step and what would be valid, not just "invalid".
 
-Given the authoring run's own results it asks a second, sharper question: did
-these calls actually happen, and did they return what the document claims to
-read? A playbook freezes calls that ran, so the run writing it holds every
-answer — ``pb_c7d357db77dd`` froze ``$steps.fetch_msgs.threadId`` on a tool that
-returns no ``threadId`` and broke on its first replay, with the real result
-sitting in the same conversation.
+Given the authoring run's own results, it also checks whether those calls
+actually happened and returned what the document claims — a playbook can
+freeze a call that ran but never really produced what it references.
 
-``dump_playbook`` renders a body as YAML. That rendering is for humans and for
-the agent reading its own playbook back; the structured body is the only stored
-form, so nothing ever parses the YAML again.
+dump_playbook renders a body as YAML for humans; the structured body is the
+only stored form, so nothing parses the YAML back.
 """
 
 from collections.abc import Mapping, Sequence
@@ -90,18 +84,17 @@ _ARGS_IN_MESSAGE_MAX_CHARS = 200
 class RecordedResult:
     """One call the authoring run made, with what it actually returned.
 
-    ``result`` is parsed the way the replay parses a result (JSON when it is
+    result is parsed the way the replay parses a result (JSON when it is
     JSON, the raw text otherwise), so a check here reads exactly the value a
-    ``$steps`` placeholder would resolve against at replay.
+    $steps placeholder would resolve against at replay.
     """
 
     tool_name: str
     args: Mapping[str, Any]
     result: object
     #: The stable id of the subagent that made the call (``todos``), or
-    #: ``None`` for the executor's own. A step inside ``handoff: todos`` is
-    #: matched only against that subagent's calls, so a child can never consume
-    #: a top-level call of the same tool.
+    #: ``None`` for the executor's own — a step inside ``handoff: todos``
+    #: is matched only against that subagent's calls.
     subagent: str | None = None
 
 
@@ -149,20 +142,10 @@ async def validate_playbook(
 ) -> PlaybookValidation:
     """Check a parsed playbook against the tools it would actually reach.
 
-    Three classes of problem, all fatal for a replay: a tool that does not
-    exist, an arg the tool does not take (or takes with another type), and a
-    reference to a step the document never declares before that point.
-
-    ``user_id`` is required because "does this tool exist" has no user-independent
-    answer: a handoff's children run in that subagent's space, and an MCP
-    integration's tools live on that user's own client.
-
-    ``results`` are the calls the run writing this playbook actually made. With
-    them a fourth class of problem is answerable here rather than on the first
-    replay: a step naming a tool that never ran, a step freezing a call that
-    came back empty or errored, and a ``$steps`` reference into a shape the
-    tool does not return. Without them nothing changes — the dev executor route
-    and any caller with no run behind it get exactly the checks above.
+    Fatal always: unknown tool, bad arg, or forward step reference. user_id
+    matters since tool existence is per-user (handoff subagent space, per-user
+    MCP tools). With results (the run's real calls), also flags an unused
+    tool, an empty/errored frozen call, or a bad $steps shape.
     """
     registry = await get_tool_registry()
     walk = _Walk(user_id=user_id, registry=registry, results=results)
@@ -183,10 +166,8 @@ class _Walk:
     registry: ToolRegistry
     declared_steps: set[str] = field(default_factory=set)
     #: The declared ids that are handoffs. A handoff records no result of its
-    #: own, so ``$steps.<handoff>...`` can never resolve; the runner keys a
-    #: child's result on the child's id. Seen live: a model wrote
-    #: ``$steps.sweep.list.todos`` for the ``list`` child of the ``sweep``
-    #: handoff, the write was accepted, and the replay stopped on it.
+    #: own, so ``$steps.<handoff>...`` never resolves — seen live as
+    #: ``$steps.sweep.list.todos`` being accepted, then stopping the replay.
     handoff_ids: set[str] = field(default_factory=set)
     issues: list[PlaybookIssue] = field(default_factory=list)
     #: The authoring run's calls, or ``None`` when there is no run to check
@@ -211,11 +192,11 @@ async def _check_steps(
     space: ToolSpace,
     walk: _Walk,
 ) -> None:
-    """Walk the steps in document order, so a reference can only resolve
-    backwards: ``declared_steps`` holds exactly what ran before this node.
+    """Walk the steps in document order so a reference can only resolve backwards.
 
-    Descending into a handoff switches tool space, exactly as the replay does.
-    Checking a subagent's children against the executor's registry refuses every
+    declared_steps holds exactly what ran before this node. Descending into a
+    handoff switches tool space, exactly as the replay does. Checking a
+    subagent's children against the executor's registry refuses every
     integration whose tools are fetched per user.
     """
     for index, step in enumerate(steps):
@@ -264,9 +245,8 @@ def _check_tool_step(
         return
 
     # Matched within the walk's scope: a top-level step against the executor's
-    # own calls, a handoff's child against that subagent's. Seen live before
-    # children were checked at all: $item.todo_id inside a todos handoff over
-    # elements carrying id, accepted, and stopped on the first replay.
+    # own calls, a handoff's child against that subagent's — seen live as
+    # $item.todo_id accepted over elements carrying id, then stopping the replay.
     recorded = (
         _check_recorded_call(step, tool_name, path, walk) if walk.results is not None else None
     )
@@ -340,7 +320,7 @@ def _check_recorded_call(
 ) -> RecordedResult | None:
     """Check one tool step against the call it froze in the run writing it.
 
-    Matching the step back to a recorded call is also what makes the ``$steps``
+    Matching the step back to a recorded call is also what makes the $steps
     references checkable: the matched result is what later steps read from.
     """
     matched = _matched_call(step, walk)
@@ -358,8 +338,7 @@ def _check_recorded_call(
 
 
 def _unmatched_problem(tool_name: str, walk: _Walk) -> str:
-    """Why no recorded call answers to this step, told apart by what the run
-    did make: nothing, calls all frozen already, or calls with other args."""
+    """Return why no recorded call answers to this step: none made, all frozen already, or only calls with other args."""
     same_tool = [
         (index, call)
         for index, call in enumerate(walk.results or ())
@@ -385,23 +364,12 @@ def _unmatched_problem(tool_name: str, walk: _Walk) -> str:
 
 
 def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, RecordedResult] | None:
-    """The recorded call this step froze, with its position, or ``None`` when
-    no call of that tool is left for it.
+    """Return the recorded call this step froze, with its position, or None.
 
-    A step's args are the only evidence of WHICH call it froze: a tool called
-    three times with different queries left three results, and checking the step
-    against the wrong one reports a shape the author never claimed. Agreement is
-    structural (``_agrees``) rather than per-arg, because the deciding
-    difference between two calls is routinely nested inside an arg that also
-    carries a placeholder — treating that whole arg as a wildcard matches on the
-    parts that say nothing. Among the calls that agree the LAST wins: a run
-    that repeats a tool settles on its final call, which is the one worth
-    freezing. A step that agrees with none is not matched at all — handing it
-    an unrelated call's result would validate a shape its own args do not
-    produce, and approve ``$steps`` references into that shape.
-
-    A call already frozen by an earlier step is not offered again: the run made
-    it once, and a playbook listing it twice would replay it twice.
+    Agreement is structural (_agrees), not per-arg — a deciding difference is
+    often nested under an arg that itself carries a placeholder. Among calls
+    that agree, the LAST wins; a step agreeing with none is unmatched, and an
+    already-consumed call is never offered again.
     """
     agreeing = [
         (index, call)
@@ -419,15 +387,10 @@ def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, Recor
 def _agrees(step_value: object, recorded_value: object) -> bool:
     """Whether a step's authored value could be the recorded call's value.
 
-    Anything that does not exist until replay agrees with everything: an
-    ``$ask`` slot, and a string that is nothing but a placeholder token. A
-    string that merely *embeds* a token ("Email $steps.mail.to") agrees with any
-    string, since the text it renders to is unknowable here but its type is not.
-
-    Containers are compared through, which is the whole point: a mapping agrees
-    when every key the step authored is present and agrees (recorded keys the
-    step omitted are fine — the model may have left a default unwritten), and a
-    list agrees elementwise at the same length. Everything else is equality.
+    An $ask/$time slot or a bare placeholder token agrees with anything
+    (unknowable until replay); an embedded token agrees with any string. A
+    mapping agrees if every step-written key is present and agrees (extra
+    recorded keys are fine); a list agrees elementwise at equal length.
     """
     if is_ask_slot(step_value) or is_time_slot(step_value):
         return True
@@ -457,7 +420,7 @@ def _agrees(step_value: object, recorded_value: object) -> bool:
 
 
 def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
-    """Why the call this step froze is not worth freezing, or ``None``.
+    """Why the call this step froze is not worth freezing, or None.
 
     The error envelope is tested first: a tool that reports its own failure
     often does so with an empty list beside it, and "returned no items" would
@@ -480,7 +443,7 @@ def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
 
 
 def _envelope_error(result: object) -> str:
-    """What a failed tool said about its own failure, as one phrase."""
+    """Return what a failed tool said about its own failure, as one phrase."""
     if isinstance(result, dict):
         reported = result.get("error") or result.get("message")
         if reported:
@@ -506,19 +469,17 @@ ASK_PICK = object()
 
 @dataclass(frozen=True, slots=True)
 class _Elements:
-    """The elements a ``for_each`` will run over, as the authoring run saw them."""
+    """The elements a for_each will run over, as the authoring run saw them."""
 
     items: tuple[object, ...]
 
 
 def _check_step_reference(token: str, path: str, where: str, walk: _Walk) -> object:
-    """Resolve one ``$steps`` reference against what that step returned in this run.
+    """Resolve one $steps reference against what that step returned in this run.
 
     Through the evaluator's own resolver, so an accepted reference is one the
-    replay can actually resolve rather than one a second path-walker agreed
-    with. ``.file`` is exempt: the offloaded file exists only at replay, and the
-    authoring run's result has no path to it. Returns what the reference
-    resolved to, or ``_UNRESOLVED``.
+    replay can actually resolve. .file is exempt (offloaded only at replay).
+    Returns the resolved value, or _UNRESOLVED.
     """
     step_id, _, rest = path.partition(".")
     if rest == STEP_FILE_FIELD:
@@ -538,7 +499,7 @@ def _check_step_reference(token: str, path: str, where: str, walk: _Walk) -> obj
 
 
 def _shape_hint(value: object) -> str:
-    """The keys the result does have, so the author can address one of them."""
+    """Return the keys the result does have, so the author can address one of them."""
     if not isinstance(value, Mapping):
         return ""
     keys = sorted(str(key) for key in value)
@@ -551,7 +512,7 @@ def _shape_hint(value: object) -> str:
 def _check_required_args(
     step: ToolStep | ForEachStep, tool_name: str, path: str, space: ToolSpace, walk: _Walk
 ) -> None:
-    """A missing required arg is a call that fails at replay before it starts.
+    """Flag a missing required arg: a call that fails at replay before it starts.
 
     Nothing else catches it: the per-arg checks walk the args the step HAS, and
     a run-result match agrees with an empty mapping trivially.
@@ -568,12 +529,12 @@ def _check_required_args(
 
 
 def _required_args(tool: BaseTool) -> set[str]:
-    """The arg names a tool cannot be called without, from its own call schema.
+    """Return the arg names a tool cannot be called without, from its own call schema.
 
-    ``tool.args`` is only the property map; the ``required`` list lives one
-    level up, on the schema that ``tool_call_schema`` renders. langchain hands
+    tool.args is only the property map; the required list lives one
+    level up, on the schema that tool_call_schema renders. langchain hands
     that back as a v2 model for decorated tools, a v1 model for legacy ones and
-    a raw JSON document for MCP tools; all three spell ``required`` the same way.
+    a raw JSON document for MCP tools; all three spell required the same way.
     """
     schema = tool.tool_call_schema
     if isinstance(schema, dict):
@@ -612,8 +573,7 @@ def _check_placeholder(
     in_for_each: bool,
     sample: object = NO_ITEM,
 ) -> None:
-    """One placeholder in a step's arguments: ``$item`` against the loop it is
-    in, and ``$steps`` against the steps declared before it."""
+    """Check one placeholder: $item against the loop it is in, $steps against the steps declared before it."""
     if match.group("root") == "item":
         _check_item_placeholder(match, where, walk, in_for_each=in_for_each, sample=sample)
     else:
@@ -647,10 +607,9 @@ def _check_item_placeholder(
                 )
             )
     elif isinstance(sample, _Elements):
-        # Checked against every element the loop can reach, the way the replay
-        # will read each one. Seen live: $item.todo_id over elements carrying
-        # id; and a field the first element has but a later one lacks would
-        # stop the loop after the earlier calls already ran.
+        # Checked against every element the loop can reach: a field the first
+        # element has but a later one lacks would stop the loop after the
+        # earlier calls already ran.
         for index, element in enumerate(sample.items):
             try:
                 resolve_item(token, path, element)
@@ -663,10 +622,12 @@ def _check_item_placeholder(
 
 
 def _check_step_placeholder(match: re.Match[str], where: str, walk: _Walk) -> object:
-    """A ``$steps`` reference names a declared step, not a handoff, and (when
-    the run is in hand) a value that step returned: that value comes back, or
-    ``_UNRESOLVED``. Other roots are checked nowhere here: the tokenizer only
-    matches known roots."""
+    """Check a $steps reference names a declared step, not a handoff.
+
+    When the run is in hand, also resolves the value that step returned, or
+    _UNRESOLVED. Other roots are never seen here — the tokenizer only matches
+    known roots.
+    """
     token = match.group(0)
     root = match.group("root")
     path = match.group("path").lstrip(".")
@@ -699,16 +660,12 @@ def _check_step_placeholder(match: re.Match[str], where: str, walk: _Walk) -> ob
 
 
 def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> object:
-    """The list a ``for_each`` repeats over has to be one this run can name.
+    """Return one element of the for_each list this run can name, or NO_ITEM.
 
-    Hands back one element of that list when the run's results show it, so
-    ``$item.<field>`` in the step's args is checked against a real element
-    instead of stopping the replay on the first one. ``NO_ITEM`` otherwise.
-
-    An ``$ask`` source is a model's pick at replay and has nothing to check
-    here. A ``$steps`` source is checked like any reference, and then for what
-    it resolved to: a count or a title is not a list, and the replay would
-    stop on the step a whole agentic run later.
+    Checked against a real element from the run's results so $item.<field> is
+    validated here instead of on the first replay iteration. An $ask source
+    has nothing to check; a $steps source is also checked for shape — a
+    count or title is not a list.
     """
     source = step.for_each
     if isinstance(source, AskSlot):
@@ -756,7 +713,7 @@ def _time_slot_hint(placeholder: str, layout: str) -> str:
 def _check_time_slot(
     value: Mapping[str, Any], key: str, where: str, recorded: RecordedResult | None, walk: _Walk
 ) -> None:
-    """A ``$time`` slot is well-formed, and its layout is the one the tool took."""
+    """Check a $time slot is well-formed and its layout is the one the tool took."""
     try:
         slot = TimeSlot.model_validate(value)
     except ValidationError as error:
@@ -784,14 +741,12 @@ def _check_time_layout(
     recorded: RecordedResult | None,
     walk: _Walk,
 ) -> None:
-    """A time placeholder renders in the tool's layout, or is refused with it.
+    """Check a time placeholder renders in the tool's layout, or refuse it.
 
-    Seen live: ``"$today + 1d at 09:00"`` for an argument the run had sent as
-    ``2026-09-06 09:00:00``. Prose around the placeholder renders to a sentence
-    no tool parses, and a bare placeholder renders to ISO 8601, which is not
-    every tool's layout either. The recorded argument is the example: when it
-    has a known layout and the step would render differently, the refusal
-    carries the exact slot to write.
+    Prose around a placeholder renders to a sentence no tool parses, and a
+    bare placeholder renders to ISO 8601, which isn't every tool's layout.
+    The recorded argument is the example layout; a mismatch is refused with
+    the exact slot to write instead.
     """
     if not isinstance(value, str):
         return

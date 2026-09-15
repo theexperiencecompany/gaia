@@ -116,13 +116,13 @@ TEST_MODULE_SUFFIX = "_test.py"
 
 
 def is_inert(rel: str) -> bool:
-    """True for a path under apps/api that cannot change any test's outcome."""
+    """Return True for a path under apps/api that cannot change any test's outcome."""
     name = rel.rsplit("/", 1)[-1]
     return name in INERT_NAMES or rel.endswith(INERT_SUFFIXES) or rel.startswith(INERT_DIRS)
 
 
 def is_suite_config(path: str) -> bool:
-    """True for a repo-relative path that configures the test run itself."""
+    """Return True for a repo-relative path that configures the test run itself."""
     name = path.rsplit("/", 1)[-1]
     return (
         name in SUITE_CONFIG_NAMES
@@ -132,7 +132,7 @@ def is_suite_config(path: str) -> bool:
 
 
 def is_test_module(rel: str) -> bool:
-    """True for a file pytest collects tests from (``test_*.py`` / ``*_test.py``)."""
+    """Return True for a file pytest collects tests from (``test_*.py`` / ``*_test.py``)."""
     name = rel.rsplit("/", 1)[-1]
     return (name.startswith(TEST_MODULE_PREFIX) and name.endswith(".py")) or name.endswith(
         TEST_MODULE_SUFFIX
@@ -265,7 +265,7 @@ class Selection:
 
 
 def _classify_outside_api(path: str, sel: Selection) -> None:
-    """A change outside apps/api: suite config or importable Python widens.
+    """Classify a change outside apps/api: suite config or importable Python widens.
 
     Any Python outside (libs/shared/py, tools) can be imported by the API;
     coverage only mapped app/**, so the map cannot name its tests.
@@ -277,7 +277,7 @@ def _classify_outside_api(path: str, sel: Selection) -> None:
 
 
 def _classify_test_path(rel: str, sel: Selection, repo_root: Path) -> None:
-    """A change under tests/: run the test module, widen on anything else."""
+    """Classify a change under tests/: run the test module, widen on anything else."""
     if rel.rsplit("/", 1)[-1] in INERT_NAMES:
         return
     if not is_test_module(rel):
@@ -296,7 +296,7 @@ def _classify_test_path(rel: str, sel: Selection, repo_root: Path) -> None:
 def _classify_app_path(
     rel: str, sel: Selection, files: dict[str, list[str]], repo_root: Path
 ) -> None:
-    """A change under app/: the mapped tests, or widen when the map has none."""
+    """Classify a change under app/: the mapped tests, or widen when the map has none."""
     if rel in files:
         sel.ids.update(files[rel])
         sel.reasons.append(f"{rel} covered by {len(files[rel])} tests")
@@ -419,7 +419,7 @@ def _parse_ignore(slice_ignore: str) -> list[str]:
 
 
 def _enabled() -> bool:
-    """The off switch: an explicit 0/false runs the whole slice, unselected."""
+    """Read the off switch: an explicit 0/false runs the whole slice, unselected."""
     return os.environ.get("TEST_IMPACT_ENABLED", "1").lower() not in {"0", "false"}
 
 
@@ -445,7 +445,7 @@ def _git(*argv: str) -> str | None:
 
 
 def _changed_since_merge_base(base_ref: str, scratch: Path) -> list[str] | None:
-    """The PR's own diff, or None when the merge-base cannot be resolved.
+    """Return the PR's own diff, or None when the merge-base cannot be resolved.
 
     The merge-base, not the base tip: we only want what this PR changed. No
     --depth on the fetch — on the box's persistent workspace a depth-limited
@@ -570,7 +570,7 @@ def cmd_fetch(args: argparse.Namespace) -> int:
 
 
 def _newest_trusted_run(repo: str) -> tuple[int, str] | None:
-    """The newest successful push-to-master run of main.yml, or None.
+    """Return the newest successful push-to-master run of main.yml, or None.
 
     Resolved by RUN, never by the artifact's ``head_branch`` string. A branch
     name is not provenance: a fork can open a PR from a branch it named

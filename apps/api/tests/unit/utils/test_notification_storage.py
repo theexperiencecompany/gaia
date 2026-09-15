@@ -1,6 +1,6 @@
 """Unit tests for MongoDBNotificationStorage and channel preferences.
 
-Storage now delegates persistence to ``notification_repository`` (real DB
+Storage now delegates persistence to notification_repository (real DB
 behaviour is covered by the NotificationRepository contract tests). These tests
 mock the repository and assert the storage methods delegate correctly.
 """

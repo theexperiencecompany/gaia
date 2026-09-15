@@ -122,11 +122,9 @@ export function generatePageMetadata({
 }: PageMetadataOptions): Metadata {
   const url = getCanonicalUrl(canonicalPath ?? path);
 
-  // For homepage, use absolute title to prevent template from adding suffix
-  // For other pages, use simple title string to let template add "| GAIA".
-  // The brand must appear exactly once: a title that already names GAIA
-  // (e.g. "Asana Alternative — GAIA vs Asana") renders as-is, otherwise the
-  // layout template would double it ("… GAIA vs Asana | GAIA").
+  // Homepage uses an absolute title (no template suffix); other pages use a
+  // simple string so the template appends "| GAIA" — but the brand must
+  // appear exactly once, so a title that already names GAIA renders as-is.
   const isHomepage = path === "/" || title === siteConfig.name;
   const containsBrand = new RegExp(`\\b${siteConfig.short_name}\\b`).test(
     title,

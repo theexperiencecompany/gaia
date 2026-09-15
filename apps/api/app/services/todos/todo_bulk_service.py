@@ -1,6 +1,4 @@
-"""
-Optimized bulk operations for todos.
-"""
+"""Optimized bulk operations for todos."""
 
 from fastapi import HTTPException, status
 

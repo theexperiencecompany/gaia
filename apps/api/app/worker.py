@@ -8,10 +8,9 @@ from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK
 
-# The worker runs the executor agent + Composio custom tools, so it needs the
-# same monkey-patches as the API process (main.py). Without this, custom tools
-# 500 with "Missing user_id in auth_credentials" because the CustomTool
-# user_id-injection patch never loads in this process.
+# Needs the same monkey-patches as the API process (main.py) — without this,
+# custom tools 500 with "Missing user_id in auth_credentials" because the
+# CustomTool user_id-injection patch never loads here.
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
 from app.workers.config.worker_settings import WorkerSettings
 from app.workers.lifecycle import shutdown, startup
@@ -51,10 +50,9 @@ from app.workers.tasks.tracked_todo_tasks import (
 from app.workers.tasks.trigger_dispatch_tasks import dispatch_todo_subscriptions
 from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflows
 
-# Wrap every task in the standard envelope (wide event + Prometheus histogram)
-# so arq-worker.json can show real p50/p95/p99 latency per task name and every
-# run emits one correlated worker_task event. Cron jobs reference the same
-# wrapped functions so scheduled runs get both too.
+# Wraps every task in the standard envelope (wide event + Prometheus histogram)
+# so arq-worker.json shows real p50/p95/p99 latency and each run emits one
+# correlated worker_task event; cron jobs reuse these same wrapped functions.
 _process_reminder = arq_task(process_reminder)
 _cleanup_expired_reminders = arq_task(cleanup_expired_reminders)
 _sweep_hil_approvals = arq_task(sweep_hil_approvals)
@@ -88,11 +86,9 @@ _promote_usage_badges = arq_task(promote_usage_badges)
 _sweep_dormant_user_workflows = arq_task(sweep_dormant_user_workflows)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 _sweep_expired_memories = arq_task(sweep_expired_memories)
-# keep_result=0 on purpose. The job id is per user, so a kept result would make
-# ARQ refuse every re-enqueue for an hour after the job finished — including the
-# hourly recovery sweep's, which is the one thing that retries a delivery the
-# ESP rejected. Dedup then covers exactly the window it should (queued or in
-# flight); a re-run is made harmless by the delivery stamps, not by the result.
+# keep_result=0: the per-user job id means a kept result blocks re-enqueue for
+# an hour, including the hourly recovery sweep's retry of an ESP-rejected
+# delivery. Re-runs are made harmless by delivery stamps, not by the result.
 _deliver_signup_emails = func(
     arq_task(deliver_signup_emails),
     name=SIGNUP_EMAIL_TASK,

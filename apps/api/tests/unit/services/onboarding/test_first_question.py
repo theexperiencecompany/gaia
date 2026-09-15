@@ -1,6 +1,6 @@
 """The exact words, keys and budgets behind GAIA's one LLM-written opening line.
 
-``tests/unit/services/test_first_question.py`` next door covers the shape of the
+tests/unit/services/test_first_question.py next door covers the shape of the
 feature — a good draft comes back, a bad one falls back, the cache key changes
 when the answers do. This module pins the *values*: the literal text handed to
 the model, the literal hash the cache key is built from, the retry and timeout
@@ -69,9 +69,7 @@ class TestAnswersBlock:
     """The onboarding answers as the model literally reads them."""
 
     def test_every_answer_has_its_own_line_in_a_fixed_order(self) -> None:
-        """Job, then needs in the order they were picked, then their own words,
-        then the platform. The model is told this is everything it knows, so a
-        dropped or reordered line changes what it writes."""
+        """Order is job, needs as picked, own words, then platform — the model is told this is everything it knows."""
         block = _answers_block(
             _prefs(
                 profession="  Bakery owner  ",
@@ -94,8 +92,7 @@ class TestAnswersBlock:
 
     @pytest.mark.parametrize("profession", ["other", "Other", "OTHER  "])
     def test_other_is_not_a_job_and_is_left_out(self, profession: str) -> None:
-        """The wizard's escape hatch, not an answer. Passing it on would have
-        the model write a question about being an "other"."""
+        """The wizard's escape hatch, not an answer — passing it on has the model write a question about being "other"."""
         block = _answers_block(_prefs(profession=profession, needs=[OnboardingNeed.INBOX]), None)
 
         assert block == "- In their words: inbox out of control"
@@ -112,8 +109,7 @@ class TestAnswersBlock:
         assert block == "- They already text you on whatsapp"
 
     def test_an_empty_wizard_says_so_rather_than_sending_nothing(self) -> None:
-        """An empty block would leave the prompt's "this is everything you know"
-        sentence dangling, and the model invents a persona to fill it."""
+        """An empty block leaves the prompt's "everything you know" sentence dangling, so the model invents a persona."""
         assert (
             _answers_block(_prefs(profession=None, needs=[], other_need=None), None)
             == "- Nothing. They answered nothing."
@@ -149,46 +145,37 @@ class TestCommsVoiceRules:
         assert "TONE MIRRORING" in rules
 
     def test_a_voice_section_at_the_very_start_is_still_read_whole(self) -> None:
-        """The end marker is searched from just after the start marker. Searching
-        from anywhere earlier or later loses the section when it opens the
-        prompt, which is exactly where a rewrite would put it."""
+        """The end marker is searched from just after the start marker, or the section is lost when it opens the prompt."""
         prompt = "## Voice\nbe brief\n\n## Length Modes\nshort"
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
     def test_a_voice_section_one_character_in_is_still_read(self) -> None:
-        """Guards a boundary the compiler cannot: index 1 is an ordinary
-        position, not a sentinel meaning "missing"."""
+        """Guards a boundary the compiler cannot: index 1 is ordinary, not a sentinel meaning "missing"."""
         prompt = "\n## Voice\nbe brief\n\n## Length Modes\nshort"
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
     def test_the_first_voice_heading_wins_over_a_later_mention(self) -> None:
-        """The section is the one that opens the voice rules. Taking the last
-        occurrence instead picks up a cross-reference further down the prompt
-        and hands the model everything between them — or nothing."""
+        """Taking the last occurrence instead picks up a cross-reference further down and hands the model everything between."""
         prompt = "## Voice\nbe brief\n\n## Length Modes\nshort\n\nsee ## Voice above"
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
     def test_the_closing_heading_is_looked_for_after_the_section_starts(self) -> None:
-        """A "## Length Modes" earlier in the prompt is not this section's end;
-        searching from the top would find it and return an empty slice."""
+        """An earlier "## Length Modes" is not this section's end; searching from the top would return an empty slice."""
         prompt = "## Length Modes\nearly\n\n## Voice\nbe brief\n\n## Length Modes\nshort"
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
     def test_the_section_stops_at_the_first_closing_heading_not_the_last(self) -> None:
-        """Taking the last one swallows every section in between into the voice
-        rules."""
+        """Taking the last closing heading instead would swallow every section in between into the voice rules."""
         prompt = "## Voice\nbe brief\n\n## Length Modes\nshort\n\n## Length Modes\nagain"
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
     def test_the_closing_search_starts_one_character_past_the_opening_marker(self) -> None:
-        """The offset is exactly one: the end marker may begin at the very next
-        character. Markers that overlap by a character are the only way to see
-        this, so they are used deliberately rather than the real headings."""
+        """The offset is exactly one: the end marker may begin at the very next character, so overlapping markers are used deliberately."""
         with (
             patch(f"{MODULE}._VOICE_SECTION_START", "AB"),
             patch(f"{MODULE}._VOICE_SECTION_END", "BC"),
@@ -197,8 +184,7 @@ class TestCommsVoiceRules:
             assert comms_voice_rules() == "A"
 
     def test_a_prompt_without_the_voice_heading_contributes_nothing(self) -> None:
-        """A rename upstream must drop the section, not paste the whole comms
-        prompt (or a stray tail of it) into the question prompt."""
+        """A rename upstream must drop the section, not paste the whole comms prompt (or a stray tail) into the question prompt."""
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", "## Length Modes\nshort"):
             assert comms_voice_rules() == ""
 
@@ -212,9 +198,7 @@ class TestAnswersFingerprintValue:
     """The hash IS the invalidation, so its inputs are pinned to a literal."""
 
     def test_the_digest_is_a_fixed_16_char_hash_of_the_three_answers(self) -> None:
-        """Pinned rather than recomputed: the digest is a cache key in
-        production, and a change to what goes into it (or how much of it is
-        kept) silently orphans every question already written."""
+        """Pinned rather than recomputed: the digest is a production cache key, and a change to it orphans every question already written."""
         fingerprint = answers_fingerprint(
             _prefs(
                 profession=" Founder ",
@@ -232,15 +216,13 @@ class TestAnswersFingerprintValue:
         )
 
     def test_casing_and_padding_are_the_same_answers_in_every_field(self) -> None:
-        """The wizard round-trips free text; a stray space must not throw away a
-        question that was already paid for."""
+        """The wizard round-trips free text; a stray space must not throw away a question already paid for."""
         assert answers_fingerprint(
             _prefs(profession="  FOUNDER", other_need="  CHASING invoices  ")
         ) == answers_fingerprint(_prefs(profession="founder", other_need="chasing invoices"))
 
     def test_the_order_the_needs_were_picked_in_is_part_of_the_answers(self) -> None:
-        """The block renders needs in pick order, so two orders are two different
-        prompts and must not share one cached question."""
+        """The block renders needs in pick order, so two orders are different prompts and must not share one cached question."""
         assert answers_fingerprint(
             _prefs(needs=[OnboardingNeed.CALENDAR, OnboardingNeed.INBOX])
         ) != answers_fingerprint(_prefs(needs=[OnboardingNeed.INBOX, OnboardingNeed.CALENDAR]))
@@ -276,8 +258,7 @@ class TestComposeFirstQuestionPrompt:
     async def test_the_prompt_is_the_template_filled_with_the_voice_and_the_answers(
         self,
     ) -> None:
-        """The two slots are not interchangeable: swapped, the model is told the
-        user's answers are its voice rules."""
+        """The two slots are not interchangeable: swapped, the model is told the user's answers are its voice rules."""
         runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
@@ -303,9 +284,7 @@ class TestComposeFirstQuestionPrompt:
         )
 
     async def test_the_call_runs_the_draft_schema_on_the_cheap_lane(self) -> None:
-        """The schema IS the validation, so the runnable must be built from
-        ``_QuestionDraft`` — and it is that runnable, not another, that is
-        invoked."""
+        """The schema IS the validation: the runnable must be built from _QuestionDraft, and that runnable is the one invoked."""
         runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable) as build,
@@ -361,9 +340,7 @@ class TestComposeFirstQuestionBudget:
     async def test_only_a_call_nobody_waits_on_may_retry(
         self, timeout_seconds: float, expected_attempts: int
     ) -> None:
-        """At the prewarm's ceiling a second attempt fits; under it a retry plus
-        backoff cannot, and a second timeout costs the user the same wait
-        twice."""
+        """At the prewarm's ceiling a second attempt fits; under it a retry would cost the user the same wait twice."""
         runnable, invoke = _llm_patches(_QuestionDraft(chips=GOOD_CHIPS))
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
@@ -393,8 +370,7 @@ class TestComposeFirstQuestionDraft:
     """What comes back out."""
 
     async def test_the_drafts_words_are_returned_trimmed(self) -> None:
-        """Model output routinely carries leading newlines; those render as blank
-        lines in the chat bubble and as padded chip labels."""
+        """Model output routinely carries leading newlines, which render as blank lines and padded chip labels."""
         runnable, invoke = _llm_patches(_QuestionDraft(chips=[f" {c} \n" for c in GOOD_CHIPS]))
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
@@ -416,8 +392,7 @@ class TestComposeFirstQuestionDraft:
         [TimeoutError(), RuntimeError("provider exploded"), ValueError("not valid json")],
     )
     async def test_a_failed_call_yields_no_question_at_all(self, error: Exception) -> None:
-        """Not a fallback question: the caller composes the static line, and a
-        placeholder here would ship as the first sentence a user ever reads."""
+        """Not a fallback question: the caller composes the static line; a placeholder here would ship as the user's first sentence."""
         runnable, invoke = _llm_patches(error=error)
         with (
             patch(f"{MODULE}.background_structured_runnable", return_value=runnable),
@@ -426,10 +401,7 @@ class TestComposeFirstQuestionDraft:
             assert await compose_first_question(_prefs(), None) is None
 
     async def test_the_fallback_records_why_and_how_long_it_waited(self) -> None:
-        """A fallback is silent in the product, so the wide event is the only
-        trace. ``log.warning`` writes message and kwargs into ``warnings[]``
-        (libs/shared/py/wide_events.py), which makes both a queryable surface:
-        without ``reason`` a timeout is indistinguishable from a bad key."""
+        """A fallback is silent in the product; log.warning writes message and kwargs into warnings[] (wide_events.py) as the only trace."""
         runnable, invoke = _llm_patches(error=TimeoutError())
         clock = MagicMock()
         clock.monotonic.side_effect = [1.0, 1.0005678]
@@ -454,8 +426,7 @@ class TestPrewarmWrites:
     """The question written while the user is still clicking."""
 
     async def test_the_question_is_written_under_this_users_answers_with_a_ttl(self) -> None:
-        """Two hours: long enough to survive a wizard someone walks away from,
-        short enough that a stale question is never served after a re-answer."""
+        """Two hours: long enough to survive an abandoned wizard, short enough that a stale question is never served after a re-answer."""
         written = FirstQuestion(chips=GOOD_CHIPS)
         setter = AsyncMock()
         compose = AsyncMock(return_value=written)
@@ -473,8 +444,7 @@ class TestPrewarmWrites:
         assert FIRST_QUESTION_CACHE_TTL == 7200
 
     async def test_the_prewarm_composes_for_this_user_on_the_generous_ceiling(self) -> None:
-        """Nobody is waiting, so it takes the default 8s budget — and it passes
-        the user id, or the prewarm's spend lands on nobody."""
+        """Nobody is waiting, so it takes the default 8s budget, and passes the user id or the prewarm's spend lands on nobody."""
         setter = AsyncMock()
         compose = AsyncMock(return_value=FirstQuestion(chips=GOOD_CHIPS))
         with (
@@ -487,8 +457,7 @@ class TestPrewarmWrites:
         assert compose.await_args.kwargs == {"user_id": "u1"}
 
     async def test_a_miss_writes_nothing(self) -> None:
-        """An empty entry would be read as a hit at completion and suppress the
-        one live attempt."""
+        """An empty entry would be read as a hit at completion and suppress the one live attempt."""
         setter = AsyncMock()
         with (
             patch(f"{MODULE}.compose_first_question", AsyncMock(return_value=None)),
@@ -499,10 +468,7 @@ class TestPrewarmWrites:
         setter.assert_not_awaited()
 
     async def test_a_detached_failure_is_recorded_and_never_raised(self) -> None:
-        """This runs off the request that saved the answers, so a raise has
-        nowhere to go — but a silent swallow makes a dead prewarm invisible.
-        The message is truncated: a provider traceback in a log line is how a
-        connection string ends up in Loki."""
+        """Runs off the request that saved the answers, so it can't raise; the message is truncated so a traceback can't leak a connection string."""
         with (
             patch(
                 f"{MODULE}.compose_first_question",
@@ -552,9 +518,7 @@ class TestResolveBranches:
         assert getter.await_args.args == (first_question_cache_key("u1", _prefs()), FirstQuestion)
 
     async def test_a_miss_gets_one_live_attempt_on_the_six_second_ceiling(self) -> None:
-        """The user is watching a spinner: past six seconds the static line is
-        the better product, so this is a last chance rather than a real
-        attempt."""
+        """The user is watching a spinner: past six seconds the static line is the better product, so this is a last chance."""
         written = FirstQuestion(chips=GOOD_CHIPS)
         compose = AsyncMock(return_value=written)
         with (
@@ -583,8 +547,7 @@ class TestResolveBranches:
 
 
 class TestSeededChips:
-    """The agent's prompt reads back the chips the seeded turn actually offered,
-    from the same cache key the seed was built from. Nothing is guessed."""
+    """The agent's prompt reads back the chips the seeded turn actually offered, from the same cache key it was built from."""
 
     async def test_reads_the_seed_key_and_returns_its_chips_as_a_list(self) -> None:
         cached = FirstQuestion(chips=GOOD_CHIPS)

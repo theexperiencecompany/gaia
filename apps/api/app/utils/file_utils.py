@@ -1,9 +1,6 @@
-"""
-Document processing and summarization. PDF/DOCX/XLSX/PPTX/CSV are extracted
-locally (no network call) via ``local_document_parser``; scanned/image-based
-PDFs fall back to LlamaParse, which is the only path here that can OCR them.
-The default LLM summarizes images, text, and every extracted chunk. Summaries
-are embedded into ChromaDB for retrieval.
+"""Document processing and summarization.
+
+PDF/DOCX/XLSX/PPTX/CSV are extracted locally (no network call) via local_document_parser; scanned/image-based PDFs fall back to LlamaParse, which is the only path here that can OCR them. The default LLM summarizes images, text, and every extracted chunk, and summaries are embedded into ChromaDB for retrieval.
 """
 
 import asyncio
@@ -79,13 +76,9 @@ class DocumentProcessor:
     """Document processing and summarization: local extraction first, LlamaParse for OCR."""
 
     def __init__(self, user_id: str) -> None:
-        """Initialize the document processor. The LlamaParse client is built
-        lazily -- only scanned/image-based PDFs need it as an OCR fallback.
+        """Initialize the document processor; the LlamaParse client is built lazily since only scanned/image-based PDFs need it as an OCR fallback.
 
-        ``user_id`` is whose COGS this processor's LLM spend is attributed to.
-        Held here rather than passed through every branch: one upload fans out
-        to an image description or a summary per PDF page, and each of those is
-        a billable call that must name the same user.
+        user_id is whose COGS this processor's LLM spend is attributed to, held here rather than passed through every branch since one upload fans out to a billable call per image/PDF page that must all name the same user.
         """
         self._parser: LlamaParse | None = None
         self.user_id = user_id
@@ -115,16 +108,7 @@ class DocumentProcessor:
     async def process_file(
         self, file_content: bytes, content_type: str, filename: str
     ) -> Union[str, list[DocumentSummaryModel], DocumentSummaryModel]:
-        """Process and summarize a file based on its content type.
-
-        Args:
-            file_content: Raw file bytes
-            content_type: MIME type of the file
-            filename: Name of the file
-
-        Returns:
-            Appropriate summary based on file type
-        """
+        """Process and summarize a file based on its content type."""
         log.set(filename=filename, content_type=content_type)
         try:
             if content_type.startswith("image/"):
@@ -153,7 +137,7 @@ class DocumentProcessor:
 
         Runs on the same codec and vision call as every other image path, so the
         MIME the provider is told about is sniffed from the bytes rather than
-        assumed: a PNG or WEBP upload used to be labelled ``image/jpeg``, which
+        assumed: a PNG or WEBP upload used to be labelled image/jpeg, which
         the provider rejects outright.
         """
         try:
@@ -176,11 +160,7 @@ class DocumentProcessor:
     async def process_doc(self, data: bytes) -> list[DocumentSummaryModel]:
         """Parse a PDF into per-page chunks and summarize each with the default model.
 
-        Classified first (pdf_inspector): text-based PDFs are extracted
-        locally, one native call for the whole document; scanned/image-based
-        PDFs fall back to LlamaParse for OCR. Extraction errors propagate to
-        the caller (``process_file``) instead of being swallowed here,
-        matching ``process_text``.
+        Classified first (pdf_inspector): text-based PDFs are extracted locally in one native call; scanned/image-based PDFs fall back to LlamaParse for OCR. Extraction errors propagate to the caller (process_file) instead of being swallowed here, matching process_text.
         """
         chunks = await self._extract_pdf_chunks(data)
         return await self._summarize_chunks(chunks)
@@ -197,11 +177,7 @@ class DocumentProcessor:
     async def _extract_pdf_chunks(self, data: bytes) -> list[str]:
         """Extract PDF text locally when possible; fall back to LlamaParse for OCR.
 
-        The local calls are synchronous, CPU-bound native code, so they run
-        on a thread to avoid blocking the event loop; a timeout bounds
-        worst-case time (e.g. a decompression-bomb PDF) but note that the
-        underlying native call itself has no cooperative cancellation and
-        keeps running in its thread until it finishes, even past a timeout.
+        Local calls are synchronous CPU-bound native code, run on a thread to avoid blocking the event loop; a timeout bounds worst-case time (e.g. a decompression-bomb PDF), but the native call itself has no cooperative cancellation and keeps running in its thread past the timeout.
         """
         classification = await asyncio.wait_for(
             asyncio.to_thread(local_document_parser.classify_pdf, data),
@@ -232,11 +208,7 @@ class DocumentProcessor:
     async def _summarize_chunks(self, chunks: list[str]) -> list[DocumentSummaryModel]:
         """Summarize extracted chunks with the default model for retrieval.
 
-        Blank chunks (e.g. empty PDF pages) are skipped, not summarized — a
-        summary of nothing is hallucinated content in the search index. At
-        most MAX_INDEXED_CHUNKS are indexed; a trailing note entry records
-        any truncation so retrieval knows the index is partial. Original
-        chunk positions are preserved as page numbers.
+        Blank chunks are skipped, not summarized — a summary of nothing is hallucinated content in the index. At most MAX_INDEXED_CHUNKS are indexed; a trailing note entry records any truncation, and original chunk positions are preserved as page numbers.
         """
         numbered = [(i, chunk) for i, chunk in enumerate(chunks) if chunk.strip()]
         if not numbered:
@@ -363,15 +335,7 @@ async def generate_file_summary(
     """Generate a description for a file based on its content type.
 
     Args:
-        file_content: Raw file bytes
-        content_type: MIME type of the file
-        filename: Name of the file
-        user_id: Whose COGS the summarization spend is attributed to. Required,
-            not optional: this path runs one LLM call per image and per PDF page,
-            and an omitted id records that spend against nobody.
-
-    Returns:
-        Description of the file content or DocumentSummaryModel instances
+        user_id: whose COGS the summarization spend is attributed to; required because this path runs one LLM call per image/PDF page, and an omitted id records that spend against nobody.
     """
     processor = DocumentProcessor(user_id=user_id)
     return await processor.process_file(

@@ -1,5 +1,4 @@
-"""Unit tests for publish_outbound_message — the outbound RabbitMQ publisher
-that replaces direct platform HTTP sends."""
+"""Unit tests for publish_outbound_message — the outbound RabbitMQ publisher that replaces direct platform HTTP sends."""
 
 import json
 from unittest.mock import AsyncMock, patch
@@ -87,9 +86,7 @@ class TestPublishOutboundMessage:
         assert envelope.get("text") is None
 
     async def test_the_message_carries_a_broker_ttl(self) -> None:
-        """Every outbound message expires at the broker. Without the TTL a bot
-        that was down for a day comes back and floods the user with a day of
-        stale replies, each answering a moment that has passed."""
+        """Without the broker TTL, a bot down for a day floods the user with a day of stale replies on return."""
         publisher = AsyncMock()
         with (
             patch.object(
@@ -110,9 +107,7 @@ class TestPublishOutboundMessage:
         )
 
     async def test_a_callers_ttl_is_the_one_that_reaches_the_broker(self) -> None:
-        """``ttl_seconds`` exists so a caller can say "this is noise once the
-        moment has passed". Ignoring it silently gives that message the full
-        day-long default."""
+        """ttl_seconds lets a caller mark a message as noise past its moment; ignored, it gets the day-long default."""
         publisher = AsyncMock()
         with (
             patch.object(
@@ -158,8 +153,7 @@ class TestPublishOutboundMessage:
         assert envelope["is_channel"] is False
 
     async def test_destination_override_sends_to_the_channel_without_dm_lookup(self) -> None:
-        """A channel override addresses the group directly: the envelope carries
-        the override id and is_channel=True, and the DM link is never resolved."""
+        """A channel override addresses the group directly — the envelope carries the override id, and the DM link is skipped."""
         publisher = AsyncMock()
         resolve = AsyncMock()
         with (
@@ -253,8 +247,7 @@ class TestPublishOutboundMessageBrutalEdges:
 
 
 class TestPublishOutboundFile:
-    """publish_outbound_file enqueues an *attachment* envelope (not text) and is
-    best-effort: every can't-deliver path returns False without raising."""
+    """publish_outbound_file enqueues an attachment envelope and is best-effort — every can't-deliver path returns False, never raises."""
 
     async def test_unsupported_platform_returns_false(self) -> None:
         # WEB has no outbound queue — the link lookup must not even be reached.
@@ -387,10 +380,7 @@ class TestNotifyAccountLinked:
     async def test_the_confirmation_goes_to_the_user_who_linked_on_the_greeting_ttl(
         self,
     ) -> None:
-        """Two things nothing else pins: the destination is resolved for the
-        user who just linked (any other id texts a stranger "you're connected"),
-        and the note expires on the short greeting TTL — a "you're connected"
-        that surfaces a day later is confusing noise, not a greeting."""
+        """Pins two things: the destination is the user who just linked, and the confirmation expires on the short greeting TTL."""
         publisher = AsyncMock()
         with (
             patch.object(
@@ -413,8 +403,7 @@ class TestNotifyAccountLinked:
         assert OUTBOUND_TTL_SECONDS_GREETING < OUTBOUND_TTL_SECONDS_DEFAULT
 
     async def test_whatsapp_uses_cased_display_name(self) -> None:
-        """WhatsApp's display name is ``WhatsApp``, not ``Whatsapp`` — a
-        ``.capitalize()`` fallback would be observable."""
+        """WhatsApp's display name is WhatsApp, not Whatsapp — a .capitalize() fallback would be observable."""
         publisher = AsyncMock()
         with (
             patch.object(
@@ -435,8 +424,7 @@ class TestNotifyAccountLinked:
         assert "Your Whatsapp account" not in envelope["text"]
 
     async def test_imessage_is_spelled_the_way_apple_spells_it(self) -> None:
-        """iMessage is the one platform whose display name is not a plain
-        capitalization, so the map must carry it rather than fall back."""
+        """IMessage is the one platform whose display name is not a plain capitalization, so the map must carry it."""
         publisher = AsyncMock()
         with (
             patch.object(
@@ -466,8 +454,7 @@ class TestNotifyAccountLinked:
 
 
 class TestOutboundBubbleSplitting:
-    """Raw agent text carries bubble-break sentinels; the outbound publish is the
-    last place that can turn them into real bubbles instead of literal tokens."""
+    """Raw agent text carries bubble-break sentinels; outbound publish is the last place that can turn them into real bubbles."""
 
     async def test_sentinels_inside_one_part_become_ordered_bubbles(self) -> None:
         publisher = AsyncMock()

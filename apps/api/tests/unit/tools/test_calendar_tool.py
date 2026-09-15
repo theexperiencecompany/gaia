@@ -2,11 +2,11 @@
 
 The pure helpers are exercised with no mocking at all; the Composio-registered
 tool bodies are exercised for real with only the true I/O boundaries faked
-(`proxy_request_sync`, the async `calendar_service` / `user_service` functions,
+(proxy_request_sync, the async calendar_service / user_service functions,
 the LangGraph stream writer and config).
 
 Five production bugs were found while writing these tests and fixed at the root
-in `calendar_tool.py` / `calendar_models.py`; the tests that pin them down are
+in calendar_tool.py / calendar_models.py; the tests that pin them down are
 marked with a "BUG:" comment.
 """
 
@@ -83,9 +83,9 @@ def tools() -> dict[str, Any]:
 def _no_captured_server_loop() -> Iterator[None]:
     """Run the tool bodies in a loop-less sync context, like the e2e graph harness.
 
-    With no captured server loop, `_run_sync` runs the (mocked, loop-agnostic)
+    With no captured server loop, _run_sync runs the (mocked, loop-agnostic)
     services on a fresh loop. Clearing the global guards against a captured loop
-    leaking in from another test, which would make `_run_sync` dispatch onto a
+    leaking in from another test, which would make _run_sync dispatch onto a
     closed loop.
     """
     reset_captured_loop()
@@ -398,7 +398,7 @@ class TestListCalendars:
 
 
 class _FrozenDatetime(datetime):
-    """`datetime` with a pinned `now()` — everything else is the real thing."""
+    """datetime with a pinned now() — everything else is the real thing."""
 
     _instant = datetime(2026, 3, 14, 20, 30, tzinfo=UTC)
 
@@ -610,11 +610,9 @@ class TestGetDaySummary:
         writer.assert_not_called()
 
     def test_today_is_resolved_in_the_users_timezone(self, tools, writer) -> None:
-        # BUG: GetDaySummaryInput.date defaulted to the *server's* local date via
-        # default_factory, so a user in Asia/Kolkata asking "what's on today?"
-        # between 00:00 and 05:30 local got yesterday's schedule from a UTC
-        # server. The date must be resolved from the user's own zone, which is
-        # only known inside the tool.
+        # BUG: GetDaySummaryInput.date defaulted to the server's local date via default_factory,
+        # so a user in Asia/Kolkata asking "what's on today?" between 00:00-05:30 local got
+        # yesterday's schedule from a UTC server; the date must be resolved from the user's own zone.
         with patch(f"{MODULE}.datetime", _FrozenDatetime):
             out, mock_events = self._run(
                 tools, GetDaySummaryInput(), events=[], user={"timezone": "Asia/Kolkata"}
@@ -859,11 +857,9 @@ class TestGetEvent:
         assert out["events"] == []
 
     def test_percent_encodes_calendar_id_with_reserved_chars(self, tools) -> None:
-        # Google calendar IDs like "user@group.calendar.google.com" or
-        # "#contacts@group.v.calendar.google.com" contain '@'/'#'. Unencoded,
-        # those characters break the URL path (same bug as calendar_service.py,
-        # fixed at the root by routing every endpoint through
-        # calendar_events_endpoint()).
+        # Google calendar IDs like "user@group.calendar.google.com" contain '@'/'#', which break
+        # the URL path unencoded (same bug as calendar_service.py, fixed at the root by routing
+        # every endpoint through calendar_events_endpoint()).
         with patch(f"{MODULE}.proxy_request_sync", return_value={"id": "e1"}) as proxy:
             tools["CUSTOM_GET_EVENT"](
                 GetEventInput(
@@ -1175,11 +1171,9 @@ class TestCreateEvent:
     # -- all-day ----------------------------------------------------------
 
     def test_all_day_end_date_is_exclusive(self, tools, writer) -> None:
-        # BUG: `end.date` was the same day as `start.date`. Google Calendar
-        # treats all-day `end.date` as exclusive and rejects an empty range with
-        # HTTP 400, so every all-day event the agent created failed. The rest of
-        # the codebase (calendar_service.create_calendar_event) already uses
-        # start + 1 day.
+        # BUG: end.date was the same day as start.date. Google Calendar treats all-day end.date as
+        # exclusive and rejects an empty range with HTTP 400, so every all-day event the agent
+        # created failed. The rest of the codebase (calendar_service.create_calendar_event) already uses start + 1 day.
         _, proxy = self._run(
             tools,
             CreateEventInput(
@@ -1426,10 +1420,9 @@ class TestCreateEvent:
         assert out["message"].startswith("1 event(s)")
 
     def test_draft_falls_back_to_the_shared_default_color(self, tools, writer) -> None:
-        # BUG: this path hardcoded "#4285f4", disagreeing with
-        # DEFAULT_CALENDAR_COLOR, which calendar_service and the frontend both
-        # use — an unmapped calendar drafted a card in a different colour than
-        # the same event shown after confirmation.
+        # BUG: this path hardcoded "#4285f4", disagreeing with DEFAULT_CALENDAR_COLOR (used by
+        # calendar_service and the frontend) — an unmapped calendar drafted a card in a different
+        # colour than the same event shown after confirmation.
         with patch(f"{MODULE}.get_config", return_value={"configurable": {}}):
             out, _ = self._run(
                 tools,

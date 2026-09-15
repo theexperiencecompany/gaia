@@ -221,7 +221,7 @@ def test_a_boundary_inside_a_nested_helper_is_credited(tmp_path: Path) -> None:
 
 
 def _write_router_tree(tmp_path: Path) -> tuple[Path, Path, list[Path]]:
-    """app → v1 → integrations → gmail, the real three-level nesting."""
+    """App → v1 → integrations → gmail, the real three-level nesting."""
     factory = _write(
         tmp_path,
         "core/app_factory.py",
@@ -467,8 +467,7 @@ def test_a_registry_whose_wiring_moved_raises_instead_of_finding_nothing(tmp_pat
 
 
 def test_a_map_with_no_entry_points_scores_zero_not_100(tmp_path: Path) -> None:
-    """An empty map is the scanner going blind, not a perfect score — it must
-    fail the --min-score gate instead of reporting 100 over nothing."""
+    """An empty map is the scanner going blind; it must fail --min-score, not score 100."""
     path = _write(
         tmp_path,
         "services/helpers.py",

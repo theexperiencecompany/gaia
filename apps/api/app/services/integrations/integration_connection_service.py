@@ -122,8 +122,7 @@ async def _handle_auth_required(
     probe_result: McpProbeResult | None,
     mcp_client: MCPClient,
 ) -> ConnectIntegrationResponse:
-    """Bearer servers return bearer_required (frontend collects a key); everything
-    else gets the OAuth redirect."""
+    """Return bearer_required for bearer servers; everything else gets the OAuth redirect."""
     if not is_platform:
         await update_user_integration_status(user_id, integration_id, "created")
 
@@ -136,10 +135,8 @@ async def _handle_auth_required(
             message="This integration requires an API key.",
         )
 
-    # The WWW-Authenticate challenge lives under `oauth_challenge`, not at the top
-    # level of the probe result — passing the whole result meant discovery saw none
-    # of the challenge keys, dropped `initial_scope`, and re-fetched the PRM it was
-    # given. Typing both ends surfaced it.
+    # WWW-Authenticate challenge lives under `oauth_challenge`, not top-level —
+    # passing the whole result dropped `initial_scope` and re-fetched the PRM.
     return await _redirect_to_oauth(
         mcp_client,
         integration_id,
@@ -335,10 +332,9 @@ async def connect_composio_integration(
 
     url = await composio_service.connect_account(provider, user_id, state_token=state_token)
 
-    # Composio mints the connected account at initiate time, before the user has
-    # authorized it. Record the id now so a connection abandoned mid-flow is still
-    # addressable; the callback overwrites it with whichever account actually
-    # completed.
+    # Composio mints the connected account before the user authorizes it; record
+    # it now so an abandoned connection is still addressable. Callback overwrites
+    # it with whichever account actually completed.
     await update_user_integration_status(
         user_id, integration_id, "created", connected_account_id=url["connection_id"]
     )
@@ -422,11 +418,9 @@ async def initiate_integration_connection(
 ) -> ConnectIntegrationResponse | None:
     """Resolve an integration and start its connect flow.
 
-    Single source of truth for the connect dispatch, shared by the
-    ``POST /connect/{id}`` endpoint and the login-free ``GET /connect-link``
-    entry point. Returns ``None`` when the integration does not exist (callers
-    map that to 404 / a friendly error); otherwise a ``ConnectIntegrationResponse``
-    whose ``redirect_url`` is the provider OAuth URL.
+    Shared by POST /connect/{id} and the login-free GET /connect-link.
+    Returns None when the integration does not exist (callers map that to
+    404); otherwise redirect_url is the provider OAuth URL.
     """
     resolved = await IntegrationResolver.resolve(integration_id)
     if not resolved:

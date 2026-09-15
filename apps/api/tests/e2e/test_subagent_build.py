@@ -1,17 +1,4 @@
-"""What a specialized subagent is actually built with.
-
-A provider subagent declares the tools it always needs bound up front —
-`auto_bind_tools` and `extra_initial_tools` in `oauth_config.py`. Gmail, for
-instance, declares six Composio tools plus `query_json`/`grep`, and those
-declarations are the whole reason a handoff to Gmail can read an inbox without
-first paying for a retrieval round-trip.
-
-The build filters those declarations against the tools it actually resolved.
-The filter is correct — you cannot bind a tool that does not exist — but a
-declaration that resolves to nothing is a configuration or registration fault,
-not a normal outcome, and it must not pass in silence. A Gmail subagent that
-builds with none of its Gmail tools looks healthy and can do nothing.
-"""
+"""A subagent's declared tools must resolve to real ones, or the build must warn loudly instead of silently building one short-handed."""
 
 from __future__ import annotations
 
@@ -48,16 +35,13 @@ class TestScopedToolDict:
     async def test_a_provider_space_with_no_registered_category_resolves_none_of_its_tools(
         self, registry
     ):
-        """The precondition for everything below: until Composio registration
-        runs, a provider's own tools simply are not there."""
+        """The precondition for everything below: until Composio registration runs, a provider's own tools simply are not there."""
         scoped, _ = build_scoped_tool_dict(registry, "gmail", None, True)
 
         assert [name for name in GMAIL_AUTO_BIND if name in scoped] == []
 
     async def test_the_always_available_tools_are_still_present(self, registry):
-        """A subagent always gets memory, file and shell access regardless of its
-        provider, so an empty provider category is not an empty toolset — which
-        is why the degradation is invisible."""
+        """A subagent always gets memory, file and shell access regardless of provider, so an empty provider category is not an empty toolset — the degradation stays invisible."""
         scoped, _ = build_scoped_tool_dict(registry, "gmail", None, True)
 
         assert {"search_memory", "read", "bash"} <= set(scoped)
@@ -69,8 +53,7 @@ class TestScopedToolDict:
         assert "finish_task" in initial
 
     async def test_finish_task_is_absent_when_not_asked_for(self, registry):
-        """Subagents that terminate on a plain reply must not be handed a tool
-        that ends the run."""
+        """Subagents that terminate on a plain reply must not be handed a tool that ends the run."""
         scoped, initial = build_scoped_tool_dict(registry, "gmail", None, False)
 
         assert "finish_task" not in scoped
@@ -78,7 +61,7 @@ class TestScopedToolDict:
 
 
 class TestDeclaredToolResolution:
-    """``resolve_declared_tools`` is the one place a declaration meets reality."""
+    """resolve_declared_tools is the one place a declaration meets reality."""
 
     def test_declared_tools_that_exist_are_kept_in_order(self):
         scoped = {"a": object(), "b": object(), "c": object()}
@@ -89,10 +72,7 @@ class TestDeclaredToolResolution:
         ]
 
     def test_a_missing_declaration_is_reported_not_swallowed(self):
-        """The failure this exists to prevent: every declared tool dropped, the
-        subagent built anyway, and nothing said so. The message must name the
-        provider and the missing tools, because the cause is always upstream —
-        a category that never registered, or a renamed tool slug."""
+        """The warning must name the provider and the missing tools, since the cause is always upstream — a category that never registered, or a renamed tool slug."""
         scoped = {"read": object()}
 
         with patch.object(base_subagent, "log") as mock_log:
@@ -133,8 +113,7 @@ class TestDeclaredToolResolution:
         assert not mock_log.warning.called
 
     def test_everything_resolving_is_not_a_warning(self):
-        """Control: without it, warning unconditionally would satisfy the tests
-        above."""
+        """Control: without it, warning unconditionally would satisfy the tests above."""
         scoped = {name: object() for name in GMAIL_AUTO_BIND}
 
         with patch.object(base_subagent, "log") as mock_log:

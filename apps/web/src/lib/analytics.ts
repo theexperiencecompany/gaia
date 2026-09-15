@@ -9,13 +9,9 @@ import posthog from "posthog-js";
 
 /**
  * Which surface put the paid-only wall on screen — the `source` property of
- * `paywall:modal_viewed`, and the only record of where the gate actually
- * bites. A closed union rather than a free string: every member is a call
- * site this repo owns, and a typo has to be a compile error or it silently
- * becomes a bucket of its own.
- *
- * Every `openModal` call names one, which is why `UpgradeModalOptions.source`
- * is required. Add a member here when a new surface starts raising the wall.
+ * `paywall:modal_viewed`. A closed union, not a free string: every member is
+ * a call site this repo owns, so a typo is a compile error, not a silent
+ * bucket. Every `openModal` call must name one; add a member when a new surface starts raising the wall.
  */
 export type PaywallSource =
   // Blocked actions — the gate refusing something the user tried to do.
@@ -38,10 +34,8 @@ export type PaywallSource =
   | "settings_linked_accounts"
   | "settings_usage"
   // Not a surface: the desktop popup's feed window mirrors the composer
-  // window's wall, so it carries whatever source that window recorded. This
-  // value only appears if a snapshot ever arrives without one, which is a bug
-  // in the mirror rather than a place the gate bit — named explicitly so it
-  // cannot hide inside a real bucket.
+  // window's wall, carrying whatever source that window recorded. Appears only
+  // if a snapshot arrives without one — a bug in the mirror, not a real gate — named explicitly so it can't hide inside a real bucket.
   | "desktop_popup_mirror";
 
 // Event name constants for consistent tracking
@@ -67,26 +61,14 @@ export const ANALYTICS_EVENTS = {
 
   SUBSCRIPTION_PAGE_VIEWED: "subscription:page_viewed",
   SUBSCRIPTION_PLAN_VIEWED: "subscription:plan_viewed",
-  // Two subscription events deliberately have no entry here, because the API
-  // owns them and a client copy would be a rival event for one user action:
-  //   - starting a checkout -> `payment:checkout_started`, captured by
-  //     POST /payments/checkout-session and POST /payments/subscriptions with
-  //     the `source` the caller passes down (see `useDodoPayments`).
-  //   - completing one -> `subscription:activated`, captured on the Dodo
-  //     webhook (`_handle_subscription_active`), the only place a subscription
-  //     actually becomes real.
-  // SUBSCRIPTION_FAILED stays client-side, with exactly one emitter left
-  // (`useCheckoutReturn`): a charge Dodo declined, and a webhook that never
-  // lands, both produce no server-side event at all. A checkout the API
-  // itself refused is the API's to capture — emitting it here as well would
-  // count one refusal twice.
+  // `payment:checkout_started` and `subscription:activated` are API-owned (no
+  // client copy here) — POST /payments/* and the Dodo webhook capture them.
+  // SUBSCRIPTION_FAILED stays client-side (`useCheckoutReturn`): a declined charge or missing webhook produces no server event, so this is the only capture — not a duplicate of an API refusal.
   SUBSCRIPTION_FAILED: "subscription:failed",
 
   // The paid-only wall appeared on screen. Client-only by necessity: the
-  // server captures the 402 that caused it (`paywall:blocked`), but only the
-  // browser knows whether the modal actually rendered for the user. Carries
-  // `source` (see `PaywallSource`) — a count of walls shown is not actionable
-  // without knowing which surface produced them.
+  // server captures the causing 402 (`paywall:blocked`), but only the browser
+  // knows the modal rendered. Carries `source` — a count of walls shown means nothing without knowing which surface produced them.
   PAYWALL_MODAL_VIEWED: "paywall:modal_viewed",
 
   CHAT_VOICE_MODE_TOGGLED: "chat:voice_mode_toggled",
@@ -213,17 +195,12 @@ interface EventProperties {
 }
 
 /**
- * `posthog.init` is deferred to browser idle time (see
- * `instrumentation-client.ts`), so the first seconds of a page load happen
- * with an uninitialised client — and `posthog.capture` before `init` is
- * *dropped*, with only a console error. Onboarding is the flow that pays for
- * this: `onboarding:started` fires on mount, and a quick user answers Q1
- * before idle callbacks run, so the head of the funnel silently went missing.
+ * `posthog.init` is deferred to browser idle (`instrumentation-client.ts`), and
+ * `posthog.capture` before init is silently *dropped* — `onboarding:started`
+ * on mount missed the head of the funnel this way for quick users.
  *
- * Calls made before init are therefore buffered here and replayed in order by
- * `flushPendingAnalytics`, which init calls once it is ready. The buffer is
- * capped: with no project token configured (local dev) nothing ever flushes,
- * and an unbounded queue would grow for the life of the tab.
+ * Calls made before init are buffered here and replayed in order by
+ * `flushPendingAnalytics`; capped, since no project token (local dev) means the queue never flushes and would grow for the tab's life.
  */
 type PendingCall =
   | { kind: "identify"; userId: string; properties: Record<string, unknown> }

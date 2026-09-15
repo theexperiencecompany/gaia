@@ -77,7 +77,7 @@ MODULE = "app.api.v1.middleware.tiered_rate_limiter"
 class TestPlanRequired:
     """The whole-feature gate: is "pro" the answer to a fully-zeroed plan?
 
-    `plan_required` is what turns a 429 into an upgrade prompt in the UI, so a
+    plan_required is what turns a 429 into an upgrade prompt in the UI, so a
     wrong answer either hides the paywall or shows it to someone who already paid.
     """
 
@@ -226,9 +226,7 @@ class TestCheckAndIncrement:
         mock_limits: MagicMock,
         mock_reset: MagicMock,
     ) -> None:
-        """The Redis key IS the scope. Drop the user, the feature or the period
-        from it and one bucket is shared across users or across windows — a
-        limiter that silently over- or under-counts and never errors."""
+        """The Redis key is the scope; dropping the user, feature, or period from it shares one bucket across users or windows silently."""
         mock_limits.return_value = RateLimitConfig(day=10, month=100)
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
         self.limiter.redis.get = AsyncMock(return_value="10")
@@ -257,9 +255,7 @@ class TestCheckAndIncrement:
         mock_reset: MagicMock,
         period: str,
     ) -> None:
-        """The whole-feature gate is `no allowance at all`, not `a small one`. A
-        1-per-window allowance must reach the counter and be spendable once —
-        in EITHER window, since the gate ands the two together."""
+        """A 1-per-window allowance must reach the counter and be spendable once in either window, since the gate ANDs the two together."""
         mock_limits.return_value = RateLimitConfig(**{period: 1})
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
         self.limiter.redis.get = AsyncMock(return_value=None)
@@ -292,8 +288,7 @@ class TestCheckAndIncrement:
     async def test_a_fully_zeroed_plan_is_blocked_with_an_upgrade_prompt(
         self, mock_limits: MagicMock, mock_feature_limits: MagicMock
     ) -> None:
-        """day and month both 0 means no access at all — and because Pro does have
-        access, the 429 carries the upsell the paywall UI keys off."""
+        """Day and month both 0 means no access; since Pro does have access, the 429 carries the upsell the paywall UI keys off."""
         mock_limits.return_value = RateLimitConfig(day=0, month=0)
         mock_feature_limits.return_value = _tiered(
             RateLimitConfig(day=0, month=0), RateLimitConfig(day=10, month=100)
@@ -321,8 +316,7 @@ class TestCheckAndIncrement:
         mock_limits: MagicMock,
         mock_reset: MagicMock,
     ) -> None:
-        """A zero-limit period is still COUNTED (plain INCR, so usage charts have
-        data) but never enforced — it must not appear in the returned usage info."""
+        """A zero-limit period is still counted (plain INCR, for usage charts) but never enforced, and must not appear in the returned usage info."""
         from app.config.rate_limits import RateLimitConfig
 
         # day=0 is counted-only; month=1000 is enforced.

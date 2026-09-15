@@ -100,7 +100,7 @@ class TestRequireActiveSubscription:
         plan.assert_awaited_once_with("u1")
 
     async def test_a_cached_free_is_confirmed_from_the_row_before_blocking(self) -> None:
-        """The gate runs the same ``is_paid`` rule as every other surface."""
+        """The gate runs the same is_paid rule as every other surface."""
         with (
             patch(
                 f"{ENT}.payment_service.get_cached_plan_type",
@@ -145,13 +145,7 @@ class TestRequireActiveSubscription:
         )
 
     async def test_blocking_never_touches_dodo(self) -> None:
-        """The deny path costs one cached plan read and nothing else.
-
-        This gate runs on every authenticated request, so anything it does per
-        block is paid per blocked request. Minting here put a ``get_plans``
-        call, an HTTP round-trip and a Mongo insert on each one, for a
-        single-use link the user never asked for.
-        """
+        """The deny path costs one cached plan read and nothing else, since it runs on every authenticated request."""
         checkout_mock = AsyncMock(return_value=_checkout("https://checkout.dodo.test/abc"))
         with (
             patch(
@@ -180,9 +174,7 @@ class TestRequireActiveSubscription:
         assert exc_info.value.detail["checkout_url"] is None
 
     async def test_block_is_captured_against_the_blocked_users_own_profile(self) -> None:
-        """The paywall event must carry the blocked user's id, not an anonymous
-        one — bot and worker paths reach this with no request context, so an
-        implicit distinct_id would strand the block on a ghost profile."""
+        """The paywall event must carry the blocked user's id, not an anonymous one — bot and worker paths have no request context."""
         with (
             patch(
                 f"{ENT}.payment_service.get_cached_plan_type",

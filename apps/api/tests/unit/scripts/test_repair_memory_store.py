@@ -3,7 +3,7 @@
 Two halves. The selection logic (which rows the script proposes to retire, and
 why) is pure and tested directly. The driver is tested against a mocked store:
 what it PRINTS is the whole product of a dry run — an operator reads that plan
-and decides whether to re-run with ``--apply`` — so the printed plan and the
+and decides whether to re-run with --apply — so the printed plan and the
 retire reasons it writes are asserted verbatim.
 """
 
@@ -430,11 +430,7 @@ class TestRunAllUsers:
 
 @pytest.mark.unit
 class TestOnlyARestatementRetiresItsParent:
-    """The links being read here were written by the OLD reconciler, whose rule
-    was "more detail about a related claim". So an EXTENDS link means the two
-    rows are topically adjacent, not that the child replaces the parent. On the
-    production store, retiring every linked parent would have deleted "avoid em
-    dashes" in favour of "fluff-free marketing copy"."""
+    """EXTENDS links (written by the OLD reconciler) mean topically adjacent, not replacement — retiring every linked parent deleted "avoid em dashes" for "fluff-free marketing copy" in production."""
 
     @staticmethod
     def _pair(parent_content: str, child_content: str) -> list[MemoryRecord]:
@@ -475,10 +471,7 @@ class TestOnlyARestatementRetiresItsParent:
 
 @pytest.mark.unit
 class TestALongProfileIsNotASnapshot:
-    """The phrase heuristic reads a snapshot's SHAPE: short, one clock-bound
-    claim. user.md is rebuilt from live rows, so retiring a 600-character
-    biography because it says "currently pursuing" would impoverish the rebuild
-    it is meant to repair."""
+    """The phrase heuristic reads a snapshot's SHAPE (short, one clock-bound claim), not length or wording alone."""
 
     def test_a_short_snapshot_is_still_retired(self) -> None:
         row = make_row(content="Aryan is currently unable to take screenshots.", age_days=90)
@@ -509,10 +502,7 @@ class TestALongProfileIsNotASnapshot:
 
 @pytest.mark.unit
 class TestRunBootstrapsWhatAScriptHasNoLifespanFor:
-    """Outside the API process nobody has registered the lazy providers, so the
-    memory store's Postgres engine has nobody to build it and every query raises
-    ``Provider 'postgresql_engine' not found in registry``. That is exactly how
-    the first production dry run of this script failed."""
+    """Outside the API process no lazy providers are registered, so queries raise "postgresql_engine" not found — how the first production dry run failed."""
 
     async def test_providers_are_registered_before_the_first_repair(self) -> None:
         args = make_args()
@@ -712,11 +702,9 @@ class TestCommandLine:
         assert (
             "Repair a user's memory store after the extraction/reconciliation fixes." in help_text
         )
-        # Scoped to the block argparse RENDERS from add_argument, not the whole
-        # page: the description above it is this module's docstring, and while
-        # that docstring also listed the flags every assertion below passed
-        # against the prose copy — the real help strings were unchecked, and a
-        # mutation run walked straight through all five of them.
+        # Scoped to argparse's rendered options block, not the module docstring's
+        # prose copy of the flags — asserting against the prose let all five
+        # real help strings go unchecked, and a mutation run walked through them.
         assert "options:" in raw, raw
         options = " ".join(raw.split("options:", 1)[1].split())
         assert "--user USER User id to repair (repeatable)." in options

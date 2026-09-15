@@ -45,7 +45,7 @@ def _existing_wf(
     composio_trigger_ids: list[str] | None = None,
     trigger_name: str | None = "gmail_new_email",
 ) -> MagicMock:
-    """A stand-in WorkflowDocument as get_system_workflow_for_user returns it."""
+    """Build a stand-in WorkflowDocument as get_system_workflow_for_user returns it."""
     wf = MagicMock()
     wf.system_workflow_key = key
     wf.trigger_config = MagicMock()
@@ -521,10 +521,7 @@ class TestResetSystemWorkflowToDefault:
         mock_ensure: MagicMock,
         mock_repo: MagicMock,
     ) -> None:
-        """Every field ``SystemWorkflowDefinition`` is built from must be the
-        factory's/registration's actual value — swapping any one for ``None``,
-        or losing a non-empty value to a stale fallback, corrupts the reset
-        silently (the return value stays ``True``)."""
+        """Every field SystemWorkflowDefinition is built from must be the factory's actual value, not a None or stale fallback."""
         mock_repo.get_system_workflow_for_user = AsyncMock(
             return_value=_existing_wf(key="manual_wf", composio_trigger_ids=None, trigger_name=None)
         )
@@ -566,9 +563,7 @@ class TestResetSystemWorkflowToDefault:
         mock_ensure: MagicMock,
         mock_repo: MagicMock,
     ) -> None:
-        """``request.description or ""`` only exists to turn a falsy
-        ``None`` into ``""`` — a blank-but-not-None description must reach
-        the definition unchanged, not some other fallback string."""
+        """request.description or "" only turns None into "" — a blank-but-not-None description must reach the definition unchanged."""
         mock_repo.get_system_workflow_for_user = AsyncMock(
             return_value=_existing_wf(key="manual_wf", composio_trigger_ids=None, trigger_name=None)
         )
@@ -605,10 +600,7 @@ class TestResetSystemWorkflowToDefault:
         mock_ensure: MagicMock,
         mock_repo: MagicMock,
     ) -> None:
-        """The orchestrator's calls into the two trigger helpers must carry
-        THIS reset's workflow_id and user_id — swapping either for `None`
-        would register/unregister triggers under the wrong (or no) workflow
-        or user, silently."""
+        """The orchestrator's calls into the two trigger helpers must carry THIS reset's workflow_id and user_id, never None for either."""
         mock_repo.get_system_workflow_for_user = AsyncMock(
             return_value=_existing_wf(
                 composio_trigger_ids=["old-t1"], trigger_name="gmail_new_email"
@@ -671,8 +663,7 @@ class TestResetSystemWorkflowToDefault:
         mock_scheduler: MagicMock,
         mock_get_user: MagicMock,
     ) -> None:
-        """Schedule definitions carry no timezone; reset must stamp the profile
-        timezone (as provisioning does) and recompute next_run from the cron."""
+        """Schedule definitions carry no timezone; reset must stamp the profile timezone and recompute next_run from the cron."""
         existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
         existing.activated = False
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
@@ -747,8 +738,7 @@ class TestResetSystemWorkflowToDefault:
         mock_scheduler: MagicMock,
         mock_get_user: MagicMock,
     ) -> None:
-        """An activated workflow whose reset yields a schedule trigger must get a
-        queued fire, or it sits with a cron and no future run."""
+        """An activated workflow whose reset yields a schedule trigger must get a queued fire, or it sits with no future run."""
         existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
         existing.activated = True
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
@@ -788,8 +778,7 @@ class TestResetSystemWorkflowToDefault:
         mock_get_user: MagicMock,
         _patch_log: MagicMock,
     ) -> None:
-        """A reset whose re-arm could not queue a fire must not report success —
-        the workflow would look reset but never run again."""
+        """A reset whose re-arm could not queue a fire must not report success — the workflow would look reset but never run."""
         existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
         existing.activated = True
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
@@ -1055,9 +1044,7 @@ class TestResetDefinitionAssembly:
 
 
 class TestActivationForPayingUsers:
-    """A Pro user's freshly provisioned system workflow is switched on at once, so
-    the promise GAIA makes in the opening conversation ("I'll get into your
-    inbox tonight") is kept. Anyone else keeps it dormant."""
+    """A Pro user's freshly provisioned system workflow is switched on at once to keep the "I'll get into your inbox tonight" promise; anyone else keeps it dormant."""
 
     @patch(f"{MODULE}.WorkflowService")
     @patch(
@@ -1071,10 +1058,7 @@ class TestActivationForPayingUsers:
     async def test_a_user_who_just_paid_is_activated_off_the_row_not_the_stale_cache(
         self, cached_plan: AsyncMock, fresh_status: AsyncMock, mock_service: MagicMock
     ) -> None:
-        """Provisioning runs right after onboarding, minutes after payment —
-        exactly when the five-minute cache still says FREE. Reading the cache
-        alone left the paying user's system workflow dormant forever: nothing
-        later re-asks."""
+        """Provisioning runs minutes after payment, exactly when the five-minute plan cache still says FREE; reading only the cache left the workflow dormant forever."""
         from app.services.system_workflows.provisioner import _activate_for_paying_user
 
         cached_plan.return_value = PlanType.FREE

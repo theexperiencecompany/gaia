@@ -1,13 +1,13 @@
-"""Hermetic unit tests for ``DistributedLock``.
+"""Hermetic unit tests for DistributedLock.
 
 These exercise the real lock logic against a mock Redis client (no server), so
 the mutation gate — which runs only hermetic tests — can see every branch, call
 argument, and log message. Mutual exclusion and renewal against a *real* Redis
-lease live in ``tests/integration/real/test_distributed_lock_real.py``; this file
+lease live in tests/integration/real/test_distributed_lock_real.py; this file
 is the line-by-line coverage.
 
-``log.warning``/``log.error`` land in the wide event's ``warnings``/``errors``
-arrays, so we assert their exact message and fields via ``captured_wide_event``.
+log.warning/log.error land in the wide event's warnings/errors
+arrays, so we assert their exact message and fields via captured_wide_event.
 """
 
 from __future__ import annotations
@@ -33,9 +33,9 @@ TIMING = {
 
 
 def _mock_client(*, acquire: object) -> tuple[MagicMock, MagicMock]:
-    """A redis client whose ``.lock(...)`` returns a lock with the given acquire.
+    """Build a redis client whose .lock(...) returns a lock with the given acquire.
 
-    ``acquire`` is a bool the mock returns, or an exception it raises.
+    acquire is a bool the mock returns, or an exception it raises.
     """
     lock = MagicMock()
     if isinstance(acquire, BaseException):
@@ -50,7 +50,7 @@ def _mock_client(*, acquire: object) -> tuple[MagicMock, MagicMock]:
 
 
 class _FakeLoop:
-    """A loop stand-in whose ``time()`` returns a pre-scripted sequence."""
+    """A loop stand-in whose time() returns a pre-scripted sequence."""
 
     def __init__(self, times: list[float]) -> None:
         self._times = times

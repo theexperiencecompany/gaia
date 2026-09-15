@@ -1,10 +1,4 @@
-"""End-to-end wiring: the custom-integration create route rejects SSRF URLs.
-
-Confirms the ``server_url`` shape validator actually fires through the HTTP
-request cycle (routing + body validation), not just when the model is built
-directly — a private/metadata/non-http URL must be a 422 before any handler or
-outbound connection runs.
-"""
+"""End-to-end wiring: the custom-integration create route rejects SSRF URLs."""
 
 from httpx import AsyncClient
 import pytest

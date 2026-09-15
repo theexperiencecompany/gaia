@@ -150,9 +150,7 @@ class TestSelectStep:
         mock_record.assert_awaited_once_with("u-1", "step_a", NOW, status="skipped")
 
     async def test_onboarding_gated_step_selected_only_once_onboarding_completed(self) -> None:
-        """The gate is read off the user document, not assumed: the same
-        onboarding-gated step is held for a user who never finished onboarding
-        and selected for one who did."""
+        """The gate is read off the user document, not assumed — held for a user who never finished onboarding, selected for one who did."""
         gated = _step(key="gated", day_offset=1, requires_onboarding=True)
         with patch("app.services.nurture.service.NURTURE_STEPS", [gated]):
             onboarded = UserDocument(

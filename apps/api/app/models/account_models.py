@@ -1,7 +1,7 @@
-"""Account-center workspace projections — one model per ``account/**.json`` file.
+"""Account-center workspace projections — one model per account/**.json file.
 
 These are read-only views over Mongo/Postgres truth, materialized onto JuiceFS
-by :mod:`app.services.account_fs`. Deliberately curated (not raw document
+by :mod:app.services.account_fs. Deliberately curated (not raw document
 dumps): provider ids and internal bookkeeping never reach the agent's workspace.
 """
 

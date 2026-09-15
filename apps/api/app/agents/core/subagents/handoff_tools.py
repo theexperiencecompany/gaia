@@ -1,5 +1,5 @@
 """
-Subagent Tools - Consolidated Delegation Pattern
+Subagent Tools - Consolidated Delegation Pattern.
 
 This module provides two tools for subagent delegation:
 1. search_subagents - Semantic search for available subagents
@@ -174,16 +174,10 @@ async def check_integration_connection(
 
 
 async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, Any] | None:
-    """
-    Get subagent by ID or short_name.
+    """Get subagent by ID or short_name.
 
     Checks both platform/builtin subagents (via registry) and custom MCPs
-    from MongoDB. Uses Redis caching to avoid repeated DB queries for
-    custom MCPs.
-
-    Returns:
-        Subagent (platform/builtin) or dict (custom MCP info), or None if
-        not found
+    from MongoDB, with Redis caching for the latter.
     """
     search_id = subagent_id.lower().strip()
 
@@ -242,16 +236,10 @@ async def index_custom_mcp_as_subagent(
     store: BaseStore,
     request: CustomMcpIndexRequest,
 ) -> None:
-    """
-    Index a custom MCP as a subagent for handoff discovery.
+    """Index a custom MCP as a subagent for handoff discovery.
 
-    Called when user connects a custom MCP to make it immediately
-    available for semantic search and handoff.
-
-    Args:
-        store: The ChromaStore instance
-        request: The integration's identity, description and tools — see
-            :class:`CustomMcpIndexRequest`.
+    Called when user connects a custom MCP to make it immediately available
+    for semantic search and handoff.
     """
     integration_id = request.integration_id
     name = request.name
@@ -299,7 +287,7 @@ async def _resolve_custom_mcp_subagent(
     resolved: dict[str, Any],
     user_id: str | None,
 ) -> tuple[CompiledAgentGraph | None, str | None, str | None, bool]:
-    """Resolve a custom MCP (a MongoDB dict) into the `_resolve_subagent` tuple."""
+    """Resolve a custom MCP (a MongoDB dict) into the _resolve_subagent tuple."""
     integration_id = str(resolved.get("id", ""))
     integration_name = str(resolved.get("name", integration_id))
 
@@ -378,17 +366,10 @@ async def _resolve_subagent(
     subagent_id: str,
     user_id: str | None,
 ) -> tuple[CompiledAgentGraph | None, str | None, str | None, bool]:
-    """
-    Resolve subagent from ID and get the graph.
+    """Resolve subagent from ID and get the graph.
 
-    Accepts formats:
-        - 'subagent:gmail'
-        - 'subagent:fb9dfd7e05f8 (Semantic Scholar)'
-        - 'gmail' (bare ID)
-
-    Returns:
-        Tuple of (subagent_graph, agent_name, integration_id, is_custom)
-        or (None, None, error_message, False) on failure
+    Accepts 'subagent:gmail', 'subagent:fb9dfd7e05f8 (Semantic Scholar)', or
+    a bare id. Returns (None, None, error_message, False) on failure.
     """
     clean_id, _ = parse_subagent_id(subagent_id)
 
@@ -475,7 +456,7 @@ async def prepare_subagent_execution(
     """Resolve a subagent and build everything needed to execute it.
 
     The single preparation path for running one subagent — used by the
-    executor's `handoff` tool and the dev direct-invocation endpoint.
+    executor's handoff tool and the dev direct-invocation endpoint.
     Returns (ctx, integration_metadata, None) on success or
     (None, None, error_message) when the subagent can't be resolved.
     """
@@ -587,7 +568,7 @@ async def _run_blocking_handoff(
 ) -> str:
     """Run a handoff subagent synchronously, emitting lifecycle SSE events.
 
-    ``dispatch.record_calls`` (workflow runs only) appends the subagent's successful
+    dispatch.record_calls (workflow runs only) appends the subagent's successful
     tool calls to the result so the executor can transcribe them into a playbook.
     """
     metadata = dispatch.metadata
@@ -622,12 +603,9 @@ async def _run_blocking_handoff(
     )
     start_time = time.monotonic()
 
-    # When the executor resumes, THIS node re-runs from the top over a subagent thread
-    # that already holds work — parked on its interrupt, or finished before a LATER
-    # sibling in the same node paused. Either way, re-invoking it fresh would redo
-    # everything it already did, so an existing checkpoint means "recover, don't rerun".
-    # A recoverable checkpoint can only exist on a resume replay, so fresh runs skip the
-    # probe (a per-handoff Postgres read) entirely.
+    # On resume, this node re-runs over a subagent thread that already holds
+    # work, so an existing checkpoint means "recover, don't rerun". Fresh
+    # runs skip the probe (a per-handoff Postgres read) entirely.
     recovered = await recover_from_checkpoint(ctx) if probe_parked else None
     if recovered is not None:
         outcome = recovered
@@ -639,12 +617,9 @@ async def _run_blocking_handoff(
             subagent_id=sa_id,
         )
 
-    # The subagent was invoked imperatively, so its GraphInterrupt never reaches
-    # the executor's runtime — bubble each pause up explicitly. A LOOP, not an if:
-    # one task can gate several destructive calls in sequence ("send both emails"), # and each pause must suspend the executor again. resume_for_gate() raises on the
-    # first pass (pausing the executor) and returns THIS gate's own decision on the
-    # replay — recovery fast-forwards to the latest park, so an earlier gate's already
-    # -applied decision must not be replayed onto it (matched out by approval_id).
+    # The subagent was invoked imperatively, so its GraphInterrupt never
+    # reaches the executor's runtime — bubble each pause up explicitly. A
+    # LOOP, not an if: one task can gate several destructive calls in sequence.
     run_messages: list[AnyMessage] = list(outcome.run_messages)
     while outcome.paused:
         decision = resume_for_gate(outcome.interrupt)
@@ -691,12 +666,9 @@ async def resume_parked_subagent(
 ) -> SubagentOutcome:
     """Resume a HIL-parked background subagent with its decided approval.
 
-    Everything is reconstructed from durable state — the approval record plus the
-    current executor configurable — because the run that parked it (its session,
-    stream and asyncio task) is gone. Crash-safe: a thread that already completed
-    (a prior collect crashed between resume and stamp) yields its checkpointed
-    final answer instead of being driven again, so the underlying action can
-    never re-execute.
+    Everything is reconstructed from durable state, since the run that
+    parked it is gone. Crash-safe: a thread that already completed yields
+    its checkpointed final answer instead of being driven again.
     """
     agent_ref = record.subagent_agent_name or ""
     graph, agent_name, int_id_or_error, _ = await _resolve_subagent(agent_ref, record.user_id)
@@ -755,7 +727,7 @@ async def resume_parked_subagent(
 def _subagent_resume_status(status: HILApprovalStatus) -> HILApprovalStatus:
     """Map a record's terminal status onto the gate's resumable statuses.
 
-    ``abandoned`` resumes as a denial — the gate accepts only
+    abandoned resumes as a denial — the gate accepts only
     approved/denied/timeout, and abandonment means "do not act."
     """
     if status in (HILApprovalStatus.APPROVED, HILApprovalStatus.TIMEOUT):
@@ -768,14 +740,12 @@ async def _handoff_rejection(
     background: bool,
     stream_id: str | None,
 ) -> str | None:
-    """The pre-dispatch refusals for one handoff, or None when it may run."""
+    """Return the pre-dispatch refusal for one handoff, or None when it may run."""
     agent_name: str = ctx.agent_name
     integration_id: str = ctx.integration_id
 
-    # An uncollected parked subagent owns this integration's checkpoint thread.
-    # Running ANY new handoff on it (blocking or background) would feed fresh
-    # input to an interrupted thread — LangGraph discards the pending interrupt,
-    # orphaning the user's approval card. Refuse until the join collects it.
+    # An uncollected parked subagent owns this integration's checkpoint
+    # thread; a new handoff would orphan the user's approval card.
     if await _has_parked_subagent(ctx):
         return (
             f"The {agent_name} subagent is paused waiting for the user's approval. "
@@ -783,9 +753,8 @@ async def _handoff_rejection(
             "new tasks."
         )
 
-    # Same collision for a BLOCKING handoff while a live background task holds
-    # this integration's thread (the background branch guards itself via the
-    # session slot claim).
+    # Same collision for a BLOCKING handoff while a background task holds
+    # this thread (the background branch guards via the session slot claim).
     if not background and has_bg_integration(str(stream_id or ""), integration_id):
         return (
             f"A background {agent_name} subagent is already running on this "
@@ -804,25 +773,16 @@ async def _dispatch_background_handoff(
     agent_name = dispatch.agent_name
     integration_id = dispatch.integration_id
 
-    # execution_mode is inherited, NOT forced to "background": a detached
-    # subagent in a live conversation now has a pause path — its gate parks the
-    # subagent's own checkpointed thread and wait_for_subagents collects the
-    # approval into one executor pause. A genuinely headless run (workflow/cron)
-    # is already "background" in the parent configurable, so its subagents
-    # inherit that and the gate still fails closed (no live user to ask).
-    #
-    # One detached subagent per integration at a time: a concurrent duplicate
-    # would share the deterministic checkpoint thread id and corrupt it. A
-    # blocking run would collide identically, so refuse rather than fall back.
+    # execution_mode is inherited, NOT forced to "background", so the gate
+    # still fails closed on a headless run. One detached subagent per
+    # integration at a time: a duplicate would corrupt the shared thread id.
     if not claim_bg_integration(sid, integration_id):
         return (
             f"A background {agent_name} subagent is already running. Call "
             "wait_for_subagents() to collect it before sending it new tasks."
         )
-    # Idempotent across node replays: when this handoff shares its node run
-    # with the wait_for_subagents interrupt, the node re-runs on resume and
-    # must not spawn the subagent a second time. tool_call_id is stable (it
-    # lives in the checkpointed AI message); the claim is durable in Redis.
+    # Idempotent across node replays: tool_call_id is stable (lives in the
+    # checkpointed AI message); the claim is durable in Redis.
     conversation_id = str(ctx.configurable.get("conversation_id") or "")
     if (
         dispatch.tool_call_id
@@ -948,11 +908,8 @@ async def handoff(
             record_calls=record_calls,
         )
 
-        # Background mode: spawn subagent as asyncio task and return immediately.
-        # Caller must use wait_for_subagents() to collect results.
-        #
-        # Requires stream_id to be propagated into the executor configurable so
-        # the result can be routed back to this conversation's results bucket.
+        # Background mode: spawn subagent as asyncio task and return
+        # immediately; caller uses wait_for_subagents() to collect results.
         if background:
             if not stream_id:
                 log.warning(

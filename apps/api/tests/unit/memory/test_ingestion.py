@@ -4,7 +4,7 @@ Every external boundary (Postgres, Chroma, the embedding/extraction models,
 the projection and consolidation schedulers) is mocked; the reconciliation
 application, chunking, journaling and scheduling logic under test is real.
 
-``insert_memories`` is faked to populate ``record.id`` the way a real flush
+insert_memories is faked to populate record.id the way a real flush
 does, because the Chroma vector ids are derived from it after the insert.
 """
 
@@ -1570,9 +1570,7 @@ class TestJournalDaysFollowTheUsersTimezone:
     async def test_journal_reads_and_writes_are_scoped_to_the_ingesting_user(
         self, boundaries: Boundaries
     ) -> None:
-        """The timezone lookup, both episode reads (retain's snapshot and the
-        dedupe re-read) and the append itself all key on the ingesting user —
-        any other id files this user's journal under someone else's."""
+        """Every lookup, read and append keys on the ingesting user, or this journal files under someone else's."""
         boundaries.get_user.return_value = SimpleNamespace(timezone="Asia/Kolkata")
         boundaries.extract_memories.return_value = self._journal_batch()
         await retain(
@@ -2023,7 +2021,7 @@ class TestRetainFreePlanCap:
 
     @staticmethod
     def _free_plan(*, cached_live: int, counted_live: int):
-        """A FREE user whose Redis counter says one thing and Postgres another."""
+        """Simulate a FREE user whose Redis counter says one thing and Postgres another."""
         return (
             patch.object(
                 ingestion.payment_service,
@@ -2188,12 +2186,12 @@ class TestRetainSingleFreePlanCap:
 
 
 class TestJournalNearDuplicateGate:
-    """The journal has no dedupe tier: facts get embedding reconciliation,
-    entries got appended blindly. In production one day's journal carried the
-    same discussion five times, reworded — the extractor's "do NOT repeat"
-    instruction cannot stop a paraphrase, and back-to-back retains race past
-    the journal read. The append is the one place every entry funnels through,
-    so near-duplicates are dropped there."""
+    """Journal entries have no embedding dedupe tier, so near-duplicates are dropped at append.
+
+    In production, one day's journal carried the same discussion five times, reworded — the
+    extractor's "do NOT repeat" instruction cannot stop a paraphrase, and back-to-back retains
+    race past the journal read.
+    """
 
     _EXISTING = (
         "Discussed the reality of GAIA's current traction metrics with Aryan "
@@ -2257,8 +2255,7 @@ class TestJournalNearDuplicateGate:
         assert result.episode_entries == 3
 
     def test_dedupe_compares_lowercased_whitespace_collapsed_text(self) -> None:
-        """The unit the gate compares: case and run-of-whitespace differences
-        never distinguish two entries, single spaces join the words back."""
+        """Case and run-of-whitespace differences never distinguish two entries."""
         assert (
             ingestion._normalize_entry("  Discussed   GAIA's\ttraction Metrics ")
             == "discussed gaia's traction metrics"
@@ -2274,9 +2271,7 @@ class TestJournalNearDuplicateGate:
     async def test_a_stored_entry_without_text_never_masks_new_entries(
         self, boundaries: Boundaries
     ) -> None:
-        """A malformed stored entry (no ``text`` key) contributes an empty
-        string to the dedupe corpus — never a sentinel like ``"None"`` that
-        would silently swallow a real new entry restating it."""
+        """A stored entry with no text key contributes an empty string, never the sentinel "None"."""
         boundaries.get_episode.return_value = make_episode(entries=[{"time": "10:00"}])
         boundaries.extract_memories.return_value = self._batch(["None", "xxxx"])
 

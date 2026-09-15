@@ -35,20 +35,17 @@ export const useVoiceModeControls = (
     convoIdParam || undefined,
   );
 
-  // Gated on subscription — /token is plan-limited and free users get the
-  // modal. Only warms when we positively know the user is paid; skipping the
-  // warm-up while unknown is harmless (no blocking consequence, just a missed
-  // prefetch), unlike startVoiceMode below which must never block a paying user.
+  // Gated on subscription — /token is plan-limited, free users get the
+  // modal. Only warms when we positively know paid; skipping while unknown
+  // is harmless, unlike startVoiceMode below which must never block a paying user.
   const onVoiceModeHover = () => {
     if (isPaid) prefetchConnectionDetails();
   };
 
   const startVoiceMode = () => {
-    // Voice mode is paid-only (the /token endpoint enforces it server-side
-    // too). Free users get the upgrade modal instead of a session. While
-    // the subscription status is still unknown, let the user proceed —
-    // the backend's 402 is the real enforcement, so a brief permissive
-    // window here is safe, but wrongly paywalling a paying customer is not.
+    // Voice mode is paid-only (server-enforced too); free users get the
+    // upgrade modal. While subscription status is unknown, let the user
+    // proceed — the backend's 402 is the real enforcement; wrongly paywalling a paying user is worse.
     if (!isSubscriptionStatusUnknown && !isPaid) {
       trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
         voice_mode_enabled: false,
@@ -74,10 +71,9 @@ export const useVoiceModeControls = (
     const activeId = useChatStore.getState().activeConversationId;
     exitVoiceMode();
     if (activeId) {
-      // During voice the URL was updated in-place via history.replaceState, so
-      // the App Router segment is still /c (convoIdParam undefined for a new
-      // chat). A real navigation resolves the conversation route so the
-      // just-finished voice chat renders without a manual reload.
+      // During voice the URL updated in-place via history.replaceState, so
+      // the App Router segment is still /c (convoIdParam undefined for a
+      // new chat) — a real navigation resolves the route so the finished chat renders without a reload.
       if (!convoIdParam) {
         router.replace(`/c/${activeId}`);
       }

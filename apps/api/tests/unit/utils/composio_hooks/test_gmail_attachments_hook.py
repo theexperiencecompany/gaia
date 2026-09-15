@@ -2,13 +2,13 @@
 
 Covers the Gmail side of file attachments:
 - the compose before-hook, which resolves references through the shared
-  ``resolve_tool_attachments`` and builds the compose/sent card,
+  resolve_tool_attachments and builds the compose/sent card,
 - the draft card's hand-off to the after-hook, which is what gives it the
-  ``draft_id`` its Send button needs to send the draft (attachments included),
+  draft_id its Send button needs to send the draft (attachments included),
 - the registry contract that lets a hook signal an abort.
 
 The generic capability itself (schema modifier for every toolkit, which tools
-the shared before-hook acts on) is tested in ``test_file_upload_hooks.py``.
+the shared before-hook acts on) is tested in test_file_upload_hooks.py.
 """
 
 from types import SimpleNamespace
@@ -41,7 +41,7 @@ SHARED = "app.utils.composio_hooks.file_upload_hooks"
 
 @pytest.fixture(autouse=True)
 def _no_held_card():
-    """The held draft card is context state; no test may inherit another's."""
+    """Reset the held draft card so no test inherits another's state."""
     _pending_draft_card.set(None)
     yield
     _pending_draft_card.set(None)
@@ -67,9 +67,9 @@ def _native_attachment_schema() -> dict:
 def _gmail_upload_param_swapped():
     """Bind the Gmail compose tools the way the real fetch does.
 
-    ``gmail_compose_before_hook`` reads the native param name off the swap the
+    gmail_compose_before_hook reads the native param name off the swap the
     schema modifier records at bind time, so a hook test that skips the bind is
-    testing a tool the model could never have passed ``attachments`` to.
+    testing a tool the model could never have passed attachments to.
     """
     file_upload_hooks._swapped_upload_params.clear()
     for tool in ("GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"):
@@ -81,7 +81,7 @@ def _gmail_upload_param_swapped():
 
 
 class TestStrictGmailResolution:
-    """Gmail resolves strict: anything unexpected in ``attachments`` aborts."""
+    """Gmail resolves strict: anything unexpected in attachments aborts."""
 
     def test_no_attachments_is_noop(self):
         params = {"arguments": {"subject": "hi"}, "user_id": "u1"}
@@ -193,8 +193,7 @@ class TestStrictGmailResolution:
 
 class TestBeforeHookPropagatesAbort:
     def test_before_hook_does_not_swallow_abort(self):
-        """The whole before-hook is wrapped in try/except; attachment failures must
-        still propagate (the tool must NOT run without the requested file)."""
+        """Attachment failures must propagate past the hook's try/except, not run the tool without the file."""
         params = {
             "arguments": {
                 "subject": "s",

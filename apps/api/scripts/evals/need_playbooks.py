@@ -5,7 +5,7 @@ Does GAIA's first reply act on each Q2 pain the way its playbook says?
 
 Not a test: it drives a REAL running API and a REAL model. One fresh Pro dev
 user per need, carrying that need (and the role that unlocks it), sends the
-exact opener the bots send after linking (``compose_first_message``), and the
+exact opener the bots send after linking (compose_first_message), and the
 reply is judged against the need's playbook: does it propose THAT job, does it
 hand the connect to the executor when it talks about connecting, does it end on
 an easy yes without narrating work that never ran.

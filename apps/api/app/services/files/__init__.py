@@ -1,26 +1,16 @@
 """User-uploaded file operations.
 
-The flow, end to end:
+FileService.upload validates, stores the Cloudinary blob + AI summary in parallel,
+mirrors into the session workspace with a <file>.summary.md sidecar, then persists
+metadata (Mongo) and the vector index (Chroma). FileService.seed_uploads does the
+same mirroring for files attached before their chat existed, stamping
+conversation_id so search can scope to it. FileService.get_descriptions batches
+the inline summaries into agent context; search_uploaded_files vector-searches
+scoped to the current conversation's files.
 
-  Upload    POST /files/upload → FileService.upload
-              validate → Cloudinary blob + AI summary (parallel) → mirror into
-              the session workspace (+ ``<file>.summary.md`` sidecar) → persist
-              metadata (Mongo) + vector index (Chroma).
-
-  Seed      new chat with files attached before it existed → FileService.seed_uploads
-              download each blob → mirror into the now-created session + write its
-              sidecar + stamp ``conversation_id`` so search can scope to it.
-
-  Context   each chat turn → FileService.get_descriptions
-              one batched Mongo read → the inline summary in the agent's context.
-
-  Search    ``search_uploaded_files`` tool (executor) → vector search scoped to the
-              current conversation's files.
-
-``FileService`` is the entry point; the submodules hold the mechanics it orchestrates:
-  store      Cloudinary + Mongo + Chroma persistence
-  sandbox    JuiceFS workspace projection (upload mirror + summary sidecar)
-  summaries  shape + render the AI summary
+FileService is the entry point; submodules hold the mechanics: store (Cloudinary
++ Mongo + Chroma), sandbox (JuiceFS workspace projection), summaries (AI summary
+shape + render).
 """
 
 from app.services.files.service import FileService

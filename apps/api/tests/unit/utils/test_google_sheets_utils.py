@@ -1,8 +1,8 @@
 """Unit tests for app.utils.google_sheets_utils.
 
-The pure helpers (`hex_to_rgb`, `parse_a1_range`, `parse_a1_anchor`) run with no
+The pure helpers (hex_to_rgb, parse_a1_range, parse_a1_anchor) run with no
 mocking at all. The two lookup helpers mock only the real I/O boundary
-(`proxy_request_sync`).
+(proxy_request_sync).
 
 Several production bugs were found while writing these tests and fixed at the
 root; the tests pinning them down are marked with a "BUG:" comment.
@@ -109,20 +109,18 @@ class TestParseA1Range:
     def test_lowercase_is_normalized(self) -> None:
         assert parse_a1_range("a1:b10") == parse_a1_range("A1:B10")
 
-    # BUG: the sheet qualifier was not stripped, so parse_cell matched "SHEET1"
-    # as a column name and produced startColumnIndex=8826681 — garbage silently
-    # sent to Google. Sheet-qualified ranges are ordinary A1 notation and the
-    # tools' own responses format ranges this way.
+    # BUG: unstripped sheet qualifier matched "SHEET1" as a column name and
+    # produced startColumnIndex=8826681 — garbage silently sent to Google.
+    # Sheet-qualified ranges are ordinary A1 notation.
     def test_sheet_qualifier_is_stripped_not_read_as_a_column(self) -> None:
         assert parse_a1_range("Sheet1!A1:B2") == parse_a1_range("A1:B2")
 
     def test_quoted_sheet_name_with_spaces_is_stripped(self) -> None:
         assert parse_a1_range("'My Sheet'!B2:C3") == parse_a1_range("B2:C3")
 
-    # BUG: whole-column references collapsed onto row 1 (A:C returned the single
-    # cell A1), so "highlight column C" silently formatted one cell and reported
-    # success. Omitting the row bounds is what Google's GridRange means by
-    # "unbounded".
+    # BUG: whole-column refs collapsed onto row 1 (A:C returned cell A1 only), so
+    # "highlight column C" silently formatted one cell and reported success.
+    # Omitting row bounds is what Google's GridRange means by "unbounded".
     def test_whole_column_range_leaves_rows_unbounded(self) -> None:
         assert parse_a1_range("A:C") == {"startColumnIndex": 0, "endColumnIndex": 3}
 
@@ -256,10 +254,9 @@ class TestGetSheetIdByName:
         with patch(f"{MODULE}.proxy_request_sync", return_value={"sheets": [{}]}):
             assert get_sheet_id_by_name("sid", "Data", "u1") is None
 
-    # BUG: every exception was swallowed into `return None`, and callers turn
-    # None into "sheet 'X' not found". An expired Google token therefore told
-    # the user their tab was missing. Lookup failure must not masquerade as
-    # absence.
+    # BUG: every exception was swallowed into return None, and callers turn None
+    # into "sheet 'X' not found" — an expired Google token told the user their
+    # tab was missing. Lookup failure must not masquerade as absence.
     def test_auth_failure_propagates_instead_of_looking_like_a_missing_sheet(self) -> None:
         error = AppError(message="No active GOOGLESHEETS connection", why="w", status_code=403)
         with (

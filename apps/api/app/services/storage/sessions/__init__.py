@@ -1,13 +1,13 @@
 """Host-side session workspace helpers.
 
 Split by concern:
-  * :mod:`.meta` — ``.meta.json`` read/write + ``last_active`` parsing.
-  * :mod:`.skills` — SKILL.md catalog + user-root INDEX/GUIDE materialization.
-  * :mod:`.artifacts` — artifact / user-uploaded listing, stat, path resolve, pin.
-  * :mod:`.lifecycle` — bootstrap / dirs / delete / touch / stale-scan / list.
+  * :mod:.meta — .meta.json read/write + last_active parsing.
+  * :mod:.skills — SKILL.md catalog + user-root INDEX/GUIDE materialization.
+  * :mod:.artifacts — artifact / user-uploaded listing, stat, path resolve, pin.
+  * :mod:.lifecycle — bootstrap / dirs / delete / touch / stale-scan / list.
 
-Public API is unchanged from the pre-split ``sessions.py``; downstream callers
-should keep importing from :mod:`app.services.storage` (or this package) and
+Public API is unchanged from the pre-split sessions.py; downstream callers
+should keep importing from :mod:app.services.storage (or this package) and
 let the package-level re-exports stay stable.
 """
 

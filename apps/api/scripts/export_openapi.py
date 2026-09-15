@@ -1,10 +1,10 @@
-"""Write the API's OpenAPI document to ``apps/api/openapi.json``.
+"""Write the API's OpenAPI document to apps/api/openapi.json.
 
-The generated TypeScript types (``libs/shared/ts/src/api/generated``) are built
+The generated TypeScript types (libs/shared/ts/src/api/generated) are built
 from this file, and CI fails when it drifts from the routes. Run through
-``mise api:types``, which regenerates both.
+mise api:types, which regenerates both.
 
-Usage (from ``apps/api``)::
+Usage (from apps/api)::
 
     uv run python scripts/export_openapi.py
 """
@@ -34,17 +34,17 @@ _REF_PREFIX = "#/components/schemas/"
 
 
 def _identifier(name: str) -> str:
-    """The component name as a TypeScript/Python identifier.
+    """Return the component name as a TypeScript/Python identifier.
 
     Pydantic suffixes a model used both as a request and a response with
-    ``-Input``/``-Output``; the dash is the only non-identifier character a
+    -Input/-Output; the dash is the only non-identifier character a
     component name carries, and dropping it keeps the name readable.
     """
     return name.replace("-", "")
 
 
 def _with_identifier_component_names(schema: dict) -> dict:
-    """Rename every component schema (and every ``$ref`` to it) to an identifier."""
+    """Rename every component schema (and every $ref to it) to an identifier."""
     schemas = schema["components"]["schemas"]
     mangled = sorted(name for name in schemas if _MANGLED_NAME.match(name))
     if mangled:

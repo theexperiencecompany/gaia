@@ -119,8 +119,7 @@ class TestWorkflowsOwnedCrud:
         assert (await repo.get(created.id)).title == "New"
 
     async def test_deactivate_records_the_blockers_in_the_same_write(self, repo):
-        """A pause on integrations a run found missing carries them with it;
-        a plain deactivation leaves whatever list was there alone."""
+        """A pause on missing integrations carries them with it; a plain deactivation leaves whatever list was there alone."""
         created = await repo.create(_workflow(user_id="owner"))
 
         paused = await repo.deactivate(
@@ -225,9 +224,7 @@ class TestWorkflowsScheduler:
         assert await repo.claim_for_execution(wf.id) is False
 
     async def test_claim_pin_rejects_stale_fire_after_reschedule(self, repo):
-        """The bug-2 gate against real Mongo: a deferred ARQ job armed for 16:00
-        that fires after the workflow was rescheduled to 21:00 must be rejected,
-        and the rejection must leave the row claimable by the 21:00 job."""
+        """Bug-2 gate: a deferred job armed for 16:00 firing after a reschedule to 21:00 must be rejected, leaving the row claimable by 21:00."""
         old_fire = (datetime.now(UTC) + timedelta(hours=5)).replace(microsecond=0)
         new_fire = old_fire + timedelta(hours=5)
         wf = await repo.create(
@@ -266,15 +263,7 @@ class TestWorkflowsScheduler:
         assert (await repo.get(wf.id)).status == ScheduledTaskStatus.EXECUTING
 
     async def test_claim_pin_survives_the_real_stamp_round_trip(self, repo):
-        """The pin must match the armed occurrence through ARQ's serialized args.
-
-        The stamp travels as a unix int and comes back floored to the second,
-        while Mongo holds ``next_run`` at BSON's millisecond precision. Cron
-        fires land on whole seconds, so only a sub-second ``next_run`` — a
-        one-shot re-armed by the stale-executing reaper at its original time —
-        exposes it; the gate must not depend on that luck. Driven through the
-        real producer and parser so the encoding itself is under test.
-        """
+        """The pin must match through ARQ's real int-seconds stamp, not the sub-second next_run instant Mongo holds."""
         armed = datetime.now(UTC) + timedelta(hours=5)
         assert armed.microsecond, "fixture must carry a sub-second component"
         wf = await repo.create(
@@ -298,8 +287,7 @@ class TestWorkflowsScheduler:
         assert await repo.claim_for_execution(wf.id, expected_next_run=expected) is True
 
     async def test_claim_without_pin_stays_ungated(self, repo):
-        """Jobs enqueued before the stamp existed carry no expected time; they
-        must keep claiming across a deploy."""
+        """Jobs enqueued before the stamp existed carry no expected time; they must keep claiming across a deploy."""
         wf = await repo.create(
             _workflow(
                 activated=True,
@@ -531,7 +519,7 @@ class TestWorkflowsTriggersAndSystem:
     async def test_reset_system_workflow_rewrites_the_top_level_schedule(
         self, repo, raw_collection
     ):
-        """Reset replaces the stored ``scheduled_at``/``repeat``, not just the trigger."""
+        """Reset replaces the stored scheduled_at/repeat, not just the trigger."""
         stale = (datetime.now(UTC) - timedelta(days=1)).replace(microsecond=0)
         next_run = (datetime.now(UTC) + timedelta(hours=2)).replace(microsecond=0)
         wf = await repo.create(
@@ -561,7 +549,7 @@ class TestWorkflowsTriggersAndSystem:
 
 
 class TestPlaybookDeclineTally:
-    """``count_playbook_decline``: once per run, atomically, a fresh tally per hash."""
+    """count_playbook_decline: once per run, atomically, a fresh tally per hash."""
 
     async def test_a_run_counts_once_however_many_times_it_declines(self, repo) -> None:
         created = await repo.create(_workflow())
@@ -698,11 +686,7 @@ class TestWorkflowsPublishAndWrites:
 
 
 class TestScheduledWorkflowToolPayloadJsonSafety:
-    """Bug-1 gate against real Mongo: a persisted scheduled workflow read back
-    through the repository carries native datetimes (BSON dates), so the tool
-    payloads the workflow tools emit must be built with ``model_dump(mode="json")``
-    — their consumers (the LLM ToolMessage and the stream writer) plain
-    ``json.dumps`` them."""
+    """Bug-1 gate: a repository read carries native BSON datetimes, so tool payloads must use model_dump(mode="json") since consumers plain json.dumps them."""
 
     async def test_get_workflow_tool_payload_is_json_safe(self, repo):
         import json
@@ -740,9 +724,7 @@ class TestScheduledWorkflowToolPayloadJsonSafety:
 
 
 class TestWorkflowsUniqueIndexSurface:
-    """The concurrency-guard indexes live on the real collection, not the ephemeral
-    fixture — recreate them here to prove the exact DuplicateKeyError surface the
-    provisioner / publish paths depend on (they catch pymongo's DuplicateKeyError)."""
+    """Recreate the real concurrency-guard indexes to prove the exact DuplicateKeyError surface the provisioner/publish paths depend on."""
 
     async def _create_indexes(self, raw_collection) -> None:
         # Mirrors app/db/mongodb/indexes.py::create_workflow_indexes.
@@ -795,14 +777,11 @@ class TestWorkflowsUniqueIndexSurface:
 async def seeded_creator(
     raw_collection: AsyncIOMotorCollection,
 ) -> AsyncIterator[tuple[str, dict[str, object]]]:
-    """A real user document in the shared ``gaia_test.users`` collection, keyed by a
-    unique ObjectId so a concurrent run can't collide, dropped on teardown.
+    """Seed a real user document in gaia_test.users, keyed by a unique ObjectId so a concurrent run can't collide.
 
-    The ``creator_lookup_stage`` ``$lookup`` (``from: "users"``) resolves against
-    this collection server-side — the patched repository accessor only redirects
-    the ``workflows`` handle, so the join reads the genuine ``users`` collection.
-    Returns the creator's string id (what a workflow stores in ``created_by``) and
-    the seeded document.
+    creator_lookup_stage's $lookup resolves against this collection
+    server-side, so the join reads the genuine users collection. Returns
+    the creator's string id (created_by) and the seeded document.
     """
     users = raw_collection.database["users"]
     oid = ObjectId()
@@ -955,8 +934,7 @@ class TestWorkflowsPublicMarketplaceReads:
     async def test_find_public_matching_ranks_explore_then_runs_then_recency(
         self, repo, raw_collection
     ):
-        """Each sort key carries its own weight: featured outranks a busier
-        community row, run count outranks recency, recency breaks the tie."""
+        """Each sort key carries its own weight: featured > run count > recency."""
         token = uuid.uuid4().hex[:10]
         now = datetime.now(UTC).replace(microsecond=0)
 

@@ -1,12 +1,12 @@
 """The defects the harness exposed, each pinned before it was fixed.
 
-None of these could be written before ``effective_context`` existed: every one
+None of these could be written before effective_context existed: every one
 of them is invisible at the seed and only shows up in the array the model
 actually receives. That is the whole reason they survived in production.
 
 Every test here was written and observed RED before its fix, and the invariants
-they rest on are mutation-checked (see ``test_context_invariants.py``). They
-deliberately carry no ``@pytest.mark.regression`` marker: that gate re-runs
+they rest on are mutation-checked (see test_context_invariants.py). They
+deliberately carry no @pytest.mark.regression marker: that gate re-runs
 marked tests against the base revision, and these import a harness the same
 change introduces, so on base they do not fail — they fail to *collect*. An
 error is not proof, and claiming the marker would assert a proof the gate
@@ -53,13 +53,7 @@ WORKER_TIERS = [
 
 @pytest.mark.unit
 class TestVolatileContentIsNotInTheCacheablePrefix:
-    """``create_agent_context_message`` stamped ``dynamic_context`` and never
-    ``memory_recall``, so every subagent's per-turn content — recalled memories,
-    skills, provider metadata, run banners — landed in the byte-stable slot at
-    index 1. That is inside the region the implicit cache keys on, so each new
-    query moved the cache boundary to the top of the prompt: exactly the failure
-    ``manage_system_prompts_node`` exists to prevent.
-    """
+    """create_agent_context_message stamped every subagent's per-turn content into the byte-stable prefix, moving the cache boundary on each query."""
 
     @pytest.mark.parametrize("tier", WORKER_TIERS)
     async def test_recalled_memories_are_in_the_volatile_slot(self, tier: AgentTier) -> None:
@@ -70,11 +64,7 @@ class TestVolatileContentIsNotInTheCacheablePrefix:
 
     @pytest.mark.parametrize("tier", WORKER_TIERS)
     async def test_skills_are_in_the_cached_prefix(self, tier: AgentTier) -> None:
-        """The listing is byte-stable per (user, agent) — no query, no clock,
-        Redis-cached 12h — so it belongs in the prefix where it costs nothing
-        per call, not in the tail it was re-read from on every worker call.
-        A mid-conversation skill install breaks the prefix once; that is the
-        same trade integrations_manifest already makes for connects."""
+        """The skills listing is byte-stable per (user, agent) and Redis-cached 12h, so it belongs in the prefix — the same trade integrations_manifest already makes for connects."""
         messages = await effective_context(tier, ContextSeed(sources=VOLATILE_SOURCES))
 
         stable = text_of(message_in_slot(messages, PromptSlot.DYNAMIC_STABLE))
@@ -99,12 +89,9 @@ class TestVolatileContentIsNotInTheCacheablePrefix:
         messages = await effective_context(tier, ContextSeed(sources=VOLATILE_SOURCES))
 
         stable = text_of(message_in_slot(messages, PromptSlot.DYNAMIC_STABLE))
-        # "Prefers short answers" is deliberately absent: a memory-core DOCUMENT
-        # is rewritten by consolidation, not per query, so it belongs in the
-        # prefix. The core's agenda and journal are what churn, and they are a
-        # separate section in the volatile slot. "inbox-triage" (the skills
-        # listing) is likewise absent: it is byte-stable per (user, agent) and
-        # now lives in the prefix on purpose.
+        # "Prefers short answers" is absent: a memory-core document is rewritten by
+        # consolidation, not per query, so it belongs in the prefix (agenda/journal churn
+        # separately in the volatile slot); "inbox-triage" is likewise prefix-only, on purpose.
         assert "Ships on Fridays" not in stable, (
             "per-query recall churns per turn but sits in the cacheable prefix"
         )
@@ -112,9 +99,7 @@ class TestVolatileContentIsNotInTheCacheablePrefix:
 
 @pytest.mark.unit
 class TestEveryTierKnowsTheDate:
-    """The workflow authoring subagent seeded no clock at all. Nothing in the
-    code explained the omission, and a workflow author that cannot tell today's
-    date cannot resolve "every Monday" or "starting next week"."""
+    """The workflow authoring subagent seeded no clock, so it could not resolve phrases like "every Monday"."""
 
     async def test_workflow_authoring_receives_exactly_one_clock(self) -> None:
         messages = await effective_context(
@@ -127,9 +112,7 @@ class TestEveryTierKnowsTheDate:
 
 @pytest.mark.unit
 class TestSeedOrderIsAlreadyCanonical:
-    """Comms emitted ``[…, human, time]`` and every other tier ``[…, time, human]``.
-    Harmless only because the hook chain reordered it — the invariant was enforced
-    in one place and violated in another, which is how it stays broken."""
+    """Comms emitted […, human, time] while every other tier emitted […, time, human]; only the hook chain's reorder hid it."""
 
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_seed_is_in_canonical_slot_order(self, tier: AgentTier) -> None:
@@ -139,15 +122,7 @@ class TestSeedOrderIsAlreadyCanonical:
 
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_hooks_leave_a_fresh_seed_order_unchanged(self, tier: AgentTier) -> None:
-        """Reordering should be a normalisation of already-correct input, not a
-        correction the tiers silently depend on.
-
-        Asserted on the Gemini lane, which is the layout the seed is written in.
-        The OpenAI wire's tail layout IS a deliberate reorder by the hook — the
-        one thing a tier cannot do itself, because the seed is built before the
-        provider is known to it (pinned in ``test_context_invariants``:
-        ``TestTheTailLayoutOnTheOpenAIWire``).
-        """
+        """Asserted on the Gemini lane, the seed's native layout; the OpenAI wire's reorder is a separate, deliberate hook pinned in TestTheTailLayoutOnTheOpenAIWire."""
         seed = slots_of(await seed_only(tier, sources=VOLATILE_SOURCES))
         effective = slots_of(
             await effective_context(
@@ -164,9 +139,7 @@ class TestSeedOrderIsAlreadyCanonical:
 
 @pytest.mark.unit
 class TestAQueryChangeMovesOnlyTheVolatileSlot:
-    """The prefix-stability guarantee, stated as behaviour: two queries from the
-    same user on the same tier must differ only in the volatile slot and the
-    turn itself."""
+    """The prefix-stability guarantee: two queries from the same user and tier must differ only in the volatile slot and the turn."""
 
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_static_and_stable_are_byte_identical_across_queries(
@@ -216,12 +189,7 @@ class TestAQueryChangeMovesOnlyTheVolatileSlot:
 
 @pytest.mark.unit
 class TestOnboardingPromptDoesNotEvictIdentity:
-    """``construct_langchain_messages`` appended the onboarding prompt carrying
-    ``memory_message=True`` *after* the stable dynamic-context message, and the
-    node keeps only the latest holder of that marker — so on every onboarding
-    turn the user's name, timezone, preferences and connected-integrations
-    manifest silently never reached the model. Onboarding is precisely when
-    knowing the user matters most."""
+    """construct_langchain_messages appended the onboarding prompt after the stable dynamic-context message, so the node's latest-marker-wins rule dropped the user's identity every onboarding turn."""
 
     async def test_identity_survives_an_onboarding_turn(self) -> None:
         user = HarnessUser(name="Zylphara", timezone="Asia/Kolkata")
@@ -247,8 +215,7 @@ class TestOnboardingPromptDoesNotEvictIdentity:
         assert "Ask about their inbox" in assembled
 
     async def test_the_comms_persona_also_survives(self) -> None:
-        """The onboarding prompt must not evict the static prompt either — the
-        obvious 'fix' of dropping its marker would just move the eviction."""
+        """The naive fix of dropping the onboarding marker would just move the eviction to the static prompt."""
         with_onboarding = await effective_context(
             AgentTier.COMMS, ContextSeed(onboarding_prompt="Welcome! Ask about their inbox.")
         )

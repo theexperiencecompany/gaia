@@ -494,9 +494,8 @@ export default function EmailComposeCard({
     : emailData;
 
   // A card carrying a draft id is sent as that stored draft, verbatim — the only
-  // path that keeps its attachments, since an edited copy would have to be
-  // recomposed without them. Offering edits it cannot apply would be a lie, so
-  // the card renders read-only.
+  // path that keeps its attachments (an edited copy would drop them). Offering
+  // edits it can't apply would be a lie, so the card renders read-only.
   const isLocked = !!emailData.draft_id;
 
   const recipientSelection = useRecipientSelection({

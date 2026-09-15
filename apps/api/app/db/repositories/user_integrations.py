@@ -1,7 +1,7 @@
-"""Repository for the ``user_integrations`` collection.
+"""Repository for the user_integrations collection.
 
-User-scoped; one document per ``(user_id, integration_id)`` (unique index),
-addressed by the business ``integration_id`` within a user. Tracks which
+User-scoped; one document per (user_id, integration_id) (unique index),
+addressed by the business integration_id within a user. Tracks which
 integrations a user has added and whether they are connected.
 """
 
@@ -44,9 +44,11 @@ class UserIntegrationsRepository(
         return doc is not None and doc.status == "connected"
 
     async def is_expired(self, user_id: str, integration_id: str) -> bool:
-        """Whether a *dead* connection is why this is unusable, rather than one
-        that was never set up. The stored record is the only thing that tells the
-        two apart — a live status check just says "not usable"."""
+        """Whether a *dead* connection, not one never set up, is why this is unusable.
+
+        The stored record is the only thing that tells the two apart — a live
+        status check just says "not usable".
+        """
         doc = await self.get_for_user(user_id, integration_id)
         return doc is not None and doc.status == "expired"
 
@@ -59,13 +61,13 @@ class UserIntegrationsRepository(
         expired_reason: str | None = None,
         connected_account_id: str | None = None,
     ) -> bool:
-        """Upsert the user's connection status. ``connected_at`` is stamped on the
-        connected transition and ``expired_at``/``expired_reason`` on the expired one;
-        ``created_at`` only on insert. ``connected_account_id`` is written whenever
-        the caller learns it and never cleared — the id of the account that died is
-        what lets us address it after the fact. Reconnecting clears the expiry stamps so an
-        `expired` record never reads as connected-but-broken. Always succeeds (the
-        upsert matches or inserts), matching the old modified/upserted/matched check."""
+        """Upsert the user's connection status; always succeeds (the upsert matches or inserts).
+
+        connected_at/expired_at/expired_reason stamp on their transitions;
+        connected_account_id is written when learned and never cleared, so a
+        dead account can still be addressed after the fact. Reconnecting clears
+        the expiry stamps.
+        """
         set_fields: dict[str, object] = {
             "status": status,
             "user_id": user_id,
@@ -89,8 +91,7 @@ class UserIntegrationsRepository(
         return doc is not None
 
     async def user_ids_with_integration(self, integration_id: str) -> list[str]:
-        """Every user_id that has added ``integration_id`` (cross-user — for the
-        cache-bust / link-cleanup fan-out when a shared integration changes)."""
+        """Every user_id that has added integration_id (cross-user fan-out for cache-bust/cleanup)."""
         return await self._distinct("user_id", {"integration_id": integration_id})
 
 

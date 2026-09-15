@@ -30,13 +30,9 @@ StreamWriterCallable = Callable[[dict[str, Any]], None]
 
 
 def strip_internal_agent_tags(text: str) -> str:
-    """Remove internal channel tags an agent may have echoed into user text.
+    """Remove internal channel tags (e.g. <executor_result>) an agent may echo into user text.
 
-    Tags like ``<executor_result>`` frame the payload handed to comms for
-    re-voicing; they are context for the agent, never part of the user-facing
-    reply. A weak model occasionally parrots them verbatim, so strip them
-    deterministically as a hard backstop before delivery. Only the tags go — the
-    text they framed is the answer the model wrote around.
+    Tags frame payloads for comms re-voicing and are never part of the user-facing reply; strip them as a hard backstop against a model parroting them, keeping only the framed text.
     """
     return INTERNAL_AGENT_TAG_PATTERN.sub("", text).strip()
 
@@ -50,14 +46,7 @@ class IntegrationMetadata(TypedDict, total=False):
 
 
 def parse_subagent_id(subagent_id: str) -> tuple[str, str | None]:
-    """Parse subagent ID from various formats and extract clean ID and display name.
-
-    Handles:
-      - 'subagent:Name [uuid]' -> ('uuid', 'Name')
-      - 'subagent:id (Name)' -> ('id', 'Name')
-      - 'subagent:id' -> ('id', None)
-      - 'id' -> ('id', None)
-    """
+    """Parse a subagent id into (clean_id, display_name) from 'subagent:Name [uuid]', 'subagent:id (Name)', or a bare id."""
     clean = subagent_id.replace("subagent:", "").strip()
 
     if " [" in clean:
@@ -150,21 +139,10 @@ async def format_tool_call_entry(
     integration_name: str | None = None,
     user_id: str | None = None,
 ) -> ToolDataEntry | None:
-    """Format a tool call as a tool_data entry for frontend streaming.
-
-    Emitted once per tool call from the 'updates' stream when complete args
-    are available; the frontend appends it to the message's tool_data array.
+    """Format a tool call as a tool_data entry for frontend streaming, or None if the tool name is missing.
 
     Args:
-        tool_call: LangChain ToolCall object.
-        icon_url: Icon URL for custom integrations.
-        integration_id: Integration ID to use as category (for custom MCPs).
-        integration_name: Friendly display name (e.g. 'Researcher').
-        user_id: Used to resolve MCP tool provenance via the user's MCPClient
-            (MCP tools no longer live in the global registry).
-
-    Returns:
-        tool_data entry dict, or None if the tool name is missing.
+        user_id: resolves MCP tool provenance via the user's MCPClient (MCP tools no longer live in the global registry).
     """
     tool_registry = await get_tool_registry()
     tool_name_raw = tool_call.get("name")
@@ -182,11 +160,9 @@ async def format_tool_call_entry(
             tool_registry, tool_name_raw, integration_id, user_id
         )
         tool_display_name = humanize_tool_name(tool_name_raw, tool_category)
-        # show_category=False marks "the primary is a custom/curated label" (the
-        # tool name isn't already in the primary text). The frontend uses this as
-        # the single signal: the live LoadingIndicator drops the "Category:" prefix,
-        # and the tool thread shows the raw tool name as the secondary line. When
-        # uncurated, the primary IS the tool name, so the category is shown instead.
+        # show_category=False means the primary label is curated (not the raw tool
+        # name); the frontend uses this as the single signal to drop the "Category:"
+        # prefix and show the raw tool name as the secondary line instead.
         show_category = tool_name_raw not in TOOL_DISPLAY_NAMES
 
         # When a core tool runs inside an MCP subagent, also drop the
@@ -255,7 +231,7 @@ _SPECIAL_TOOLS: dict[str, tuple[str, str | None, bool]] = {
 async def _special_tool_display(
     tool_name_raw: str, tool_call: ToolCall
 ) -> tuple[str, str | None, bool]:
-    """Category, display name and show_category for a tool in ``_SPECIAL_TOOLS``."""
+    """Category, display name and show_category for a tool in _SPECIAL_TOOLS."""
     tool_category, tool_display_name, show_category = _SPECIAL_TOOLS[tool_name_raw]
 
     if tool_name_raw == "handoff":
@@ -272,12 +248,10 @@ async def _general_tool_category(
     integration_id: str | None,
     user_id: str | None,
 ) -> tuple[str | None, str | None, bool]:
-    """Category for a general tool, the integration it resolved to, and whether
-    it is a core tool. General tools (vfs_cmd, web_search_tool, tracked_todo
-    helpers, etc.) called inside an MCP subagent keep their own category so the
-    frontend renders the right icon, not the subagent's integration logo. Only
-    fall back to integration_id when the tool has no known core category (i.e.
-    it's an MCP tool)."""
+    """Return the general tool's category, its resolved integration, and whether it is a core tool.
+
+    Core tools (vfs_cmd, web_search_tool, tracked_todo helpers, etc.) called inside an MCP subagent keep their own category so the frontend renders the right icon instead of the subagent's integration logo; only fall back to integration_id when the tool has no known core category (i.e. it's an MCP tool).
+    """
     registry_category = tool_registry.get_category_of_tool(tool_name_raw)
     is_core_tool = bool(
         registry_category
@@ -303,7 +277,7 @@ async def _general_tool_category(
 def _registry_mcp_ui_metadata(
     tool_registry: ToolRegistry, tool_name_raw: str
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """The mcp_ui metadata the global registry holds for a tool, if any."""
+    """Return the mcp_ui metadata the global registry holds for a tool, if any."""
     mcp_ui: dict[str, Any] | None = None
     mcp_server_url: str | None = None
     try:
@@ -317,10 +291,8 @@ def _registry_mcp_ui_metadata(
                     mcp_server_url = tool_meta.get("mcp_server_url")
                 break
     except Exception as registry_error:
-        # A registry miss is recoverable — the per-user MCPClient lookup below is
-        # the fallback — but it must not be silent: an outage here strips the UI
-        # metadata from every platform tool at once, and the card just renders
-        # plain with nothing to explain why.
+        # Recoverable via the per-user MCPClient fallback below, but must not be
+        # silent: an outage here strips the UI metadata from every platform tool.
         log.debug(
             f"{LogTag.AGENT} Tool registry lookup failed for mcp_ui metadata",
             error=str(registry_error),
@@ -416,12 +388,12 @@ async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str |
 
 
 def format_sse_response(content: str) -> str:
-    """Wrap text content as a JSON-encoded SSE ``data:`` line."""
+    """Wrap text content as a JSON-encoded SSE data: line."""
     return f"data: {json.dumps(ResponseFrame(response=content).model_dump())}\n\n"
 
 
 def format_sse_data(data: dict[str, Any]) -> str:
-    """Wrap a dict as a JSON-encoded SSE ``data:`` line."""
+    """Wrap a dict as a JSON-encoded SSE data: line."""
     return f"data: {json.dumps(data)}\n\n"
 
 

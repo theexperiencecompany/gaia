@@ -1,11 +1,11 @@
-"""Exact SSE frame contracts for the streaming helpers in ``agent_helpers``.
+"""Exact SSE frame contracts for the streaming helpers in agent_helpers.
 
-The wire-level tests next door (``test_agent_helpers_tool_call_silence.py`` and
+The wire-level tests next door (test_agent_helpers_tool_call_silence.py and
 friends) prove the guards hold end to end through a real graph, but they can only
 assert coarsely: they see a stream of frames, not the payload each helper built.
 Every key name, every lookup key, every fallback default and every buffering
 decision inside those helpers is invisible to them, so a frame that ships the
-right text under the wrong key, or drops ``tool_arguments``, reads as a pass.
+right text under the wrong key, or drops tool_arguments, reads as a pass.
 
 These tests feed the helpers synthetic stream events directly and assert the
 emitted frames as whole strings and the mutated run state as whole dicts, so the
@@ -44,7 +44,7 @@ HELPERS = "app.helpers.agent_helpers"
 
 
 def _sse(payload: dict[str, Any]) -> str:
-    """The exact bytes ``format_sse_data`` produces for this payload."""
+    """Build the exact bytes format_sse_data produces for this payload."""
     return f"data: {json.dumps(payload)}\n\n"
 
 
@@ -309,7 +309,7 @@ def test_buffer_subagent_mcp_app_buffers_nothing_for(payload: Any) -> None:
 
 
 class _RecordingFormatter:
-    """Stands in for ``format_tool_call_entry``, recording the exact call it got."""
+    """Stands in for format_tool_call_entry, recording the exact call it got."""
 
     def __init__(self, entries: list[dict[str, Any] | None]) -> None:
         self._entries = list(entries)
@@ -883,7 +883,7 @@ async def test_messages_thread_the_user_id_into_the_mcp_resource_fetch() -> None
 
 
 class _FakeGraph:
-    """A graph whose ``astream`` replays a fixed list of stream events."""
+    """A graph whose astream replays a fixed list of stream events."""
 
     def __init__(self, events: list[tuple[Any, ...]]) -> None:
         self._events = events
@@ -1015,14 +1015,7 @@ async def test_a_cancelled_run_emits_the_cancelled_nostream_frame() -> None:
     record.assert_awaited_once_with(graph, config)
 
 
-# ── _emit_mcp_app_event ──────────────────────────────────────────────
-#
-# The deferred MCP-App frame is assembled from two sources that can disagree:
-# what the MCP server served back with the UI resource, and what the tool call
-# declared in its ``mcp_ui`` metadata. Served values win, declared values are the
-# fallback, and ``permissions`` bottoms out at ``[]`` rather than null — an
-# iframe sandbox attribute built from null is not the same page as one built
-# from an empty list. Each of those three layers gets its own test.
+# Served MCP values win over declared mcp_ui metadata; permissions defaults to [] not null.
 
 
 def _emit_meta(**overrides: Any) -> dict[str, Any]:

@@ -1,35 +1,35 @@
 #!/usr/bin/env python3
-"""Rebuild the ``llm_calls`` ledger from the log history that predates it.
+"""Rebuild the llm_calls ledger from the log history that predates it.
 
 The ledger starts empty on the day it ships, so every cost question about the
 past still has to be answered by scraping logs — which is the problem it exists
-to end. Loki holds one ``llm_call`` wide event per model call for 30 days, and
+to end. Loki holds one llm_call wide event per model call for 30 days, and
 those events carry almost everything a ledger row needs, so the recent past can
 be reconstructed instead of lost.
 
 Sources, in the order a row's cost is trusted:
 
-- **OpenRouter** ``GET /api/v1/generation?id=<id>`` — what was actually charged.
-  The same lookup ``backfill_true_cost.py`` uses, cached per day so a re-run
+- **OpenRouter** GET /api/v1/generation?id=<id> — what was actually charged.
+  The same lookup backfill_true_cost.py uses, cached per day so a re-run
   only asks about ids it has not resolved.
-- **The event itself**, when it recorded ``cost_source="provider"`` — the
+- **The event itself**, when it recorded cost_source="provider" — the
   provider's own figure, captured live.
-- **The current price table** (``app/config/model_pricing.py``), recomputed from
+- **The current price table** (app/config/model_pricing.py), recomputed from
   the event's token counts. Today's rates applied to old calls, which is a
   better estimate than the rate that was in the table at the time.
 - **The logged cost**, for a model the table does not know. Kept rather than
   zeroed, and counted separately so the fallback's share is visible.
 
-Reconstructed rows are stamped ``backfilled: true`` and carry a deterministic
-``backfill_key``, so ``--apply`` is safe to re-run: the key is derived from the
+Reconstructed rows are stamped backfilled: true and carry a deterministic
+backfill_key, so --apply is safe to re-run: the key is derived from the
 event, a unique index enforces it, and a second run inserts nothing.
 
 Dropped deliberately: events with neither tokens nor cost (heartbeat echoes that
-would inflate the row count without adding spend), non-finite costs (``json``
-parses ``NaN``/``Infinity`` happily and one poisons every sum), and exact
-duplicate events. Doubled model ids (``a/b/a/b``, from a lane that stamped the
+would inflate the row count without adding spend), non-finite costs (json
+parses NaN/Infinity happily and one poisons every sum), and exact
+duplicate events. Doubled model ids (a/b/a/b, from a lane that stamped the
 alias twice) are normalised back to one. Sticky-flip replays are recorded the
-way the live path recorded them — ``background``, never charged.
+way the live path recorded them — background, never charged.
 
 Floors at 2026-08-10: before that the events lack the cost fields this depends
 on, so older rows would be fiction.
@@ -58,9 +58,9 @@ Run from the api directory (or /app inside the container)::
     python scripts/backfill_llm_calls.py --days 7 --dry-run
     python scripts/backfill_llm_calls.py --apply
 
-Environment: ``LOKI_URL`` (default ``http://loki:3100``) and
-``OPENROUTER_API_KEY``. Generation lookups are cached per day under
-``--cache-dir``, so an interrupted backfill costs nothing to restart.
+Environment: LOKI_URL (default http://loki:3100) and
+OPENROUTER_API_KEY. Generation lookups are cached per day under
+--cache-dir, so an interrupted backfill costs nothing to restart.
 """
 
 import argparse
@@ -133,11 +133,10 @@ class LedgerEvent(BaseModel):
     def backfill_key(self) -> str:
         """A deterministic identity for this event.
 
-        Hashed from the fields that together identify one call — the instant, the
-        lane, the user and either the generation id or the call's own token/cost
-        fingerprint when the provider issued none. Deterministic so a re-run
-        produces the same key and the unique index absorbs it; hashed so the key
-        stays short and carries no user content.
+        Hashed from the fields that identify one call — instant, lane, user,
+        and either the generation id or a token/cost fingerprint when the
+        provider issued none. Same event always yields the same key, so the
+        unique index absorbs a re-run; hashing keeps it short and content-free.
         """
         fingerprint = "|".join(
             [
@@ -154,28 +153,17 @@ class LedgerEvent(BaseModel):
 def normalise_model(model: str) -> str:
     """Collapse a model id that was stamped twice back to one.
 
-    A lane that applied its alias on top of an already-aliased id logged the
-    name concatenated with itself. Verified on live Loki (2026-08-14):
-
-        deepseek/deepseek-v4-flash-0731deepseek/deepseek-v4-flash-0731
-
-    Note there is NO separator between the halves — the second copy runs
-    straight into the first. A rule that split on ``/`` and compared path
-    segments therefore never fired on the real data (the segment count is odd),
-    which is how 9,209 rows fell through to the unknown-model branch and kept
-    the dead pre-2026-08-24 table prices instead of being re-priced. So the
-    comparison is on the raw string's two halves.
-
-    Left un-normalised, the same model is two rows in every group-by AND matches
-    no pricing entry, so it silently keeps whatever the table said at the time.
+    A lane applied its alias on top of an already-aliased id, concatenating
+    the name with itself with no separator ("deepseek/...-0731" doubled,
+    verified live 2026-08-14). A slash-based split missed this shape,
+    leaving 9,209 rows unpriced at dead pre-2026-08-24 table prices.
     """
     half, remainder = divmod(len(model), 2)
     if remainder == 0 and half > 0 and model[:half] == model[half:]:
         return model[:half]
-    # The separator-joined form too, for cheap: the same alias applied twice can
-    # land either way depending on which lane did the stamping, and a rule that
-    # covers only the shape we happened to observe is the rule that misses the
-    # next one.
+    # The separator-joined form too, cheaply: the same alias can land either
+    # way depending on which lane stamped it, and a rule covering only the
+    # observed shape is the rule that misses the next one.
     parts = model.split("/")
     segments, odd = divmod(len(parts), 2)
     if odd == 0 and segments > 0 and parts[:segments] == parts[segments:]:
@@ -184,7 +172,7 @@ def normalise_model(model: str) -> str:
 
 
 def parse_event(line: str) -> LedgerEvent | None:
-    """One Loki line as a ledger event, or ``None`` if it is not usable."""
+    """One Loki line as a ledger event, or None if it is not usable."""
     try:
         raw = json.loads(line)
     except json.JSONDecodeError:
@@ -234,7 +222,7 @@ class Priced(BaseModel):
 
 
 def price_event(event: LedgerEvent, record: GenerationRecord | None) -> Priced:
-    """What this call cost, from the most trustworthy source that can answer.
+    """Return what this call cost, from the most trustworthy source that can answer.
 
     The order is deliberate: what OpenRouter says it billed beats what the event
     recorded, which beats what today's table computes, which beats the logged
@@ -246,11 +234,9 @@ def price_event(event: LedgerEvent, record: GenerationRecord | None) -> Priced:
     if event.cost_source == "provider":
         return Priced(cost=event.logged_cost, source="provider")
     if event.model not in MODEL_PRICING:
-        # ``calculate_token_cost`` does not raise for an unknown model — it falls
-        # back to DEFAULT_PRICING, which is ~10x the real input rate for most
-        # models and would quietly overstate the whole month. Membership is
-        # checked here so the fallback is the LOGGED cost, which at least came
-        # from somewhere real.
+        # calculate_token_cost falls back to DEFAULT_PRICING for an unknown
+        # model (~10x the real input rate), which would overstate the month.
+        # Checked here so the fallback is the LOGGED cost instead.
         return Priced(cost=event.logged_cost, source="logged")
     computed = calculate_token_cost(
         model_name=event.model,
@@ -268,9 +254,9 @@ def build_document(event: LedgerEvent, record: GenerationRecord | None) -> LLMCa
     """One reconstructed ledger row.
 
     The context ids are only as good as the event carried — the wide event never
-    logged ``workflow_execution_id``, ``job_id`` or latency, so those stay unset
+    logged workflow_execution_id, job_id or latency, so those stay unset
     rather than being invented. That is exactly why rows are marked
-    ``backfilled``: an analysis needing first-party precision can exclude them.
+    backfilled: an analysis needing first-party precision can exclude them.
     """
     priced = price_event(event, record)
     lane = split_lane_thread(event.thread_id)
@@ -366,7 +352,7 @@ def select_events(
 
     Echoes (no tokens, no cost) and exact duplicates — the same call logged
     twice, which the ledger would otherwise count twice. Both are counted into
-    ``anomalies`` rather than silently discarded.
+    anomalies rather than silently discarded.
     """
     tally = anomalies if anomalies is not None else Anomalies()
     seen: set[str] = set()
@@ -411,7 +397,7 @@ def summarise(
 
 
 def render(rows: Sequence[DaySummary]) -> None:
-    """The per-day raw -> docs -> $ table the dry run reports."""
+    """Print the per-day raw -> docs -> $ table the dry run reports."""
     header = f"{'date':<12}{'raw':>8}{'docs':>8}{'$':>12}{'gen':>8}{'table':>8}{'logged':>8}"
     print(header)
     print("-" * len(header))
@@ -428,7 +414,7 @@ def render(rows: Sequence[DaySummary]) -> None:
 
 
 def wanted_days(days: int) -> list[str]:
-    """The trailing window, floored at :data:`EARLIEST_DAY`."""
+    """Return the trailing window, floored at EARLIEST_DAY."""
     today = datetime.now(UTC).date()
     floor = date.fromisoformat(EARLIEST_DAY)
     candidates = [today - timedelta(days=offset) for offset in reversed(range(days))]
@@ -441,12 +427,9 @@ async def backfill(days: int, cache_dir: Path, apply: bool) -> None:
     if not api_key and apply:
         raise SystemExit("OPENROUTER_API_KEY is not set — run through `infisical run --`.")
     if not api_key:
-        # A dry run is a read-only preview and must not require a paid-API
-        # credential to answer "how many rows, and roughly what do they cost".
-        # Without the key the generation lookups are skipped: rows the event
-        # already priced from the provider keep that figure, the rest are priced
-        # from the table, and NOTHING is verified against OpenRouter. Loud,
-        # because it changes what the dollar column means.
+        # A dry run must not require a paid API credential. Without the key,
+        # lookups are skipped and nothing is verified against OpenRouter —
+        # printed loudly since that changes what the dollar column means.
         print("NO OPENROUTER_API_KEY — generation lookups skipped; costs are unverified\n")
 
     if apply:

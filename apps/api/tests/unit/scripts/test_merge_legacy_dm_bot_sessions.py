@@ -1,12 +1,12 @@
-"""Unit tests for the legacy ``:dm`` bot-session merge.
+"""Unit tests for the legacy :dm bot-session merge.
 
 The script decides which of two forked sessions survives before it writes
 anything, so the selection is pure and pinned here. The write path is asserted
 against a fake repository — the seam the script actually talks to. What it must
-never do is leave a ``:dm`` row behind or drop the newer conversation. The
+never do is leave a :dm row behind or drop the newer conversation. The
 repository's own filters and update documents are proven a tier down, in
-``tests/unit/db/repositories/test_bot_sessions.py`` and against real Mongo in
-``tests/contracts/test_bot_sessions_repository.py``.
+tests/unit/db/repositories/test_bot_sessions.py and against real Mongo in
+tests/contracts/test_bot_sessions_repository.py.
 """
 
 from typing import Any
@@ -111,8 +111,7 @@ class TestPlanMerge:
         assert merge.reason == "the legacy session was used more recently"
 
     def test_the_newer_canonical_conversation_wins_and_the_legacy_row_is_dropped(self) -> None:
-        """The prod shape: the live chat kept writing the canonical key after the
-        workflow delivery last touched the legacy one."""
+        """The prod shape: the live chat wrote the canonical key after workflow delivery last touched the legacy one."""
         merge = plan_merge(
             _session(LEGACY_KEY, "conv-legacy", "2026-08-16T09:23:00+00:00"),
             _session(CANONICAL_KEY, "conv-canonical", "2026-08-16T18:00:00+00:00"),
@@ -154,8 +153,7 @@ class TestPlanMerge:
         assert plan_merge(row, None, canonical_key_for(row)) is None
 
     def test_a_row_whose_canonical_key_is_itself_is_left_alone(self) -> None:
-        """A user literally identified as ``dm`` would map onto its own key; renaming
-        it onto itself is a no-op that must not be planned as work."""
+        """A user literally identified as dm maps onto its own key; renaming it onto itself must not be planned."""
         row = BotSessionDocument(
             session_key="telegram:dm:dm",
             conversation_id="conv",
@@ -189,8 +187,7 @@ class TestLastUsed:
 
 
 def test_canonical_key_for_uses_the_live_key_derivation() -> None:
-    """Not a format restated here: the script must resolve the same key the next
-    lookup will."""
+    """The script must resolve the same key the next lookup will, not merely a plausible format."""
     assert canonical_key_for(_session(LEGACY_KEY, "conv")) == CANONICAL_KEY
 
 
@@ -199,19 +196,12 @@ def test_dm_channel_of_is_the_platform_user_id() -> None:
 
 
 def test_dm_channel_of_takes_the_channel_segment_not_the_user() -> None:
-    """On Telegram the user and the channel are the same string, so a DM key
-    alone cannot tell "last segment" from "middle segment". A key where they
-    differ can — and the last segment is what gets stamped onto the row."""
+    """On Telegram the user and channel are the same string; a key where they differ proves it's the last segment."""
     assert dm_channel_of("discord:user-1:channel-9") == "channel-9"
 
 
 class TestAWriteRacedByAnotherClaim:
-    """Between plan and write another actor can move either row: a workflow
-    delivery claiming the canonical key mid-RENAME (the unique index turns
-    that into DuplicateKeyError), or the canonical row vanishing mid-REPOINT.
-    Both must answer False with the legacy row left in place — never a failed
-    user request, never a stranded conversation — so the next flagged message
-    replans against the world as it is then."""
+    """A race after planning (DuplicateKeyError on RENAME, or the canonical row vanishing on REPOINT) must return False, legacy row intact."""
 
     async def test_a_rename_losing_the_canonical_key_race_is_a_no_op(
         self, repository: _FakeRepository
@@ -270,8 +260,7 @@ class TestApplyMerges:
     async def test_repoint_moves_the_conversation_then_removes_the_legacy_row(
         self, repository: _FakeRepository
     ) -> None:
-        """Order matters: dropping the legacy row before the canonical row owns its
-        conversation would strand the surviving thread."""
+        """Order matters: dropping the legacy row before the canonical row owns its conversation would strand it."""
         merge = plan_merge(
             (legacy := _session(LEGACY_KEY, "conv-legacy", "2026-08-17T10:00:00+00:00")),
             _session(CANONICAL_KEY, "conv-canonical", "2026-08-16T09:23:00+00:00"),
@@ -321,9 +310,7 @@ class TestApplyMerges:
     async def test_a_row_that_moved_under_us_does_not_abandon_the_rest(
         self, repository: _FakeRepository
     ) -> None:
-        """One row someone else moved between the plan and the write must cost
-        only itself. Stopping the loop there would leave every remaining fork in
-        place, and the run would still report a clean partial count."""
+        """A row moved under us must cost only itself — the loop continues and still reports a clean partial count."""
         repository.renamed = False  # the RENAME below matches nothing
         first = plan_merge(
             _session(LEGACY_KEY, "conv-a", "2026-08-16T09:23:00+00:00"), None, CANONICAL_KEY

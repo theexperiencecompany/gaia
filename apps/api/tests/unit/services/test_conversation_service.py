@@ -1,10 +1,10 @@
 """Unit tests for the conversation service layer.
 
-The service is functional; it orchestrates ``conversation_repository`` and maps
+The service is functional; it orchestrates conversation_repository and maps
 its results to HTTP responses. Per the repository-layer contract, these tests
 mock the repository singleton (never the DB) and assert the service's own
 behaviour — auth guards, 404 mapping, response shapes, and that each function
-delegates to the right repository method with the caller's ``user_id``. The
+delegates to the right repository method with the caller's user_id. The
 repository's own behaviour (user-scoping, source persistence, message stripping,
 pin semantics) is covered by the real-DB contract suite.
 """
@@ -65,7 +65,7 @@ def test_user():
 def _no_analytics():
     """Neutralize analytics captures for tests not asserting on them.
 
-    ``capture_event`` resolves the PostHog provider at call time, which is not
+    capture_event resolves the PostHog provider at call time, which is not
     registered in this test module's import chain — capture-specific tests
     patch the call explicitly and assert on it.
     """

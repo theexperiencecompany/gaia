@@ -95,8 +95,7 @@ class TestGetHandoffMetadata:
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
     async def test_cache_hit_returns_cached(self, mock_lookup, mock_get_cache):
-        """Cache check happens AFTER the registry lookup; lookup must miss
-        first so the code path falls through to the Redis cache."""
+        """Cache check happens after the registry lookup misses."""
         mock_get_cache.return_value = {"integration_id": "github", "icon_url": None}
 
         result = await get_handoff_metadata("github")
@@ -165,8 +164,7 @@ class TestGetHandoffMetadata:
     async def test_handoff_with_subagent_prefix(
         self, mock_lookup, mock_repo, mock_get_cache, mock_set_cache
     ):
-        """Subagent IDs may have 'subagent:' prefix — parse_subagent_id strips it
-        before the registry lookup, so the mock should see 'custom_abc'."""
+        """parse_subagent_id strips the 'subagent:' prefix before the registry lookup."""
         mock_get_cache.return_value = None
         mock_repo.find_by_id_prefix_or_name = AsyncMock(
             return_value=_integration("custom_abc", "Custom")
@@ -206,10 +204,7 @@ class TestBuildAgentConfig:
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_metadata_stamps_the_agent_label_for_the_ttft_callback(self, mock_providers):
-        """The TTFT callback attributes each streaming call by
-        LLM_LABEL_METADATA_KEY. build_agent_config must stamp this run's agent
-        tier as the default, or the graph's own streaming model calls (the ones
-        the metric exists to measure) land on agent="unknown"."""
+        """build_agent_config stamps the agent tier as the default LLM_LABEL_METADATA_KEY, or the graph's own streaming calls land on agent=unknown."""
         from app.constants.llm import LLM_LABEL_METADATA_KEY
 
         mock_providers.get.return_value = None
@@ -240,8 +235,7 @@ class TestBuildAgentConfig:
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_inherits_home_timezone_from_base_configurable(self, mock_providers):
-        """A child agent reconstructs a bare user dict, so it inherits the home
-        zone from the parent's configurable (user_timezone)."""
+        """A child agent reconstructs a bare user dict, inheriting the home zone from the parent's configurable."""
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
@@ -300,10 +294,9 @@ class TestBuildAgentConfig:
             ),
         )
         configurable = config["configurable"]
-        # The lane is inherited WHOLE — one rule, no per-key table. The pin and the
-        # reasoning budget were previously governed by two different rules (a
-        # conditional copy, and never-inherited-at-all), which is how a subagent
-        # silently dropped the first-party pin onto throttled resellers.
+        # The lane is inherited WHOLE, not per-key — separate copy/inherit rules
+        # previously let a subagent silently drop the first-party pin onto
+        # throttled resellers.
         assert ModelLane.from_configurable(configurable["lane"]) == parent_lane
         # ...and re-expanded into LangChain's binding keys, so the two cannot drift.
         assert configurable["provider"] == "gemini"
@@ -315,15 +308,7 @@ class TestBuildAgentConfig:
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_every_parent_fallback_key_fills_only_its_own_blank(self, mock_providers):
-        """Each fallback key inherits from the SAME key on the parent, and no other.
-
-        The seven fallback keys are written out one per line in
-        ``_inherit_from_parent_configurable``. Two of them crossed (a line
-        reading ``subagent_id`` into ``tool_category``) type-checks fine — both
-        are declared ``str | None`` on ``AgentConfigurable`` — so only distinct
-        values per key can catch it. Giving every key a unique value is what
-        makes a swap visible.
-        """
+        """Each fallback key inherits from the same key on the parent, and no other — a crossed key would type-check fine since both are str | None."""
         mock_providers.get.return_value = None
         base = {
             "selected_tool": "parent-tool",
@@ -396,10 +381,7 @@ class TestBuildAgentConfig:
     async def test_parent_overrides_child_for_conversation_id_and_user_messages(
         self, mock_providers
     ):
-        """The TRUE conversation id and the user's verbatim turns are established
-        once by comms; a child passing its own wrapped thread id or an
-        agent-authored paraphrase must not overwrite them (the HIL intent judge
-        grounds gated calls against the user's own words)."""
+        """The true conversation id and the user's verbatim turns, established once by comms, must not be overwritten by a child's wrapped id or paraphrase."""
         mock_providers.get.return_value = None
 
         configurable = (
@@ -428,11 +410,7 @@ class TestBuildAgentConfig:
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_parent_overrides_child_for_the_verbatim_user_request(self, mock_providers):
-        """Same rule as ``user_messages``, and for the same reason: comms establishes
-        the user's raw words once, and a child agent only ever has its parent's
-        paraphrase to offer. ``call_executor`` reads this to build the executor brief,
-        so a child winning here would put the paraphrase back where the verbatim copy
-        belongs — the exact failure this key exists to prevent."""
+        """Same rule as user_messages: comms establishes the verbatim request once, and a child's paraphrase must not overwrite it."""
         mock_providers.get.return_value = None
 
         configurable = (
@@ -458,8 +436,7 @@ class TestBuildAgentConfig:
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_a_root_run_carries_its_own_verbatim_request(self, mock_providers):
-        """With no parent there is nothing to inherit, so the value passed in is the
-        one that lands — this is the comms root, where the raw message enters."""
+        """With no parent to inherit from, the value passed in is the one that lands."""
         mock_providers.get.return_value = None
 
         configurable = (
@@ -481,10 +458,7 @@ class TestBuildAgentConfig:
     async def test_a_handoff_subagent_inherits_preferences_established_by_comms(
         self, mock_providers
     ) -> None:
-        """``user_preferences`` / ``writing_style`` follow the exact same rule as
-        ``user_messages`` above: established once wherever the root call site has
-        the full user document (comms), a child agent (executor, a handoff
-        subagent) never has its own copy to prefer, so the parent's value wins."""
+        """user_preferences and writing_style follow the same rule as user_messages: established once by comms, a child never has its own copy to prefer."""
         mock_providers.get.return_value = None
 
         configurable = (
@@ -511,9 +485,7 @@ class TestBuildAgentConfig:
     async def test_no_parent_and_no_explicit_value_leaves_preferences_absent(
         self, mock_providers
     ) -> None:
-        """A root call site with no onboarding data (e.g. a dev user who hasn't
-        onboarded) must not fabricate a value — the context section reads a
-        missing key as "render nothing", never as a stale default."""
+        """A root call site with no onboarding data leaves the key absent rather than fabricating a default."""
         mock_providers.get.return_value = None
 
         configurable = (
@@ -548,11 +520,7 @@ class TestBuildAgentConfig:
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_session_id_is_inherited_verbatim_from_the_parent(self, mock_providers):
-        """Every agent in the tree routes on the parent's sticky key, not its own id.
-
-        A child is spawned with a wrapped thread id as its ``conversation_id``, so
-        deriving the key locally would send it to a provider with a cold cache.
-        """
+        """Every agent routes on the parent's sticky key, not its own conversation_id, which is a wrapped thread id."""
         mock_providers.get.return_value = None
 
         configurable = (
@@ -572,11 +540,7 @@ class TestBuildAgentConfig:
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_session_id_survives_a_parent_that_carries_none(self, mock_providers):
-        """A parent that explicitly holds no sticky key hands down that absence.
-
-        Present-but-None and absent are different: the key is inherited on
-        presence, so a parent routing without one must not have a child invent one.
-        """
+        """Present-but-None and absent are different: a parent with no sticky key hands down that absence, not an invented one."""
         mock_providers.get.return_value = None
 
         with_none = (
@@ -639,9 +603,7 @@ class TestBuildAgentConfig:
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_workflow_context_survives_into_a_child_agents_config(self, mock_providers):
-        """A workflow fire stamps its workflow on the comms configurable; the
-        executor and its handoff subagents must see the same workflow, or the
-        playbook tools inside the run refuse with "not in a workflow run"."""
+        """The executor and its handoff subagents must see the same workflow the comms configurable stamped, or playbook tools refuse."""
         mock_providers.get.return_value = None
 
         child = (
@@ -781,8 +743,7 @@ class TestBuildAgentConfig:
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_source_inherited_from_base_configurable(self, mock_providers) -> None:
-        """A child agent (e.g. executor) inherits the channel from its parent and
-        recomputes the category — so background runs are still tagged Bot/UI."""
+        """A child agent inherits the channel from its parent and recomputes the category."""
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
@@ -915,9 +876,7 @@ class TestExecuteGraphSilent:
 
     @patch("app.helpers.agent_helpers.process_custom_event_for_tools")
     async def test_custom_events_merged(self, mock_process):
-        """tool_data entries ACCUMULATE across events while every other key is
-        merged by name — a second event's tool_data must not replace the first
-        event's entries."""
+        """tool_data entries accumulate across events while every other key merges by name."""
         mock_process.side_effect = [
             {"tool_data": [{"tool_name": "first_tool"}]},
             {
@@ -973,7 +932,7 @@ class TestExecuteGraphSilent:
     @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_handoff_metadata", new_callable=AsyncMock)
     async def test_updates_handoff_tool_calls(self, mock_handoff, mock_format):
-        """handoff tool calls on the agent node resolve + forward handoff metadata."""
+        """Handoff tool calls on the agent node resolve + forward handoff metadata."""
         mock_handoff.return_value = {
             "icon_url": "https://icon.png",
             "integration_id": "github",
@@ -1003,8 +962,7 @@ class TestExecuteGraphSilent:
 
     @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
     async def test_updates_regular_tool_calls_thread_user_id(self, mock_format):
-        """Non-handoff tool calls are formatted with the originating user_id (so
-        format_tool_call_entry can resolve MCP metadata) and appended."""
+        """Non-handoff tool calls are formatted with the originating user_id."""
         mock_format.return_value = {"tool_name": "custom_tool", "data": {}}
 
         msg = MagicMock()
@@ -1028,8 +986,7 @@ class TestExecuteGraphSilent:
         assert tool_data["tool_data"] == [{"tool_name": "custom_tool", "data": {}}]
 
     async def test_updates_ignores_non_agent_nodes(self):
-        """Tool calls from non-'agent' nodes (e.g. pre-model hooks replaying old
-        history) must not be collected."""
+        """Tool calls from non-'agent' nodes must not be collected."""
         msg = MagicMock()
         msg.tool_calls = [{"id": "tc_hook", "name": "some_tool", "args": {}}]
 
@@ -1111,10 +1068,7 @@ class TestExecuteGraphSilent:
         assert len(tool_data["tool_data"]) == 1
 
     async def test_a_handoff_preamble_is_never_persisted(self):
-        """Text that turns out to accompany a tool call is narration, not a
-        reply. The silent driver holds it by message id and drops it when the
-        node's own boundary reveals the handoff — the same rule the streaming
-        driver enforces, on the path workflows and background runs take."""
+        """Text accompanying a tool call is narration, not a reply, and is dropped once the node's boundary reveals the handoff."""
         preamble = AIMessageChunk(content="let me get that set up", id="msg-1")
         handoff = AIMessage(
             content="let me get that set up",
@@ -1145,8 +1099,7 @@ class TestExecuteGraphSilent:
         assert len(tool_data["tool_data"]) == 1
 
     async def test_a_tool_free_reply_survives_its_boundary(self):
-        """The other half of the same rule: a message that ends without a tool
-        call is the answer, and the boundary must release it."""
+        """A message that ends without a tool call is the answer, and the boundary must release it."""
         chunk = AIMessageChunk(content="all set up now.", id="msg-1")
         reply = AIMessage(content="all set up now.", id="msg-1")
 
@@ -1166,8 +1119,7 @@ class TestExecuteGraphSilent:
         assert msg == "all set up now."
 
     async def test_a_non_comms_run_never_inspects_boundaries(self):
-        """The executor's text is read by comms, never by a person, so it is
-        never accumulated and its boundaries decide nothing."""
+        """The executor's text is never accumulated, so its boundaries decide nothing."""
         chunk = AIMessageChunk(content="executor text", id="msg-1")
         reply = AIMessage(content="executor text", id="msg-1")
 
@@ -1211,10 +1163,7 @@ class TestExecuteGraphStreaming:
 
     @patch("app.helpers.agent_helpers.stream_manager")
     async def test_a_run_that_was_never_cancelled_says_so_by_omission(self, mock_sm):
-        """The endpoint keys the cancel path off this marker. A run that always
-        reported itself cancelled would close every stream through the
-        interruption path — recording an interruption that never happened and
-        acking a cancel nobody asked for."""
+        """A run that always reported itself cancelled would record a fake interruption and ack a cancel nobody asked for."""
         mock_sm.is_cancelled = AsyncMock(return_value=False)
 
         chunk = AIMessageChunk(content="done.", id="msg-1")
@@ -1318,10 +1267,12 @@ class TestExecuteGraphStreaming:
 
 
 class TestStampLangfuse:
-    """The exact keys the Langfuse SDK reads. Every one of them is a string
-    literal the SDK matches by name, so a renamed or blanked key does not fail
-    anywhere in GAIA — the trace just silently loses that dimension. Pinning the
-    WHOLE dict (not key-by-key membership) is what makes a rename visible."""
+    """The exact keys the Langfuse SDK reads by name.
+
+    A renamed or blanked key does not fail anywhere in GAIA — the trace
+    silently loses that dimension. Pinning the whole dict, not key-by-key
+    membership, is what makes a rename visible.
+    """
 
     def test_a_traced_run_stamps_every_langfuse_key_by_name(self):
         configurable = {}
@@ -1350,8 +1301,7 @@ class TestStampLangfuse:
         }
 
     def test_an_untraced_run_stamps_nothing_at_all(self):
-        """No trace id means no Langfuse binding anywhere — not even the tags,
-        which are meaningless without a trace to hang them on."""
+        """No trace id means no Langfuse binding anywhere, not even the tags."""
         configurable = {}
         metadata = {}
 
@@ -1361,8 +1311,7 @@ class TestStampLangfuse:
         assert metadata == {}
 
     def test_tags_reach_the_configurable_even_without_a_trace_id(self):
-        """The configurable's tags are stamped from their OWN guard, so a child
-        agent still inherits them when this run has no trace of its own."""
+        """Tags are stamped from their own guard, so a child inherits them even when this run has no trace of its own."""
         configurable = {}
         metadata = {}
 
@@ -1372,8 +1321,7 @@ class TestStampLangfuse:
         assert metadata == {}
 
     def test_an_anonymous_user_leaves_the_user_dimension_off(self):
-        """A background run has no user id; Langfuse must get no user key at all
-        rather than a null one."""
+        """A background run has no user id, so Langfuse gets no user key at all rather than a null one."""
         configurable = {}
         metadata = {}
 
@@ -1410,9 +1358,7 @@ class TestBuildAgentCallbacks:
     @patch("app.helpers.agent_helpers.build_langfuse_callback", return_value=None)
     @patch("app.helpers.agent_helpers.providers")
     def test_every_run_carries_the_provider_ttft_callback(self, mock_providers, _mock_langfuse):
-        """The TTFT callback rides the run's list on every tier — it is the only
-        source of true provider first-token latency. Dropping the append silences
-        that metric everywhere at once, and no other test would see it."""
+        """The callback is the only source of true provider first-token latency, on every tier."""
         mock_providers.is_available.return_value = False
         mock_providers.get.return_value = None
 
@@ -1428,9 +1374,7 @@ class TestBuildAgentConfigCallbackWiring:
     async def test_the_callbacks_are_built_for_this_conversation_and_this_agent(
         self, mock_build_callbacks, mock_resolve
     ):
-        """PostHog attributes the run's LLM spans from these two values alone, so
-        a dropped conversation id or agent name lands every run in one anonymous
-        bucket — visible nowhere but the analytics."""
+        """PostHog attributes the run's LLM spans from the conversation id and agent name alone."""
         mock_resolve.return_value = (DEV_LANE, None)
         mock_build_callbacks.return_value = []
         usage_cb = MagicMock()
@@ -1458,10 +1402,7 @@ class TestBuildAgentConfigLaneResolution:
     async def test_a_top_level_run_resolves_its_lane_from_user_role_and_dev_pick(
         self, mock_resolve, mock_providers
     ):
-        """resolve_lane is the single place a model is chosen; all three inputs
-        decide which one. A dropped user id resolves the wrong plan tier, a
-        dropped role the wrong reasoning budget, a dropped dev option ignores
-        the model switcher entirely."""
+        """resolve_lane is the single place a model is chosen, from the user id, role and dev option together."""
         mock_providers.get.return_value = None
         mock_resolve.return_value = (DEV_LANE, PlanType.PRO)
 
@@ -1484,8 +1425,7 @@ class TestBuildAgentConfigLaneResolution:
     async def test_a_child_run_inherits_the_parent_lane_without_resolving(
         self, mock_resolve, mock_providers
     ):
-        """Inheritance beats resolving fresh: a child that re-resolves can land
-        on a different model mid-conversation."""
+        """Inheritance beats resolving fresh: a child that re-resolves can land on a different model mid-conversation."""
         mock_providers.get.return_value = None
         mock_resolve.return_value = (DEV_LANE, None)
         parent_lane = ModelLane(
@@ -1511,8 +1451,7 @@ class TestBuildAgentConfigLaneResolution:
     @patch("app.helpers.agent_helpers.providers")
     @patch("app.helpers.agent_helpers.resolve_lane", new_callable=AsyncMock)
     async def test_a_dev_model_pick_beats_an_inherited_lane(self, mock_resolve, mock_providers):
-        """The switcher's whole purpose: an explicit dev choice outranks the
-        parent's lane, so the run resolves rather than inherits."""
+        """An explicit dev choice outranks the parent's lane, so the run resolves rather than inherits."""
         mock_providers.get.return_value = None
         mock_resolve.return_value = (DEV_LANE, None)
         parent_lane = ModelLane(
@@ -1540,9 +1479,7 @@ class TestBuildAgentConfigLaneResolution:
 class TestBuildAgentConfigLaneMetadata:
     @patch("app.helpers.agent_helpers.providers")
     async def test_metadata_carries_the_lanes_provider_and_model(self, mock_providers):
-        """The TTFT callback reads its labels off run metadata, so the lane must
-        land there exactly: a resolved lane that never reaches metadata meters
-        every sample as the wrong provider/model."""
+        """The TTFT callback reads its labels off run metadata, so the resolved lane must land there."""
         mock_providers.get.return_value = None
         lane = ModelLane(
             provider=LLMProviderName.GEMINI,
@@ -1566,8 +1503,7 @@ class TestBuildAgentConfigLaneMetadata:
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_a_lane_with_no_model_metadata_says_default(self, mock_providers):
-        """The custom dev endpoint pins no model; metadata must read "default"
-        rather than a null, which the callback would render as an unknown label."""
+        """The custom dev endpoint pins no model, so metadata reads "default" rather than a null."""
         mock_providers.get.return_value = None
         lane = ModelLane(
             provider=LLMProviderName.CUSTOM,
@@ -1593,8 +1529,7 @@ class TestBuildAgentConfigLaneMetadata:
 class TestBuildAgentConfigLangfuseWiring:
     @patch("app.helpers.agent_helpers.providers")
     async def test_the_stamp_names_this_conversation_and_this_user(self, mock_providers):
-        """Everything the trace is bound to comes from this one call: the trace,
-        the session (the conversation), the user and the tags."""
+        """Everything the trace is bound to comes from this one call: trace, session, user and tags."""
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
@@ -1615,8 +1550,7 @@ class TestBuildAgentConfigLangfuseWiring:
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_a_child_lands_on_the_parents_trace_and_tags(self, mock_providers):
-        """A child agent passes no tracing of its own, so the executor's spans
-        have to join the comms trace rather than starting a second one."""
+        """A child agent passes no tracing of its own, so its spans join the comms trace rather than starting a second one."""
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
@@ -1661,8 +1595,7 @@ class TestBuildAgentConfigLangfuseWiring:
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_an_empty_tag_list_clears_the_parents_tags(self, mock_providers):
-        """The precedence test is ``is not None``, not truthiness, precisely so a
-        caller can pass [] to mean "no tags" instead of "inherit"."""
+        """The precedence test is "is not None", not truthiness, so a caller can pass [] to mean "no tags" instead of "inherit"."""
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
@@ -1689,9 +1622,7 @@ class TestBuildAgentConfigWorkflowInheritance:
     async def test_a_workflow_without_a_title_inherits_the_documented_defaults(
         self, mock_providers
     ):
-        """A workflow fire that carried no title and no notify preference must
-        still produce a titled-by-empty-string, notify-by-default config: the
-        playbook tools read both keys unconditionally."""
+        """No title and no notify preference still produce a titled-by-empty-string, notify-by-default config."""
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
@@ -1718,9 +1649,7 @@ class TestBuildAgentConfigWorkflowInheritance:
 class TestCollectSilentToolEntries:
     @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
     async def test_a_message_without_tool_calls_never_stops_the_scan(self, mock_format):
-        """A node update carries the user's own turn alongside the model's, and
-        only the model's has ``tool_calls``. Skipping is per message: stopping at
-        the first one drops every tool card after it."""
+        """Skipping is per message: stopping at the first non-tool message drops every tool card after it."""
         mock_format.return_value = {"tool_name": "custom_tool"}
         ai = AIMessage(
             content="",
@@ -1738,8 +1667,7 @@ class TestCollectSilentToolEntries:
 
     @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
     async def test_an_unusable_tool_call_is_skipped_and_the_rest_still_emit(self, mock_format):
-        """An id-less call and an already-emitted one are both skipped, and the
-        scan continues: a break here loses every later call in the same message."""
+        """An id-less call and an already-emitted one are both skipped without stopping the scan."""
         mock_format.return_value = {"tool_name": "custom_tool"}
         msg = MagicMock()
         msg.tool_calls = [
@@ -1757,8 +1685,7 @@ class TestCollectSilentToolEntries:
 
     @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
     async def test_a_todo_tool_call_is_skipped_without_ending_the_scan(self, mock_format):
-        """Todo tools already stream todo_progress, so their cards are noise —
-        but the calls that follow them in the same message are not."""
+        """Todo tools already stream todo_progress and are skipped, but calls that follow them in the same message are not."""
         mock_format.return_value = {"tool_name": "custom_tool"}
         msg = MagicMock()
         msg.tool_calls = [
@@ -1778,8 +1705,7 @@ class TestCollectSilentToolEntries:
     async def test_a_handoff_with_no_named_subagent_resolves_no_metadata(
         self, mock_handoff, mock_format
     ):
-        """A half-assembled handoff carries no args, or empty ones. Both mean
-        "no subagent named yet", and neither may reach the registry."""
+        """No args and empty args both mean "no subagent named yet", and neither may reach the registry."""
         mock_format.return_value = {"tool_name": "handoff"}
         no_args = MagicMock()
         no_args.tool_calls = [{"id": "tc_a", "name": "handoff"}]
@@ -1797,9 +1723,7 @@ class TestCollectSilentToolEntries:
     async def test_handoff_metadata_reaches_the_formatter_field_by_field(
         self, mock_handoff, mock_format
     ):
-        """Each display field is forwarded under its own name. A crossed or
-        dropped one type-checks fine (all three are ``str | None``) and shows up
-        only as a subagent card with the wrong icon or no integration."""
+        """Each display field is forwarded under its own name — a crossed one would type-check fine since all three are str | None."""
         mock_handoff.return_value = {
             "icon_url": "https://icon.png",
             "integration_id": "github",
@@ -1830,8 +1754,7 @@ class TestCollectSilentToolEntries:
 class TestAccumulateSilentCustomEvent:
     @patch("app.helpers.agent_helpers.process_custom_event_for_tools", return_value=None)
     def test_a_todo_snapshot_is_filed_under_its_own_source(self, _mock_process):
-        """The accumulator is keyed by source so the planner's and the executor's
-        snapshots do not overwrite each other."""
+        """The accumulator is keyed by source so the planner's and the executor's snapshots do not overwrite each other."""
         accumulated: dict = {}
 
         _accumulate_silent_custom_event(
@@ -1845,8 +1768,7 @@ class TestAccumulateSilentCustomEvent:
 
     @patch("app.helpers.agent_helpers.process_custom_event_for_tools", return_value=None)
     def test_a_sourceless_todo_snapshot_is_filed_under_the_executor(self, _mock_process):
-        """The executor is the emitter that predates the source field, so an
-        unlabelled snapshot is its."""
+        """The executor predates the source field, so an unlabelled snapshot is its."""
         accumulated: dict = {}
 
         _accumulate_silent_custom_event(
@@ -1874,9 +1796,7 @@ class TestAccumulateSilentCustomEvent:
 
 class TestHoldSilentChunk:
     def test_only_the_models_own_chunks_are_held(self):
-        """The "messages" stream carries every message type; only an AI chunk is
-        a reply-in-progress. Both halves of the guard matter — a present chunk
-        that is not the model's must hold nothing."""
+        """Only an AI chunk is a reply-in-progress; a present chunk that is not the model's must hold nothing."""
         message_texts: dict[str, str] = {}
 
         _hold_silent_chunk(
@@ -1901,8 +1821,7 @@ class TestHoldSilentChunk:
         assert message_texts == {"m1": "half a reply"}
 
     def test_a_chunk_marked_silent_is_dropped(self):
-        """Follow-up-action generation rides the same stream and must never land
-        in the user-visible reply."""
+        """Follow-up-action generation rides the same stream and must never land in the user-visible reply."""
         message_texts: dict[str, str] = {}
 
         _hold_silent_chunk(
@@ -1924,8 +1843,7 @@ class TestHoldSilentChunk:
 class TestRecordInterruptionQuietly:
     @patch("app.helpers.agent_helpers.record_interruption", new_callable=AsyncMock)
     async def test_the_interruption_is_recorded_against_this_run(self, mock_record):
-        """Both the graph and its config identify WHICH run was interrupted; a
-        recording against the wrong one, or against nothing, is a lost cancel."""
+        """Both the graph and its config identify which run was interrupted — recording against the wrong one is a lost cancel."""
         graph, config = MagicMock(), {"configurable": {"thread_id": CONV_ID}}
 
         await _record_interruption_quietly(graph, config)
@@ -1937,9 +1855,7 @@ class TestRecordInterruptionQuietly:
     async def test_a_failed_recording_is_swallowed_and_reported_in_full(
         self, mock_record, mock_log
     ):
-        """The cancel ack must still reach the client, so the failure is logged
-        rather than raised — which makes the log the ONLY evidence it happened.
-        The error text and its type both have to be the real ones."""
+        """The cancel ack must still reach the client, so the failure is logged rather than raised, with the real error text and type."""
         mock_record.side_effect = ValueError("checkpointer down")
 
         await _record_interruption_quietly(MagicMock(), {})

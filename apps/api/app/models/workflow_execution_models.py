@@ -1,9 +1,3 @@
-"""
-Workflow Execution Models.
-
-Models for tracking workflow execution history.
-"""
-
 from collections.abc import Callable, Mapping
 from datetime import datetime
 import json
@@ -22,24 +16,11 @@ RESULT_DIGEST_MAX_CHARS = 4000
 
 
 def build_result_digest(output: object, max_chars: int = RESULT_DIGEST_MAX_CHARS) -> str:
-    """A tool's result, always within ``max_chars`` and never cut mid-structure.
+    """A tool's result, kept within max_chars without truncating mid-structure.
 
-    The digest is not decoration. ``$last_run.<TOOL>.<path>`` resolves against
-    it and a replay's narration reads it as what the tool returned, so a blind
-    slice breaks both at once: JSON cut mid-token stops parsing, a cursor then
-    silently resolves to nothing, and the narration describes a fragment as if
-    it were the whole result. A JSON payload is therefore re-serialised compactly
-    and, when it still does not fit, has its long strings cut and marked, then
-    loses whole elements off the end rather than half of one. Only a result that
-    is not JSON is truncated as text.
-
-    The bound is guaranteed for every input: ``RecordedCall.result_digest``
-    enforces it, and a record that fails to build after the tool already ran
-    loses the trace the run was keeping.
-
-    The record uses the default bound so history stops growing with the number
-    of runs; a reader that writes from the result (a replay's narration) passes
-    a bound sized for what a model can read, not for what a document can hold.
+    JSON is re-serialised compactly, then has long strings cut, then drops whole
+    elements off the end — never mid-token, since $last_run.<path> resolves
+    against this and a replay reads it as the full result. Non-JSON truncates as text.
     """
     if output is None:
         return ""
@@ -78,7 +59,7 @@ def _trim_strings(value: object, limit: int) -> object:
 def _fit_elements(
     items: list[Any], rebuild: Callable[[list[Any]], object], max_chars: int
 ) -> str | None:
-    """The value with elements shed off the end until it fits; ``None`` when not
+    """The value with elements shed off the end until it fits; None when not
     even the first element fits, so the caller keeps cutting strings instead of
     recording a list that had items as an empty one."""
     kept: list[Any] = []
@@ -93,17 +74,11 @@ def _fit_elements(
 
 
 def _bounded_json(value: object, max_chars: int) -> str:
-    """``value`` as compact JSON within the bound, valid JSON wherever that is possible.
+    """Compact JSON within the bound, valid JSON wherever possible.
 
-    Long strings are cut before any element is shed: three emails whose bodies
-    each outweigh the bound must be recorded as three cut emails, not one whole
-    one, because the ids and subjects are the record and the bodies are not.
-    The cut applies to the whole value, so a big non-list sibling (a page's
-    ``html`` beside its ``links``) cannot hold the digest over the bound. When
-    that still does not fit, whole elements are shed off the end of the largest
-    list; when even that is not enough the string limit halves and both steps
-    repeat, down to strings that are only their cut marker. A value with no
-    strings left to cut and still too big is the one case sliced as text.
+    Long strings are cut before elements are shed (three emails over budget stay
+    three cut emails, not one whole one). Elements then shed off the largest list;
+    the string limit halves and both repeat until nothing is left to cut, sliced as text.
     """
     digest = _compact(value)
     if len(digest) <= max_chars:
@@ -129,10 +104,10 @@ def _as_is(items: list[Any]) -> object:
 def _largest_sequence(
     value: object,
 ) -> tuple[list[Any] | None, Callable[[list[Any]], object]]:
-    """The list inside ``value`` worth shedding, and how to put it back.
+    """The list inside value worth shedding, and how to put it back.
 
     Searched at any depth under dicts, because tool results are envelopes: the
-    list that carries the bulk sits under ``data``, and a search that stopped
+    list that carries the bulk sits under data, and a search that stopped
     at the top level found nothing to shed and fell back to a blind slice.
     """
     if isinstance(value, list):
@@ -171,7 +146,7 @@ def parse_result(text: str) -> object:
     """A tool result as JSON when it is a JSON document, and as its own text otherwise.
 
     The document may be followed by a note a middleware appended for the model
-    after ``TOOL_RESULT_NOTE_SEPARATOR``; the note is not part of the result.
+    after TOOL_RESULT_NOTE_SEPARATOR; the note is not part of the result.
     Anything else after a document means the text was never a document ("3
     items found" starts with a number and is prose).
     """
@@ -189,18 +164,9 @@ def parse_result(text: str) -> object:
 def carries_no_data(value: object) -> bool:
     """Whether a tool's result came back with nothing in it.
 
-    ``largest_list_len`` answers a different question: it finds the largest list
-    ANYWHERE in the result, so an empty attribute of a record the call did
-    return reads as "no items". ``create_todo`` answers with the todo it just
-    made, whose ``labels`` is ``[]`` when the caller passed none, and four of
-    the eight suspect playbooks in production were exactly that.
-
-    So the question here is whether the result carries any DATA. Empty lists,
-    empty dicts, empty strings and nulls are not data. Booleans are not data
-    either: ``successful: true`` is the provider envelope's bookkeeping, present
-    on every result whether or not it found anything. Anything left over, a
-    string, a number, or a list with something in it, means the call answered
-    with something and the run has no gap to paper over.
+    Unlike largest_list_len (largest list ANYWHERE), this asks whether the result
+    carries DATA: empty lists/dicts/strings/nulls aren't data, nor is a bool
+    (successful: true is envelope bookkeeping present on every result either way).
     """
     if isinstance(value, bool) or value is None:
         return True
@@ -219,9 +185,9 @@ def carries_no_data(value: object) -> bool:
 
 
 def largest_list_len(value: object) -> int | None:
-    """Length of the largest list anywhere inside ``value``; ``None`` when it has none.
+    """Length of the largest list anywhere inside value; None when it has none.
 
-    Tool results are envelopes (``{"data": {"messages": [...]}}``), so "did this
+    Tool results are envelopes ({"data": {"messages": [...]}}), so "did this
     call return any items" has to look past the top level. Shared by the replay's
     empty-result check and the handoff call record, so both agree on what empty
     means.
@@ -243,12 +209,9 @@ def largest_list_len(value: object) -> int | None:
     return best
 
 
-# The run-states an execution record may hold: created as ``running``, then
-# exactly one terminal write. Named once here because the document, the update
-# model, the repository's ``complete`` and the service's ``complete_execution``
-# all speak it (Type Safety items 3 and 5).
-#: ``skipped``: the fire never ran because another run of the same workflow
-#: was in flight; that run delivered the result. Not a failure to show in red.
+# Run-states an execution record may hold (Type Safety items 3, 5): created as
+# running, then exactly one terminal write. skipped means another run of the
+# same workflow was already in flight and delivered the result — not a failure.
 WorkflowExecutionStatus = Literal["running", "success", "failed", "skipped"]
 
 
@@ -307,10 +270,9 @@ class WorkflowExecution(ResponseModel):
         default="manual",
         description="What triggered the execution: manual, schedule, or integration name",
     )
-    #: What this run actually did, in order. Replaces the LangGraph checkpoint as
-    #: the way a workflow remembers itself: the previous run's trace is injected
-    #: into the next run's opening message, so history stops being re-sent as a
-    #: full transcript on every fire.
+    #: What this run did, in order. Replaces the LangGraph checkpoint as how a
+    #: workflow remembers itself: the previous run's trace is injected into the
+    #: next run's opening message, instead of re-sending history as a full transcript.
     trace: list[RecordedCall] = Field(default_factory=list)
 
 
@@ -327,9 +289,9 @@ class WorkflowExecutionsResponse(ResponseModel):
 class WorkflowExecutionDocument(WorkflowExecution, MongoDocument):
     """A workflow execution as stored in MongoDB.
 
-    Identity is the business key ``execution_id``; Mongo's ``_id`` is an
-    incidental ObjectId and the inherited ``id`` is unused. Being a subclass of
-    ``WorkflowExecution`` it doubles as the API/read model directly.
+    Identity is the business key execution_id; Mongo's _id is an
+    incidental ObjectId and the inherited id is unused. Being a subclass of
+    WorkflowExecution it doubles as the API/read model directly.
     """
 
 

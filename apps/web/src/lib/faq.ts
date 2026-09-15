@@ -90,9 +90,6 @@ export function getFAQSchema() {
   return generateFAQSchema(faqData);
 }
 
-/**
- * Get all FAQs
- */
 export function getAllFAQs(): FAQItem[] {
   return faqData;
 }

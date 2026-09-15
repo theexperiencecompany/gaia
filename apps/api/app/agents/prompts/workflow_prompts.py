@@ -1,6 +1,4 @@
-"""
-Workflow generation prompts for GAIA workflow system.
-"""
+"""Workflow generation prompts for GAIA workflow system."""
 
 # =============================================================================
 # WHAT A WORKFLOW'S EXECUTION PROMPT MAY CONTAIN
@@ -8,8 +6,7 @@ Workflow generation prompts for GAIA workflow system.
 
 # Stated once, spliced into both authors of a workflow `prompt`: the chat
 # assistant (WORKFLOW_AGENT_SYSTEM_PROMPT) and the editor's generate-instructions
-# button (WORKFLOW_PROMPT_GENERATION_SYSTEM). One copy is what stops the two from
-# drifting, which is how the assistant ended up with no rule at all.
+# button (WORKFLOW_PROMPT_GENERATION_SYSTEM), so the two can't drift apart.
 WORKFLOW_INSTRUCTIONS_CONTRACT = """The executor reads these instructions after the trigger has
 already fired and handed over its data, so they say only WHAT TO DO. Leave out when the run
 happens (cron, clock times, "every morning"), what started it ("when a new email arrives"), and

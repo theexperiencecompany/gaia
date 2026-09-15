@@ -6,12 +6,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-#: The score at or above which a gate counts as satisfied.
-#:
-#: It lives here because two modules have to agree on it: the run loop grades a
-#: case against it, and the falsifiability sweep asks whether a forgery cleared
-#: it. Two literals drift, and a drift makes the sweep report a gate as proven
-#: while the run loop passes it.
+#: The score at or above which a gate counts as satisfied. Shared here so the
+#: run loop and the falsifiability sweep can't drift onto two literals — a
+#: drift would make the sweep report a gate as proven while the run loop passes it.
 GATE_PASS_THRESHOLD = 0.5
 
 
@@ -33,16 +30,12 @@ class Case:
 
     @property
     def skip_reason(self) -> str:
-        """Why we decline to attempt this case, or "" if we attempt it.
+        """Return why this case is declined, or "" if it is attempted.
 
-        A skip is not an outage. An outage means we failed to conduct the test
-        and the case leaves the denominator; a skip means the question was asked
-        of us and we have no way to answer it — an unsupported attachment, a
-        capability we lack — which on an external benchmark is a wrong answer
-        worth 0.0, in the denominator, exactly as that benchmark's own scorer
-        counts it. Declared on the case rather than inferred from the run's error
-        text, because a skip and a crash both arrive as a string and telling them
-        apart by reading it is how they got conflated in the first place.
+        A skip is not an outage: an outage leaves the denominator, while a
+        skip (unsupported attachment, missing capability) is a wrong answer
+        worth 0.0, in the denominator, per the benchmark's own scorer.
+        Declared on the case rather than inferred from the run's error text.
         """
         return str(self.expected.get("skip_reason") or "")
 
@@ -168,10 +161,9 @@ class CaseTrace:
             "provider": self.provider,
             "model": self.model,
             "status": self.status,
-            # The dimension every dashboard breaks accuracy down by. A suite's
-            # aggregate pass rate hides which capability is broken, and Opik can
-            # only group by a key the trace actually carries — so a case's
-            # category has to travel with it, not stay behind in the journal.
+            # The dimension every dashboard breaks accuracy down by: Opik can
+            # only group by a key the trace carries, so category travels with
+            # it rather than staying behind in the journal.
             "category": self.category,
             "ticket": self.ticket,
             "rescored": self.rescored,
@@ -189,8 +181,7 @@ class CaseTrace:
 
     @property
     def started_at(self) -> datetime:
-        """Real wall-clock start, so replayed traces land on the timeline they
-        actually ran on instead of bunching up at seed time."""
+        """Return the real wall-clock start, so replayed traces land on the timeline they actually ran on instead of bunching up at seed time."""
         return self.ended_at - timedelta(seconds=self.duration_s)
 
     @property
@@ -217,16 +208,12 @@ class CaseTrace:
 
     @property
     def error_info(self) -> dict[str, str] | None:
-        """Opik's error envelope — for cases that ERRORED, never merely failed.
+        """Return Opik's error envelope — for cases that ERRORED, never merely failed.
 
-        A graded wrong answer records why it was wrong in ``error`` too ("gate
-        score below threshold"), and writing that into the envelope made every
-        failed case count as an error in Opik's project list — 105 phantom
-        "errors" on suites whose runs had zero. The envelope means "the machine
-        broke", and only an errored status earns it.
-
-        All three keys are required by the API — omitting ``traceback`` fails
-        validation and silently drops the whole trace.
+        Writing a failed case's "gate score below threshold" into the
+        envelope once produced 105 phantom "errors" on suites with zero. All
+        three keys are required by the API — omitting traceback silently
+        drops the whole trace.
         """
         if not self.error or self.status != "errored":
             return None
@@ -249,13 +236,10 @@ class CaseTrace:
     ) -> CaseTrace:
         """Build the trace for one journaled case.
 
-        ``suite`` and ``app_version`` are required, and keyword-only, because
-        they used to default to "". The seeder passed them and the live run loop
-        did not, so every trace written during a run was missing both while the
-        same case re-seeded later carried them — two sources of truth for one
-        trace, reconciled only by whoever happened to re-seed. A default is what
-        let one caller silently omit them; without one, the omission is a
-        TypeError at import time rather than a blank field in a dashboard.
+        suite and app_version are required and keyword-only because a
+        default let the live run loop silently omit them while the seeder
+        passed them, giving one case two sources of truth. Without a
+        default, the omission is a TypeError, not a blank dashboard field.
         """
         tokens = record.get("tokens") or {}
         tokens_in = int(tokens.get("input", 0))
@@ -298,7 +282,7 @@ class CaseTrace:
 
 
 def _parse_ts(value: object) -> datetime:
-    """Journal timestamp, falling back to now for pre-``ts`` records."""
+    """Journal timestamp, falling back to now for pre-ts records."""
     if isinstance(value, str):
         try:
             return datetime.fromisoformat(value)
@@ -308,7 +292,7 @@ def _parse_ts(value: object) -> datetime:
 
 
 def _last_assistant(messages: list[dict[str, str]]) -> str:
-    """Fallback output for journals written before records carried ``text``."""
+    """Fallback output for journals written before records carried text."""
     for message in reversed(messages):
         if message.get("role") == "assistant":
             return str(message.get("content", ""))
@@ -333,7 +317,7 @@ class ProviderError(Exception):
 class InfraError(Exception):
     """Raised by a transport when a backend the suite needs is unavailable.
 
-    Distinct from :class:`ProviderError`: rotating to another LLM lane cannot
+    Distinct from :class:ProviderError: rotating to another LLM lane cannot
     fix a dead datastore, and nothing about the agent was measured. The run
     loop aborts instead of journaling cases that never ran — an outage graded
     as a wrong answer becomes a fabricated 0% in the report.

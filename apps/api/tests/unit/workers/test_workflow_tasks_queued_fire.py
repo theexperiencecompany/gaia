@@ -2,16 +2,16 @@
 
 One executor runs per conversation. A workflow whose agentic run takes longer
 than its own cron period fires again while the previous run still holds that
-conversation's busy lock, so ``call_executor`` puts the new fire on the queue
+conversation's busy lock, so call_executor puts the new fire on the queue
 and answers with an acknowledgement instead of running anything. The comms agent
 treats that acknowledgement as its result and the fire completed in ~15s with
-``status="success"``, ``summary="Workflow executed"`` and a trace holding one
-``call_executor`` call — with a */5 cron over a five-minute run, EVERY record
+status="success", summary="Workflow executed" and a trace holding one
+call_executor call — with a */5 cron over a five-minute run, EVERY record
 after the first was a fake success, and the record the next run reads as its own
 history said the workflow had done its job.
 
-These tests drive the real ``execute_workflow_by_id`` → ``_run_workflow`` →
-``execute_workflow_as_chat`` path with only its I/O edges mocked, so the queued
+These tests drive the real execute_workflow_by_id → _run_workflow →
+execute_workflow_as_chat path with only its I/O edges mocked, so the queued
 outcome is decided by the production code, not by the harness.
 """
 
@@ -87,7 +87,7 @@ class _Harness:
         )
 
     def workflow_event(self) -> dict[str, object]:
-        """The merged ``workflow`` wide-event namespace this fire stamped.
+        """Return the merged workflow wide-event namespace this fire stamped.
 
         Production can only tell a queued fire from a real one by this
         namespace, so it is asserted as a contract, not as incidental logging.
@@ -158,8 +158,7 @@ async def test_a_queued_fire_is_not_recorded_as_a_successful_execution() -> None
 
 
 async def test_a_queued_fire_records_why_it_did_not_run_in_plain_words() -> None:
-    """The record is read by the workflow's owner: what happened and what to
-    change, no task ids (those go to the log)."""
+    """The record is read by the workflow's owner: what happened, and what to change."""
     harness = _Harness(_workflow(), queued_task_id=QUEUED_TASK_ID)
 
     await _fire(harness)
@@ -184,11 +183,7 @@ async def test_a_queued_fire_is_not_counted_as_a_successful_run() -> None:
 
 
 async def test_a_queued_fire_notifies_the_user_of_nothing() -> None:
-    """No 'done' and no 'failed': the queued task still runs and reports itself.
-
-    Telling the user their workflow finished is the user-visible half of the
-    lie; telling them it broke would be a second one, since nothing broke.
-    """
+    """No 'done' and no 'failed': the queued task still runs and reports itself."""
     harness = _Harness(_workflow(), queued_task_id=QUEUED_TASK_ID)
 
     await _fire(harness)
@@ -235,7 +230,7 @@ SCHEDULED_FOR = datetime(2026, 5, 1, 9, 0, tzinfo=UTC)
 
 
 async def _fire_at_a_fixed_occurrence(harness: _Harness) -> str:
-    """The same scheduled fire as ``_fire``, pinned to a known occurrence."""
+    """Fire the same scheduled workflow as _fire, pinned to a known occurrence."""
     with ExitStack() as stack:
         for patcher in harness.patches():
             stack.enter_context(patcher)
@@ -250,9 +245,7 @@ async def _fire_at_a_fixed_occurrence(harness: _Harness) -> str:
 
 
 class TestAQueuedFiresBookkeepingIsAddressedCorrectly:
-    """The record, the counter and the log line each carry an id. A fire that
-    books itself against the wrong workflow, user or task is worse than one
-    that books nothing: it is wrong data nobody goes looking for."""
+    """A fire booked against the wrong workflow, user or task is worse than not booked at all."""
 
     async def test_the_event_says_the_fire_was_queued_in_the_words_production_greps_for(
         self,
@@ -305,8 +298,7 @@ class TestAQueuedFiresBookkeepingIsAddressedCorrectly:
         ]
 
     async def test_a_rearm_failure_names_the_workflow_it_could_not_arm(self) -> None:
-        """Without the id, the error line cannot be traced to a schedule that
-        has silently stopped advancing."""
+        """Without the id, the error line cannot be traced to a schedule that stalled."""
         harness = _Harness(_workflow(), queued_task_id=QUEUED_TASK_ID)
         harness.scheduler.handle_recurring_task = AsyncMock(side_effect=RuntimeError("redis away"))
 
@@ -345,8 +337,7 @@ class TestASuccessfulFiresBookkeepingIsAddressedCorrectly:
     async def test_the_daily_cost_wall_is_checked_for_this_user_and_this_feature(
         self,
     ) -> None:
-        """The wall runs before any record or LLM work; a blank user or feature
-        key would let a spent budget through."""
+        """The wall runs before any record or LLM work; a blank key would let a spent budget through."""
         harness = _Harness(_workflow(), queued_task_id=None)
 
         await _fire(harness)
@@ -358,9 +349,7 @@ class TestASuccessfulFiresBookkeepingIsAddressedCorrectly:
     async def test_a_scheduled_fire_claims_the_occurrence_it_was_armed_for(
         self,
     ) -> None:
-        """ARQ cannot cancel a deferred job, so the claim is pinned to the
-        occurrence — an unpinned claim runs a workflow at a time it was
-        rescheduled away from."""
+        """ARQ cannot cancel a deferred job, so the claim is pinned to the occurrence."""
         harness = _Harness(_workflow(), queued_task_id=None)
 
         await _fire_at_a_fixed_occurrence(harness)
@@ -372,8 +361,7 @@ class TestASuccessfulFiresBookkeepingIsAddressedCorrectly:
     async def test_a_background_completion_is_captured_under_its_real_trigger_type(
         self,
     ) -> None:
-        """The run-now endpoint captures manual fires itself; only background
-        origins are captured here, and only with the type they actually had."""
+        """Only background origins are captured here, with the type they actually had."""
         harness = _Harness(_workflow(), queued_task_id=None)
 
         await _fire(harness)
@@ -407,8 +395,7 @@ class TestASuccessfulFiresBookkeepingIsAddressedCorrectly:
 
 
 class TestTheChatRunPersistsTheTriggerTurnItself:
-    """The trigger turn is what the UI renders as the workflow card; the result
-    is saved by the delivery path, so this turn is all this function writes."""
+    """The trigger turn is what the UI renders as the workflow card; the result is saved elsewhere."""
 
     async def test_the_run_announces_itself_under_the_workflow_and_user_it_runs_for(
         self,
@@ -427,8 +414,7 @@ class TestTheChatRunPersistsTheTriggerTurnItself:
     async def test_the_conversations_checkpoint_threads_are_reset_before_the_run(
         self,
     ) -> None:
-        """Without the reset the run replays every previous run out of the
-        checkpoints instead of reading this fire's recorded trace."""
+        """Without the reset the run replays every previous run out of the checkpoints."""
         harness = _Harness(_workflow(), queued_task_id=None)
 
         await _fire(harness)
@@ -454,8 +440,7 @@ class TestTheChatRunPersistsTheTriggerTurnItself:
 
 
 class TestAFireCutOffByTheJobTimeoutIsBookedAgainstTheRightIds:
-    """ARQ cancels the job rather than raising into it, so this is the only
-    place the fire can be closed — and it has to close the right record."""
+    """ARQ cancels the job rather than raising into it, so this is the only place to close the fire."""
 
     async def test_the_timeout_is_named_recorded_counted_and_rearmed(self) -> None:
         harness = _Harness(_workflow(), queued_task_id=None)
@@ -488,8 +473,7 @@ class TestAFireCutOffByTheJobTimeoutIsBookedAgainstTheRightIds:
     async def test_the_shortcut_is_marked_failed_for_this_workflow_and_user(
         self,
     ) -> None:
-        """Whatever the replay was doing may have run its side effects before
-        the cut, so the next fire must heal rather than replay them again."""
+        """A cut replay may have run side effects; the next fire must heal, not replay them again."""
         harness = _Harness(_workflow(), queued_task_id=None)
         harness.agent = AsyncMock(side_effect=asyncio.CancelledError())
 

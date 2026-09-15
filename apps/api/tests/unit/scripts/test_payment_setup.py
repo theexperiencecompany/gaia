@@ -1,11 +1,11 @@
 """Unit tests for the subscription-plan seed script.
 
 Two behaviors decide whether a production run is safe: the script must not
-rewrite a plan whose content already matches (so `--dry-run` predicts the real
+rewrite a plan whose content already matches (so --dry-run predicts the real
 run), and a failure to clear the plan cache must surface rather than print a
 success the API contradicts.
 
-No `regression` markers here — every symbol under test is introduced by this
+No regression markers here — every symbol under test is introduced by this
 change, so these tests cannot run against the base revision at all, and an
 import error is not proof of anything. The mutation check that backs them is
 in the PR: reverting either behavior turns these red.
@@ -25,7 +25,7 @@ from scripts.payment_setup import (
 
 
 def _stored_document(plan, **overrides):
-    """The catalogue plan as Mongo would hand it back, with an older timestamp."""
+    """Build the catalogue plan as Mongo would hand it back, with an older timestamp."""
     stored = {
         "_id": "plan-id",
         **catalogue_fields(plan),
@@ -108,8 +108,7 @@ def test_catalogue_has_no_free_plan() -> None:
 
 
 async def test_deactivate_free_plan_marks_an_existing_active_free_row_inactive() -> None:
-    """A Free row left over from before the paid-only cutover is turned off,
-    not deleted — so the historical record survives."""
+    """A leftover Free row is turned off, not deleted, so the historical record survives."""
     collection = AsyncMock()
     collection.find_one.return_value = {"_id": "free-id", "name": "Free", "is_active": True}
 
@@ -132,8 +131,7 @@ async def test_deactivate_free_plan_dry_run_writes_nothing() -> None:
 
 
 async def test_deactivate_free_plan_is_a_noop_when_no_active_free_row_exists() -> None:
-    """Idempotent: a second run (or a catalogue that never had Free) does
-    nothing rather than erroring."""
+    """Idempotent: a second run, or a catalogue that never had Free, does nothing rather than erroring."""
     collection = AsyncMock()
     collection.find_one.return_value = None
 

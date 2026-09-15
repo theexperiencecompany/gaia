@@ -186,9 +186,10 @@ class TestResolveAttachmentsSync:
 
 
 class TestUrlIsGuardedBeforeComposioFetches:
-    """Composio fetches an attachment URL from *this* process, with no address
-    policy of its own — so a model-supplied URL is an SSRF primitive unless the
-    guard runs here. Literal IPs keep these hermetic: no DNS is performed."""
+    """An SSRF primitive unless guarded here: Composio fetches the URL from this process with no address policy of its own.
+
+    Literal IPs keep these hermetic — no DNS is performed.
+    """
 
     def _resolve_url(self, url: str) -> AppError:
         with (

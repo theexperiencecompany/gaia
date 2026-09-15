@@ -1,13 +1,13 @@
-"""Unit tests for the persistent `write` coding tool (write_tool.py).
+"""Unit tests for the persistent write coding tool (write_tool.py).
 
 Pins the tool's own contract: which paths are rejected, the exact byte
 counts/paths it reports, and the exact payloads it passes to the sandbox,
 stream-event, and artifact-publish seams. Only the E2B/sandbox and event
-seams are mocked (``acquire_sandbox``, ``atomic_write``, ``add_fs_bytes``,
-``safe_emit``, ``publish_artifact_write``, the rate-limiter's Redis seams);
-``canonical_path`` and ``fs_timer`` run real, so the rejection branches
+seams are mocked (acquire_sandbox, atomic_write, add_fs_bytes,
+safe_emit, publish_artifact_write, the rate-limiter's Redis seams);
+canonical_path and fs_timer run real, so the rejection branches
 (path escape, read-only uploads, missing user) exercise production logic.
-``atomic_write``, ``canonical_path`` and ``publish_artifact_write`` have
+atomic_write, canonical_path and publish_artifact_write have
 their own layer-2 tests (test_atomic_write.py, test_canonical_path.py,
 test_artifact_publish.py); this file only checks how write routes through
 them.
@@ -50,7 +50,7 @@ SCRATCH_PATH = "/workspace/sessions/conv-1/scratch/notes.md"
 
 @pytest.fixture(autouse=True)
 def _rate_limit_passes() -> None:
-    """The @with_rate_limiting seam (not under test) — fixed to pass.
+    """Fix the @with_rate_limiting seam (not under test) to pass.
 
     write is invoked with a chat-shaped config, so the wrapper's user-context
     branch runs; its Redis lookups are the seam, not write's logic.

@@ -116,33 +116,29 @@ def test_test_files_for_finds_patch_string(tmp_path: Path) -> None:
     assert hits == [str(tmp_path / "tests/unit/api/test_conversations.py")]
 
 
-def test_tokens_without_comments_treats_trailing_and_whole_line_comments_as_inert() -> None:
-    """A trailing `# noqa` and a whole-line comment both disappear from the
-    token stream — the two shapes the suppression burn-down actually produced.
-    """
-    with_comments = mm._tokens_without_comments(
-        "try:\n    pass\nexcept Exception as e:  # noqa: BLE001\n    pass\n# a whole line comment\ny = 2\n"
+def test_code_without_docs_treats_comments_and_docstrings_as_inert() -> None:
+    """Drop trailing and whole-line comments and docstrings from the comparison."""
+    documented = mm._code_without_docs(
+        '"""Module."""\ntry:\n    pass\nexcept Exception as e:  # noqa: BLE001\n    pass\n# a whole line comment\ny = 2\n'
     )
-    without_comments = mm._tokens_without_comments(
-        "try:\n    pass\nexcept Exception as e:\n    pass\ny = 2\n"
-    )
+    bare = mm._code_without_docs("try:\n    pass\nexcept Exception as e:\n    pass\ny = 2\n")
 
-    assert with_comments == without_comments
+    assert documented == bare
 
 
-def test_tokens_without_comments_still_distinguishes_real_code_changes() -> None:
-    a = mm._tokens_without_comments("return 1  # noqa: E501\n")
-    b = mm._tokens_without_comments("return 2\n")
+def test_code_without_docs_still_distinguishes_real_code_changes() -> None:
+    a = mm._code_without_docs("x = 1  # noqa: E501\n")
+    b = mm._code_without_docs("x = 2\n")
 
     assert a != b
 
 
-def test_tokens_without_comments_returns_none_on_syntax_error() -> None:
-    assert mm._tokens_without_comments("def f(:\n") is None
+def test_code_without_docs_returns_none_on_syntax_error() -> None:
+    assert mm._code_without_docs("def f(:\n") is None
 
 
 def _init_repo_with_commit(root: Path, content: str) -> str:
-    """A throwaway git repo with one file committed; returns that commit's sha."""
+    """Commit one file to a throwaway git repo and return that commit's sha."""
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.name", "test"], cwd=root, check=True)
@@ -163,6 +159,30 @@ def test_is_comment_only_change_true_when_only_a_trailing_noqa_is_removed(
     monkeypatch.chdir(tmp_path)
 
     assert mm._is_comment_only_change("mod.py", base_sha) is True
+
+
+def test_is_comment_only_change_true_when_only_docstrings_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base_sha = _init_repo_with_commit(
+        tmp_path, '"""Module ``doc``."""\n\n\ndef f():\n    """Old summary."""\n    return 1\n'
+    )
+    (tmp_path / "mod.py").write_text('def f():\n    """New summary."""\n    return 1\n')
+
+    monkeypatch.chdir(tmp_path)
+
+    assert mm._is_comment_only_change("mod.py", base_sha) is True
+
+
+def test_is_comment_only_change_false_when_a_non_docstring_string_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base_sha = _init_repo_with_commit(tmp_path, 'def f():\n    x = "a"\n    return x\n')
+    (tmp_path / "mod.py").write_text('def f():\n    x = "b"\n    return x\n')
+
+    monkeypatch.chdir(tmp_path)
+
+    assert mm._is_comment_only_change("mod.py", base_sha) is False
 
 
 def test_is_comment_only_change_false_when_a_return_value_changes(

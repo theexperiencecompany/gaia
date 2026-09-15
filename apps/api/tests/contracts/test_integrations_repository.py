@@ -389,7 +389,7 @@ class TestIntegrationsRepository:
 def _keyed_integration(
     integration_id: str, name: str, owner: str, server_url: str, normalized: str
 ) -> Integration:
-    """A custom integration carrying the dedup key, as create_custom_integration writes."""
+    """Build a custom integration carrying the dedup key, as create_custom_integration writes."""
     return _integration(
         integration_id,
         name,

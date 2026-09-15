@@ -20,17 +20,8 @@ import pytest
 
 from app.models.trigger_config import TriggerOptionsQuery
 
-# ---------------------------------------------------------------------------
-# Break the circular import chain BEFORE importing any app.services.triggers
-# modules.
-#
-# Chain: triggers/__init__ -> handlers/* -> triggers/base
-#        -> workflow.queue_service -> workflow/__init__ -> workflow/service
-#        -> workflow/trigger_service -> triggers (still loading!) => CIRCULAR
-#
-# By pre-seeding sys.modules with a mock for workflow.trigger_service we
-# prevent workflow/service.py from reaching back into app.services.triggers.
-# ---------------------------------------------------------------------------
+# Break the circular import (triggers -> handlers -> workflow.service -> workflow.trigger_service
+# -> triggers) by pre-seeding sys.modules with a workflow.trigger_service mock before importing.
 _trigger_service_stub = ModuleType("app.services.workflow.trigger_service")
 _trigger_service_stub.TriggerService = MagicMock()  # type: ignore[attr-defined]  # stub module gains the service attribute for patching
 
@@ -621,10 +612,8 @@ class TestGmailTriggerHandler:
         with pytest.raises(TypeError, match="Expected GmailNewMessageConfig"):
             await handler.register(USER_ID, WORKFLOW_ID, "gmail_new_message", config)
 
-    # find_workflows delegates to the workflow_repository finders (contract-tested):
-    # strategy 1 (account-level) -> find_active_integration_workflows, strategy 2
-    # (poll, by trigger id) -> find_active_by_composio_trigger. Here we verify the
-    # handler's routing and the neither-id guard.
+    # find_workflows strategy 1 (account-level) -> find_active_integration_workflows, strategy 2
+    # (poll, by trigger id) -> find_active_by_composio_trigger. Verifies routing and the neither-id guard.
     @patch("app.services.triggers.handlers.gmail.workflow_repository")
     async def test_find_workflows_no_user_id(self, mock_repo):
         mock_repo.find_active_integration_workflows = AsyncMock(return_value=[])
@@ -967,8 +956,7 @@ class TestSlackTriggerHandler:
 
     @patch("app.services.triggers.handlers.slack.workflow_repository")
     async def test_find_workflows_channel_filter_skips(self, mock_repo):
-        """A non-empty channel_ids list drives the handler's string-based filtering,
-        which calls .split on the list, raises, and the workflow is skipped."""
+        """A non-empty channel_ids list makes the handler call .split on a list, raise, and skip the workflow."""
         wf = _make_workflow(
             trigger_name="slack_new_message",
             composio_trigger_ids=[TRIGGER_ID],
@@ -1715,8 +1703,7 @@ class TestCalendarTriggerHandler:
 
     @patch("app.services.calendar_service.list_calendars")
     async def test_fetch_user_calendars_empty_items_registers_nothing(self, mock_list_calendars):
-        """An explicit empty ``items`` means the user has no calendars, which is
-        not the same as Google telling us nothing -- no primary fallback."""
+        """An explicit empty items list means no calendars, not "Google told us nothing" -- no primary fallback."""
         from app.models.calendar_models import CalendarListResponse
 
         mock_list_calendars.return_value = CalendarListResponse.model_validate({"items": []})
@@ -1735,9 +1722,7 @@ class TestCalendarTriggerHandler:
 
     @patch("app.services.calendar_service.proxy_request")
     async def test_fetch_user_calendars_rejects_a_payload_with_an_id_less_entry(self, mock_proxy):
-        """``id`` is required on a calendarList entry, so a payload missing one
-        fails validation loudly and falls back to primary instead of silently
-        registering triggers for a partial calendar set."""
+        """A calendarList entry missing id fails validation loudly and falls back to primary."""
         handler = CalendarTriggerHandler()
 
         # Positive control: the same real proxy → validate → project path returns

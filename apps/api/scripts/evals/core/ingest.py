@@ -7,11 +7,11 @@ is trustworthy.
 
 Three things make this safe to actually run:
 
-* ``--dry-run`` reports exactly what would be deleted and written, and touches
+* --dry-run reports exactly what would be deleted and written, and touches
   nothing;
-* every stage is followed by :mod:`.ingest_check`, which reads the result back
+* every stage is followed by :mod:.ingest_check, which reads the result back
   out of Opik and aborts the next stage if the numbers are impossible;
-* ``--pilot`` ingests one small suite first and checks it before committing to
+* --pilot ingests one small suite first and checks it before committing to
   the full rebuild, so a mistake costs one suite rather than everything.
 """
 
@@ -32,12 +32,12 @@ from .seed import SEEDABLE_STATUSES, seed
 
 
 def _project_of(entry: Callable[[EvalConfig], Suite]) -> str:
-    """The Opik project a registered suite writes to.
+    """Return the Opik project a registered suite writes to.
 
-    ``SUITE_REGISTRY`` is annotated as a factory callable but actually holds the
-    Suite *classes*, which carry ``project`` as a class attribute. Narrowing once
+    SUITE_REGISTRY is annotated as a factory callable but actually holds the
+    Suite *classes*, which carry project as a class attribute. Narrowing once
     here keeps the assumption in a single place; the real fix is to annotate the
-    registry as ``dict[str, type[Suite]]`` in ``runner.py``.
+    registry as dict[str, type[Suite]] in runner.py.
     """
     return str(cast(type[Suite], entry).project)
 
@@ -93,16 +93,12 @@ def survey(runs_dir: Path = RUNS_DIR) -> list[RunInfo]:
 
 
 def ingestable(runs: list[RunInfo]) -> list[RunInfo]:
-    """Runs whose measurements may be aggregated.
+    """Return runs whose measurements may be aggregated.
 
-    A run marked ``excluded`` in its ``run.json`` recorded numbers we already
-    know are wrong. Seeding it puts those numbers back into the totals — which
-    is precisely how a project came to report 461 million tokens.
-
-    A run still ``running`` is skipped too: it appends between the seed and the
-    read-back, so the reconciliation is off by however many cases landed in
-    that window — a moving target can never verify. It seeds on its next
-    finished (or aborted) ingest.
+    A run marked excluded recorded numbers already known wrong — seeding it
+    put 461 million tokens of bad data back into a project's totals. A run
+    still running is skipped too, since it's a moving target between seed
+    and read-back; it seeds on its next finished (or aborted) ingest.
     """
     return [run for run in runs if not run.excluded and run.status != "running"]
 
@@ -112,7 +108,7 @@ def suite_projects() -> dict[str, str]:
 
 
 def teardown(base_url: str, *, dry_run: bool) -> list[str]:
-    """Delete every ``gaia-*`` project, traces and all.
+    """Delete every gaia-* project, traces and all.
 
     Deleting the projects rather than their traces is not a shortcut: a single
     trace delete costs ~3.5s on this backend, so evicting one polluted project's
@@ -146,7 +142,7 @@ def verify(
 ) -> tuple[bool, str]:
     """Read projects back out of Opik and judge whether they are believable.
 
-    ``only_projects`` scopes the judgement to what a stage just wrote. A pilot
+    only_projects scopes the judgement to what a stage just wrote. A pilot
     stage that verified everything could never pass while the projects it has
     not rebuilt yet are still dirty — it would abort the rebuild it exists to
     de-risk.
@@ -154,10 +150,9 @@ def verify(
     projects = suite_projects()
     expectations = ingest_check.journal_expectations(runs_dir, projects, only_projects)
     unversioned = ingest_check.journal_missing_app_version(runs_dir, projects, only_projects)
-    # Drive from what the journals expect, not from what Opik happens to hold.
-    # Iterating the backend's project list meant a stage whose seed failed
-    # outright had nothing to inspect and was therefore reported as passing —
-    # the same "absence reads as success" defect this check exists to catch.
+    # Drive from what journals expect, not what Opik holds: iterating the
+    # backend's project list let a stage whose seed failed outright have
+    # nothing to inspect, reporting "absence as success" — what this catches.
     names = sorted(set(ingest_check.project_names(base_url)) | set(expectations))
     if only_projects is not None:
         names = [name for name in names if name in only_projects]

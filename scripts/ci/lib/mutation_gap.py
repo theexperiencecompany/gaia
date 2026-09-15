@@ -53,7 +53,7 @@ def _mutants_on(path: str, source: str, lines: set[int]) -> int:
 
 
 def mutable_changed_lines(path: str, source: str, ranges: list[list[int]]) -> list[int]:
-    """Changed lines on which mutmut generates at least one mutant."""
+    """Return changed lines on which mutmut generates at least one mutant."""
     changed = sorted({n for start, end in ranges for n in range(start, end + 1)})
     # One pass over the whole scope first: the common benign case (imports,
     # constants, deletions) returns here without a per-line parse.

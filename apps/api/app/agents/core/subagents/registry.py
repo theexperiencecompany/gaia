@@ -1,13 +1,13 @@
 """Canonical subagent registry.
 
 Single source of truth for "what subagents exist". Combines:
-- OAuth integrations whose `subagent_config.has_subagent` is True (adapted
-  via `_from_oauth`).
-- `BUILTIN_SUBAGENTS` (registered directly, no OAuth).
+- OAuth integrations whose subagent_config.has_subagent is True (adapted
+  via _from_oauth).
+- BUILTIN_SUBAGENTS (registered directly, no OAuth).
 
 All subagent code (handoff, registration, ChromaDB indexing, evals, helpers)
-goes through `all_subagents()` and `get_subagent_by_id()` here. OAuth
-integration code continues to iterate `OAUTH_INTEGRATIONS` directly and
+goes through all_subagents() and get_subagent_by_id() here. OAuth
+integration code continues to iterate OAUTH_INTEGRATIONS directly and
 never sees builtins.
 """
 
@@ -38,9 +38,9 @@ def _from_oauth(integ: OAuthIntegration) -> Subagent:
 def all_subagents() -> tuple[Subagent, ...]:
     """All subagents — OAuth-derived + builtins. Process-lifetime cached.
 
-    Cache is safe because `OAUTH_INTEGRATIONS` and `BUILTIN_SUBAGENTS` are
+    Cache is safe because OAUTH_INTEGRATIONS and BUILTIN_SUBAGENTS are
     module-level constants that are never mutated at runtime. If a test
-    needs to inject a fake subagent, call `all_subagents.cache_clear()`.
+    needs to inject a fake subagent, call all_subagents.cache_clear().
     """
     oauth_subagents = tuple(
         _from_oauth(i)
@@ -51,10 +51,10 @@ def all_subagents() -> tuple[Subagent, ...]:
 
 
 def get_subagent_by_id(subagent_id: str) -> Subagent | None:
-    """Look up a subagent by `id` or `short_name` (case-insensitive).
+    """Look up a subagent by id or short_name (case-insensitive).
 
     Not cached — takes an arbitrary string and we don't want unbounded
-    growth from caller-controlled input. The underlying `all_subagents()`
+    growth from caller-controlled input. The underlying all_subagents()
     is cached, so this is O(n) over a small fixed set.
     """
     s = subagent_id.lower().strip()
@@ -66,23 +66,19 @@ def get_subagent_by_id(subagent_id: str) -> Subagent | None:
 
 @cache
 def _subagent_id_by_agent_name() -> dict[str, str]:
-    """Map each subagent's `agent_name` to its canonical `id`.
+    """Map each subagent's agent_name to its canonical id.
 
-    `agent_name` is the one handle the skill catalog is keyed on: a skill's
-    frontmatter `target` is the owning subagent's `agent_name`, and the handoff
-    path passes that same `agent_name` when surfacing a subagent's skills. Built
-    from `all_subagents()`, so it is the authoritative `agent_name -> id` table
-    covering OAuth-derived AND builtin subagents. (`agent_name` is also the
-    LangGraph graph-registration key, so it is unique by construction.)
+    agent_name is the one handle the skill catalog is keyed on. Built from
+    all_subagents(), covering OAuth-derived AND builtin subagents; it is
+    also the LangGraph graph-registration key, so it is unique by construction.
     """
     return {sa.config.agent_name: sa.id for sa in all_subagents()}
 
 
 def resolve_subagent_id(agent_name: str) -> str | None:
-    """Resolve a subagent `agent_name` to its canonical `id`, or `None` if no
-    registered subagent uses that `agent_name`.
+    """Resolve a subagent agent_name to its canonical id, or None if unregistered.
 
-    `None` is the correct answer for the general `executor` bucket and for
+    None is the correct answer for the general executor bucket and for
     custom/public MCP subagents that aren't in the registry.
     """
     return _subagent_id_by_agent_name().get(agent_name.strip())

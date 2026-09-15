@@ -1,7 +1,4 @@
-"""Bot Service
-
-Business logic for bot chat sessions, rate limiting, and conversation management.
-"""
+"""Business logic for bot chat sessions, rate limiting, and conversation management."""
 
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -31,15 +28,9 @@ class BotService:
 
     @staticmethod
     async def enforce_rate_limit(platform: str, platform_user_id: str) -> None:
-        """
-        Enforce rate limiting for bot requests.
+        """Enforce per-platform-user rate limiting for bot requests.
 
-        Args:
-            platform: Platform name
-            platform_user_id: User's ID on the platform
-
-        Raises:
-            HTTPException: If rate limit exceeded
+        Raises HTTPException (429) when the limit is exceeded.
         """
         key = f"bot_ratelimit:{platform}:{platform_user_id}"
         try:
@@ -55,10 +46,9 @@ class BotService:
         except HTTPException:
             raise
         except Exception as e:
-            # Intentional fail-open behavior: if Redis is unavailable, allow the request
-            # to proceed without rate limiting to maintain service availability. This is
-            # acceptable because bot rate limiting is a nice-to-have feature that should
-            # not block legitimate users when infrastructure is degraded.
+            # Intentional fail-open: if Redis is down, let the request through rather
+            # than block legitimate users — bot rate limiting is a nice-to-have, not
+            # a hard guarantee.
             log.warning(
                 "Rate limit check failed, failing open",
                 platform=platform,
@@ -69,26 +59,12 @@ class BotService:
 
     @staticmethod
     def build_session_key(platform: str, platform_user_id: str, channel_id: str | None) -> str:
-        """The one key a (platform, user, channel) conversation lives under.
+        """Return the one key a (platform, user, channel) conversation lives under.
 
-        No ``channel_id`` means "the user's DM" — all a backend-originated
-        delivery knows, since it resolves its destination from the platform link
-        (``outbound_delivery._resolve_destination`` returns the platform user id)
-        rather than from an inbound chat. A DM therefore has to key off the
-        platform user id, which is exactly what Telegram sends as the chat id for
-        a private chat: ``ctx.chat.id == ctx.from.id`` there.
-
-        This used to key an absent channel as the literal ``"dm"``, so one
-        Telegram DM lived under two keys — ``telegram:<id>:<id>`` from the chat
-        and ``telegram:<id>:dm`` from workflow delivery — and the user's chat
-        forked into a second conversation carrying none of the history.
-
-        Discord and Slack DM channel ids are NOT the user id, so an inbound DM
-        there must not key off its channel: the bot flags those messages as DMs
-        and ``get_or_create_session`` drops the channel id before keying, which
-        lands them here on the user-id form a backend-originated delivery also
-        produces. The flag lives with the bot because a DM-channel key is
-        indistinguishable from a guild/channel key server-side.
+        No channel_id means DM: backend delivery only knows the platform user
+        id, and Telegram's own DM chat id equals it too. Discord/Slack DM
+        channel ids do NOT equal the user id, so get_or_create_session drops
+        the channel for a flagged inbound DM before calling this.
         """
         return f"{platform}:{platform_user_id}:{channel_id or platform_user_id}"
 
@@ -98,14 +74,10 @@ class BotService:
     ) -> None:
         """Fold a DM session keyed by its platform channel onto the user-id key.
 
-        Discord and Slack DMs used to key off the DM channel id, which differs
-        from the user id there, so the same DM forked: inbound chat under
-        ``platform:<user>:<dm-channel>``, workflow delivery under
-        ``platform:<user>:<user>``. Now that the bot flags DMs, the first
-        flagged message finds the channel-keyed row and merges it onto the
-        canonical key — rename when the canonical key is free, otherwise the
-        more recently used conversation wins. Runs at most once per DM: after
-        the merge no channel-keyed row remains.
+        Discord/Slack DMs used to fork (channel-keyed row vs user-id-keyed
+        row) before the bot flagged DMs. Idempotent: after the first flagged
+        message merges the channel-keyed row onto the canonical key, no
+        channel-keyed row remains to merge again.
         """
         if not channel_id or channel_id == platform_user_id:
             return
@@ -138,17 +110,9 @@ class BotService:
         *,
         is_dm: bool = False,
     ) -> str:
-        """
-        Get existing bot session or create a new one.
+        """Return the conversation id for this bot session, creating one if needed.
 
-        Args:
-            platform: Platform name
-            platform_user_id: User's ID on the platform
-            channel_id: Channel/group ID (None for DM)
-            user: User document from database
-
-        Returns:
-            Conversation ID for the session
+        channel_id=None means the session is a DM.
         """
         # Normalize user dict: support both raw MongoDB docs (_id) and
         # pre-formatted dicts (user_id) so create_conversation_service works
@@ -161,11 +125,9 @@ class BotService:
         session_key = BotService.build_session_key(platform, platform_user_id, channel_id)
         now = datetime.now(UTC).isoformat()
 
-        # Atomically claim (or reuse) the session for this session_key. The
-        # conversation_id is set exactly once, on insert, via $setOnInsert so two
-        # racing first-messages can never mint two conversations: only the inserter
-        # wins the id and every other caller reads it back. The unique index on
-        # session_key (see app/db/mongodb/indexes.py) guarantees this atomicity.
+        # conversation_id is set once, on insert, via $setOnInsert, so two racing
+        # first-messages can't mint two conversations — only the inserter wins the
+        # id. Guaranteed by the unique index on session_key (mongodb/indexes.py).
         candidate_conversation_id = str(uuid4())
         session = await bot_session_repository.claim_session(
             session_key=session_key,
@@ -179,12 +141,9 @@ class BotService:
         conversation_id = session.conversation_id
         is_new_session = conversation_id == candidate_conversation_id
 
-        # Ensure the conversation document exists for this session. On a fresh
-        # session it never does; on an existing session it normally does, but it
-        # may have been deleted from the web UI (or lost to a race). Either way we
-        # (re)create it with the SAME conversation_id stored on the session rather
-        # than minting a new one and repointing, so the chat thread is never
-        # orphaned or forked.
+        # The conversation doc may be missing (fresh session, or deleted from the
+        # web UI / lost to a race) — (re)create it with the SAME conversation_id
+        # stored on the session, never a new one, so the thread can't fork.
         if await conversation_repository.exists(conversation_id, user_id=user.get("user_id", "")):
             log.set(
                 bot={
@@ -222,18 +181,7 @@ class BotService:
         *,
         is_dm: bool = False,
     ) -> str:
-        """
-        Reset bot session (delete existing and create new).
-
-        Args:
-            platform: Platform name
-            platform_user_id: User's ID on the platform
-            channel_id: Channel/group ID (None for DM)
-            user: User document from database
-
-        Returns:
-            New conversation ID
-        """
+        """Delete the existing bot session and return a freshly created conversation id."""
         if is_dm:
             # The channel-keyed legacy row IS this DM: left in place, the next
             # inbound merge would resurrect the conversation the user just reset.
@@ -249,17 +197,7 @@ class BotService:
     async def load_conversation_history(
         conversation_id: str, user_id: str, limit: int = 20
     ) -> list[dict]:
-        """
-        Load recent conversation history for context.
-
-        Args:
-            conversation_id: Conversation ID
-            user_id: User ID
-            limit: Maximum number of messages to load (default: 20)
-
-        Returns:
-            List of message dicts with role and content
-        """
+        """Return up to limit recent messages as role/content dicts."""
         conversation = await conversation_repository.get(conversation_id, user_id=user_id)
         if conversation is None or not conversation.messages:
             return []
@@ -294,27 +232,20 @@ async def build_bot_message_request(
 async def charge_bot_turn(user_id: str, body: BotChatRequest) -> None:
     """Charge quota/budget for one bot turn and record its submission event.
 
-    Mirrors what the web chat endpoint charges via ``@tiered_rate_limit``, done
+    Mirrors what the web chat endpoint charges via @tiered_rate_limit, done
     manually since the caller here has no authenticated request to decorate.
     """
-    # Can't be a decorator: the caller is resolved from a platform link, so
-    # there is no authenticated user when the decorator would run. Without
-    # this a free user had no message limit through a bot, and bot turns
-    # never reached `record_activity` — leaving them off the heatmap, streak
-    # and badge. `BotService.enforce_rate_limit` (called before this) stays:
-    # it is flat per-platform anti-spam (20/min, plan-blind), not the quota.
+    # Can't be a decorator: the caller has no authenticated request (resolved
+    # from a platform link). Without this, bot turns had no quota and never hit
+    # record_activity. enforce_rate_limit (above) is separate: flat anti-spam.
     await enforce_tiered_limit(user_id, "chat_messages")
-    # Second half of what web chat charges: the tiered limit above caps how
-    # MANY messages, this caps how EXPENSIVE the day has been. Without it a
-    # bot user over budget got a stream that opened and died partway instead
-    # of a clean refusal before any work (`LLMAccountingMiddleware` still
-    # bounds cost mid-flight, but only after the work started).
+    # Caps how EXPENSIVE the day has been (the tiered limit above caps how MANY
+    # messages) — without it, an over-budget bot user got a stream that opened
+    # and died partway instead of a clean refusal before any work started.
     await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
-    # Captured HERE, past every gate — same reason the web endpoint captures
-    # after its own: chat:message_submitted is the ground-truth volume
-    # metric, and a turn refused for plan or quota never reached the agent.
-    # Counting refusals as submissions would inflate bot volume by exactly
-    # the traffic of users who hit walls most. A refusal is its own event.
+    # Captured past every gate, like the web endpoint: a refusal never reached
+    # the agent, so counting it here would inflate volume by exactly the users
+    # who hit walls most. A refusal is its own event.
     capture_event(
         user_id,
         AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,

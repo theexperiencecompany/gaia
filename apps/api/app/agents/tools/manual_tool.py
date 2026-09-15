@@ -1,9 +1,9 @@
-"""The ``read_manual`` tool — read GAIA's own operating manual from memory.
+"""The read_manual tool — read GAIA's own operating manual from memory.
 
-Unlike ``read`` / ``bash`` (which execute inside the E2B sandbox and therefore
+Unlike read / bash (which execute inside the E2B sandbox and therefore
 pay a microVM spin-up/resume), this returns app-owned manual content directly
 from the API process — no sandbox involved. Use it for GAIA's own docs; reserve
-``read`` for the user's actual files and code.
+read for the user's actual files and code.
 """
 
 from __future__ import annotations

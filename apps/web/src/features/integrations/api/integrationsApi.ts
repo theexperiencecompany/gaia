@@ -135,9 +135,6 @@ export const integrationsApi = {
     }
   },
 
-  /**
-   * Delete a custom integration
-   */
   deleteCustomIntegration: async (integrationId: string): Promise<void> => {
     try {
       await api.delete("/api/v1/integrations/custom/{integration_id}", {

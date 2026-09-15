@@ -66,9 +66,7 @@ async def query_events(
     request: CalendarEventsQueryRequest,
     user_id: str = Depends(require_integration_user_id("calendar")),
 ) -> CalendarEventsResponse:
-    """
-    Query events from selected calendars using POST to avoid URL length limits.
-    """
+    """Query events from selected calendars using POST to avoid URL length limits."""
     try:
         time_min = None
         time_max = None

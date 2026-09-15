@@ -1,8 +1,8 @@
 """Contract + finder tests for TodosRepository against real Mongo + Redis.
 
 Todos is the migration's stress test, so this file also exercises the base
-primitives it forced into existence: ``_apply_ops`` (array/positional/$unset),
-``_bulk_set``/``_bulk_delete``, and their user-scope enforcement.
+primitives it forced into existence: _apply_ops (array/positional/$unset),
+_bulk_set/_bulk_delete, and their user-scope enforcement.
 """
 
 from __future__ import annotations
@@ -134,8 +134,7 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert all(t.priority is Priority.HIGH for t in page.items)
 
     async def test_list_page_slices_pages_without_overlap(self, repo, make_doc):
-        """page/per_page walk disjoint windows, and every page reports the
-        unpaginated total for the same filter."""
+        """page/per_page walk disjoint windows, and every page reports the unpaginated total for the same filter."""
         now = datetime.now(UTC)
         for i in range(5):
             await repo.create(
@@ -360,14 +359,7 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert [t.title for t in found] == ["gmail"]
 
     async def test_a_subscription_written_by_update_is_findable(self, repo, make_doc):
-        """Registration writes through ``update``, not ``create``.
-
-        ``_apply_update`` dumps with ``exclude_unset=True``, which recurses into
-        the nested subscription: every field left at its default was dropped
-        before reaching Mongo, so the stored record had no ``status`` — and the
-        dispatch finders match on ``status``. The write succeeded, the document
-        looked plausible, and the watch simply never fired.
-        """
+        """Regression: _apply_update's exclude_unset=True dropped default-valued nested subscription fields (including status), so dispatch finders never matched."""
         doc = await repo.create(make_doc(user_id="u"))
         subscription = _subscription()
 
@@ -488,8 +480,7 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
 
 class TestAppendTextField:
-    """``append_text_field`` is one atomic server-side concatenation — concurrent
-    appends cannot read-then-clobber each other."""
+    """append_text_field is one atomic concatenation - concurrent appends can't clobber each other."""
 
     @pytest.mark.regression
     async def test_append_onto_missing_field(self, repo, make_doc):
@@ -533,8 +524,7 @@ class TestAppendTextField:
 
 
 class TestReplaceNoteFields:
-    """``replace_note_fields`` is the compare-and-set primitive for note bodies:
-    with a revision it only writes when nothing else won the race."""
+    """replace_note_fields is compare-and-set: a revision write only lands if nothing else won the race."""
 
     @pytest.mark.regression
     async def test_replace_with_matching_revision(self, repo, make_doc):
@@ -601,7 +591,7 @@ class TestCrossDomainDeletes:
 
 
 class TestTrackedShortIdFinder:
-    """``find_tracked_by_short_id`` backs ``<slug>-<shortid>`` folder resolution."""
+    """find_tracked_by_short_id backs slug-shortid folder resolution."""
 
     async def test_matches_object_id_suffix_for_tracked_todos_only(self, repo, make_doc):
         tracked = await repo.create(make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL]))
@@ -634,8 +624,7 @@ class TestTrackedShortIdFinder:
 
 
 class TestLegacyMigrationScan:
-    """``list_tracked_for_legacy_migration`` pages every tracked todo — active
-    or completed — in ``_id`` order, so the migration sweep cannot skip records."""
+    """list_tracked_for_legacy_migration pages every todo in _id order, so the sweep can't skip records."""
 
     @pytest.mark.regression
     async def test_pages_active_and_completed_in_id_order(self, repo, make_doc):

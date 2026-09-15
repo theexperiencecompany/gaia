@@ -13,10 +13,9 @@
 export function formatToolDueDate(date: string): string {
   const dueDate = new Date(date);
   const now = new Date();
-  // Compare on the LOCAL calendar date, not raw timestamps. Millisecond math
-  // rolls the label back a day for evening times in positive-offset zones
-  // (e.g. 19:06 +05:30), which is why the chat card showed "Yesterday" while
-  // the todos page (which compares calendar dates) showed "Today".
+  // Compare on the LOCAL calendar date, not raw timestamps: millisecond math rolls the label
+  // back a day for evening times in positive-offset zones (e.g. 19:06 +05:30) — why the chat
+  // card showed "Yesterday" while the todos page (calendar-date compare) showed "Today".
   const startOfDay = (d: Date): number =>
     new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const daysDiff = Math.round(

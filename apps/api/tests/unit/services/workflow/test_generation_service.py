@@ -1,7 +1,7 @@
 """Unit tests for the pure helpers behind workflow step generation.
 
-These pin the four helpers extracted out of ``WorkflowGenerationService`` in
-``app/services/workflow/generation_service.py``: the user-facing failure
+These pin the four helpers extracted out of WorkflowGenerationService in
+app/services/workflow/generation_service.py: the user-facing failure
 summary, the structured one-shot's call shape, and the two category collectors
 that decide what the generator is allowed to reach for. Each is a pure function
 over a seam (an exception, the LLM lane, the tool registry, the OAuth catalog),
@@ -56,8 +56,7 @@ class TestFailureReason:
     """The one line the workflow modal shows when generation dies."""
 
     def test_it_names_the_exception_type_and_its_message(self):
-        """A bare "This request requires more credits" reads as if the user's own
-        account is at fault; the type is what says the provider refused."""
+        """A bare "This request requires more credits" reads as the user's fault; the type says the provider refused."""
         assert _failure_reason(ValueError("no route to model")) == ("ValueError: no route to model")
 
     def test_the_type_is_the_concrete_subclass_not_its_base(self):
@@ -73,14 +72,12 @@ class TestFailureReason:
         )
 
     def test_an_empty_message_falls_back_to_the_class_name(self):
-        """``raise TimeoutError`` carries no message at all; "TimeoutError: "
-        with nothing after it tells the user nothing."""
+        """Bare TimeoutError has no message; "TimeoutError: " with nothing after tells the user nothing."""
         assert _failure_reason(TimeoutError()) == "TimeoutError: TimeoutError"
         assert _failure_reason(TimeoutError("   ")) == "TimeoutError: TimeoutError"
 
     def test_a_message_exactly_at_the_limit_is_kept_whole(self):
-        """The cut is for messages LONGER than the limit — truncating one that
-        already fits would drop a character for nothing."""
+        """The cut is for messages longer than the limit — one that already fits keeps every character."""
         message = "a" * _MAX_REASON_CHARS
 
         assert _failure_reason(ValueError(message)) == f"ValueError: {message}"
@@ -92,8 +89,7 @@ class TestFailureReason:
         assert len(reason.removeprefix("ValueError: ")) == _MAX_REASON_CHARS
 
     def test_the_cut_never_leaves_a_space_before_the_ellipsis(self):
-        """Cutting mid-sentence lands on a space as often as not; " …" reads as
-        a typo rather than as elision."""
+        """Cutting mid-sentence often lands on a space; " …" reads as a typo, not elision."""
         message = "a" * (_MAX_REASON_CHARS - 2) + " " + "b" * 50
 
         assert _failure_reason(ValueError(message)) == (
@@ -114,10 +110,7 @@ class TestStructuredOneShot:
     """The lane a workflow draft is actually asked for."""
 
     async def test_it_meters_the_user_and_runs_the_schema_on_this_deployments_lane(self):
-        """``metered_config`` is what bills the request to the user, and the SAME
-        config has to reach both the runnable and the invoke: a deployment on a
-        custom endpoint has no OpenRouter route, and a lost config sends the
-        call back to the lane that does not exist here."""
+        """metered_config bills the user and must reach both runnable and invoke: a lost config sends the call to the OpenRouter lane, which a custom-endpoint deployment doesn't have."""
         prompt = [HumanMessage(content="make me a workflow")]
         config = {"metadata": {"user_id": "user-1"}}
         runnable = MagicMock(name="structured_runnable")
@@ -142,8 +135,7 @@ class TestStructuredOneShot:
         mock_llm.assert_awaited_once_with(runnable, prompt, label="workflow_steps", config=config)
 
     async def test_the_label_reaches_the_call_verbatim(self):
-        """The label is how a generation shows up in the model-cost ledger; two
-        call sites sharing one label make the spend unattributable."""
+        """The label is how a generation shows up in the model-cost ledger; two call sites sharing one label make spend unattributable."""
         with (
             patch(f"{MODULE}.metered_config", return_value={}),
             patch(f"{MODULE}.background_structured_runnable", return_value=MagicMock()),
@@ -158,8 +150,7 @@ class TestStructuredOneShot:
         assert mock_llm.await_args.kwargs["label"] == "workflow_prompt"
 
     async def test_an_empty_draft_is_returned_as_is_rather_than_repaired(self):
-        """The one-shot does not validate or substitute — the caller's retry loop
-        owns the empty draft, so a silent fallback here would hide it."""
+        """The one-shot doesn't validate or substitute — the caller's retry loop owns the empty draft; a silent fallback here would hide it."""
         empty = _Draft()
 
         with (
@@ -196,7 +187,7 @@ class TestStructuredOneShot:
 
 
 class _FakeTool:
-    """A tool object carrying a name, whose ``str()`` is deliberately different."""
+    """A tool object carrying a name, whose str() is deliberately different."""
 
     def __init__(self, name: str) -> None:
         self.name = name
@@ -230,8 +221,7 @@ class TestCollectRegistryCategories:
     """What the generator is told it may build steps out of."""
 
     def test_core_categories_are_always_offered_with_their_tool_names(self):
-        """A tool is named to the model by ``.name``; its repr would be a string
-        the model cannot call."""
+        """A tool is named to the model by .name; its repr is a string the model cannot call."""
         registry = _registry(
             {"productivity": _FakeCategory([_FakeTool("create_todo"), _FakeTool("list_todos")])}
         )
@@ -250,8 +240,7 @@ class TestCollectRegistryCategories:
         assert lines == ["misc: named, raw_tool"]
 
     def test_a_provider_category_is_offered_only_when_its_integration_is_active(self):
-        """Offering an unconnected provider produces a workflow that fails on its
-        first run, so the active set is the whole gate."""
+        """Offering an unconnected provider produces a workflow that fails on its first run."""
         registry = _registry(
             {
                 "gh_tools": _FakeCategory(
@@ -267,8 +256,7 @@ class TestCollectRegistryCategories:
         assert _collect_registry_categories(registry, {"notion"}) == ([], [])
 
     def test_the_active_set_is_matched_on_the_integration_name_not_the_category(self):
-        """The category key and the integration slug differ (``gh_tools`` vs
-        ``github``); matching on the wrong one hides every connected provider."""
+        """The category key and integration slug differ (gh_tools vs github); matching the wrong one hides every connected provider."""
         registry = _registry(
             {
                 "gh_tools": _FakeCategory(
@@ -291,8 +279,7 @@ class TestCollectRegistryCategories:
         assert _collect_registry_categories(registry, set()) == ([], [])
 
     def test_one_skipped_provider_does_not_hide_the_categories_after_it(self):
-        """The skip is a `continue`, not a `break`: a single unconnected provider
-        early in the registry must not cost the model every category behind it."""
+        """The skip is a continue, not a break — one unconnected provider must not cost every category behind it."""
         registry = _registry(
             {
                 "notion_tools": _FakeCategory(
@@ -321,7 +308,7 @@ class _FakeSubagentConfig:
 
 @dataclass
 class _FakeIntegration:
-    """A stand-in for an ``OAUTH_INTEGRATIONS`` entry.
+    """A stand-in for an OAUTH_INTEGRATIONS entry.
 
     Carries every attribute the module reads off the catalog — the subagent
     collector, the friendly-name lookup, the explicit-mention scan and the
@@ -347,8 +334,7 @@ class TestCollectSubagentCategories:
     """Which subagents the generator may delegate a step to."""
 
     def test_an_internal_subagent_is_offered_even_with_nothing_connected(self):
-        """Todos/reminders/skills are core capabilities — gating them behind the
-        active set would leave a brand-new user unable to generate anything."""
+        """Todos/reminders/skills are core capabilities; gating them behind the active set would leave a brand-new user unable to generate anything."""
         with _catalog(
             _FakeIntegration(
                 "todos", MANAGED_BY_INTERNAL, _FakeSubagentConfig(True, "creating todos")
@@ -371,8 +357,7 @@ class TestCollectSubagentCategories:
             assert _collect_subagent_categories({"notion"}) == ([], [])
 
     def test_the_active_set_is_matched_in_lower_case(self):
-        """Integration ids arrive lower-cased in the active set; upper-casing the
-        lookup would hide every connected provider subagent."""
+        """Integration ids arrive lower-cased in the active set; matching case-sensitively would hide every connected provider subagent."""
         with _catalog(
             _FakeIntegration("GitHub", "composio", _FakeSubagentConfig(True, "opening PRs"))
         ):
@@ -382,8 +367,7 @@ class TestCollectSubagentCategories:
             )
 
     def test_an_integration_with_no_subagent_is_skipped_without_reading_its_config(self):
-        """Most of the catalog has no subagent at all — reaching into a missing
-        config is an AttributeError on every generation."""
+        """Most of the catalog has no subagent at all; reaching into a missing config is an AttributeError."""
         with _catalog(
             _FakeIntegration("dropbox", "composio", None),
             _FakeIntegration("figma", "composio", _FakeSubagentConfig(has_subagent=False)),
@@ -395,9 +379,7 @@ class TestCollectSubagentCategories:
             )
 
     def test_one_unconnected_provider_does_not_hide_the_subagents_after_it(self):
-        """The skip is a `continue`, not a `break`: the catalog is mostly
-        unconnected providers, so stopping at the first one would leave the
-        generator with nothing — including the internal capabilities."""
+        """The skip is a continue, not a break — stopping at the first unconnected provider would leave the generator with nothing, including internal capabilities."""
         with _catalog(
             _FakeIntegration("notion", "composio", _FakeSubagentConfig(True, "pages")),
             _FakeIntegration("todos", MANAGED_BY_INTERNAL, _FakeSubagentConfig(True, "todos")),
@@ -432,8 +414,7 @@ class TestWorkflowStepGenerationError:
     """The typed error the API turns into a message the modal can render."""
 
     def test_the_reason_is_readable_off_the_error_and_off_its_str(self):
-        """The endpoint reads ``.reason``; a logger that only str()s the
-        exception must not print an empty line instead."""
+        """The endpoint reads .reason; a logger that only str()s the exception must not print an empty line."""
         error = WorkflowStepGenerationError("the provider refused")
 
         assert error.reason == "the provider refused"
@@ -469,8 +450,7 @@ class TestValidatedSteps:
         ]
 
     def test_a_missing_draft_is_absence_not_an_exception(self):
-        """An empty generation is regenerable; raising here would spend the
-        user's second attempt on a traceback."""
+        """An empty generation is regenerable; raising here would spend the user's second attempt on a traceback."""
         assert _validated_steps(None) is None
 
     def test_a_draft_with_no_steps_is_absence_too(self):
@@ -490,8 +470,7 @@ class TestBuildIntegrationHints:
         assert _build_integration_hints(set(), set(), {}) == []
 
     def test_preferred_integrations_are_named_with_their_category_id(self):
-        """The name tells the model what the user meant; the id is what a step's
-        ``category`` must be set to for that integration's tools to resolve."""
+        """The name tells the model what the user meant; the id is what a step's category must resolve to."""
         with _catalog(_FakeIntegration("gmail", name="Gmail")):
             assert _build_integration_hints({"gmail"}, set(), {}) == [
                 "Preferred integrations (use where the workflow makes sense): "
@@ -499,8 +478,7 @@ class TestBuildIntegrationHints:
             ]
 
     def test_explicit_integrations_carry_the_must_appear_wording(self):
-        """Preferred is a soft hint, explicit is a hard requirement — the two
-        lines have to read differently or the model treats them the same."""
+        """Preferred is a soft hint, explicit a hard requirement — the two lines must read differently or the model treats them the same."""
         with _catalog(_FakeIntegration("notion", name="Notion")):
             assert _build_integration_hints(set(), {"notion"}, {}) == [
                 "Integrations the user explicitly named — MUST appear in the steps: "
@@ -520,8 +498,7 @@ class TestBuildIntegrationHints:
         ]
 
     def test_each_line_lists_its_slugs_sorted_and_comma_separated(self):
-        """A set has no order — without the sort the same request produces a
-        different prompt on every run and nothing is reproducible."""
+        """A set has no order — without the sort the same request produces a different prompt every run."""
         with _catalog(
             _FakeIntegration("gmail", name="Gmail"),
             _FakeIntegration("notion", name="Notion"),
@@ -535,8 +512,7 @@ class TestBuildIntegrationHints:
         ]
 
     def test_the_explicit_line_lists_its_slugs_sorted_and_comma_separated_too(self):
-        """The two lines are built separately, so the explicit one can lose its
-        separator on its own and collapse into a single unusable token."""
+        """The two lines are built separately; the explicit one can lose its separator and collapse into one unusable token."""
         with _catalog(
             _FakeIntegration("gmail", name="Gmail"), _FakeIntegration("notion", name="Notion")
         ):
@@ -548,8 +524,7 @@ class TestBuildIntegrationHints:
         ]
 
     def test_a_custom_integrations_uuid_is_labelled_from_the_display_names_map(self):
-        """Custom integrations are keyed by an opaque uuid ``OAUTH_INTEGRATIONS``
-        knows nothing about; without the map the model is shown the raw uuid."""
+        """Custom integrations are keyed by an opaque uuid OAUTH_INTEGRATIONS knows nothing about; without the map the model sees the raw uuid."""
         with _catalog(_FakeIntegration("gmail", name="Gmail")):
             assert _build_integration_hints({"abc-123"}, set(), {"abc-123": "My CRM"}) == [
                 "Preferred integrations (use where the workflow makes sense): "
@@ -564,8 +539,7 @@ class TestBuildIntegrationHints:
             ]
 
     def test_an_unknown_slug_is_printed_once_instead_of_twice(self):
-        """``_slug_to_friendly_name`` returns the slug itself when it resolves
-        nothing; "foo (category: foo)" is noise the model has to parse."""
+        """_slug_to_friendly_name returns the slug itself when unresolved; "foo (category: foo)" is noise the model has to parse."""
         with _catalog(_FakeIntegration("gmail", name="Gmail")):
             assert _build_integration_hints({"mystery"}, set(), {}) == [
                 "Preferred integrations (use where the workflow makes sense): mystery"
@@ -611,16 +585,14 @@ class TestCollectCustomIntegrationCategories:
         assert display == {"abc-123": "My CRM"}
 
     async def test_without_a_description_the_name_is_reused_as_the_summary(self):
-        """An empty summary would leave the model a dangling ". " and nothing
-        to decide what the integration is for."""
+        """An empty summary would leave the model a dangling ". " and nothing to decide what the integration is for."""
         with _my_integrations(_FakeCustomIntegration("abc-123", "My CRM", description=None)):
             _, lines, _ = await _collect_custom_integration_categories("user-1", {"abc-123"})
 
         assert lines == ["abc-123 (custom integration): My CRM. My CRM"]
 
     async def test_a_built_in_integration_is_not_re_offered_as_a_custom_one(self):
-        """``get_my_integrations`` returns the whole catalog; only ``source ==
-        "custom"`` entries are missing from the static registry."""
+        """get_my_integrations returns the whole catalog; only source == "custom" entries are missing from the static registry."""
         with _my_integrations(
             _FakeCustomIntegration("gmail", "Gmail", source="oauth"),
             _FakeCustomIntegration("abc-123", "My CRM"),
@@ -647,8 +619,7 @@ class TestCollectCustomIntegrationCategories:
             )
 
     async def test_the_active_set_is_matched_in_lower_case_but_the_id_keeps_its_case(self):
-        """Ids arrive lower-cased in the active set; the category the model is
-        told to use must still be the id the tool router will accept."""
+        """Ids arrive lower-cased in the active set; the category shown to the model must still be the id the tool router accepts."""
         with _my_integrations(_FakeCustomIntegration("ABC-123", "My CRM")):
             names, lines, display = await _collect_custom_integration_categories(
                 "user-1", {"abc-123"}
@@ -659,8 +630,7 @@ class TestCollectCustomIntegrationCategories:
         assert display == {"abc-123": "My CRM"}
 
     async def test_one_unselected_integration_does_not_hide_the_ones_after_it(self):
-        """The skips are `continue`, not `break`: most of the list is neither
-        custom nor selected."""
+        """The skips are continue, not break — most of the list is neither custom nor selected."""
         with _my_integrations(
             _FakeCustomIntegration("gmail", "Gmail", source="oauth"),
             _FakeCustomIntegration("unpicked", "Unpicked"),
@@ -685,8 +655,7 @@ class TestCollectCustomIntegrationCategories:
         mock_get.assert_awaited_once_with("user-42")
 
     async def test_a_failed_lookup_degrades_to_the_built_in_catalog(self):
-        """Custom integrations are an enrichment — losing them must not cost the
-        user the whole generation."""
+        """Custom integrations are an enrichment — losing them must not cost the whole generation."""
         with (
             patch(
                 "app.services.integrations.my_integrations.get_my_integrations",
@@ -713,8 +682,7 @@ class TestCollectCustomIntegrationCategories:
         }
 
     async def test_a_partial_failure_keeps_what_was_already_collected(self):
-        """The lists are built as the loop runs; discarding them on a late error
-        would silently drop integrations that resolved fine."""
+        """The lists are built as the loop runs; discarding them on a late error would drop integrations that resolved fine."""
         good = _FakeCustomIntegration("abc-123", "My CRM")
         exploding = MagicMock()
         type(exploding).source = property(lambda _self: (_ for _ in ()).throw(ValueError("boom")))
@@ -734,7 +702,7 @@ class TestCollectCustomIntegrationCategories:
 
 
 def _llm(**kwargs):
-    """Patch the LLM seam ``_structured_one_shot`` actually calls."""
+    """Patch the LLM seam _structured_one_shot actually calls."""
     return patch(f"{MODULE}.ainvoke_llm", new_callable=AsyncMock, **kwargs)
 
 
@@ -782,8 +750,7 @@ class TestRunGenerationAttempt:
         ]
 
     async def test_the_draft_is_asked_for_with_the_workflow_schema_and_prompt(self):
-        """The schema is what makes the output structured, the prompt is the whole
-        request, and the label is how this generation is billed and found."""
+        """The schema makes the output structured; the label is how this generation is billed and found."""
         metered, runnable = _llm_plumbing()
         with (
             metered,
@@ -822,8 +789,7 @@ class TestRunGenerationAttempt:
         mock_log.warning.assert_not_called()
 
     async def test_an_empty_draft_is_regenerable_and_says_why(self):
-        """Empty output is the model misunderstanding, not the provider failing —
-        the caller gets a reason to retry with, not an exception."""
+        """Empty output means the model misunderstood, not the provider failing — the caller gets a reason to retry, not an exception."""
         metered, runnable = _llm_plumbing()
         with metered, runnable, _llm(return_value=_draft()):
             steps, error = await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
@@ -843,8 +809,7 @@ class TestRunGenerationAttempt:
         assert isinstance(error, ValueError)
 
     async def test_an_empty_draft_logs_the_attempt_number_one_based(self):
-        """``attempt`` is a zero-based loop index; logging it raw makes the first
-        attempt read as attempt 0 in every incident thread."""
+        """Attempt is a zero-based loop index; logging it raw would make the first attempt read as attempt 0."""
         metered, runnable = _llm_plumbing()
         with metered, runnable, _llm(return_value=_draft()), patch(f"{MODULE}.log") as mock_log:
             await _run_generation_attempt("the prompt", user_id="user-1", attempt=1)
@@ -856,8 +821,7 @@ class TestRunGenerationAttempt:
         }
 
     async def test_schema_invalid_output_is_returned_for_a_retry_not_raised(self):
-        """The provider's own retry already ran inside ``ainvoke_llm``; a
-        malformed structured payload is worth asking the model again."""
+        """The provider's own retry already ran inside ainvoke_llm; a malformed structured payload is worth asking the model again."""
         invalid = _invalid_output_error()
         metered, runnable = _llm_plumbing()
         with metered, runnable, _llm(side_effect=invalid):
@@ -896,8 +860,7 @@ class TestRunGenerationAttempt:
         mock_log.error.assert_not_called()
 
     async def test_a_provider_failure_becomes_the_typed_error_with_a_showable_reason(self):
-        """Not regenerable: retrying a 402 burns the user's second attempt on the
-        same refusal. The reason is what turns a blank 500 into a message."""
+        """Not regenerable — retrying a 402 burns the second attempt on the same refusal; the reason turns a blank 500 into a message."""
         provider_error = RuntimeError("This request requires more credits")
         metered, runnable = _llm_plumbing()
         with metered, runnable, _llm(side_effect=provider_error):
@@ -908,8 +871,7 @@ class TestRunGenerationAttempt:
         assert caught.value.__cause__ is provider_error
 
     async def test_a_provider_failure_is_logged_as_an_error_with_the_user_and_attempt(self):
-        """This one ends the generation, so it has to be findable in the wide
-        event by user — a warning would be filtered out of the error list."""
+        """Ends the generation, so it must be findable in the wide event by user — a warning would be filtered from the error list."""
         metered, runnable = _llm_plumbing()
         with (
             metered,
@@ -980,8 +942,7 @@ class TestGenerateStepsWithLlm:
         ]
 
     async def test_gaia_is_always_a_category_so_pure_reasoning_steps_are_legal(self):
-        """Without it the model has to route "summarize this" through some
-        integration's tools, which is a step that cannot run."""
+        """Without it, "summarize this" would have to route through some integration's tools — a step that cannot run."""
         metered, runnable = _llm_plumbing()
         with (
             _tool_registry(),
@@ -998,8 +959,7 @@ class TestGenerateStepsWithLlm:
         assert "No external tool call." in prompt
 
     async def test_the_registry_the_subagents_and_gaia_all_reach_the_prompt_in_order(self):
-        """Categories are a comma-separated list the model picks from; a lost
-        section is a whole class of steps it can never produce."""
+        """Categories are a comma-separated list the model picks from; a lost section is a whole class of steps it can never produce."""
         metered, runnable = _llm_plumbing()
         with (
             _tool_registry(
@@ -1066,8 +1026,7 @@ class TestGenerateStepsWithLlm:
         assert "TRIGGER-CONTEXT" in prompt
 
     async def test_the_description_is_appended_to_the_prompt_as_extra_context(self):
-        """The description is a display summary, not the instruction — it must
-        not replace the prompt the user wrote."""
+        """The description is a display summary, not the instruction — it must not replace the prompt the user wrote."""
         metered, runnable = _llm_plumbing()
         with (
             _tool_registry(),
@@ -1104,8 +1063,7 @@ class TestGenerateStepsWithLlm:
         assert "Short display summary" not in mock_llm.await_args.args[1]
 
     async def test_preferred_integrations_are_normalized_and_hinted(self):
-        """The ids arrive from the frontend with whatever casing and whitespace
-        the form had; the hint and the category gate both key on the slug."""
+        """Ids arrive from the frontend with whatever casing/whitespace the form had; the hint and the category gate both key on the slug."""
         metered, runnable = _llm_plumbing()
         with (
             _tool_registry(
@@ -1129,8 +1087,7 @@ class TestGenerateStepsWithLlm:
         assert "gmail: send" in prompt
 
     async def test_an_integration_named_in_the_prompt_is_a_hard_requirement(self):
-        """An explicit mention unlocks the integration's category even when the
-        user never ticked it in the picker."""
+        """An explicit mention unlocks the integration's category even when the user never ticked it in the picker."""
         metered, runnable = _llm_plumbing()
         with (
             _tool_registry(
@@ -1196,8 +1153,7 @@ class TestGenerateStepsWithLlm:
         assert "gaia, abc-123" in prompt
 
     async def test_without_a_user_id_the_custom_catalog_is_not_consulted(self):
-        """There is nobody to look integrations up for; calling anyway would be a
-        lookup for the empty string."""
+        """There is nobody to look integrations up for; calling anyway would be a lookup for the empty string."""
         metered, runnable = _llm_plumbing()
         with (
             _tool_registry(),
@@ -1216,8 +1172,7 @@ class TestGenerateStepsWithLlm:
         assert "Gmail (category: gmail)" in mock_llm.await_args.args[1]
 
     async def test_an_empty_first_draft_is_regenerated_and_the_second_one_is_returned(self):
-        """Two attempts is the whole point of the loop — giving up on the first
-        empty draft would fail a request that succeeds on a retry."""
+        """Two attempts is the whole point of the loop — giving up on the first empty draft would fail a request that succeeds on retry."""
         metered, runnable = _llm_plumbing()
         with (
             _tool_registry(),
@@ -1247,8 +1202,7 @@ class TestGenerateStepsWithLlm:
         assert mock_llm.await_count == 1
 
     async def test_the_attempt_is_billed_to_the_user_who_asked_for_it(self):
-        """The generation is metered per user; losing the id on the way into the
-        attempt bills it to nobody and the spend stops being attributable."""
+        """The generation is metered per user; losing the id on the way in bills it to nobody and the spend stops being attributable."""
         _, runnable = _llm_plumbing()
         with (
             _tool_registry(),
@@ -1263,8 +1217,7 @@ class TestGenerateStepsWithLlm:
         mock_metered.assert_called_once_with("user-42")
 
     async def test_every_attempt_empty_raises_the_typed_error_naming_the_attempt_count(self):
-        """The modal renders this string; "generation failed" with no count reads
-        as a bug rather than as the model not cooperating."""
+        """The modal renders this string; "generation failed" with no count reads as a bug, not as the model not cooperating."""
         metered, runnable = _llm_plumbing()
         with (
             _tool_registry(),
@@ -1370,8 +1323,7 @@ class TestGenerateWorkflowPrompt:
         )
 
     async def test_an_unrecognised_trigger_type_suggests_nothing(self):
-        """The editor renders the suggestion straight into the trigger form; a
-        type it has no UI for would leave the user with an unusable workflow."""
+        """The editor renders the suggestion straight into the trigger form; a type with no UI would leave an unusable workflow."""
         result, _ = await self._run(WorkflowPromptRequest(), self._output(trigger_type="webhook"))
 
         assert result["suggested_trigger"] is None
@@ -1404,8 +1356,7 @@ class TestGenerateWorkflowPrompt:
         assert mock_llm.await_args.kwargs["label"] == "workflow_prompt"
 
     async def test_existing_instructions_switch_the_call_into_improve_mode(self):
-        """Regenerating from scratch over instructions the user already edited
-        throws their work away."""
+        """Regenerating from scratch over instructions the user already edited throws their work away."""
         _, mock_llm = await self._run(
             WorkflowPromptRequest(existing_prompt="Summarize my mail."), self._output()
         )
@@ -1455,8 +1406,7 @@ class TestGenerateWorkflowPrompt:
         assert "preferred tools" not in mock_llm.await_args.args[1][1].content
 
     async def test_the_available_triggers_are_limited_to_connected_integrations(self):
-        """Suggesting a trigger from an integration the user never connected
-        produces a workflow that can never fire."""
+        """Suggesting a trigger from an unconnected integration produces a workflow that can never fire."""
         request = WorkflowPromptRequest(connected_integration_ids={"gmail"})
         with patch(f"{MODULE}._build_available_triggers", return_value="TRIGGERS") as mock_triggers:
             _, mock_llm = await self._run(request, self._output())

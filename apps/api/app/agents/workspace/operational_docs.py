@@ -1,42 +1,25 @@
 """GAIA's operating manual: the single source of truth for self-knowledge.
 
-This module consolidates what used to be smeared across the static prompts,
-the per-directory ``GUIDE.md`` files, and the ``gaia-*`` built-in skills into
-ONE canonical place, structured as:
+Consolidates what used to be spread across static prompts, per-directory
+GUIDE.md files, and the gaia-* built-in skills: GAIA_CORE is the always-on
+operating core in the static prompt prefix (rides the provider's prompt
+cache); MANUAL_DOCS is one self-contained doc per concern, surfaced via
+read_manual or signal-gated injection.
 
-- ``GAIA_CORE``: the always-on operating core (the "solid start"). It is
-  user-independent, so it lives in the *static* prompt prefix and rides the
-  provider's prompt cache. It orients the agent and routes to the topic docs.
-- ``MANUAL_DOCS``: one self-contained doc per concern (integrations, tracked
-  todos, user todos, sessions/artifacts, notifications). Each doc is the single
-  unit that gets surfaced, today on demand via the ``read_manual`` tool or
-  signal-gated injection, later auto-injected on semantic similarity. One file
-  per concern == one clean embedding unit.
+These are app-owned constants held in process memory — reading them must
+never spin up the E2B sandbox. system_docs.py re-exports the per-directory
+guide bodies from here.
 
-Crucially these are *app-owned constants loaded in the API process*. Reading
-them must NOT spin up the E2B sandbox: the sandbox is for the user's real
-files and code execution, not for the agent reading its own manual. So the
-agent gets this content by injection or via ``read_manual`` (process memory),
-never by ``cat``-ing a file inside the sandbox.
-
-``system_docs.py`` re-exports the per-directory guide bodies from here so the
-on-disk projections stay a thin, non-duplicated view of this source.
-
-Scale note: these docs are app-authored constants held in process memory (one
-copy per replica). At the current scale (a handful of docs, a few KB) that is
-negligible and the fastest possible read, faster than a Mongo/Redis round-trip.
-If this corpus ever grows to thousands of docs, move to a Redis(TTL) ->
-Mongo/JuiceFS read-through cache instead of holding everything in RAM.
+Scale note: fine in RAM at the current scale (a handful of docs, a few KB);
+move to a Redis/Mongo read-through cache if this ever grows to thousands.
 """
 
 from __future__ import annotations
 
 from typing import Final, Literal, NamedTuple, get_args
 
-# ---------------------------------------------------------------------------
-# Topic docs: one self-contained file per concern.
-# Bodies are faithful merges of the prior GUIDE.md + gaia-* skill content.
-# ---------------------------------------------------------------------------
+# Topic docs: one self-contained file per concern, faithfully merged from
+# the prior GUIDE.md + gaia-* skill content.
 
 INTEGRATIONS_DOC: Final[str] = """# Integrations: connecting and configuring services
 
@@ -829,8 +812,8 @@ context. It is cheap and keeps you from guessing how your own machinery works.
 class ManualDoc(NamedTuple):
     """One self-contained operating-manual topic.
 
-    ``name`` is the stable handle passed to ``read_manual`` and used as the
-    embedding key for future similarity routing. ``description`` is the
+    name is the stable handle passed to read_manual and used as the
+    embedding key for future similarity routing. description is the
     one-line trigger shown in indexes.
     """
 

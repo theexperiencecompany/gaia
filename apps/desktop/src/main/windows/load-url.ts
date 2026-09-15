@@ -67,16 +67,10 @@ async function loadRoute(
 }
 
 /**
- * Navigate `win` to `path` on the app web server once it is reachable.
- *
- * Resolves after the navigation has been attempted (successfully or
- * not). If the server never becomes ready within the polling budget,
- * the navigation is attempted anyway as a best-effort fallback.
- *
- * @param win - Target window (ignored if destroyed in the meantime).
- * @param path - Absolute route path, e.g. `"/desktop-login"`.
- * @param serverReady - Returns `true` once the production server is up.
- *   Ignored in development mode.
+ * Navigate `win` to `path` on the app web server once it is reachable
+ * (`serverReady` is ignored in dev). Resolves either way; if the server never
+ * becomes ready within the polling budget, navigation is attempted as a
+ * best-effort fallback.
  */
 export async function loadAppRoute(
   win: BrowserWindow,

@@ -41,18 +41,15 @@ const MainChat = React.memo(function MainChat() {
     convoIdParam,
   } = useChatLayout();
 
-  // Reload-mid-stream recovery: if this conversation has a turn still running
-  // server-side, re-attach to its event log and keep streaming live. Also owns
-  // the on-open freshness sync, sequenced AFTER resume — syncing first would
-  // race the live-turn discovery and sweep the optimistic user message.
+  // Reload-mid-stream recovery: re-attach to a still-running turn's event
+  // log. Also owns the on-open freshness sync, sequenced AFTER resume —
+  // syncing first would race live-turn discovery and sweep the optimistic message.
   useStreamResume(convoIdParam || null);
   useActiveConversation(convoIdParam);
 
-  // Imperative scroll control from the message scroller (Provider wraps this
-  // component). Used by the composer to snap to the live edge on send.
-  // Instant, not smooth: bubbles use content-visibility:auto, so a smooth
-  // scroll lands short as offscreen bubbles resolve their real heights — the
-  // instant jump plus autoScroll stickiness pins the view reliably.
+  // Imperative scroll control from the message scroller — used by the
+  // composer to snap to the live edge on send. Instant, not smooth: bubbles
+  // use content-visibility:auto, so a smooth scroll lands short as heights resolve.
   const { scrollToEnd } = useMessageScroller();
   const scrollToBottom = useCallback(() => {
     scrollToEnd();
@@ -88,11 +85,9 @@ const MainChat = React.memo(function MainChat() {
 
   if (voiceModeActive) {
     return (
-      // `isolate` creates a new stacking context so the gradient (z-index: -10)
-      // paints behind the layout content but ABOVE the ancestor `<main>`'s
-      // solid bg-zinc background. Without this, the parent's background covers
-      // the gradient entirely (gradient paints in the ancestor's stacking
-      // context, below the parent's block-level background).
+      // `isolate` creates a stacking context so the gradient (z-index: -10)
+      // paints behind content but ABOVE the ancestor <main>'s bg-zinc —
+      // without it, the parent's background covers the gradient entirely.
       <div className="relative isolate flex h-full min-h-0 flex-col">
         <VoiceControlBarContainer>
           <VoiceModeBackground />

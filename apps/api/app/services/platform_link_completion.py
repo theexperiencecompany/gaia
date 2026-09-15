@@ -4,12 +4,12 @@ Two routes create a link and each owes the same follow-through — the "you're
 connected" greeting, the account-FS sync, the analytics event, the audit trail
 on a rejected attempt:
 
-- ``POST /platform-links/{platform}`` — the bot mints a token, the web redeems it.
-- ``POST /bot/redeem-link-code`` — the web mints a code, the bot redeems it.
+- POST /platform-links/{platform} — the bot mints a token, the web redeems it.
+- POST /bot/redeem-link-code — the web mints a code, the bot redeems it.
 
 They live in different routers, so without one implementation they drift. It
-lives here rather than in ``platform_link_service`` because
-``outbound_delivery`` already imports that module.
+lives here rather than in platform_link_service because
+outbound_delivery already imports that module.
 """
 
 from collections.abc import Mapping
@@ -77,17 +77,9 @@ async def complete_platform_link(
             error_type=type(e).__name__,
             error=str(e),
         )
-        # Two different conflicts wearing one 409 sent people to fix the wrong
-        # account: told "disconnect it from the other GAIA account", a user whose
-        # own account merely holds a different handle goes looking for an account
-        # that does not exist. The code travels with the response so the bots can
-        # stop inferring the reason from the status alone.
-        #
-        # An empty platform_user_id or a missing user still raises the plain
-        # ValueError that ``link_account`` documents, and is deliberately NOT
-        # caught here: neither is something the person linking can act on, and
-        # dressing an internal fault as a 409 is how "User not found" came to be
-        # reported to users as an ownership conflict.
+        # Distinct codes for the two conflicts: conflating them misdirected users
+        # to fix the wrong account. A bare ValueError (empty platform_user_id, a
+        # missing user) is deliberately NOT caught here — it's an internal fault, not a 409.
         if isinstance(e, PlatformAccountTakenError):
             raise create_error(
                 message=str(e),

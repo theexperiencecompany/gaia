@@ -21,8 +21,8 @@ class StartPairingResponse(ResponseModel):
 class PollPairingResponse(ResponseModel):
     """Result of a pairing poll.
 
-    ``status`` is ``pending`` (keep polling), ``approved`` (``device_id`` and
-    ``refresh_token`` set) or ``expired`` (stop).
+    status is pending (keep polling), approved (device_id and
+    refresh_token set) or expired (stop).
     """
 
     status: Literal["pending", "approved", "expired"]
@@ -114,7 +114,7 @@ class DeviceTokenClaims(TypedDict):
     """Claims carried by a device connect JWT.
 
     A TypedDict, not a model: the dependency and its consumers read these as
-    ``info["device_id"]``, so dict semantics are preserved while mypy checks the
+    info["device_id"], so dict semantics are preserved while mypy checks the
     keys.
     """
 

@@ -1,13 +1,13 @@
 """The memory engine facade — the single entry point callers import.
 
 All heavy lifting lives in the focused modules; the facade only binds them
-into one object so call sites read ``memory_engine.<operation>(...)``:
+into one object so call sites read memory_engine.<operation>(...):
 
-- ``ingestion``     — write path: retain / retain_single / summarize_episode
-- ``consolidation`` — background: debounced core-document rewrites
-- ``retrieval``     — read path: recall / recall_episodes (hybrid, zero-LLM)
-- ``context``       — hot path: get_core_context (Redis-cached, every turn)
-- ``management``    — tree / graph / journal / documents / CRUD / wipe
+- ingestion     — write path: retain / retain_single / summarize_episode
+- consolidation — background: debounced core-document rewrites
+- retrieval     — read path: recall / recall_episodes (hybrid, zero-LLM)
+- context       — hot path: get_core_context (Redis-cached, every turn)
+- management    — tree / graph / journal / documents / CRUD / wipe
 """
 
 from app.memory import consolidation, context, ingestion, management, retrieval
@@ -17,7 +17,7 @@ __all__ = ["MemoryEngine", "RetainResult", "RetainedMemory", "memory_engine"]
 
 
 class MemoryEngine:
-    """Facade over the memory engine. Use the module-level ``memory_engine``."""
+    """Facade over the memory engine. Use the module-level memory_engine."""
 
     # --- write path (plan F2) ------------------------------------------------
     retain = staticmethod(ingestion.retain)

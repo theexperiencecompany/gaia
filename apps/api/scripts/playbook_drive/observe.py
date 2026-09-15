@@ -3,7 +3,7 @@
 The execution record and the playbook come from Mongo; the playbook
 lifecycle's own account of the fire (mode, reason, for_each counts, a discard)
 comes from the worker's wide events, which the worker writes as JSON lines. A
-scenario asserts on this ``Observation`` and nothing else: never on prose.
+scenario asserts on this Observation and nothing else: never on prose.
 """
 
 from __future__ import annotations
@@ -97,8 +97,7 @@ class WorkerLog:
 
 
 class Store:
-    """Direct reads of the collections a fire writes. Reads only; the drive
-    changes state through the API."""
+    """Direct reads of the collections a fire writes; the drive changes state through the API."""
 
     def __init__(self) -> None:
         client: MongoClient[dict[str, Any]] = MongoClient(settings.MONGO_DB)
@@ -196,8 +195,7 @@ class Store:
         )
 
     def edit_workflow_prompt(self, workflow_id: str, prompt: str) -> None:
-        """The one write: an edit behind the API's back, so the stale-hash discard
-        is exercised without regenerating the steps."""
+        """Edit the prompt behind the API's back, so the stale-hash discard is exercised without regenerating the steps."""
         self.db["workflows"].update_one({"_id": workflow_id}, {"$set": {"prompt": prompt}})
 
 
@@ -236,7 +234,7 @@ def _observe(
 
 
 def _read_playbook_event(observation: Observation, event: dict[str, Any]) -> None:
-    """What the playbook lifecycle said in one wide event, onto the observation."""
+    """Fold what the playbook lifecycle said in one wide event onto the observation."""
     playbook = event.get("playbook")
     if isinstance(playbook, dict):
         if mode := playbook.get("mode"):

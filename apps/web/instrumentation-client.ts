@@ -39,11 +39,9 @@ if (typeof window !== "undefined") {
           replaysOnErrorSampleRate: 1.0,
           debug: false,
 
-          // Drop noise thrown by crawlers, browser extensions, and third-party
-          // scripts on our SEO pages. `ignoreErrors` / `denyUrls` handle the
-          // benign message classes and extension URLs; `beforeSend` enforces
-          // the bundle-frame allowlist those options cannot express, keeping
-          // both sinks in agreement with PostHog's `before_send`.
+          // Drop noise from crawlers, extensions, and third-party scripts on SEO
+          // pages: `ignoreErrors`/`denyUrls` handle benign messages and extension
+          // URLs; `beforeSend` enforces the bundle-frame allowlist those can't express, matching PostHog's `before_send`.
           ignoreErrors: [...IGNORED_EXCEPTION_MESSAGES],
           denyUrls: [...EXTENSION_URL_PATTERNS],
           beforeSend: filterSentryEvent,
@@ -51,11 +49,9 @@ if (typeof window !== "undefined") {
 
         _captureRouterTransitionStart = Sentry.captureRouterTransitionStart;
 
-        // Session Replay is a heavy integration (~100KB, ~760ms of script
-        // execution) that provides no value before the user engages with the
-        // page. Loading it during initial load dominated TBT on content pages,
-        // so defer it to the first user interaction — error replay still works
-        // for any session a real user actually participates in.
+        // Session Replay is heavy (~100KB, ~760ms exec) with no value before
+        // engagement — it dominated TBT on content pages, so defer to first
+        // interaction; error replay still works for any session a user participates in.
         const loadReplay = () => {
           Sentry.lazyLoadIntegration("replayIntegration")
             .then((replayIntegration) => {
@@ -95,11 +91,9 @@ if (typeof window !== "undefined") {
     try {
       const { default: posthog } = await import("posthog-js");
       posthog.init(posthogProjectToken, {
-        // Ingestion goes through the first-party /ingest proxy (see the
-        // rewrites in next.config.mjs, which point it at
-        // NEXT_PUBLIC_POSTHOG_HOST) so ad blockers cannot drop events.
-        // ui_host names the real instance so the toolbar and "view in
-        // PostHog" links resolve to the configured region, not the US default.
+        // Ingestion goes through the first-party /ingest proxy (see next.config.mjs
+        // rewrites → NEXT_PUBLIC_POSTHOG_HOST) so ad blockers can't drop events;
+        // ui_host resolves the toolbar/"view in PostHog" links to the configured region.
         api_host: "/ingest",
         ui_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
         defaults: "2025-05-24",
@@ -114,10 +108,8 @@ if (typeof window !== "undefined") {
         before_send: filterExceptionBeforeSend,
       });
 
-      // Anything captured while this init was still queued at idle was
-      // buffered rather than dropped — replay it now, in order. Imported
-      // dynamically so the analytics module (and posthog-js with it) stays
-      // off the critical rendering path.
+      // Anything captured while init was queued at idle was buffered, not
+      // dropped — replay it now, in order; imported dynamically to keep analytics off the critical rendering path.
       const { flushPendingAnalytics } = await import("@/lib/analytics");
       flushPendingAnalytics();
     } catch {
@@ -133,8 +125,7 @@ if (typeof window !== "undefined") {
 }
 
 // Next.js calls this hook at the start of every client-side navigation.
-// Transitions that occur before Sentry loads (first few navigations after
-// initial page load) will not be tracked — which is an acceptable tradeoff
-// for eliminating ~630ms of TBT from the landing page.
+// Transitions before Sentry loads go untracked — an acceptable tradeoff for
+// eliminating ~630ms of TBT from the landing page.
 export const onRouterTransitionStart: typeof SentryNs.captureRouterTransitionStart =
   (...args) => _captureRouterTransitionStart?.(...args);

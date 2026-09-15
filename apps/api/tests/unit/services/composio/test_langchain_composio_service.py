@@ -9,10 +9,7 @@ MODULE = "app.services.composio.langchain_composio_service"
 
 
 class TestObservabilityFailureDoesNotBreakTheToolCall:
-    """The invocation-observability log call is wrapped in its own try/except so a
-    logging failure can never take down the actual Composio tool call it is reporting
-    on — the tool's real result must still reach the caller.
-    """
+    """The invocation-observability log call is wrapped in its own try/except so a logging failure can't take down the tool call."""
 
     def _action_func(self, execute_tool: Any) -> Any:
         return LangchainProvider()._wrap_action(

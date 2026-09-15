@@ -62,15 +62,13 @@ USER = "507f1f77bcf86cd799439011"
 
 
 def freeze_time(*args, **kwargs):
-    """freeze_time that skips transformers — its module-restore walk trips on
-    the library's lazy attributes (same workaround as the worker lifecycle
-    tests)."""
+    """Freeze time while skipping transformers, whose lazy attributes trip the module-restore walk."""
     kwargs.setdefault("ignore", ["transformers"])
     return _freeze_time(*args, **kwargs)
 
 
 def make_row(content: str = "a fact", **overrides: object) -> MemoryRecord:
-    """A detached MemoryRecord — no session, no DB. Override any field via kwargs."""
+    """Build a detached MemoryRecord — no session, no DB; override any field via kwargs."""
     now = datetime.now(UTC)
     fields: dict[str, object] = {
         "id": uuid.uuid4(),
@@ -317,11 +315,9 @@ def _cand(
 
 
 class TestDropBelowRelevance:
-    # Survival reads the cross-encoder's calibrated ``relevance`` — never the
-    # blended ``base`` (its cosine leg floors every candidate high) and never
-    # the boosted ``score``. Confident candidates are exempt: the absolute
-    # cosine/logit/keyword signals are the escape hatch for query shapes the
-    # cross-encoder misjudges.
+    # Survival reads calibrated ``relevance``, never blended ``base`` or boosted
+    # ``score``. Confident candidates are exempt as the escape hatch for shapes
+    # the cross-encoder misjudges.
 
     def test_empty_input_returns_empty(self) -> None:
         assert _drop_below_relevance([]) == []
@@ -351,11 +347,7 @@ class TestDropBelowRelevance:
 
     @pytest.mark.regression
     def test_a_high_blended_base_cannot_save_below_floor_relevance(self) -> None:
-        """The incidental-sibling shape, with the real measured proportions:
-        the off-topic sibling kept 72% of the top's blended base (the
-        proportional cosine leg floors everyone high) while its calibrated
-        cross-encoder relevance ratio was 9%. Survival on base kept it; on
-        relevance it dies."""
+        """Measured: the sibling kept 72% blended base but only 9% relevance — survives on base, dies on relevance."""
         scored = [
             _cand(0.473, "birthday", relevance=0.122, confident=True),
             _cand(0.341, "sibling", relevance=0.011, confident=False),
@@ -367,9 +359,7 @@ class TestDropBelowRelevance:
         assert [item.row.content for item in _drop_below_relevance(scored)] == ["top"]
 
     def test_a_confident_candidate_is_never_dropped(self) -> None:
-        """The escape hatch: a keyword/cosine-anchored result the
-        cross-encoder hates still reaches the prompt (the blend exists for
-        ordering precisely because the cross-encoder misjudges some shapes)."""
+        """The escape hatch: a keyword/cosine-anchored result the cross-encoder hates still reaches the prompt."""
         scored = [_cand(1.0, "top"), _cand(0.01, "anchored", confident=True)]
         assert [item.row.content for item in _drop_below_relevance(scored)] == [
             "top",
@@ -410,9 +400,7 @@ class TestCapWeakResults:
         assert len(_cap_weak_results(scored)) == MAX_WEAK_RESULTS
 
     def test_a_confident_result_after_the_weak_cap_is_still_kept(self) -> None:
-        """Hitting the weak cap must SKIP further weak results, never stop the
-        scan: a confident result ranked below the capped weak tail still
-        belongs in the prompt."""
+        """Hitting the weak cap must skip further weak results, not stop the scan — a confident result behind it still belongs."""
         scored = [
             _cand(1.0 - i / 100, f"w{i}", confident=False) for i in range(MAX_WEAK_RESULTS + 1)
         ] + [_cand(0.5, "anchored-last", confident=True)]
@@ -728,19 +716,17 @@ class TestRerankAndBoost:
             scored = await _rerank_and_boost("q", [first, second], ann_similarity={}, fts_ids=set())
         assert scored[0].row.content == "first"
         assert scored[0].score > scored[1].score
-        # The fallback is the exact rank position 1 - index/total, on the same
-        # 0-1 scale as the cosine ratio it stands in for — a shifted scale
-        # (e.g. 2 - index/total) would hand FTS-only rows more retrieval
-        # relevance than a perfect cosine match.
+        # The fallback is 1 - index/total, on the same 0-1 scale as the cosine
+        # ratio — a shifted scale (e.g. 2 - index/total) would rank FTS-only
+        # rows above a perfect cosine match.
         sig = 1.0 / (1.0 + math.exp(-1.0))
         assert scored[0].base == 0.6 * sig + 0.4 * (1.0 - 0 / 2)
         assert scored[1].base == 0.6 * sig + 0.4 * (1.0 - 1 / 2)
 
     async def test_base_blends_sigmoid_and_cosine_ratio_at_60_40(self) -> None:
-        # The pre-boost relevance contract, numerically:
-        #   base = 0.6 * sigmoid(logit) + 0.4 * (cosine / best cosine)
-        # Exact equality on purpose — the blend weights and the
-        # divide-by-the-pool's-best normalization are the recall contract.
+        # base = 0.6 * sigmoid(logit) + 0.4 * (cosine / best cosine) — exact
+        # equality on purpose: the blend weights and best-cosine normalization
+        # are the recall contract.
         best, other = make_row("best"), make_row("other")
         with patch.object(retrieval, "rerank", new=AsyncMock(return_value=[1.25, -0.75])):
             scored = await _rerank_and_boost(
@@ -1010,7 +996,7 @@ class TestBuildEntries:
 
 
 class _RecallHarness:
-    """Drives the real ``recall`` pipeline with every I/O boundary faked."""
+    """Drives the real recall pipeline with every I/O boundary faked."""
 
     def __init__(self) -> None:
         self.rerank_inputs: list[list[str]] = []
@@ -1117,13 +1103,7 @@ class TestRecall:
         assert [memory.content for memory in result.memories] == ["base"]
 
     async def test_graph_sibling_survives_a_full_base_candidate_pool(self) -> None:
-        """A sibling must reach the reranker even when the base pool is full.
-
-        Graph expansion appends siblings to the END of the candidate list, so
-        slicing the combined pool to RERANK_CANDIDATES silently discarded every
-        sibling for any query that already retrieved a full page of base
-        candidates — exactly the corpus size where expansion matters most.
-        """
+        """A sibling appended to the end of the pool must not be discarded when slicing to RERANK_CANDIDATES."""
         base = [make_row(f"base fact {i}") for i in range(RERANK_CANDIDATES + 5)]
         sibling = make_row("the sibling that answers the query")
         harness = _RecallHarness()
@@ -1214,13 +1194,7 @@ class TestRecallQualityRegressions:
 
     @pytest.mark.regression
     async def test_thin_raw_gap_keeps_the_runner_up(self) -> None:
-        """A hair-thin raw gap between two candidates must not delete the second.
-
-        Min-max normalization forced the weaker of two candidates to exactly
-        0.0 regardless of the absolute gap (cosine 0.72 vs 0.71 became 1.0 vs
-        0.0), so the relevance dropoff was guaranteed to cut the runner-up.
-        Absolute-preserving scaling keeps a thin gap thin: both facts survive.
-        """
+        """Min-max normalization used to force a thin gap (cosine 0.72 vs 0.71) to 1.0 vs 0.0, cutting the runner-up."""
         dog = make_row("my dog is Rex")
         allergy = make_row("Rex is allergic to chicken")
         harness = _RecallHarness()
@@ -1240,13 +1214,7 @@ class TestRecallQualityRegressions:
 
     @pytest.mark.regression
     async def test_boosts_decide_ordering_but_never_survival(self) -> None:
-        """A boosted marginal top hit must not push the real answer under the floor.
-
-        The dropoff floor was computed from the post-boost top score, so a
-        recent high-importance memory (boost up to 1.38x) taking the top slot
-        raised the floor above an un-boosted (0.8x) relevant answer. Survival
-        must be decided on pre-boost relevance; boosts only reorder.
-        """
+        """The dropoff floor used to be computed post-boost, so a 1.38x-boosted top hit could bury an 0.8x un-boosted answer."""
         now = datetime.now(UTC)
         old_relevant = make_row(
             "user is allergic to peanuts",
@@ -1530,11 +1498,7 @@ class TestRecallTranscripts:
 @pytest.mark.unit
 class TestEpisodeSearchWindowFollowsTheUsersTimezone:
     async def test_the_lookback_window_starts_from_the_users_local_today(self) -> None:
-        """Journal days are keyed by the user's LOCAL date (see user_time.py);
-        a lookback computed from the UTC date starts one day early for a UTC+
-        user's evening, silently excluding the newest local day from 'since'.
-        The window must anchor on the same local day the write path files under.
-        """
+        """Journal days are keyed by the user's LOCAL date; a UTC-based lookback would exclude the newest local day for a UTC+ user."""
         local = date_type(2026, 8, 27)
         search = AsyncMock(return_value=[])
         with (
@@ -1550,8 +1514,7 @@ class TestEpisodeSearchWindowFollowsTheUsersTimezone:
 
 
 class TestInteractiveRecallEmbeds:
-    """Recall embeds/reranks on the user's turn use the fail-fast budget, and a
-    slow sidecar surfaces a warning rather than a silent stall."""
+    """Recall embeds and reranks on the user's turn use the fail-fast budget; a slow sidecar warns instead of stalling."""
 
     async def test_ann_search_embeds_interactively_with_the_query_vector(self) -> None:
         seen: dict[str, object] = {}

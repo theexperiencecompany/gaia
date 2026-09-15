@@ -1,6 +1,6 @@
 """Endpoint tests for /api/v1/triggers/options.
 
-Pins the paging/search contract of the route: ``page`` and ``search`` are
+Pins the paging/search contract of the route: page and search are
 declared query parameters (so they reach the generated client types) and are
 handed to the handler explicitly, not scraped from the raw query string.
 """
@@ -25,7 +25,7 @@ def _handler(options: list[TriggerOption]) -> MagicMock:
 
 
 class TestGetTriggerOptions:
-    """GET /api/v1/triggers/options"""
+    """GET /api/v1/triggers/options."""
 
     async def test_page_and_search_reach_the_handler(self, client: AsyncClient) -> None:
         handler = _handler([TriggerOption(value="owner/repo", label="owner/repo")])

@@ -46,7 +46,7 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 
 
 def _make_view(notification_id: str = "n1", title: str = "Hello") -> NotificationView:
-    """The flattened shape ``get_user_notifications`` / ``get_notification`` return."""
+    """Build the flattened shape get_user_notifications / get_notification return."""
     return NotificationView(
         id=notification_id,
         user_id=FAKE_USER_ID,
@@ -61,7 +61,7 @@ def _make_view(notification_id: str = "n1", title: str = "Hello") -> Notificatio
 def _make_record(
     notification_id: str = "n1", status: NotificationStatus = NotificationStatus.READ
 ) -> NotificationRecord:
-    """The stored record ``mark_as_read`` returns (not the flattened view)."""
+    """Build the stored record mark_as_read returns (not the flattened view)."""
     return NotificationRecord(
         id=notification_id,
         user_id=FAKE_USER_ID,
@@ -86,7 +86,7 @@ from tests.conftest import FAKE_USER
 
 
 class TestGetNotifications:
-    """GET /api/v1/notifications"""
+    """GET /api/v1/notifications."""
 
     @patch(
         "app.api.v1.endpoints.notification.notification_service.get_user_notifications_count",
@@ -202,7 +202,7 @@ class TestGetNotifications:
 
 
 class TestGetChannelPreferences:
-    """GET /api/v1/notifications/preferences/channels"""
+    """GET /api/v1/notifications/preferences/channels."""
 
     @patch(
         "app.api.v1.endpoints.notification.fetch_channel_preferences",
@@ -240,7 +240,7 @@ class TestGetChannelPreferences:
 
 
 class TestUpdateChannelPreferences:
-    """PUT /api/v1/notifications/preferences/channels"""
+    """PUT /api/v1/notifications/preferences/channels."""
 
     @patch(
         "app.api.v1.endpoints.notification.fetch_channel_preferences",
@@ -342,7 +342,7 @@ class TestNotificationAnalytics:
 
 
 class TestExecuteAction:
-    """POST /api/v1/notifications/{id}/actions/{aid}/execute"""
+    """POST /api/v1/notifications/{id}/actions/{aid}/execute."""
 
     @patch(
         "app.api.v1.endpoints.notification.notification_service.execute_action",
@@ -388,7 +388,7 @@ class TestExecuteAction:
 
 
 class TestMarkAsRead:
-    """POST /api/v1/notifications/{id}/read"""
+    """POST /api/v1/notifications/{id}/read."""
 
     @patch(
         "app.api.v1.endpoints.notification.notification_service.mark_as_read",
@@ -429,7 +429,7 @@ class TestMarkAsRead:
 
 
 class TestBulkActions:
-    """POST /api/v1/notifications/bulk-actions"""
+    """POST /api/v1/notifications/bulk-actions."""
 
     @patch(
         "app.api.v1.endpoints.notification.notification_service.bulk_actions",
@@ -489,7 +489,7 @@ class TestBulkActions:
 
 
 class TestMarkAllRead:
-    """POST /api/v1/notifications/mark-all-read"""
+    """POST /api/v1/notifications/mark-all-read."""
 
     @patch("app.api.v1.endpoints.notification.log")
     @patch(
@@ -582,7 +582,7 @@ class TestMarkAllRead:
 
 
 class TestRegisterDevice:
-    """POST /api/v1/notifications/register-device"""
+    """POST /api/v1/notifications/register-device."""
 
     @patch("app.api.v1.endpoints.notification.get_device_token_service")
     async def test_register_device_success(self, mock_svc_factory: MagicMock, client: AsyncClient):
@@ -669,7 +669,7 @@ class TestRegisterDevice:
 
 
 class TestUnregisterDevice:
-    """POST /api/v1/notifications/unregister-device"""
+    """POST /api/v1/notifications/unregister-device."""
 
     @patch("app.api.v1.endpoints.notification.get_device_token_service")
     async def test_unregister_device_success(
@@ -718,7 +718,7 @@ class TestUnregisterDevice:
 
 
 class TestGetNotification:
-    """GET /api/v1/notifications/{id}"""
+    """GET /api/v1/notifications/{id}."""
 
     @patch(
         "app.api.v1.endpoints.notification.notification_service.get_notification",

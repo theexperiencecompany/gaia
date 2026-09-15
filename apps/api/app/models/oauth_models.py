@@ -64,11 +64,9 @@ class OAuthIntegration(BaseModel):
     managed_by: Literal["self", "composio", "mcp", "internal"]
     composio_config: ComposioConfig | None = None
     mcp_config: MCPConfig | None = None
-    # Tool names/slugs this integration's HIL gate must treat as destructive
-    # (e.g. GMAIL_SEND_EMAIL). Integration-agnostic — applies to Composio and
-    # built-in MCP configs alike. ``None`` = uncurated: the HIL LLM classifier
-    # resolves each tool at gate time and fails closed. A list (possibly empty)
-    # = reviewed: exactly those are destructive, the rest safe.
+    # Tool names/slugs this integration's HIL gate treats as destructive (e.g.
+    # GMAIL_SEND_EMAIL). None = uncurated: the HIL LLM classifier resolves each
+    # tool at gate time and fails closed. A list (possibly empty) = reviewed.
     destructive_tools: list[str] | None = None
     associated_triggers: list[TriggerConfig] = []
     subagent_config: SubAgentConfig | None = None
@@ -77,10 +75,9 @@ class OAuthIntegration(BaseModel):
 
     @model_validator(mode="after")
     def _enforce_composio_invariant(self) -> "OAuthIntegration":
-        # `provider_subagents.py` selects the Composio branch using
-        # `managed_by == "composio"` and then expects `composio_config` to
-        # be present. Pin the bidirectional invariant so a future config
-        # entry can't silently skip Composio tool registration.
+        # provider_subagents.py selects the Composio branch via managed_by ==
+        # "composio" and expects composio_config to be set; pin the bidirectional
+        # invariant so a future entry can't silently skip Composio registration.
         if self.composio_config is not None and self.managed_by != "composio":
             raise ValueError(
                 f"Integration {self.id!r} sets composio_config but "

@@ -1,23 +1,23 @@
 """Repair marketplace MCP integrations that were seeded with bad data.
 
-Production-safe data migration. Dry-run by default; pass ``--apply`` to write.
+Production-safe data migration. Dry-run by default; pass --apply to write.
 Runs against whatever MongoDB the loaded environment points to, so to fix
 production run it with the prod env/Infisical loaded.
 
 Two phases:
 
-1. URL fixes (curated) — repoint integrations whose ``server_url`` is not a
+1. URL fixes (curated) — repoint integrations whose server_url is not a
    working MCP endpoint:
-     * Smithery *web listing page* (``smithery.ai/server/<name>``) -> MCP host
-       (``server.smithery.ai/<name>``);
-     * missing ``/mcp`` path (PayPal);
+     * Smithery *web listing page* (smithery.ai/server/<name>) -> MCP host
+       (server.smithery.ai/<name>);
+     * missing /mcp path (PayPal);
      * upstream moved/removed -> a verified live replacement, optionally with a
        better title/description/icon when the replacement is a different server.
-   Dead integrations with no replacement are unpublished (``is_public=False``).
+   Dead integrations with no replacement are unpublished (is_public=False).
 
 2. Auth reconcile (probe-driven) — for every public custom MCP, detect the real
-   auth requirement from the server and reconcile ``requires_auth`` /
-   ``auth_type`` to it:
+   auth requirement from the server and reconcile requires_auth /
+   auth_type to it:
      * 2xx JSON/SSE                       -> none   (requires_auth=False)
      * 401 with WWW-Authenticate / PRM    -> oauth  (RFC 9728 OAuth flow)
      * 401 with no WWW-Authenticate       -> bearer (user supplies an API key)
@@ -59,9 +59,7 @@ integrations_collection = get_async_collection("integrations")
 
 @dataclass(frozen=True)
 class Replacement:
-    """A curated URL fix. name/description/icon_url are set only for server
-    swaps where the new server differs from what the stored metadata describes.
-    """
+    """A curated URL fix; name/description/icon_url are set only for server swaps that differ from the stored metadata."""
 
     url: str
     name: str | None = None
@@ -146,7 +144,7 @@ _AUTH_FIELDS: dict[str, tuple[bool, str | None]] = {
 
 
 async def classify(client: httpx.AsyncClient, url: str) -> tuple[str, str]:
-    """Classify a URL via a live MCP ``initialize`` POST.
+    """Classify a URL via a live MCP initialize POST.
 
     Returns (verdict, note). verdict is one of:
       none / oauth / bearer  -> reachable, confident auth verdict

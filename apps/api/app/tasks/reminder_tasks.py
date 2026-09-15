@@ -1,6 +1,4 @@
-"""
-Reminder task handlers for static reminders only.
-"""
+"""Reminder task handlers for static reminders only."""
 
 from typing import cast
 
@@ -27,7 +25,7 @@ PAYWALL_FEATURE_REMINDER = "reminder"
 
 
 def _reminder_result_text(payload: StaticReminderPayload) -> str:
-    """The reminder body as GAIA would voice it into a chat: bold title, then body."""
+    """Format the reminder body as GAIA would voice it into a chat: bold title, then body."""
     segments = [
         seg for seg in (f"**{payload.title}**" if payload.title else "", payload.body) if seg
     ]
@@ -35,8 +33,9 @@ def _reminder_result_text(payload: StaticReminderPayload) -> str:
 
 
 async def _execute_static_reminder(reminder: ReminderModel) -> None:
-    """Fire a static reminder: raise the in-app badge and deliver it into the
-    user's linked chat platforms, recorded into the conversation's langgraph thread.
+    """Fire a static reminder: raise the in-app badge and deliver it to the user's platforms.
+
+    Delivery is recorded into the conversation's langgraph thread so later turns can backtrack.
     """
     if not isinstance(reminder.payload, StaticReminderPayload):
         raise ValueError("Invalid payload type for static reminder")
@@ -54,27 +53,20 @@ async def _execute_static_reminder(reminder: ReminderModel) -> None:
 
     await notification_service.create_notification(notification)
 
-    # Deliver into the user's real chat platforms via the same path a finished
-    # workflow uses — so the reminder lands as a GAIA message AND is recorded into
-    # the platform conversation's langgraph thread, framed with the reminder id so
-    # a later turn can backtrack to it. Best-effort; the in-app badge above is the
-    # primary delivery. The notification itself is pinned to in-app, so this is the
-    # only platform send (no double delivery).
+    # Same delivery path a finished workflow uses, framed with the reminder id so a
+    # later turn can backtrack. Best-effort — the notification above is pinned to
+    # in-app, so this is the only platform send (no double delivery).
     await _deliver_reminder_to_platforms(reminder)
 
     log.info("Static reminder sent notification", reminder_id=reminder.id, user_id=reminder.user_id)
 
 
 async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
-    """Deliver a fired reminder into the chat that created it (on its own surface)
-    AND the user's other linked chat platforms, each recorded into that
-    conversation's langgraph thread. Best-effort — never fails the reminder.
+    """Deliver a fired reminder into its source chat and the user's other linked platforms, best-effort.
 
-    This is a supplementary side channel; the in-app badge is the primary
-    delivery and has already succeeded by the time we get here. So every failure
-    is swallowed and logged, never propagated — in particular get_user_by_id
-    raises HTTPException on a transient user-repo error, which must not mark the
-    reminder failed (and skip the recurring re-arm) over a side channel.
+    Side channel behind the in-app badge: swallows every failure — including
+    get_user_by_id's HTTPException on a transient error — so it never fails the
+    reminder or skips the recurring re-arm.
     """
     if not isinstance(reminder.payload, StaticReminderPayload) or not reminder.id:
         return
@@ -127,15 +119,7 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
 async def execute_reminder_by_agent(
     reminder: ReminderModel,
 ) -> None:
-    """
-    Execute a static reminder task.
-
-    This is the main entry point for reminder execution. Only handles
-    STATIC reminders that send simple notifications.
-
-    Args:
-        reminder: The reminder to execute
-    """
+    """Execute a static reminder task; the only agent type handled here is STATIC."""
     log.info("Executing reminder", reminder_id=reminder.id, agent=reminder.agent)
 
     if not reminder.id:
@@ -146,31 +130,18 @@ async def execute_reminder_by_agent(
         )
         raise ValueError(f"Reminder {reminder.id} has no ID, skipping execution.")
 
-    # Paid-only gate, at the single choke point every reminder fire passes
-    # through (scheduler tick and direct execution alike). It only SKIPS, for
-    # the same reason the workflow gate does (see the matching block in
-    # `workers/tasks/workflow_tasks.py`): skipping without writing leaves the
-    # reminder for `BaseSchedulerService.process_task_execution` to re-arm at
-    # its next occurrence, so a recurring reminder resumes by itself the moment
-    # the subscription is back.
-    #
-    # This used to write PAUSED. The write never survived the call that made
-    # it: process_task_execution sets SCHEDULED on a recurring reminder
-    # (_reschedule_recurring_task) and COMPLETED on a one-off the moment this
-    # returns, so the pause was overwritten on every path, nothing anywhere
-    # wrote ACTIVE back, and a "resume on resubscribe" step had no state to
-    # resume from.
+    # Paid-only gate; only SKIPS (never writes) so process_task_execution's own
+    # SCHEDULED/COMPLETED reschedule re-arms a recurring reminder once the
+    # subscription resumes — writing PAUSED here was always overwritten by that call.
     if not await is_paid(reminder.user_id):
         log.warning(
             "Reminder skipped — subscription required",
             reminder_id=reminder.id,
             user_id=reminder.user_id,
         )
-        # The same event every HTTP and bot paywall block fires. This gate does
-        # not go through `require_active_subscription` (it must skip, not
-        # raise), so without this the block is real and the funnel cannot see
-        # it: "how many users lost a reminder to the wall" would be
-        # unanswerable while every other surface answers it.
+        # Same event every HTTP/bot paywall block fires; this gate skips instead
+        # of going through require_active_subscription, so without it the funnel
+        # could not see reminders lost to the wall.
         capture_event(
             reminder.user_id,
             AnalyticsEvents.PAYWALL_BLOCKED,

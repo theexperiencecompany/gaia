@@ -1,6 +1,6 @@
 """Unit tests for Gmail custom tools (post-Composio-proxy migration).
 
-Each tool routes provider API calls through `proxy_request_sync` instead of
+Each tool routes provider API calls through proxy_request_sync instead of
 raw httpx. Tests patch that helper and assert on the request shape.
 """
 
@@ -475,10 +475,9 @@ class TestFetchMessages:
             },
         ]
         message_response = self._make_message_response()
-        # State machine: list page 1 OK → list page 2 RAISE. Two messages
-        # in between (m1, m2). Using a counter + raise so the mock
-        # actually propagates the exception (returning it as a value would
-        # not trigger the tool's error path).
+        # State machine: list page 1 OK -> list page 2 RAISE (m1, m2 in between).
+        # A counter + raise, since returning the exception as a value would not
+        # trigger the tool's error path.
         list_call_count = [0]
 
         def side_effect(request: ProxyRequest):
@@ -668,10 +667,7 @@ class TestFetchMessages:
 
 
 class TestPartialFetchResult:
-    """A fetch that dies mid-loop still returns the pages it got. What the model
-    is told about the failure decides whether the user gets an answer or a
-    promise of one that can never arrive — nothing runs after a turn ends.
-    """
+    """A fetch that dies mid-loop still returns the pages it got — what the model is told about the failure decides whether the user gets an answer or a promise that can never arrive."""
 
     def test_the_partial_shape_reports_what_was_and_was_not_retrieved(self) -> None:
         result = _format_partial_result([{"id": "m1"}, {"id": "m2"}], reason="429 rate limited")
@@ -689,12 +685,7 @@ class TestPartialFetchResult:
         assert result["messages"] == []
 
     def test_the_note_tells_the_model_the_only_honest_moves(self) -> None:
-        """Pinned verbatim, and deliberately so: this is the instruction that
-        stops a weak model answering "still fetching" on a turn that is already
-        over. Every clause does a job — do not retry, do not promise more, and
-        the two endings that are actually available. Rewording it should require
-        a reviewer to look at it, which is exactly what this assertion forces.
-        """
+        """Pinned verbatim: stops a weak model answering "still fetching" on a turn that is already over."""
         note = _format_partial_result([], reason="429")["note"]
 
         assert note == (

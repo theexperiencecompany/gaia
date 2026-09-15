@@ -2,8 +2,8 @@
 """Phase 0 gate — empirically pick the artifact-detection mechanism.
 
 This is an inline runnable probe, NOT a pytest (we don't want it in CI). It
-acquires a real E2B sandbox for a test user, opens an E2B `watch_dir` stream
-on `/workspace/sessions`, and runs a four-case matrix that tells us whether
+acquires a real E2B sandbox for a test user, opens an E2B watch_dir stream
+on /workspace/sessions, and runs a four-case matrix that tells us whether
 the native watcher catches every write path we care about (tool writes, bash
 writes, background-process writes, cross-mount host writes).
 
@@ -12,7 +12,7 @@ It prints a structured verdict to stdout:
     {"primary": "watch_dir" | "accesslog", "evidence": {...}}
 
 Paste that verdict into the Phase 3 implementation PR description. The verdict
-drives the `ARTIFACT_DETECTION_MODE` setting.
+drives the ARTIFACT_DETECTION_MODE setting.
 
 Decision matrix (see .agents/plans/workspace-v2.md Phase 0):
   * all 4 pass                 -> primary = watch_dir
@@ -54,7 +54,7 @@ def _event_type_name(ev: object) -> str:
 
 
 async def _wait_for(queue: asyncio.Queue[Any], suffix: str, timeout: float) -> dict[str, Any]:
-    """Drain events until one whose name ends with `suffix`, or time out."""
+    """Drain events until one whose name ends with suffix, or time out."""
     seen: list[str] = []
     try:
         async with asyncio.timeout(timeout):

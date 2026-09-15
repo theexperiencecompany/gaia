@@ -31,11 +31,11 @@ class FeatureUsage(BaseModel):
 
 
 class UserUsageSnapshot(UserScopedDocument):
-    """A user's usage snapshot as stored in the ``usage_snapshots`` collection.
+    """A user's usage snapshot as stored in the usage_snapshots collection.
 
-    User-scoped; ``id`` is the stringified Mongo ``_id``. ``created_at`` carries a
+    User-scoped; id is the stringified Mongo _id. created_at carries a
     90-day TTL (see indexes). Snapshots are hourly-aggregated: a write merges into
-    the current hour's row and the base stamps ``updated_at``.
+    the current hour's row and the base stamps updated_at.
     """
 
     plan_type: str
@@ -69,7 +69,7 @@ class HistoryFeatureUsage(ResponseModel):
 
 
 class UsageHistoryEntry(ResponseModel):
-    """One item in the ``GET /usage/history`` response list."""
+    """One item in the GET /usage/history response list."""
 
     date: str
     plan_type: str

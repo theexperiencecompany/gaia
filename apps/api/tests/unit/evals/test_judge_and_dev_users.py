@@ -5,8 +5,8 @@ the shape either one hands to the layer below: the rubric block the prompts
 interpolate, the options every judge call now shares, and the auth material a
 dev-lane client carries.
 
-The dev-lane assertions are the ones with a history: sending the ``X-Dev-User``
-header without the ``dev_bypass_user`` cookie authenticates the REST calls and
+The dev-lane assertions are the ones with a history: sending the X-Dev-User
+header without the dev_bypass_user cookie authenticates the REST calls and
 401s the chat stream, which reads as an API outage rather than a harness bug.
 """
 
@@ -73,8 +73,7 @@ class TestJudgePlumbing:
     async def test_passes_the_verdict_model_prompt_and_label_through(
         self, captured: dict[str, Any]
     ) -> None:
-        """The label is per-script on purpose: one shared name would make a run's
-        cost unattributable to the suite that spent it."""
+        """The label is per-script on purpose: one shared name would make a run's cost unattributable to the suite that spent it."""
         await judge(_Verdict, "the rubric text", label="chat_quality_judge", timeout=1.0)
         assert captured["model"] is _Verdict
         assert captured["prompt"] == "the rubric text"
@@ -93,11 +92,11 @@ class TestJudgePlumbing:
 
 class TestDevClient:
     def test_carries_both_the_header_and_the_cookie(self) -> None:
-        """REST routes read ``X-Dev-User``; the chat stream reads the cookie."""
+        """REST routes read X-Dev-User; the chat stream reads the cookie."""
         client = dev_client("someone@gaia.local")
         assert client.headers["X-Dev-User"] == "someone@gaia.local"
         assert client.cookies["dev_bypass_user"] == "someone@gaia.local"
 
     def test_default_display_name_is_a_single_shared_constant(self) -> None:
-        """Four copies of ``_provision`` each spelled this literal themselves."""
+        """Four copies of _provision each spelled this literal themselves."""
         assert DEFAULT_NAME == "Alex"

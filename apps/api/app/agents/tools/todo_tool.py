@@ -94,8 +94,8 @@ class _SummaryStats(TypedDict):
 
 
 class _RecentlyCompletedBucket(TypedDict):
-    """The recently-completed bucket — capped like ``_TodoBucket`` but with no
-    ``has_more`` flag (the summary card never offers to expand it)."""
+    """The recently-completed bucket — capped like _TodoBucket but with no
+    has_more flag (the summary card never offers to expand it)."""
 
     count: int
     todos: list[SerializedModel]
@@ -110,7 +110,7 @@ class _ProjectCounts(TypedDict):
 
 
 class TodosSummary(TypedDict):
-    """The ``get_todos_summary`` payload — streamed as ``todo_data.summary``."""
+    """The get_todos_summary payload — streamed as todo_data.summary."""
 
     today: _TodoBucket
     overdue: _TodoBucket
@@ -122,13 +122,9 @@ class TodosSummary(TypedDict):
     by_project: dict[str, _ProjectCounts]
 
 
-# ---------------------------------------------------------------------------
-# Tool return shapes. Plain TypedDicts, not models: the value goes straight to
-# LangChain, which stringifies it into the ToolMessage the LLM reads — so the
-# runtime object must stay the exact dict it is today. ``count`` is
-# ``NotRequired`` because the error paths deliberately return only the payload
-# key plus ``error``.
-# ---------------------------------------------------------------------------
+# Tool return shapes are plain TypedDicts, not models: LangChain stringifies
+# the value into the ToolMessage the LLM reads. ``count`` is ``NotRequired``
+# because error paths return only the payload key plus ``error``.
 
 
 class TodoResult(TypedDict):
@@ -147,7 +143,7 @@ class TodoListResult(TypedDict):
 
 
 class SemanticSearchResult(TodoListResult):
-    """``semantic_search_todos`` — a todo list tagged with the search backend."""
+    """semantic_search_todos — a todo list tagged with the search backend."""
 
     search_type: NotRequired[Literal["semantic"]]
 
@@ -160,7 +156,7 @@ class SuccessResult(TypedDict):
 
 
 class TodoStatsResult(TypedDict):
-    """``get_todo_statistics`` — the serialized stats model."""
+    """get_todo_statistics — the serialized stats model."""
 
     stats: SerializedModel | None
     error: str | None
@@ -182,14 +178,14 @@ class ProjectListResult(TypedDict):
 
 
 class LabelListResult(TypedDict):
-    """``get_all_labels`` — every label the user has, serialized."""
+    """get_all_labels — every label the user has, serialized."""
 
     labels: list[SerializedModel]
     error: str | None
 
 
 class TodosSummaryResult(TypedDict):
-    """``get_todos_summary`` — the whole snapshot in one call."""
+    """get_todos_summary — the whole snapshot in one call."""
 
     summary: TodosSummary | None
     error: str | None
@@ -1062,13 +1058,10 @@ async def add_subtask(
         if not user_id:
             return {"error": "User authentication required", "todo": None}
 
-        # Get the todo first
         todo = await get_todo_service(todo_id, user_id)
 
-        # Create new subtask
         new_subtask = SubTask(id=str(uuid.uuid4()), title=title, completed=False)
 
-        # Update todo with new subtask
         update_data = TodoUpdateRequest(subtasks=todo.subtasks + [new_subtask])
 
         result = await update_todo_service(todo_id, update_data, user_id)
@@ -1237,7 +1230,6 @@ async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
         if not user_id:
             return {"error": "User authentication required", "summary": None}
 
-        # --- Helper functions ---
         def get_date_ranges() -> tuple[datetime, datetime, datetime, datetime, datetime]:
             """Calculate all needed date ranges."""
             now = datetime.now(UTC)
@@ -1309,7 +1301,6 @@ async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
                 "has_more": len(todos) > limit,
             }
 
-        # --- Parallel data fetching ---
         now, today_start, today_end, week_end, yesterday = get_date_ranges()
 
         today_todos, upcoming_todos, all_todos, all_projects = await asyncio.gather(
@@ -1319,14 +1310,12 @@ async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
             get_all_projects_service(user_id),
         )
 
-        # --- Process data ---
         overdue, high_priority, recently_completed, next_deadline = filter_todos(
             all_todos, now, yesterday
         )
         stats = calculate_stats(all_todos, recently_completed, overdue)
         project_breakdown = build_project_breakdown(all_todos, all_projects)
 
-        # --- Build summary ---
         summary: TodosSummary = {
             "today": serialize_todos(today_todos),
             "overdue": serialize_todos(overdue),

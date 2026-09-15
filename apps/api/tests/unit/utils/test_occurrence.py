@@ -24,8 +24,7 @@ class TestOccurrenceRoundTrip:
         assert window["$gte"] <= _ARMED < window["$lt"]
 
     def test_window_contains_the_millisecond_value_mongo_stores(self):
-        """BSON has no finer type than milliseconds, so the armed instant is
-        truncated on write — the pin still has to match what came back."""
+        """BSON has no finer type than milliseconds, so the pin must match what came back."""
         stored = _ARMED.replace(microsecond=_ARMED.microsecond // 1000 * 1000)
         parsed = parse_occurrence_stamp(occurrence_stamp(_ARMED), "task_1")
 
@@ -34,13 +33,7 @@ class TestOccurrenceRoundTrip:
         assert window["$gte"] <= stored < window["$lt"]
 
     def test_window_floors_a_sub_second_moment(self):
-        """The window is built from its own floor, not from the caller's instant.
-
-        A caller that hands over an unfloored moment (a float stamp, a direct
-        call) would otherwise get a window starting ABOVE the millisecond-
-        truncated value Mongo holds — the same silent no-match the second
-        resolution exists to prevent.
-        """
+        """An unfloored instant must not produce a window starting above what Mongo stores."""
         stored = _ARMED.replace(microsecond=_ARMED.microsecond // 1000 * 1000)
 
         window = occurrence_window(_ARMED)

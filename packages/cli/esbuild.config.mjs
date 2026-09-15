@@ -3,13 +3,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
-// @gaia/shared is a no-build TypeScript workspace lib — its package.json
-// "exports" point straight at .ts source, and the published @heygaia/cli does
-// NOT depend on it at runtime. It is a BUILD-TIME source dependency that must be
-// inlined into the bundle, so a bare `@gaia/shared/*` import cannot be left
-// external (--packages=external would emit an import that crashes a published
-// install). This plugin resolves every `@gaia/shared/<sub>` import to its source
-// path so esbuild bundles it as CLI code, mirroring apps/desktop's vite alias.
+// @gaia/shared is a no-build TS workspace lib the published @heygaia/cli does
+// NOT depend on at runtime, so a bare `@gaia/shared/*` import would crash under
+// --packages=external. Resolve it to source instead, mirroring apps/desktop's vite alias.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SHARED_SRC = resolve(__dirname, "../../libs/shared/ts/src");
 

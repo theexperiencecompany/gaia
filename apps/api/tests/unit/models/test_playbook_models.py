@@ -1,4 +1,4 @@
-"""Unit tests for `app.models.playbook_models` — the inline `$ask` slot.
+"""Unit tests for app.models.playbook_models — the inline $ask slot.
 
 The slot key is the address a written value is looked up by: the runner lists
 it to the model that fills it and the evaluator substitutes by it, so a key
@@ -58,9 +58,7 @@ class TestAskSlotKeys:
         assert [item.key for item in ask_slots(steps)] == ["web_search_tool.query_text"]
 
     def test_a_slot_inside_a_handoff_child_is_keyed_by_the_child_not_the_handoff(self) -> None:
-        """A handoff's children are what actually call tools, and the evaluator
-        fills args per child step. Keying by the handoff would look the value up
-        under a prefix no step ever passes."""
+        """Keying by the handoff would look the value up under a prefix no step ever passes."""
         steps = [
             HandoffStep(
                 id="mail",
@@ -95,8 +93,7 @@ class TestAskSlotKeys:
 
 class TestPlaybookStepInput:
     def test_unknown_keys_are_dropped_instead_of_refusing_the_write(self) -> None:
-        """17 of 57 production authoring attempts were thrown away whole for a
-        ``goal`` beside an otherwise correct call."""
+        """17 of 57 production authoring attempts were thrown away whole for a goal beside an otherwise correct call."""
         step = PlaybookStepInput.model_validate(
             {"id": "agenda", "tool": "list_events", "goal": "read", "note": "daily"}
         )
@@ -117,8 +114,7 @@ class TestPlaybookStepInput:
     def test_a_node_is_a_tool_call_or_a_handoff_and_never_both_or_neither(
         self, step: dict[str, Any]
     ) -> None:
-        """The one rule still worth failing a write over: a malformed node means
-        the runner would silently skip a step instead of running it."""
+        """A malformed node means the runner would silently skip a step instead of running it."""
         with pytest.raises(ValidationError, match="exactly one of"):
             PlaybookStepInput.model_validate(step)
 
@@ -142,11 +138,7 @@ class TestPlaybookHandoffStepInput:
     def test_a_child_that_nests_a_level_deeper_is_refused_by_name(
         self, child: dict[str, Any], named: str
     ) -> None:
-        """The child model drops unknown keys, and ``steps``/``handoff`` ARE
-        unknown to it. Without this rule a grandchild delegation is discarded
-        silently and the stored playbook runs less than the author wrote while
-        reporting success. The message has to name which key, or the author
-        cannot tell nesting from a typo."""
+        """Without this the child model drops steps/handoff as unknown keys, discarding a grandchild delegation silently."""
         with pytest.raises(ValidationError) as raised:
             PlaybookHandoffStepInput.model_validate(child)
 
@@ -156,8 +148,7 @@ class TestPlaybookHandoffStepInput:
         ) in str(raised.value)
 
     def test_a_stray_annotation_on_a_child_is_still_dropped(self) -> None:
-        """The refusal above is exactly two keys wide: a ``goal`` on a child is
-        the same harmless annotation it is on a top-level step."""
+        """A goal on a child is the same harmless annotation it is on a top-level step."""
         child = PlaybookHandoffStepInput.model_validate(
             {"id": "mail", "tool": "list_events", "goal": "read the agenda"}
         )
@@ -169,8 +160,7 @@ class TestPlaybookHandoffStepInput:
 
 
 class TestArgsSpelledRight:
-    """``args`` under another name is dropped as unknown, and the step then
-    stores a call with no arguments at all while reporting a successful write."""
+    """args under another name is dropped as unknown, storing a call with no arguments while reporting a successful write."""
 
     @pytest.mark.parametrize(
         "near_miss",
@@ -199,9 +189,7 @@ class TestArgsSpelledRight:
     def test_a_stray_alias_beside_real_args_is_dropped_not_refused(
         self, model: type[PlaybookStepInput] | type[PlaybookHandoffStepInput]
     ) -> None:
-        """The refusal is about arguments going missing. With ``args`` present
-        nothing is lost, so the extra key is the same harmless annotation any
-        other unknown key is."""
+        """With args present nothing is lost, so the extra key is the same harmless annotation any other unknown key is."""
         step = model.model_validate(
             {
                 "id": "mail",
@@ -235,17 +223,14 @@ class TestAskSlot:
     def test_a_slot_that_is_not_exactly_a_prompt_and_a_budget_is_refused(
         self, value: dict[str, Any]
     ) -> None:
-        """The parser reports a bad slot to the author from this failure, and
-        the budget bound is what keeps one replay from turning into an unbounded
-        generation — the whole point of freezing a sequence is a bounded cost."""
+        """The budget bound keeps one replay from turning into an unbounded generation."""
         with pytest.raises(ValidationError):
             AskSlot.model_validate(value)
 
 
 @pytest.mark.unit
 class TestStepInputBecomesAStep:
-    """The authoring input converts to exactly the executed step, and refuses
-    a loop without its ceiling naming the step."""
+    """The authoring input converts to exactly the executed step, and refuses a loop without its ceiling naming the step."""
 
     def test_a_repeating_call_keeps_every_field(self) -> None:
         step = PlaybookStepInput(

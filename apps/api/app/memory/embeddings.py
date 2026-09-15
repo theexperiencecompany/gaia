@@ -1,22 +1,16 @@
 """Embedding + reranking for the memory engine.
 
-Wraps fastembed's ONNX ``TextEmbedding`` (mxbai-embed-large, 1024-dim) and
-``TextCrossEncoder`` reranker behind lazy process-wide singletons. Unlike the
-providers in ``app.core.lazy_loader`` these do not depend on settings keys or
-the registry's startup registration step, so they work identically in the API
-process and any background context.
+Wraps fastembed's ONNX TextEmbedding (mxbai-embed-large, 1024-dim) and
+TextCrossEncoder reranker behind lazy process-wide singletons, independent of
+app.core.lazy_loader's settings/registration requirements.
 
-Two backends, chosen at call time:
+Two backends, chosen at call time: **Sidecar** (MEMORY_EMBEDDING_SIDECAR_URL
+set) makes embed/rerank HTTP calls to a shared process so weights load ONCE
+per deployment (~1.8 GB each) instead of per container; **Local** (default)
+loads its own model per process on first use.
 
-- **Sidecar** (``MEMORY_EMBEDDING_SIDECAR_URL`` set): embed/rerank are HTTP
-  calls to the shared sidecar process, so the model weights load ONCE for the
-  whole deployment instead of in every container (~1.8 GB each). The sidecar
-  reuses these exact ``*_sync`` helpers, so the numbers are identical.
-- **Local** (default / dev): each process loads its own model on first use.
-
-fastembed is sync and CPU-bound; the async API runs it in a thread so the
-event loop is never blocked. The locks are ``threading.Lock`` (not
-``asyncio.Lock``) because loading happens inside ``asyncio.to_thread``.
+fastembed is sync/CPU-bound; the async API runs it in a thread, using
+threading.Lock (not asyncio.Lock) since loading happens inside asyncio.to_thread.
 """
 
 import asyncio
@@ -101,7 +95,7 @@ async def _observed(operation: str, backend: str, count: int, awaitable: Awaitab
 
     The embedding sidecar (HTTP) and the local ONNX model are the most
     failure-prone parts of the memory path (timeouts, 5xx, OOM, dimension
-    mismatch). This makes those failures queryable by ``backend``/``error_type``
+    mismatch). This makes those failures queryable by backend/error_type
     instead of propagating as an opaque exception with no memory context.
     """
     started = time.perf_counter()
@@ -165,7 +159,7 @@ def _get_reranker_model() -> TextCrossEncoder:
 def _embed_sync(texts: list[str]) -> list[list[float]]:
     """Embed passage texts synchronously (CPU-bound; call from a thread).
 
-    ``batch_size`` bounds the ONNX forward pass — fastembed's default of 256
+    batch_size bounds the ONNX forward pass — fastembed's default of 256
     texts per pass materializes multi-GB activations and OOM-killed the
     sidecar (#918).
     """
@@ -179,11 +173,9 @@ def _embed_sync(texts: list[str]) -> list[list[float]]:
 def _embed_query_sync(text: str) -> list[float]:
     """Embed a query with the model's query instruction (CPU-bound).
 
-    BGE models are asymmetric: queries must be prefixed with the model's
-    retrieval instruction ("Represent this sentence for searching relevant
-    passages: ...") to match against plain passage embeddings.
-    ``query_embed`` applies it; plain ``embed`` does not — using the latter
-    for queries measurably degrades ANN recall on paraphrased questions.
+    BGE models are asymmetric: query_embed prefixes the retrieval instruction
+    needed to match plain passage embeddings; plain embed does not, and using
+    it for queries measurably degrades ANN recall on paraphrased questions.
     """
     model = _get_embedding_model()
     return cast(list[float], next(iter(model.query_embed([text]))).tolist())
@@ -199,14 +191,13 @@ def _rerank_sync(query: str, documents: list[str]) -> list[float]:
 
 
 def _sidecar_url() -> str | None:
-    """The shared sidecar base URL, or None to use the in-process model."""
+    """Return the shared sidecar base URL, or None to use the in-process model."""
     url = os.getenv(EMBEDDING_SIDECAR_URL_ENV, "").strip()
     return url.rstrip("/") or None
 
 
 def _retire_client(old: httpx.AsyncClient, old_loop: asyncio.AbstractEventLoop) -> None:
-    """Best-effort close of a replaced client on its own loop; if that loop is
-    gone its sockets died with it and GC finishes the rest."""
+    """Best-effort close a replaced client on its own loop; a gone loop's sockets already died with it."""
     try:
         if old_loop.is_running():
             asyncio.run_coroutine_threadsafe(old.aclose(), old_loop)
@@ -215,7 +206,7 @@ def _retire_client(old: httpx.AsyncClient, old_loop: asyncio.AbstractEventLoop) 
 
 
 def _get_http_client() -> httpx.AsyncClient:
-    """The process-wide sidecar connection pool (per running loop)."""
+    """Return the process-wide sidecar connection pool (per running loop)."""
     global _http_client
     loop = asyncio.get_running_loop()
     with _http_client_lock:
@@ -242,8 +233,8 @@ async def _post_with_retry(
 
     A transient failure (retryable status or a mid-restart connection error) is
     retried so a background memory save survives the blip; interactive recall
-    passes ``retries=0`` to fail fast into its retrieval-order fallback instead
-    of stacking backoffs onto the user's turn.
+    passes retries=0 to fail fast into its retrieval-order fallback instead of
+    stacking backoffs onto the user's turn.
     """
     for _ in range(retries):
         try:
@@ -294,8 +285,10 @@ async def embed_query(text: str, *, interactive: bool = False) -> list[float]:
 
 
 async def _sidecar_embed(texts: list[str]) -> list[list[float]]:
-    """POST /embed in bounded chunks; a giant batch can't hold one slot forever
-    (#918) and chunk order preserves vector order."""
+    """POST /embed in bounded chunks (#918) so a giant batch can't hold one slot forever.
+
+    Chunk order preserves vector order.
+    """
     vectors: list[list[float]] = []
     for chunk in chunk_texts(
         texts, EMBEDDING_SIDECAR_MAX_BATCH_TEXTS, EMBEDDING_SIDECAR_MAX_BATCH_CHARS

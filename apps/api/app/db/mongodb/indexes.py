@@ -1,14 +1,4 @@
-"""
-Comprehensive database indexes for all MongoDB collections.
-Follows MongoDB indexing best practices for optimal query performance.
-
-Index Strategy:
-- User-centric compound indexes for multi-tenant queries
-- Sparse indexes for optional fields to reduce storage
-- Text search indexes for content discovery
-- Unique constraints for data integrity
-- ESR (Equality, Sort, Range) ordering for compound indexes
-"""
+"""Database indexes for all MongoDB collections, following ESR compound-index ordering."""
 
 import asyncio
 from typing import Any
@@ -247,10 +237,8 @@ async def create_todo_indexes() -> None:
                 [("user_id", 1), ("project_id", 1), ("due_date", 1)],
                 name="user_project_due",
             ),
-            # For tracked-todo cron sweeps (safety-net + maintenance). Both
-            # scan by gaia-tracked label + completion, then range on
-            # scheduled_at / gaia_retry_count. ESR ordering: equality fields
-            # first (labels, completed), then range fields.
+            # For tracked-todo cron sweeps: ESR ordering, equality (labels, completed) then
+            # range (scheduled_at, gaia_retry_count).
             todos_collection.create_index(
                 [
                     ("labels", 1),
@@ -260,11 +248,8 @@ async def create_todo_indexes() -> None:
                 ],
                 name="tracked_sweep",
             ),
-            # Trigger dispatch resolves subscriptions on every webhook event, so
-            # both lookups must be indexed or each event scans the collection.
-            # Per-resource triggers are found by Composio instance id (cross-user,
-            # mirroring the workflows index); account-level triggers (Gmail) carry
-            # no instance id and are found by user + trigger name instead.
+            # Per-resource triggers are found by Composio instance id (cross-user); account-level
+            # triggers (Gmail) carry no instance id and are found by user + trigger name instead.
             todos_collection.create_index(
                 "trigger_subscriptions.composio_trigger_ids",
                 name="subscription_trigger_ids",
@@ -401,11 +386,9 @@ async def create_blog_indexes() -> None:
     try:
         # Create all blog indexes concurrently
         await asyncio.gather(
-            # Unique slug index
             blog_collection.create_index("slug", unique=True),
             # Date-based sorting
             blog_collection.create_index([("date", -1)]),
-            # Category filtering
             blog_collection.create_index("category"),
             # Author queries
             blog_collection.create_index("authors"),
@@ -545,10 +528,8 @@ async def create_workflow_indexes() -> None:
             ),
         )
 
-        # Partial-unique index on slug for public workflows. Built outside
-        # the gather so a pre-existing duplicate (legacy data) only logs a
-        # warning instead of crashing startup — operators can de-dup and
-        # restart to reapply.
+        # Built outside the gather so a pre-existing duplicate slug only logs a warning
+        # instead of crashing startup.
         try:
             await workflows_collection.create_index(
                 [("slug", 1)],
@@ -710,17 +691,7 @@ async def create_playbook_indexes() -> None:
 
 
 async def create_usage_indexes() -> None:
-    """
-    Create indexes for the usage_snapshots and usage_daily collections.
-    Includes TTL index for automatic snapshot cleanup after 90 days.
-
-    Query patterns:
-    - Find latest usage by user_id (sorted by created_at desc)
-    - Find usage history by user_id and date range
-    - Heatmap: per-user trailing-window reads on usage_daily (user_id + date)
-    - Percentile thresholds: cross-user aggregation on usage_daily (date range)
-    - Automatic cleanup via TTL index
-    """
+    """Create usage_snapshots/usage_daily indexes, including a TTL index for 90-day cleanup."""
     usage_daily_collection = get_async_collection("usage_daily")
     usage_snapshots_collection = get_async_collection("usage_snapshots")
     try:
@@ -762,10 +733,9 @@ async def create_usage_indexes() -> None:
         raise
 
 
-# One custom server URL per creator: the atomic backstop behind the
-# application's check-then-create dedup. Extracted (not inline) so the
-# contract suite can build this exact spec on a bare collection and prove it
-# rejects logical duplicates while leaving keyless legacy rows alone.
+# Atomic backstop behind the application's check-then-create dedup. Extracted
+# (not inline) so the contract suite can build this exact spec on a bare
+# collection and prove it rejects duplicates while leaving keyless rows alone.
 CUSTOM_SERVER_URL_DEDUP_KEYS: IndexKeys = [
     ("created_by", 1),
     ("mcp_config.server_url_normalized", 1),
@@ -805,16 +775,7 @@ async def _create_index_safe(
 
 
 async def create_integration_indexes() -> None:
-    """
-    Create indexes for integrations collection.
-
-    Query patterns:
-    - List all integrations (marketplace browsing)
-    - Filter by source (platform vs custom)
-    - Filter by category
-    - Featured integrations lookup
-    - Public custom integrations for marketplace
-    """
+    """Create integrations collection indexes for marketplace browsing and filtering."""
     integrations_collection = get_async_collection("integrations")
     # The dedup backfill must land before the unique index below: a legacy row
     # without the key is invisible to the partial filter, so backfilling first
@@ -1177,15 +1138,9 @@ async def create_installed_skills_indexes() -> None:
 async def create_hil_approvals_indexes() -> None:
     """Create indexes for the hil_approvals collection.
 
-    (conversation_id, status) serves the pending-approval lookup that runs on
-    every chat message while an approval is open; (status, expires_at) serves
-    the timeout sweep's expiry pass. (status, resumed_at, decided_at) serves the
-    sweep's crashed-resume pass (list_decided_unresumed): its resumed_at=null
-    equality bound keeps the scan off the successfully-resumed records, which are
-    the overwhelming majority and accumulate forever on this permanent audit
-    trail. Without it that pass — running every minute — would scan the whole
-    decided history. The collection is a permanent audit trail, so these queries
-    must never fall back to a collection scan.
+    (status, resumed_at, decided_at) serves the crashed-resume sweep: the resumed_at=null
+    bound keeps it off the majority-resumed audit trail, which must never scan the full
+    collection.
     """
     hil_approvals_collection = get_async_collection("hil_approvals")
     try:
@@ -1239,15 +1194,11 @@ async def create_e2b_sandbox_indexes() -> None:
 
 
 async def create_llm_call_indexes() -> None:
-    """Create indexes for the ``llm_calls`` ledger — one document per model call.
+    """Create indexes for the llm_calls ledger — one document per model call.
 
-    Five query indexes and no more: this is the highest-write collection in the
-    system, and every extra index is paid on every insert. Each one below names
-    the query it exists for; a query without an index here is a query the ledger
-    is not claiming to answer.
-
-    The sixth is not a query index — it is the uniqueness constraint that makes
-    the history backfill re-runnable, and it is sparse, so no live row is in it.
+    Five deliberate query indexes; this is the highest-write collection, so every extra
+    index costs on insert. The sixth is a sparse uniqueness constraint making the history
+    backfill re-runnable, not a query index.
     """
     llm_calls_collection = get_async_collection("llm_calls")
     try:
@@ -1276,18 +1227,13 @@ async def create_llm_call_indexes() -> None:
             llm_calls_collection.create_index(
                 [("agent_name", 1), ("created_at", -1)], name="agent_calls_recent"
             ),
-            # Idempotency for scripts/backfill_llm_calls.py: the deterministic
-            # key each reconstructed row carries, so re-running --apply matches
-            # the existing document instead of duplicating history. Sparse and
-            # unique — only backfilled rows have the field, so the index costs
-            # the live write path nothing.
+            # Idempotency key for scripts/backfill_llm_calls.py --apply. Sparse and unique —
+            # only backfilled rows carry the field, so the live write path pays nothing.
             llm_calls_collection.create_index(
                 "backfill_key", unique=True, sparse=True, name="backfill_idempotency"
             ),
-            # Retention. The ledger is unbounded by construction (one row per
-            # call, forever), so its size has to be bounded in time — 90 days,
-            # matching usage_snapshots. The durable money history is usage_daily,
-            # which this never replaces and which nothing here expires.
+            # Retention: 90 days, matching usage_snapshots. usage_daily is the durable
+            # money history and is never expired by this index.
             llm_calls_collection.create_index(
                 "created_at",
                 name="created_at_ttl",

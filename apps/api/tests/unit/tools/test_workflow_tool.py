@@ -48,7 +48,6 @@ def _make_config(
 
 
 def _make_config_no_user() -> dict[str, Any]:
-    """Config with no user_id."""
     return {"configurable": {}, "metadata": {}}
 
 

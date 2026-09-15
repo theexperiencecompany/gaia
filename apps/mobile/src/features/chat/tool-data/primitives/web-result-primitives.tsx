@@ -17,12 +17,9 @@ export function getHostname(url?: string): string {
   }
 }
 
-// ---------------------------------------------------------------------------
-// FaviconImage — Google s2 favicon with globe fallback
-// Mirrors web's `next/image` favicon with onError → display:none. We render a
-// zinc-700 circle behind the favicon so failed loads still match the web
-// stacked-circle look.
-// ---------------------------------------------------------------------------
+// FaviconImage: Google s2 favicon with globe fallback, mirroring web's
+// `next/image` onError → display:none. A zinc-700 circle sits behind the favicon
+// so failed loads still match web's stacked-circle look.
 
 interface FaviconImageProps {
   url?: string;
@@ -59,13 +56,9 @@ export function FaviconImage({ url, size = 14 }: FaviconImageProps) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// WebResultRow — popover-style web result row used by both search-results
-// and deep-research cards.
-// Mirrors web's WebResults list item: title (sm font-medium, 1 line), snippet
-// (xs foreground-500, 2 lines), favicon + hostname row (xs primary). Bottom
-// border per row (zinc-700 / 15% white in dark).
-// ---------------------------------------------------------------------------
+// WebResultRow: popover-style row shared by search-results and deep-research
+// cards, mirroring web's WebResults item — title (1 line), 2-line snippet,
+// favicon + hostname row, bottom border (zinc-700 / 15% white in dark).
 
 interface WebResultRowProps {
   result: WebResult;
@@ -112,12 +105,9 @@ export function WebResultRow({ result, isLast = false }: WebResultRowProps) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// NewsResultCard — full-bleed bg-zinc-800 cards stacked vertically
-// Mirrors web's NewsResults: rounded-lg bg-zinc-800 p-4, news icon + title
-// (text-lg font-medium, truncated 1 line, primary color), 2-line content
-// snippet (sm foreground-700), score line.
-// ---------------------------------------------------------------------------
+// NewsResultCard: full-bleed bg-zinc-800 cards stacked vertically, mirroring
+// web's NewsResults — rounded-lg p-4, news icon + truncated title, 2-line
+// content snippet, score line.
 
 interface NewsResultCardProps {
   article: NewsResult;

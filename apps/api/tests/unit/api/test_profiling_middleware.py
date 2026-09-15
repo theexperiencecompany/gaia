@@ -1,9 +1,9 @@
 """Unit tests for the optional pyinstrument profiling middleware.
 
 Covers every ProfilingMiddleware decision branch — disabled/passthrough,
-explicit ``?profile=`` query, random sampling, sampled output generation
+explicit ?profile= query, random sampling, sampled output generation
 failure, and the exception fallback — plus the startup log lines. pyinstrument
-(``Profiler`` / ``PYINSTRUMENT_AVAILABLE``), ``settings`` and the wide-event
+(Profiler / PYINSTRUMENT_AVAILABLE), settings and the wide-event
 logger are fully mocked, so the tests are hermetic and never depend on the
 package actually being installed.
 """
@@ -51,7 +51,7 @@ def profiling_env() -> Iterator[SimpleNamespace]:
     """Patch every seam the middleware touches, defaulting to "enabled".
 
     Yields the settings namespace, the mocked Profiler class and instance, and
-    the mocked wide-event logger. Tests mutate ``settings`` or re-patch the
+    the mocked wide-event logger. Tests mutate settings or re-patch the
     module attributes directly for the case they exercise.
     """
     with ExitStack() as stack:

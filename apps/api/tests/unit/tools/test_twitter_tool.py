@@ -3,8 +3,8 @@
 The proxy smoke tests (test_integration_tools_proxy.py) prove the tools route
 through proxy_request_sync; these pin the exact requests each tool sends and
 what it does with the responses. The Twitter API helpers in
-`app.utils.twitter_utils` run for real — the only seams faked are the two
-`proxy_request_sync` boundaries (the tool's own and the utils') and the
+app.utils.twitter_utils run for real — the only seams faked are the two
+proxy_request_sync boundaries (the tool's own and the utils') and the
 LangGraph stream writer.
 """
 

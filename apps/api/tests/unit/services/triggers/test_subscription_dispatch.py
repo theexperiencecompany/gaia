@@ -159,10 +159,8 @@ class TestResolution:
         assert await dispatch_to_subscribed_todos(SLACK, "ti_B", USER_ID, {}) == 1
 
     async def test_one_failing_subscription_does_not_strand_the_rest(self, deps) -> None:
-        # A queue/notification/repository failure on one todo must not skip the
-        # remaining matching todos in the same fan-out, and must surface as an
-        # error on the wide event carrying every field needed to attribute it:
-        # which todo, which subscription, which trigger, and the failure itself.
+        # A failure on one todo must not skip the rest of the fan-out, and must surface as a wide-event
+        # error carrying which todo, which subscription, which trigger, and the failure itself.
         deps.notify.side_effect = [RuntimeError("notify boom"), None]
         sub_a = _subscription(action=SubscriptionAction.NOTIFY)
         todo_a = _todo(id="todo-a", trigger_subscriptions=[sub_a])
@@ -185,10 +183,8 @@ class TestResolution:
         assert error["error_type"] == "RuntimeError"
 
     async def test_the_fire_failure_is_logged_with_a_traceback(self, deps) -> None:
-        # exc_info is popped before the wide event's errors[] entry is built, so
-        # it can never be asserted through captured_wide_event — but dropping it
-        # strips the stack trace an operator needs to locate the failing seam.
-        # Assert it reaches the logger as True.
+        # exc_info is popped before the wide event's errors[] entry is built, so it can't be asserted through
+        # captured_wide_event; assert it reaches the logger as True instead, or the stack trace is lost.
         deps.notify.side_effect = RuntimeError("notify boom")
         deps.repo.find_active_by_user_and_trigger.return_value = [
             _todo(trigger_subscriptions=[_subscription(action=SubscriptionAction.NOTIFY)])

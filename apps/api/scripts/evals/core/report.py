@@ -62,7 +62,7 @@ def _case_passed(record: dict[str, Any]) -> bool:
 
 
 def _case_errored(record: dict[str, Any]) -> bool:
-    """A case that never produced an answer — excluded from every accuracy.
+    """Return whether a case never produced an answer — excluded from every accuracy.
 
     Averaging these in turns an outage into a quality score: a run where the
     datastore died once reported an entire question type as 0%.

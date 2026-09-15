@@ -4,8 +4,8 @@ The proxy smoke test (test_integration_tools_proxy.py) proves two of the tools
 route through the proxy; these tests pin the exact ProxyRequest each tool
 sends (user, toolkit, endpoint, method, body/query, headers) and what it
 returns from the proxy's response. The true I/O boundaries are the seams:
-`proxy_request_sync` / `proxy_request_full_sync` and the linkedin_utils
-helpers that themselves hit the proxy (`get_author_urn`, the uploaders).
+proxy_request_sync / proxy_request_full_sync and the linkedin_utils
+helpers that themselves hit the proxy (get_author_urn, the uploaders).
 """
 
 from collections.abc import Callable, Iterator

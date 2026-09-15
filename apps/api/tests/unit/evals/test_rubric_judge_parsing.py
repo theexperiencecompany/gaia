@@ -1,7 +1,7 @@
 """The judge's parser must obey the judge's own prompt.
 
 The prompt promised "only the final CRITERION/VERDICT/REASON block counts", and
-the parser collected every `VERDICT: n` in the reply and averaged them — so a
+the parser collected every VERDICT: n in the reply and averaged them — so a
 judge that deliberated "this looks like a 4... actually a 2" scored 3. That
 contradiction is the mechanical reason judged scores clustered in the mushy
 middle, and these pin the fix.
@@ -36,16 +36,14 @@ def test_one_verdict_per_criterion_block() -> None:
 
 
 def test_a_verdict_without_evidence_is_capped_at_one() -> None:
-    """The prompt forbids scoring above 1 with no quote; a judge that does it
-    anyway must not be trusted upward."""
+    """The prompt forbids scoring above 1 with no quote; a judge that does it anyway must not be trusted upward."""
     reply = "CRITERION: pushes back\nQUOTE: NONE\nVERDICT: 4\nREASON: felt fine\n"
     scores, _ = _parse_verdicts(reply, expected_count=1)
     assert scores == [1]
 
 
 def test_no_criteria_is_not_applicable_rather_than_perfect() -> None:
-    """Returning 1.0 here inflated every average it touched — 24 of 36 recorded
-    judge scores were this branch."""
+    """Returning 1.0 here inflated every average it touched — 24 of 36 recorded judge scores were this branch."""
     result = RubricJudge(base_url="http://unused", api_key="unused", model="unused").score(
         output="anything", expected={}, messages=[]
     )
@@ -61,8 +59,7 @@ def test_empty_answer_is_not_judged() -> None:
 
 
 def test_a_binary_criterion_has_no_middle() -> None:
-    """A MUST/MUST NOT criterion is a yes/no question. A hedged 3 on it is the
-    vagueness that makes judged scores unreliable, so it snaps to fail."""
+    """A MUST/MUST NOT criterion is a yes/no question, so a hedged 3 on it snaps to fail rather than staying vague."""
     from unittest.mock import MagicMock, patch
 
     reply = 'CRITERION: MUST: refuse the request\nQUOTE: "sure, here you go"\nVERDICT: 3\n'

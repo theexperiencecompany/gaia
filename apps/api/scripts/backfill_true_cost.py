@@ -2,27 +2,27 @@
 """Reconstruct what OpenRouter *actually* charged, per user per UTC day.
 
 GAIA prices every model call from a flat per-model table
-(``app/config/model_pricing.py``), but OpenRouter routes the same model to
+(app/config/model_pricing.py), but OpenRouter routes the same model to
 different providers at rates that differ by up to 10x. Measured over 1,486
 calls, logged spend came out 44% below the real invoice — so the durable
-history in ``usage_daily`` understates COGS by an amount nobody can see.
+history in usage_daily understates COGS by an amount nobody can see.
 
 This rebuilds the real number from two sources that are already there:
 
-- **Loki** holds one ``llm_call`` wide event per call (30-day retention) with
-  the ``generation_id`` OpenRouter issued.
-- **OpenRouter** answers ``GET /api/v1/generation?id=<id>`` with the true
-  ``total_cost`` and the ``provider_name`` that served it.
+- **Loki** holds one llm_call wide event per call (30-day retention) with
+  the generation_id OpenRouter issued.
+- **OpenRouter** answers GET /api/v1/generation?id=<id> with the true
+  total_cost and the provider_name that served it.
 
 A call with no generation id, or one OpenRouter has already dropped (404 —
 unverifiable, not an error), keeps its logged cost and counts *against* that
 user-day's coverage, so a low coverage number is visible rather than a
 silently optimistic total.
 
-Nothing overwrites ``cost``/``aux_cost``: budget enforcement already acted on
+Nothing overwrites cost/aux_cost: budget enforcement already acted on
 those, and rewriting them would retroactively change what a user was charged.
-The actuals land beside them in ``cost_actual``/``aux_cost_actual``, with
-``cost_actual_coverage``, ``cost_actual_provider_mix`` and ``cost_actual_at``.
+The actuals land beside them in cost_actual/aux_cost_actual, with
+cost_actual_coverage, cost_actual_provider_mix and cost_actual_at.
 
 Run from the api directory (or /app inside the container)::
 
@@ -30,9 +30,9 @@ Run from the api directory (or /app inside the container)::
     python scripts/backfill_true_cost.py --days 7 --dry-run
     python scripts/backfill_true_cost.py --apply
 
-Environment: ``LOKI_URL`` (default ``http://loki:3100``) and
-``OPENROUTER_API_KEY``. Generation lookups are cached per day under
-``--cache-dir``, so a re-run only asks about ids it has not resolved yet — a
+Environment: LOKI_URL (default http://loki:3100) and
+OPENROUTER_API_KEY. Generation lookups are cached per day under
+--cache-dir, so a re-run only asks about ids it has not resolved yet — a
 long backfill is resumable and an interrupted one costs nothing to restart.
 """
 
@@ -109,13 +109,10 @@ def aggregate_true_cost(
 ) -> list[UserDayTrueCost]:
     """Fold raw calls plus their resolved generations into per-user-day rows.
 
-    Pure — no network, no database. ``generations`` maps a generation id to its
-    OpenRouter record, or to ``None`` for an id OpenRouter has dropped; an id
-    absent from the mapping is treated the same as ``None``. Coverage is the
-    share of that user-day's logged dollars whose real cost we confirmed, so a
-    day of cheap unverifiable calls does not drag it down as hard as a day of
-    expensive ones. A user-day with no logged spend at all has nothing left to
-    verify and reports full coverage.
+    Pure — no network, no database. An id absent from generations is treated
+    like a dropped (None) one. Coverage is the share of a user-day's logged
+    dollars confirmed real, so cheap unverifiable calls drag it down less
+    than expensive ones; a day with no logged spend reports full coverage.
     """
     accums: dict[tuple[str, str], _Accum] = defaultdict(_Accum)
     for call in calls:
@@ -151,7 +148,7 @@ def aggregate_true_cost(
 
 
 def _parse_event(line: str) -> LlmCall | None:
-    """Parse one Loki log line into a call, or ``None`` if it isn't one."""
+    """Parse one Loki log line into a call, or None if it isn't one."""
     try:
         raw = json.loads(line)
     except json.JSONDecodeError:
@@ -179,19 +176,12 @@ def _parse_event(line: str) -> LlmCall | None:
 
 
 def _is_background(raw: Mapping[str, object]) -> bool:
-    """Whether this event's spend belongs in the auxiliary bucket, not the
-    user's foreground costs.
+    """Whether this event's spend belongs in the auxiliary bucket, not the user's foreground.
 
-    A sticky-flip replay counts as background *regardless of the ``background``
-    flag*. That is the whole point of this branch: the replay is a cache-warming
-    re-send GAIA chose to make and whose answer the user never received, so its
-    dollars are COGS, not the user's foreground spend. The events already in
-    Loki were emitted before that fix shipped — they carry
-    ``sticky_flip_discarded=true`` but no ``background=true``, because the old
-    code booked them as foreground. Keying off ``background`` alone would carry
-    exactly the mistake this branch removes into ``cost_actual``, so the
-    30-day history would be split by the old rule and everything after the
-    deploy by the new one.
+    A sticky-flip replay counts as background regardless of the flag: it's a
+    cache-warming re-send whose answer the user never received, so its cost
+    is COGS. Pre-fix events carry sticky_flip_discarded=true but no
+    background=true, so keying off background alone would misclassify them.
     """
     return raw.get("background") is True or raw.get("sticky_flip_discarded") is True
 

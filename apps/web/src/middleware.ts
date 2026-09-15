@@ -3,19 +3,12 @@ import createMiddleware from "next-intl/middleware";
 
 import { routing } from "./i18n/routing";
 
-// Renamed from `proxy.ts` → `middleware.ts` so we can deploy on Cloudflare via
-// `@opennextjs/cloudflare`. Next 16's new `proxy.ts` convention is hard-coded
-// to Node runtime; OpenNext-CF only accepts edge middleware (tracking issue:
-// https://github.com/opennextjs/opennextjs-cloudflare/issues/972). Next 16
-// still accepts `middleware.ts` with only a deprecation warning, and the
-// classic `middleware.ts` defaults to edge runtime — exactly what the CF
-// adapter requires. Keep this file name until OpenNext ships native proxy
-// support.
-//
-// `next-llms-txt`'s middleware-side path matching was dropped because it
-// calls `process.cwd()` at module load and reads files off disk, which
-// breaks on edge. The /llms.txt URL is still served by the route handler at
-// `src/app/llms.txt/route.ts`.
+// Renamed from proxy.ts to middleware.ts: Next 16's proxy.ts convention is hard-coded to Node
+// runtime, but OpenNext-CF only accepts edge middleware (opennextjs-cloudflare#972); classic
+// middleware.ts still works (deprecation warning only) and defaults to edge, which CF requires.
+
+// next-llms-txt's middleware path matching was dropped: it calls process.cwd() at module load,
+// which breaks on edge. /llms.txt is served instead by src/app/llms.txt/route.ts.
 
 const translatedPrefixes = [
   "/learn",
@@ -47,13 +40,9 @@ export default function middleware(request: NextRequest) {
   // For non-translated routes: still run middleware (needed for [locale]
   // routing) but force default locale — no locale prefix in URL.
   const response = intlMiddlewareDefaultOnly(request);
-  // These routes are locale-invariant (no detection, no prefix), so the
-  // NEXT_LOCALE cookie next-intl writes here is inert — it can never change
-  // what locale is served. Dropping the Set-Cookie lets Cloudflare's edge
-  // cache store the ISR HTML for these public pages (CF bypasses the cache on
-  // any response carrying Set-Cookie), removing the Worker — and its cold
-  // start — from the critical path. Translated routes above keep the cookie,
-  // since their locale genuinely varies and must not be edge-cached.
+  // These routes have an invariant locale, so next-intl's NEXT_LOCALE cookie here is inert.
+  // Dropping it lets Cloudflare edge-cache the ISR HTML (CF bypasses cache on any Set-Cookie),
+  // skipping the Worker's cold start; translated routes above keep the cookie since locale varies.
   response.headers.delete("set-cookie");
   return response;
 }

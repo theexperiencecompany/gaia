@@ -1,4 +1,4 @@
-"""ComposioLangChain class definition"""
+"""ComposioLangChain class definition."""
 
 import asyncio
 from inspect import Parameter, Signature
@@ -26,11 +26,9 @@ from shared.py.wide_events import log, log_context
 _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
 _obj_marker = "-_object_-"
 
-# Composio's tool-execute failure for a connected account that is missing, expired
-# or revoked: error code 1810, name `ActionExecute_ConnectedAccountNotFound`. It
-# surfaces two ways — as a raised `composio_client.NotFoundError` (404) and as a
-# non-raising `{"successful": False, "error": "..."}` result — so both paths gate
-# on this one marker set rather than on two drifting copies.
+# Composio's tool-execute failure for a missing/expired/revoked connected
+# account: error code 1810, name ActionExecute_ConnectedAccountNotFound. It
+# surfaces as a raised NotFoundError (404) or a non-raising result, so both gate on this one marker set.
 _DEAD_ACCOUNT_ERROR_CODE = "1810"
 _DEAD_ACCOUNT_ERROR_NAME = "actionexecute_connectedaccountnotfound"
 _DEAD_ACCOUNT_MESSAGE_MARKERS = (
@@ -81,9 +79,9 @@ def _is_dead_account_error(error: composio_client.NotFoundError) -> bool:
 async def _expire_with_log_boundary(user_id: str, integration_id: str, reason: str) -> None:
     """Run the expiry transition under its own wide-event boundary.
 
-    The dispatch comes from an executor thread via ``run_coroutine_threadsafe``,
+    The dispatch comes from an executor thread via run_coroutine_threadsafe,
     which carries no boundary of its own — without this the transition's
-    ``log.set()`` fields would be silently discarded.
+    log.set() fields would be silently discarded.
     """
     async with log_context("composio_tool_integration_expiry", user_id=user_id):
         await expire_user_integration(
@@ -171,19 +169,15 @@ class LangchainProvider(
     AgenticProvider[StructuredTool, list[StructuredTool]],
     name="langchain",
 ):
-    """
-    Composio toolset for Langchain framework.
-    """
+    """Composio toolset for Langchain framework."""
 
     runtime = "langchain"
 
     def __init__(self, **kwargs: t.Any) -> None:  # noqa: ANN401 -- forwards LangChain's arbitrary tool-init bag upstream
         super().__init__(**kwargs)
-        # The wrapped tool callables are sync and run in an executor thread, so
-        # they cannot await the async expiry transition. Hold the loop they were
-        # built on and dispatch onto it with run_coroutine_threadsafe. Capture is
-        # best-effort here because the provider is built by a lazy provider whose
-        # first caller may not be on the loop — wrap_tools tops it up.
+        # Wrapped tool callables are sync (executor thread) and can't await the
+        # async expiry transition, so the loop they were built on is captured
+        # here and dispatched via run_coroutine_threadsafe; wrap_tools tops it up if this capture missed the loop.
         self._loop: asyncio.AbstractEventLoop | None = _running_loop_or_none()
 
     def _handle_dead_connected_account(
@@ -265,20 +259,16 @@ class LangchainProvider(
         toolkit: str | None = None,
     ) -> types.FunctionType:
         def function(**kwargs: t.Any) -> dict[str, t.Any]:  # noqa: ANN401 -- contract
-            """Wrapper function for composio action."""
+            """Execute the composio action for this tool call."""
 
-            # Discarding other data except metadata from __runnable_config__
-            # Use 'or {}' to handle None case when called directly without LangChain
+            # 'or {}' handles being called directly without LangChain (no config).
             runnable_config = kwargs.get("__runnable_config__") or {}
             metadata = (
                 runnable_config.get("metadata", {}) if isinstance(runnable_config, dict) else {}
             )
-            # user_id is read only for the observability log below. It is present
-            # for agent-flow calls (which pass it in config metadata) and None for
-            # trigger-option calls (which bind the user at get_tool(user_id=...)
-            # time — invisible here but still used for auth at execution). Identity
-            # is resolved at execution, not here, so a None is harmless; Composio
-            # errors loudly if no user_id reaches it either way.
+            # user_id is read only for the observability log below; it's None for
+            # trigger-option calls (bound at get_tool(user_id=...) time instead).
+            # Harmless either way — Composio errors loudly if none reaches execution.
             user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
 
             kwargs = _reinstate_reserved_python_keywords(
@@ -410,7 +400,5 @@ class LangchainProvider(
         tools: t.Sequence[Tool],
         execute_tool: AgenticProviderExecuteFn,
     ) -> list[StructuredTool]:
-        """
-        Get composio tools wrapped as Langchain StructuredTool objects.
-        """
+        """Get composio tools wrapped as Langchain StructuredTool objects."""
         return [self.wrap_tool(tool=tool, execute_tool=execute_tool) for tool in tools]

@@ -20,7 +20,6 @@ export const usePaceStore = create<PaceState>((set) => ({
   reset: () => set({ done: {} }),
 }));
 
-/** Reveal key for the question with this id. */
 export const questionRevealKey = (questionId: string) => `q-${questionId}`;
 
 export const selectPaceDone = (key: string) => (s: PaceState) => !!s.done[key];

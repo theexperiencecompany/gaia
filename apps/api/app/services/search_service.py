@@ -1,6 +1,4 @@
-"""
-Service module for handling search operations and URL metadata fetching.
-"""
+"""Service module for handling search operations and URL metadata fetching."""
 
 import re
 import time

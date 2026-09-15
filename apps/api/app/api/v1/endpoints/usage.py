@@ -1,6 +1,4 @@
-"""
-Usage tracking API endpoints.
-"""
+"""Usage tracking API endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 

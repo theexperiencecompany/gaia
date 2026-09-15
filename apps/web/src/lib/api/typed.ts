@@ -1,16 +1,10 @@
 /**
  * The path-typed API client: every call is checked against the generated
- * `paths` from `apps/api/openapi.json`, so the path, its parameters, the
- * request body and the response type all come from the API itself.
- *
- *   const me = await api.get("/api/v1/user/me");           // AuthenticatedUserResponse
- *   await api.put("/api/v1/todos/{todo_id}", { path: { todo_id }, body });  // body: TodoUpdateRequest
- *   await api.get("/api/v1/todos", { query: { page: 2 } });
- *
- * It is a thin layer over `request` in ./service (same toasts, same error
- * handling): no generated runtime, only types. This is the only way feature
- * code talks to the API — `checks.mjs api-schema-types` fails a bare
- * `apiService.<method>(` outside lib/api.
+ * `paths` from `apps/api/openapi.json`, so the path, parameters, body and
+ * response type all come from the API itself. A thin layer over `request` in
+ * ./service (same toasts/error handling), no generated runtime, only types.
+ * This is the only way feature code talks to the API — `checks.mjs
+ * api-schema-types` fails a bare `apiService.<method>(` outside lib/api.
  */
 import type { paths } from "@shared/api/generated";
 import { type ApiOptions, type QueryParams, request } from "./service";

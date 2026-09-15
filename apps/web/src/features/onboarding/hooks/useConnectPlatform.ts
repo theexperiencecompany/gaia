@@ -62,14 +62,9 @@ export function useConnectPlatform(
   const [phoneTarget, setPhoneTarget] = useState<PhoneLinkTarget | null>(null);
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
 
-  // Minted on stage entry rather than per click: `window.open` in a click
-  // handler must be synchronous or the browser blocks it as a popup. The code
-  // outlives the step, and a user who stalls past its TTL gets the bot's
-  // "that link expired" reply pointing them back here.
-  //
-  // Gated on the answers being stored: the server composes `first_message`
-  // from the saved profession + needs, so a code minted any earlier carries
-  // the anonymous "Hi! Who are you?" opener.
+  // Minted on stage entry, not per click (window.open in a click handler must
+  // be synchronous); a code outliving its TTL gets the bot's "link expired"
+  // reply. Gated on the answers being stored, or the opener comes back anonymous.
   const { data, error } = useQuery({
     queryKey: LINK_CODE_QUERY_KEY,
     queryFn: mintLinkCode,
@@ -148,10 +143,9 @@ export function useConnectPlatform(
       dispatch({ type: "platformConnected", platform: "imessage" });
   }, [dispatch, phoneTarget]);
 
-  // Skipping just advances the wizard. The web no longer stages the composed
-  // opener as the user's own turn: completion seeds GAIA's "Getting started"
-  // conversation server-side and the guard lands them in it. The bot surfaces
-  // still send `code.first_message` as the user's first turn.
+  // Skipping just advances the wizard: the web no longer stages the composed
+  // opener as the user's own turn (completion seeds GAIA's "Getting started"
+  // conversation server-side); bot surfaces still send `code.first_message` as the first turn.
   const skip = useCallback(() => {
     dispatch({ type: "skipPlatforms" });
   }, [dispatch]);

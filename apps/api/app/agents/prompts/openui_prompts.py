@@ -1,13 +1,13 @@
 """OpenUI prompt: GAIA surface policy + generated component vocabulary.
 
 The component vocabulary (syntax rules + every component signature) is generated
-from the merged `@openuidev/react-ui` + GAIA component library by
-`scripts/openui/generate-prompt.ts` and read here from `openui_generated.txt`.
+from the merged @openuidev/react-ui + GAIA component library by
+scripts/openui/generate-prompt.ts and read here from openui_generated.txt.
 A pre-commit hook keeps the artifact in sync with the TypeScript specs, so this
 module never hand-maintains the component catalog.
 
 The GAIA-owned, Python-stateful pieces (the SURFACE POLICY preamble and the
-`OPENUI_SUPPRESSED_TOOLS` list, derived from `tool_fields`) live here.
+OPENUI_SUPPRESSED_TOOLS list, derived from tool_fields) live here.
 """
 
 from pathlib import Path
@@ -59,11 +59,8 @@ Your conversational lines stay as normal text; the component goes between them i
   Anything else you'd like to see?
 """
 
-# ---------------------------------------------------------------------------
-# Quality / restraint notes: GAIA-owned. WHEN to reach for a component and how
-# NOT to overdo it. Component names track the current (react-ui) catalog; the
-# ingestion philosophy is unchanged from develop.
-# ---------------------------------------------------------------------------
+# Quality / restraint notes: WHEN to reach for a component and how NOT to
+# overdo it. Component names track the current (react-ui) catalog.
 
 OPENUI_QUALITY_NOTES: str = """
 Capability-aware component picks (use the one whose affordance matches the intent):

@@ -25,7 +25,7 @@ from shared.py.wide_events import log
 
 
 def _format_money(amount_minor: int, currency: str) -> str:
-    """Render a minor-unit amount (Dodo's wire format) as ``30.00 USD``."""
+    """Render a minor-unit amount (Dodo's wire format) as 30.00 USD."""
     return f"{amount_minor / 100:.2f} {currency.upper()}"
 
 

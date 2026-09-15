@@ -104,10 +104,9 @@ export class OutboundConsumer {
         async () => {
           this.conn = await connect(this.url);
           this.conn.on("close", () => this.scheduleReconnect());
-          // 'close' still drives the reconnect — this handler exists to keep the
-          // reason diagnosable (and to stop an unhandled 'error' killing the
-          // process). Without it the only trace of a broker restart, revoked
-          // credentials or heartbeat timeout is a bare `outbound_consumer_reconnecting`.
+          // Keeps the reason diagnosable and stops an unhandled 'error' from killing the
+          // process; 'close' still drives the reconnect. Without this the only trace of a
+          // broker restart, revoked credentials, or heartbeat timeout is a bare reconnect log.
           this.conn.on("error", (err) =>
             this.logger.error(
               "outbound_consumer_connection_error",
@@ -145,11 +144,9 @@ export class OutboundConsumer {
 
   private scheduleReconnect(): void {
     if (this.stopped) return;
-    // Already scheduled — don't stack a second timer. The conn.close() below
-    // emits another 'close' event that re-enters here, and connect()'s own
-    // catch block also calls us; without this guard each path would add its own
-    // setTimeout and we'd spawn duplicate concurrent connect() calls, leaking
-    // duplicate connections/consumers on a flapping broker.
+    // Already scheduled — don't stack a second timer. Both conn.close() below (via 'close')
+    // and connect()'s own catch block re-enter here; without this guard each path would add
+    // its own setTimeout, leaking duplicate connections/consumers on a flapping broker.
     if (this.reconnectTimer) return;
     // Close the (possibly still-open) connection before dropping the reference,
     // so a channel-level failure after connect() succeeded does not leak it.
@@ -189,13 +186,9 @@ export class OutboundConsumer {
     const channel = this.channel;
     if (!msg || !channel) return;
 
-    // IDEMPOTENCY: none in Phase 1. RabbitMQ is at-least-once and does NOT
-    // deduplicate — a message can be redelivered (and re-sent) if this worker
-    // delivers successfully but dies before ack. With a SINGLE consumer per
-    // platform that window is negligible. BEFORE running multiple workers per
-    // platform, add a dedupe check on `env.id` backed by SHARED state (e.g.
-    // Redis SETNX with a TTL) here — an in-process cache will not work because
-    // duplicates land on a different worker process.
+    // IDEMPOTENCY: none in Phase 1. RabbitMQ is at-least-once and doesn't dedupe, but a
+    // redelivery is negligible with a SINGLE consumer per platform. Before running multiple
+    // workers, add a dedupe on `env.id` backed by SHARED state (e.g. Redis SETNX+TTL).
     await withWideEvent(
       "outbound_message",
       {
@@ -300,12 +293,9 @@ export class OutboundConsumer {
         { envelope_id: id, redelivered: msg.fields.redelivered },
         err,
       );
-      // Never requeue a file: deliverFile fetches the bytes AND uploads +
-      // sends them, and a failure can surface AFTER the platform already
-      // accepted the upload (e.g. a timeout reading the response). We can't
-      // tell a pre-send fetch failure from a post-send one, so requeueing
-      // risks delivering the file to the user twice. Dead-letter it instead —
-      // the envelope is preserved in the DLQ for inspection/manual replay.
+      // Never requeue a file: deliverFile fetches AND uploads, so a failure can surface after
+      // the platform already accepted the upload. We can't tell a pre-send from a post-send
+      // failure, so requeueing risks a duplicate; dead-letter instead for manual replay.
       this.settle(channel, () => channel.nack(msg, false, false));
     }
   }
@@ -362,31 +352,21 @@ export class OutboundConsumer {
         },
         err,
       );
-      // Requeue for one retry ONLY if nothing was sent yet. Requeue re-delivers
-      // the WHOLE envelope, so once any chunk is out, retrying would re-send the
-      // already-delivered chunks. After a partial send (or on the second
-      // attempt) dead-letter instead — the message lands in the DLQ for
-      // inspection rather than spamming the user with duplicates.
+      // Requeue for one retry ONLY if nothing was sent yet: requeue re-delivers the WHOLE
+      // envelope, so once any chunk is out, retrying would re-send delivered chunks. After a
+      // partial send (or a second attempt) dead-letter instead, to avoid duplicating the user.
       const requeue = progress.delivered === 0 && !msg.fields.redelivered;
       this.settle(channel, () => channel.nack(msg, false, requeue));
     }
   }
 
   /**
-   * Segment each source into bubbles, chunk them by the platform limit, then
-   * render each chunk so every sent message is valid platform markdown.
-   *
-   * Segmentation happens HERE and not only in the streamer because these
-   * messages never went through it: an executor reply, a reminder or a workflow
-   * result arrives as one blob of agent markdown, sentinels and all, and used
-   * to be sent as one wall with `<NEW_MESSAGE_BREAK>` visible in it.
-   *
-   * The renderer is passed into chunkResponse so chunks are sized by their
-   * RENDERED length — otherwise markdown that expands when rendered (e.g.
-   * Telegram tables padded into <pre> blocks) can overflow the platform's
-   * message limit and be rejected. Increments `progress.delivered` for each
-   * non-empty message sent, so the caller sees the partial count even if a
-   * later send throws.
+   * Segments each source into bubbles, chunks them by the platform limit, then renders each
+   * chunk so every sent message is valid platform markdown. Segmentation happens HERE (not
+   * only in the streamer) because these messages — executor replies, reminders, workflow
+   * results — never went through it and used to ship as one wall with `<NEW_MESSAGE_BREAK>`
+   * visible. Chunks are sized by RENDERED length, since markdown can expand when rendered
+   * (e.g. Telegram tables into `<pre>`) and overflow the platform's message limit.
    */
   private async deliverSources(
     destinationId: string,

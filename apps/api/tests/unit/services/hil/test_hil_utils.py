@@ -1,12 +1,12 @@
-"""Attacks on the HIL readers/formatters (app/services/hil/utils.py) and the approval
-records the store writes (app/services/hil/approvals_store.py).
+"""Attacks on the HIL readers/formatters and the approval records the store writes.
 
-Most of these are the functions that carry *untrusted* content — tool arguments the agent
-may have lifted from an email, a web page, or an MCP server — into the judge's prompt, and
-the attacks are the ones that let that content escape the payload and read as instructions.
-The record classes at the bottom cover the two fields the store DERIVES rather than copies
-(the status and the expiry window), which the repository contract tests cannot see because
-they are handed an already-built record.
+Covers app/services/hil/utils.py and app/services/hil/approvals_store.py. Most of these
+functions carry *untrusted* content — tool arguments the agent may have lifted from an
+email, a web page, or an MCP server — into the judge's prompt, and the attacks are the
+ones that let that content escape the payload and read as instructions. The record
+classes at the bottom cover the two fields the store DERIVES rather than copies (status
+and expiry window), which the repository contract tests cannot see because they are
+handed an already-built record.
 """
 
 from datetime import UTC, datetime
@@ -162,18 +162,17 @@ STORE = "app.services.hil.approvals_store"
 
 
 def written_record(repository: AsyncMock) -> object:
-    """The record the store actually handed the repository."""
+    """Return the record the store actually handed the repository."""
     return repository.create_if_absent.await_args.args[0]
 
 
 class TestTheAutoApprovalReceipt:
-    """auto mode ALREADY RAN the action without asking, so its record is a receipt, not a
-    request: born decided.
+    """auto mode ALREADY RAN the action without asking, so its record is born decided.
 
-    The repository contract test proves a record with ``status="auto_approved"`` resists
+    The repository contract test proves a record with status="auto_approved" resists
     every decision and every sweep — but it builds that record itself, with the status
-    hardcoded in the test. Nothing checked that the service writes one. Born ``pending``,
-    an irreversible action that already happened would show a live Approve/Deny card, be
+    hardcoded in the test; nothing checked that the service writes one. Born pending, an
+    irreversible action that already happened would show a live Approve/Deny card, be
     resolvable by the decision endpoint, and be expirable by the timeout sweep.
     """
 

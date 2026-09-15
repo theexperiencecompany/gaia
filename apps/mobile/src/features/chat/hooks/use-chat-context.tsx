@@ -46,11 +46,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
       queryClient.invalidateQueries({ queryKey: cacheKey });
     });
 
-    // Pre-warm messages for every cached conversation in one multiGet so
-    // tapping any chat in the sidebar is instant (no skeleton flash). Web
-    // does the equivalent with a single Dexie getAllMessages at module load.
-    // Deferred via InteractionManager so the JSON.parse work doesn't compete
-    // with the initial render/animation frame and trigger an ANR.
+    // Pre-warm messages for every cached conversation in one multiGet so tapping
+    // any chat is instant (no skeleton flash) — web does the equivalent via a
+    // single Dexie getAllMessages. Deferred via InteractionManager to avoid an ANR.
     const interaction = InteractionManager.runAfterInteractions(() => {
       chatDb.getAllMessages().then((messagesByConversation) => {
         for (const [conversationId, messages] of messagesByConversation) {
@@ -60,11 +58,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
             (existing: Message[] | undefined) => existing ?? messages,
           );
         }
-        // Mark all messages queries stale so the next time a conversation is
-        // opened, React Query revalidates against the API in the background
-        // (cached messages stay on screen — stale-while-revalidate). Without
-        // this, the seeded data would stay "fresh" for the 5min staleTime,
-        // suppressing any background sync until the user idled past it.
+        // Mark messages queries stale so opening a conversation revalidates
+        // against the API in the background (stale-while-revalidate); without
+        // this, seeded data stays "fresh" for 5min, suppressing sync until idle.
         queryClient.invalidateQueries({
           queryKey: [...chatKeys.all, "messages"],
         });

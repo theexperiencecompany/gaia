@@ -1,8 +1,8 @@
 """Unit tests for DynamicToolNode's middleware dispatch path.
 
-The middleware branch of ``_afunc`` only runs when a middleware executor is
+The middleware branch of _afunc only runs when a middleware executor is
 present AND at least one tool call escapes parent routing — the state
-normalization between the two (``_coerce_middleware_state``) is what the
+normalization between the two (_coerce_middleware_state) is what the
 executor and every wrap_tool_call hook consume as their view of graph state.
 """
 
@@ -30,7 +30,7 @@ def _echo_registry() -> dict[str, Any]:
 
 
 def _make_node() -> tuple[DynamicToolNode, MagicMock]:
-    """A DynamicToolNode whose middleware executor claims wrap_tool_call."""
+    """Build a DynamicToolNode whose middleware executor claims wrap_tool_call."""
     executor = MagicMock()
     executor.has_wrap_tool_call.return_value = True
     executor.wrap_tool_invocation = AsyncMock(

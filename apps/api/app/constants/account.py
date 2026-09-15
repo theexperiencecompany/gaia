@@ -1,12 +1,12 @@
-"""Account-center workspace paths — the single map of the ``account/`` subtree.
+"""Account-center workspace paths — the single map of the account/ subtree.
 
 One entry per projected file: which area it belongs to and where it lands under
 the user's workspace root. read_tool / write_tool / edit_tool / policy all read
 from here so the set cannot drift.
 
-Every file in ``account/`` is a read-only projection of Mongo/Postgres truth —
+Every file in account/ is a read-only projection of Mongo/Postgres truth —
 editing a file accomplishes nothing. Mutations go through the account mutation
-tools (``app/agents/tools/account_tools.py``, registered ``always_gate``).
+tools (app/agents/tools/account_tools.py, registered always_gate).
 """
 
 from enum import StrEnum
@@ -45,10 +45,9 @@ ACCOUNT_READ_ONLY_PATHS: frozenset[str] = frozenset(
     }
 )
 
-# Executor tools that mutate account state live in
-# app/agents/tools/account_tools.py; their forced-ask HIL posture is stamped on
-# the tool registry at registration (Tool.always_gate) — the single source of
-# truth for gating.
+# Executor tools mutating account state (app/agents/tools/account_tools.py) get
+# their forced-ask HIL posture stamped on the tool registry at registration
+# (Tool.always_gate) — the single source of truth for gating.
 
 
 def account_area_for(rel_path: str) -> AccountArea | None:
@@ -85,7 +84,7 @@ AREA_MUTATION_TOOL: dict[AccountArea, str] = {
 
 
 def account_mutation_refusal(rel_path: str) -> str | None:
-    """Refusal text for an attempted write/edit under ``account/``, else None.
+    """Refusal text for an attempted write/edit under account/, else None.
 
     The files are projections: editing one changes nothing, so every mutation
     attempt is answered with the tool that actually performs it.

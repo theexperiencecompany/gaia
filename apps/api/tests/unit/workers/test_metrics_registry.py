@@ -1,7 +1,10 @@
-"""The ARQ worker serves its own Prometheus registry (``ARQ_METRICS_PORT``), so a
-collector only registered on the default one is invisible for everything the
-worker runs: the HIL sweep's timeout path, sweep re-dispatched executor runs,
-reminder/workflow-triggered runs. Every latency collector must be mirrored."""
+"""Every latency collector is mirrored onto the ARQ worker's own registry.
+
+The worker serves its own Prometheus registry on ARQ_METRICS_PORT, so a collector
+registered only on the default one is invisible for everything the worker runs:
+the HIL sweep's timeout path, sweep re-dispatched executor runs, and
+reminder/workflow-triggered runs.
+"""
 
 from app.services import latency_metrics
 from app.workers.metrics import REGISTRY as WORKER_REGISTRY

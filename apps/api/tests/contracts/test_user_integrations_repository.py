@@ -80,11 +80,7 @@ class TestUserIntegrationsRepository:
 
 
 class TestSetStatusStamps:
-    """The expiry stamps are what every reader downstream branches on: the
-    integrations page renders "Disconnected <n> ago" from ``expired_at``, and the
-    connect prompt tells "expired" from "never connected" by the status alone.
-    The service layer's tests run against a fake repo, so this is the only place
-    the real document shape is proven."""
+    """The expiry stamps every downstream reader branches on; the service layer's tests use a fake repo, so this is the only proof of the real document shape."""
 
     async def test_expiring_stamps_when_and_why_the_grant_died(self, repo):
         await repo.create(_ui("u", "gmail", status="connected"))
@@ -99,8 +95,7 @@ class TestSetStatusStamps:
         assert doc.expired_at is not None
 
     async def test_reconnecting_clears_the_stamps_so_it_does_not_read_as_broken(self, repo):
-        """A live record carrying a stale ``expired_at`` looks dead to anything
-        that reads it."""
+        """A live record carrying a stale expired_at looks dead to anything that reads it."""
         await repo.create(_ui("u", "gmail", status="connected"))
         await repo.set_status("u", "gmail", status="expired", expired_reason="revoked")
 
@@ -113,8 +108,7 @@ class TestSetStatusStamps:
         assert doc.connected_at is not None
 
     async def test_the_account_that_died_is_recorded_and_never_cleared(self, repo):
-        """The id of the account that died is what lets us address it after the
-        fact, so a later write that does not know it must not erase it."""
+        """The id of the account that died lets us address it later, so a write that does not know it must not erase it."""
         await repo.create(_ui("u", "gmail", status="created"))
 
         await repo.set_status("u", "gmail", status="connected", connected_account_id="ca_1")

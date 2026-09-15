@@ -35,10 +35,9 @@ export const ENTIRE_FS_ROOT = sep;
 // Reconnect backoff (ms) with full jitter.
 export const RECONNECT_MIN_MS = 500;
 export const RECONNECT_MAX_MS = 60_000;
-// After a healthy connection drops, spread the *first* reconnect over this window
-// instead of RECONNECT_MIN_MS. When a whole pod dies, every daemon it held would
-// otherwise re-hit /device/token inside ~500ms; jittering over several seconds
-// keeps that burst off the token endpoint and its Postgres pool.
+// Spreads the *first* reconnect after a drop over this window instead of
+// RECONNECT_MIN_MS — avoids every daemon from a dead pod re-hitting
+// /device/token within ~500ms and hammering its Postgres pool.
 export const RECONNECT_SPREAD_MS = 5_000;
 
 // Cap read_file responses so a huge file can't blow up the tunnel.

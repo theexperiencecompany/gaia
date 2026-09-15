@@ -118,14 +118,7 @@ class TestSelfPairEndpoint:
     async def test_delegates_to_service_and_maps_response(
         self, client: AsyncClient, fake_user: dict
     ) -> None:
-        """Pin the handler's contract with the service seam and the response mapping.
-
-        The real-service test above cannot pin *which* args reach the service
-        (name/platform/daemon_version are never asserted on the created row) nor
-        the exact device id in the response (it is minted at random). Mocking the
-        seam with distinct sentinels makes an arg drop/reorder/None, a field
-        swap, or a wrong analytics prop observable.
-        """
+        """Sentinel mocks catch arg/field drift the real-service test above can't pin."""
         with (
             patch(_SELF_PAIR, new_callable=AsyncMock) as mock_self_pair,
             patch(_CAPTURE) as mock_capture,
@@ -166,11 +159,7 @@ class TestSelfPairEndpoint:
         assert audit_kwargs["flow"] == "self_pair"
 
     async def test_self_pair_stamps_the_wide_event_device_and_user(self, fake_user: dict) -> None:
-        """The handler's log.set + log.set_ns build the request's wide-event
-        ``device`` and ``user`` namespaces. Asserting them exactly catches a
-        dropped/renamed/None field (operation, client, user id, device_id) that
-        the HTTP-level tests above cannot see. Call the handler directly so its
-        log writes land on the captured event."""
+        """Asserts wide-event device/user fields exactly, catching drops the HTTP tests miss."""
         payload = SelfPairRequest(
             name="My Mac", platform="macos", client="desktop", daemon_version="1.2.3"
         )

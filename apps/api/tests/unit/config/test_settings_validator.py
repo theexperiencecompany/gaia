@@ -1,6 +1,6 @@
 """The registered settings groups, exercised through a fresh validator.
 
-The module-level ``settings_validator`` singleton registers its groups at
+The module-level settings_validator singleton registers its groups at
 import time, so nothing that only imports the module ever runs the
 registration again. These tests construct their own validator, which is what
 makes the registration observable at all — and what lets the mutation gate
@@ -28,9 +28,7 @@ def _missing_keys(
 
 
 def test_a_configured_posthog_is_not_reported_missing() -> None:
-    """The group's keys must be the settings attribute names verbatim: a key
-    that never matches an attribute leaves the group reported missing however
-    the app is configured."""
+    """The group's keys must be the settings attribute names verbatim, or the group reports missing however the app is configured."""
     settings_obj = SimpleNamespace(**dict.fromkeys(POSTHOG_FIELDS, "set"))
 
     missing = SettingsValidator().validate_settings(settings_obj)
@@ -45,8 +43,7 @@ def test_an_unconfigured_posthog_reports_every_posthog_setting() -> None:
 
 
 async def test_missing_posthog_is_not_warned_about_in_production() -> None:
-    """Analytics is optional in production — a missing token must not raise a
-    CRITICAL on every boot, while a genuinely required group still does."""
+    """Analytics is optional in production — a missing token must not raise a CRITICAL on every boot, while a genuinely required group still does."""
     validator = SettingsValidator()
     validator.configure(show_warnings=True, is_production=True)
     validator.validate_settings(SimpleNamespace())
@@ -76,9 +73,7 @@ def _group(validator: SettingsValidator, name: str) -> SettingsGroup:
 
 
 def test_the_share_group_publishes_the_prose_an_operator_reads() -> None:
-    """``description`` reaches no runtime code path — scripts/dump_config_schema.py
-    lifts it straight off this module's AST into the config schema — so this is
-    the only place its content is checked at all."""
+    """Description reaches no runtime code path — scripts/dump_config_schema.py lifts it off this module's AST — so this is the only place it's checked."""
     group = _group(SettingsValidator(), SHARE_GROUP)
 
     assert group.description == "HMAC signing secret for single-purpose file-share grants"
@@ -86,10 +81,7 @@ def test_the_share_group_publishes_the_prose_an_operator_reads() -> None:
 
 
 def test_a_configured_share_secret_is_not_reported_missing() -> None:
-    """Same contract as the posthog group: the key must be the settings
-    attribute name verbatim, or the group is reported missing however the app
-    is configured — and a share secret that reads as missing is one an operator
-    will go set again."""
+    """Same contract as the posthog group: the key must be the settings attribute name verbatim, or the group reports missing however configured."""
     settings_obj = SimpleNamespace(SHARE_GRANT_SECRET="set")
 
     missing = SettingsValidator().validate_settings(settings_obj)
@@ -104,8 +96,7 @@ def test_an_unconfigured_share_secret_is_reported_missing() -> None:
 
 
 async def test_a_missing_share_secret_names_what_it_breaks() -> None:
-    """The warning is all an operator gets: without the affected-features line
-    it says a key is missing but not that file attachments stop working."""
+    """The warning is all an operator gets: without the affected-features line it says a key is missing but not that file attachments stop working."""
     validator = SettingsValidator()
     validator.configure(show_warnings=True, is_production=False)
     validator.validate_settings(SimpleNamespace())

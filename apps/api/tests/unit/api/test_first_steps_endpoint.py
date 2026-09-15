@@ -1,5 +1,4 @@
-"""The first-steps contract: a GET that derives the checklist and a POST that
-collapses or expands it. There is deliberately no route that marks a step done."""
+"""The first-steps contract: a GET that derives the checklist and a POST that collapses or expands it; there is deliberately no route that marks a step done."""
 
 from unittest.mock import AsyncMock, patch
 

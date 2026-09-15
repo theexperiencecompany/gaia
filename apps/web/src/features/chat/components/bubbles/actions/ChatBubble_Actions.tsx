@@ -54,18 +54,6 @@ export default function ChatBubble_Actions({
     toast.info("Copied to clipboard", {
       description: `${cleanText.slice(0, 30)}...`,
     });
-
-    // toast.success("Copied to clipboard", {
-    //   unstyled: true,
-    //   classNames: {
-    //     toast: "flex items-center p-3 rounded-xl gap-3 w-[350px] toast_custom",
-    //     title: "text-black text-sm",
-    //     description: "text-sm text-black",
-    //   },
-    //   duration: 3000,
-    //   description: `${text.substring(0, 35)}...`,
-    //   icon: <Task01Icon color="black" height="23" />,
-    // });
   };
 
   const handlePinToggle = async () => {

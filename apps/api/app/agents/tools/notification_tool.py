@@ -31,45 +31,39 @@ from app.utils.chat_utils import get_user_id_from_config
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
 
-# A NotificationView serialized with ``model_dump(mode="json")`` — the stream/tool
-# payload must stay JSON-shaped (see ToolData.data), so views are dumped, not
-# passed on as models. json mode matters: the default python mode leaves enum
-# *members* in the dict, which LangChain then stringifies into the ToolMessage as
+# NotificationView.model_dump(mode="json") — json mode matters: python mode
+# leaves enum members in the dict, which LangChain then stringifies as
 # ``<NotificationStatus.DELIVERED: 'delivered'>`` instead of ``'delivered'``.
 SerializedNotification: TypeAlias = dict[str, Any]
 
 
-# ---------------------------------------------------------------------------
-# Tool return shapes. Plain TypedDicts, not models: LangChain stringifies the
-# returned object into the ToolMessage the LLM reads, so the runtime value must
-# stay the exact dict it is today. ``error`` is ``NotRequired`` because the
-# success paths omit it entirely.
-# ---------------------------------------------------------------------------
+# Tool return shapes are plain TypedDicts, not models: LangChain stringifies
+# the returned object into the ToolMessage the LLM reads.
 
 
 class NotificationListResult(TypedDict):
-    """``get_notifications`` / ``search_notifications``."""
+    """get_notifications / search_notifications."""
 
     notifications: list[SerializedNotification]
     error: NotRequired[str]
 
 
 class NotificationCountResult(TypedDict):
-    """``get_notification_count``."""
+    """get_notification_count."""
 
     count: int
     error: NotRequired[str]
 
 
 class MarkReadResult(TypedDict):
-    """``mark_notifications_read``."""
+    """mark_notifications_read."""
 
     success: bool
     error: NotRequired[str]
 
 
 class SentNotificationResult(TypedDict):
-    """``send_notification`` on success — also the ``send_notification_data``
+    """send_notification on success — also the send_notification_data
     stream payload that renders the "notification sent" chat card."""
 
     success: Literal[True]
@@ -82,15 +76,15 @@ class SentNotificationResult(TypedDict):
 
 
 class SendNotificationFailure(TypedDict):
-    """``send_notification`` when validation or delivery setup failed."""
+    """send_notification when validation or delivery setup failed."""
 
     error: str
     success: Literal[False]
 
 
 class NotificationPreferencesResult(TypedDict):
-    """``get_notification_preferences``. The channel lists are absent on the
-    error path, which returns only ``error`` and an empty ``preferences``."""
+    """get_notification_preferences. The channel lists are absent on the
+    error path, which returns only error and an empty preferences."""
 
     preferences: dict[str, bool]
     available_channels: NotRequired[list[str]]

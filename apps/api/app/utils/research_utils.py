@@ -97,9 +97,9 @@ async def decompose_research_queries(
 
 
 def rank_and_deduplicate_urls(search_results: list[Any], max_urls: int) -> list[dict[str, Any]]:
-    """
-    Merge results from multiple searches, rank by appearance frequency + relevance score.
-    Returns deduplicated URL list sorted by combined relevance.
+    """Merge results from multiple searches, ranked by appearance frequency + relevance score.
+
+    Returns a deduplicated URL list sorted by combined relevance.
     """
     url_map: dict[str, dict[str, Any]] = {}
 

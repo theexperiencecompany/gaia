@@ -2,7 +2,7 @@
 
 The executor's terminal text is never shown to the user directly — it is
 handed to the comms agent as internal context (a HumanMessage framed in an
-``<executor_result>``/``<executor_error>`` tag) and comms re-voices it in GAIA's
+<executor_result>/<executor_error> tag) and comms re-voices it in GAIA's
 persona. This module owns that single invocation.
 """
 
@@ -37,12 +37,9 @@ async def narrate_executor_result(
 ) -> str:
     """Invoke the comms graph silently with the executor result as internal context.
 
-    The result is injected as a HumanMessage framed in a stable tag so comms
-    treats it as ground-truth internal data and re-voices it. Comms applies its
-    voice/persona (loaded from the checkpoint) and returns the user-facing text.
-    The graph's checkpoint is updated naturally — no manual aupdate_state.
-
-    Returns the comms-generated text, or an empty string on failure.
+    Injected as a HumanMessage framed in a stable tag so comms treats it as
+    ground-truth and re-voices it in its own persona. Returns the
+    comms-generated text, or an empty string on failure.
     """
     tag = AgentTag.EXECUTOR_ERROR if msg_type == "error" else AgentTag.EXECUTOR_RESULT
     result_block = wrap_agent_payload(tag, result_text)
@@ -87,17 +84,8 @@ async def narrate_executor_result(
         )
         initial_state = {
             "messages": [
-                # MUST be a HumanMessage. The message type is load-bearing here:
-                #   - SystemMessage: manage_system_prompts_node treats it as the
-                #     static-prompt slot and EVICTS COMMS_AGENT_PROMPT, leaving
-                #     comms with no persona — so it parrots the raw <executor_result>
-                #     instead of speaking in GAIA's voice.
-                #   - AIMessage: Gemini sees a trailing assistant turn as already
-                #     answered and returns an empty completion.
-                #   - HumanMessage: not a system message, so it's immune to the
-                #     prompt pruning (the checkpoint's persona survives) and Gemini
-                #     treats it as a turn to respond to. This is how it worked
-                #     before the HumanMessage→SystemMessage regression.
+                # MUST be a HumanMessage: a SystemMessage evicts
+                # COMMS_AGENT_PROMPT; an AIMessage makes Gemini return empty.
                 HumanMessage(
                     content=content,
                     name=BACKGROUND_EXECUTOR_NAME,
@@ -116,13 +104,11 @@ async def record_executor_cancellation(
     task_id: str | None,
     task: str,
 ) -> None:
-    """Append an ``<executor_cancelled>`` record to the comms thread's checkpoint.
+    """Append an <executor_cancelled> record to the comms thread's checkpoint.
 
-    Without this, a cancelled executor leaves comms' last knowledge of the task
-    as the 'Task accepted... I'm on it' tool result — on any later turn the
-    model believes the work is still running (or quietly done). This is a
-    silent context write via ``aupdate_state``: no model call, no user-facing
-    message. Best-effort — a failure here must not break the cancel path.
+    Without this, comms' last knowledge of the task stays "Task accepted...
+    I'm on it", and a later turn believes the work is still running. Silent
+    aupdate_state write, no model call. Best-effort.
     """
     marker = HumanMessage(
         content=wrap_agent_payload(
@@ -155,27 +141,20 @@ async def record_executor_cancellation(
 
 
 async def record_platform_delivery(conversation_id: str, text: str) -> None:
-    """Append a message delivered straight to a platform chat (outside any comms
-    turn) to that conversation's checkpoint thread.
+    """Append a message delivered straight to a platform chat to that conversation's checkpoint.
 
-    Workflow results pushed into the user's Telegram/WhatsApp sessions are saved
-    to MongoDB and sent by the bots without passing through the graph — but the
-    next bot turn reads its history from the checkpoint, so without this write
-    GAIA has no memory of results it just delivered. Silent ``aupdate_state``
-    write, no model call. Best-effort: the message is already sent, so a failure
-    here must not break delivery.
+    Bot-delivered workflow results bypass the graph, but the next bot turn
+    reads history from the checkpoint — without this write GAIA has no memory
+    of results it just delivered. Silent aupdate_state, no model call.
+    Best-effort: the message is already sent.
     """
     if not text.strip():
         return
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")
-        # as_node="tools", not "agent": aupdate_state evaluates as_node's outgoing
-        # edges to compute the next tasks, and the agent node's should_continue
-        # branch requires a ``store`` that aupdate_state cannot inject — so writing
-        # as "agent" raises "Missing required config key 'store'" and the record
-        # is lost. The tools->agent edge is unconditional and needs no store, so
-        # the write lands; the AIMessage is appended by the reducer either way.
-        # Mirrors record_executor_cancellation.
+        # as_node="tools", not "agent": the agent node's should_continue needs
+        # a ``store`` aupdate_state can't inject, raising "Missing required
+        # config key 'store'". The tools->agent edge needs no store.
         await comms_graph.aupdate_state(
             {"configurable": {"thread_id": conversation_id}},
             {"messages": [AIMessage(content=text)]},

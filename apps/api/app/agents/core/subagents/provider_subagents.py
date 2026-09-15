@@ -50,17 +50,10 @@ class SubagentUnavailableError(Exception):
 async def register_composio_subagent_tools(subagent: Subagent, tool_registry: ToolRegistry) -> None:
     """Put a Composio subagent's toolkit in the registry, once per process.
 
-    Both the live handoff and a playbook's validator and replay resolve the
-    subagent's tool space from the registry, and the toolkit is only there once
-    something has loaded it. A worker that has never handed off to this
-    subagent has an empty category for it until this runs, which is how a
-    replay three minutes after a worker restart found no GMAIL tool at all.
-
-    ``Subagent`` does not carry composio_config; the OAuth integration does
-    (composio is OAuth-only). The OAuthIntegration validator enforces
-    composio_config when managed_by="composio", so landing here without one
-    means a builtin Subagent declared managed_by="composio" and would silently
-    produce a tool-less agent. Fail loudly instead.
+    The tool space is empty until this runs — a worker that never handed off
+    to this subagent found no GMAIL tool three minutes after restart. Landing
+    here without composio_config means managed_by="composio" was misdeclared,
+    so fail loudly rather than produce a tool-less agent.
     """
     integration = get_integration_by_id(subagent.id)
     if integration is None or integration.composio_config is None:
@@ -79,17 +72,9 @@ async def register_composio_subagent_tools(subagent: Subagent, tool_registry: To
 
 
 async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
-    """
-    Create a provider subagent graph on-demand.
-    Registers provider tools to registry if not already present.
+    """Create a provider subagent graph on-demand, registering provider tools if absent.
 
-    Note: For auth-required MCP integrations, use create_subagent_for_user instead.
-
-    Args:
-        subagent: The Subagent to materialize a graph for
-
-    Returns:
-        Compiled subagent graph
+    For auth-required MCP integrations, use create_subagent_for_user instead.
     """
     config = subagent.config
     tool_registry = await get_tool_registry()
@@ -354,7 +339,7 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str) -> Comp
 def _make_subagent_loader(
     subagent: Subagent,
 ) -> Callable[[], Awaitable[CompiledStateGraph]]:
-    """Bind the subagent into a zero-arg async loader for `providers.register`."""
+    """Bind the subagent into a zero-arg async loader for providers.register."""
 
     async def _loader() -> CompiledStateGraph:
         return await create_subagent(subagent)
@@ -363,19 +348,11 @@ def _make_subagent_loader(
 
 
 def register_subagent_providers(integration_ids: list[str] | None = None) -> int:
-    """
-    Register lazy providers for all subagents (OAuth-derived + builtins).
+    """Register lazy providers for all subagents (OAuth-derived + builtins).
+
     Subagents are created on-demand when first accessed via providers.
-
-    Note: Auth-required MCP subagents are NOT registered here - they are created
+    Auth-required MCP subagents are NOT registered here — they are created
     on-the-fly via create_subagent_for_user() when the handoff tool is invoked.
-
-    Args:
-        integration_ids: Optional list of specific subagent IDs to register.
-                        If None, registers all subagents.
-
-    Returns:
-        Number of registered subagent providers.
     """
     registered_count = 0
 

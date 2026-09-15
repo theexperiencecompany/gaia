@@ -20,12 +20,12 @@ from shared.py.wide_events import log
 
 
 class SupportsProfiling(Protocol):
-    """Just the pyinstrument ``Profiler`` surface this middleware uses.
+    """Just the pyinstrument Profiler surface this middleware uses.
 
     A local protocol, rather than the imported class, because pyinstrument is
     optional at runtime — naming the concrete type here would need an import that
-    the ``except ImportError`` below exists to survive. ``stop`` returns ``object``
-    because the real one returns a ``Session`` this middleware discards.
+    the except ImportError below exists to survive. stop returns object
+    because the real one returns a Session this middleware discards.
     """
 
     def start(self) -> None: ...
@@ -48,22 +48,11 @@ except ImportError:
 
 
 class ProfilingMiddleware(BaseHTTPMiddleware):
-    """
-    Optional middleware to profile API requests with pyinstrument.
+    """Optional middleware to profile API requests with pyinstrument.
 
-    This middleware provides detailed call stack profiling when:
-    1. ENABLE_PROFILING=true is set in environment variables
-    2. A request includes the 'profile' query parameter
-    3. Random sampling criteria are met (based on PROFILING_SAMPLE_RATE)
-
-    The profiling report is returned as HTML when profiling is active.
-
-    Environment Variables:
-        ENABLE_PROFILING: bool = False (must be explicitly enabled)
-        PROFILING_SAMPLE_RATE: float = 0.1 (10% sampling rate)
-
-    Usage:
-        Add ?profile=1 to any request URL to get a profiling report (when enabled).
+    Profiles when ENABLE_PROFILING=true, a request has ?profile=1, or random
+    sampling hits (PROFILING_SAMPLE_RATE, default 0.1). Returns the report as
+    HTML when active.
     """
 
     def __init__(self, app: ASGIApp) -> None:

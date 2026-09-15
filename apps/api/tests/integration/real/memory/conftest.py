@@ -1,9 +1,9 @@
 """Fixtures for the memory engine suite — real stores, mocked LLM only.
 
 Postgres, ChromaDB and Redis are the real local docker services from
-``apps/api/.env``; fastembed embedding/reranker models are real and warmed
+apps/api/.env; fastembed embedding/reranker models are real and warmed
 once per worker. The only mocked boundary is the LLM:
-``app.memory.extraction._invoke_structured`` (see ``tests/integration/real/memory/llm.py``).
+app.memory.extraction._invoke_structured (see tests/integration/real/memory/llm.py).
 
 Because the suite's event loop is function-scoped, each test gets its own
 Postgres engine (NullPool), Chroma HTTP client and Redis client patched
@@ -54,21 +54,9 @@ _chroma_collections_ready = False
 def warm_embedding_models() -> None:
     """Load fastembed models once per worker so latency tests measure warm paths.
 
-    Serialized across xdist workers by a file lock, for the same reason
-    ``pg_engine`` takes an advisory lock around ``create_all``: every worker
-    shares one fastembed cache directory, and a concurrent first load has them
-    all downloading the same HuggingFace snapshot at once. The loser observes
-    the snapshot directory its sibling just created, decides the model is
-    present, and hands onnxruntime a ``model.onnx`` that has not finished
-    downloading — ``NO_SUCHFILE``, which took out 24 memory tests and then the
-    live-server suite that reuses the same cache. The winner downloads; the
-    rest block here and read a complete cache.
+    Serialized by a file lock: a concurrent first load has every worker downloading the same HuggingFace snapshot into one shared cache dir at once, and a loser can hand onnxruntime a still-downloading model.onnx (NO_SUCHFILE) — this took out 24 memory tests and the live-server suite sharing the cache. The winner downloads; the rest block and read a complete cache.
     """
-    # With the shared sidecar configured (CI sets MEMORY_EMBEDDING_SIDECAR_URL),
-    # the weights live in ONE process and the app's embed/rerank calls go over
-    # HTTP — loading them here as well would put ~1.8 GB into every xdist
-    # worker and serialize sixteen model loads behind the lock below, which is
-    # exactly the cost the sidecar exists to remove. Warm the sidecar instead.
+    # With the shared sidecar (CI sets MEMORY_EMBEDDING_SIDECAR_URL), embed/rerank calls go over HTTP instead of loading ~1.8 GB into every xdist worker; warm the sidecar instead of loading locally.
     sidecar = os.getenv(EMBEDDING_SIDECAR_URL_ENV, "").strip()
     if sidecar:
         deadline = time.monotonic() + 120
@@ -198,7 +186,7 @@ async def make_memory_user(
     chroma: AsyncClientAPI,
     real_redis: Redis,
 ) -> AsyncGenerator[Callable[[], str], None]:
-    """Factory for isolated test users, each hard-wiped from every store on teardown."""
+    """Return a factory for isolated test users, each hard-wiped from every store on teardown."""
     created: list[str] = []
 
     def _make() -> str:
@@ -216,5 +204,5 @@ async def make_memory_user(
 
 @pytest.fixture
 def memory_user(make_memory_user: Callable[[], str]) -> str:
-    """A dedicated, auto-cleaned user id for the test."""
+    """Return a dedicated, auto-cleaned user id for the test."""
     return make_memory_user()

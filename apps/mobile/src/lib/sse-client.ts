@@ -181,12 +181,9 @@ export async function createSSEConnection(
       es.removeAllEventListeners();
       es.close();
 
-      // The paid-only gate. react-native-sse surfaces an HTTP error status as
-      // an `error` event carrying the status and the raw response body, which
-      // is where the 402's {code, message, checkout_url, discount_code} lives.
-      // Retrying it would burn the backoff budget on a request that can only
-      // ever fail, and would leave the user staring at a generic "connection
-      // failed" instead of the reason.
+      // The paid-only gate: react-native-sse surfaces an HTTP error status as an
+      // `error` event carrying the 402's {code, message, checkout_url,
+      // discount_code} body. Retrying would burn the backoff budget on a request that can only ever fail.
       if ("xhrStatus" in event && event.xhrStatus === HTTP_PAYMENT_REQUIRED) {
         const detail = parseSubscriptionRequiredBody(event.message);
         cleanup();

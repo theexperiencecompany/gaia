@@ -1,31 +1,16 @@
 #!/usr/bin/env python3
 """Backfill descriptions and prompts for public workflows.
 
-Today every seeded explore workflow stores the same long string in both
-``description`` (shown on cards) and ``prompt`` (sent to the agent), and the
-three user-published community workflows have ``prompt = None`` and rely on
-the legacy ``effective_prompt`` fallback. This script splits them apart:
+Every seeded explore workflow currently reuses description (shown on cards) as
+prompt (sent to the agent); the 3 community workflows have prompt=None and
+rely on the legacy effective_prompt fallback. Splits them: explore workflows
+(37) get a short marketing description with prompt left alone; community
+workflows copy description into prompt so execution stops depending on the
+runtime fallback.
 
-- Explore workflows (37): replace ``description`` with a short marketing line
-  and leave ``prompt`` alone.
-- Community workflows (3): copy ``description`` into ``prompt`` so execution
-  no longer depends on the runtime fallback.
-
-Usage::
-
-    cd apps/api
-    uv run python -m app.scripts.backfill_public_workflow_descriptions          # dry run
-    uv run python -m app.scripts.backfill_public_workflow_descriptions --apply  # commit
-
-Flags::
-
-    --apply         Persist changes to MongoDB (otherwise dry run only).
-    --only <id>     Process a single workflow id (repeatable).
-    --skip-orphans  Skip warning about public workflows missing from the
-                    manifest.
-
-The diff prints per-workflow before/after for both fields so the change is
-easy to eyeball before committing.
+Usage: uv run python -m app.scripts.backfill_public_workflow_descriptions
+[--apply] [--only <id> ...] [--skip-orphans]. Without --apply this only
+prints a per-workflow before/after diff.
 """
 
 from __future__ import annotations
@@ -37,15 +22,9 @@ from datetime import UTC, datetime
 from app.db.mongodb.collections import get_async_collection
 from shared.py.wide_events import log
 
-# ---------------------------------------------------------------------------
-# Manifest of edits, keyed by workflow id (``_id`` in Mongo).
-#
-# - ``description``: new short marketing copy. ``None`` means leave as-is.
-# - ``prompt``: new prompt text. ``None`` means leave as-is. The string
-#   ``"<copy-description>"`` is a sentinel meaning "copy whatever description
-#   the document has after this run into prompt"; used for the user-published
-#   community workflows where prompt is currently null.
-# ---------------------------------------------------------------------------
+# Manifest of edits, keyed by workflow id (_id in Mongo). None means leave
+# as-is; COPY_DESCRIPTION means "copy this document's post-run description
+# into prompt" — used for community workflows where prompt is currently null.
 
 COPY_DESCRIPTION = "<copy-description>"
 

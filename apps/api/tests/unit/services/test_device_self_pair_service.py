@@ -2,7 +2,7 @@
 
 Proves the per-user active-device cap fires identically from BOTH entry points
 (self_pair_device and approve_pairing), and that the browser-approval path leaves
-``client`` NULL while self-pair stamps it. The Postgres session and Redis are the
+client NULL while self-pair stamps it. The Postgres session and Redis are the
 only fakes — the real service logic runs.
 """
 

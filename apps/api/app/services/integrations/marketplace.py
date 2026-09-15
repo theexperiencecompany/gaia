@@ -84,7 +84,7 @@ def assemble_integration_response(
 
     Shared by the single-fetch (get_integration_details) and batch-prefetched
     (get_user_integrations) paths so the two can't drift. Platform metadata comes
-    from the catalog ``OAuthIntegration``; custom metadata from the stored doc;
+    from the catalog OAuthIntegration; custom metadata from the stored doc;
     stored MCP tools and creator info are overlaid when present.
     """
     if platform_integration:

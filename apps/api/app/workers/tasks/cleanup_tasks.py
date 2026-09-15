@@ -23,13 +23,12 @@ class _RequeueOutcome(Enum):
 
 
 async def _requeue_stuck_user(user: UserDocument) -> _RequeueOutcome:
-    """Re-queue the personalization job for one stuck user, skipping any whose
-    ARQ job is still live (a slow-but-healthy pipeline is never aborted).
+    """Re-queue the personalization job for one stuck user, skipping a live ARQ job.
 
-    Legacy safety net: only users who submitted onboarding before the pipeline
-    moved to Gmail-connect can still be at personalization_pending, and
-    enqueue_gmail_personalization no-ops for any of them whose pipeline
-    already ran."""
+    Legacy safety net: only users who onboarded before the Gmail-connect
+    pipeline move can still be at personalization_pending, and
+    enqueue_gmail_personalization no-ops if their pipeline already ran.
+    """
     user_id = user.id
     last_update = str(user.updated_at) if user.updated_at is not None else "unknown"
 

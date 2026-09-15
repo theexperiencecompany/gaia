@@ -94,10 +94,9 @@ describe("PricingCard — CTA vs. plan status unknown", () => {
       />,
     );
 
-    // Before the fix, isCurrentPlan/hasActiveSubscription being false in this
-    // exact window meant the button rendered as an actionable "Subscribe"
-    // — a paying user reloading mid-fetch could click straight into a
-    // duplicate subscription checkout.
+    // Before the fix, isCurrentPlan/hasActiveSubscription false in this
+    // window rendered an actionable "Subscribe" — a paying user could click
+    // straight into a duplicate checkout.
     const button = screen.getByRole("button", {
       name: /Checking your plan/i,
     }) as HTMLButtonElement;

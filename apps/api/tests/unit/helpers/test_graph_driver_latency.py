@@ -78,9 +78,7 @@ async def test_run_without_text_stamps_no_pipeline_ttft() -> None:
 
 
 async def test_first_text_yield_stamps_the_exact_rounded_milliseconds() -> None:
-    """The stamp is the first-text instant minus the run start, in ms to two
-    places. Only ``agent_helpers``' own clock is frozen here, so the span reader
-    in ``latency_metrics`` (which owns its own reference) stays real."""
+    """The stamp is first text minus run start, in ms to two places, with only agent_helpers' clock frozen."""
     graph = _ScriptedGraph(
         [
             ((), "messages", (AIMessageChunk(id="m1", content="hi"), {})),
@@ -106,8 +104,7 @@ async def test_first_text_yield_stamps_the_exact_rounded_milliseconds() -> None:
 
 
 async def test_the_cancel_check_names_the_runs_own_stream() -> None:
-    """The cancel flag is keyed by THIS run's stream id; checking a different one
-    (or none) means a cancel addressed to this stream is never seen."""
+    """The cancel flag is keyed by this run's own stream id, not another or none."""
     graph = _ScriptedGraph([((), "custom", {"progress": "working"})])
     config = {"agent_name": "comms_agent", "configurable": {"stream_id": "stream-42"}}
 
@@ -149,8 +146,7 @@ async def test_a_graph_error_observes_the_error_status_and_reraises() -> None:
 
 
 async def test_aclose_mid_stream_observes_the_abandoned_status() -> None:
-    """A generator closed without cancellation or an exception — the server
-    shutdown path — is neither success nor cancelled, and must say so."""
+    """A close without cancellation or exception, the shutdown path, is neither success nor cancelled."""
     graph = _ScriptedGraph(
         [
             ((), "custom", {"progress": "working"}),

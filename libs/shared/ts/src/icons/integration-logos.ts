@@ -1,14 +1,10 @@
 /**
- * Canonical filenames for bundled integration logos.
+ * Canonical filenames for bundled integration logos — the single source of truth for which
+ * file represents each integration across platforms. Each value is a relative path under
+ * `/images/icons/` (web) or the marketing-site CDN (mobile).
  *
- * Each value is a relative path under `/images/icons/` (web) or under the
- * marketing-site CDN (`https://heygaia.io/images/icons/`) used by mobile.
- * This is the single source of truth for which file represents each
- * integration logo across platforms.
- *
- * For new integrations: add the asset under `apps/web/public/images/icons/`
- * and add an entry here. Web reads it via {@link getWebIntegrationLogoPath};
- * mobile reads it via {@link getMobileIntegrationLogoUrl}.
+ * For new integrations: add the asset under `apps/web/public/images/icons/` and an entry here.
+ * Web reads it via {@link getWebIntegrationLogoPath}; mobile via {@link getMobileIntegrationLogoUrl}.
  */
 export const INTEGRATION_LOGO_FILES: Record<string, string> = {
   gmail: "gmail.webp",

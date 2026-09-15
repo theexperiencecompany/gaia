@@ -1,22 +1,17 @@
 """Shared orchestration for VFS sync glue modules.
 
-The glue modules (``gaia_tasks_fs``, ``user_todos_fs``, ``memory_fs``) share two
-distinct patterns:
+The glue modules (gaia_tasks_fs, user_todos_fs, memory_fs) share two patterns:
 
-* **Hash-gated sync**: bail on missing mount, fetch active docs from
-  Mongo, hash them, compare against the on-disk catalog marker, run
-  the materializer in a thread only on mismatch, stamp the new marker,
-  log the result. Implemented by :func:`run_hashed_sync`.
+* Hash-gated sync: bail on missing mount, fetch docs from Mongo, hash them,
+  compare to the on-disk marker, materialize in a thread only on mismatch,
+  stamp the marker, log the result. See run_hashed_sync.
 
-* **Fire-and-forget scheduling**: turn an async sync function into a
-  ``schedule(user_id)`` callable that creates a background task, holds
-  a reference so the task isn't garbage-collected, and never raises
-  into the caller. Implemented by :func:`make_scheduler`.
+* Fire-and-forget scheduling: wrap an async sync function as schedule(user_id),
+  spawning a background task that holds a reference and never raises into the
+  caller. See make_scheduler.
 
-Both helpers are deliberately small. They exist to make the glue
-modules read top-down and identical in shape — if another VFS area
-gets added later it slots in by providing the same spec
-(:class:`HashedSyncSpec`).
+Both are deliberately small so the glue modules read identically; a new VFS
+area slots in via the same HashedSyncSpec.
 """
 
 from __future__ import annotations
@@ -38,22 +33,20 @@ from app.services.storage.metrics import fs_timer
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import UserContext, log, wide_task
 
-# Generic over each module's projection TypedDict (``GaiaTaskProjection``,
-# ``UserTodoProjection``, …). ``Mapping[str, Any]`` is the right bound:
-# TypedDicts structurally satisfy ``Mapping`` (covariant in the value
-# type), so callers can pass their concrete TypedDict here without any
-# cast, while the helper still gets ``d["id"]`` access.
+# Generic over each module's projection TypedDict. Mapping[str, Any] is the
+# right bound: TypedDicts structurally satisfy Mapping, so callers pass their
+# concrete TypedDict here without a cast, while the helper still gets d["id"].
 ProjectionT = TypeVar("ProjectionT", bound=Mapping[str, Any])
 
 
 @dataclass(frozen=True)
 class HashedSyncSpec(Generic[ProjectionT]):
-    """The per-area inputs for :func:`run_hashed_sync`.
+    """The per-area inputs for run_hashed_sync.
 
     One value groups the fetch/hash/materialize callbacks with the area's
     fs-op, guide doc, marker path, and log name — the pieces every VFS area
     (gaia-tasks, user todos, memory) provides together. Grouping them keeps
-    the sync entry point to ``(user_id, spec)`` instead of an 8-argument
+    the sync entry point to (user_id, spec) instead of an 8-argument
     call that grows with every new area concern.
     """
 
@@ -67,21 +60,11 @@ class HashedSyncSpec(Generic[ProjectionT]):
 
 
 async def run_hashed_sync(user_id: str, spec: HashedSyncSpec[ProjectionT]) -> int:
-    """Run a hash-gated VFS sync for ``user_id``.
+    """Run a hash-gated VFS sync for user_id.
 
-    Returns the number of doc bodies rewritten. ``0`` means either the
-    mount was missing (native dev) or the on-disk catalog signature
-    already matched Mongo — both are no-ops from the caller's POV.
-
-    Steps (do not reorder):
-
-    1. Short-circuit on missing mount.
-    2. Open the ``fs_timer`` so dashboards see the call even when it's
-       a no-op due to the marker match (helps spot a runaway caller).
-    3. Fetch + hash + compare against the catalog marker.
-    4. If mismatch, materialize off the event loop and stamp the new
-       marker.
-    5. Emit a single structured log line.
+    0 means either the mount was missing or the on-disk signature already
+    matched Mongo — both are no-ops from the caller's POV. fs_timer wraps even
+    the no-op path so dashboards see the call and can spot a runaway caller.
     """
     if not _is_mounted():
         return 0
@@ -104,33 +87,19 @@ def make_scheduler(
     *,
     log_name: str,
 ) -> Callable[[str], None]:
-    """Build a ``schedule(user_id)`` wrapper around ``sync_fn``.
+    """Build a schedule(user_id) wrapper around sync_fn.
 
-    The returned closure:
-
-    * No-ops when JuiceFS isn't mounted (native dev mode) so callers
-      don't need to know which dev mode they're in.
-    * Returns silently if no asyncio loop is running (e.g. workers
-      calling tools synchronously during startup).
-    * Wraps every task body in a try/except that logs but never raises
-      — fire-and-forget MUST NOT crash the host coroutine.
-    * Spawns via ``spawn_background_task`` so tasks aren't
-      garbage-collected mid-flight.
-    * Runs at most one sync per user at a time. Each sync fetches its own
-      Mongo snapshot, so two in flight can finish in the wrong order and
-      leave the older snapshot on disk (marker included) until some later
-      write. A schedule that lands mid-flight marks the user dirty and the
-      running task re-syncs once more with a fresh snapshot; a burst of
-      writes therefore costs two syncs, not one per write.
+    No-ops when unmounted or with no running loop, and never raises out of the
+    background task. Runs at most one sync per user at a time — a schedule()
+    landing mid-flight marks the user dirty so the running task re-syncs once more, costing two syncs per write burst instead of one per write.
     """
     in_flight: set[str] = set()
     dirty: set[str] = set()
 
     async def _safe(user_id: str) -> None:
-        # Own ``wide_task`` scope: this body runs in a fire-and-forget task with
-        # no request middleware, so the scope is what makes the sync result and
-        # any failure emit a queryable wide event. wide_task records the failure
-        # itself, so suppress the re-raise to keep the task quiet.
+        # Own wide_task scope: no request middleware runs in this fire-and-forget
+        # task, so this is what makes the result and failure emit a queryable
+        # wide event. wide_task already records failure, so suppress the re-raise.
         with contextlib.suppress(Exception):
             async with wide_task(log_name, user=UserContext(id=user_id)):
                 await sync_fn(user_id)

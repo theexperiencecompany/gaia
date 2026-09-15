@@ -26,14 +26,12 @@ export type MessageBoundaryHandler = (
 ) => void | Promise<void>;
 
 /**
- * Fired when the backend has something to tell the user that is NOT part of the
- * assistant's reply — currently the rate-limit notice, which the web renders as
- * a card the bots drop.
+ * Fired when the backend has something to tell the user outside the assistant's reply —
+ * currently the rate-limit notice (rendered as a card on web, dropped by bots).
  *
- * It gets its own frame rather than riding the stream as text because text
- * belongs to whichever assistant message is in flight: a discarded message (a
- * handoff preamble, a rewritten draft) took the notice down with it, and the
- * user hit a limit and was told nothing.
+ * It gets its own frame instead of riding the stream as text: text belongs to whichever
+ * assistant message is in flight, and a discarded message (handoff preamble, rewritten draft)
+ * would take the notice down with it, leaving the user told nothing.
  */
 export type NoticeHandler = (text: string) => void | Promise<void>;
 

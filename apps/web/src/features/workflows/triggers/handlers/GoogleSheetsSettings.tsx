@@ -91,9 +91,8 @@ export function GoogleSheetsSettings({
     integrations.find((i) => i.id === integrationId)?.status === "connected";
 
   // The parent owns the config: selections are read straight from it and every
-  // user interaction writes back through onConfigChange. Deriving here (instead
-  // of mirroring into local state that an effect pushes upward) keeps one
-  // source of truth and costs no extra renders.
+  // interaction writes back through onConfigChange, instead of mirroring into
+  // local state that an effect pushes upward — one source of truth, no extra renders.
   const spreadsheetIds = triggerData?.spreadsheet_ids || [];
   // Composite keys (spreadsheet_id::sheet_name) to handle duplicate names
   const sheetKeys = triggerData?.sheet_names || NO_SHEET_KEYS;
@@ -102,7 +101,6 @@ export function GoogleSheetsSettings({
   // Only new_row trigger needs sheet selection
   const isNewRowTrigger = triggerSlug === "google_sheets_new_row";
 
-  // ============ DATA FETCHING ============
   // Fetch spreadsheets (no manual debounce - React Query handles caching)
   const { data: spreadsheetsData, isLoading: isLoadingSpreadsheets } =
     useTriggerOptions(
@@ -124,7 +122,6 @@ export function GoogleSheetsSettings({
     spreadsheetIds.length > 0 ? spreadsheetIds : undefined,
   );
 
-  // ============ DERIVED DATA ============
   const spreadsheetOptions = (spreadsheetsData || []) as OptionItem[];
   // Memoized so downstream memos don't rebuild on every render (the fallback
   // `|| []` would otherwise create a fresh array identity each render).
@@ -151,7 +148,6 @@ export function GoogleSheetsSettings({
     return new Set(sheetKeys);
   }, [sheetKeys]);
 
-  // ============ HANDLERS ============
   // Persist a selection pair into the parent-owned config.
   const updateSelections = (
     nextSpreadsheetIds: string[],
@@ -193,7 +189,6 @@ export function GoogleSheetsSettings({
   };
 
   if (!isConnected) {
-    // ============ RENDER ============
     return (
       <TriggerConnectionPrompt
         integrationName="Google Sheets"

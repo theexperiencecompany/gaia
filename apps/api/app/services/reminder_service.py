@@ -1,6 +1,4 @@
-"""
-Reminder scheduler for managing reminder tasks.
-"""
+"""Reminder scheduler for managing reminder tasks."""
 
 from datetime import UTC, datetime
 from typing import Any
@@ -29,10 +27,7 @@ from shared.py.wide_events import log
 
 
 class ReminderScheduler(BaseSchedulerService):
-    """
-    Manages reminder scheduling and execution.
-    Inherits from BaseSchedulerService for common scheduling functionality.
-    """
+    """Manage reminder scheduling and execution."""
 
     def __init__(self, redis_settings: RedisSettings | None = None):
         """Initialize the reminder scheduler."""
@@ -103,7 +98,7 @@ class ReminderScheduler(BaseSchedulerService):
         """Update an existing reminder, rescheduling if scheduled_at changed.
 
         Returns True when a matching reminder was found. (The prior direct-Mongo path
-        keyed on ``modified_count`` and returned False for a no-op update; the
+        keyed on modified_count and returned False for a no-op update; the
         repository reports found/not-found, so an idempotent no-op now succeeds —
         the correct outcome.)
         """
@@ -138,14 +133,13 @@ class ReminderScheduler(BaseSchedulerService):
         )
 
     async def get_reminder(self, task_id: str, user_id: str | None = None) -> ReminderModel | None:
-        """Get a reminder by ID."""
         task = await self.get_task(task_id, user_id)
         return task if isinstance(task, ReminderModel) else None
 
     # Implementation of abstract methods from BaseSchedulerService
 
     async def get_task(self, task_id: str, user_id: str | None = None) -> BaseScheduledTask | None:
-        """Get a reminder by ID (owner-scoped when ``user_id`` is given)."""
+        """Get a reminder by ID (owner-scoped when user_id is given)."""
         if user_id:
             return await reminder_repository.get_for_user(task_id, user_id)
         return await reminder_repository.get(task_id)
@@ -172,7 +166,7 @@ class ReminderScheduler(BaseSchedulerService):
             return TaskExecutionResult(success=False, message=f"Failed to execute reminder: {e!s}")
 
     async def find_stale_executing(self, cutoff: datetime) -> list[BaseScheduledTask]:
-        """Reminders wedged in EXECUTING since before ``cutoff``."""
+        """Reminders wedged in EXECUTING since before cutoff."""
         return list(await reminder_repository.find_stale_executing(cutoff))
 
     async def claim_task_for_execution(
@@ -200,8 +194,8 @@ class ReminderScheduler(BaseSchedulerService):
     ) -> bool:
         """Update reminder status (plus the scheduler's re-arm fields).
 
-        BaseSchedulerService only ever passes ``occurrence_count`` and/or
-        ``scheduled_at`` in ``update_data`` (``updated_at`` is auto-stamped by the
+        BaseSchedulerService only ever passes occurrence_count and/or
+        scheduled_at in update_data (updated_at is auto-stamped by the
         repository), so those are threaded through as typed arguments.
         """
         data = update_data or {}
@@ -216,9 +210,9 @@ class ReminderScheduler(BaseSchedulerService):
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         """Reminders that are scheduled and due (scheduled_at <= now).
 
-        The due-scan lives on the repository (``find_pending_before``) with the same
-        ``$lte`` semantics the workflow scan uses, so the two can't diverge (reminders
-        once used ``$gte`` and silently dropped overdue tasks).
+        The due-scan lives on the repository (find_pending_before) with the same
+        $lte semantics the workflow scan uses, so the two can't diverge (reminders
+        once used $gte and silently dropped overdue tasks).
         """
         pending: list[BaseScheduledTask] = []
         pending.extend(await reminder_repository.find_pending_before(current_time))

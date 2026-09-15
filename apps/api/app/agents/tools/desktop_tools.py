@@ -1,6 +1,6 @@
 """Tools executed on the user's computer through the desktop bridge.
 
-Each tool relays its action over :mod:`app.services.desktop.bridge` to the
+Each tool relays its action over :mod:app.services.desktop.bridge to the
 GAIA Electron app and awaits the result. They only surface (and only run) for
 conversations originating from the desktop client.
 """
@@ -88,13 +88,11 @@ def _emit_tool_data(tool_name: str, data: dict[str, Any]) -> None:
 
 
 async def _save_screenshot(config: RunnableConfig, image: InlineImage) -> str:
-    """Persist a capture to the session workspace; return its `/workspace` path.
+    """Persist a capture to the session workspace; return its /workspace path.
 
-    A screenshot is inline media like any other, so it is evicted from context
-    once newer images push past MAX_INLINE_MEDIA_BLOCKS. Writing it to the
-    workspace is what makes that eviction recoverable — the agent `read`s the
-    path back. The bytes stored are the ones the model was shown (post-ImageCodec),
-    so a re-read round-trips instead of re-transcoding.
+    Makes eviction (once newer images push past MAX_INLINE_MEDIA_BLOCKS)
+    recoverable by letting the agent read the path back. Stores the
+    post-ImageCodec bytes so a re-read round-trips instead of re-transcoding.
     """
     session_id = get_session_id(config)
     if not session_id:
@@ -144,10 +142,8 @@ async def take_screenshot(
     except InvalidImageError as e:
         return f"Could not read the captured screen: {e}"
 
-    # Persisting the capture is best-effort: the pixels are already captured and
-    # shown to the user, so a workspace write failure (no session, or storage I/O)
-    # must not discard an otherwise-valid screenshot — it only costs the ability to
-    # `read` the path back later.
+    # Best-effort: the pixels are already captured and shown, so a workspace
+    # write failure must not discard an otherwise-valid screenshot.
     try:
         path = await _save_screenshot(config, image)
         location_note = f"saved to {path}, read that path to look at it again later"
@@ -157,10 +153,8 @@ async def take_screenshot(
             "not saved to the workspace, so it cannot be re-read later, answer from it now"
         )
 
-    # The pixels go to the model as-is. A lane that cannot see them gets a text
-    # description attached at execution time (MediaDescriptionMiddleware), which
-    # reads the query below as its context — same treatment as every other tool
-    # that returns media.
+    # A lane that cannot see the pixels gets a text description attached at
+    # execution time (MediaDescriptionMiddleware) — same as any media tool.
     return [
         text_content_block(
             f"Screenshot of the user's screen, {location_note}. Looking for: {query}\n\n"

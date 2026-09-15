@@ -24,11 +24,7 @@ _BM25_THRESHOLD = 1.0
 def _build_markdown_generator(content_query: str | None = None) -> DefaultMarkdownGenerator:
     """Build a markdown generator tuned for clean, LLM-ready output.
 
-    Plain fetch keeps the full raw markdown — links, emails and inline text are
-    preserved (boilerplate is already removed via ``excluded_tags``). Deep
-    research passes a ``content_query`` so BM25 keeps only the passages most
-    relevant to the topic. (A pruning filter was dropping inline links, so it is
-    not used for plain fetch.)
+    Plain fetch keeps the full raw markdown (links/emails preserved, boilerplate stripped via excluded_tags); a content_query switches to BM25, keeping only passages relevant to the topic — a pruning filter was dropping inline links, so it isn't used for plain fetch.
     """
     content_filter = (
         BM25ContentFilter(user_query=content_query, bm25_threshold=_BM25_THRESHOLD)
@@ -57,11 +53,7 @@ def _build_run_config(
 ) -> CrawlerRunConfig:
     """Build a crawl run config.
 
-    ``thorough`` (single-page fetch) scrolls the whole page, lets late JS and
-    animations settle, and enables ``magic`` (overlay handling + light stealth)
-    so lazy-loaded / scroll-revealed content is captured. It is several times
-    slower, so batch crawls (deep research) leave it off. ``networkidle`` is
-    deliberately not used — it hangs on SPAs that hold persistent connections.
+    thorough scrolls the whole page, waits for late JS/animations, and enables magic (overlay handling + light stealth) to capture lazy-loaded content — several times slower, so batch crawls (deep research) leave it off. networkidle is deliberately not used: it hangs on SPAs with persistent connections.
     """
     kwargs: dict[str, Any] = {
         "page_timeout": page_timeout_ms,
@@ -78,10 +70,8 @@ def _build_run_config(
     return CrawlerRunConfig(**kwargs)
 
 
-# Shared semaphore binding for the process-wide browser concurrency cap. The
-# limit itself is sourced from ``settings.CRAWL4AI_MAX_BROWSERS`` (env-driven,
-# already clamped to a safe minimum); see ``constants/search.py`` for context
-# on why the cap exists.
+# Process-wide browser concurrency cap; the limit is settings.CRAWL4AI_MAX_BROWSERS
+# (env-driven, clamped to a safe minimum) — see constants/search.py for why it exists.
 def get_browser_semaphore() -> asyncio.Semaphore:
     """Return the shared browser semaphore bound to the running loop."""
     return loop_bound_semaphore("crawl4ai_browser", settings.CRAWL4AI_MAX_BROWSERS)
@@ -109,15 +99,9 @@ async def managed_crawler(
     *,
     context_name: str = "crawl4ai",
 ) -> AsyncIterator[AsyncWebCrawler]:
-    """Yield a started ``AsyncWebCrawler`` whose teardown survives cancellation.
+    """Yield a started AsyncWebCrawler whose teardown survives cancellation.
 
-    ``async with AsyncWebCrawler()`` runs ``close()`` inside ``__aexit__``, so a
-    ``CancelledError`` arriving mid-close (stream cancellation, tool timeout,
-    client disconnect) aborts the cleanup and orphans the Playwright driver
-    subprocess (~50-130 MB each; these accumulated for days in prod). Running
-    ``close()`` as a detached task means cancellation of the calling task can
-    no longer interrupt the browser teardown; ``app.utils.browser_reaper`` is
-    the backstop for anything that still slips through.
+    async with AsyncWebCrawler runs close() inside __aexit__, so a CancelledError mid-close (stream cancellation, tool timeout, disconnect) orphans the Playwright driver subprocess (~50-130 MB each; these accumulated for days in prod). Detaching close() as its own task means the calling task's cancellation can no longer interrupt it; browser_reaper is the backstop for anything that still slips through.
     """
     crawler = AsyncWebCrawler(config=config or BrowserConfig(headless=True, verbose=False))
     try:
@@ -314,10 +298,10 @@ async def batch_fetch_with_crawl4ai(
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Fetch multiple URLs with a single crawl4ai crawler via arun_many.
 
-    Pass ``content_query`` to rank each page's content by relevance to a topic
+    Pass content_query to rank each page's content by relevance to a topic
     (BM25) instead of returning the full raw markdown — used by deep research.
-    Pass ``thorough`` to scroll + settle + handle overlays for richer single-page
-    captures (see ``_build_run_config``).
+    Pass thorough to scroll + settle + handle overlays for richer single-page
+    captures (see _build_run_config).
     """
     if not urls:
         return {}, {}

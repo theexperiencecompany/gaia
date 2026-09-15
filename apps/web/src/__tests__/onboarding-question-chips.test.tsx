@@ -1,16 +1,13 @@
 // @vitest-environment jsdom
 /**
- * The onboarding question reply is a pill row of tinted icon chips plus one
+ * The onboarding question reply is a pill row of tinted icon chips plus a
  * Continue button, for both questions.
  *
- * What is pinned here: picking a chip never advances the flow on its own
- * (Q1 used to advance the moment a profession was selected), Q1 is
- * single-select while Q2 is multi-select, a picked chip is announced as
- * pressed, Continue stays disabled until there is something to submit, and
- * Q2's "Something else" is a real answer: typed text alone can submit, lands
- * in state, and un-picking the chip throws the text away.
- * The harness drives the real reducer, so "advanced" means the stage cursor
- * actually moved — not that a mock was called.
+ * Picking a chip never auto-advances (Q1 used to); Q1 is single-select, Q2
+ * multi-select; a picked chip announces pressed; Continue stays disabled
+ * until there's something to submit; and Q2's "Something else" is a real
+ * answer — typed text alone can submit and lands in state, but unpicking the
+ * chip throws it away. The harness drives the real reducer.
  */
 
 import { fireEvent, render, screen } from "@testing-library/react";

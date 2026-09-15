@@ -2,7 +2,7 @@
 
 The point of these tests is not that the middleware works on one route — it is
 that NO route escapes it. Every path in the app's OpenAPI schema is either named
-in ``FREE_PATH_PREFIXES`` (with a reason, in that file) or 402s a free caller.
+in FREE_PATH_PREFIXES (with a reason, in that file) or 402s a free caller.
 Adding a new endpoint therefore cannot silently create a free paid surface: it
 is gated by default, and making it free requires editing the allowlist, which
 the snapshot test below turns into a reviewed diff.
@@ -49,9 +49,9 @@ PRO_SAMPLE: tuple[tuple[str, str], ...] = (
 
 
 class _StubAuthMiddleware(BaseHTTPMiddleware):
-    """Stand in for ``WorkOSAuthMiddleware``: publish an authenticated user.
+    """Stand in for WorkOSAuthMiddleware: publish an authenticated user.
 
-    The gate reads ``request.state.user`` and nothing else, so a stub is a
+    The gate reads request.state.user and nothing else, so a stub is a
     faithful substitute for the auth middleware here and keeps the test off
     WorkOS.
     """
@@ -63,7 +63,7 @@ class _StubAuthMiddleware(BaseHTTPMiddleware):
 
 @pytest.fixture(scope="module")
 def gated_app() -> FastAPI:
-    """The real app with the real gate, behind a stub authenticator."""
+    """Build the real app with the real gate, behind a stub authenticator."""
     app = _create_test_app()
     # Added last == outermost, so the user is on request.state before the gate
     # runs — the same relative order as production.
@@ -81,11 +81,10 @@ async def gated_client(gated_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
 
 @pytest.fixture
 def free_caller() -> Iterator[None]:
-    """A FREE caller, with nothing else stubbed.
+    """Make the caller FREE, with nothing else stubbed.
 
-    Refusing costs exactly one cached plan read. Nothing is patched out for
-    Dodo because the gate no longer reaches for it — see
-    ``test_entitlement_checkout_minting``.
+    Refusing costs exactly one cached plan read; Dodo is untouched — see
+    test_entitlement_checkout_minting.
     """
     with patch(
         "app.decorators.entitlements.payment_service.get_cached_plan_type",
@@ -96,7 +95,7 @@ def free_caller() -> Iterator[None]:
 
 
 def _routes(app: FastAPI) -> list[tuple[str, str]]:
-    """Every ``(METHOD, path)`` the app exposes, with params filled in."""
+    """Every (METHOD, path) the app exposes, with params filled in."""
     paths = app.openapi()["paths"]
     return [
         (method.upper(), path.replace("{", "").replace("}", ""))
@@ -148,11 +147,7 @@ async def test_block_body_matches_the_documented_wire_contract(
 
 
 def test_allowlist_snapshot(gated_app: FastAPI) -> None:
-    """Freeze which routes are free, so widening the paywall is a reviewed diff.
-
-    A prefix in the allowlist frees a whole subtree; without this, adding a
-    route under, say, ``/api/v1/payments`` would quietly ship un-monetised.
-    """
+    """A prefix frees a whole subtree; adding a route under /api/v1/payments would quietly ship un-monetised without this."""
     free = sorted({path for _, path in _routes(gated_app) if is_free_path(path)})
 
     assert free == [
@@ -225,13 +220,7 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
 
 
 async def test_llm_spend_under_a_free_prefix_keeps_its_own_gate(gated_client: AsyncClient) -> None:
-    """``/api/v1/onboarding`` is free, so its one LLM route gates itself.
-
-    An allowlisted prefix is a blunt instrument. Where a paid action lives
-    inside a free subtree, the handler calls the same fail-closed gate the
-    middleware runs everywhere else; this test exists so removing that call
-    hands the failure to CI rather than to free users.
-    """
+    """The handler calls the same fail-closed gate itself, since the allowlist prefix is a blunt instrument covering this paid route too."""
     assert is_free_path("/api/v1/onboarding/writing-style/regenerate-example")
     with patch(
         "app.decorators.entitlements.payment_service.get_cached_plan_type",
@@ -253,15 +242,7 @@ async def test_llm_spend_under_a_free_prefix_keeps_its_own_gate(gated_client: As
 async def test_the_activation_checklist_never_raises_the_paywall(
     gated_client: AsyncClient, method: str, path: str
 ) -> None:
-    """The checklist is a read of the caller's own activation state, not a paid surface.
-
-    The widget is mounted app-wide and refetches on every route change, so a
-    402 here is not a quiet failure — the web interceptor opens the
-    non-dismissible paywall on it. Entitlement is cached for up to five
-    minutes, which means the user this fires at first is the one who *just
-    paid*: the checkout succeeds, the next navigation 402s on the stale plan,
-    and they are told to pay again.
-    """
+    """A 402 here opens the app-wide non-dismissible paywall for up to 5 minutes on a user who just paid, off the stale plan cache."""
     response = await gated_client.request(method, path, json={"collapsed": True})
 
     assert response.status_code != 402
@@ -314,13 +295,7 @@ async def _get(app: FastAPI, path: str, method: str = "GET") -> Any:
 
 
 def test_production_middleware_order_puts_the_gate_inside_auth_and_cors() -> None:
-    """Two constraints hold this position, and both are silent when broken.
-
-    Outside ``WorkOSAuthMiddleware`` the gate sees no ``request.state.user``, so
-    every request looks anonymous and the paywall is off. Outside
-    ``CORSMiddleware`` its 402 short-circuits before CORS headers are attached,
-    so a browser refuses to read the checkout link and the modal never opens.
-    """
+    """Outside WorkOSAuthMiddleware every request looks anonymous; outside CORSMiddleware the 402 blocks CORS headers and the modal never opens."""
     from app.core.middleware import configure_middleware
 
     app = FastAPI()
@@ -355,13 +330,7 @@ async def test_options_preflight_is_not_blocked() -> None:
 
 
 async def test_plan_lookup_failure_fails_closed() -> None:
-    """A Redis/Mongo blip must not hand everyone a free tier.
-
-    Still closed — the handler's ``{"ok": "yes"}`` never reaches the caller —
-    but not as a paywall: the body must not claim a billing verdict that was
-    never read. Pinned here at the real seam, the plan read itself, rather than
-    at a stubbed gate.
-    """
+    """Closed, but not as a paywall — the body must not claim a billing verdict that was never read."""
     with patch(
         "app.decorators.entitlements.payment_service.get_cached_plan_type",
         new_callable=AsyncMock,
@@ -377,12 +346,7 @@ async def test_plan_lookup_failure_fails_closed() -> None:
 
 
 async def test_the_gate_asks_about_this_caller_and_names_the_path_it_blocked() -> None:
-    """Both arguments are load-bearing and neither shows up in the response.
-
-    A gate that asked about the wrong user id would 402 (or free) everyone
-    alike, and ``feature`` is what makes a PAYWALL_BLOCKED event attributable
-    to a surface instead of anonymous — so the call is asserted exactly.
-    """
+    """The feature argument makes a PAYWALL_BLOCKED event attributable to a surface instead of anonymous, so both args are asserted exactly."""
     gate = AsyncMock(side_effect=SubscriptionRequiredException())
     with patch("app.api.v1.middleware.entitlement.require_active_subscription", gate):
         response = await _get(_minimal_app(FAKE_USER), "/api/v1/paid")
@@ -392,14 +356,7 @@ async def test_the_gate_asks_about_this_caller_and_names_the_path_it_blocked() -
 
 
 async def test_a_gate_error_is_logged_with_the_caller_the_surface_and_the_cause() -> None:
-    """The refusal is silent by design — nobody reports "GAIA asked me to retry".
-
-    The wide event is the only signal that a denial came from an outage rather
-    than a lapsed subscription, and ``log.error`` stores message AND kwargs in
-    the event's ``errors[]`` (libs/shared/py/wide_events.py), so all four
-    fields are a queried surface. Asserted exactly: a missing ``error_type``
-    or a mislabelled operation makes the alert unwritable.
-    """
+    """The wide event is the only signal distinguishing an outage from a lapsed subscription; a missing error_type or mislabelled operation makes the alert unwritable."""
     with (
         patch(
             "app.api.v1.middleware.entitlement.require_active_subscription",
@@ -421,14 +378,7 @@ async def test_a_gate_error_is_logged_with_the_caller_the_surface_and_the_cause(
 
 
 async def test_an_unreadable_plan_is_a_503_not_a_paywall() -> None:
-    """A Redis restart must not tell every Pro user they are unsubscribed.
-
-    The request still fails closed — it never reaches the handler — but the
-    body must not claim a billing verdict we never read, and it must not carry
-    the ``subscription_required`` code the clients open their paywall modal on.
-    ``Retry-After`` is what lets the client recover on its own; the gate runs
-    before ``call_next``, so retrying is safe on any method.
-    """
+    """The body must not carry subscription_required (clients open the paywall on it); Retry-After lets the client recover since the gate runs before call_next."""
     with patch(
         "app.api.v1.middleware.entitlement.require_active_subscription",
         new_callable=AsyncMock,
@@ -445,10 +395,7 @@ async def test_an_unreadable_plan_is_a_503_not_a_paywall() -> None:
 
 
 async def test_a_user_who_just_paid_passes_the_gate_off_the_row_and_refreshes_the_cache() -> None:
-    """The cached tier lags a payment by up to its TTL. The gate read it alone,
-    so a user who had just paid was 402'd on every gated request until the key
-    expired. One rule everywhere: a cached FREE is confirmed from the row and
-    the stale key dropped."""
+    """A cached FREE is confirmed from the row and the stale key dropped, so a just-paid user isn't 402'd until the TTL expires."""
     with (
         patch(
             "app.decorators.entitlements.payment_service.get_cached_plan_type",
@@ -485,13 +432,7 @@ async def test_a_genuine_free_verdict_is_still_a_402() -> None:
 
 
 async def test_a_request_no_auth_middleware_touched_passes_through() -> None:
-    """``request.state.user`` is not merely None here — it was never set.
-
-    Routers excluded from ``WorkOSAuthMiddleware`` (``/api/v1/bot``) reach the
-    gate with an untouched state, so the user lookup must have a default. Without
-    one this raises ``AttributeError`` and the excluded router 500s instead of
-    serving.
-    """
+    """Routers excluded from WorkOSAuthMiddleware (/api/v1/bot) reach the gate with unset state; without a default this raises AttributeError and 500s."""
     app = FastAPI()
 
     @app.get("/api/v1/paid")
@@ -516,7 +457,7 @@ def test_allowlist_entries_are_absolute_paths() -> None:
 
 @pytest.mark.parametrize("path", sorted(FREE_EXACT_PATHS))
 def test_exact_free_path_does_not_free_its_subtree(path: str) -> None:
-    """``/`` and ``/api/v1/`` are liveness aliases; as prefixes they would free everything."""
+    """/ and /api/v1/ are liveness aliases; as prefixes they would free everything."""
     assert is_free_path(path)
     assert not is_free_path(path + "api/v1/paid")
     assert not is_free_path(path + "paid")

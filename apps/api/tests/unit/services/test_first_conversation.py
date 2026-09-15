@@ -2,7 +2,7 @@
 
 Post-onboarding, not a pitch: bubble one opens the door and sells the two
 routines, bubble two hands over addressed by the job they gave. The only
-model-written part is the starting jobs, merged by ``with_starting_jobs``; with
+model-written part is the starting jobs, merged by with_starting_jobs; with
 no jobs the escape hatch is the only chip, never invented ones.
 """
 

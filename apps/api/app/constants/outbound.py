@@ -5,7 +5,7 @@ Telegram, Discord) are published to these per-platform queues; the bot
 processes consume them, render the platform-native markdown, and send.
 
 These queue names and dead-letter arguments are the single source of truth and
-MUST stay byte-identical to ``libs/shared/ts/src/bots/consumer/topology.ts`` —
+MUST stay byte-identical to libs/shared/ts/src/bots/consumer/topology.ts —
 RabbitMQ rejects a redeclare whose arguments differ from the existing queue.
 """
 
@@ -18,18 +18,14 @@ from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 # Dead-letter exchange every outbound work queue routes failed messages to.
 OUTBOUND_DLX = "outbound.dlx"
 
-#: Per-message expiry on the outbound work queues (seconds). The queues are
-#: durable so a message survives a bot being offline, but not forever: a bot
-#: that comes back after hours must not fire every stale ping at once. Expired
-#: messages dead-letter instead of delivering. A greeting or a confirmation is
-#: worthless within the hour; a brief or a notification within the day.
+#: Per-message expiry on the outbound work queues (seconds): a bot back after
+#: hours must not fire every stale ping — expired messages dead-letter instead.
 OUTBOUND_TTL_SECONDS_DEFAULT = 24 * 60 * 60
 OUTBOUND_TTL_SECONDS_GREETING = 60 * 60
 
-# Per-platform durable work queues, derived from BOT_CONVERSATION_SOURCES (the
-# single source of truth for which sources are bots) so the queue set can never
-# drift from it. The ``outbound.<source>`` names MUST stay byte-identical to
-# ``libs/shared/ts/src/bots/consumer/topology.ts``.
+# Per-platform durable work queues, derived from BOT_CONVERSATION_SOURCES so the
+# queue set can never drift from it. The ``outbound.<source>`` names MUST stay
+# byte-identical to ``libs/shared/ts/src/bots/consumer/topology.ts``.
 OUTBOUND_QUEUE_PREFIX = "outbound."
 OUTBOUND_QUEUES: dict[ConversationSource, str] = {
     src: f"{OUTBOUND_QUEUE_PREFIX}{src.value}" for src in BOT_CONVERSATION_SOURCES
@@ -42,10 +38,9 @@ def dlq_name(queue_name: str) -> str:
 
 
 def work_queue_arguments(queue_name: str) -> dict[str, Any]:
-    """Declaration arguments for a work queue: dead-letter to the shared DLX.
+    """Return declaration arguments for a work queue: dead-letter to the shared DLX.
 
-    Typed ``dict[str, Any]`` to satisfy aio-pika's ``FieldTable`` argument
-    (an invariant dict whose values are an AMQP field-value union).
+    Typed dict[str, Any] to satisfy aio-pika's FieldTable argument.
     """
     return {
         "x-dead-letter-exchange": OUTBOUND_DLX,
@@ -53,11 +48,9 @@ def work_queue_arguments(queue_name: str) -> dict[str, Any]:
     }
 
 
-# --- AMQP deadlines -------------------------------------------------------
 # Every aio-pika await MUST be bounded: chat-stream is exempt from the
-# request-timeout middleware, so an un-bounded await against a stalled broker
-# hangs the request forever and a graceful uvicorn reload then waits on it
-# indefinitely (observed: a 35-minute hang in dev).
+# request-timeout middleware, so an unbounded await against a stalled broker
+# hangs forever (observed: a 35-minute hang in dev).
 
 # Deadline for establishing the TCP/AMQP connection + handshake.
 RABBITMQ_CONNECT_TIMEOUT_SECONDS = 10.0

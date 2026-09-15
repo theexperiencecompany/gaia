@@ -1,10 +1,10 @@
 """Shared real-time artifact publishing for the coding tools.
 
-When a tool writes a file under a session's ``artifacts/`` tree, the chat UI
-expects a live ``artifact_data`` event so the card updates during the turn
+When a tool writes a file under a session's artifacts/ tree, the chat UI
+expects a live artifact_data event so the card updates during the turn
 without polling. write, edit, and bash all funnel through here so the event
-shape — the ``(event, path, size_bytes, mtime)`` dedup signature, content-type
-derivation, and ``ArtifactInfo`` construction — lives in exactly one place and
+shape — the (event, path, size_bytes, mtime) dedup signature, content-type
+derivation, and ArtifactInfo construction — lives in exactly one place and
 can't drift between the three.
 """
 
@@ -33,8 +33,8 @@ async def publish_artifact(
 ) -> None:
     """Publish one artifact upsert event. Best-effort; never raises into a tool.
 
-    ``rel`` is the path relative to the session's ``artifacts/`` root; ``mtime``
-    must be the real post-write value (the ``(event, path, size_bytes, mtime)``
+    rel is the path relative to the session's artifacts/ root; mtime
+    must be the real post-write value (the (event, path, size_bytes, mtime)
     dedup signature depends on it). The single owner of the event shape.
     """
     with contextlib.suppress(Exception):
@@ -62,11 +62,11 @@ async def publish_artifact_write(
     size_bytes: int,
     mtime: float,
 ) -> None:
-    """Publish an artifact upsert when a write/edit lands under ``artifacts/``.
+    """Publish an artifact upsert when a write/edit lands under artifacts/.
 
-    No-op for non-artifact paths. The tool already holds the written ``content``
+    No-op for non-artifact paths. The tool already holds the written content
     as a string, so the inline body is decided here and the rest is delegated to
-    :func:`publish_artifact`.
+    :func:publish_artifact.
     """
     if role != MountRole.ARTIFACTS or not role_conv:
         return

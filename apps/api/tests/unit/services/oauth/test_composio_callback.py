@@ -1,7 +1,8 @@
-"""Unit tests for the Composio callback service: resolving the connected
-account and recording the connection, with every collaborator patched at the
-module seam. The route's redirect mapping lives in
-``tests/unit/api/test_oauth_endpoint.py``."""
+"""Unit tests for the Composio callback service: resolve the account, record the connection.
+
+Every collaborator is patched at the module seam; the route's redirect mapping lives
+in tests/unit/api/test_oauth_endpoint.py.
+"""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -172,9 +173,7 @@ class TestCompleteComposioConnectionRejections:
     async def test_user_mismatch(
         self, mock_composio, mock_config, mock_handle, mock_capture, mock_log, background_tasks
     ):
-        """The account belongs to someone other than the user the state token was
-        minted for — the connection is refused, but the event still identifies
-        both parties so the attempt is traceable."""
+        """Refuse another user's account, but name both parties in the event so the attempt is traceable."""
         mock_composio.get_connected_account_by_id.return_value = _account(user_id="uid_other")
         mock_config.return_value = _integration()
 
@@ -241,8 +240,7 @@ class TestCompleteComposioConnectionSuccess:
     async def test_a_non_string_account_user_id_is_matched_as_a_string(
         self, mock_composio, mock_config, mock_handle, mock_capture, mock_log, background_tasks
     ):
-        """The state token carries the user id as text; the account's id is
-        compared and recorded in that same form, whatever Composio hands back."""
+        """Compare and record the account's user id as text, as the state token carries it."""
         mock_composio.get_connected_account_by_id.return_value = _account(user_id=1234)
         mock_config.return_value = _integration()
 

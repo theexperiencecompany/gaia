@@ -1,8 +1,8 @@
 """Unit tests for app/services/mail/email_importance_service.py.
 
-The service now delegates to ``mail_repository`` (real DB behaviour is covered by
+The service now delegates to mail_repository (real DB behaviour is covered by
 the MailRepository contract tests). These tests mock the repository and assert the
-service builds the response models correctly. Each ``emails`` entry stays a
+service builds the response models correctly. Each emails entry stays a
 JSON-safe dict — the analyzer stores a variable set of summary fields that the
 read endpoints return verbatim.
 """

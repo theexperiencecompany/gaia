@@ -47,10 +47,10 @@ class GooglePassthroughModel(BaseModel):
     def __get_pydantic_json_schema__(
         cls, core_schema: CoreSchema, handler: GetJsonSchemaHandler
     ) -> JsonSchemaValue:
-        """The declared fields plus ``additionalProperties`` — not the serializer's ``dict``.
+        """The declared fields plus additionalProperties — not the serializer's dict.
 
         The wrap serializer above only narrows *which* keys are emitted; without
-        this, Pydantic documents the output as its bare ``dict`` return type and
+        this, Pydantic documents the output as its bare dict return type and
         every generated client type loses the fields GAIA declares.
         """
         without_serializer = dict(core_schema)
@@ -59,9 +59,9 @@ class GooglePassthroughModel(BaseModel):
 
 
 class GoogleCalendarEventDateTime(GooglePassthroughModel):
-    """The ``start``/``end`` object of a Google Calendar ``events`` resource.
+    """The start/end object of a Google Calendar events resource.
 
-    An event carries either ``date`` (all-day) or ``dateTime`` + ``timeZone``; both
+    An event carries either date (all-day) or dateTime + timeZone; both
     are declared optional so a single type covers both.
     """
 
@@ -71,10 +71,10 @@ class GoogleCalendarEventDateTime(GooglePassthroughModel):
 
 
 class GoogleCalendarEventResource(GooglePassthroughModel):
-    """A single Google Calendar ``events`` resource, forwarded to the client verbatim.
+    """A single Google Calendar events resource, forwarded to the client verbatim.
 
     Only the fields GAIA itself reads (filtering, sorting, display) or injects
-    (``calendarId``/``calendarTitle``) are declared. Google owns the rest of this
+    (calendarId/calendarTitle) are declared. Google owns the rest of this
     schema and varies it by event type, so everything else passes through untouched
     rather than guessing at a structure that would silently drop fields the web
     client reads.
@@ -107,12 +107,12 @@ class GoogleCalendarEventsPage(BaseModel):
 
 
 class GoogleCalendarListEntry(GooglePassthroughModel):
-    """One entry of Google's ``calendarList.list`` payload, forwarded to the client
+    """One entry of Google's calendarList.list payload, forwarded to the client
     verbatim.
 
     Declared: the fields the service and the web calendar picker read. Everything
     else Google sends rides through as extras and is projected into
-    ``CalendarSummary`` where it is needed.
+    CalendarSummary where it is needed.
     """
 
     id: str
@@ -133,10 +133,10 @@ class CalendarSummary(BaseModel):
 
 
 class CalendarListResponse(ResponseModel):
-    """Response for ``GET /calendar/list`` — Google's ``calendarList.list`` payload.
+    """Response for GET /calendar/list — Google's calendarList.list payload.
 
-    ``extra="allow"`` keeps the envelope keys Google sends alongside ``items``
-    (``kind``, ``etag``, ``nextSyncToken``).
+    extra="allow" keeps the envelope keys Google sends alongside items
+    (kind, etag, nextSyncToken).
     """
 
     model_config = ConfigDict(extra="allow")
@@ -439,12 +439,9 @@ class RecurrenceRule(BaseModel):
             parsed = datetime.fromisoformat(self.until)
         except ValueError:
             return self.until
-        # An offset-aware value has to be shifted to UTC before it can wear a
-        # Z: stamping "+05:30" as Z moves the series' end by 5.5 hours. A naive
-        # value is already the caller's UTC wall-clock, so it needs no shift.
-        # Subtracting the offset rather than astimezone(UTC): only the wall
-        # clock is formatted, and this keeps the result independent of the
-        # host's local timezone.
+        # An offset-aware value must shift to UTC before wearing a Z, or the
+        # series' end moves; a naive value is already UTC wall-clock. Subtracting
+        # the offset (not astimezone) keeps the result host-timezone independent.
         offset = parsed.utcoffset()
         if offset is not None:
             parsed -= offset
@@ -535,8 +532,8 @@ class EventUpdateRequest(BaseModel):
 
 
 class CalendarPreferencesDocument(MongoDocument):
-    """A user's calendar preferences as stored in the ``calendar`` collection —
-    the ids of the calendars they have selected. Global, keyed by ``user_id``."""
+    """A user's calendar preferences as stored in the calendar collection —
+    the ids of the calendars they have selected. Global, keyed by user_id."""
 
     user_id: str
     selected_calendars: list[str] = Field(default_factory=list)
@@ -569,193 +566,11 @@ class BaseCalendarEvent(BaseModel):
     model_config = {"extra": "ignore"}
 
 
-# Unwired as of 2026-06; calendar agent-tool input. Kept for future use.
-# class CalendarEventToolRequest(BaseCalendarEvent):
-#     """Model for LLM tool input with time string and duration approach."""
-#
-#     # Input fields for time specification
-#     time_str: str | None = Field(
-#         None,
-#         title="Time string: either a relative offset like '+02:30' or an ISO 8601 time",
-#     )
-#     duration_minutes: int | None = Field(
-#         30, title="Duration of the event in minutes, defaults to 30 minutes", ge=1
-#     )
-#     timezone_offset: str | None = Field(
-#         None,
-#         title="Timezone offset in `(+|-)HH:MM` format. Only provide when user explicitly mentions a timezone.",
-#     )
-#
-#     @field_validator("timezone_offset")
-#     @classmethod
-#     def validate_timezone_offset(cls, v):
-#         """Validate timezone offset format (+|-)HH:MM"""
-#         if v is not None:
-#             if not re.match(r"^[+-]\d{2}:\d{2}$", v):
-#                 raise ValueError("Timezone offset must be in (+|-)HH:MM format")
-#         return v
-#
-#     @model_validator(mode="after")
-#     def validate_event_times(self) -> "CalendarEventToolRequest":
-#         """
-#         Validate event data based on event type after model initialization.
-#         """
-#         if not self.is_all_day:
-#             # For timed events, time_str is required
-#             if not self.time_str:
-#                 raise ValueError("time_str is required for timed events")
-#
-#             # Validate the format of time_str
-#             if self.time_str.startswith("+"):
-#                 # This is a relative time offset, validate the format
-#                 if not re.match(r"^\+\d{2}:\d{2}$", self.time_str):
-#                     raise ValueError("Relative time offset must be in the format '+HH:MM'")
-#             else:
-#                 # This is an absolute time, try to parse it
-#                 try:
-#                     # Replace space with T if needed
-#                     time_str = (
-#                         self.time_str.replace(" ", "T") if " " in self.time_str else self.time_str
-#                     )
-#                     datetime.fromisoformat(time_str)
-#                 except ValueError:
-#                     raise ValueError(
-#                         f"Invalid time format: {self.time_str}. Use ISO format (YYYY-MM-DDTHH:MM:SS) for absolute times."
-#                     )
-#
-#         # For recurring events, ensure time_str is provided for non-all-day events
-#         if self.recurrence and not self.is_all_day and not self.time_str:
-#             raise ValueError("Recurring events must have time_str specified")
-#
-#         return self
-#
-#     @property
-#     def event_date(self) -> str:
-#         """
-#         Returns the date part for all-day events.
-#         For all-day events without time_str, returns today's date in YYYY-MM-DD format.
-#         """
-#         if self.is_all_day and not self.time_str:
-#             return datetime.now().strftime("%Y-%m-%d")
-#         if self.time_str and not self.time_str.startswith("+"):
-#             # Extract date part from ISO datetime string
-#             return self.time_str.split("T")[0] if "T" in self.time_str else self.time_str
-#
-#         return datetime.now().strftime("%Y-%m-%d")
-#
-#     def _apply_timezone_offset(self, dt: datetime, offset_str: str) -> datetime:
-#         """Apply timezone offset to datetime object."""
-#         # Parse offset string (+|-)HH:MM
-#         sign = 1 if offset_str.startswith("+") else -1
-#         hours, minutes = map(int, offset_str[1:].split(":"))
-#         offset_seconds = sign * (hours * 3600 + minutes * 60)
-#         tz = timezone(timedelta(seconds=offset_seconds))
-#         return dt.replace(tzinfo=tz)
-#
-#     def process_times(self, user_time: str) -> "EventCreateRequest":
-#         """
-#         Process time strings and calculate start/end times, converting to EventCreateRequest.
-#
-#         Args:
-#             user_time: Current user time in ISO format for timezone reference
-#
-#         Returns:
-#             EventCreateRequest with processed start/end times
-#         """
-#         # Extract user's timezone from user_time
-#         user_datetime = datetime.fromisoformat(user_time)
-#         user_timezone = user_datetime.tzinfo if user_datetime.tzinfo else UTC
-#
-#         # Skip processing for all-day events
-#         if self.is_all_day:
-#             # For all-day events, use the date without time component
-#             event_date = self.event_date
-#
-#             # Return a new EventCreateRequest with start/end set to event_date
-#             return EventCreateRequest(
-#                 summary=self.summary,
-#                 description=self.description,
-#                 is_all_day=True,
-#                 start=event_date,
-#                 end=event_date,
-#                 calendar_id=self.calendar_id,
-#                 recurrence=self.recurrence,
-#                 timezone=None,
-#                 attendees=self.attendees,
-#                 create_meeting_room=self.create_meeting_room,
-#             )
-#
-#         # Check if time_str is provided
-#         if not self.time_str:
-#             raise ValueError("time_str is required for timed events")
-#
-#         # Process time based on format
-#         try:
-#             if self.time_str.startswith("+"):
-#                 # Relative time offset (e.g., "+02:30")
-#                 offset_hours, offset_minutes = map(int, self.time_str[1:].split(":"))
-#                 offset_seconds = offset_hours * 3600 + offset_minutes * 60
-#
-#                 # Calculate the future time (from user's current time)
-#                 start_time = user_datetime + timedelta(seconds=offset_seconds)
-#
-#                 # Calculate end time based on duration
-#                 end_time = start_time + timedelta(minutes=self.duration_minutes or 30)
-#
-#                 # Return new EventCreateRequest with calculated times
-#                 return EventCreateRequest(
-#                     summary=self.summary,
-#                     description=self.description,
-#                     is_all_day=False,
-#                     start=start_time.isoformat(),
-#                     end=end_time.isoformat(),
-#                     calendar_id=self.calendar_id,
-#                     recurrence=self.recurrence,
-#                     timezone=None,
-#                     attendees=self.attendees,
-#                     create_meeting_room=self.create_meeting_room,
-#                 )
-#
-#             # Absolute time (ISO format)
-#             time_str = self.time_str.replace(" ", "T") if " " in self.time_str else self.time_str
-#             dt = datetime.fromisoformat(time_str)
-#
-#             # Apply timezone if specified
-#             if self.timezone_offset:
-#                 # User explicitly provided timezone
-#                 start_time = self._apply_timezone_offset(dt, self.timezone_offset)
-#             else:
-#                 # Use user's timezone
-#                 start_time = dt.replace(tzinfo=user_timezone)
-#
-#             # Calculate end time based on duration
-#             end_time = start_time + timedelta(minutes=self.duration_minutes or 30)
-#
-#             # Return new EventCreateRequest with calculated times
-#             return EventCreateRequest(
-#                 summary=self.summary,
-#                 description=self.description,
-#                 is_all_day=False,
-#                 start=start_time.isoformat(),
-#                 end=end_time.isoformat(),
-#                 calendar_id=self.calendar_id,
-#                 recurrence=self.recurrence,
-#                 timezone=None,
-#                 attendees=self.attendees,
-#                 create_meeting_room=self.create_meeting_room,
-#             )
-#
-#         except ValueError as e:
-#             raise ValueError(f"Invalid time format: {self.time_str}. Error: {e}")
-
-
 class EventCreateRequest(BaseCalendarEvent):
     """Model for calendar event creation for service layer."""
 
-    # Direct time fields for service operations. Optional on the wire: an
-    # all-day event may omit them and the service picks its bounds (a missing
-    # start is today, a missing end is the day after); a timed event without
-    # them is rejected by the service, not the schema.
+    # Optional on the wire: an all-day event may omit them (service picks
+    # bounds); a timed event without them is rejected by the service, not the schema.
     start: str | None = Field(None, title="Start time in ISO format or date for all-day events")
     end: str | None = Field(None, title="End time in ISO format or date for all-day events")
     timezone: str | None = Field(
@@ -771,14 +586,11 @@ class EventCreateRequest(BaseCalendarEvent):
         field_name = info.field_name
 
         try:
-            # Try to parse as ISO datetime
             datetime.fromisoformat(v)
         except ValueError:
-            # If not ISO datetime, check if it's a valid date (YYYY-MM-DD).
-            # strptime leniently accepts unpadded dates that fromisoformat
-            # rejects; the parsed value is a validity probe and is discarded
-            # after this check. Keep it UTC-anchored: a naive parse must not
-            # count as a valid all-day date.
+            # strptime accepts unpadded YYYY-MM-DD that fromisoformat rejects; the
+            # parsed value is a validity probe only, discarded after this check —
+            # never treat it as UTC-aware.
             try:
                 datetime.strptime(v, "%Y-%m-%d")
             except ValueError as e:

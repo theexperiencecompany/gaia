@@ -1,10 +1,10 @@
 """Unit tests for app.utils.concurrency.
 
-``run_on_captured_loop`` is the sync->async bridge the calendar Composio tools
-use. The bug it fixes: the old bridge ran coroutines on a fresh ``asyncio.run``
+run_on_captured_loop is the sync->async bridge the calendar Composio tools
+use. The bug it fixes: the old bridge ran coroutines on a fresh asyncio.run
 loop, so a coroutine that awaited a loop-bound client (Motor) raised
-``RuntimeError: ... attached to a different loop``. The regression is pinned with
-a loop-bound ``asyncio.Future`` standing in for that client — a fresh loop cannot
+RuntimeError: ... attached to a different loop. The regression is pinned with
+a loop-bound asyncio.Future standing in for that client — a fresh loop cannot
 await it, the captured loop can.
 """
 
@@ -51,10 +51,9 @@ class TestRunOnCapturedLoop:
         assert result == "ok"
 
     async def test_awaits_a_loop_bound_future_without_cross_loop_error(self) -> None:
-        # A Future bound to THIS loop. The old bridge (asyncio.run in a worker
-        # thread) drives a fresh loop and raises "attached to a different loop"
-        # here — the exact calendar failure. Dispatching onto the captured loop
-        # resolves the future on the loop that owns it.
+        # The old bridge (asyncio.run in a worker thread) raised "attached to a
+        # different loop" here — the exact calendar failure. Dispatching onto
+        # the captured loop resolves the future on the loop that owns it.
         capture_running_loop()
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[str] = loop.create_future()

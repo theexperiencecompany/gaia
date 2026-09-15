@@ -73,8 +73,7 @@ export default function ProfileCardSettings() {
 
   // Memoized on `holoCardData` so identity is stable across unrelated
   // re-renders (integration polling, etc.) — HoloCardEditor's render-phase
-  // reset keys on object identity and would otherwise clobber the user's
-  // in-progress overlay pick with the stale server value on every parent render.
+  // reset keys on identity and would otherwise clobber an in-progress overlay pick with the stale value.
   const displayData: HoloCardDisplayData | null = useMemo(
     () =>
       holoCardData

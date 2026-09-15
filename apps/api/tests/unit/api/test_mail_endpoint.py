@@ -3,8 +3,8 @@
 Tests the Gmail endpoints with mocked service layer and integration
 dependency to verify routing, status codes, response bodies, and validation.
 
-Gmail endpoints use ``require_integration("gmail")`` which internally calls
-``check_integration_status``.  We patch that function to return ``True`` so
+Gmail endpoints use require_integration("gmail") which internally calls
+check_integration_status.  We patch that function to return True so
 the dependency passes without a real Composio/Redis connection.
 """
 
@@ -30,11 +30,9 @@ from app.services.analytics_service import AnalyticsEvents
 
 MAIL_BASE = "/api/v1"
 ANALYTICS_PATCH = "app.api.v1.endpoints.mail.capture_context_event"
-# The `client` fixture's dependency override is FastAPI DI, not the
-# WorkOSAuthMiddleware-set request context that the entitlement gate's
-# resolve_caller reads first — the test app strips that middleware entirely.
-# A gate test has to set the context directly to exercise the real
-# resolution path, the same way production requests do.
+# The client fixture's DI override is not the WorkOSAuthMiddleware-set
+# request context the entitlement gate reads first, so a gate test must set
+# the context directly.
 _GET_AUTHENTICATED_USER = "app.core.request_context.get_authenticated_user"
 
 

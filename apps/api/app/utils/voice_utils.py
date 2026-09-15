@@ -1,8 +1,8 @@
 """Pure mappers that normalize ElevenLabs voice payloads into catalog options.
 
 Stateless helpers only — no I/O, DB, settings, or network. They shape the
-trimmed account/shared-library voices (``app/models/voice_models.py``) into the
-catalog-compatible ``VoiceOption`` schema used by the voice picker.
+trimmed account/shared-library voices (app/models/voice_models.py) into the
+catalog-compatible VoiceOption schema used by the voice picker.
 """
 
 from typing import Any
@@ -19,12 +19,10 @@ from app.schemas.voice_schemas import VoiceOption
 def _verified_language_codes(voice: dict[str, Any]) -> list[str]:
     """Ordered, deduped ISO codes from a voice's verified_languages.
 
-    Reads the RAW provider voice object, before it is trimmed into one of the
-    ``ElevenLabsVoice`` models — this is the untyped boundary, so a plain dict
-    is the honest parameter type here.
-
-    ElevenLabs repeats a language once per supporting model — collapse to one
-    entry per language, preserving first-seen order.
+    Reads the RAW provider voice object, before it is trimmed into an
+    ElevenLabsVoice model — the untyped boundary. ElevenLabs repeats a
+    language once per supporting model, so this collapses to one entry per
+    language, preserving first-seen order.
     """
     seen: list[str] = []
     for entry in voice.get("verified_languages") or []:
@@ -96,7 +94,7 @@ def _build_voice_option(
 
 
 def _map_account_voice(voice: ElevenLabsAccountVoice) -> VoiceOption:
-    """Shape a non-catalog account voice (metadata in ``labels``) into an option."""
+    """Shape a non-catalog account voice (metadata in labels) into an option."""
     labels = voice.labels
     return _build_voice_option(
         voice,

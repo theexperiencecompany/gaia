@@ -3,13 +3,10 @@
 /**
  * The signed-in user, owned by a single TanStack Query cache entry.
  *
- * `["current-user"]` is the one source of truth for everything `GET /user/me`
- * returns. `useFetchUser` (mounted once, in `GlobalAuth`) drives the fetch;
- * every other reader joins the same cache entry through `useCurrentUser`, and
- * every writer that receives a fresh server payload writes it back with
- * `patchCurrentUser`. There is deliberately no store
- * mirroring this data — instant paint across reloads comes from the query
- * cache persister (see `layouts/QueryProvider.tsx`), not a second copy.
+ * `["current-user"]` is the one source of truth for `GET /user/me`.
+ * `useFetchUser` (mounted once in `GlobalAuth`) drives the fetch; every
+ * other reader joins this cache via `useCurrentUser`, and writers patch it
+ * back with `patchCurrentUser` — no store mirrors this data; instant paint comes from the query cache persister.
  */
 
 import { type QueryClient, useQuery } from "@tanstack/react-query";

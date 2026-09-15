@@ -1,6 +1,6 @@
 """Deactivating a user's workflows once their Dodo subscription lapses.
 
-Mirrors ``test_integration_pause.py``: goes through ``WorkflowService`` so a
+Mirrors test_integration_pause.py: goes through WorkflowService so a
 deactivation also unregisters the workflow's Composio trigger upstream, not
 just flips a local flag.
 """
@@ -31,10 +31,7 @@ def _workflow(workflow_id: str, *, activated: bool = True, is_public: bool = Fal
 
 class TestDeactivateWorkflowsForLapsedSubscription:
     async def test_a_public_template_stays_live_when_its_owner_lapses(self) -> None:
-        """Everyone who copied the template runs their own copy; pausing the
-        original would break the marketplace listing for a billing event that is
-        the owner's alone. The migration script lists the same set, so dry run
-        and execute cannot disagree."""
+        """Pausing a public template on its owner's billing event would break every copier's marketplace listing; dry run and execute must list the same set."""
         template = _workflow("tmpl", is_public=True)
         own = _workflow("wf-1")
         with (
@@ -139,8 +136,7 @@ class TestDeactivateWorkflowsForLapsedSubscription:
             service.deactivate_workflow.assert_not_awaited()
 
     async def test_rerunning_after_success_deactivates_nothing_again(self) -> None:
-        """Idempotency: once a workflow is deactivated it is no longer
-        ``activated``, so a second sweep for the same user finds nothing left."""
+        """Idempotency: once deactivated a workflow is no longer activated, so a second sweep finds nothing left."""
         with (
             patch(f"{MODULE}.workflow_repository") as repo,
             patch(f"{MODULE}.WorkflowService") as service,
@@ -263,10 +259,7 @@ class TestReactivateWorkflowsForRestoredSubscription:
             service.activate_workflow.assert_not_awaited()
 
     async def test_the_count_accumulates_across_multiple_successes(self) -> None:
-        """Two workflows reactivated in one sweep must return 2, not a flag
-        reset to 1 on each success — the count feeds the summary log and is
-        exactly the kind of bug an increment-vs-assign typo introduces
-        silently (mirrors ``reactivated += 1`` vs ``reactivated = 1``)."""
+        """Two reactivations in one sweep must return 2, not 1 (mirrors the reactivated += 1 vs reactivated = 1 typo class of bug)."""
         first = _workflow("wf-1", activated=False)
         second = _workflow("wf-2", activated=False)
 
@@ -398,8 +391,7 @@ class TestReactivateWorkflowsForRestoredSubscription:
         service.activate_workflow.assert_awaited_once_with("wf-mine", USER_ID)
 
     async def test_rerunning_after_success_reactivates_nothing_again(self) -> None:
-        """Idempotency: once resumed, the workflow no longer carries the lapsed
-        reason, so a second sweep for the same user finds nothing left."""
+        """Idempotency: once resumed, a workflow no longer carries the lapsed reason, so a second sweep finds nothing left."""
         with (
             patch(f"{MODULE}.workflow_repository") as repo,
             patch(f"{MODULE}.WorkflowService") as service,

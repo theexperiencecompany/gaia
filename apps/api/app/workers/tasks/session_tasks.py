@@ -1,9 +1,9 @@
 """ARQ tasks that garbage-collect inactive on-disk chat sessions.
 
-`prune_inactive_sessions`: daily. Scans the host JuiceFS mount for
-`sessions/{conv}/.meta.json` whose `last_active` is older than
-`SESSION_RETENTION_DAYS` and recursively deletes the session dir. This is the
-backstop for the best-effort cleanup in `conversation_service.delete_conversation`
+prune_inactive_sessions: daily. Scans the host JuiceFS mount for
+sessions/{conv}/.meta.json whose last_active is older than
+SESSION_RETENTION_DAYS and recursively deletes the session dir. This is the
+backstop for the best-effort cleanup in conversation_service.delete_conversation
 (a session whose conversation was deleted while JuiceFS was unreachable, or a
 conversation that was abandoned without an explicit delete).
 """

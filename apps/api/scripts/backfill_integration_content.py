@@ -2,16 +2,16 @@
 """
 Backfill LLM-generated marketplace content for published custom integrations.
 
-Native (platform) integrations ship curated content from `app/config/oauth_content.py`.
+Native (platform) integrations ship curated content from app/config/oauth_content.py.
 Custom integrations only get content generated at publish time (see
-`integration_inference_service`). Integrations published before that feature shipped have no
+integration_inference_service). Integrations published before that feature shipped have no
 content and fall back to the frontend's generic copy. This script generates content for
 them using the exact same service the publish flow uses.
 
-Scope: integrations with `is_public=True` and `source="custom"`. By default only those
+Scope: integrations with is_public=True and source="custom". By default only those
 WITHOUT existing content are processed; pass --regenerate to overwrite existing content.
 
-Run as a module from the api directory (so `app` is importable):
+Run as a module from the api directory (so app is importable):
 
     cd /path/to/gaia/apps/api
     uv run python -m scripts.backfill_integration_content --dry-run --limit 3
@@ -68,7 +68,7 @@ def print_content(name: str, content: IntegrationContent) -> None:
 
 
 def create_backup(docs: list[dict[str, Any]]) -> str:
-    """Back up the current `content` field of affected docs before overwriting."""
+    """Back up the current content field of affected docs before overwriting."""
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     backup_file = f"integration_content_backup_{timestamp}.json"
     snapshot = [
@@ -162,7 +162,7 @@ async def backfill(
 
 
 def positive_int(value: str) -> int:
-    """argparse type: accept only integers >= 1."""
+    """Argparse type: accept only integers >= 1."""
     parsed = int(value)
     if parsed < 1:
         raise argparse.ArgumentTypeError(f"must be a positive integer, got {value}")

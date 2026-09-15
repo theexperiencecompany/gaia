@@ -1,16 +1,16 @@
 """A multi-turn quality case must actually send every turn.
 
-Regression cover for a silent data-shape bug: ``QualitySuite.load_cases`` built
-each ``Case`` with ``setup=row`` — the whole leftover YAML row — so a case
-written with a ``setup:`` block landed at ``case.setup["setup"]["turns"]`` while
-``ChatStreamTransport`` read ``case.setup["turns"]``. The lookup missed, the
-transport fell back to splitting ``prompt``, and every ``setup.turns`` case ran
+Regression cover for a silent data-shape bug: QualitySuite.load_cases built
+each Case with setup=row — the whole leftover YAML row — so a case
+written with a setup: block landed at case.setup["setup"]["turns"] while
+ChatStreamTransport read case.setup["turns"]. The lookup missed, the
+transport fell back to splitting prompt, and every setup.turns case ran
 turn 1 only.
 
-Nothing failed loudly. ``quality-hard-correction-loop`` gates on
-``communicate: ["plumber"]`` but the plumber turn was never sent, so the gate
+Nothing failed loudly. quality-hard-correction-loop gates on
+communicate: ["plumber"] but the plumber turn was never sent, so the gate
 could only ever go red — the harness was reporting an agent failure for a
-conversation the agent was never given. ``quality-hard-deep-session`` graded
+conversation the agent was never given. quality-hard-deep-session graded
 three-turn coherence rubrics against a single turn.
 """
 
@@ -27,8 +27,7 @@ DEEP_SESSION = "quality-hard-deep-session"
 
 
 def _config() -> EvalConfig:
-    """QualitySuite ignores cfg entirely (both __init__ and load_cases `del` it);
-    this exists only to satisfy the signature."""
+    """Build a config only to satisfy the signature — QualitySuite ignores cfg entirely."""
     return EvalConfig(
         providers={},
         rotation_order=[],
@@ -45,7 +44,7 @@ def _quality_cases() -> dict[str, Case]:
 def _declared_turn_counts() -> dict[str, int]:
     """Turn counts as the YAML author wrote them, read straight off disk.
 
-    Deliberately independent of ``Case``/``load_cases`` — the bug lived in that
+    Deliberately independent of Case/load_cases — the bug lived in that
     translation, so the expectation cannot be sourced from it.
     """
     declared: dict[str, int] = {}
@@ -58,7 +57,7 @@ def _declared_turn_counts() -> dict[str, int]:
 
 
 def test_setup_turns_reach_the_transport() -> None:
-    """A `setup.turns` case sends all of its turns, not just the first."""
+    """A setup.turns case sends all of its turns, not just the first."""
     turns = turns_for(_quality_cases()[CORRECTION_LOOP])
 
     assert len(turns) == 2, f"{CORRECTION_LOOP} sends {len(turns)} turn(s): {turns}"
@@ -76,11 +75,7 @@ def test_deep_session_sends_all_three_turns() -> None:
 
 
 def test_every_declared_turn_is_sent() -> None:
-    """The general form: no case may silently drop turns its YAML declares.
-
-    This is what the bug actually was — a case declaring N turns running as 1 —
-    and it catches the next case authored in the `setup:` form too.
-    """
+    """No case may silently drop turns its YAML declares — the bug was a case declaring N turns running as 1."""
     cases = _quality_cases()
     dropped = {
         case_id: (declared, len(turns_for(cases[case_id])))
@@ -93,7 +88,7 @@ def test_every_declared_turn_is_sent() -> None:
 
 
 def test_prompt_separator_cases_still_split() -> None:
-    """Mutation guard: the `---` form must keep working after the fix."""
+    """Mutation guard: the --- form must keep working after the fix."""
     turns = turns_for(_quality_cases()["quality-mt-elliptical-followups"])
 
     assert turns == [

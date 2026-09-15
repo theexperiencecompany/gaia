@@ -1,6 +1,6 @@
 """Minting and impersonating the throwaway users the live-chat harnesses run as.
 
-Four scripts each carried their own ``_provision``, and all four did the same
+Four scripts each carried their own _provision, and all four did the same
 three things in the same order: mint a dev user, grant it Pro (the API is
 paid-only, so a turn from a free user is a 402 before it ever reaches the agent),
 then write an onboarding profile through the real PATCH so the product's own
@@ -31,10 +31,10 @@ DEFAULT_NAME = "Alex"
 
 
 def dev_client(email: str) -> httpx.AsyncClient:
-    """A client that is authenticated as ``email`` on the dev bypass.
+    """Build a client authenticated as email on the dev bypass.
 
     Both the header and the cookie are sent because the bypass is read from
-    either depending on the route: REST endpoints take ``X-Dev-User``, and the
+    either depending on the route: REST endpoints take X-Dev-User, and the
     chat stream reads the cookie. Sending one and not the other authenticates
     for part of a run and 401s for the rest.
     """
@@ -85,9 +85,9 @@ async def provision(
     *,
     name: str = DEFAULT_NAME,
 ) -> None:
-    """A fresh Pro dev user, optionally carrying an onboarding profile.
+    """Provision a fresh Pro dev user, optionally carrying an onboarding profile.
 
-    ``preferences`` is optional only so a caller that genuinely wants the
+    preferences is optional only so a caller that genuinely wants the
     default-onboarding state can say so explicitly; every current caller passes
     one, because what the agent says to a new user is mostly a function of it.
     """

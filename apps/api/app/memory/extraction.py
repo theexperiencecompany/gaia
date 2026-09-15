@@ -47,29 +47,17 @@ _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
 _TRANSCRIPT_TRUNCATION_MARKER = "\n[... transcript truncated ...]\n"
 
 
-# These LLM calls run inside the LangGraph run that spawned them (the
-# add_memory tool, or a background ingestion task that inherited the graph's
-# callback context). Without this marker their structured-output tokens are
-# captured by the chat token stream and rendered as assistant text. ``silent``
-# is the same flag the chat stream consumers use to drop internal-LLM chunks.
-# ``configurable.user_id`` is who this background spend is metered against —
-# see ``ainvoke_structured``; without it the pipeline's real COGS would land in
-# nobody's budget.
+# Without ``silent`` these tokens get captured by the chat token stream and
+# rendered as assistant text. ``configurable.user_id`` meters this background
+# spend against the right budget.
 def _silent_config(user_id: str) -> RunnableConfig:
     config: RunnableConfig = {
         **silent_metered_config(user_id),
         "tags": ["memory_internal"],
     }
-    # The memory family's own sticky-routing chain, per user. On the aux lane
-    # the sticky session is what keeps consecutive extractions landing on the
-    # upstream that already holds this user's transcript prefixes — without it
-    # every call routes independently and the append-only transcript re-sends
-    # cold. Per USER, not per conversation: one upstream then holds all of a
-    # user's memory-call prefixes, and the "-aux" suffix the runnable adds
-    # keeps this chain from ever re-pinning a conversation's.
-    # Indexing, not .get with a default: silent_metered_config always carries a
-    # configurable (it is where the user_id metering lives), and a missing one
-    # here would mean the spend attribution vanished — fail loud, not paper over.
+    # Sticky-routing chain per user (not per conversation), so extractions
+    # keep landing on the upstream holding this user's transcript prefixes.
+    # Indexing, not .get: a missing configurable should fail loud.
     config["configurable"] = {
         **config["configurable"],
         "session_id": f"memory-{user_id}",
@@ -77,10 +65,8 @@ def _silent_config(user_id: str) -> RunnableConfig:
     return config
 
 
-# Provider failures and malformed structured output both degrade to None so the
-# memory helper never breaks the chat that spawned it. ``OutputParserException``
-# is what the structured-output parser raises on malformed/truncated model
-# output (it wraps the underlying ``ValidationError``/JSON error).
+# Provider failures and malformed structured output both degrade to None so
+# the memory helper never breaks the chat that spawned it.
 _STRUCTURED_FAILURE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *LLM_FALLBACK_EXCEPTIONS,
     ValidationError,
@@ -99,7 +85,7 @@ class SimilarMemory(BaseModel):
 def format_transcript(messages: list[dict[str, str]]) -> str:
     """Render conversation messages as a plain-text transcript for the LLM.
 
-    Capped at ``EXTRACTION_TRANSCRIPT_MAX_CHARS`` using a head+tail strategy:
+    Capped at EXTRACTION_TRANSCRIPT_MAX_CHARS using a head+tail strategy:
     the opening context and the most recent exchanges matter most, the middle
     is dropped.
     """
@@ -123,19 +109,13 @@ async def _invoke_structured(
     operation: str,
     user_id: str,
 ) -> _StructuredT | None:
-    """Structured-output call on the memory lane via the canonical
-    ``ainvoke_structured_gemini`` (which owns provider selection, retry +
-    validation, and meters the spend against ``user_id``). Returns None only
-    when NO provider is configured or every one of them failed, so extraction
-    degrades gracefully and never breaks the chat that spawned it. The silent
-    config keeps the structured-output tokens out of the chat stream.
+    """Structured-output call on the memory lane via ainvoke_structured_gemini.
 
-    Prefers direct Gemini on purpose (see ``ainvoke_structured_gemini``): the
-    extraction is a background task that overlaps the graph's next-turn
-    requests, and concurrent requests on the same provider's cache store wipe
-    each other's cached chains mid-read (measured). When Google is not
-    configured, or Gemini is down, the call runs on the aux lane instead —
-    losing the cache isolation, not the memory."""
+    Prefers direct Gemini (see that function) since concurrent requests on
+    the same provider's cache store wipe each other's cached chains mid-read
+    (measured); falls back to the aux lane, losing cache isolation, not the
+    memory. Returns None only when every provider failed.
+    """
     try:
         return await ainvoke_structured_gemini(
             output_model, messages, label=f"memory:{operation}", config=_silent_config(user_id)
@@ -178,27 +158,13 @@ async def extract_memories(
     journal_section = (
         "\n".join(f"- {line}" for line in journaled_today) if journaled_today else "(empty)"
     )
-    # The system prompt is deliberately user-agnostic: the user's name used to
-    # be formatted into it, so every user needed their own warm copy of the
-    # system+schema prefix and no user's traffic could warm another's
-    # (measured in production: 87% of extraction calls read zero cached
-    # tokens). One universal prompt is the only version an upstream has to
-    # hold; the name rides the volatile tail instead.
+    # The system prompt is deliberately user-agnostic (formatting the name in
+    # meant no user's traffic could warm another's: measured 87% zero cache
+    # hits). The name rides the volatile tail instead.
     system_prompt = EXTRACTION_SYSTEM_PROMPT
-    # The volatile context (the user's name, today's date, the journal, the
-    # folder tree, the recently stored facts) rides in a TRAILING message, NOT
-    # inside the system prompt: the memory lane's cache is a byte-prefix
-    # cache, and with these churning inside the system prompt the prefix broke
-    # there and the whole (append-only) transcript re-sent uncached every turn
-    # — measured ~41% hit on the lane.
-    #
-    # WITHIN the tail, order is by churn rate, slowest first, because the tail
-    # is over half of a real extraction call (measured live: the cached prefix
-    # stops at system+transcript, ~47%). The name never changes; the date is
-    # stable all day; the journal only APPENDS during a day; the folder tree
-    # gains a line rarely; the recent-facts window ROLLS on every ingestion
-    # and the hints are per-run. With the rolling window ahead of the journal,
-    # one new fact re-sent the whole journal on every extraction.
+    # Volatile context rides in a TRAILING message so the byte-prefix cache
+    # doesn't break; within it, order is by churn rate slowest-first, so one
+    # new fact doesn't re-send the whole journal on every extraction.
     volatile_context = (
         f"The user in this transcript (`user:`) is {user_name}. "
         "Write every fact using this real name.\n"

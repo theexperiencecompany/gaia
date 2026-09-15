@@ -1,13 +1,13 @@
 """OpenRouter model catalog: which models accept image input.
 
-`architecture.input_modalities` in the live catalog is the source of truth, so
+architecture.input_modalities in the live catalog is the source of truth, so
 vision support needs no per-model curation on our side.
 
 The catalog is consulted from the pre-model hook, i.e. on *every* model call, so
 its caching rules are load-bearing rather than an optimization:
 
-- A good snapshot is reused for ``TTL`` seconds.
-- A failed refresh is remembered for ``RETRY`` seconds. Without that, an
+- A good snapshot is reused for TTL seconds.
+- A failed refresh is remembered for RETRY seconds. Without that, an
   OpenRouter outage would charge every model call a full fetch timeout and turn
   a degraded dependency into an unusable product.
 - A stale snapshot outlives a failed refresh, so models don't flip between
@@ -38,7 +38,7 @@ class OpenRouterModelCatalog:
 
     Concurrent cold-start refreshes may fetch in parallel and the last writer
     wins — harmless, and an asyncio lock could not guard it anyway, because the
-    pre-model hooks run under more than one event loop (``sync_execute_hooks``
+    pre-model hooks run under more than one event loop (sync_execute_hooks
     spins up its own).
     """
 
@@ -48,7 +48,7 @@ class OpenRouterModelCatalog:
         self._failed_at: float | None = None
 
     async def accepts_images(self, model: str) -> bool:
-        """Whether ``model`` lists ``image`` among its input modalities.
+        """Whether model lists image among its input modalities.
 
         Unknown models, and outages with no snapshot to fall back on, return
         False — fail safe to the text-description fallback rather than to a
@@ -124,12 +124,10 @@ OPENROUTER_MODEL_CATALOG_PROVIDER = "openrouter_model_catalog"
 def init_openrouter_model_catalog() -> OpenRouterModelCatalog:
     """Register the catalog as a sync provider.
 
-    The loader is deliberately sync: `accepts_images` is awaited from the
-    pre-model hook, which `sync_execute_hooks` runs under a fresh, short-lived
-    event loop each turn. An async provider guards initialization with an
-    `asyncio.Lock` bound to the loop it was first used on, which would then fail
-    against those later loops; a sync loader uses a thread lock and a lock-free
-    fast path once initialized, so it is loop-agnostic.
+    Deliberately sync: an async provider guards init with an asyncio.Lock
+    bound to its first event loop, which fails against the fresh, short-lived
+    loop sync_execute_hooks runs each turn. A sync loader's thread lock is
+    loop-agnostic.
     """
     return OpenRouterModelCatalog()
 

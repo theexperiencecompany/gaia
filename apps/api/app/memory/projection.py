@@ -2,17 +2,17 @@
 
 Postgres is the source of truth. The on-disk tree is a hash-gated read-only
 projection (mode 0444 like the gaia-tasks bodies): the agent reads it with
-``ls``/``cat``/``grep``; mutations go through the memory tools → engine →
+ls/cat/grep; mutations go through the memory tools → engine →
 re-projection.
 
-Layout under ``<user_root>/memory/``::
+Layout under <user_root>/memory/::
 
     GUIDE.md                      hand-authored, mode 0644
     user.md  memory.md  agenda.md  people.md   mode 0444
     journal/YYYY-MM-DD.md         last 30 days, mode 0444
     facts/<category_path>.md      one file per leaf folder, mode 0444
 
-The Postgres glue lives in :mod:`app.services.memory_fs`.
+The Postgres glue lives in :mod:app.services.memory_fs.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ FACTS_DIRNAME = "facts"
 
 
 class MemoryFileProjection(TypedDict):
-    """One projected file: stable id, path under ``memory/``, full content."""
+    """One projected file: stable id, path under memory/, full content."""
 
     id: str
     path: str
@@ -80,7 +80,7 @@ def render_journal_page(date: date_type, entries: list[dict[str, str]], summary:
 def render_facts_page(category_path: str, facts: list[tuple[str, str, float]]) -> str:
     """One category leaf: latest facts as bullets with id/importance markers.
 
-    ``facts`` is ``(memory_id, content, importance)`` tuples, newest first.
+    facts is (memory_id, content, importance) tuples, newest first.
     """
     lines = [f"# {category_path}", ""]
     lines.extend(
@@ -96,7 +96,7 @@ def render_facts_page(category_path: str, facts: list[tuple[str, str, float]]) -
 
 
 def materialize_memory(user_root: Path, docs: list[MemoryFileProjection], guide_md: str) -> int:
-    """Idempotently project ``docs`` into ``<user_root>/memory/``.
+    """Idempotently project docs into <user_root>/memory/.
 
     Returns the number of file bodies rewritten (excluding GUIDE.md). Files
     and journal days that disappeared from the projection are removed, and
@@ -124,10 +124,10 @@ def materialize_memory(user_root: Path, docs: list[MemoryFileProjection], guide_
 def _remove_stale_paths(memory_root: Path, expected: set[str]) -> None:
     """Drop files no longer projected and prune directories they emptied.
 
-    Reverse-sorted ``rglob`` visits children before their parent directory,
+    Reverse-sorted rglob visits children before their parent directory,
     so an emptied folder is removable in the same pass. Symlinks (the
     de-duplicated system GUIDE.md) count as files and are kept via
-    ``expected``.
+    expected.
     """
     for path in sorted(memory_root.rglob("*"), reverse=True):
         if path.is_dir() and not path.is_symlink():

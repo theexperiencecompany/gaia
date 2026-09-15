@@ -173,10 +173,10 @@ class TestGenerateProfileCardDesign:
 
 
 class TestGetUserMetadata:
-    """account_number is now derived from the ObjectId creation timestamp
-    (``int(oid.generation_time.timestamp()) % 1_000_000``) rather than a
-    ``count_documents`` query.  member_since falls back to today's date (UTC)
-    when the stored created_at is missing or not a datetime instance.
+    """Derive account_number from the ObjectId creation timestamp (mod 1_000_000), not count_documents.
+
+    member_since falls back to today's date (UTC) when the stored created_at
+    is missing or not a datetime instance.
     """
 
     @pytest.mark.asyncio
@@ -273,8 +273,10 @@ def _bios_for(profession: str, name: str) -> list[str]:
 
 
 class TestGenerateHoloCardContentProfession:
-    """The profession drives both the fallback phrase and the bio pool, and it is
-    read off a typed onboarding subdocument that is absent on most rows."""
+    """The profession drives both the fallback phrase and the bio pool.
+
+    It is read off a typed onboarding subdocument that is absent on most rows.
+    """
 
     @pytest.mark.asyncio
     async def test_profession_comes_from_the_onboarding_preferences(self) -> None:
@@ -361,8 +363,7 @@ class TestGenerateHoloCardContentProfession:
 
     @pytest.mark.asyncio
     async def test_a_missing_profession_reaches_the_llm_prompt_empty(self) -> None:
-        """No profession must render as nothing in the prompt — any placeholder the
-        fallback invented would be read by the LLM as the user's actual job."""
+        """No profession must render as nothing — a placeholder would read to the LLM as the real job."""
         user = UserDocument(name="Ada", onboarding=None)
         llm_output = AsyncMock(
             return_value=HoloCardLLMOutput(personality_phrase="Quiet Builder", user_bio="Ada.")

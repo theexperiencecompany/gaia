@@ -1,13 +1,13 @@
 """Unit tests for app.utils.search — multi-provider search waterfall.
 
-The flat ``app.utils.search_utils`` module was replaced by the
-``app.utils.search`` package (engine, models, providers, budget).
+The flat app.utils.search_utils module was replaced by the
+app.utils.search package (engine, models, providers, budget).
 
-These tests cover the public surface exported from ``app.utils.search``:
-  - ``perform_search``        — cached entry point; returns a WebSearchResult
-  - ``search_for_research``   — cached entry point; returns {"results": [...]}
+These tests cover the public surface exported from app.utils.search:
+  - perform_search        — cached entry point; returns a WebSearchResult
+  - search_for_research   — cached entry point; returns {"results": [...]}
 
-Provider-level unit tests live in ``tests/unit/utils/search/``.
+Provider-level unit tests live in tests/unit/utils/search/.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch

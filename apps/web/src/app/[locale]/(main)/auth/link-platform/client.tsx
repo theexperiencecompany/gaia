@@ -39,10 +39,9 @@ export default function LinkPlatformClient({
     return null;
   }
 
-  // Unauthenticated once the cache has restored — go sign in and come back.
-  // Resolved during render (not in an effect) so this page never paints before
-  // navigating; `redirect` performs the same client-side navigation
-  // router.replace did.
+  // Unauthenticated once the cache restored — sign in and come back.
+  // Resolved during render, not an effect, so this page never paints before
+  // navigating; `redirect` does the same as router.replace.
   if (!isAuthenticated) {
     const returnUrl = `/auth/link-platform?platform=${encodeURIComponent(platform)}&token=${encodeURIComponent(token)}`;
     redirect(

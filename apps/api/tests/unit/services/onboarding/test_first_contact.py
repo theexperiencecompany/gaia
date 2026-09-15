@@ -1,8 +1,7 @@
-"""The bot's first contact after a one-tap link: two bubbles, composed by the
-server, never by the model.
+"""The bot's first contact after a one-tap link: two bubbles, composed by the server.
 
-What has to hold: every pick has a clause and an ask (a missing entry is a
-silently skipped pick), only the jobs that are impossible without an account
+Never by the model. What has to hold: every pick has a clause and an ask (a missing
+entry is a silently skipped pick), only the jobs that are impossible without an account
 ask for a link, and the copy reads as speech in GAIA's voice.
 """
 
@@ -40,8 +39,7 @@ class TestNeedCopy:
         assert set(NEED_ASKS) == set(OnboardingNeed)
 
     def test_only_the_jobs_impossible_without_an_account_ask_for_a_link(self) -> None:
-        """Slack, Notion and GitHub are never demanded up front; the playbook
-        offers them later, once the answer says where the work lives."""
+        """Slack, Notion and GitHub are never demanded up front; the playbook offers them later."""
         assert NEED_INTEGRATIONS == {
             OnboardingNeed.INBOX: ("gmail",),
             OnboardingNeed.CALENDAR: ("googlecalendar",),
@@ -58,8 +56,7 @@ class TestNeedCopy:
 
     @pytest.mark.parametrize("ask", list(NEED_ASKS.values()), ids=list(NEED_ASKS))
     def test_an_ask_is_one_short_reasoned_request_they_can_answer(self, ask: str) -> None:
-        """A question or a "send me / name / paste" request, ending on the thing
-        to do, no shouting, no emoji, and short enough to read on a phone."""
+        """A question or a "send me / name / paste" request, short enough to read on a phone."""
         assert ask.endswith((".", "?"))
         assert "!" not in ask
         assert ask.isascii()
@@ -144,10 +141,7 @@ class TestComposeFirstContact:
     def test_an_integration_with_no_hand_written_phrase_is_named_from_the_config(
         self,
     ) -> None:
-        """Only Gmail and Calendar have hand-written connect copy. Anything else
-        falls back to the OAuth config's display name — which is not the raw id:
-        "Connect github" reads like a bug report, "Connect GitHub" reads like a
-        product. The unlock clause is that same name."""
+        """Anything but Gmail/Calendar falls back to the OAuth config's display name, not the raw id."""
         first_move = compose_first_contact(
             "telegram", "Dev", _prefs([OnboardingNeed.INBOX]), [("github", "https://g.test/c")]
         )[-1]
@@ -176,8 +170,7 @@ class TestComposeFirstContact:
         assert first_move == NEED_ASKS[OnboardingNeed.FOUNDER_TEAM_UPDATES]
 
     def test_an_already_connected_pick_gets_its_connected_ask(self) -> None:
-        """Gmail on and inbox picked: no link to hand over, so the ask assumes
-        the inbox is running and asks what to flag."""
+        """No link to hand over, so the ask assumes the inbox is already running."""
         first_move = compose_first_contact("telegram", None, _prefs([OnboardingNeed.INBOX]), [])[-1]
         assert first_move == NEED_ASKS[OnboardingNeed.INBOX]
         assert "already on" in first_move
@@ -187,9 +180,7 @@ class TestComposeFirstContact:
         assert promise == 'You also said "Book my travel". That\'s mine too.'
 
     def test_trimming_their_words_never_eats_a_real_last_letter(self) -> None:
-        """Only sentence punctuation comes off the end. ``rstrip`` takes a SET of
-        characters, so widening it by one letter silently truncates every answer
-        that ends in that letter — "plan X" would be quoted back as "plan"."""
+        """Widening rstrip's character SET by one letter would truncate "plan X" to "plan"."""
         _, promise, _ = compose_first_contact("telegram", None, _prefs([], "plan X"), [])
         assert promise == 'You also said "plan X". That\'s mine too.'
 
@@ -257,11 +248,7 @@ class TestBuildFirstContact:
     async def test_the_connected_check_is_asked_about_this_user_and_the_name_is_carried(
         self,
     ) -> None:
-        """Two things the bundle-shape assertions above cannot see. The
-        already-connected lookup must name the user who just linked — asked about
-        anyone else it reads someone else's accounts and either re-offers a link
-        they already have or hides one they need. And the name resolved here has
-        to reach the greeting, or every first contact opens with a bare "Hey,"."""
+        """The connected lookup must key on THIS user, and the resolved name must reach the greeting."""
         repo = AsyncMock()
         # User-sensitive on purpose: only u1 has Gmail, so a lookup for anybody
         # else comes back "not connected" and re-offers it.
@@ -295,13 +282,7 @@ class TestBuildFirstContact:
     async def test_a_dead_mint_is_recorded_as_an_error_naming_the_user_pick_and_platform(
         self,
     ) -> None:
-        """Dropping the link is silent in the product: nothing retries the mint
-        and the user simply never connects, so this line is the only trace that
-        a first contact shipped without the tap it exists to offer. ``log.error``
-        appends message AND kwargs to the wide event's ``errors[]``, which makes
-        every field a queryable surface — without them a Gmail mint failing on
-        Telegram is indistinguishable from a calendar one failing on WhatsApp,
-        and without the user nobody can be told to connect by hand."""
+        """The log line is the only trace of a dropped mint; its kwargs must stay queryable per user/provider/platform."""
         repo = AsyncMock()
         repo.is_connected = AsyncMock(return_value=False)
         with (
@@ -319,9 +300,7 @@ class TestBuildFirstContact:
         )
 
     async def test_one_dead_mint_does_not_cost_them_the_links_after_it(self) -> None:
-        """Each pick's link is minted on its own, so Redis dropping the Gmail one
-        must not swallow the calendar link the next pick needs. Abandoning the
-        loop at the first failure ships a first contact with no tap at all."""
+        """Each pick's link is minted independently; one dropped mint must not swallow the next pick's link."""
         repo = AsyncMock()
         repo.is_connected = AsyncMock(return_value=False)
         mint = AsyncMock(

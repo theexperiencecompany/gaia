@@ -54,13 +54,11 @@ export function parseTrailingLinkCode(message: string): ParsedLinkCode | null {
 }
 
 /**
- * The WhatsApp/iMessage half of one-tap linking: the user's own first message
- * carries the code, so it must be redeemed and stripped before anything else
- * looks at the text.
+ * The WhatsApp/iMessage half of one-tap linking: the user's own first message carries the
+ * code, so it must be redeemed and stripped before anything else looks at the text.
  *
- * Returns the text to continue through the normal chat flow, or null when there
- * is nothing left to handle: an unlinked sender's code was redeemed (GAIA's
- * first contact IS the reply) or refused (they already have the explanation),
+ * Returns the text to continue through the normal chat flow, or null when there is nothing
+ * left to handle: an unlinked sender's code was redeemed or refused (GAIA already replied),
  * or a linked sender's message was nothing but a stray code.
  */
 export async function consumeInboundLinkCode(
@@ -69,14 +67,12 @@ export async function consumeInboundLinkCode(
   const parsed = parseTrailingLinkCode(args.text);
   if (!parsed) return args.text;
 
-  // Only redeem for a sender we know is unlinked. An already-linked one is
-  // re-sending the prewritten message, and an `unknown` is a failed check —
-  // redeeming there spends a stale code and answers a real message with "that
-  // link has expired". Both drop the code and let the rest through.
+  // Only redeem for a sender we know is unlinked: an already-linked one is re-sending the
+  // prewritten message, and `unknown` is a failed check where redeeming would spend a stale
+  // code and answer a real message with "that link has expired". Both drop the code and pass through.
   if ((await args.linkState()) === "unlinked") {
-    // Either outcome ends the turn. A success has already delivered the whole
-    // first contact, so running the stripped text on top of it would answer the
-    // user's own prewritten opener a second time; a failure has already told
+    // Either outcome ends the turn: a success already delivered the whole first contact, so
+    // running the stripped text on top would answer the opener twice; a failure already told
     // them why, and chatting past it strands them mid-explanation.
     await redeemLinkCode(
       args.gaia,
@@ -158,24 +154,13 @@ function classifyLinkFailure(error: unknown): LinkCodeFailure {
 }
 
 /**
- * Redeems `code` for `platformUserId`.
+ * Redeems `code` for `platformUserId`. On success the API delivers GAIA's first contact itself
+ * via the outbound queue (no model turn) and this sends nothing — unless that delivery failed,
+ * in which case the API hands the bubbles back for this to send. `firstMessage` is the user's
+ * real opening turn (prefill minus code, stored by the API); a Telegram deep link carries none.
  *
- * The API composes GAIA's whole first contact and delivers it itself on the
- * outbound queue the moment the link completes, so this normally sends nothing
- * on success. No model turn runs: the opener turn used to skip the per-pick
- * lines and lose the links, and the one message a new user is guaranteed to
- * read does not get to be unreliable. When that delivery failed the API hands
- * the bubbles back and they are sent from here — nothing else will.
- *
- * ``firstMessage`` is what the user typed over the WhatsApp/iMessage prefill,
- * with the code stripped: their real opening turn, which the API stores as
- * theirs. A Telegram deep link carries none, and none is invented.
- *
- * Returns true once the link is in. Every failure is answered and returns
- * false — never a stack trace, and never silence: a user the code can act on
- * (expired/used code, handle already linked elsewhere) is told what to do, and
- * a failure of ours is named as ours. Nothing is rethrown, because this is the
- * user's first-ever message and the adapters above only log.
+ * Returns true once linked, else false after answering the failure (never a stack trace or
+ * silence, never rethrown) — actionable failures tell the user what to do, ours are named as ours.
  */
 export async function redeemLinkCode(
   gaia: GaiaClient,

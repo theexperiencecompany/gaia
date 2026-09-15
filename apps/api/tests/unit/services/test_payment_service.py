@@ -4,8 +4,8 @@ Unit tests for DodoPaymentService.
 Covers: get_plans, create_subscription, verify_payment_completion,
 get_user_subscription_status.
 
-PaymentWebhookService tests live in ``test_payment_webhook_service.py``; both
-files share fixtures and fake data via ``conftest.py`` in this directory.
+PaymentWebhookService tests live in test_payment_webhook_service.py; both
+files share fixtures and fake data via conftest.py in this directory.
 """
 
 from datetime import UTC, datetime
@@ -125,7 +125,7 @@ def mock_users_collection():
 
 @pytest.fixture
 def mock_plan_cache_invalidation():
-    """The gate's cached tier is dropped through Redis; keep it in memory."""
+    """Mock the plan-cache invalidation that drops the gate's cached tier through Redis."""
     with patch(
         "app.services.payments.payment_service.invalidate_plan_cache", new_callable=AsyncMock
     ) as mock_fn:
@@ -322,9 +322,7 @@ class TestGetPlans:
         mock_plan_repository,
         mock_redis_cache,
     ):
-        """GAIA is paid-only — a $0 'Free' row in the collection must never
-        render as a card, even though the repository still returns it (a
-        pre-cutover seed, or a manual DB edit)."""
+        """GAIA is paid-only — a $0 'Free' row must never render as a card, even if the repository still returns it."""
         free_plan = PlanDocument(
             id=str(ObjectId()),
             dodo_product_id="",
@@ -349,8 +347,7 @@ class TestGetPlans:
         mock_plan_repository,
         mock_redis_cache,
     ):
-        """The free row is cached too (the cache mirrors the DB) — filtering
-        must happen on every read path, not only the DB-miss path."""
+        """The free row is cached too, so filtering must happen on every read path, not only the DB-miss path."""
         cached_free = PlanResponse(
             id="free-id",
             dodo_product_id="",
@@ -393,8 +390,7 @@ class TestGetPlans:
         mock_plan_repository,
         mock_redis_cache,
     ):
-        """Enterprise is also $0 (contact-sales) — amount alone must not be
-        the filter, or the Enterprise card would vanish too."""
+        """Enterprise is also $0 (contact-sales) — amount alone must not be the filter, or its card would vanish too."""
         enterprise_plan = PlanDocument(
             id=str(ObjectId()),
             dodo_product_id="",
@@ -426,8 +422,7 @@ class TestCreateSubscription:
     async def test_minting_a_new_checkout_forgets_the_cached_unpaid_scan(
         self, payment_service, mock_dodo_client, mock_redis_cache
     ):
-        """ "None of your sessions is paid" was cached against the sessions that
-        existed; a new one is not among them, so the verdict is void."""
+        """The stale "no session is paid" scan verdict must not survive minting a new checkout session."""
         mock_dodo_client.checkout_sessions.create = MagicMock(
             return_value=SimpleNamespace(session_id="ches_new", checkout_url="https://pay/x")
         )
@@ -492,8 +487,7 @@ class TestCreateSubscription:
         mock_dodo_client,
         mock_checkout_session_repository,
     ):
-        """Recording the session is best-effort: losing it only disables the
-        verify fallback, never the checkout itself — but the loss is logged."""
+        """Recording the session is best-effort: losing it only disables the verify fallback, not the checkout."""
         _set_user(mock_users_collection, SAMPLE_USER_DOC)
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
@@ -622,8 +616,7 @@ class TestCreateSubscription:
         mock_plan_repository,
         mock_dodo_client,
     ):
-        """Dodo's documented test card is a US Visa; on the Indian rail it is
-        declined, so a developer could not pay with the card the docs name."""
+        """Dodo's documented test card is a US Visa, declined on the Indian rail — outside prod it must still be prefillable."""
         _set_user(mock_users_collection, SAMPLE_USER_DOC)
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
@@ -665,9 +658,7 @@ class TestCreateSubscription:
         mock_plan_repository,
         mock_dodo_client,
     ):
-        """A checkout started in the onboarding wizard comes back to the wizard,
-        not to the standalone result page: the wizard confirms the payment in
-        place and is the one screen the user sees after paying."""
+        """A checkout started in the onboarding wizard returns to the wizard, not the standalone result page."""
         _set_user(mock_users_collection, SAMPLE_USER_DOC)
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
@@ -786,8 +777,7 @@ class TestCreateSubscription:
         mock_plan_repository,
         mock_dodo_client,
     ):
-        """The payment context on the request's wide event is how a failed
-        mint is found in the logs; it is set before Dodo is called."""
+        """The payment context on the wide event is how a failed mint is found in the logs; it's set before Dodo is called."""
         _set_user(mock_users_collection, SAMPLE_USER_DOC)
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
@@ -819,10 +809,7 @@ class TestCancelSubscription:
         mock_redis_cache,
         mock_dodo_client,
     ):
-        """Dodo is asked for a period-end cancel, and the local row is written
-        by the same reducer the webhook uses — as a scheduled cancel whatever
-        status Dodo echoes back (``test_subscription_events.py`` pins that the
-        reducer keeps the user on Pro until ``subscription.expired``)."""
+        """Dodo is asked for a period-end cancel; the local row is written as scheduled regardless of what Dodo echoes back."""
         mock_subscription_repository.get_active_for_user = AsyncMock(
             return_value=SAMPLE_SUBSCRIPTION
         )
@@ -861,8 +848,7 @@ class TestCancelSubscription:
         mock_subscription_repository,
         mock_dodo_client,
     ):
-        """Dodo accepted the cancellation; surfacing success while nothing
-        local recorded it would leave the user's status stale for good."""
+        """Dodo accepted the cancellation; surfacing success with nothing recorded locally would leave the status stale forever."""
         mock_subscription_repository.get_active_for_user = AsyncMock(
             return_value=SAMPLE_SUBSCRIPTION
         )
@@ -947,8 +933,7 @@ class TestGetCachedPlanType:
     async def test_a_cached_tier_says_it_came_from_the_cache(
         self, payment_service, mock_redis_cache
     ):
-        """A stale cached FREE and a genuinely free user are indistinguishable
-        downstream, so the source is the first thing an incident needs."""
+        """A stale cached FREE and a genuinely free user look identical downstream, so the source is what an incident needs first."""
         mock_redis_cache.get = AsyncMock(return_value={"plan_type": PlanType.PRO.value})
 
         async with captured_wide_event() as event:
@@ -984,12 +969,11 @@ class TestVerifyPaymentCompletion:
 
     @pytest.fixture
     def activation_seams(self, mock_subscription_repository, mock_users_collection):
-        """The row is written by ``subscription_events``, so verification's
-        recovery runs through that module's seams.
+        """Route verification's recovery through the same seams subscription_events uses to write the row.
 
-        The same repository and user mocks stand behind both modules: the test
-        is one story about one user, and two mocks for one collection would let
-        the two halves disagree without failing.
+        The repository and user mocks stand behind both modules, so the test
+        tells one story about one user instead of risking two mocks
+        disagreeing.
         """
         with (
             patch(f"{ACTIVATION_MODULE}.subscription_repository", mock_subscription_repository),
@@ -1029,12 +1013,11 @@ class TestVerifyPaymentCompletion:
         user_id: str | None = FAKE_USER_ID,
         status: str = "active",
     ) -> Subscription:
-        """The Dodo SDK's own ``Subscription``, not a stand-in for it.
+        """Build the Dodo SDK's own Subscription, not a stand-in for it.
 
         Verification revalidates whatever the SDK hands back into
-        ``DodoSubscriptionData`` before anything is written, so the fixture has
-        to be the real shape: a namespace or a MagicMock would answer any
-        attribute and let a drift between the two schemas pass unnoticed.
+        DodoSubscriptionData, so the fixture must be the real shape — a
+        namespace or MagicMock would let a schema drift pass unnoticed.
         """
         return Subscription.model_validate(
             {
@@ -1071,7 +1054,7 @@ class TestVerifyPaymentCompletion:
 
     @staticmethod
     def _exact_retrieve(expected_id: str, result: object) -> MagicMock:
-        """A ``retrieve`` stub that answers only its own id.
+        """Build a retrieve stub that answers only its own id.
 
         Any other argument raises, so a mutant that rewrites which id gets
         passed dies in every test that walks the chain.
@@ -1095,8 +1078,7 @@ class TestVerifyPaymentCompletion:
         subscription_id: str | None = "sub_from_checkout",
         subscription_status: str = "active",
     ) -> SimpleNamespace:
-        """checkout_sessions.retrieve -> payments.retrieve -> subscriptions.retrieve,
-        each answering only the id the previous hop produced."""
+        """checkout_sessions.retrieve -> payments.retrieve -> subscriptions.retrieve, each answering only its own id."""
         checkout_status = SimpleNamespace(payment_id=payment_id, payment_status=payment_status)
         payment = SimpleNamespace(subscription_id=subscription_id)
         subscription = TestVerifyPaymentCompletion._dodo_subscription(
@@ -1141,10 +1123,7 @@ class TestVerifyPaymentCompletion:
         mock_subscription_repository,
         mock_plan_cache_invalidation,
     ):
-        """A request 402'd from the paywall page re-caches the free tier for
-        five minutes, and it can land just after the webhook activated the
-        user. Answering "payment completed" while that key stands is how a
-        paid user is locked out of what they just bought."""
+        """A 402'd request re-caches the free tier for five minutes; answering "completed" while that key stands locks out a payer."""
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(
             return_value=SAMPLE_SUBSCRIPTION
         )
@@ -1159,8 +1138,7 @@ class TestVerifyPaymentCompletion:
         payment_service,
         materialize_mocks,
     ):
-        """The webhook-vs-redirect race: no local row yet, but Dodo reports the
-        checkout as paid+active — materialize it and return completed."""
+        """The webhook-vs-redirect race: no local row yet, but Dodo reports the checkout paid+active — materialize it."""
         materialize_mocks.subscriptions.get_active_for_user = AsyncMock(return_value=None)
         materialize_mocks.subscriptions.get_by_dodo_id = AsyncMock(return_value=None)
         created = SubscriptionDocument.model_validate(
@@ -1223,8 +1201,7 @@ class TestVerifyPaymentCompletion:
         payment_service,
         materialize_mocks,
     ):
-        """If the webhook landed while we were asking Dodo, its row wins and
-        nothing new is created."""
+        """If the webhook landed while we were asking Dodo, its row wins and nothing new is created."""
         materialize_mocks.subscriptions.get_active_for_user = AsyncMock(return_value=None)
         materialize_mocks.subscriptions.get_latest_active_for_user = AsyncMock(return_value=None)
         existing = SubscriptionDocument.model_validate(SAMPLE_SUBSCRIPTION_DOC)
@@ -1285,7 +1262,7 @@ class TestVerifyPaymentCompletion:
 
     @staticmethod
     def _memory_cache(mock_redis_cache) -> dict[str, object]:
-        """A dict-backed Redis, so a second verify sees what the first cached."""
+        """Back Redis with a dict, so a second verify sees what the first cached."""
         store: dict[str, object] = {}
 
         async def _get(key: str, model: object = None) -> object:
@@ -1310,9 +1287,7 @@ class TestVerifyPaymentCompletion:
         mock_dodo_client,
         mock_plan_cache_invalidation,
     ):
-        """A recovery has no Dodo event timestamp; the reducer orders it by the
-        moment Dodo answered, which must be a real UTC instant — a None or a
-        naive one would compare wrong against the webhook's."""
+        """A recovery has no Dodo event timestamp, so the reducer orders it by a real UTC instant — a None or naive one compares wrong."""
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(
             side_effect=[None, SAMPLE_SUBSCRIPTION]
         )
@@ -1345,13 +1320,7 @@ class TestVerifyPaymentCompletion:
         mock_dodo_client,
         mock_redis_cache,
     ):
-        """The result page verifies eight times over ~50 s
-        (``verifyPaymentWithRetry.ts``). Every retry re-scanned every recorded
-        session against Dodo — up to CHECKOUT_SESSION_SCAN_LIMIT round trips
-        per verify, eight times, for an answer that had not changed. The
-        negative result is cached for the retry window so the scan costs one
-        pass, and the eight verifies read the row (which the webhook may have
-        created meanwhile) before ever asking Dodo again."""
+        """The result page retries eight times over ~50s; caching the negative scan avoids 8x CHECKOUT_SESSION_SCAN_LIMIT round trips to Dodo."""
         store = self._memory_cache(mock_redis_cache)
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
@@ -1391,8 +1360,7 @@ class TestVerifyPaymentCompletion:
         mock_dodo_client,
         mock_redis_cache,
     ):
-        """A Dodo outage during the scan is transient; caching it as "not paid"
-        would hide a paid session from every retry in the window."""
+        """A Dodo outage during the scan is transient; caching it as "not paid" would hide a paid session from every retry."""
         self._memory_cache(mock_redis_cache)
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
@@ -1419,8 +1387,7 @@ class TestVerifyPaymentCompletion:
         mock_dodo_client,
         mock_redis_cache,
     ):
-        """Paid but Dodo has not flipped the subscription to active yet: the
-        next retry is exactly the one that should find it active."""
+        """Paid but Dodo has not flipped the subscription to active yet — the next retry should find it active."""
         self._memory_cache(mock_redis_cache)
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
@@ -1516,9 +1483,7 @@ class TestVerifyPaymentCompletion:
         payment_service,
         materialize_mocks,
     ):
-        """Metadata without a user id falls back to the customer email, the
-        same rule the webhook resolves ownership by — Dodo was given this
-        user's own address when the checkout was minted."""
+        """Metadata without a user id falls back to the customer email, the same rule the webhook uses to resolve ownership."""
         materialize_mocks.subscriptions.get_active_for_user = AsyncMock(return_value=None)
         materialize_mocks.subscriptions.get_by_dodo_id = AsyncMock(return_value=None)
         created = SubscriptionDocument.model_validate(
@@ -1549,8 +1514,7 @@ class TestVerifyPaymentCompletion:
         mock_checkout_session_repository,
         mock_dodo_client,
     ):
-        """Metadata naming someone else means the subscription is not this
-        user's, whatever their checkout session says."""
+        """Metadata naming someone else means the subscription is not this user's, whatever their checkout session says."""
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_by_dodo_id = AsyncMock(return_value=None)
@@ -1650,9 +1614,7 @@ class TestGetUserSubscriptionStatus:
         payment_service,
         mock_subscription_repository,
     ):
-        """No active subscription but a row in history — the paywall shows the
-        "your subscription ended" copy off this flag, so it must not read the
-        same as a user who has never paid."""
+        """No active subscription but a row in history — the paywall's "ended" copy must not read the same as never having paid."""
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.has_any_for_user = AsyncMock(return_value=True)
 
@@ -1805,8 +1767,7 @@ class TestPlanForSubscription:
     async def test_resolves_the_product_from_the_full_catalogue(
         self, payment_service, mock_plan_repository, mock_redis_cache
     ):
-        """A cancelled subscription's plan is inactive in the catalogue but the
-        row still resolves — the read is deliberately active_only=False."""
+        """A cancelled subscription's plan is inactive in the catalogue but still resolves — the read is deliberately active_only=False."""
         sub = SubscriptionDocument(
             id="s1",
             dodo_subscription_id="sub_old",
@@ -1871,8 +1832,7 @@ class TestGetProPlan:
     async def test_a_one_cent_plan_is_still_purchasable(
         self, payment_service, mock_plan_repository, mock_redis_cache
     ):
-        """Amount is minor units — the paid-tier check is >0, not a rounded
-        threshold that would silently drop genuinely priced products."""
+        """Amount is minor units — the paid-tier check is >0, not a rounded threshold that would drop genuinely priced products."""
         cheap = _plan(
             name="Pro",
             amount=1,
@@ -1979,8 +1939,7 @@ class TestCreateProCheckout:
         mock_redis_cache,
         mock_dodo_client,
     ):
-        """Every surface advertises ``PAYWALL_DISCOUNT_CODE``; the one place the
-        session is minted must apply it, or the link and the pitch drift."""
+        """Every surface advertises PAYWALL_DISCOUNT_CODE; the session mint must apply it, or the link and pitch drift."""
         mock_plan_repository.list_plans = AsyncMock(return_value=CATALOGUE)
         mint = AsyncMock(
             return_value=CreateSubscriptionResponse(
@@ -2029,9 +1988,7 @@ class TestCreateProCheckout:
         mock_redis_cache,
         mock_dodo_client,
     ):
-        """Dodo sessions are single-use: after a declined card the old one only
-        renders "link expired". Handing a remembered session back stranded the
-        user on that page (seen live on the dev drive), so nothing is remembered."""
+        """Dodo sessions are single-use — a declined card leaves the old one saying "link expired," so nothing is remembered."""
         mock_plan_repository.list_plans = AsyncMock(return_value=CATALOGUE)
         sessions = []
         for sid in ("cs_1", "cs_2"):
@@ -2164,8 +2121,7 @@ class TestGetSubscriptionDetails:
         mock_redis_cache,
         mock_dodo_client,
     ):
-        """Both the free and the pro path must read the ledger for the RIGHT
-        user, at the shipped history limit — not an unbounded page."""
+        """Both the free and the pro path must read the ledger for the RIGHT user, at the shipped history limit."""
         subscription = SubscriptionDocument(
             id="s1",
             dodo_subscription_id="sub_1",
@@ -2193,8 +2149,7 @@ class TestGetSubscriptionDetails:
         mock_redis_cache,
         mock_dodo_client,
     ):
-        """Cancelled-and-gone must not mean history-wiped: the ledger read runs on
-        every subscription ever held, active or not."""
+        """Cancelled-and-gone must not mean history-wiped — the ledger read runs on every subscription ever held."""
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         cancelled = SubscriptionDocument(
             id="s1",
@@ -2316,8 +2271,7 @@ class TestDodoPaymentServiceInit:
                 )
 
     def test_base_url_override_wins_over_environment(self):
-        """When DODO_PAYMENTS_BASE_URL is set, it points the SDK at that URL
-        instead of the real environment endpoint."""
+        """When DODO_PAYMENTS_BASE_URL is set, it points the SDK at that URL instead of the real environment endpoint."""
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "development"
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_test_test"

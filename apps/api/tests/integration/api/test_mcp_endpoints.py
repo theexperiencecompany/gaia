@@ -1,14 +1,4 @@
-"""Integration tests for MCP API endpoints.
-
-Tests the routes mounted at /api/v1/mcp/:
-
-  POST /api/v1/mcp/test/{integration_id}   – probe / connect an MCP server
-  GET  /api/v1/mcp/oauth/callback           – handle OAuth code exchange
-
-External I/O (MCPClient, IntegrationResolver, Redis, tool registry) is fully
-mocked.  The real FastAPI app is used via ASGITransport so routing, request
-validation, and auth enforcement are exercised for real.
-"""
+"""Integration tests for MCP API endpoints."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -588,13 +578,8 @@ class TestMCPOAuthCallbackEndpoint:
         location = response.headers.get("location", "")
         assert "authorization_failed" in location
 
-    # ------------------------------------------------------------------
-    # OAuth state validation – invalid and expired state tests
-    # These test the state-parsing guard in mcp_oauth_callback.
-    # Mocking is at the Redis/HTTP client boundary (get_and_delete_cache /
-    # handle_oauth_callback) rather than at the service layer so that the
-    # endpoint's own state-validation logic is exercised.
-    # ------------------------------------------------------------------
+    # OAuth state validation tests, mocked at the Redis/HTTP client boundary so
+    # the endpoint's own state-validation logic in mcp_oauth_callback is exercised.
 
     @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
@@ -605,18 +590,7 @@ class TestMCPOAuthCallbackEndpoint:
         mock_frontend_url,
         test_client,
     ):
-        """GET /api/v1/mcp/oauth/callback with a structurally invalid state redirects to error.
-
-        The state parameter must have at least two colon-separated parts
-        (token:integration_id[:redirect_path]). A state that cannot be split
-        is caught by the endpoint's parsing guard and results in an
-        invalid_state redirect, NOT a 200.
-
-        This test mocks at the HTTP helper (get_frontend_url) only, so the
-        full state-parsing code path in the endpoint runs for real.
-        If the state-parsing guard is removed, the endpoint would attempt to
-        continue with empty integration_id and the assertion would fail.
-        """
+        """GET /api/v1/mcp/oauth/callback with a structurally invalid state redirects to error."""
         # State with only one segment (no colon) – structurally invalid
         invalid_state = "completelynocolonsatall"
         response = await test_client.get(
@@ -651,22 +625,7 @@ class TestMCPOAuthCallbackEndpoint:
         mock_get_client,
         test_client,
     ):
-        """GET /api/v1/mcp/oauth/callback with an expired (unknown) state token redirects to error.
-
-        The state token (first part of the state string) is validated by
-        MCPClient.handle_oauth_callback() which calls
-        MCPTokenStore.verify_oauth_state(). When the Redis key has expired
-        (or never existed), verify_oauth_state returns (False, None) and
-        handle_oauth_callback raises ValueError("Invalid state token").
-
-        The endpoint catches this and maps "state" in the error message to
-        the "invalid_state" error code. This test mocks at the MCPClient
-        boundary (not the service layer) so the endpoint's own exception
-        mapping runs for real.
-
-        If the exception-to-error-code mapping is removed, the test fails
-        because a different error code or no redirect would be produced.
-        """
+        """GET /api/v1/mcp/oauth/callback with an expired (unknown) state token redirects to error."""
         mock_resolve.return_value = _make_resolved_integration()
         mock_resolve.return_value.name = "Test Integration"
 
@@ -713,17 +672,7 @@ class TestMCPOAuthCallbackEndpoint:
         mock_get_client,
         test_client,
     ):
-        """GET /api/v1/mcp/oauth/callback with a mismatched state token redirects to error.
-
-        When the state token in the callback does not match what was stored
-        in Redis (e.g. replay attack or wrong session), handle_oauth_callback
-        raises a ValueError containing "state". The endpoint must map this
-        to the invalid_state error code in the redirect URL.
-
-        This is tested by mocking handle_oauth_callback to raise the same
-        exception that MCPClient raises on state mismatch, which is the
-        deepest boundary that can be mocked without modifying Redis directly.
-        """
+        """GET /api/v1/mcp/oauth/callback with a mismatched state token redirects to error."""
         mock_resolve.return_value = _make_resolved_integration()
         mock_resolve.return_value.name = "Test Integration"
 

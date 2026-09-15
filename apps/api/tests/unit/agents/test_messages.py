@@ -10,7 +10,7 @@ dynamic-context message; volatile per-turn content (memory recall, knowledge,
 skills, todos) lives in an optional memory-recall message. Both are built by
 the shared context-assembly module. The current-time HumanMessage is appended
 LAST so minute ticks never shift the cacheable prefix. These tests exercise the
-orchestration — they patch ``create_system_message`` and ``assemble_context``
+orchestration — they patch create_system_message and assemble_context
 and verify the assembled message list.
 """
 
@@ -48,7 +48,7 @@ def _patches(
     reply_msg: str = "Reply context\n\noriginal",
     files_str: str = "",
 ) -> dict[str, Any]:
-    """Bundle context-manager patches for the helpers `construct_langchain_messages` calls."""
+    """Bundle context-manager patches for the helpers construct_langchain_messages calls."""
     return {
         "create_system": patch(
             "app.agents.core.messages.create_system_message",
@@ -88,12 +88,7 @@ class TestConstructLangchainMessages:
 
     @pytest.mark.asyncio
     async def test_basic_user_message(self) -> None:
-        """Shape is [static, dynamic_stable, human_task, time_msg].
-
-        The time HumanMessage is split off from the task AND appended last so
-        minute ticks never shift the cacheable prefix. With no volatile content
-        the memory-recall message is omitted.
-        """
+        """The time HumanMessage is split off and appended last so minute ticks never shift the cacheable prefix."""
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
             result = await construct_langchain_messages(
@@ -113,11 +108,7 @@ class TestConstructLangchainMessages:
 
     @pytest.mark.asyncio
     async def test_memory_recall_message_slotted_when_present(self) -> None:
-        """When build returns a memory-recall message it sits after the stable
-        dynamic message and before the human task; time stays last.
-
-        Shape: [static, dynamic_stable, memory_recall, human_task, time_msg].
-        """
+        """Shape: [static, dynamic_stable, memory_recall, human_task, time_msg]."""
         recall = SystemMessage(
             content="Recalled memories", additional_kwargs={"memory_recall": True}
         )
@@ -177,11 +168,7 @@ class TestConstructLangchainMessages:
 
     @pytest.mark.asyncio
     async def test_every_field_the_context_is_built_from_survives_the_trip(self) -> None:
-        """This function's whole job is turning the auth payload into the shape
-        assembly reads. Every field dropped here is a section that silently
-        renders nothing — the user's writing style stops being honoured, or a
-        background run believes a human is waiting — with no error anywhere.
-        """
+        """Every field dropped here silently renders nothing, with no error anywhere."""
         p = _patches()
         user_dict = {
             "timezone": "Asia/Kolkata",
@@ -236,10 +223,7 @@ class TestConstructLangchainMessages:
 
     @pytest.mark.asyncio
     async def test_source_passed_to_static_prompt_selector(self) -> None:
-        """The per-channel static prompt is selected via the ``source`` kwarg
-        on ``create_system_message``. Different sources must produce different
-        static prompts (OpenUI on web, platform restrictions on WhatsApp).
-        """
+        """The per-channel static prompt is selected via the source kwarg on create_system_message."""
         p = _patches()
         with p["create_system"] as mock_sys, p["build_dynamic"], p["format_files"]:
             await construct_langchain_messages(
@@ -515,12 +499,7 @@ class TestTriggerContext:
 
 
 class TestTheOnboardingProbeSeesTheUsersActualMessage:
-    """Whether a turn is an onboarding turn is decided partly by what the user
-    just said, so the probe has to receive the user's LATEST message — not the
-    first, not the assistant's reply, and not with the whitespace a chat client
-    leaves on it. Getting this wrong misclassifies the turn, and onboarding is
-    exactly when the agent knows least about the user.
-    """
+    """The probe must receive the user's LATEST message, trimmed — not the first, not the assistant's reply."""
 
     @staticmethod
     def _probe() -> Any:
@@ -548,12 +527,7 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
 
     @pytest.mark.asyncio
     async def test_a_thread_ending_on_the_assistant_carries_no_user_message(self) -> None:
-        """A trailing assistant turn means the user has not spoken on this call;
-        passing its text would have the probe classify on GAIA's own words.
-
-        Reachable only alongside a selected tool — with neither a user message
-        nor a tool the function refuses the turn outright.
-        """
+        """A trailing assistant turn means the user has not spoken; passing its text would classify on GAIA's own words."""
         p = _patches()
         with (
             p["create_system"],
@@ -592,9 +566,7 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
 
     @pytest.mark.asyncio
     async def test_a_turn_with_neither_a_message_nor_a_tool_is_refused(self) -> None:
-        """The refusal is what makes the two cases above reachable only with a
-        tool — worth pinning, since silently sending an empty turn to the model
-        would burn a call and return nothing useful."""
+        """Silently sending an empty turn to the model would burn a call and return nothing useful."""
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"]:
             with pytest.raises(ValueError, match="No human message or selected tool"):
@@ -602,8 +574,7 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
 
     @pytest.mark.asyncio
     async def test_a_turn_outside_a_conversation_is_never_probed(self) -> None:
-        """Without a conversation there is no onboarding state to read, so the
-        Mongo probe would be a query on nothing."""
+        """Without a conversation there is no onboarding state to read, so the Mongo probe would query nothing."""
         p = _patches()
         with p["create_system"], p["build_dynamic"], p["format_files"], self._probe() as probe:
             await construct_langchain_messages(
@@ -614,14 +585,11 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
 
 
 class TestAnOnboardingTurnKeepsBothItsPromptAndTheUsersIdentity:
-    """The onboarding prompt used to be stamped ``memory_message`` — the stable
-    block's OWN marker — and emitted after it, so the single-occupant slot kept
-    the prompt and dropped the identity block. Every onboarding turn reached the
-    model with no user name, timezone, preferences or integrations manifest,
-    which is precisely the turn where knowing the user matters most.
+    """The onboarding prompt now has its own slot, arriving beside identity rather than instead of it.
 
-    It has its own slot now. Both halves are pinned here: the prompt arrives,
-    and it arrives *beside* identity rather than instead of it.
+    It used to be stamped memory_message — the stable block's own marker — and
+    emitted after it, so the single-occupant slot kept the prompt and dropped
+    the identity block, losing name, timezone, preferences and integrations.
     """
 
     PROMPT = "Welcome! Ask about their inbox."
@@ -657,8 +625,7 @@ class TestAnOnboardingTurnKeepsBothItsPromptAndTheUsersIdentity:
 
     @pytest.mark.asyncio
     async def test_the_prompt_does_not_claim_the_stable_blocks_slot(self) -> None:
-        """Carrying ``memory_message`` is what made it evict identity; the
-        pruning node keeps only the latest holder of that marker."""
+        """Carrying memory_message is what made it evict identity; the pruning node keeps only the latest holder."""
         (onboarding,) = [
             m for m in await self._run() if m.additional_kwargs.get(ONBOARDING_MARKER) is True
         ]
@@ -698,8 +665,7 @@ class TestAnOnboardingTurnKeepsBothItsPromptAndTheUsersIdentity:
 class TestTheClockIsRenderedInTheUsersTimezone:
     @pytest.mark.asyncio
     async def test_the_users_zone_reaches_the_clock(self) -> None:
-        """A clock built in the wrong zone makes "this afternoon" and "tomorrow"
-        resolve to the wrong day for anyone outside UTC."""
+        """A clock in the wrong zone makes "this afternoon" resolve to the wrong day for anyone outside UTC."""
         p = _patches()
         with (
             p["create_system"],

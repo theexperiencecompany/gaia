@@ -2,15 +2,15 @@
 
 The live turn and the reloaded turn are assembled by two different
 implementations — the browser folds SSE frames through
-``libs/shared/ts/src/chat/turnAccumulator.ts``, while the server builds the
-persisted message in ``app/services/chat/`` and ``app/utils/stream_utils.py``.
+libs/shared/ts/src/chat/turnAccumulator.ts, while the server builds the
+persisted message in app/services/chat/ and app/utils/stream_utils.py.
 Nothing forces them to agree, so a divergence ships as "it looked right until I
 refreshed" with no failing test anywhere.
 
-These tests run the real persist path (``_persist_turn`` →
-``save_conversation_async``) and assert on the ``MessageModel`` that would reach
-Mongo. Only the DB write (``update_messages``) and the Redis progress read
-(``recover_stream_state``) are mocked — everything that shapes the message is real.
+These tests run the real persist path (_persist_turn →
+save_conversation_async) and assert on the MessageModel that would reach
+Mongo. Only the DB write (update_messages) and the Redis progress read
+(recover_stream_state) are mocked — everything that shapes the message is real.
 """
 
 from __future__ import annotations
@@ -99,8 +99,7 @@ async def persist(state: _StreamState) -> tuple[MessageModel, list[str]]:
 
 
 async def persist_with_log(state: _StreamState) -> tuple[MessageModel, list[Any], Any]:
-    """Same path as ``persist``, keeping the stream id each publish went to and
-    the module's logger — the substitution is only countable in the log."""
+    """Run persist while capturing published stream ids and the module logger, since the substitution is only countable in the log."""
     published: list[Any] = []
     sm = AsyncMock()
     sm.publish_chunk = AsyncMock(side_effect=lambda sid, c: published.append((sid, c)))
@@ -124,10 +123,7 @@ async def persist_with_log(state: _StreamState) -> tuple[MessageModel, list[Any]
 
 class TestFollowUpActions:
     async def test_follow_up_chips_survive_the_save(self):
-        """The chips render live off a ``follow_up_actions`` frame. If the turn
-        is saved without them, they vanish on reload, on a sync, and on any
-        second device — the message is there, the chips are not.
-        """
+        """Chips render live off a follow_up_actions frame; unsaved, they vanish on reload or on any other device."""
         state = _StreamState()
         state.complete_message = "You have two meetings."
         state.follow_up_actions = ["Draft a reply", "Add to calendar"]
@@ -137,9 +133,7 @@ class TestFollowUpActions:
         assert bot.follow_up_actions == ["Draft a reply", "Add to calendar"]
 
     async def test_a_turn_with_no_chips_saves_none_not_an_empty_list(self):
-        """Control, and a shape guard: the client distinguishes "no suggestions"
-        from "suggestions not computed" (``syncService`` writes
-        ``follow_up_actions ?? null``)."""
+        """Shape guard: the client distinguishes no suggestions from not computed (syncService writes follow_up_actions ?? null)."""
         state = _StreamState()
         state.complete_message = "Done."
 
@@ -152,8 +146,8 @@ class TestPersistedTurnMatchesTheLiveStream:
     """The persisted entry must reproduce what the browser assembled live.
 
     The frontend receives a tool call and its result as two separate frames and
-    joins them by ``tool_call_id`` (``mergeToolOutputIntoToolData``). The server
-    does the same join server-side via ``merge_tool_outputs``. These two must
+    joins them by tool_call_id (mergeToolOutputIntoToolData). The server
+    does the same join server-side via merge_tool_outputs. These two must
     land on the same shape or the reloaded card differs from the live one.
     """
 
@@ -177,9 +171,7 @@ class TestPersistedTurnMatchesTheLiveStream:
         return published, state
 
     async def test_every_streamed_tool_card_is_also_accumulated_for_the_save(self):
-        """``publish_tool_data`` appends and publishes from one variable — the
-        single point where live and persisted must agree. Nothing compared them
-        before this test."""
+        """publish_tool_data appends and publishes from one variable, the single point where live and persisted must agree."""
         published, state = await self._run_turn(
             [
                 {
@@ -201,9 +193,7 @@ class TestPersistedTurnMatchesTheLiveStream:
         assert streamed == state.tool_data["tool_data"]
 
     async def test_the_saved_card_carries_the_result_the_client_joined_live(self):
-        """Live, the client merges the ``tool_output`` frame onto the card by
-        ``tool_call_id``. The save must reach the same place, or the reloaded
-        card shows a tool that never returned."""
+        """The save must join by tool_call_id like the live client, or the reloaded card shows a tool that never returned."""
         published, state = await self._run_turn(
             [
                 {
@@ -224,8 +214,7 @@ class TestPersistedTurnMatchesTheLiveStream:
         assert state.tool_data["tool_data"][0]["data"]["output"] == "3 unread"
 
     async def test_an_output_for_an_unknown_call_is_not_grafted_onto_a_card(self):
-        """The join is by id on both sides. A positional or last-wins merge
-        would attach one tool's result to another tool's card."""
+        """The join is by id on both sides; a positional or last-wins merge would attach a result to the wrong card."""
         _, state = await self._run_turn(
             [
                 {
@@ -244,10 +233,7 @@ class TestPersistedTurnMatchesTheLiveStream:
 
 class TestArtifactLinksSurviveTheSave:
     async def test_a_relative_artifact_path_is_absolutized_against_this_conversation(self):
-        """The agent writes ``./artifacts/<name>``, which is right inside the
-        sandbox and a dead link from the browser. The rewrite needs THIS
-        conversation's id — without it the saved message keeps the relative
-        path and every image in the turn renders broken on reload."""
+        """The agent's ./artifacts/<name> path is a dead link from the browser without this conversation's id."""
         state = _StreamState()
         state.complete_message = "here's the chart: ./artifacts/chart.png"
 
@@ -258,12 +244,7 @@ class TestArtifactLinksSurviveTheSave:
 
 
 class TestAnEmptyCompletionIsNeverSaved:
-    """41 empty bot messages across 14 production conversations came through
-    here: the model returned no text, nothing errored, and ``_persist_turn``
-    wrote the empty string as the turn. Every renderer drops an empty body
-    silently (the bot adapter's ``deliverBubble`` returns early on falsy text),
-    so the user saw nothing and resent the same message.
-    """
+    """Regression: 41 empty bot messages across 14 conversations — an empty completion was persisted verbatim and every renderer drops it silently."""
 
     @pytest.mark.regression
     async def test_a_model_that_returned_no_text_is_saved_as_one_honest_line(self):
@@ -276,8 +257,7 @@ class TestAnEmptyCompletionIsNeverSaved:
 
     @pytest.mark.regression
     async def test_the_fallback_line_is_also_streamed_so_the_live_turn_is_not_silent(self):
-        """Persisting it is not enough — the user watching the stream has to see
-        something before the turn closes, or they resend before any reload."""
+        """The fallback must also stream, not just persist, or the user resends before any reload."""
         state = _StreamState()
         state.complete_message = ""
 
@@ -294,8 +274,7 @@ class TestAnEmptyCompletionIsNeverSaved:
         assert bot.response == EMPTY_RESPONSE_FALLBACK
 
     async def test_a_failed_turn_keeps_its_error_text_and_gains_no_fallback(self):
-        """The error path already streamed an ``ErrorFrame`` and persists the
-        same text — adding "say it again?" on top would contradict it."""
+        """The error path already streamed an ErrorFrame; adding the fallback line on top would contradict it."""
         state = _StreamState()
         state.complete_message = ""
         state.error = "Something went wrong while generating this response (TimeoutError)."
@@ -332,12 +311,7 @@ class TestAnEmptyCompletionIsNeverSaved:
 
 
 class TestTheSubstitutionIsRecordedExactly:
-    """One honest line is indistinguishable from an ordinary short reply, so the
-    conversation itself can never tell you how often this fires. The log is the
-    only place it is countable — and the reason splits the two causes that need
-    different fixes: a model that spent its budget producing no visible token
-    versus one that returned nothing at all.
-    """
+    """The fallback line is indistinguishable from a real reply in the conversation; only the log records why it fired."""
 
     async def test_the_fallback_line_is_streamed_verbatim_on_this_stream(self):
         from app.utils.agent_utils import format_sse_response

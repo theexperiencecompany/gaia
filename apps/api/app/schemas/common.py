@@ -1,6 +1,4 @@
-"""
-Common response models shared across API endpoints.
-"""
+"""Common response models shared across API endpoints."""
 
 from typing import Literal
 
