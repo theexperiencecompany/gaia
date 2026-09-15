@@ -36,7 +36,7 @@ from mcp.types import (
     InitializeRequestParams,
     JSONRPCRequest,
 )
-from pydantic import AnyHttpUrl
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict
 
 from app.constants.log_tags import LogTag
 from app.models.mcp_config import McpAuthChallenge, OAuthErrorResponse
@@ -79,6 +79,48 @@ def oauth_token_expiry(expires_in: int | None) -> datetime | None:
     if not expires_in:
         return None
     return datetime.now(UTC) + timedelta(seconds=expires_in)
+
+
+class TokenIntrospectionResponse(BaseModel):
+    """An RFC 7662 introspection response.
+
+    Only ``active`` is fixed by the RFC; the other claims are optional, and the
+    authorization server may add any of its own — ``extra="allow"`` keeps those
+    because the body is handed back to the caller whole.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    active: bool
+    scope: str | None = None
+    client_id: str | None = None
+    username: str | None = None
+    token_type: str | None = None
+    exp: int | None = None
+    iat: int | None = None
+    nbf: int | None = None
+    sub: str | None = None
+    aud: str | list[str] | None = None
+    iss: str | None = None
+    jti: str | None = None
+
+
+class _OAuthErrorBody(BaseModel):
+    """An RFC 6749 Section 5.2 error body, as far as ``parse_oauth_error_response`` reads it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    error: str | None = None
+    error_description: str | None = None
+    error_uri: str | None = None
+
+
+class _JwtClaims(BaseModel):
+    """The one JWT payload claim ``validate_jwt_issuer`` reads."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    iss: str | None = None
 
 
 class OAuthSecurityError(Exception):
@@ -473,13 +515,11 @@ async def introspect_token(
     client_id: str | None = None,
     client_secret: str | None = None,
     timeout: int = 10,
-) -> dict[str, Any] | None:
+) -> TokenIntrospectionResponse | None:
     """Introspect an OAuth token per RFC 7662.
 
-    Returns the introspection response dict (with an active field), or None
-    if introspection failed. Stays dict[str, Any]: RFC 7662 fixes only
-    active and lets the authorization server add any claims it likes, so the
-    body is an unmodelled provider payload (Type Safety item 8).
+    Returns the introspection response (with an active field), or None
+    if introspection failed.
     """
     log.set(
         operation="introspect_token",
@@ -519,8 +559,8 @@ async def introspect_token(
             )
 
             if response.status_code == 200:
-                result: dict[str, Any] = response.json()
-                log.debug(f"{LogTag.MCP} Token introspection result", active=result.get("active"))
+                result = TokenIntrospectionResponse.model_validate(response.json())
+                log.debug(f"{LogTag.MCP} Token introspection result", active=result.active)
                 return result
 
             log.warning(
@@ -556,17 +596,17 @@ def parse_oauth_error_response(response: httpx.Response) -> OAuthErrorResponse:
 
     try:
         if _CONTENT_TYPE_JSON in content_type:
-            data = response.json()
-            result["error"] = data.get("error", "unknown_error")
-            result["error_description"] = data.get("error_description")
-            result["error_uri"] = data.get("error_uri")
+            body = _OAuthErrorBody.model_validate(response.json())
+            result["error"] = body.error if body.error is not None else "unknown_error"
+            result["error_description"] = body.error_description
+            result["error_uri"] = body.error_uri
         else:
             # Try to parse as JSON anyway (some servers don't set content-type)
             try:
-                data = response.json()
-                result["error"] = data.get("error", "unknown_error")
-                result["error_description"] = data.get("error_description")
-                result["error_uri"] = data.get("error_uri")
+                body = _OAuthErrorBody.model_validate(response.json())
+                result["error"] = body.error if body.error is not None else "unknown_error"
+                result["error_description"] = body.error_description
+                result["error_uri"] = body.error_uri
             except Exception:
                 # Fall back to raw text
                 result["error_description"] = response.text[:500]  # Truncate long errors
@@ -642,9 +682,7 @@ def validate_jwt_issuer(
             payload_b64 += "=" * padding
 
         payload_bytes = base64.urlsafe_b64decode(payload_b64)
-        payload = json.loads(payload_bytes)
-
-        token_issuer = payload.get("iss")
+        token_issuer = _JwtClaims.model_validate(json.loads(payload_bytes)).iss
 
         # Normalize URLs by removing trailing slashes for comparison
         # Per OAuth 2.0 spec, issuer URLs should be compared case-sensitively

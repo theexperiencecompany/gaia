@@ -114,11 +114,6 @@ class BotService:
 
         channel_id=None means the session is a DM.
         """
-        # Normalize user dict: support both raw MongoDB docs (_id) and
-        # pre-formatted dicts (user_id) so create_conversation_service works
-        if not user.get("user_id") and user.get("_id"):
-            user = {**user, "user_id": str(user["_id"])}
-
         if is_dm:
             await BotService._absorb_channel_keyed_dm(platform, platform_user_id, channel_id)
             channel_id = None
@@ -144,7 +139,7 @@ class BotService:
         # The conversation doc may be missing (fresh session, or deleted from the
         # web UI / lost to a race) — (re)create it with the SAME conversation_id
         # stored on the session, never a new one, so the thread can't fork.
-        if await conversation_repository.exists(conversation_id, user_id=user.get("user_id", "")):
+        if await conversation_repository.exists(conversation_id, user_id=user.user_id):
             log.set(
                 bot={
                     "platform": platform,
@@ -196,18 +191,18 @@ class BotService:
     @staticmethod
     async def load_conversation_history(
         conversation_id: str, user_id: str, limit: int = 20
-    ) -> list[dict]:
-        """Return up to limit recent messages as role/content dicts."""
+    ) -> list[MessageDict]:
+        """Return up to limit recent messages as role/content dicts, oldest first."""
         conversation = await conversation_repository.get(conversation_id, user_id=user_id)
         if conversation is None or not conversation.messages:
             return []
 
-        history = []
+        history: list[MessageDict] = []
         for msg in conversation.messages[-limit:]:
             if msg.type == "user":
-                history.append({"role": "user", "content": msg.response or ""})
+                history.append(MessageDict(role="user", content=msg.response or ""))
             elif msg.type == "bot":
-                history.append({"role": "assistant", "content": msg.response or ""})
+                history.append(MessageDict(role="assistant", content=msg.response or ""))
         return history
 
 
@@ -215,11 +210,8 @@ async def build_bot_message_request(
     body: BotChatRequest, conversation_id: str, user_id: str
 ) -> MessageRequestWithHistory:
     """Load conversation history and append the incoming turn, ready for the agent."""
-    raw_history = await BotService.load_conversation_history(conversation_id, user_id)
-    raw_history.append({"role": "user", "content": body.message})
-    history: list[MessageDict] = [
-        MessageDict(role=m["role"], content=m["content"]) for m in raw_history
-    ]
+    history = await BotService.load_conversation_history(conversation_id, user_id)
+    history.append(MessageDict(role="user", content=body.message))
     return MessageRequestWithHistory(
         message=body.message,
         conversation_id=conversation_id,

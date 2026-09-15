@@ -4,6 +4,12 @@ from typing import Any
 
 import pytest
 
+from app.models.integrations.notion_blocks import (
+    NotionAnnotations,
+    NotionBlock,
+    NotionIcon,
+    NotionRichText,
+)
 from app.utils.notion_md import (
     _add_tab_space,
     _apply_annotations,
@@ -28,11 +34,31 @@ from app.utils.notion_md import (
     _underline,
     block_to_markdown,
     blocks_to_markdown,
-    extract_plain_text,
     markdown_to_notion_blocks,
     rich_text_to_markdown,
-    simplify_block,
 )
+
+
+def _block(raw: dict[str, Any]) -> NotionBlock:
+    return NotionBlock.model_validate(raw)
+
+
+def _blocks(raw: list[dict[str, Any]]) -> list[NotionBlock]:
+    return [_block(block) for block in raw]
+
+
+def _rich_text(raw: list[dict[str, Any]]) -> list[NotionRichText]:
+    return [NotionRichText.model_validate(item) for item in raw]
+
+
+def _icon(raw: dict[str, Any] | None) -> NotionIcon | None:
+    return None if raw is None else NotionIcon.model_validate(raw)
+
+
+def _md_blocks(markdown: str) -> list[dict[str, Any]]:
+    """Return markdown_to_notion_blocks output as the dicts the Notion tool sends Composio."""
+    return [block.model_dump() for block in markdown_to_notion_blocks(markdown)]
+
 
 # =============================================================================
 # Helper Formatters
@@ -256,40 +282,40 @@ class TestToggle:
 class TestCallout:
     def test_with_emoji_icon(self) -> None:
         icon = {"type": "emoji", "emoji": "💡"}
-        result = _callout("Some text", icon)
+        result = _callout("Some text", _icon(icon))
         assert result == "> 💡 Some text"
 
     def test_without_icon(self) -> None:
-        result = _callout("Some text", None)
+        result = _callout("Some text", _icon(None))
         assert result == "> Some text"
 
     def test_with_non_emoji_icon(self) -> None:
         icon = {"type": "file", "file": {"url": "https://example.com/icon.png"}}
-        result = _callout("Some text", icon)
+        result = _callout("Some text", _icon(icon))
         assert result == "> Some text"
 
     def test_with_empty_icon_dict(self) -> None:
-        result = _callout("Some text", {})
+        result = _callout("Some text", _icon({}))
         assert result == "> Some text"
 
     def test_with_heading_in_text(self) -> None:
         icon = {"type": "emoji", "emoji": "⚠️"}
-        result = _callout("## Warning Title", icon)
+        result = _callout("## Warning Title", _icon(icon))
         assert result == "> ## ⚠️ Warning Title"
 
     def test_with_heading_no_icon(self) -> None:
-        result = _callout("# Title", None)
+        result = _callout("# Title", _icon(None))
         assert result == "> # Title"
 
     def test_multiline_callout(self) -> None:
         icon = {"type": "emoji", "emoji": "📝"}
-        result = _callout("Line 1\nLine 2", icon)
+        result = _callout("Line 1\nLine 2", _icon(icon))
         assert result == "> 📝 Line 1\n> Line 2"
 
     def test_heading_with_no_emoji_in_icon(self) -> None:
         """Icon type is emoji but emoji key is missing."""
         icon = {"type": "emoji"}
-        result = _callout("## Heading", icon)
+        result = _callout("## Heading", _icon(icon))
         # emoji is "" so formatted_emoji is "", heading match fires
         assert result == "> ## Heading"
 
@@ -309,68 +335,76 @@ class TestImage:
 
 class TestApplyAnnotations:
     def test_code_annotation(self) -> None:
-        result = _apply_annotations("hello", {"code": True})
+        result = _apply_annotations("hello", NotionAnnotations.model_validate({"code": True}))
         assert result == "`hello`"
 
     def test_bold_annotation(self) -> None:
-        result = _apply_annotations("hello", {"bold": True})
+        result = _apply_annotations("hello", NotionAnnotations.model_validate({"bold": True}))
         assert result == "**hello**"
 
     def test_italic_annotation(self) -> None:
-        result = _apply_annotations("hello", {"italic": True})
+        result = _apply_annotations("hello", NotionAnnotations.model_validate({"italic": True}))
         assert result == "_hello_"
 
     def test_strikethrough_annotation(self) -> None:
-        result = _apply_annotations("hello", {"strikethrough": True})
+        result = _apply_annotations(
+            "hello", NotionAnnotations.model_validate({"strikethrough": True})
+        )
         assert result == "~~hello~~"
 
     def test_underline_annotation(self) -> None:
-        result = _apply_annotations("hello", {"underline": True})
+        result = _apply_annotations("hello", NotionAnnotations.model_validate({"underline": True}))
         assert result == "<u>hello</u>"
 
     def test_multiple_annotations(self) -> None:
-        result = _apply_annotations("hello", {"bold": True, "italic": True})
+        result = _apply_annotations(
+            "hello", NotionAnnotations.model_validate({"bold": True, "italic": True})
+        )
         assert result == "_**hello**_"
 
     def test_all_annotations(self) -> None:
         result = _apply_annotations(
             "hello",
-            {
-                "code": True,
-                "bold": True,
-                "italic": True,
-                "strikethrough": True,
-                "underline": True,
-            },
+            NotionAnnotations.model_validate(
+                {
+                    "code": True,
+                    "bold": True,
+                    "italic": True,
+                    "strikethrough": True,
+                    "underline": True,
+                }
+            ),
         )
         assert result == "<u>~~_**`hello`**_~~</u>"
 
     def test_empty_text(self) -> None:
-        result = _apply_annotations("", {"bold": True})
+        result = _apply_annotations("", NotionAnnotations.model_validate({"bold": True}))
         assert result == ""
 
     def test_whitespace_only(self) -> None:
-        result = _apply_annotations("   ", {"bold": True})
+        result = _apply_annotations("   ", NotionAnnotations.model_validate({"bold": True}))
         assert result == "   "
 
     def test_preserves_leading_space(self) -> None:
-        result = _apply_annotations("  hello", {"bold": True})
+        result = _apply_annotations("  hello", NotionAnnotations.model_validate({"bold": True}))
         assert result == "  **hello**"
 
     def test_preserves_trailing_space(self) -> None:
-        result = _apply_annotations("hello  ", {"bold": True})
+        result = _apply_annotations("hello  ", NotionAnnotations.model_validate({"bold": True}))
         assert result == "**hello**  "
 
     def test_preserves_both_spaces(self) -> None:
-        result = _apply_annotations("  hello  ", {"bold": True})
+        result = _apply_annotations("  hello  ", NotionAnnotations.model_validate({"bold": True}))
         assert result == "  **hello**  "
 
     def test_no_annotations(self) -> None:
-        result = _apply_annotations("hello", {})
+        result = _apply_annotations("hello", NotionAnnotations.model_validate({}))
         assert result == "hello"
 
     def test_false_annotations(self) -> None:
-        result = _apply_annotations("hello", {"bold": False, "italic": False})
+        result = _apply_annotations(
+            "hello", NotionAnnotations.model_validate({"bold": False, "italic": False})
+        )
         assert result == "hello"
 
 
@@ -385,15 +419,15 @@ class TestRichTextToMarkdown:
 
     def test_plain_text(self) -> None:
         rich_text = [{"type": "text", "plain_text": "Hello world", "annotations": {}}]
-        assert rich_text_to_markdown(rich_text) == "Hello world"
+        assert rich_text_to_markdown(_rich_text(rich_text)) == "Hello world"
 
     def test_equation_type(self) -> None:
         rich_text = [{"type": "equation", "equation": {"expression": "x^2 + y^2 = z^2"}}]
-        assert rich_text_to_markdown(rich_text) == "$x^2 + y^2 = z^2$"
+        assert rich_text_to_markdown(_rich_text(rich_text)) == "$x^2 + y^2 = z^2$"
 
     def test_equation_missing_expression(self) -> None:
         rich_text = [{"type": "equation", "equation": {}}]
-        assert rich_text_to_markdown(rich_text) == "$$"
+        assert rich_text_to_markdown(_rich_text(rich_text)) == "$$"
 
     def test_text_with_bold_annotation(self) -> None:
         rich_text = [
@@ -403,7 +437,7 @@ class TestRichTextToMarkdown:
                 "annotations": {"bold": True},
             }
         ]
-        assert rich_text_to_markdown(rich_text) == "**bold text**"
+        assert rich_text_to_markdown(_rich_text(rich_text)) == "**bold text**"
 
     def test_text_with_href(self) -> None:
         rich_text = [
@@ -414,7 +448,7 @@ class TestRichTextToMarkdown:
                 "href": "https://example.com",
             }
         ]
-        assert rich_text_to_markdown(rich_text) == "[Click here](https://example.com)"
+        assert rich_text_to_markdown(_rich_text(rich_text)) == "[Click here](https://example.com)"
 
     def test_bold_text_with_href(self) -> None:
         rich_text = [
@@ -425,7 +459,7 @@ class TestRichTextToMarkdown:
                 "href": "https://example.com",
             }
         ]
-        assert rich_text_to_markdown(rich_text) == "[**Link**](https://example.com)"
+        assert rich_text_to_markdown(_rich_text(rich_text)) == "[**Link**](https://example.com)"
 
     def test_multiple_rich_text_segments(self) -> None:
         rich_text = [
@@ -436,24 +470,24 @@ class TestRichTextToMarkdown:
                 "annotations": {"bold": True},
             },
         ]
-        assert rich_text_to_markdown(rich_text) == "Hello **world**"
+        assert rich_text_to_markdown(_rich_text(rich_text)) == "Hello **world**"
 
     def test_mixed_equations_and_text(self) -> None:
         rich_text = [
             {"type": "text", "plain_text": "The formula is ", "annotations": {}},
             {"type": "equation", "equation": {"expression": "E=mc^2"}},
         ]
-        assert rich_text_to_markdown(rich_text) == "The formula is $E=mc^2$"
+        assert rich_text_to_markdown(_rich_text(rich_text)) == "The formula is $E=mc^2$"
 
     def test_missing_plain_text_key(self) -> None:
         """When plain_text key is missing, defaults to empty string."""
         rich_text = [{"type": "text", "annotations": {}}]
-        assert rich_text_to_markdown(rich_text) == ""
+        assert rich_text_to_markdown(_rich_text(rich_text)) == ""
 
     def test_missing_annotations_key(self) -> None:
         """When annotations key is missing, defaults to empty dict."""
         rich_text = [{"type": "text", "plain_text": "hello"}]
-        assert rich_text_to_markdown(rich_text) == "hello"
+        assert rich_text_to_markdown(_rich_text(rich_text)) == "hello"
 
 
 # =============================================================================
@@ -462,11 +496,8 @@ class TestRichTextToMarkdown:
 
 
 class TestBlockToMarkdown:
-    def test_not_a_dict(self) -> None:
-        assert block_to_markdown("not a dict") == ""  # type: ignore[arg-type]  # malformed input exercises the defensive branch
-
     def test_missing_type(self) -> None:
-        assert block_to_markdown({"data": "something"}) == ""
+        assert block_to_markdown(_block({"data": "something"})) == ""
 
     def test_paragraph(self) -> None:
         block = {
@@ -475,7 +506,7 @@ class TestBlockToMarkdown:
                 "rich_text": [{"type": "text", "plain_text": "Hello world", "annotations": {}}]
             },
         }
-        assert block_to_markdown(block) == "Hello world"
+        assert block_to_markdown(_block(block)) == "Hello world"
 
     def test_heading_1(self) -> None:
         block = {
@@ -484,7 +515,7 @@ class TestBlockToMarkdown:
                 "rich_text": [{"type": "text", "plain_text": "Title", "annotations": {}}]
             },
         }
-        assert block_to_markdown(block) == "# Title"
+        assert block_to_markdown(_block(block)) == "# Title"
 
     def test_heading_2(self) -> None:
         block = {
@@ -493,7 +524,7 @@ class TestBlockToMarkdown:
                 "rich_text": [{"type": "text", "plain_text": "Subtitle", "annotations": {}}]
             },
         }
-        assert block_to_markdown(block) == "## Subtitle"
+        assert block_to_markdown(_block(block)) == "## Subtitle"
 
     def test_heading_3(self) -> None:
         block = {
@@ -502,7 +533,7 @@ class TestBlockToMarkdown:
                 "rich_text": [{"type": "text", "plain_text": "Section", "annotations": {}}]
             },
         }
-        assert block_to_markdown(block) == "### Section"
+        assert block_to_markdown(_block(block)) == "### Section"
 
     def test_code_block(self) -> None:
         block = {
@@ -518,7 +549,7 @@ class TestBlockToMarkdown:
                 ],
             },
         }
-        assert block_to_markdown(block) == "```python\nprint('hi')\n```"
+        assert block_to_markdown(_block(block)) == "```python\nprint('hi')\n```"
 
     def test_quote(self) -> None:
         block = {
@@ -533,7 +564,7 @@ class TestBlockToMarkdown:
                 ]
             },
         }
-        assert block_to_markdown(block) == "> A wise saying"
+        assert block_to_markdown(_block(block)) == "> A wise saying"
 
     def test_callout_with_icon(self) -> None:
         block = {
@@ -543,7 +574,7 @@ class TestBlockToMarkdown:
                 "icon": {"type": "emoji", "emoji": "⚠️"},
             },
         }
-        assert block_to_markdown(block) == "> ⚠️ Important"
+        assert block_to_markdown(_block(block)) == "> ⚠️ Important"
 
     def test_callout_without_icon(self) -> None:
         block = {
@@ -552,7 +583,7 @@ class TestBlockToMarkdown:
                 "rich_text": [{"type": "text", "plain_text": "Note", "annotations": {}}],
             },
         }
-        assert block_to_markdown(block) == "> Note"
+        assert block_to_markdown(_block(block)) == "> Note"
 
     def test_bulleted_list_item(self) -> None:
         block = {
@@ -561,17 +592,16 @@ class TestBlockToMarkdown:
                 "rich_text": [{"type": "text", "plain_text": "Item 1", "annotations": {}}]
             },
         }
-        assert block_to_markdown(block) == "- Item 1"
+        assert block_to_markdown(_block(block)) == "- Item 1"
 
     def test_numbered_list_item(self) -> None:
         block = {
             "type": "numbered_list_item",
             "numbered_list_item": {
-                "number": 3,
                 "rich_text": [{"type": "text", "plain_text": "Third item", "annotations": {}}],
             },
         }
-        assert block_to_markdown(block) == "3. Third item"
+        assert block_to_markdown(_block(block), list_number=3) == "3. Third item"
 
     def test_numbered_list_item_no_number(self) -> None:
         block = {
@@ -581,7 +611,7 @@ class TestBlockToMarkdown:
             },
         }
         # number is None so _bullet returns bulleted style
-        assert block_to_markdown(block) == "- Item"
+        assert block_to_markdown(_block(block)) == "- Item"
 
     def test_to_do_checked(self) -> None:
         block = {
@@ -591,7 +621,7 @@ class TestBlockToMarkdown:
                 "rich_text": [{"type": "text", "plain_text": "Done task", "annotations": {}}],
             },
         }
-        assert block_to_markdown(block) == "- [x] Done task"
+        assert block_to_markdown(_block(block)) == "- [x] Done task"
 
     def test_to_do_unchecked(self) -> None:
         block = {
@@ -601,7 +631,7 @@ class TestBlockToMarkdown:
                 "rich_text": [{"type": "text", "plain_text": "Pending", "annotations": {}}],
             },
         }
-        assert block_to_markdown(block) == "- [ ] Pending"
+        assert block_to_markdown(_block(block)) == "- [ ] Pending"
 
     def test_toggle(self) -> None:
         block = {
@@ -610,7 +640,7 @@ class TestBlockToMarkdown:
                 "rich_text": [{"type": "text", "plain_text": "Toggle text", "annotations": {}}]
             },
         }
-        result = block_to_markdown(block)
+        result = block_to_markdown(_block(block))
         assert "<details><summary>Toggle text</summary>" in result
 
     def test_image_external(self) -> None:
@@ -622,7 +652,7 @@ class TestBlockToMarkdown:
                 "caption": [],
             },
         }
-        assert block_to_markdown(block) == "![img.png](https://example.com/img.png)"
+        assert block_to_markdown(_block(block)) == "![img.png](https://example.com/img.png)"
 
     def test_image_file(self) -> None:
         block = {
@@ -633,7 +663,7 @@ class TestBlockToMarkdown:
                 "caption": [],
             },
         }
-        result = block_to_markdown(block)
+        result = block_to_markdown(_block(block))
         assert result == "![photo.jpg](https://s3.amazonaws.com/photo.jpg)"
 
     def test_image_with_caption(self) -> None:
@@ -645,18 +675,36 @@ class TestBlockToMarkdown:
                 "caption": [{"plain_text": "My caption"}],
             },
         }
-        assert block_to_markdown(block) == "![My caption](https://example.com/img.png)"
+        assert block_to_markdown(_block(block)) == "![My caption](https://example.com/img.png)"
+
+    def test_image_caption_joins_every_rich_text_part(self) -> None:
+        block = {
+            "type": "image",
+            "image": {
+                "type": "external",
+                "external": {"url": "https://example.com/img.png"},
+                "caption": [{"plain_text": "My "}, {"plain_text": "caption"}],
+            },
+        }
+        assert block_to_markdown(_block(block)) == "![My caption](https://example.com/img.png)"
+
+    def test_image_with_a_slashless_link_is_titled_image(self) -> None:
+        block = {
+            "type": "image",
+            "image": {"type": "external", "external": {"url": "img.png"}, "caption": []},
+        }
+        assert block_to_markdown(_block(block)) == "![image](img.png)"
 
     def test_divider(self) -> None:
         block = {"type": "divider", "divider": {}}
-        assert block_to_markdown(block) == "---"
+        assert block_to_markdown(_block(block)) == "---"
 
     def test_equation_block(self) -> None:
         block = {
             "type": "equation",
             "equation": {"expression": "a^2 + b^2 = c^2"},
         }
-        assert block_to_markdown(block) == "$$\na^2 + b^2 = c^2\n$$"
+        assert block_to_markdown(_block(block)) == "$$\na^2 + b^2 = c^2\n$$"
 
     def test_table_row(self) -> None:
         block = {
@@ -668,11 +716,11 @@ class TestBlockToMarkdown:
                 ]
             },
         }
-        assert block_to_markdown(block) == "| A | B |"
+        assert block_to_markdown(_block(block)) == "| A | B |"
 
     def test_table_type_returns_placeholder(self) -> None:
         block = {"type": "table", "table": {}}
-        assert block_to_markdown(block) == "[TABLE - see children for rows]"
+        assert block_to_markdown(_block(block)) == "[TABLE - see children for rows]"
 
     def test_video_external(self) -> None:
         block = {
@@ -683,7 +731,7 @@ class TestBlockToMarkdown:
                 "caption": [],
             },
         }
-        result = block_to_markdown(block)
+        result = block_to_markdown(_block(block))
         assert result == "[watch?v=abc](https://youtube.com/watch?v=abc)"
 
     def test_video_with_caption(self) -> None:
@@ -695,11 +743,11 @@ class TestBlockToMarkdown:
                 "caption": [{"plain_text": "My Video"}],
             },
         }
-        assert block_to_markdown(block) == "[My Video](https://youtube.com/v)"
+        assert block_to_markdown(_block(block)) == "[My Video](https://youtube.com/v)"
 
     def test_file_block_empty_content(self) -> None:
         block = {"type": "file", "file": {}}
-        assert block_to_markdown(block) == ""
+        assert block_to_markdown(_block(block)) == ""
 
     def test_pdf_block(self) -> None:
         block = {
@@ -710,70 +758,81 @@ class TestBlockToMarkdown:
                 "caption": [],
             },
         }
-        assert block_to_markdown(block) == "[doc.pdf](https://s3.example.com/doc.pdf)"
+        assert block_to_markdown(_block(block)) == "[doc.pdf](https://s3.example.com/doc.pdf)"
+
+    def test_file_with_a_slashless_link_is_titled_by_its_block_type(self) -> None:
+        block = {
+            "type": "file",
+            "file": {"type": "file", "file": {"url": "doc.pdf"}, "caption": []},
+        }
+        assert block_to_markdown(_block(block)) == "[file](doc.pdf)"
 
     def test_bookmark(self) -> None:
         block = {
             "type": "bookmark",
             "bookmark": {"url": "https://example.com"},
         }
-        assert block_to_markdown(block) == "[bookmark](https://example.com)"
+        assert block_to_markdown(_block(block)) == "[bookmark](https://example.com)"
 
     def test_embed(self) -> None:
         block = {
             "type": "embed",
             "embed": {"url": "https://twitter.com/status/123"},
         }
-        assert block_to_markdown(block) == "[embed](https://twitter.com/status/123)"
+        assert block_to_markdown(_block(block)) == "[embed](https://twitter.com/status/123)"
 
     def test_link_preview(self) -> None:
         block = {
             "type": "link_preview",
             "link_preview": {"url": "https://example.com/preview"},
         }
-        assert block_to_markdown(block) == "[link_preview](https://example.com/preview)"
+        assert block_to_markdown(_block(block)) == "[link_preview](https://example.com/preview)"
 
     def test_link_to_page_page_id(self) -> None:
         block = {
             "type": "link_to_page",
             "link_to_page": {"type": "page_id", "page_id": "abc123"},
         }
-        assert block_to_markdown(block) == "[link_to_page](https://www.notion.so/abc123)"
+        assert block_to_markdown(_block(block)) == "[link_to_page](https://www.notion.so/abc123)"
 
     def test_link_to_page_database_id(self) -> None:
         block = {
             "type": "link_to_page",
             "link_to_page": {"type": "database_id", "database_id": "db456"},
         }
-        assert block_to_markdown(block) == "[link_to_page](https://www.notion.so/db456)"
+        assert block_to_markdown(_block(block)) == "[link_to_page](https://www.notion.so/db456)"
 
     def test_link_to_page_unknown_type(self) -> None:
         block = {
             "type": "link_to_page",
             "link_to_page": {"type": "unknown"},
         }
-        assert block_to_markdown(block) == "[link_to_page]()"
+        assert block_to_markdown(_block(block)) == "[link_to_page]()"
 
     def test_child_page(self) -> None:
         block = {
             "type": "child_page",
             "child_page": {"title": "My Page"},
         }
-        assert block_to_markdown(block) == "## My Page"
+        assert block_to_markdown(_block(block)) == "## My Page"
+
+    def test_child_page_without_title_renders_an_empty_heading(self) -> None:
+        block = {"type": "child_page", "child_page": {}}
+        assert block_to_markdown(_block(block)) == "## "
 
     def test_child_database(self) -> None:
         block = {
             "type": "child_database",
             "child_database": {"title": "My Database"},
         }
-        assert block_to_markdown(block) == "## My Database"
+        assert block_to_markdown(_block(block)) == "## My Database"
 
     def test_child_database_no_title(self) -> None:
         block = {
             "type": "child_database",
             "child_database": {},
         }
-        assert block_to_markdown(block) == "## child_database"
+        assert block_to_markdown(_block(block)) == "## child_database"
 
     def test_unknown_block_type_with_rich_text(self) -> None:
         """Unknown types fall through to the default rich_text extraction."""
@@ -783,11 +842,11 @@ class TestBlockToMarkdown:
                 "rich_text": [{"type": "text", "plain_text": "synced", "annotations": {}}]
             },
         }
-        assert block_to_markdown(block) == "synced"
+        assert block_to_markdown(_block(block)) == "synced"
 
     def test_unknown_block_type_no_rich_text(self) -> None:
         block = {"type": "column_list", "column_list": {}}
-        assert block_to_markdown(block) == ""
+        assert block_to_markdown(_block(block)) == ""
 
 
 # =============================================================================
@@ -808,7 +867,7 @@ class TestBlocksToMarkdown:
                 },
             }
         ]
-        assert blocks_to_markdown(blocks) == "Hello"
+        assert blocks_to_markdown(_blocks(blocks)) == "Hello"
 
     def test_numbered_list_index_tracking(self) -> None:
         blocks = [
@@ -837,7 +896,7 @@ class TestBlocksToMarkdown:
                 },
             },
         ]
-        result = blocks_to_markdown(blocks)
+        result = blocks_to_markdown(_blocks(blocks))
         lines = result.split("\n")
         assert lines[0] == "1. First"
         assert lines[1] == "2. Second"
@@ -854,7 +913,7 @@ class TestBlocksToMarkdown:
                 },
             },
         ]
-        assert blocks_to_markdown(blocks) == "Visible"  # type: ignore[arg-type]  # malformed input exercises the defensive branch
+        assert blocks_to_markdown(_blocks(blocks)) == "Visible"
 
     def test_nesting(self) -> None:
         blocks = [
@@ -879,7 +938,7 @@ class TestBlocksToMarkdown:
                 ],
             }
         ]
-        result = blocks_to_markdown(blocks)
+        result = blocks_to_markdown(_blocks(blocks))
         lines = result.split("\n")
         assert lines[0] == "- Parent"
         assert lines[1] == "\t- Child"
@@ -894,7 +953,7 @@ class TestBlocksToMarkdown:
                 },
             }
         ]
-        result = blocks_to_markdown(blocks, include_block_ids=True)
+        result = blocks_to_markdown(_blocks(blocks), include_block_ids=True)
         lines = result.split("\n")
         assert lines[0] == "<!-- block:block-123 -->"
         assert lines[1] == "Text"
@@ -924,7 +983,7 @@ class TestBlocksToMarkdown:
                 ],
             }
         ]
-        result = blocks_to_markdown(blocks, include_block_ids=True)
+        result = blocks_to_markdown(_blocks(blocks), include_block_ids=True)
         assert "<!-- block:parent-id -->" in result
         assert "\t<!-- block:child-id -->" in result
 
@@ -937,7 +996,7 @@ class TestBlocksToMarkdown:
                 },
             }
         ]
-        result = blocks_to_markdown(blocks, include_block_ids=True)
+        result = blocks_to_markdown(_blocks(blocks), include_block_ids=True)
         assert "<!-- block:" not in result
         assert result == "No ID"
 
@@ -949,7 +1008,7 @@ class TestBlocksToMarkdown:
                 "paragraph": {"rich_text": []},
             }
         ]
-        assert blocks_to_markdown(blocks) == ""
+        assert blocks_to_markdown(_blocks(blocks)) == ""
 
     def test_multiple_block_types(self) -> None:
         blocks = [
@@ -967,7 +1026,7 @@ class TestBlocksToMarkdown:
             },
             {"type": "divider", "divider": {}},
         ]
-        result = blocks_to_markdown(blocks)
+        result = blocks_to_markdown(_blocks(blocks))
         lines = result.split("\n")
         assert lines[0] == "# Title"
         assert lines[1] == "Body text"
@@ -979,260 +1038,6 @@ class TestBlocksToMarkdown:
 # =============================================================================
 
 
-class TestSimplifyBlock:
-    def test_paragraph(self) -> None:
-        block = {
-            "id": "abc",
-            "type": "paragraph",
-            "paragraph": {
-                "rich_text": [{"plain_text": "Hello world"}],
-            },
-        }
-        result = simplify_block(block)
-        assert result["id"] == "abc"
-        assert result["type"] == "paragraph"
-        assert result["text"] == "Hello world"
-
-    def test_no_rich_text(self) -> None:
-        block = {"id": "abc", "type": "divider", "divider": {}}
-        result = simplify_block(block)
-        assert "text" not in result
-
-    def test_child_page(self) -> None:
-        block = {
-            "id": "p1",
-            "type": "child_page",
-            "child_page": {"title": "My Page"},
-        }
-        result = simplify_block(block)
-        assert result["title"] == "My Page"
-
-    def test_child_database(self) -> None:
-        block = {
-            "id": "d1",
-            "type": "child_database",
-            "child_database": {"title": "My DB"},
-        }
-        result = simplify_block(block)
-        assert result["title"] == "My DB"
-
-    def test_to_do(self) -> None:
-        block = {
-            "id": "t1",
-            "type": "to_do",
-            "to_do": {
-                "checked": True,
-                "rich_text": [{"plain_text": "Task"}],
-            },
-        }
-        result = simplify_block(block)
-        assert result["checked"] is True
-        assert result["text"] == "Task"
-
-    def test_code(self) -> None:
-        block = {
-            "id": "c1",
-            "type": "code",
-            "code": {
-                "language": "python",
-                "rich_text": [{"plain_text": "x = 1"}],
-            },
-        }
-        result = simplify_block(block)
-        assert result["language"] == "python"
-        assert result["text"] == "x = 1"
-
-    def test_image_external(self) -> None:
-        block = {
-            "id": "i1",
-            "type": "image",
-            "image": {
-                "type": "external",
-                "external": {"url": "https://example.com/img.png"},
-                "caption": [{"plain_text": "My image"}],
-            },
-        }
-        result = simplify_block(block)
-        assert result["url"] == "https://example.com/img.png"
-        assert result["caption"] == "My image"
-
-    def test_image_file(self) -> None:
-        block = {
-            "id": "i2",
-            "type": "image",
-            "image": {
-                "type": "file",
-                "file": {"url": "https://s3.example.com/img.png"},
-                "caption": [],
-            },
-        }
-        result = simplify_block(block)
-        assert result["url"] == "https://s3.example.com/img.png"
-        assert result["caption"] == ""
-
-    def test_video(self) -> None:
-        block = {
-            "id": "v1",
-            "type": "video",
-            "video": {
-                "type": "external",
-                "external": {"url": "https://youtube.com/v"},
-                "caption": [],
-            },
-        }
-        result = simplify_block(block)
-        assert result["url"] == "https://youtube.com/v"
-
-    def test_bookmark(self) -> None:
-        block = {
-            "id": "b1",
-            "type": "bookmark",
-            "bookmark": {"url": "https://example.com"},
-        }
-        result = simplify_block(block)
-        assert result["url"] == "https://example.com"
-
-    def test_embed(self) -> None:
-        block = {
-            "id": "e1",
-            "type": "embed",
-            "embed": {"url": "https://embed.example.com"},
-        }
-        result = simplify_block(block)
-        assert result["url"] == "https://embed.example.com"
-
-    def test_has_children_flag(self) -> None:
-        block = {
-            "id": "p1",
-            "type": "paragraph",
-            "paragraph": {"rich_text": [{"plain_text": "text"}]},
-            "has_children": True,
-        }
-        result = simplify_block(block)
-        assert result["has_children"] is True
-
-    def test_no_has_children_flag(self) -> None:
-        block = {
-            "id": "p1",
-            "type": "paragraph",
-            "paragraph": {"rich_text": [{"plain_text": "text"}]},
-        }
-        result = simplify_block(block)
-        assert "has_children" not in result
-
-    def test_children_recursive(self) -> None:
-        block = {
-            "id": "parent",
-            "type": "bulleted_list_item",
-            "bulleted_list_item": {"rich_text": [{"plain_text": "Parent"}]},
-            "children": [
-                {
-                    "id": "child",
-                    "type": "paragraph",
-                    "paragraph": {"rich_text": [{"plain_text": "Child"}]},
-                }
-            ],
-        }
-        result = simplify_block(block)
-        assert len(result["children"]) == 1
-        assert result["children"][0]["text"] == "Child"
-
-    def test_missing_type(self) -> None:
-        block = {"id": "x"}
-        result = simplify_block(block)
-        assert result["type"] == ""
-
-    def test_text_key_fallback(self) -> None:
-        """Some blocks use 'text' instead of 'rich_text'."""
-        block = {
-            "id": "t1",
-            "type": "custom",
-            "custom": {"text": [{"plain_text": "via text key"}]},
-        }
-        result = simplify_block(block)
-        assert result["text"] == "via text key"
-
-    def test_multiple_rich_text_items_concatenated(self) -> None:
-        block = {
-            "id": "m1",
-            "type": "paragraph",
-            "paragraph": {
-                "rich_text": [
-                    {"plain_text": "Hello "},
-                    {"plain_text": "World"},
-                ]
-            },
-        }
-        result = simplify_block(block)
-        assert result["text"] == "Hello World"
-
-
-# =============================================================================
-# Extract Plain Text
-# =============================================================================
-
-
-class TestExtractPlainText:
-    def test_empty(self) -> None:
-        assert extract_plain_text([]) == ""
-
-    def test_single_block(self) -> None:
-        blocks = [
-            {
-                "type": "paragraph",
-                "paragraph": {"rich_text": [{"plain_text": "Hello"}]},
-            }
-        ]
-        assert extract_plain_text(blocks) == "Hello"
-
-    def test_multiple_blocks(self) -> None:
-        blocks = [
-            {
-                "type": "paragraph",
-                "paragraph": {"rich_text": [{"plain_text": "Line 1"}]},
-            },
-            {
-                "type": "paragraph",
-                "paragraph": {"rich_text": [{"plain_text": "Line 2"}]},
-            },
-        ]
-        assert extract_plain_text(blocks) == "Line 1\nLine 2"
-
-    def test_nested_children(self) -> None:
-        blocks = [
-            {
-                "type": "bulleted_list_item",
-                "bulleted_list_item": {"rich_text": [{"plain_text": "Parent"}]},
-                "children": [
-                    {
-                        "type": "paragraph",
-                        "paragraph": {"rich_text": [{"plain_text": "Child"}]},
-                    }
-                ],
-            }
-        ]
-        assert extract_plain_text(blocks) == "Parent\nChild"
-
-    def test_blocks_without_text(self) -> None:
-        blocks = [
-            {"type": "divider", "divider": {}},
-            {
-                "type": "paragraph",
-                "paragraph": {"rich_text": [{"plain_text": "After divider"}]},
-            },
-        ]
-        assert extract_plain_text(blocks) == "After divider"
-
-    def test_text_key_fallback(self) -> None:
-        blocks = [
-            {
-                "type": "custom",
-                "custom": {"text": [{"plain_text": "From text key"}]},
-            }
-        ]
-        assert extract_plain_text(blocks) == "From text key"
-
-
 # =============================================================================
 # Markdown to Notion Blocks
 # =============================================================================
@@ -1240,38 +1045,38 @@ class TestExtractPlainText:
 
 class TestMarkdownToNotionBlocks:
     def test_empty_string(self) -> None:
-        assert markdown_to_notion_blocks("") == []
+        assert _md_blocks("") == []
 
     def test_blank_lines_only(self) -> None:
-        assert markdown_to_notion_blocks("\n\n\n") == []
+        assert _md_blocks("\n\n\n") == []
 
     def test_paragraph(self) -> None:
-        result = markdown_to_notion_blocks("Hello world")
+        result = _md_blocks("Hello world")
         assert len(result) == 1
         assert result[0] == {"block_property": "paragraph", "content": "Hello world"}
 
     def test_heading_1(self) -> None:
-        result = markdown_to_notion_blocks("# Title")
+        result = _md_blocks("# Title")
         assert result[0] == {"block_property": "heading_1", "content": "Title"}
 
     def test_heading_2(self) -> None:
-        result = markdown_to_notion_blocks("## Subtitle")
+        result = _md_blocks("## Subtitle")
         assert result[0] == {"block_property": "heading_2", "content": "Subtitle"}
 
     def test_heading_3(self) -> None:
-        result = markdown_to_notion_blocks("### Section")
+        result = _md_blocks("### Section")
         assert result[0] == {"block_property": "heading_3", "content": "Section"}
 
     def test_heading_order_matters(self) -> None:
         """### must be checked before ## which must be checked before #."""
-        result = markdown_to_notion_blocks("### H3\n## H2\n# H1")
+        result = _md_blocks("### H3\n## H2\n# H1")
         assert result[0]["block_property"] == "heading_3"
         assert result[1]["block_property"] == "heading_2"
         assert result[2]["block_property"] == "heading_1"
 
     def test_code_block_with_language(self) -> None:
         md = "```python\nprint('hi')\n```"
-        result = markdown_to_notion_blocks(md)
+        result = _md_blocks(md)
         assert len(result) == 1
         assert result[0]["type"] == "code"
         assert result[0]["code"]["language"] == "python"
@@ -1279,46 +1084,46 @@ class TestMarkdownToNotionBlocks:
 
     def test_code_block_without_language(self) -> None:
         md = "```\nsome code\n```"
-        result = markdown_to_notion_blocks(md)
+        result = _md_blocks(md)
         assert result[0]["code"]["language"] == "plain text"
 
     def test_code_block_multiline(self) -> None:
         md = "```js\nline1\nline2\nline3\n```"
-        result = markdown_to_notion_blocks(md)
+        result = _md_blocks(md)
         assert result[0]["code"]["rich_text"][0]["text"]["content"] == "line1\nline2\nline3"
 
     def test_quote(self) -> None:
-        result = markdown_to_notion_blocks("> A quote")
+        result = _md_blocks("> A quote")
         assert result[0] == {"block_property": "quote", "content": "A quote"}
 
     def test_todo_unchecked(self) -> None:
-        result = markdown_to_notion_blocks("- [ ] My task")
+        result = _md_blocks("- [ ] My task")
         assert result[0] == {"block_property": "to_do", "content": "My task"}
 
     def test_todo_checked_lowercase(self) -> None:
-        result = markdown_to_notion_blocks("- [x] Done task")
+        result = _md_blocks("- [x] Done task")
         assert result[0] == {"block_property": "to_do", "content": "Done task"}
 
     def test_todo_checked_uppercase(self) -> None:
-        result = markdown_to_notion_blocks("- [X] Done task")
+        result = _md_blocks("- [X] Done task")
         assert result[0] == {"block_property": "to_do", "content": "Done task"}
 
     def test_bullet_dash(self) -> None:
-        result = markdown_to_notion_blocks("- Item one")
+        result = _md_blocks("- Item one")
         assert result[0] == {
             "block_property": "bulleted_list_item",
             "content": "Item one",
         }
 
     def test_bullet_asterisk(self) -> None:
-        result = markdown_to_notion_blocks("* Item one")
+        result = _md_blocks("* Item one")
         assert result[0] == {
             "block_property": "bulleted_list_item",
             "content": "Item one",
         }
 
     def test_numbered_list(self) -> None:
-        result = markdown_to_notion_blocks("1. First\n2. Second")
+        result = _md_blocks("1. First\n2. Second")
         assert result[0] == {
             "block_property": "numbered_list_item",
             "content": "First",
@@ -1333,37 +1138,57 @@ class TestMarkdownToNotionBlocks:
         ["---", "***", "___"],
     )
     def test_divider(self, divider_md: str) -> None:
-        result = markdown_to_notion_blocks(divider_md)
+        result = _md_blocks(divider_md)
         assert len(result) == 1
         assert result[0]["block_property"] == "paragraph"
         assert result[0]["content"] == "───"
 
-    def test_callout_github_alert_style_matched_as_quote(self) -> None:
-        """The > prefix matches the quote rule first, so GitHub-style callouts return as quotes."""
-        result = markdown_to_notion_blocks("> [!NOTE] Important info")
+    def test_callout_github_alert_style_is_a_callout(self) -> None:
+        result = _md_blocks("> [!NOTE] Important info")
         assert result[0] == {
-            "block_property": "quote",
+            "block_property": "callout",
             "content": "[!NOTE] Important info",
         }
 
     def test_table_simple(self) -> None:
         md = "| A | B |\n| --- | --- |\n| 1 | 2 |"
-        result = markdown_to_notion_blocks(md)
+        result = _md_blocks(md)
         assert len(result) == 1
         assert result[0]["type"] == "table"
         assert result[0]["table_width"] == 2
         assert result[0]["has_column_header"] is True
         assert len(result[0]["rows"]) == 2  # header row + 1 data row
 
+    def test_table_keeps_every_consecutive_row_and_the_line_after_it(self) -> None:
+        result = _md_blocks("| A |\n| --- |\n| 1 |\n| 2 |\nAfter")
+        rows = [[cell[0]["text"]["content"] for cell in row["cells"]] for row in result[0]["rows"]]
+        assert rows == [["A"], ["1"], ["2"]]
+        assert result[1] == {"block_property": "paragraph", "content": "After"}
+
+    def test_a_separator_with_doubled_edge_pipes_and_empty_cells_is_dropped(self) -> None:
+        result = _md_blocks("| A | B |\n||---| --- ||\n| 1 | 2 |")
+        rows = [[cell[0]["text"]["content"] for cell in row["cells"]] for row in result[0]["rows"]]
+        assert rows == [["A", "B"], ["1", "2"]]
+
+    def test_table_cells_at_the_row_edges_keep_their_text(self) -> None:
+        result = _md_blocks("|X|Y|\n|---|---|\n|X|X|")
+        rows = [[cell[0]["text"]["content"] for cell in row["cells"]] for row in result[0]["rows"]]
+        assert rows == [["X", "Y"], ["X", "X"]]
+
+    def test_code_block_resumes_parsing_on_the_line_after_its_fence(self) -> None:
+        result = _md_blocks("```\ncode\n```\nAfter")
+        assert result[0]["code"]["rich_text"][0]["text"]["content"] == "code"
+        assert result[1] == {"block_property": "paragraph", "content": "After"}
+
     def test_table_only_separators(self) -> None:
         """A table with only separator rows produces no blocks."""
         md = "| --- | --- |"
-        result = markdown_to_notion_blocks(md)
+        result = _md_blocks(md)
         assert len(result) == 0
 
     def test_table_rows_padded_to_header_width(self) -> None:
         md = "| A | B | C |\n| --- | --- | --- |\n| 1 |"
-        result = markdown_to_notion_blocks(md)
+        result = _md_blocks(md)
         table = result[0]
         data_row_cells = table["rows"][1]["cells"]
         assert len(data_row_cells) == 3
@@ -1372,14 +1197,14 @@ class TestMarkdownToNotionBlocks:
 
     def test_table_rows_trimmed_to_header_width(self) -> None:
         md = "| A | B |\n| --- | --- |\n| 1 | 2 | 3 | 4 |"
-        result = markdown_to_notion_blocks(md)
+        result = _md_blocks(md)
         table = result[0]
         data_row_cells = table["rows"][1]["cells"]
         assert len(data_row_cells) == 2
 
     def test_mixed_content(self) -> None:
         md = "# Title\n\nSome text\n\n- bullet\n\n1. numbered"
-        result = markdown_to_notion_blocks(md)
+        result = _md_blocks(md)
         assert result[0]["block_property"] == "heading_1"
         assert result[1]["block_property"] == "paragraph"
         assert result[2]["block_property"] == "bulleted_list_item"
@@ -1387,39 +1212,48 @@ class TestMarkdownToNotionBlocks:
 
     def test_skips_empty_lines(self) -> None:
         md = "\n\nHello\n\n\nWorld\n\n"
-        result = markdown_to_notion_blocks(md)
+        result = _md_blocks(md)
         assert len(result) == 2
         assert result[0]["content"] == "Hello"
         assert result[1]["content"] == "World"
 
     def test_indented_line_treated_as_paragraph(self) -> None:
         md = "    indented text"
-        result = markdown_to_notion_blocks(md)
+        result = _md_blocks(md)
         assert result[0]["block_property"] == "paragraph"
         assert result[0]["content"] == "indented text"
 
     def test_code_block_no_closing_fence(self) -> None:
         """A code block with no closing fence consumes remaining lines."""
         md = "```python\nline1\nline2"
-        result = markdown_to_notion_blocks(md)
+        result = _md_blocks(md)
         assert result[0]["type"] == "code"
         assert result[0]["code"]["rich_text"][0]["text"]["content"] == "line1\nline2"
 
     def test_todo_before_bullet(self) -> None:
         """Todo pattern (- [ ]) must be matched before plain bullet (- )."""
         md = "- [ ] Task\n- Plain bullet"
-        result = markdown_to_notion_blocks(md)
+        result = _md_blocks(md)
         assert result[0]["block_property"] == "to_do"
         assert result[1]["block_property"] == "bulleted_list_item"
 
-    def test_quote_before_callout(self) -> None:
-        """Plain > quote is matched before > [! callout. Callout check is after quote."""
-        md = "> Normal quote"
-        result = markdown_to_notion_blocks(md)
-        assert result[0]["block_property"] == "quote"
+    def test_plain_quote_is_still_a_quote(self) -> None:
+        result = _md_blocks("> Normal quote")
+        assert result[0] == {"block_property": "quote", "content": "Normal quote"}
 
-    def test_callout_branch_unreachable_due_to_quote_priority(self) -> None:
-        """The > [! callout check (line 625) is unreachable — the > quote check (line 595) matches first."""
-        for md in ["> [!WARNING] Be careful", "> [!TIP] A tip"]:
-            result = markdown_to_notion_blocks(md)
-            assert result[0]["block_property"] == "quote"
+    @pytest.mark.parametrize("md", ["> [!WARNING] Be careful", "> [!TIP] A tip"])
+    def test_every_alert_kind_is_a_callout_not_a_quote(self, md: str) -> None:
+        assert _md_blocks(md)[0]["block_property"] == "callout"
+
+    @pytest.mark.parametrize("md", ["> [! this is a quote", "> [!UNKNOWN] text"])
+    def test_a_quote_that_only_looks_like_an_alert_stays_a_quote(self, md: str) -> None:
+        block = _md_blocks(md)[0]
+        assert block["block_property"] == "quote"
+        assert block["content"] == md[2:]
+
+    def test_a_line_that_only_ends_with_a_pipe_is_prose(self) -> None:
+        """A table row is pipe-delimited at both ends; one trailing pipe is an ordinary line."""
+        assert _md_blocks("Total: 42|")[0] == {
+            "block_property": "paragraph",
+            "content": "Total: 42|",
+        }

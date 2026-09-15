@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.notes_models import NoteModel
 from app.services.analytics_service import AnalyticsEvents
 
 NOTES_BASE = "/api/v1/notes"
@@ -75,6 +76,7 @@ class TestCreateNote:
             json={"content": "<p>Hello</p>", "plaintext": "Hello"},
         )
         args, _ = mock_create.call_args
+        assert args[0] == NoteModel(content="<p>Hello</p>", plaintext="Hello")
         assert args[1] == "507f1f77bcf86cd799439011"
 
     async def test_create_note_missing_content_returns_422(self, client: AsyncClient):
@@ -146,6 +148,7 @@ class TestGetAllNotes:
         assert isinstance(data, list)
         assert len(data) == 1
         assert data[0]["id"] == "note-001"
+        mock_get_all.assert_awaited_once_with("507f1f77bcf86cd799439011")
 
     @patch(
         "app.api.v1.endpoints.notes.get_all_notes",
@@ -206,6 +209,7 @@ class TestUpdateNote:
         )
         args, _ = mock_update.call_args
         assert args[0] == "note-001"
+        assert args[1] == NoteModel(content="<p>Updated</p>", plaintext="Updated")
         assert args[2] == "507f1f77bcf86cd799439011"
 
     async def test_update_note_missing_fields_returns_422(self, client: AsyncClient):

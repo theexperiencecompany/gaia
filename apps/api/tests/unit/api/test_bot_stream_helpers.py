@@ -24,7 +24,7 @@ from app.api.v1.endpoints.bot import (
     _paywall_notice,
     _refusal_stream,
 )
-from app.models.bot_models import BotChatRequest
+from app.models.bot_models import BotChatRequest, BotWebStreamPayload
 from app.models.message_models import FileData
 from app.models.payment_models import PlanType
 from app.services.bot.stream_frames import sse_frame
@@ -50,7 +50,7 @@ class TestBotStreamControlFrame:
         chunk = 'id: 42\ndata: {"response": "hi"}\n\n'
         frame, data, stop = _bot_stream_control_frame(chunk, "conv-1")
         assert frame is None
-        assert data == {"response": "hi"}
+        assert data == BotWebStreamPayload(response="hi")
         assert stop is False
 
     def test_id_prefix_with_no_newline_at_all_yields_nothing(self):
@@ -76,10 +76,23 @@ class TestBotStreamControlFrame:
         assert stop is True
 
     def test_valid_json_payload_is_parsed_and_returned_as_data(self):
-        frame, data, stop = _bot_stream_control_frame('data: {"a": 1, "b": "x"}\n\n', "conv-1")
+        chunk = 'data: {"response": "x", "unread_key": 1}\n\n'
+        frame, data, stop = _bot_stream_control_frame(chunk, "conv-1")
         assert frame is None
-        assert data == {"a": 1, "b": "x"}
+        assert data == BotWebStreamPayload(response="x")
+        assert data.model_fields_set == {"response"}
         assert stop is False
+
+    def test_json_that_is_not_a_payload_object_is_dropped_and_logged(self):
+        with patch("app.api.v1.endpoints.bot.log") as mock_log:
+            frame, data, stop = _bot_stream_control_frame("data: [1, 2]\n\n", "conv-1")
+        assert frame is None
+        assert data is None
+        assert stop is False
+        mock_log.warning.assert_called_once_with(
+            "[API] Bot stream: dropped a malformed SSE chunk",
+            error_type="ValidationError",
+        )
 
     def test_malformed_json_is_dropped_and_logged(self):
         with patch("app.api.v1.endpoints.bot.log") as mock_log:
@@ -97,7 +110,9 @@ class TestBotStreamPayloadFrame:
     """_bot_stream_payload_frame — translates one parsed web SSE payload."""
 
     async def test_keepalive_forwards_a_keepalive_frame(self):
-        frame, stop = await _bot_stream_payload_frame({"keepalive": True}, "user-1")
+        frame, stop = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate({"keepalive": True}), "user-1"
+        )
         assert frame == 'data: {"keepalive": true}\n\n'
         assert stop is False
 
@@ -108,7 +123,9 @@ class TestBotStreamPayloadFrame:
                 "data": {"feature": "chat_messages", "current_plan": "pro"},
             }
         }
-        frame, stop = await _bot_stream_payload_frame(data, "user-1")
+        frame, stop = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate(data), "user-1"
+        )
         assert frame is not None
         payload = json.loads(frame[len("data: ") : -2])
         assert payload == {
@@ -117,6 +134,14 @@ class TestBotStreamPayloadFrame:
             }
         }
         assert stop is False
+
+    async def test_a_rate_limit_card_without_a_feature_names_this_feature(self):
+        data = {"tool_data": {"tool_name": "rate_limit_data", "data": {"current_plan": "pro"}}}
+        frame, _ = await _bot_stream_payload_frame(BotWebStreamPayload.model_validate(data), "u")
+        payload = json.loads(frame[len("data: ") : -2])
+        assert payload["notice"]["text"] == (
+            "⏳ You've reached your this feature limit. Please try again later."
+        )
 
     async def test_rate_limit_card_appends_an_upgrade_link_for_non_pro_users(self):
         data = {
@@ -128,7 +153,9 @@ class TestBotStreamPayloadFrame:
         # The stream resolves the upgrade URL once and hands the frames a
         # resolver; the card is what asks for it.
         upgrade_url = AsyncMock(return_value="https://pay.example/checkout")
-        frame, stop = await _bot_stream_payload_frame(data, upgrade_url)
+        frame, stop = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate(data), upgrade_url
+        )
         upgrade_url.assert_awaited_once_with()
         payload = json.loads(frame[len("data: ") : -2])
         assert payload["notice"]["text"].endswith(
@@ -143,14 +170,18 @@ class TestBotStreamPayloadFrame:
                 "data": {"tool": "send_email", "id": "req-1"},
             }
         }
-        frame, stop = await _bot_stream_payload_frame(data, "user-1")
+        frame, stop = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate(data), "user-1"
+        )
         payload = json.loads(frame[len("data: ") : -2])
         assert payload == {"approval": {"tool": "send_email", "id": "req-1"}}
         assert stop is False
 
     async def test_message_boundary_is_forwarded_verbatim(self):
         data = {"message_boundary": {"discarded": True, "message_id": "m1"}}
-        frame, stop = await _bot_stream_payload_frame(data, "user-1")
+        frame, stop = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate(data), "user-1"
+        )
         payload = json.loads(frame[len("data: ") : -2])
         assert payload == {"message_boundary": {"discarded": True, "message_id": "m1"}}
         assert stop is False
@@ -168,7 +199,9 @@ class TestBotStreamPayloadFrame:
         ],
     )
     async def test_web_only_fields_yield_no_frame(self, key: str):
-        frame, stop = await _bot_stream_payload_frame({key: "irrelevant"}, "user-1")
+        frame, stop = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate({key: "irrelevant"}), "user-1"
+        )
         assert frame is None
         assert stop is False
 
@@ -186,24 +219,32 @@ class TestBotStreamPayloadFrame:
     )
     async def test_each_web_only_field_takes_priority_over_a_response_field(self, key: str):
         """A payload carrying both a web-only field and response is dropped since the web-only check runs first; parametrized per key so a mutation to any single entry still shows a different result."""
-        frame, stop = await _bot_stream_payload_frame({"response": "hello", key: "x"}, "user-1")
+        frame, stop = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate({"response": "hello", key: "x"}), "user-1"
+        )
         assert frame is None
         assert stop is False
 
     async def test_response_field_is_translated_to_text(self):
-        frame, stop = await _bot_stream_payload_frame({"response": "hello there"}, "user-1")
+        frame, stop = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate({"response": "hello there"}), "user-1"
+        )
         payload = json.loads(frame[len("data: ") : -2])
         assert payload == {"text": "hello there"}
         assert stop is False
 
     async def test_error_field_is_translated_and_stops_the_stream(self):
-        frame, stop = await _bot_stream_payload_frame({"error": "boom"}, "user-1")
+        frame, stop = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate({"error": "boom"}), "user-1"
+        )
         payload = json.loads(frame[len("data: ") : -2])
         assert payload == {"error": "boom"}
         assert stop is True
 
     async def test_unrecognized_shape_yields_no_frame(self):
-        frame, stop = await _bot_stream_payload_frame({"some_other_field": 1}, "user-1")
+        frame, stop = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate({"some_other_field": 1}), "user-1"
+        )
         assert frame is None
         assert stop is False
 

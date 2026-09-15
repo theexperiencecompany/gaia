@@ -15,7 +15,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.constants.log_tags import LogTag
-from app.models.agent_models import AgentConfigurable
+from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
 from shared.py.wide_events import current_workflow_execution_id, log
@@ -146,30 +146,33 @@ class ExecutorRun:
         boundary); a live dispatch leaves it unset and reads the execution in
         flight off the boundary it is being built in.
         """
+        view = AgentConfigurableView.model_validate(configurable)
+        # An absent identity key rebuilds as "", one carried as None stays None.
+        present = view.model_fields_set
         return cls(
             stream_id=identity.stream_id,
             conversation_id=identity.conversation_id,
-            user={
-                "user_id": configurable.get("user_id", ""),
-                "email": configurable.get("email", ""),
-                "name": configurable.get("user_name", ""),
+            # A bare identity rebuilt from the run's configurable (no auth path
+            # produced it — see AuthenticatedUser.auth_provider).
+            user=AuthenticatedUser(
+                user_id=view.user_id or "",
+                email=view.email if "email" in present else "",
+                name=view.user_name if "user_name" in present else "",
                 # Carry the home timezone forward so the comms re-voicing run
                 # reads the user's zone via build_agent_config instead of
                 # silently falling back to UTC.
-                "timezone": configurable.get("user_timezone"),
-            },
+                timezone=view.user_timezone,
+            ),
             kind=identity.kind,
             task_id=identity.task_id,
             user_message_id=identity.user_message_id,
             bot_message_id=identity.bot_message_id,
-            workflow_id=configurable.get("workflow_id"),
+            workflow_id=view.workflow_id,
             workflow_execution_id=workflow_execution_id or current_workflow_execution_id(),
-            workflow_title=configurable.get("workflow_title", ""),
-            workflow_notify_on_completion=configurable.get("workflow_notify_on_completion", True),
-            active_todo_id=configurable.get("active_todo_id"),
-            source_category=SourceCategory(
-                configurable.get("source_category") or SourceCategory.BG.value
-            ),
+            workflow_title=view.workflow_title,
+            workflow_notify_on_completion=view.workflow_notify_on_completion,
+            active_todo_id=view.active_todo_id,
+            source_category=SourceCategory(view.source_category or SourceCategory.BG.value),
             t_dispatch_perf=identity.t_dispatch_perf,
             queued=identity.queued,
         )

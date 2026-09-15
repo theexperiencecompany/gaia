@@ -43,8 +43,8 @@ class TestGetMe:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["user_id"] == FAKE_USER["user_id"]
-        assert body["email"] == FAKE_USER["email"]
+        assert body["user_id"] == FAKE_USER.user_id
+        assert body["email"] == FAKE_USER.email
         assert "onboarding" in body
 
     async def test_requires_auth(self, unauthed_client: AsyncClient):
@@ -56,7 +56,7 @@ class TestUpdateName:
     """PATCH /api/v1/user/name."""
 
     async def test_update_name_success(self, client: AsyncClient):
-        mock_result = {**FAKE_USER, "name": "New Name"}
+        mock_result = {**FAKE_USER.model_dump(), "name": "New Name"}
         with patch(
             "app.api.v1.endpoints.user.update_user_profile",
             new_callable=AsyncMock,
@@ -84,8 +84,8 @@ class TestUpdateTimezone:
     async def test_valid_timezone(self, client: AsyncClient):
         updated = UserDocument.model_validate(
             {
-                "id": FAKE_USER["user_id"],
-                "email": FAKE_USER["email"],
+                "id": FAKE_USER.user_id,
+                "email": FAKE_USER.email,
                 "timezone": "America/New_York",
             }
         )
@@ -103,7 +103,7 @@ class TestUpdateTimezone:
         # The write must go through the users repository, scoped to the caller.
         mock_repo.update.assert_awaited_once()
         user_id, update = mock_repo.update.await_args.args
-        assert user_id == FAKE_USER["user_id"]
+        assert user_id == FAKE_USER.user_id
         assert update.timezone == "America/New_York"
 
     async def test_unknown_user_returns_404(self, client: AsyncClient):

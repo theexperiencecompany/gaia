@@ -12,9 +12,11 @@ from collections.abc import Callable, Iterator
 from typing import Any
 from unittest.mock import MagicMock, call, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.integrations.linkedin_tool import register_linkedin_custom_tools
+from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.models.linkedin_models import (
     AddCommentInput,
@@ -529,6 +531,20 @@ class TestAddComment:
 
         assert result["comment_id"] == "urn:li:comment:hdr"
 
+    def test_comment_id_is_empty_when_neither_body_nor_header_carries_one(
+        self,
+        tools: dict[str, Callable[..., Any]],
+        proxy_full: MagicMock,
+        author_urn: MagicMock,
+    ) -> None:
+        result = tools["CUSTOM_ADD_COMMENT"](
+            AddCommentInput(post_urn=POST_URN, comment_text="Nice"),
+            EXECUTE_REQUEST,
+            AUTH_CREDS,
+        )
+
+        assert result["comment_id"] == ""
+
 
 # ---------------------------------------------------------------------------
 # CUSTOM_GET_POST_COMMENTS
@@ -548,7 +564,13 @@ class TestGetPostComments:
                     "created": {"time": 1700000000000},
                     "parentComment": None,
                 },
-                {"id": "c2", "actor": "urn:li:person:y", "parentComment": "urn:li:comment:c1"},
+                {
+                    "id": "c2",
+                    "actor": "urn:li:person:y",
+                    "message": {"text": ""},
+                    "created": {"time": 1700000001000},
+                    "parentComment": "urn:li:comment:c1",
+                },
             ],
             "paging": {"total": 57},
         }
@@ -586,7 +608,7 @@ class TestGetPostComments:
                     "id": "c2",
                     "author": "urn:li:person:y",
                     "text": "",
-                    "created_at": None,
+                    "created_at": 1700000001000,
                     "parent_comment": "urn:li:comment:c1",
                 },
             ],
@@ -594,10 +616,10 @@ class TestGetPostComments:
             "post_urn": POST_URN,
         }
 
-    def test_empty_proxy_response_yields_no_comments(
+    def test_empty_collection_yields_no_comments(
         self, tools: dict[str, Callable[..., Any]], proxy: MagicMock
     ) -> None:
-        proxy.return_value = None
+        proxy.return_value = {"elements": [], "paging": {"start": 0, "count": 10, "total": 0}}
 
         result = tools["CUSTOM_GET_POST_COMMENTS"](
             GetPostCommentsInput(post_urn=POST_URN), EXECUTE_REQUEST, AUTH_CREDS
@@ -605,10 +627,35 @@ class TestGetPostComments:
 
         assert result == {"comments": [], "total_count": 0, "post_urn": POST_URN}
 
+    def test_body_that_is_not_a_collection_fails_loudly(
+        self, tools: dict[str, Callable[..., Any]], proxy: MagicMock
+    ) -> None:
+        proxy.return_value = None
+
+        with pytest.raises(ValidationError):
+            tools["CUSTOM_GET_POST_COMMENTS"](
+                GetPostCommentsInput(post_urn=POST_URN), EXECUTE_REQUEST, AUTH_CREDS
+            )
+
     def test_total_count_falls_back_to_element_count_without_paging(
         self, tools: dict[str, Callable[..., Any]], proxy: MagicMock
     ) -> None:
-        proxy.return_value = {"elements": [{"id": "c1"}, {"id": "c2"}]}
+        proxy.return_value = {
+            "elements": [
+                {
+                    "id": "c1",
+                    "actor": "urn:li:person:x",
+                    "message": {"text": "a"},
+                    "created": {"time": 1},
+                },
+                {
+                    "id": "c2",
+                    "actor": "urn:li:person:x",
+                    "message": {"text": "b"},
+                    "created": {"time": 2},
+                },
+            ]
+        }
 
         result = tools["CUSTOM_GET_POST_COMMENTS"](
             GetPostCommentsInput(post_urn=POST_URN), EXECUTE_REQUEST, AUTH_CREDS
@@ -707,7 +754,7 @@ class TestGetPostReactions:
                     "reactionType": "LOVE",
                     "created": {"time": 1700000000000},
                 },
-                {"actor": "urn:li:person:y"},
+                {"actor": "urn:li:person:y", "created": {"time": 1700000001000}},
             ],
             "paging": {"total": 3},
         }
@@ -737,22 +784,36 @@ class TestGetPostReactions:
                     "reaction_type": "LOVE",
                     "created_at": 1700000000000,
                 },
-                {"actor": "urn:li:person:y", "reaction_type": "LIKE", "created_at": None},
+                {
+                    "actor": "urn:li:person:y",
+                    "reaction_type": "LIKE",
+                    "created_at": 1700000001000,
+                },
             ],
             "total_count": 3,
             "post_urn": POST_URN,
         }
 
-    def test_empty_proxy_response_yields_no_reactions(
+    def test_empty_collection_yields_no_reactions(
         self, tools: dict[str, Callable[..., Any]], proxy: MagicMock
     ) -> None:
-        proxy.return_value = None
+        proxy.return_value = {"elements": []}
 
         result = tools["CUSTOM_GET_POST_REACTIONS"](
             GetPostReactionsInput(post_urn=POST_URN), EXECUTE_REQUEST, AUTH_CREDS
         )
 
         assert result == {"reactions": [], "total_count": 0, "post_urn": POST_URN}
+
+    def test_body_that_is_not_a_collection_fails_loudly(
+        self, tools: dict[str, Callable[..., Any]], proxy: MagicMock
+    ) -> None:
+        proxy.return_value = None
+
+        with pytest.raises(ValidationError):
+            tools["CUSTOM_GET_POST_REACTIONS"](
+                GetPostReactionsInput(post_urn=POST_URN), EXECUTE_REQUEST, AUTH_CREDS
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -788,7 +849,7 @@ class TestGatherContext:
                         "created": {"time": 1700000000000},
                         "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
                     },
-                    {"id": "urn:li:ugcPost:2"},
+                    {"id": "urn:li:ugcPost:2", "created": {"time": 1700000001000}},
                 ]
             },
         ]
@@ -834,36 +895,40 @@ class TestGatherContext:
                     "created": 1700000000000,
                     "visibility": "PUBLIC",
                 },
-                {"id": "urn:li:ugcPost:2", "text": "", "created": None, "visibility": None},
+                {
+                    "id": "urn:li:ugcPost:2",
+                    "text": "",
+                    "created": 1700000001000,
+                    "visibility": None,
+                },
             ],
         }
 
-    def test_missing_sub_skips_posts_lookup(
+    def test_userinfo_without_sub_fails_loudly(
         self, tools: dict[str, Callable[..., Any]], proxy: MagicMock
     ) -> None:
         proxy.return_value = None
 
-        result = tools["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS)
+        with pytest.raises(ValidationError):
+            tools["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS)
 
         assert proxy.call_count == 1
-        assert result == {
-            "user": {
-                "id": "",
-                "name": None,
-                "given_name": None,
-                "family_name": None,
-                "email": None,
-                "profile_picture": None,
-            },
-            "recent_posts": [],
-        }
 
     def test_posts_failure_keeps_profile(
         self, tools: dict[str, Callable[..., Any]], proxy: MagicMock
     ) -> None:
         proxy.side_effect = [_USERINFO, RuntimeError("scope missing")]
 
-        result = tools["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS)
+        with patch(f"{MODULE}.log") as log:
+            result = tools["CUSTOM_GATHER_CONTEXT"](
+                GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS
+            )
 
         assert result["user"]["id"] == "abc"
         assert result["recent_posts"] == []
+        log.warning.assert_called_once_with(
+            f"{LogTag.TOOL} LinkedIn recent posts fetch failed, returning profile without them",
+            user_id=USER_ID,
+            error="scope missing",
+            error_type="RuntimeError",
+        )

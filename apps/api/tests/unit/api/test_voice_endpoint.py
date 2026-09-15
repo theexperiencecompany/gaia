@@ -8,10 +8,12 @@ status codes, response shapes, and payload forwarding are verified.
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import FastAPI
 from httpx import AsyncClient
 from jose import jwt
 import pytest
 
+from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
 from app.models.payment_models import PlanType
 from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
@@ -138,6 +140,27 @@ class TestGetVoiceToken:
         mock_get_voice.assert_awaited_once_with(USER_ID)
 
     @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
+    async def test_token_for_user_without_email_has_blank_participant_name(
+        self,
+        mock_get_voice: AsyncMock,
+        client: AsyncClient,
+        test_app: FastAPI,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        self._enable_livekit(monkeypatch)
+        mock_get_voice.return_value = None
+        emailless = test_app.dependency_overrides[get_current_user]().model_copy(
+            update={"email": None}
+        )
+        monkeypatch.setitem(test_app.dependency_overrides, get_current_user, lambda: emailless)
+
+        resp = await client.get(VOICE_BASE + "/token")
+
+        assert resp.status_code == 200
+        assert resp.json()["participantName"] == ""
+        assert json.loads(_decode_token(resp.json()["participantToken"])["metadata"])["name"] == ""
+
+    @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
     async def test_token_fails_when_livekit_keys_are_missing(
         self, mock_get_voice: AsyncMock, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ):
@@ -207,7 +230,9 @@ class TestListVoices:
             voices=[_voice_option("v1", "Aria"), _voice_option("v2", "Orion")],
             selected_voice_id="v1",
         )
-        resp = await client.get(f"{VOICE_BASE}/voice/voices")
+        with patch("app.api.v1.endpoints.voice.log") as mock_log:
+            resp = await client.get(f"{VOICE_BASE}/voice/voices")
+        mock_log.set.assert_any_call(user={"id": USER_ID}, operation="list_voices")
         assert resp.status_code == 200
         body = resp.json()
         assert body["selected_voice_id"] == "v1"
@@ -240,6 +265,7 @@ class TestSelectVoice:
         with (
             patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture,
             patch("app.api.v1.endpoints.voice.schedule_account_sync") as mock_schedule_sync,
+            patch("app.api.v1.endpoints.voice.log") as mock_log,
         ):
             resp = await client.put(
                 f"{VOICE_BASE}/voice/voices/selected", json={"voice_id": "voice-1"}
@@ -247,6 +273,9 @@ class TestSelectVoice:
         assert resp.status_code == 200
         assert resp.json() == {"selected_voice_id": "voice-1"}
         mock_set.assert_awaited_once_with(USER_ID, "voice-1")
+        mock_log.set.assert_any_call(
+            user={"id": USER_ID}, operation="select_voice", voice_id="voice-1"
+        )
         mock_schedule_sync.assert_called_once_with(USER_ID)
         mock_capture.assert_called_once_with(
             AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
@@ -292,10 +321,16 @@ class TestStarVoice:
     @patch("app.api.v1.endpoints.voice.set_voice_star", new_callable=AsyncMock)
     async def test_star_voice_success(self, mock_star: AsyncMock, client: AsyncClient):
         mock_star.return_value = ["voice-1", "voice-2"]
-        with patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture:
+        with (
+            patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.voice.log") as mock_log,
+        ):
             resp = await client.put(
                 f"{VOICE_BASE}/voice/voices/voice-1/star", json={"starred": True}
             )
+        mock_log.set.assert_any_call(
+            user={"id": USER_ID}, operation="star_voice", voice_id="voice-1", starred=True
+        )
         assert resp.status_code == 200
         assert resp.json() == {"starred_voice_ids": ["voice-1", "voice-2"]}
         mock_star.assert_awaited_once_with(USER_ID, "voice-1", True)

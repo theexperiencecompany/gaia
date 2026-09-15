@@ -129,8 +129,11 @@ class TestFollowUpActionsNode:
     async def test_node_emits_latency_span(self):
         state = _make_state([HumanMessage(content="hi")])
         config = {
-            "agent_name": "node-test-agent",
-            "configurable": {"user_id": "user-123", "thread_id": "thread-abc"},
+            "configurable": {
+                "user_id": "user-123",
+                "thread_id": "thread-abc",
+                "agent_name": "node-test-agent",
+            },
         }
         before = (
             REGISTRY.get_sample_value(
@@ -162,8 +165,11 @@ class TestFollowUpActionsNode:
         # an observation happened.
         state = _make_state([HumanMessage(content="hi")])
         config = {
-            "agent_name": "span-test-agent",
-            "configurable": {"user_id": "user-123", "thread_id": "thread-abc"},
+            "configurable": {
+                "user_id": "user-123",
+                "thread_id": "thread-abc",
+                "agent_name": "span-test-agent",
+            },
         }
         labels = {"node": "follow_up_actions", "agent": "span-test-agent"}
         before = REGISTRY.get_sample_value("graph_node_seconds_sum", labels) or 0.0

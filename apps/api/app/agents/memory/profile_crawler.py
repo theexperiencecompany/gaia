@@ -10,16 +10,17 @@ Flow:
 """
 
 import asyncio
+from dataclasses import dataclass
 import time
 import traceback
-from typing import TypedDict
 
 from app.constants.log_tags import LogTag
 from app.utils.crawl4ai_utils import get_browser_semaphore, managed_crawler
 from shared.py.wide_events import log
 
 
-class ProfileCrawlResult(TypedDict):
+@dataclass(frozen=True, slots=True)
+class ProfileCrawlResult:
     """Outcome of one profile crawl. Exactly one of content/error is set."""
 
     url: str
@@ -65,12 +66,9 @@ async def crawl_profile_url(
                     duration_s=round(elapsed, 2),
                     content_size=content_size,
                 )
-                return {
-                    "url": url,
-                    "platform": platform,
-                    "content": result.markdown,
-                    "error": None,
-                }
+                return ProfileCrawlResult(
+                    url=url, platform=platform, content=result.markdown, error=None
+                )
         except Exception as e:
             elapsed = time.time() - start_time
             error_type = type(e).__name__
@@ -92,9 +90,6 @@ async def crawl_profile_url(
                 traceback=traceback.format_exc(),
             )
 
-            return {
-                "url": url,
-                "platform": platform,
-                "content": None,
-                "error": f"{error_type}: {error_msg}",
-            }
+            return ProfileCrawlResult(
+                url=url, platform=platform, content=None, error=f"{error_type}: {error_msg}"
+            )

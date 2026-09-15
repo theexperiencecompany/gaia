@@ -9,10 +9,10 @@ Handles:
 - Safety-net cron for orphaned todos
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 import json
 import random
-from typing import Any, cast
 from uuid import uuid4
 
 from arq.connections import ArqRedis
@@ -39,7 +39,7 @@ from app.services.notification_service import notification_service
 from app.services.todo_canvas_storage import read_activity, read_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
-from app.services.user_service import get_user_by_id
+from app.utils.auth_utils import load_user_context
 from app.utils.cron_utils import CronError, get_next_run_time
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
@@ -66,21 +66,19 @@ async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]
     falls back to UTC if the user record or timezone is missing.
     """
     try:
-        user_data = await get_user_by_id(user_id)
-        if user_data:
-            user_data["user_id"] = user_id
-            # Spread of a validated UserDocument plus user_id — cast, not isinstance
-            # (Type Safety item 12). Narrowing to the fields read here would drop
-            # onboarding, which construct_langchain_messages needs.
-            return cast(AuthenticatedUser, user_data), Timezone.parse(user_data.get("timezone"))
-        return {"user_id": user_id}, Timezone.utc()
+        # The full context: narrowing to the fields read here would drop
+        # onboarding, which construct_langchain_messages needs.
+        user_data = await load_user_context(user_id)
+        if user_data is not None:
+            return user_data, Timezone.parse(user_data.timezone)
+        return AuthenticatedUser(user_id=user_id), Timezone.utc()
     except Exception as e:
         log.warning("tracked_todo.load_user_failed", user_id=user_id, error=str(e))
-        return {"user_id": user_id}, Timezone.utc()
+        return AuthenticatedUser(user_id=user_id), Timezone.utc()
 
 
 async def execute_tracked_todo(
-    ctx: dict[str, Any],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+    ctx: Mapping[str, object],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     todo_id: str,
     origin: TriggerOrigin | None = None,
 ) -> str:
@@ -267,7 +265,7 @@ async def _execute_todo_with_retry(
         return f"retry:{todo_id} (attempt {new_retry_count})"
 
 
-def _execution_context(todo_id: str | None, origin: TriggerOrigin | None) -> dict[str, Any]:
+def _execution_context(todo_id: str | None, origin: TriggerOrigin | None) -> dict[str, object]:
     """Build the trigger stamp both execution paths put on a run.
 
     One builder because the workflow path and the agent path were stamping
@@ -598,7 +596,7 @@ def _compute_next_run(
         return None
 
 
-async def safety_net_check_orphaned_todos(_ctx: dict[str, Any]) -> str:
+async def safety_net_check_orphaned_todos(_ctx: Mapping[str, object]) -> str:
     """Find scheduled tracked todos that should have run but were never picked up.
 
     Re-enqueues each one not already locked, with a random 0-60s jitter to

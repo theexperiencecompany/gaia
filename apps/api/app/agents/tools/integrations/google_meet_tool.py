@@ -1,13 +1,18 @@
 """Google Meet custom tools using Composio custom tool infrastructure."""
 
 import datetime
-from typing import Any
 
 from composio import Composio
 from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
+from app.models.integrations.composio import CustomToolAuthCredentials
+from app.models.integrations.google_meet import (
+    GoogleMeetEvent,
+    GoogleMeetEventsPage,
+    GoogleUserInfo,
+)
 from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from shared.py.wide_events import log
 
@@ -19,20 +24,18 @@ def register_google_meet_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Google Meet context snapshot: upcoming meetings with Meet links.
 
         Zero required parameters. Returns user profile and scheduled Meet calls.
         """
         del request, execute_request  # unused: framework-mandated custom-tool signature
-        user_id = auth_credentials.get("user_id")
-        if not user_id:
-            raise ValueError("Missing user_id in auth_credentials")
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
 
-        me: dict[str, Any] = {}
+        me = GoogleUserInfo()
         try:
-            me = (
+            me = GoogleUserInfo.model_validate(
                 proxy_request_sync(
                     ProxyRequest(
                         user_id=user_id,
@@ -51,10 +54,10 @@ def register_google_meet_custom_tools(composio: Composio) -> list[str]:
         # The calendar fetch may fail if the GOOGLEMEET connection lacks calendar
         # scope; match the legacy tool's status_code == 200 gate and empty-list
         # fallback so the tool still works with only profile access.
-        events_data: dict[str, Any] = {}
+        events: list[GoogleMeetEvent] = []
         now = datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z")
         try:
-            events_data = (
+            events = GoogleMeetEventsPage.model_validate(
                 proxy_request_sync(
                     ProxyRequest(
                         user_id=user_id,
@@ -71,37 +74,35 @@ def register_google_meet_custom_tools(composio: Composio) -> list[str]:
                     )
                 )
                 or {}
-            )
+            ).items
         except Exception as e:
             log.debug(
                 f"{LogTag.TOOL} Google Meet calendar fetch failed", error_type=type(e).__name__
             )
 
-        upcoming_meets: list[dict[str, Any]] = []
-        for event in events_data.get("items", []):
-            conf = event.get("conferenceData", {})
-            if not conf:
+        upcoming_meets: list[dict[str, str | None]] = []
+        for event in events:
+            conf = event.conferenceData
+            if conf is None:
                 continue
-            entry_points = conf.get("entryPoints", [])
             meet_link = next(
-                (ep.get("uri") for ep in entry_points if ep.get("entryPointType") == "video"),
+                (ep.uri for ep in conf.entryPoints if ep.entryPointType == "video"),
                 None,
             )
-            start = event.get("start", {})
             upcoming_meets.append(
                 {
-                    "id": event.get("id"),
-                    "summary": event.get("summary", "")[:100],
-                    "start": start.get("dateTime") or start.get("date"),
+                    "id": event.id,
+                    "summary": event.summary[:100],
+                    "start": event.start.dateTime or event.start.date,
                     "meet_link": meet_link,
                 }
             )
 
         return {
             "user": {
-                "email": me.get("email"),
-                "name": me.get("name"),
-                "picture": me.get("picture"),
+                "email": me.email,
+                "name": me.name,
+                "picture": me.picture,
             },
             "upcoming_meets": upcoming_meets,
             "upcoming_meet_count": len(upcoming_meets),

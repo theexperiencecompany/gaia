@@ -1,8 +1,28 @@
 """Test data factories for GAIA API tests."""
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import MagicMock
 from uuid import uuid4
+
+from app.models.user_models import AuthenticatedUser
+
+
+def make_authenticated_user(**overrides: Any) -> AuthenticatedUser:
+    """Build the request.state.user a signed-in test caller carries.
+
+    Built as a WorkOS session; overrides are AuthenticatedUser fields.
+    """
+    defaults: dict[str, Any] = {
+        "user_id": str(uuid4()),
+        "auth_provider": "workos",
+        "email": "test@example.com",
+        "name": "Test User",
+        "created_at": datetime.now(UTC),
+        "is_active": True,
+    }
+    defaults.update(overrides)
+    return AuthenticatedUser(**defaults)
 
 
 def make_user(**overrides) -> dict:

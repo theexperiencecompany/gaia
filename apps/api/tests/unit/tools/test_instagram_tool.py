@@ -9,6 +9,7 @@ endpoint, method and the fields / limit query — and the full result shape.
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.integrations.instagram_tool import (
@@ -134,23 +135,19 @@ def test_returns_profile_and_truncated_recent_media(tool) -> None:
     }
 
 
-def test_degraded_proxy_returns_empty_profile(tool) -> None:
+def test_empty_profile_body_fails_loudly(tool) -> None:
+    """A /me body that is not a profile is a provider fault, not an empty snapshot."""
     with patch(f"{MODULE}.proxy_request_sync", return_value=None):
+        with pytest.raises(ValidationError):
+            tool(GatherContextInput(), EXECUTE_REQUEST, AUTH)
+
+
+def test_media_body_without_data_is_no_media(tool) -> None:
+    with patch(f"{MODULE}.proxy_request_sync", side_effect=[_ME, {}]):
         out = tool(GatherContextInput(), EXECUTE_REQUEST, AUTH)
 
-    assert out == {
-        "user": {
-            "id": None,
-            "name": None,
-            "username": None,
-            "account_type": None,
-            "media_count": 0,
-            "followers": 0,
-            "following": 0,
-            "biography": "",
-        },
-        "recent_media": [],
-    }
+    assert out["user"]["id"] == "ig-1"
+    assert out["recent_media"] == []
 
 
 def test_media_failure_keeps_profile(tool) -> None:
@@ -172,3 +169,22 @@ def test_missing_user_id_raises_before_any_request(tool) -> None:
         with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
             tool(GatherContextInput(), EXECUTE_REQUEST, {})
     proxy.assert_not_called()
+
+
+def test_profile_without_optional_fields_reports_empty_biography_and_zero_counts(tool) -> None:
+    with patch(f"{MODULE}.proxy_request_sync", side_effect=[{"id": "ig-2"}, {"data": []}]):
+        out = tool(GatherContextInput(), EXECUTE_REQUEST, AUTH)
+
+    assert out == {
+        "user": {
+            "id": "ig-2",
+            "name": None,
+            "username": None,
+            "account_type": None,
+            "media_count": 0,
+            "followers": 0,
+            "following": 0,
+            "biography": "",
+        },
+        "recent_media": [],
+    }

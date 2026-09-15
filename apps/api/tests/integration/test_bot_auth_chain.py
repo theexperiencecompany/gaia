@@ -22,12 +22,13 @@ from app.api.v1.endpoints.bot import require_bot_api_key
 from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
 from app.core.bot_auth_middleware import BotAuthMiddleware
+from app.db.repositories.users import user_repository
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.bot_token_service import (
     BOT_SESSION_TOKEN_EXPIRY_MINUTES,
     create_bot_session_token,
     verify_bot_session_token,
 )
-from app.services.platform_link_service import PlatformLinkService
 
 # ---------------------------------------------------------------------------
 # Test constants
@@ -38,12 +39,12 @@ TEST_BOT_SESSION_SECRET = "a" * 64  # 64-char secret for JWT signing
 TEST_USER_ID = "507f1f77bcf86cd799439011"
 TEST_PLATFORM = "discord"
 TEST_PLATFORM_USER_ID = "123456789012345678"
-TEST_USER_DOC = {
-    "_id": TEST_USER_ID,
-    "email": "botuser@example.com",
-    "name": "Bot Test User",
-    "picture": None,
-}
+TEST_USER_DOC = UserDocument(
+    id=TEST_USER_ID,
+    email="botuser@example.com",
+    name="Bot Test User",
+    picture=None,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -63,10 +64,10 @@ def _bot_settings():
 
 @pytest.fixture
 def mock_platform_lookup():
-    """Mock PlatformLinkService.get_user_by_platform_id for middleware tests."""
+    """Mock the platform-id user lookup under resolve_bot_user."""
     with patch.object(
-        PlatformLinkService,
-        "get_user_by_platform_id",
+        user_repository,
+        "get_by_platform_id",
         new_callable=AsyncMock,
     ) as mock_fn:
         yield mock_fn
@@ -313,21 +314,21 @@ class TestBotAuthMiddlewareJWT:
         middleware = BotAuthMiddleware(app=MagicMock())
         await middleware.dispatch(request, _noop_call_next)
 
-        assert request.state.user["user_id"] == TEST_USER_ID
-        assert request.state.user["email"] == "botuser@example.com"
-        assert request.state.user["auth_provider"] == "bot:discord"
-        assert request.state.user["bot_authenticated"] is True
+        assert request.state.user.user_id == TEST_USER_ID
+        assert request.state.user.email == "botuser@example.com"
+        assert request.state.user.auth_provider == "bot:discord"
+        assert request.state.user.bot_authenticated is True
         assert request.state.authenticated is True
 
     async def test_jwt_auth_uses_cache(self, mock_redis_cache: dict) -> None:
         """JWT auth uses cached user info when available."""
-        cached_user = {
-            "user_id": TEST_USER_ID,
-            "email": "cached@example.com",
-            "name": "Cached User",
-            "auth_provider": "bot:discord",
-            "bot_authenticated": True,
-        }
+        cached_user = AuthenticatedUser(
+            user_id=TEST_USER_ID,
+            email="cached@example.com",
+            name="Cached User",
+            auth_provider="bot:discord",
+            bot_authenticated=True,
+        )
         mock_redis_cache["get"].return_value = cached_user
 
         token = create_bot_session_token(
@@ -385,8 +386,8 @@ class TestBotAuthMiddlewarePlatformHeaders:
         await middleware.dispatch(request, _noop_call_next)
 
         assert request.state.authenticated is True
-        assert request.state.user["user_id"] == TEST_USER_ID
-        assert request.state.user["auth_provider"] == f"bot:{TEST_PLATFORM}"
+        assert request.state.user.user_id == TEST_USER_ID
+        assert request.state.user.auth_provider == f"bot:{TEST_PLATFORM}"
         assert request.state.bot_api_key_valid is True
         assert request.state.bot_platform == TEST_PLATFORM
         assert request.state.bot_platform_user_id == TEST_PLATFORM_USER_ID
@@ -479,8 +480,8 @@ class TestBotEndpointAuthStatus:
     async def test_auth_status_with_valid_api_key(self, bot_client) -> None:
         """GET /bot/auth-status returns auth status for a platform user."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=TEST_USER_DOC,
         ):
@@ -498,8 +499,8 @@ class TestBotEndpointAuthStatus:
     async def test_auth_status_unauthenticated_user(self, bot_client) -> None:
         """GET /bot/auth-status returns authenticated=False for unlinked user."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -546,16 +547,17 @@ class TestBotEndpointSettings:
 
     async def test_settings_for_linked_user(self, bot_client) -> None:
         """GET /bot/settings returns user settings for a linked user."""
-        user_doc = {
-            **TEST_USER_DOC,
-            "name": "Bot User",
-            "profile_image_url": "https://example.com/avatar.png",
-            "created_at": datetime(2024, 1, 15, tzinfo=UTC),
-        }
+        user_doc = TEST_USER_DOC.model_copy(
+            update={
+                "name": "Bot User",
+                "picture": "https://example.com/avatar.png",
+                "created_at": datetime(2024, 1, 15, tzinfo=UTC),
+            }
+        )
         with (
             patch.object(
-                PlatformLinkService,
-                "get_user_by_platform_id",
+                user_repository,
+                "get_by_platform_id",
                 new_callable=AsyncMock,
                 return_value=user_doc,
             ),
@@ -579,8 +581,8 @@ class TestBotEndpointSettings:
     async def test_settings_for_unlinked_user(self, bot_client) -> None:
         """GET /bot/settings returns authenticated=False for unlinked user."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -602,8 +604,8 @@ class TestBotEndpointRequireBotApiKey:
     async def test_require_bot_api_key_passes_with_valid_key(self, bot_client) -> None:
         """Endpoints behind require_bot_api_key work with valid key."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=TEST_USER_DOC,
         ):
@@ -639,8 +641,8 @@ class TestBotEndpointResetSession:
     async def test_reset_session_unauthenticated_returns_401(self, bot_client) -> None:
         """POST /bot/reset-session without linked user returns 401."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -692,8 +694,8 @@ class TestBotEndpointUnlink:
     async def test_unlink_not_linked_returns_404(self, bot_client) -> None:
         """POST /bot/unlink for unlinked user returns 404."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -723,8 +725,8 @@ class TestBotAuthFullChain:
         )
 
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=TEST_USER_DOC,
         ):
@@ -745,8 +747,8 @@ class TestBotAuthFullChain:
     ) -> None:
         """Bot authenticates via API key + platform headers, user is resolved."""
         with patch.object(
-            PlatformLinkService,
-            "get_user_by_platform_id",
+            user_repository,
+            "get_by_platform_id",
             new_callable=AsyncMock,
             return_value=TEST_USER_DOC,
         ):
@@ -794,7 +796,7 @@ class TestSessionTokenFastPathReachesBotRoutes:
 
         @app.get("/api/v1/bot/guarded", dependencies=[Depends(require_bot_api_key)])
         async def guarded(request: Request) -> dict[str, object]:
-            return {"user_id": request.state.user["user_id"]}
+            return {"user_id": request.state.user.user_id}
 
         return app
 

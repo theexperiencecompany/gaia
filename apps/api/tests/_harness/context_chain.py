@@ -26,7 +26,7 @@ from app.agents.context.assemble import assemble_context
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import PromptSlot, slot_of
 from app.agents.context.tiers import AgentTier
-from app.agents.core.messages import construct_langchain_messages
+from app.agents.core.messages import MessageScope, construct_langchain_messages
 from app.agents.core.nodes.pre_model_hooks import (
     comms_pre_model_hooks,
     worker_pre_model_hooks,
@@ -46,7 +46,7 @@ from app.helpers.agent_helpers import (
 from app.helpers.message_helpers import build_current_time_message
 from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
 from app.models.message_models import MessageDict
-from app.models.user_models import AuthenticatedUser
+from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.override.langgraph_bigtool.hooks import HookType, execute_hooks
 from app.override.langgraph_bigtool.utils import State
 from app.services.workflow import workflow_subagent
@@ -254,26 +254,25 @@ async def _seed_comms(
     *, user: HarnessUser, query: str, configurable: AgentConfigurable
 ) -> list[AnyMessage]:
     history: list[MessageDict] = [cast(MessageDict, {"role": "user", "content": query})]
-    user_dict = cast(
-        AuthenticatedUser,
-        {
-            "timezone": user.timezone,
-            "onboarding": {
-                "preferences": user.preferences,
-                "writing_style": user.writing_style,
-            },
-        },
+    user_dict = AuthenticatedUser(
+        user_id=user.user_id,
+        timezone=user.timezone,
+        onboarding=OnboardingSubdocument.model_validate(
+            {"preferences": user.preferences, "writing_style": user.writing_style}
+        ),
     )
     return await construct_langchain_messages(
         messages=history,
-        user_id=user.user_id,
-        user_name=user.name,
-        user_dict=user_dict,
         query=query,
-        conversation_id="conv-1",
-        source=configurable.get("conversation_source"),
-        active_todo_id=configurable.get("active_todo_id"),
-        execution_mode=configurable.get("execution_mode") or "interactive",
+        scope=MessageScope(
+            user_id=user.user_id,
+            user_name=user.name,
+            user_dict=user_dict,
+            conversation_id="conv-1",
+            source=configurable.get("conversation_source"),
+            active_todo_id=configurable.get("active_todo_id"),
+            execution_mode=configurable.get("execution_mode") or "interactive",
+        ),
     )
 
 

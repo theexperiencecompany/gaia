@@ -117,7 +117,7 @@ class TestSubscriptionStatus:
         from app.models.payment_models import UserSubscriptionStatus
 
         mock_status = UserSubscriptionStatus(
-            user_id=FAKE_USER["user_id"],
+            user_id=FAKE_USER.user_id,
             is_subscribed=True,
             days_remaining=25,
         )

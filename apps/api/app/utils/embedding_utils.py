@@ -1,6 +1,8 @@
-from typing import Any
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 
 from langchain_core.documents import Document
+from pydantic import BaseModel, ConfigDict
 
 from app.constants.chroma import CHROMA_NOTES_COLLECTION
 from app.constants.log_tags import LogTag
@@ -9,17 +11,43 @@ from app.db.repositories.notes import note_repository
 from shared.py.wide_events import log
 
 
+class _IndexedItemMetadata(BaseModel):
+    """The Chroma metadata the note/file indexers stamp on an embedded item."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    note_id: str | None = None
+    file_id: str | None = None
+    user_id: str = ""
+
+
+@dataclass(slots=True, frozen=True)
+class SimilarityMatch:
+    """One item search_by_similarity found, closest first (lower score is closer).
+
+    created_at/updated_at are ISO strings set only on the enriched notes
+    path, for a note that has them.
+    """
+
+    id: str
+    similarity_score: float
+    user_id: str
+    content: str
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
 async def search_by_similarity(
     input_text: str,
     user_id: str,
     collection_name: str,
     top_k: int = 5,
-    additional_filters: dict[str, Any] | None = None,
+    additional_filters: Mapping[str, str | int | float | bool] | None = None,
     fetch_mongo_details: bool | None = False,
-) -> list[dict[str, Any]]:
+) -> list[SimilarityMatch]:
     """Search a ChromaDB collection for items similar to input_text, scoped to user_id.
 
-    Returns items keyed id/similarity_score/user_id/content (plus created_at/updated_at when fetch_mongo_details enriches from MongoDB). Stays dict[str, Any] rather than a TypedDict: the enrichment loop writes timestamp keys through a loop variable, which a TypedDict forbids (Type Safety items 13/14).
+    Optionally enriches results with MongoDB details.
     """
     log.set(
         collection_name=collection_name,
@@ -31,7 +59,7 @@ async def search_by_similarity(
         chroma_collection = await ChromaClient.get_langchain_client(collection_name=collection_name)
 
         # Build the filter
-        where_filter: dict[str, Any] = {"user_id": str(user_id)}
+        where_filter: dict[str, object] = {"user_id": str(user_id)}
         if additional_filters:
             where_filter = {
                 "$and": [
@@ -54,41 +82,44 @@ async def search_by_similarity(
             return []
 
         # Extract IDs for MongoDB lookup if needed
-        result_items = []
-        id_field = "note_id" if collection_name == CHROMA_NOTES_COLLECTION else "file_id"
+        result_items: list[SimilarityMatch] = []
+        is_notes = collection_name == CHROMA_NOTES_COLLECTION
 
         # Build initial result data
         for item, score in chroma_results:
-            item_id = item.metadata.get(id_field)
+            meta = _IndexedItemMetadata.model_validate(item.metadata)
+            item_id = meta.note_id if is_notes else meta.file_id
             if not item_id:
                 continue
 
             result_items.append(
-                {
-                    "id": item_id,
-                    "similarity_score": score,
-                    "user_id": item.metadata.get("user_id", ""),
-                    "content": item.page_content,
-                }
+                SimilarityMatch(
+                    id=item_id,
+                    similarity_score=score,
+                    user_id=meta.user_id,
+                    content=item.page_content,
+                )
             )
 
         # Enrich note results with their stored timestamps. Only the notes path
         # requests enrichment (see search_notes_by_similarity, the sole caller);
         # the files-detail branch was unreachable and is intentionally dropped.
-        if fetch_mongo_details and collection_name == CHROMA_NOTES_COLLECTION:
-            note_ids = [str(d["id"]) for d in result_items]
+        if fetch_mongo_details and is_notes:
+            note_ids = [d.id for d in result_items]
             notes_by_id = {n.id: n for n in await note_repository.find_by_ids(user_id, note_ids)}
-            for item_data in result_items:
-                note = notes_by_id.get(item_data["id"])
-                if note is None:
-                    continue
-                for ts_field in ("created_at", "updated_at"):
-                    value = getattr(note, ts_field, None)
-                    if value is not None and hasattr(value, "isoformat"):
-                        item_data[ts_field] = value.isoformat()
+            result_items = [
+                replace(
+                    match,
+                    created_at=note.created_at.isoformat() if note.created_at else None,
+                    updated_at=note.updated_at.isoformat() if note.updated_at else None,
+                )
+                if (note := notes_by_id.get(match.id)) is not None
+                else match
+                for match in result_items
+            ]
 
         # Sort by similarity score (lower is better)
-        result_items.sort(key=lambda x: x.get("similarity_score", 1.0))
+        result_items.sort(key=lambda x: x.similarity_score)
 
         # Limit to top_k results
         result_items = result_items[:top_k]
@@ -106,7 +137,7 @@ async def search_by_similarity(
         return []
 
 
-async def search_notes_by_similarity(input_text: str, user_id: str) -> list[dict[str, Any]]:
+async def search_notes_by_similarity(input_text: str, user_id: str) -> list[SimilarityMatch]:
     return await search_by_similarity(
         input_text=input_text,
         user_id=user_id,

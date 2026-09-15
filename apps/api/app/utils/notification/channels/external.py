@@ -11,7 +11,7 @@ Subclasses set only channel_type and platform.
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TypedDict
+from dataclasses import dataclass
 
 from app.config.settings import settings
 from app.models.chat_models import ConversationSource
@@ -24,7 +24,8 @@ from app.services.outbound_delivery import OutboundResult, publish_outbound_mess
 from app.utils.notification.channels.base import ChannelAdapter
 
 
-class ExternalPayload(TypedDict):
+@dataclass(slots=True, frozen=True)
+class ExternalPayload:
     """What this adapter hands the bot consumers: the rendered CommonMark parts."""
 
     parts: list[str]
@@ -90,8 +91,7 @@ class ExternalPlatformAdapter(ChannelAdapter[ExternalPayload]):
         when the publish itself fails (so retries/alerting fire), and a skip when
         the user has no linked platform or there is nothing to send.
         """
-        parts = content.get("parts", [])
-        result = await publish_outbound_message(self.platform, user_id, parts)
+        result = await publish_outbound_message(self.platform, user_id, content.parts)
         if result is OutboundResult.PUBLISHED:
             return self._success()
         if result is OutboundResult.FAILED:

@@ -21,6 +21,7 @@ from uuid import uuid4
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langgraph.errors import GraphRecursionError
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.agent import AgentRunOptions, StreamMessageIds, call_agent
 from app.agents.core.background.executor_capture import (
@@ -41,6 +42,7 @@ from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_H
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.repositories.conversations import conversation_repository
+from app.models.chat_models import ToolDataEntry
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import (
     ConversationDescriptionFrame,
@@ -114,6 +116,47 @@ async def run_chat_stream_background(
         )
 
 
+class _ErrorChunk(BaseModel):
+    """A ``data:`` chunk, read only for the error an error frame carries."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    error: object = None
+
+
+class _CompleteMessageMarker(BaseModel):
+    """A ``nostream: {...}`` marker's final text and cancellation flag."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    complete_message: str | None = None
+    cancelled: bool | None = None
+
+
+class _WideEventModel(BaseModel):
+    """The accumulated wide event, read only for the ``model`` namespace already set on it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    model: dict[str, object] | None = None
+
+
+class _ToolEntryName(BaseModel):
+    """A persisted tool_data entry, read only for its tool name."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    tool_name: str | None = None
+
+
+class _PersistedToolData(BaseModel):
+    """The turn's tool_data envelope, read only for its entries."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    tool_data: list[_ToolEntryName] = Field(default_factory=list)
+
+
 @dataclass(frozen=True)
 class _TurnContext:
     """What identifies the turn being streamed, plus the collector for its usage.
@@ -149,9 +192,12 @@ class _StreamState:
         "is_cancelled",
         "queued",
         "saved",
+        "subagent_ends",
+        "subagent_starts",
         "t0_perf",
         "todo_progress_accumulated",
         "tool_data",
+        "tool_entries",
         "tool_outputs",
         "ttft_ms",
         "ttft_perf",
@@ -162,9 +208,18 @@ class _StreamState:
 
     def __init__(self, turn_id: str | None = None) -> None:
         self.complete_message: str = ""
-        self.tool_data: dict[str, Any] = {"tool_data": []}
+        # The accumulators process_data_chunk fills, and the envelope around them
+        # that recovery, grouping and persistence (chat.state) take as one dict.
+        self.tool_entries: list[ToolDataEntry] = []
+        self.subagent_starts: dict[str, dict[str, object]] = {}
+        self.subagent_ends: dict[str, dict[str, object]] = {}
+        self.tool_data: dict[str, Any] = {
+            "tool_data": self.tool_entries,
+            "subagent_starts": self.subagent_starts,
+            "subagent_ends": self.subagent_ends,
+        }
         self.tool_outputs: dict[str, str] = {}
-        self.todo_progress_accumulated: dict[str, Any] = {}
+        self.todo_progress_accumulated: dict[str, dict[str, object]] = {}
         self.follow_up_actions: list[str] = []
         self.usage_metadata: dict[str, Any] = {}
         self.is_cancelled: bool = False
@@ -206,7 +261,7 @@ async def _run_chat_stream(
     state = _StreamState(turn_id=body.turn_id)
     state.t0_perf = t0_perf if t0_perf is not None else time.perf_counter()
     is_new_conversation = body.conversation_id is None
-    user_id = user.get("user_id")
+    user_id = user.user_id
     artifact_task: asyncio.Task[None] | None = None
     description_task: asyncio.Task[str] | None = None
 
@@ -362,7 +417,11 @@ def _recent_history(messages: list[MessageDict]) -> list[MessageDict]:
     user (see user_message_content_from); drop it so the window is only
     prior context, then keep the last HIL_CLASSIFIER_HISTORY_TURNS.
     """
-    prior = messages[:-1] if messages and messages[-1].get("role") == "user" else messages
+    prior = messages
+    if messages:
+        last_turn: MessageDict = messages[-1]
+        if last_turn.get("role") == "user":
+            prior = messages[:-1]
     return prior[-HIL_CLASSIFIER_HISTORY_TURNS:]
 
 
@@ -387,7 +446,7 @@ async def _resolve_pending_approval_turn(
         # buttons, so the pending approval waits for a click or the sweep.
         return False
 
-    user_id = user.get("user_id")
+    user_id = user.user_id
     message = user_message_content_from(body)
     if not user_id or not message:
         return False
@@ -438,6 +497,7 @@ def _set_stream_log_context(
     is_new_conversation: bool,
 ) -> None:
     """Attach structured log context for the stream."""
+    last_turn: MessageDict | None = body.messages[-1] if body.messages else None
     log.set(
         user={"id": str(user_id)} if user_id else {},
         chat=ChatContext(
@@ -452,7 +512,7 @@ def _set_stream_log_context(
             has_calendar_event=bool(body.selectedCalendarEvent),
             selected_workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
         ),
-        user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
+        user_message_length=len(last_turn["content"]) if last_turn else 0,
         selected_tool=body.selectedTool,
     )
 
@@ -601,8 +661,10 @@ async def _consume_agent_stream(
             # record the latter so the persisted message carries the failure.
             with contextlib.suppress(json.JSONDecodeError):
                 payload = json.loads(chunk[len("data: ") :])
-                if isinstance(payload, dict) and payload.get("error"):
-                    state.error = str(payload["error"])
+                if isinstance(payload, dict):
+                    frame_error = _ErrorChunk.model_validate(payload).error
+                    if frame_error:
+                        state.error = str(frame_error)
 
         if chunk.startswith("data: "):
             if state.ttft_perf is None and extract_response_text(chunk):
@@ -614,7 +676,9 @@ async def _consume_agent_stream(
                     stream_id,
                     chunk,
                     ChunkAccumulators(
-                        tool_data=state.tool_data,
+                        tool_entries=state.tool_entries,
+                        subagent_starts=state.subagent_starts,
+                        subagent_ends=state.subagent_ends,
                         tool_outputs=state.tool_outputs,
                         todo_progress=state.todo_progress_accumulated,
                         follow_up_actions=state.follow_up_actions,
@@ -642,8 +706,8 @@ def _parse_complete_message(chunk: str) -> tuple[str, bool]:
     """
     nostream_json = json.loads(chunk.removeprefix("nostream: "))
     if isinstance(nostream_json, dict):
-        message = strip_partial_message_break(str(nostream_json.get("complete_message", "")))
-        return message, bool(nostream_json.get("cancelled", False))
+        marker = _CompleteMessageMarker.model_validate(nostream_json)
+        return strip_partial_message_break(marker.complete_message or ""), bool(marker.cancelled)
     return "", False
 
 
@@ -725,7 +789,7 @@ def _log_usage_summary(state: _StreamState) -> None:
     """
     total_input, total_output, total_cached = aggregate_usage_metadata(state.usage_metadata)
     cache_hit_rate = round(total_cached / max(total_input, 1), 4) if total_input else 0.0
-    existing_model = log.get().get("model") or {}
+    existing_model = _WideEventModel.model_validate(log.get()).model or {}
     log.set(
         model={
             **existing_model,
@@ -797,7 +861,7 @@ async def _substitute_empty_completion(stream_id: str, state: _StreamState) -> N
     """
     if state.complete_message.strip() or state.error or state.is_cancelled:
         return
-    if state.tool_data.get("tool_data"):
+    if _PersistedToolData.model_validate(state.tool_data).tool_data:
         return
 
     _, output_tokens, _ = aggregate_usage_metadata(state.usage_metadata)
@@ -871,7 +935,7 @@ async def _attach_executor_tool_data(
     try:
         matched = await conversation_repository.append_message_tool_data(
             conversation_id,
-            user_id=user.get("user_id", ""),
+            user_id=user.user_id,
             message_id=state.bot_message_id,
             entries=executor_td,
         )
@@ -933,7 +997,7 @@ async def _finalize_stream(
 
     await stream_manager.cleanup(stream_id)
 
-    tool_entries = state.tool_data.get("tool_data", [])
+    tool_entries = _PersistedToolData.model_validate(state.tool_data).tool_data
     fs_metrics = flush_fs_metrics()
     # Absent spans stay absent so Loki can tell "no text" from zero.
     latency_fields: ChatContext = {
@@ -950,7 +1014,7 @@ async def _finalize_stream(
         chat=latency_fields,
         response_length=len(state.complete_message),
         tool_calls_count=len(tool_entries),
-        tool_types=list({e["tool_name"] for e in tool_entries if "tool_name" in e}),
+        tool_types=list({e.tool_name for e in tool_entries if e.tool_name is not None}),
         todo_progress_sources=list(state.todo_progress_accumulated.keys()),
         # Per-op FS latency aggregate — one structured field so LogQL can split
         # on op name, count, total_ms, max_ms without N+1 log lines. Empty dict

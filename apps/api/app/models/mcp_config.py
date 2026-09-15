@@ -70,6 +70,13 @@ class DCRClientRegistration(TypedDict, total=False):
     client_secret: str
 
 
+class OAuthPendingState(BaseModel):
+    """The CSRF state and PKCE verifier an MCP OAuth flow parks in Redis until its callback."""
+
+    state: str
+    code_verifier: str | None = None
+
+
 class MCPUseServerConfig(TypedDict, total=False):
     """One entry under mcpServers in the config handed to mcp_use.
 

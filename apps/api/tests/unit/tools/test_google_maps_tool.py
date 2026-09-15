@@ -95,7 +95,11 @@ def test_proxy_failure_reports_error() -> None:
 def test_missing_user_id_raises() -> None:
     tool = _capture_tool()
     with patch(f"{MODULE}.proxy_request_sync", return_value={}) as proxy:
-        with pytest.raises(AppError, match="Missing user_id"):
+        with pytest.raises(AppError, match="Missing user_id") as raised:
             tool(GatherContextInput(), None, {})
 
     assert proxy.call_args_list == []
+    assert raised.value.message == "Missing user_id in auth_credentials"
+    assert raised.value.why == "CUSTOM_GATHER_CONTEXT requires a user-scoped auth context"
+    assert raised.value.status_code == 500
+    assert isinstance(raised.value.__cause__, ValueError)

@@ -20,6 +20,7 @@ from app.config.rate_limits import (
 from app.decorators import tiered_rate_limit
 from app.models.payment_models import PlanType
 from app.models.usage_models import FeatureUsage, UsagePeriod
+from app.models.user_models import AuthenticatedUser
 from app.services.limit_upsell import LimitHitOrigin
 
 
@@ -663,10 +664,10 @@ class TestTieredRateLimitDecorator:
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
-        async def my_endpoint(user: dict = None) -> str:
+        async def my_endpoint(user: AuthenticatedUser | None = None) -> str:
             return "ok"
 
-        result = await my_endpoint(user={"user_id": "u1"})
+        result = await my_endpoint(user=AuthenticatedUser(user_id="u1"))
         assert result == "ok"
         mock_limiter.check_and_increment.assert_called_once()
 
@@ -681,10 +682,10 @@ class TestTieredRateLimitDecorator:
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
-        async def my_endpoint(user: dict) -> str:
+        async def my_endpoint(user: AuthenticatedUser) -> str:
             return "ok"
 
-        result = await my_endpoint({"user_id": "u1"})
+        result = await my_endpoint(AuthenticatedUser(user_id="u1"))
         assert result == "ok"
 
     async def test_decorator_skips_when_no_user(self) -> None:
@@ -700,11 +701,11 @@ class TestTieredRateLimitDecorator:
         from fastapi import HTTPException
 
         @tiered_rate_limit("file_upload")
-        async def my_endpoint(user: dict = None) -> str:
+        async def my_endpoint(user: AuthenticatedUser | None = None) -> str:
             return "ok"
 
         with pytest.raises(HTTPException) as exc_info:
-            await my_endpoint(user={"email": "no_id"})
+            await my_endpoint(user=AuthenticatedUser(user_id="", email="no_id"))
         assert exc_info.value.status_code == 401
 
     @patch("app.decorators.rate_limiting.tiered_limiter")
@@ -718,10 +719,10 @@ class TestTieredRateLimitDecorator:
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
-        async def my_endpoint(user: dict = None) -> str:
+        async def my_endpoint(user: AuthenticatedUser | None = None) -> str:
             return "ok"
 
-        await my_endpoint(user={"user_id": "u1"})
+        await my_endpoint(user=AuthenticatedUser(user_id="u1"))
         call_args = mock_limiter.check_and_increment.call_args
         assert call_args.kwargs["user_plan"] == PlanType.FREE
 

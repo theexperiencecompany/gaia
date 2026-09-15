@@ -43,6 +43,10 @@ from shared.py.wide_events import log
 
 router = APIRouter()
 
+#: ``AuthenticatedUser``'s per-auth-path flags — see ``get_me`` for why they are
+#: serialized only when set.
+_AUTH_PATH_FLAGS = ("impersonated", "bot_authenticated", "dev_bypass")
+
 workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 
 
@@ -57,15 +61,32 @@ async def get_me(
     Returns the current authenticated user's details.
     Uses the dependency injection to fetch user data.
     """
-    onboarding_status = await get_user_onboarding_status(user["user_id"])
+    onboarding_status = await get_user_onboarding_status(user.user_id)
 
     log.set(
-        user={"id": user["user_id"], "email": user.get("email")},
+        user={"id": user.user_id, "email": user.email},
         operation="get_me",
     )
 
+    # The auth-path flags are on the wire only when set — a plain session has
+    # never sent ``impersonated: false`` — so the False ones stay out here, the
+    # same way ``response_model_exclude_none`` keeps the unset document fields out.
+    flags = {
+        name: True
+        for name, value in (
+            ("impersonated", user.impersonated),
+            ("bot_authenticated", user.bot_authenticated),
+            ("dev_bypass", user.dev_bypass),
+        )
+        if value
+    }
     response = AuthenticatedUserResponse.model_validate(
-        {**user, "message": "User retrieved successfully", "onboarding": onboarding_status}
+        {
+            **user.model_dump(exclude=set(_AUTH_PATH_FLAGS)),
+            **flags,
+            "message": "User retrieved successfully",
+            "onboarding": onboarding_status,
+        }
     )
 
     log.set(outcome="success")
@@ -82,9 +103,9 @@ async def update_me(
     Update the current user's profile information.
     Supports updating name and profile picture.
     """
-    user_id = user.get("user_id")
+    user_id = user.user_id
     log.set(
-        user={"id": user_id, "email": user.get("email")},
+        user={"id": user_id, "email": user.email},
         operation="update_me",
         has_picture_upload=bool(picture and picture.size and picture.size > 0),
     )
@@ -137,7 +158,7 @@ async def update_user_name(
 ) -> UserUpdateResponse:
     """Update the user's name. This is the consolidated endpoint for name updates."""
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         log.set(user={"id": user_id}, operation="update_user_name")
 
         if not user_id or not isinstance(user_id, str):
@@ -153,7 +174,7 @@ async def update_user_name(
     except Exception as e:
         log.error(
             f"{LogTag.API} Error updating user name",
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
             exc_info=True,
@@ -358,8 +379,8 @@ async def logout(
         if not session:
             raise HTTPException(status_code=401, detail="Invalid session")
 
-        user_email: str | None = user.get("email")
-        user_id: str | None = user.get("user_id")
+        user_email: str | None = user.email
+        user_id: str | None = user.user_id
 
         # The auth model always carries both fields, so an or-flip of this
         # guard is behaviorally unreachable (the mutation gate would never see
@@ -394,7 +415,7 @@ async def logout(
     except Exception as e:
         log.error(
             f"{LogTag.API} Logout error",
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )

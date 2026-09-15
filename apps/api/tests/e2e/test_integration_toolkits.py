@@ -30,6 +30,7 @@ import pytest
 from typing_extensions import TypedDict
 
 from app.config.oauth_config import get_composio_social_configs
+from app.models.user_models import UserDocument
 from app.services.composio.custom_tools.registry import CustomToolsRegistry
 from app.services.composio.proxy_client import invalidate_connected_account_cache
 from app.utils.errors import AppError
@@ -529,15 +530,15 @@ class TestCalendarDaySummary:
                 ]
             )
 
-        async def fake_user(user_id: str) -> dict[str, str]:
-            return {"timezone": HOME_TZ}
+        async def fake_user(user_id: str) -> UserDocument:
+            return UserDocument(timezone=HOME_TZ)
 
         async def fake_metadata(user_id: str) -> tuple[dict[str, str], dict[str, str]]:
             return {"primary": "#0b8043"}, {"primary": "Work"}
 
         with (
             stub_auth(tool),
-            patch("app.services.user_service.get_user_by_id", fake_user),
+            patch("app.db.repositories.users.user_repository.get", fake_user),
             patch("app.services.calendar_service.get_calendar_events", fake_get_calendar_events),
             patch("app.services.calendar_service.get_calendar_metadata_map", fake_metadata),
         ):
@@ -581,15 +582,15 @@ class TestCalendarDaySummary:
                 ]
             )
 
-        async def fake_user(user_id: str) -> dict[str, str]:
-            return {"timezone": HOME_TZ}
+        async def fake_user(user_id: str) -> UserDocument:
+            return UserDocument(timezone=HOME_TZ)
 
         async def fake_metadata(user_id: str) -> tuple[dict[str, str], dict[str, str]]:
             return {}, {}
 
         with (
             stub_auth(tool),
-            patch("app.services.user_service.get_user_by_id", fake_user),
+            patch("app.db.repositories.users.user_repository.get", fake_user),
             patch("app.services.calendar_service.get_calendar_events", fake_get_calendar_events),
             patch("app.services.calendar_service.get_calendar_metadata_map", fake_metadata),
         ):

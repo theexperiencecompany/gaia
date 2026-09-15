@@ -15,6 +15,7 @@ import pytest
 from app.agents.core.agent import call_agent
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.models.message_models import MessageRequestWithHistory
+from tests.factories import make_authenticated_user
 from tests.helpers import create_fake_llm
 from tests.integration.agents.test_comms_agent_flow import (
     _common_patches,
@@ -60,7 +61,7 @@ class TestCallAgentReal:
                     gen = await call_agent(
                         request=body,
                         conversation_id="call-agent-conv-1",
-                        user={"user_id": "agent-user-1", "name": "Test"},
+                        user=make_authenticated_user(user_id="agent-user-1", name="Test"),
                     )
 
                     chunks = []
@@ -92,7 +93,7 @@ class TestCallAgentReal:
             gen = await call_agent(
                 request=body,
                 conversation_id="call-agent-conv-2",
-                user={"user_id": "agent-user-2"},
+                user=make_authenticated_user(user_id="agent-user-2"),
             )
 
             chunks = []

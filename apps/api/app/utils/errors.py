@@ -23,8 +23,8 @@ class AppError(Exception):
         # f-string logging and any str(exc) callers see a meaningful error.
         return self.message
 
-    def to_dict(self) -> dict[str, Any]:
-        d: dict[str, Any] = {"message": self.message}
+    def to_dict(self) -> dict[str, object]:
+        d: dict[str, object] = {"message": self.message}
         if self.why:
             d["why"] = self.why
         if self.fix:

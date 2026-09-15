@@ -42,10 +42,10 @@ class TestCrawlProfileUrl:
         with _patch_crawl(crawler):
             result = await crawl_profile_url(URL, PLATFORM, semaphore)
 
-        assert result["url"] == URL
-        assert result["platform"] == PLATFORM
-        assert result["content"] == "## Profile\nbio here"
-        assert result["error"] is None
+        assert result.url == URL
+        assert result.platform == PLATFORM
+        assert result.content == "## Profile\nbio here"
+        assert result.error is None
         crawler.arun.assert_awaited_once_with(url=URL)
 
     async def test_none_result_is_reported_as_an_error(self) -> None:
@@ -56,8 +56,8 @@ class TestCrawlProfileUrl:
         with _patch_crawl(crawler):
             result = await crawl_profile_url(URL, PLATFORM, semaphore)
 
-        assert result["content"] is None
-        assert "Crawler returned None" in result["error"]
+        assert result.content is None
+        assert "Crawler returned None" in result.error
 
     async def test_missing_markdown_attribute_is_an_error(self) -> None:
         crawler = MagicMock()
@@ -68,8 +68,8 @@ class TestCrawlProfileUrl:
         with _patch_crawl(crawler):
             result = await crawl_profile_url(URL, PLATFORM, semaphore)
 
-        assert result["content"] is None
-        assert "missing markdown attribute" in result["error"]
+        assert result.content is None
+        assert "missing markdown attribute" in result.error
 
     async def test_empty_markdown_is_an_error(self) -> None:
         crawler = MagicMock()
@@ -79,8 +79,8 @@ class TestCrawlProfileUrl:
         with _patch_crawl(crawler):
             result = await crawl_profile_url(URL, PLATFORM, semaphore)
 
-        assert result["content"] is None
-        assert "No markdown content" in result["error"]
+        assert result.content is None
+        assert "No markdown content" in result.error
 
     async def test_crawl_exception_is_captured_not_raised(self) -> None:
         crawler = MagicMock()
@@ -90,8 +90,10 @@ class TestCrawlProfileUrl:
         with _patch_crawl(crawler):
             result = await crawl_profile_url(URL, PLATFORM, semaphore)
 
-        assert result["content"] is None
-        assert result["error"] == "TimeoutError: timed out"
+        assert result.content is None
+        assert result.error == "TimeoutError: timed out"
+        assert result.url == URL
+        assert result.platform == PLATFORM
 
     async def test_exception_without_a_message_names_the_type(self) -> None:
         crawler = MagicMock()
@@ -101,5 +103,5 @@ class TestCrawlProfileUrl:
         with _patch_crawl(crawler):
             result = await crawl_profile_url(URL, PLATFORM, semaphore)
 
-        assert result["content"] is None
-        assert result["error"].startswith("RuntimeError:")
+        assert result.content is None
+        assert result.error.startswith("RuntimeError:")

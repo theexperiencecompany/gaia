@@ -6,10 +6,12 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
+from langchain_core.documents import Document
 import pytest
 
 from app.models.todo_models import Priority, TodoDocument, TodoResponse
 from app.utils.todo_vector_utils import (
+    TodoSearchFilters,
     create_todo_content_for_embedding,
     delete_todo_embedding,
     hybrid_search_todos,
@@ -27,9 +29,10 @@ TODO_ID = "507f1f77bcf86cd799439099"
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
-def _make_todo_data(**overrides: Any) -> dict:
-    """Build a realistic todo dict, merging *overrides* on top of defaults."""
+def _make_todo_data(**overrides: Any) -> TodoDocument:
+    """Build a realistic TodoDocument, merging *overrides* on top of defaults."""
     base: dict[str, Any] = {
+        "user_id": USER_ID,
         "title": "Buy groceries",
         "description": "Milk, eggs, bread",
         "labels": ["shopping", "personal"],
@@ -45,7 +48,7 @@ def _make_todo_data(**overrides: Any) -> dict:
         "updated_at": NOW,
     }
     base.update(overrides)
-    return base
+    return TodoDocument.model_validate(base)
 
 
 def _make_todo_response(**overrides: Any) -> TodoResponse:
@@ -129,8 +132,8 @@ class TestCreateTodoContentForEmbedding:
         result = create_todo_content_for_embedding(todo)
         assert "Subtasks: A, B" in result
 
-    def test_subtasks_with_no_title_key(self) -> None:
-        todo = _make_todo_data(subtasks=[{"completed": False}])
+    def test_subtasks_without_titles_excluded(self) -> None:
+        todo = _make_todo_data(subtasks=[{"title": "", "completed": False}])
         result = create_todo_content_for_embedding(todo)
         assert "Subtasks" not in result
 
@@ -140,8 +143,8 @@ class TestCreateTodoContentForEmbedding:
         assert "Status: completed" in result
 
     def test_empty_todo_minimal_output(self) -> None:
-        """Completely empty dict should still produce a status line."""
-        result = create_todo_content_for_embedding({})
+        """A bare todo (title only) still produces the status line, and nothing else."""
+        result = create_todo_content_for_embedding(TodoDocument(user_id=USER_ID, title=""))
         assert result == "Status: pending"
 
     def test_empty_title_string_excluded(self) -> None:
@@ -192,6 +195,8 @@ class TestStoreTodoEmbedding:
         self.mock_collection.add_texts.assert_called_once()
         call_kwargs = self.mock_collection.add_texts.call_args
         assert call_kwargs[1]["ids"] == [TODO_ID]
+        # The embedded text is the todo's own searchable rendering.
+        assert call_kwargs[1]["texts"] == [create_todo_content_for_embedding(todo)]
 
     async def test_exception_returns_false(self) -> None:
         self.mock_chroma.side_effect = RuntimeError("ChromaDB unavailable")
@@ -208,13 +213,14 @@ class TestStoreTodoEmbedding:
         assert metadata["updated_at"] == NOW.isoformat()
         assert metadata["due_date"] == NOW.isoformat()
 
-    async def test_string_fields_kept_as_strings(self) -> None:
-        todo = _make_todo_data(created_at="2026-01-01", updated_at="2026-06-01")
+    async def test_unstamped_timestamps_are_empty_strings(self) -> None:
+        todo = _make_todo_data(created_at=None, updated_at=None)
         await store_todo_embedding(TODO_ID, todo, USER_ID)
 
         metadata = self.mock_collection.add_texts.call_args[1]["metadatas"][0]
-        assert metadata["created_at"] == "2026-01-01"
-        assert metadata["updated_at"] == "2026-06-01"
+        assert metadata["created_at"] == ""
+        assert metadata["updated_at"] == ""
+        assert metadata["priority"] == "high"
 
     async def test_boolean_int_fields_converted_to_lowercase_strings(self) -> None:
         todo = _make_todo_data(completed=True, due_date=NOW)
@@ -270,13 +276,14 @@ class TestStoreTodoEmbedding:
         metadata = self.mock_collection.add_texts.call_args[1]["metadatas"][0]
         assert metadata["user_id"] == USER_ID
         assert metadata["todo_id"] == TODO_ID
+        assert metadata["title"] == "Buy groceries"
 
-    async def test_due_date_as_string_kept(self) -> None:
-        todo = _make_todo_data(due_date="2026-03-20")
+    async def test_due_date_stored_as_iso(self) -> None:
+        todo = _make_todo_data(due_date=datetime(2026, 3, 20, tzinfo=UTC))
         await store_todo_embedding(TODO_ID, todo, USER_ID)
 
         metadata = self.mock_collection.add_texts.call_args[1]["metadatas"][0]
-        assert metadata["due_date"] == "2026-03-20"
+        assert metadata["due_date"] == "2026-03-20T00:00:00+00:00"
 
 
 # ===========================================================================
@@ -298,10 +305,11 @@ class TestUpdateTodoEmbedding:
                 return_value=True,
             ) as mock_store,
         ):
-            result = await update_todo_embedding(TODO_ID, _make_todo_data(), USER_ID)
+            todo = _make_todo_data()
+            result = await update_todo_embedding(TODO_ID, todo, USER_ID)
             assert result is True
             mock_delete.assert_awaited_once_with(TODO_ID)
-            mock_store.assert_awaited_once_with(TODO_ID, _make_todo_data(), USER_ID)
+            mock_store.assert_awaited_once_with(TODO_ID, todo, USER_ID)
 
     async def test_returns_false_when_store_fails(self) -> None:
         with (
@@ -407,10 +415,8 @@ class TestSemanticSearchTodos:
         )
 
     def _make_search_result(self, todo_id: str, score: float = 0.9) -> tuple:
-        """Create a (Document, score) tuple mimicking ChromaDB results."""
-        doc = MagicMock()
-        doc.metadata = {"todo_id": todo_id}
-        return (doc, score)
+        """Create a (Document, score) tuple as ChromaDB returns it."""
+        return (Document(page_content="", metadata={"todo_id": todo_id}), score)
 
     async def test_results_found_returns_todo_response_list(self) -> None:
         oid = ObjectId()
@@ -453,35 +459,35 @@ class TestSemanticSearchTodos:
 
     async def test_filter_completed_applied(self) -> None:
         self.mock_collection.similarity_search_with_score.return_value = []
-        await semantic_search_todos("q", USER_ID, completed=True)
+        await semantic_search_todos("q", USER_ID, filters=TodoSearchFilters(completed=True))
 
         call_kwargs = self.mock_collection.similarity_search_with_score.call_args[1]
         assert call_kwargs["filter"]["completed"] == "true"
 
     async def test_filter_completed_false_applied(self) -> None:
         self.mock_collection.similarity_search_with_score.return_value = []
-        await semantic_search_todos("q", USER_ID, completed=False)
+        await semantic_search_todos("q", USER_ID, filters=TodoSearchFilters(completed=False))
 
         call_kwargs = self.mock_collection.similarity_search_with_score.call_args[1]
         assert call_kwargs["filter"]["completed"] == "false"
 
     async def test_filter_priority_applied(self) -> None:
         self.mock_collection.similarity_search_with_score.return_value = []
-        await semantic_search_todos("q", USER_ID, priority="high")
+        await semantic_search_todos("q", USER_ID, filters=TodoSearchFilters(priority="high"))
 
         call_kwargs = self.mock_collection.similarity_search_with_score.call_args[1]
         assert call_kwargs["filter"]["priority"] == "high"
 
     async def test_filter_priority_none_excluded(self) -> None:
         self.mock_collection.similarity_search_with_score.return_value = []
-        await semantic_search_todos("q", USER_ID, priority="none")
+        await semantic_search_todos("q", USER_ID, filters=TodoSearchFilters(priority="none"))
 
         call_kwargs = self.mock_collection.similarity_search_with_score.call_args[1]
         assert "priority" not in call_kwargs["filter"]
 
     async def test_filter_project_id_applied(self) -> None:
         self.mock_collection.similarity_search_with_score.return_value = []
-        await semantic_search_todos("q", USER_ID, project_id="proj_42")
+        await semantic_search_todos("q", USER_ID, filters=TodoSearchFilters(project_id="proj_42"))
 
         call_kwargs = self.mock_collection.similarity_search_with_score.call_args[1]
         assert call_kwargs["filter"]["project_id"] == "proj_42"
@@ -696,7 +702,9 @@ class TestHybridSearchTodos:
                 return_value=[completed_todo, pending_todo],
             ),
         ):
-            results = await hybrid_search_todos("query", USER_ID, completed=True)
+            results = await hybrid_search_todos(
+                "query", USER_ID, filters=TodoSearchFilters(completed=True)
+            )
             result_ids = [r.id for r in results]
             assert "t1" in result_ids
             assert "t2" not in result_ids
@@ -717,8 +725,11 @@ class TestHybridSearchTodos:
                 return_value=[high_todo, low_todo],
             ),
         ):
-            results = await hybrid_search_todos("query", USER_ID, priority=Priority.HIGH)
+            results = await hybrid_search_todos(
+                "query", USER_ID, filters=TodoSearchFilters(priority=Priority.HIGH)
+            )
             assert all(r.priority == Priority.HIGH for r in results)
+            assert [r.id for r in results] == ["h1"]
 
     async def test_project_id_filter_applied_to_traditional(self) -> None:
         t1 = _make_todo_response(id="t1", project_id="proj_1")
@@ -736,7 +747,9 @@ class TestHybridSearchTodos:
                 return_value=[t1, t2],
             ),
         ):
-            results = await hybrid_search_todos("query", USER_ID, project_id="proj_1")
+            results = await hybrid_search_todos(
+                "query", USER_ID, filters=TodoSearchFilters(project_id="proj_1")
+            )
             assert len(results) == 1
             assert results[0].id == "t1"
 

@@ -102,7 +102,8 @@ class TestManageSystemPromptsNodeUnit:
 
     def test_node_emits_latency_span(self):
         state = make_gaia_state(messages=[HumanMessage(content="Hello")])
-        config = {**make_node_config(), "agent_name": "node-test-agent"}
+        config = make_node_config()
+        config["configurable"]["agent_name"] = "node-test-agent"
         before = (
             REGISTRY.get_sample_value(
                 "graph_node_seconds_count",

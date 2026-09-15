@@ -14,7 +14,7 @@ from app.models.trigger_config import TriggerOption, TriggerOptionsQuery
 from tests.conftest import FAKE_USER
 
 TRIGGERS_ENDPOINT = "app.api.v1.endpoints.triggers"
-USER_ID = FAKE_USER["user_id"]
+USER_ID = FAKE_USER.user_id
 OPTIONS_URL = "/api/v1/triggers/options?integration_id=github&trigger_slug=github_commit_event&field_name=repo"
 
 

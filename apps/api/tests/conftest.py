@@ -56,6 +56,7 @@ from app.models.payment_models import (
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
+from app.models.user_models import AuthenticatedUser
 
 # Hermetic by default (USE_REAL_SERVICES=0): a bare local run stays offline
 # via the global _get_mongodb_instance mock. CI sets USE_REAL_SERVICES=1 so
@@ -217,23 +218,23 @@ def _env_pollution_guard(_hermetic_environment: Iterator[None]) -> Iterator[None
 # Fake user data
 # ---------------------------------------------------------------------------
 
-FAKE_USER: dict = {
-    "user_id": "507f1f77bcf86cd799439011",
-    "email": "test@example.com",
-    "name": "Test User",
-    "picture": None,
-    "auth_provider": "workos",
-    "timezone": "UTC",
-}
+FAKE_USER = AuthenticatedUser(
+    user_id="507f1f77bcf86cd799439011",
+    email="test@example.com",
+    name="Test User",
+    picture=None,
+    auth_provider="workos",
+    timezone="UTC",
+)
 
-FAKE_USER_2: dict = {
-    "user_id": "507f1f77bcf86cd799439022",
-    "email": "other@example.com",
-    "name": "Other User",
-    "picture": None,
-    "auth_provider": "workos",
-    "timezone": "America/New_York",
-}
+FAKE_USER_2 = AuthenticatedUser(
+    user_id="507f1f77bcf86cd799439022",
+    email="other@example.com",
+    name="Other User",
+    picture=None,
+    auth_provider="workos",
+    timezone="America/New_York",
+)
 
 # Real UserSubscriptionStatus shape for a paying subscriber. The root
 # conftest's global patch pins get_user_subscription_status to a FREE plan,
@@ -251,15 +252,14 @@ PRO_USER_SUBSCRIPTION: UserSubscriptionStatus = UserSubscriptionStatus(
     status=SubscriptionStatus.ACTIVE,
 )
 
-PRO_USER: dict = {
-    "user_id": "507f1f77bcf86cd799439033",
-    "email": "pro@example.com",
-    "name": "Pro User",
-    "picture": None,
-    "auth_provider": "workos",
-    "timezone": "UTC",
-    "subscription": PRO_USER_SUBSCRIPTION,
-}
+PRO_USER = AuthenticatedUser(
+    user_id="507f1f77bcf86cd799439033",
+    email="pro@example.com",
+    name="Pro User",
+    picture=None,
+    auth_provider="workos",
+    timezone="UTC",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -434,25 +434,24 @@ async def unauthed_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None
 
 
 @pytest.fixture
-def fake_user() -> dict:
-    return FAKE_USER.copy()
+def fake_user() -> AuthenticatedUser:
+    return FAKE_USER
 
 
 @pytest.fixture
-def fake_user_2() -> dict:
-    return FAKE_USER_2.copy()
+def fake_user_2() -> AuthenticatedUser:
+    return FAKE_USER_2
 
 
 @pytest.fixture
-def pro_user() -> dict:
-    """Return an authenticated user dict for a paying PRO user.
+def pro_user() -> AuthenticatedUser:
+    """Return an authenticated user for a paying PRO user.
 
-    FAKE_USER-shaped, plus a subscription key holding the real
-    UserSubscriptionStatus for a PRO plan. The global
-    get_user_subscription_status patch always reports FREE, so PRO-tier
-    tests patch that seam with pro_user["subscription"].
+    FAKE_USER-shaped; PRO_USER_SUBSCRIPTION is the real UserSubscriptionStatus
+    for its PRO plan. The global get_user_subscription_status patch always
+    reports FREE, so PRO-tier tests patch that seam with PRO_USER_SUBSCRIPTION.
     """
-    return PRO_USER.copy()
+    return PRO_USER
 
 
 @pytest.fixture

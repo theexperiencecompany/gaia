@@ -260,7 +260,7 @@ class TestMCPTestConnectionEndpoint:
             new_callable=AsyncMock,
         ) as mock_invalidate:
             await test_client.post("/api/v1/mcp/test/cache-check-integration")
-            mock_invalidate.assert_awaited_once_with(str(test_user["user_id"]))
+            mock_invalidate.assert_awaited_once_with(str(test_user.user_id))
 
 
 # ---------------------------------------------------------------------------

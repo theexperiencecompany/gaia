@@ -30,7 +30,7 @@ _pending_requests: dict[str, asyncio.Task[Any]] = {}
 _lock = asyncio.Lock()
 
 
-async def coalesce_request(key: str, factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
+async def coalesce_request(key: str, factory: Callable[[], Coroutine[object, None, T]]) -> T:
     """Coalesce concurrent requests for the same key.
 
     The first request runs factory; concurrent requests for the same key

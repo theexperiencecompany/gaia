@@ -352,7 +352,7 @@ async def test_the_gate_asks_about_this_caller_and_names_the_path_it_blocked() -
         response = await _get(_minimal_app(FAKE_USER), "/api/v1/paid")
 
     assert response.status_code == 402
-    gate.assert_awaited_once_with(FAKE_USER["user_id"], feature="/api/v1/paid")
+    gate.assert_awaited_once_with(FAKE_USER.user_id, feature="/api/v1/paid")
 
 
 async def test_a_gate_error_is_logged_with_the_caller_the_surface_and_the_cause() -> None:
@@ -370,7 +370,7 @@ async def test_a_gate_error_is_logged_with_the_caller_the_surface_and_the_cause(
     assert response.status_code == 503
     mock_log.error.assert_called_once_with(
         "Entitlement check failed — denying request (fail-closed)",
-        user={"id": FAKE_USER["user_id"]},
+        user={"id": FAKE_USER.user_id},
         payment={"operation": "paywall_gate_error", "feature": "/api/v1/paid"},
         error_type="ConnectionError",
         error="redis down",
@@ -415,7 +415,7 @@ async def test_a_user_who_just_paid_passes_the_gate_off_the_row_and_refreshes_th
 
     assert response.status_code == 200
     assert response.json() == {"ok": "yes"}
-    invalidate.assert_awaited_once_with(FAKE_USER["user_id"])
+    invalidate.assert_awaited_once_with(FAKE_USER.user_id)
 
 
 async def test_a_genuine_free_verdict_is_still_a_402() -> None:

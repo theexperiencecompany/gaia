@@ -70,9 +70,7 @@ async def _recover(chunks: list[str]) -> str:
     fake = _FakeRedisCache()
     with patch("app.core.stream_manager.redis_cache", new=fake):
         for chunk in chunks:
-            await process_data_chunk(
-                STREAM, chunk, ChunkAccumulators({"tool_data": []}, {}, {}, [])
-            )
+            await process_data_chunk(STREAM, chunk, ChunkAccumulators([], {}, {}, {}, {}, []))
         message, _ = await recover_stream_state(STREAM, "", {"tool_data": []})
     return message
 

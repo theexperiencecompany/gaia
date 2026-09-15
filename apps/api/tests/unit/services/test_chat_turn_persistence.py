@@ -56,10 +56,12 @@ async def _dispatch(stream_id: str, chunk: str, state: _StreamState) -> tuple[li
         stream_id,
         chunk,
         ChunkAccumulators(
-            state.tool_data,
-            state.tool_outputs,
-            state.todo_progress_accumulated,
-            state.follow_up_actions,
+            tool_entries=state.tool_entries,
+            subagent_starts=state.subagent_starts,
+            subagent_ends=state.subagent_ends,
+            tool_outputs=state.tool_outputs,
+            todo_progress=state.todo_progress_accumulated,
+            follow_up_actions=state.follow_up_actions,
         ),
     )
 

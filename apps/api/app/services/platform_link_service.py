@@ -9,8 +9,9 @@ unlinked.
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
 from urllib.parse import quote
+
+from pydantic import BaseModel, ConfigDict
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.settings import settings
@@ -28,7 +29,7 @@ from app.models.platform_models import (
     PlatformLinkEntry,
     PlatformLinkResult,
 )
-from app.models.user_models import PlatformLinkRecord, UserDocument, user_to_legacy_dict
+from app.models.user_models import PlatformLinkRecord, UserDocument
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.payments.payment_service import payment_service
@@ -68,6 +69,31 @@ class Platform(str, Enum):
 PREMIUM_PLATFORMS: frozenset[str] = frozenset({Platform.IMESSAGE.value})
 
 IMESSAGE_REGISTRATION_FEATURE_KEY = "imessage_registration"
+
+
+class _StoredPlatformLink(BaseModel):
+    """One platform_links entry as stored; a legacy numeric id reads as its string."""
+
+    model_config = ConfigDict(extra="ignore", coerce_numbers_to_str=True)
+
+    id: str | None = None
+    username: str | None = None
+    display_name: str | None = None
+
+
+class _LinkProfile(BaseModel):
+    """The optional profile fields a caller hands link_account."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    username: str | None = None
+    display_name: str | None = None
+
+
+def _stored_link(user: UserDocument | None, platform: str) -> _StoredPlatformLink | None:
+    """Parse the stored link for platform; None when absent or a legacy non-dict value."""
+    stored = (user.platform_links or {}).get(platform) if user else None
+    return _StoredPlatformLink.model_validate(stored) if isinstance(stored, dict) else None
 
 
 class PlatformAccountTakenError(ValueError):
@@ -161,7 +187,7 @@ async def _clear_pending_imessage_registration(user_id: str, linked_phone_number
 async def _is_linked_number(user_id: str, phone_number: str) -> bool:
     """Whether phone_number is the user's live iMessage link right now."""
     linked = await PlatformLinkService.get_linked_platforms(user_id)
-    entry = linked.get(Platform.IMESSAGE.value)
+    entry: PlatformLinkEntry | None = linked.get(Platform.IMESSAGE.value)
     return entry is not None and entry["platformUserId"] == phone_number
 
 
@@ -351,7 +377,7 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
     """
     # Read platform_user_id before unlinking so we can clear the bot auth cache
     existing = await PlatformLinkService.get_linked_platforms(user_id)
-    entry = existing.get(platform)
+    entry: PlatformLinkEntry | None = existing.get(platform)
     if entry is None:
         # A no-op "disconnected" would lie to the caller (the agent would tell
         # the user something that was never linked is now gone).
@@ -401,18 +427,17 @@ def linked_platforms_of(user: UserDocument) -> dict[str, PlatformLinkEntry]:
     PlatformLinkService.get_linked_platforms so callers that already hold the
     document (onboarding completion) do not pay for a second read.
     """
-    platform_links = user.platform_links or {}
     connected_at = user.platform_links_connected_at or {}
 
     result: dict[str, PlatformLinkEntry] = {}
     for platform in Platform.values():
-        stored = platform_links.get(platform)
-        if isinstance(stored, dict) and stored.get("id"):
+        stored = _stored_link(user, platform)
+        if stored is not None and stored.id:
             result[platform] = {
                 "platform": platform,
-                "platformUserId": stored["id"],
-                "username": stored.get("username"),
-                "displayName": stored.get("display_name"),
+                "platformUserId": stored.id,
+                "username": stored.username,
+                "displayName": stored.display_name,
                 "connectedAt": connected_at.get(platform),
             }
 
@@ -421,14 +446,6 @@ def linked_platforms_of(user: UserDocument) -> dict[str, PlatformLinkEntry]:
 
 class PlatformLinkService:
     """Service for platform account linking operations."""
-
-    @staticmethod
-    async def get_user_by_platform_id(
-        platform: str, platform_user_id: str
-    ) -> dict[str, Any] | None:
-        """Find a GAIA user by their platform account ID (queries the nested .id field)."""
-        user = await user_repository.get_by_platform_id(platform, platform_user_id)
-        return user_to_legacy_dict(user) if user else None
 
     @staticmethod
     async def list_platform_user_ids(platform: str, limit: int = 500) -> list[str]:
@@ -469,24 +486,22 @@ class PlatformLinkService:
 
         # Reject if the user already has a different platform ID stored
         user = await user_repository.get(user_id)
-        if user:
-            current_link = (user.platform_links or {}).get(platform)
-            if isinstance(current_link, dict):
-                current_id = current_link.get("id", "")
-                if current_id and current_id != platform_user_id:
-                    raise AccountHasDifferentPlatformError(
-                        f"Your account already has a different {platform} account linked"
-                    )
+        prior_link = _stored_link(user, platform)
+        if prior_link is not None and prior_link.id and prior_link.id != platform_user_id:
+            raise AccountHasDifferentPlatformError(
+                f"Your account already has a different {platform} account linked"
+            )
 
         now = datetime.now(UTC).isoformat()
 
         # Build the stored dict value
         link_value: PlatformLinkRecord = {"id": platform_user_id}
         if profile:
-            if profile.get("username"):
-                link_value["username"] = str(profile["username"])
-            if profile.get("display_name"):
-                link_value["display_name"] = str(profile["display_name"])
+            parsed_profile = _LinkProfile.model_validate(profile)
+            if parsed_profile.username:
+                link_value["username"] = parsed_profile.username
+            if parsed_profile.display_name:
+                link_value["display_name"] = parsed_profile.display_name
 
         result = await user_repository.link_platform(user_id, platform, link_value, now)
         if result is None:
@@ -495,10 +510,7 @@ class PlatformLinkService:
         if platform == Platform.IMESSAGE.value:
             await _clear_pending_imessage_registration(user_id, platform_user_id)
 
-        prior_link = (user.platform_links or {}).get(platform) if user else None
-        previously_linked_same = (
-            isinstance(prior_link, dict) and prior_link.get("id") == platform_user_id
-        )
+        previously_linked_same = prior_link is not None and prior_link.id == platform_user_id
 
         return PlatformLinkResult(
             status="linked",
@@ -519,7 +531,7 @@ class PlatformLinkService:
         """
         # Read before the $unset, or the number to release is already gone.
         linked = await PlatformLinkService.get_linked_platforms(user_id)
-        entry = linked.get(platform)
+        entry: PlatformLinkEntry | None = linked.get(platform)
         pending = await pending_platform_registration_repository.get_for_user(user_id, platform)
 
         result = await user_repository.unlink_platform(user_id, platform)

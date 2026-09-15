@@ -9,7 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 
+from app.api.v1.endpoints.user import get_me
 from app.models.user_models import (
+    AuthenticatedUser,
     AuthenticatedUserResponse,
     OnboardingPreferences,
     OnboardingStatusResponse,
@@ -27,6 +29,14 @@ FAKE_USER_UPDATE = {
     "email": "test@example.com",
     "picture": None,
 }
+
+ONBOARDING_STATUS = OnboardingStatusResponse(
+    completed=True,
+    completed_at=None,
+    phase=None,
+    preferences=OnboardingPreferences(),
+    first_message_conversation_id=None,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +68,69 @@ class TestGetMe:
         assert data["message"] == "User retrieved successfully"
         assert data["user_id"] == "507f1f77bcf86cd799439011"
         assert data["onboarding"]["completed"] is True
+        mock_onboarding.assert_awaited_once_with(FAKE_USER_ID)
+
+    @patch(
+        "app.api.v1.endpoints.user.get_user_onboarding_status",
+        new_callable=AsyncMock,
+        return_value=ONBOARDING_STATUS,
+    )
+    async def test_a_plain_session_sends_no_auth_path_flags(
+        self, mock_onboarding: AsyncMock, client: AsyncClient
+    ):
+        response = await client.get(f"{USER_BASE}/me")
+        assert response.status_code == 200
+        assert {"impersonated", "bot_authenticated", "dev_bypass"}.isdisjoint(response.json())
+
+    @patch(
+        "app.api.v1.endpoints.user.get_user_onboarding_status",
+        new_callable=AsyncMock,
+        return_value=ONBOARDING_STATUS,
+    )
+    async def test_unset_profile_fields_are_omitted_not_null(
+        self, mock_onboarding: AsyncMock, client: AsyncClient
+    ):
+        # response_model_exclude_none is the only thing keeping nulls off the
+        # wire, and clients have always read a missing key as "not set".
+        response = await client.get(f"{USER_BASE}/me")
+        body = response.json()
+        assert "picture" not in body
+        assert "created_at" not in body
+        assert [key for key, value in body.items() if value is None] == []
+
+    @patch(
+        "app.api.v1.endpoints.user.get_user_onboarding_status",
+        new_callable=AsyncMock,
+        return_value=ONBOARDING_STATUS,
+    )
+    async def test_set_auth_path_flags_are_returned_as_true(self, mock_onboarding: AsyncMock):
+        user = AuthenticatedUser(
+            user_id=FAKE_USER_ID,
+            auth_provider="workos",
+            impersonated=True,
+            bot_authenticated=True,
+            dev_bypass=True,
+        )
+        with patch("app.api.v1.endpoints.user.log"):
+            response = await get_me(user=user)
+        assert response.impersonated is True
+        assert response.bot_authenticated is True
+        assert response.dev_bypass is True
+
+    @patch(
+        "app.api.v1.endpoints.user.get_user_onboarding_status",
+        new_callable=AsyncMock,
+        return_value=ONBOARDING_STATUS,
+    )
+    async def test_get_me_stamps_the_caller_on_the_wide_event(
+        self, mock_onboarding: AsyncMock, client: AsyncClient
+    ):
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.get(f"{USER_BASE}/me")
+        assert response.status_code == 200
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER_ID, "email": "test@example.com"}, operation="get_me"
+        )
 
     async def test_get_me_unauthed(self, unauthed_client: AsyncClient):
         response = await unauthed_client.get(f"{USER_BASE}/me")
@@ -100,6 +173,26 @@ class TestUpdateMe:
         mock_capture.assert_called_once_with(
             AnalyticsEvents.PROFILE_UPDATED,
             {"changed_field_count": 1, "has_picture_upload": False},
+        )
+
+    @patch(
+        "app.api.v1.endpoints.user.update_user_profile",
+        new_callable=AsyncMock,
+        return_value=FAKE_USER_UPDATE,
+    )
+    async def test_update_me_stamps_the_caller_on_the_wide_event(
+        self, mock_update: AsyncMock, client: AsyncClient
+    ):
+        with (
+            patch("app.api.v1.endpoints.user.capture_context_event"),
+            patch("app.api.v1.endpoints.user.log") as mock_log,
+        ):
+            response = await client.patch(f"{USER_BASE}/me", data={"name": "Updated User"})
+        assert response.status_code == 200
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER_ID, "email": "test@example.com"},
+            operation="update_me",
+            has_picture_upload=False,
         )
 
     @patch(

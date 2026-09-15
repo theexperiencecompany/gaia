@@ -29,12 +29,19 @@ from app.models.google_docs_models import (
     ShareDocInput,
     ShareRecipient,
 )
+from app.models.integrations.composio import CustomToolAuthCredentials
+from app.models.integrations.google_docs import (
+    GoogleDocsDocument,
+    GoogleDocsHeading,
+    GoogleDocsToolExecution,
+)
 from app.services.composio.proxy_client import ProxyRequest
 from app.utils.errors import AppError
 
 MODULE = "app.agents.tools.integrations.google_docs_tool"
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
+CREDS = CustomToolAuthCredentials(user_id="user_test_123")
 
 EXPECTED_TOOL_NAMES = [
     "GOOGLEDOCS_CUSTOM_SHARE_DOC",
@@ -299,8 +306,32 @@ def test_custom_create_toc_wrapper_logs_action_and_delegates() -> None:
     assert log_mock.set.call_args_list == [
         call(tool={"integration": "google_docs", "action": "create_toc"})
     ]
-    delegate.assert_called_once_with(composio, request, AUTH_CREDS)
+    delegate.assert_called_once_with(composio, request, CREDS)
     assert result == delegate_result
+
+
+@pytest.mark.parametrize(
+    "creds",
+    [{}, {"user_id": ""}, {"user_id": None}, {"user_id": 123}, {"userId": "abc"}],
+    ids=["missing", "blank", "none", "int", "wrong-key"],
+)
+def test_wrappers_reject_unusable_credentials_before_any_call(creds: dict[str, Any]) -> None:
+    _, tools, composio = _capture_tools(register_google_docs_custom_tools)
+    wrappers = [
+        (
+            tools["GOOGLEDOCS_CUSTOM_SHARE_DOC"][0],
+            ShareDocInput(document_id="d", recipients=[ShareRecipient(email="a@x.com")]),
+        ),
+        (tools["GOOGLEDOCS_CUSTOM_CREATE_TOC"][0], CreateTOCInput(document_id="d")),
+        (tools["GOOGLEDOCS_CUSTOM_DELETE_DOC"][0], DeleteDocInput(document_id="d")),
+        (tools["GOOGLEDOCS_CUSTOM_GATHER_CONTEXT"][0], GatherContextInput()),
+    ]
+    with patch(f"{MODULE}.proxy_request_sync") as proxy:
+        for wrapper, request in wrappers:
+            with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
+                wrapper(request, MagicMock(), creds)
+    proxy.assert_not_called()
+    composio.tools.execute.assert_not_called()
 
 
 def test_custom_delete_doc_wrapper_logs_action_and_deletes() -> None:
@@ -381,10 +412,12 @@ def _composio_returning(result: dict[str, Any]) -> MagicMock:
     return composio
 
 
-def test_fetch_document_data_returns_dict_payload_directly() -> None:
+def test_fetch_document_data_returns_parsed_document() -> None:
     composio = _composio_returning({"successful": True, "data": {"body": {"content": []}}})
 
-    assert _fetch_document_data(composio, "doc-1", AUTH_CREDS) == {"body": {"content": []}}
+    assert _fetch_document_data(composio, "doc-1", CREDS) == GoogleDocsDocument.model_validate(
+        {"body": {"content": []}}
+    )
     composio.tools.execute.assert_called_once_with(
         slug="GOOGLEDOCS_GET_DOCUMENT_BY_ID",
         arguments={"id": "doc-1"},
@@ -396,7 +429,7 @@ def test_fetch_document_data_returns_dict_payload_directly() -> None:
 
 def test_fetch_document_data_passes_version_through_from_credentials() -> None:
     composio = _composio_returning({"successful": True, "data": {"body": {}}})
-    creds: dict[str, Any] = {"user_id": "user_test_123", "version": "2024-01-01"}
+    creds = CustomToolAuthCredentials.parse({"user_id": "user_test_123", "version": "2024-01-01"})
 
     _fetch_document_data(composio, "doc-1", creds)
 
@@ -404,11 +437,27 @@ def test_fetch_document_data_passes_version_through_from_credentials() -> None:
 
 
 def test_fetch_document_data_parses_stringified_json_payload() -> None:
-    composio = _composio_returning(
-        {"successful": True, "data": json.dumps({"body": {"content": [1]}})}
-    )
+    document = {
+        "body": {
+            "content": [
+                {
+                    "startIndex": 1,
+                    "paragraph": {
+                        "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                        "elements": [{"textRun": {"content": "Intro\n"}}],
+                    },
+                }
+            ]
+        }
+    }
+    composio = _composio_returning({"successful": True, "data": json.dumps(document)})
 
-    assert _fetch_document_data(composio, "doc-1", AUTH_CREDS) == {"body": {"content": [1]}}
+    parsed = _fetch_document_data(composio, "doc-1", CREDS)
+
+    assert parsed == GoogleDocsDocument.model_validate(document)
+    assert parsed.body.content[0].paragraph is not None
+    assert parsed.body.content[0].paragraph.elements[0].textRun is not None
+    assert parsed.body.content[0].paragraph.elements[0].textRun.content == "Intro\n"
 
 
 def test_fetch_document_data_invalid_json_string_fails_the_body_check() -> None:
@@ -416,7 +465,7 @@ def test_fetch_document_data_invalid_json_string_fails_the_body_check() -> None:
 
     with patch(f"{MODULE}.log") as log_mock:
         with pytest.raises(ValueError) as excinfo:
-            _fetch_document_data(composio, "doc-1", AUTH_CREDS)
+            _fetch_document_data(composio, "doc-1", CREDS)
 
     assert str(excinfo.value) == "Failed to get document or document has no body content"
     assert log_mock.debug.call_args.kwargs["error_type"] == "JSONDecodeError"
@@ -426,7 +475,7 @@ def test_fetch_document_data_non_dict_payload_with_body_substring_raises_format_
     composio = _composio_returning({"successful": True, "data": "raw body blob"})
 
     with pytest.raises(ValueError) as excinfo:
-        _fetch_document_data(composio, "doc-1", AUTH_CREDS)
+        _fetch_document_data(composio, "doc-1", CREDS)
 
     assert str(excinfo.value) == "Document data is not in expected format"
 
@@ -435,7 +484,7 @@ def test_fetch_document_data_unsuccessful_execute_raises_value_error() -> None:
     composio = _composio_returning({"successful": False, "error": "quota exceeded"})
 
     with pytest.raises(ValueError) as excinfo:
-        _fetch_document_data(composio, "doc-1", AUTH_CREDS)
+        _fetch_document_data(composio, "doc-1", CREDS)
 
     assert str(excinfo.value) == "Failed to get document: quota exceeded"
 
@@ -446,7 +495,7 @@ def test_fetch_document_data_type_error_from_execute_propagates() -> None:
 
     with patch(f"{MODULE}.log") as log_mock:
         with pytest.raises(TypeError):
-            _fetch_document_data(composio, "doc-1", AUTH_CREDS)
+            _fetch_document_data(composio, "doc-1", CREDS)
 
     assert log_mock.debug.call_args.kwargs["error_type"] == "TypeError"
 
@@ -458,7 +507,7 @@ def test_insert_toc_text_sends_exact_insert_request_and_returns_result() -> None
     request = CreateTOCInput(document_id="doc-6", insertion_index=2)
     composio = _composio_returning({"successful": True, "data": {"done": True}})
 
-    result = _insert_toc_text(composio, request, "# TOC", AUTH_CREDS)
+    result = _insert_toc_text(composio, request, "# TOC", CREDS)
 
     composio.tools.execute.assert_called_once_with(
         slug="GOOGLEDOCS_INSERT_TEXT_ACTION",
@@ -467,12 +516,12 @@ def test_insert_toc_text_sends_exact_insert_request_and_returns_result() -> None
         dangerously_skip_version_check=True,
         user_id="user_test_123",
     )
-    assert result == {"successful": True, "data": {"done": True}}
+    assert result == GoogleDocsToolExecution(successful=True, data={"done": True})
 
 
 def test_insert_toc_text_passes_version_through_from_credentials() -> None:
     composio = _composio_returning({"successful": True})
-    creds: dict[str, Any] = {"user_id": "user_test_123", "version": "2024-06-01"}
+    creds = CustomToolAuthCredentials.parse({"user_id": "user_test_123", "version": "2024-06-01"})
 
     _insert_toc_text(composio, CreateTOCInput(document_id="doc-6"), "# TOC", creds)
 
@@ -483,14 +532,20 @@ def test_insert_toc_text_failure_raises_value_error() -> None:
     composio = _composio_returning({"successful": False, "error": "insert denied"})
 
     with pytest.raises(ValueError) as excinfo:
-        _insert_toc_text(composio, CreateTOCInput(document_id="doc-6"), "# TOC", AUTH_CREDS)
+        _insert_toc_text(composio, CreateTOCInput(document_id="doc-6"), "# TOC", CREDS)
 
     assert str(excinfo.value) == "Failed to insert text: insert denied"
 
 
+HEADINGS = [
+    GoogleDocsHeading(level=1, text="Intro", start_index=1),
+    GoogleDocsHeading(level=2, text="Details", start_index=9),
+]
+
+
 @patch(f"{MODULE}._insert_toc_text")
 @patch(f"{MODULE}.generate_toc_text", return_value="# Table of contents")
-@patch(f"{MODULE}.extract_headings_from_document", return_value=["Intro", "Details"])
+@patch(f"{MODULE}.extract_headings_from_document", return_value=HEADINGS)
 @patch(f"{MODULE}._fetch_document_data")
 def test_create_toc_combines_fetch_extract_and_insert_into_one_response(
     mock_fetch: MagicMock,
@@ -500,24 +555,90 @@ def test_create_toc_combines_fetch_extract_and_insert_into_one_response(
 ) -> None:
     composio = MagicMock()
     request = CreateTOCInput(document_id="doc-6", title="Contents")
-    doc_data: dict[str, Any] = {"body": {}}
-    insert_result: dict[str, Any] = {"data": {"revision": 7}}
-    mock_fetch.return_value = doc_data
-    mock_insert.return_value = insert_result
+    document = GoogleDocsDocument.model_validate({"body": {}})
+    mock_fetch.return_value = document
+    mock_insert.return_value = GoogleDocsToolExecution(successful=True, data={"revision": 7})
 
-    result = _create_toc(composio, request, AUTH_CREDS)
+    result = _create_toc(composio, request, CREDS)
 
-    mock_fetch.assert_called_once_with(composio, "doc-6", AUTH_CREDS)
-    mock_extract.assert_called_once_with(doc_data, request.include_heading_levels)
-    mock_generate.assert_called_once_with(["Intro", "Details"], "Contents")
-    mock_insert.assert_called_once_with(composio, request, "# Table of contents", AUTH_CREDS)
+    mock_fetch.assert_called_once_with(composio, "doc-6", CREDS)
+    mock_extract.assert_called_once_with(document, request.include_heading_levels)
+    mock_generate.assert_called_once_with(HEADINGS, "Contents")
+    mock_insert.assert_called_once_with(composio, request, "# Table of contents", CREDS)
     assert result == {
         "document_id": "doc-6",
         "url": "https://docs.google.com/document/d/doc-6/edit",
         "headings_found": 2,
         "toc_content": "# Table of contents",
-        "headings": ["Intro", "Details"],
+        "headings": [
+            {"level": 1, "text": "Intro", "start_index": 1},
+            {"level": 2, "text": "Details", "start_index": 9},
+        ],
         "insert_response": {"revision": 7},
+    }
+
+
+def test_create_toc_end_to_end_on_a_documents_get_payload() -> None:
+    """The real extract + generate path on a documents.get-shaped fixture."""
+    document = {
+        "documentId": "doc-6",
+        "title": "Report",
+        "body": {
+            "content": [
+                {"endIndex": 1, "sectionBreak": {"sectionStyle": {}}},
+                {
+                    "startIndex": 1,
+                    "endIndex": 7,
+                    "paragraph": {
+                        "elements": [{"startIndex": 1, "textRun": {"content": "Intro\n"}}],
+                        "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                    },
+                },
+                {
+                    "startIndex": 7,
+                    "endIndex": 20,
+                    "paragraph": {
+                        "elements": [{"textRun": {"content": "Body text\n"}}],
+                        "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                    },
+                },
+                {
+                    "startIndex": 20,
+                    "endIndex": 31,
+                    "paragraph": {
+                        "elements": [{"textRun": {"content": "## Details\n"}}],
+                        "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                    },
+                },
+            ]
+        },
+    }
+    composio = MagicMock()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "error": None, "data": document},
+        {"successful": True, "error": None, "data": {"replies": [{}], "documentId": "doc-6"}},
+    ]
+
+    result = _create_toc(composio, CreateTOCInput(document_id="doc-6"), CREDS)
+
+    toc = "Table of Contents\n=================\n\n• Intro\n  ○ Details\n\n"
+    assert composio.tools.execute.call_args_list[1] == call(
+        slug="GOOGLEDOCS_INSERT_TEXT_ACTION",
+        arguments={"document_id": "doc-6", "text": toc, "insertion_index": 1},
+        version=None,
+        dangerously_skip_version_check=True,
+        user_id="user_test_123",
+    )
+    assert result == {
+        "document_id": "doc-6",
+        "url": "https://docs.google.com/document/d/doc-6/edit",
+        "headings_found": 2,
+        "toc_content": toc,
+        "headings": [
+            {"level": 1, "text": "Intro", "start_index": 1},
+            {"level": 2, "text": "Details", "start_index": 20},
+        ],
+        "insert_response": {"replies": [{}], "documentId": "doc-6"},
     }
 
 

@@ -1,17 +1,33 @@
 """Utility functions for the deep research tool."""
 
+from collections.abc import Mapping, Sequence
 import hashlib
 import json
 import re
-from typing import Any
 
 from langchain_core.messages import HumanMessage
+from pydantic import BaseModel
 
 from app.agents.llm.client import ainvoke_llm, get_helper_llm
 from app.constants.cache import SIX_HOUR_TTL
 from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
+from app.utils.search.models import ResearchSearchResult
 from shared.py.wide_events import log
+
+
+class RankedUrl(BaseModel):
+    """One deduplicated research source, ranked by how many searches surfaced it.
+
+    Crosses the wire: the research tool spreads it into the ``research_data``
+    frame's ``sources`` (with the fetched content layered on) and caches it.
+    """
+
+    url: str
+    title: str
+    snippet: str
+    score: float
+    appearances: int
 
 
 def build_research_cache_key(query: str, scope: str, focus_areas: list[str], depth: int) -> str:
@@ -96,42 +112,40 @@ async def decompose_research_queries(
     return base[:n_queries]
 
 
-def rank_and_deduplicate_urls(search_results: list[Any], max_urls: int) -> list[dict[str, Any]]:
+def rank_and_deduplicate_urls(
+    search_results: Sequence[Mapping[str, object] | ResearchSearchResult | BaseException],
+    max_urls: int,
+) -> list[RankedUrl]:
     """Merge results from multiple searches, ranked by appearance frequency + relevance score.
 
-    Returns a deduplicated URL list sorted by combined relevance.
+    Returns a deduplicated URL list sorted by combined relevance. search_results is
+    what asyncio.gather(..., return_exceptions=True) over search_for_research returns;
+    a failed search rides along as its exception and is skipped.
     """
-    url_map: dict[str, dict[str, Any]] = {}
+    url_map: dict[str, RankedUrl] = {}
 
     for result in search_results:
-        if isinstance(result, Exception) or not result:
+        if isinstance(result, BaseException):
             continue
-        for item in result.get("results", []):
-            if not isinstance(item, dict):
-                continue
-            url = item.get("url", "").strip()
+        for item in ResearchSearchResult.model_validate(result).results:
+            url = item.url.strip()
             if not url or not url.startswith("http"):
                 continue
-            raw_score = item.get("score", 0.5)
-            try:
-                score = float(raw_score)
-            except (TypeError, ValueError):
-                score = 0.5
             if url in url_map:
-                url_map[url]["score"] += score
-                url_map[url]["appearances"] += 1
+                url_map[url].score += item.score
+                url_map[url].appearances += 1
             else:
-                url_map[url] = {
-                    "url": url,
-                    "title": item.get("title", ""),
-                    "snippet": item.get("content", ""),
-                    "score": score,
-                    "appearances": 1,
-                }
+                url_map[url] = RankedUrl(
+                    url=url,
+                    title=item.title,
+                    snippet=item.content,
+                    score=item.score,
+                    appearances=1,
+                )
 
     ranked = sorted(
         url_map.values(),
-        key=lambda x: x["appearances"] * 2 + x["score"],
+        key=lambda x: x.appearances * 2 + x.score,
         reverse=True,
     )
     return ranked[:max_urls]

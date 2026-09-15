@@ -1,7 +1,9 @@
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER
 from app.agents.prompts.onboarding_prompts import (
@@ -28,6 +30,7 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.onboarding_models import PersistedTriageSummary
 from app.models.user_models import OnboardingPhase, OnboardingSubdocument
 from app.services.workflow.service import WorkflowService
 from app.utils.timezone import Timezone
@@ -114,15 +117,48 @@ Use call_executor to delegate this task. The executor should:
 Execute immediately without asking for clarification."""
 
 
+class TriggerEmailData(BaseModel):
+    """The ``email_data`` of a Gmail-triggered run, as the prompt reads it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    sender: str = "Unknown"
+    subject: str = "No Subject"
+    message_text: str = ""
+
+
+class WorkflowTriggerContext(BaseModel):
+    """The keys ``format_workflow_execution_message`` reads off a run's trigger context.
+
+    The bag itself is open by construction — schedulers spread arbitrary provider
+    trigger data through it alongside the agent's own keys — so this is a view of
+    it, parsed once here, not its full shape.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    tracked_todos_context: str = ""
+    workflow_id: str | None = None
+    workflow_notify_on_completion: bool = True
+    playbook_fallback: str | None = Field(
+        default=None, validation_alias=PLAYBOOK_FALLBACK_CONTEXT_KEY
+    )
+    type: str | None = None
+    email_data: TriggerEmailData = Field(default_factory=TriggerEmailData)
+    triggered_at: str = "Unknown"
+
+
 async def format_workflow_execution_message(
     selected_workflow: SelectedWorkflowData,
     user_id: str | None = None,
     # Open by construction: schedulers spread arbitrary provider trigger data
-    # through this alongside the agent's own keys, so there is no fixed shape.
-    trigger_context: dict[str, Any] | None = None,
+    # through this alongside the agent's own keys, so there is no fixed shape;
+    # WorkflowTriggerContext names the keys this prompt reads.
+    trigger_context: Mapping[str, object] | None = None,
     existing_content: str = "",
 ) -> str:
     """Format workflow execution message, handling both manual and automated triggers."""
+    trigger = WorkflowTriggerContext.model_validate(trigger_context or {})
     # Fetch the latest workflow data from database
     workflow = None
     if user_id:
@@ -155,9 +191,7 @@ async def format_workflow_execution_message(
         workflow_description = selected_workflow.prompt or selected_workflow.description
 
     # Build signal matching section from tracked todos
-    tracked_todos_ctx = ""
-    if trigger_context:
-        tracked_todos_ctx = trigger_context.get("tracked_todos_context", "")
+    tracked_todos_ctx = trigger.tracked_todos_context
 
     signal_matching_section = ""
     if tracked_todos_ctx:
@@ -169,11 +203,9 @@ async def format_workflow_execution_message(
     # opted out; tell the agent which mode it's in so it neither double-notifies
     # nor stays silent. Interactive runs get neither section.
     notification_section = ""
-    if trigger_context and trigger_context.get("workflow_id"):
+    if trigger.workflow_id:
         notify_on_completion = (
-            workflow.notify_on_completion
-            if workflow
-            else trigger_context.get("workflow_notify_on_completion", True)
+            workflow.notify_on_completion if workflow else trigger.workflow_notify_on_completion
         )
         notification_section = (
             WORKFLOW_AUTO_NOTIFY_SECTION if notify_on_completion else WORKFLOW_SILENT_NOTIFY_SECTION
@@ -189,19 +221,19 @@ async def format_workflow_execution_message(
 
     # This run already replayed the playbook and stopped partway; appended
     # rather than folded into the templates since it's per-run evidence.
-    fallback_section = (trigger_context or {}).get(PLAYBOOK_FALLBACK_CONTEXT_KEY) or ""
+    fallback_section = trigger.playbook_fallback or ""
 
     # Email-triggered workflows get enhanced context
-    if trigger_context and trigger_context.get("type") == "gmail":
-        email_data = trigger_context.get("email_data", {})
-        msg_text = email_data.get("message_text", "")
+    if trigger.type == "gmail":
+        email_data = trigger.email_data
+        msg_text = email_data.message_text
 
         return (
             EMAIL_TRIGGERED_WORKFLOW_PROMPT.format(
-                email_sender=email_data.get("sender", "Unknown"),
-                email_subject=email_data.get("subject", "No Subject"),
+                email_sender=email_data.sender,
+                email_subject=email_data.subject,
                 email_content_preview=msg_text[:200] + ("..." if len(msg_text) > 200 else ""),
-                trigger_timestamp=trigger_context.get("triggered_at", "Unknown"),
+                trigger_timestamp=trigger.triggered_at,
                 **common_args,
             )
             + fallback_section
@@ -283,7 +315,9 @@ async def get_onboarding_system_prompt_if_applicable(
         # Persisted as the triage model's dump; only its summary line belongs in a
         # prompt. No default: the only consumer is the truthiness check below, so
         # `""` and None were indistinguishable — two mutants no test could kill.
-        triage_summary = (onboarding.triage_summary or {}).get("summary")
+        triage_summary = PersistedTriageSummary.model_validate(
+            onboarding.triage_summary or {}
+        ).summary
 
         onboarding_context = (
             f"Profession: {profession}" if profession else "Profession: not specified"

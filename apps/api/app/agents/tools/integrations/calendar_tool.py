@@ -12,30 +12,47 @@ import asyncio
 from collections.abc import Coroutine
 import concurrent.futures
 from datetime import UTC, datetime, timedelta, tzinfo
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from composio import Composio
 from composio.types import ExecuteRequestFn
 from langgraph.config import get_config, get_stream_writer
+from pydantic import TypeAdapter
 
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR
 from app.constants.log_tags import LogTag
+from app.db.repositories.users import user_repository
 from app.decorators import with_doc
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import read_agent_configurable
 from app.models.calendar_models import (
     AddRecurrenceInput,
+    CalendarEventDisplay,
+    CalendarOptionDraft,
     CalendarSummary,
+    CreatedEventSummary,
     CreateEventInput,
     DeleteEventInput,
+    EventDraftFailure,
+    EventReference,
+    EventToolFailure,
+    FetchedEvent,
     FetchEventsInput,
     FindEventInput,
     GetDaySummaryInput,
     GetEventInput,
+    GoogleCalendarAttendee,
+    GoogleCalendarEventDateTime,
+    GoogleCalendarEventResource,
+    GoogleCalendarEventWrite,
+    GoogleConferenceCreateRequest,
+    GoogleConferenceData,
+    GoogleConferenceSolutionKey,
     ListCalendarsInput,
     PatchEventInput,
 )
 from app.models.common_models import GatherContextInput
-from app.services import calendar_service, user_service
+from app.models.integrations.composio import CustomToolAuthCredentials
+from app.services import calendar_service
 from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.templates.docstrings.calendar_tool_docs import (
     CUSTOM_ADD_RECURRENCE as CUSTOM_ADD_RECURRENCE_DOC,
@@ -60,7 +77,7 @@ CALENDAR_TOOLKIT = "GOOGLECALENDAR"
 _T = TypeVar("_T")
 
 
-def _run_sync(coro: Coroutine[Any, Any, _T], *, timeout: float | None = None) -> _T:
+def _run_sync(coro: Coroutine[object, object, _T], *, timeout: float | None = None) -> _T:
     """Run an async service call from a synchronous Composio custom-tool body.
 
     In production the tool runs on a worker thread with no loop, so the coroutine
@@ -82,33 +99,28 @@ def _run_sync(coro: Coroutine[Any, Any, _T], *, timeout: float | None = None) ->
         pool.shutdown(wait=False)
 
 
-def _extract_datetime(dt: dict[str, Any] | str | None) -> str:
-    """Extract a datetime string from a Google Calendar date/dateTime dict or string."""
-    if not dt:
-        return ""
-    if isinstance(dt, str):
-        return dt
-    value = dt.get("dateTime") or dt.get("date", "")
-    return value if isinstance(value, str) else ""
+def _extract_datetime(dt: GoogleCalendarEventDateTime) -> str:
+    """Return the timed dateTime of a Google start/end, else its all-day date."""
+    return dt.dateTime or dt.date or ""
 
 
-def _format_calendar_option_for_stream(opt: dict[str, Any]) -> dict[str, Any]:
+def _format_calendar_option_for_stream(opt: CalendarOptionDraft) -> dict[str, object]:
     """Format a calendar draft option into CalendarOptions schema for frontend streaming."""
-    formatted: dict[str, Any] = {
-        "summary": opt.get("summary", ""),
-        "description": opt.get("description", ""),
-        "is_all_day": opt.get("is_all_day", False),
-        "calendar_id": opt.get("calendar_id", ""),
-        "calendar_name": opt.get("calendar_name", ""),
-        "background_color": opt.get("color", DEFAULT_CALENDAR_COLOR),
-        "start": _extract_datetime(opt.get("start")),
-        "end": _extract_datetime(opt.get("end")),
+    formatted: dict[str, object] = {
+        "summary": opt.summary,
+        "description": opt.description,
+        "is_all_day": opt.is_all_day,
+        "calendar_id": opt.calendar_id,
+        "calendar_name": opt.calendar_name,
+        "background_color": opt.color,
+        "start": _extract_datetime(opt.start),
+        "end": _extract_datetime(opt.end),
     }
-    if opt.get("location"):
-        formatted["location"] = opt["location"]
-    if opt.get("attendees"):
-        formatted["attendees"] = opt["attendees"]
-    if opt.get("create_meeting_room"):
+    if opt.location:
+        formatted["location"] = opt.location
+    if opt.attendees:
+        formatted["attendees"] = opt.attendees
+    if opt.create_meeting_room:
         formatted["create_meeting_room"] = True
     return formatted
 
@@ -123,14 +135,6 @@ def _format_calendar_for_stream(cal: CalendarSummary) -> dict[str, str | None]:
     }
 
 
-def _get_user_id(auth_credentials: dict[str, Any]) -> str:
-    """Extract user_id from auth_credentials."""
-    user_id = auth_credentials.get("user_id", "")
-    if not isinstance(user_id, str) or not user_id:
-        raise ValueError("Missing user_id in auth_credentials")
-    return user_id
-
-
 def _get_user_timezone() -> tzinfo | None:
     """User's home timezone from the LangGraph RunnableConfig, or None if absent.
 
@@ -139,7 +143,7 @@ def _get_user_timezone() -> tzinfo | None:
     """
     try:
         config = get_config()
-        if agent_configurable(config).get("user_timezone"):
+        if read_agent_configurable(config).user_timezone:
             return home_timezone_from_config(config).tzinfo
     except Exception:
         log.error(f"{LogTag.TOOL} Error getting user timezone")
@@ -154,11 +158,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_LIST_CALENDARS(
         request: ListCalendarsInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "list_calendars"})
-        user_id = _get_user_id(auth_credentials)
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
         calendar_list = _run_sync(calendar_service.list_calendars(user_id))
         summaries = calendar_service.to_calendar_summaries(calendar_list)
         calendars = (
@@ -184,15 +188,15 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_GET_DAY_SUMMARY(
         request: GetDaySummaryInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "get_day_summary"})
-        user_id = _get_user_id(auth_credentials)
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
 
         try:
-            user = _run_sync(user_service.get_user_by_id(user_id), timeout=5)
-            user_timezone = user.get("timezone") if user else None
+            user = _run_sync(user_repository.get(user_id), timeout=5)
+            user_timezone = user.timezone if user else None
         except Exception:
             user_timezone = None
 
@@ -254,7 +258,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                         error_type=type(e).__name__,
                     )
 
-        next_event: dict[str, Any] | None = None
+        next_event: dict[str, object] | None = None
         if day_start.date() == now.date():
             for event in events:
                 start_time = event.start.dateTime if event.start else None
@@ -292,11 +296,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_FETCH_EVENTS(
         request: FetchEventsInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "fetch_events"})
-        user_id = _get_user_id(auth_credentials)
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
 
         time_min = request.time_min or datetime.now(UTC).isoformat()
 
@@ -335,11 +339,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_FIND_EVENT(
         request: FindEventInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "find_event"})
-        user_id = _get_user_id(auth_credentials)
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
 
         result = _run_sync(
             calendar_service.search_calendar_events_native(
@@ -375,33 +379,35 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_GET_EVENT(
         request: GetEventInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "get_event"})
-        user_id = _get_user_id(auth_credentials)
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
 
-        results = []
-        errors = []
+        results: list[FetchedEvent] = []
+        errors: list[EventToolFailure] = []
 
         for event_ref in request.events:
             try:
-                event = proxy_request_sync(
-                    ProxyRequest(
-                        user_id=user_id,
-                        toolkit=CALENDAR_TOOLKIT,
-                        endpoint=calendar_events_endpoint(
-                            event_ref.calendar_id, event_ref.event_id
-                        ),
-                        method="GET",
+                event = GoogleCalendarEventResource.model_validate(
+                    proxy_request_sync(
+                        ProxyRequest(
+                            user_id=user_id,
+                            toolkit=CALENDAR_TOOLKIT,
+                            endpoint=calendar_events_endpoint(
+                                event_ref.calendar_id, event_ref.event_id
+                            ),
+                            method="GET",
+                        )
                     )
                 )
                 results.append(
-                    {
-                        "event_id": event_ref.event_id,
-                        "calendar_id": event_ref.calendar_id,
-                        "event": event,
-                    }
+                    FetchedEvent(
+                        event_id=event_ref.event_id,
+                        calendar_id=event_ref.calendar_id,
+                        event=event,
+                    )
                 )
             except AppError as e:
                 log.error(
@@ -410,33 +416,39 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     error_type=type(e).__name__,
                 )
                 errors.append(
-                    {
-                        "event_id": event_ref.event_id,
-                        "calendar_id": event_ref.calendar_id,
-                        "error": f"Event not found: {e.message}",
-                    }
+                    EventToolFailure(
+                        event_id=event_ref.event_id,
+                        calendar_id=event_ref.calendar_id,
+                        error=f"Event not found: {e.message}",
+                    )
                 )
 
+        # JSON-native fields: python and json dumps are identical
+        failures = [error.model_dump(mode="json") for error in errors]  # pragma: no mutate
         if errors and not results:
-            raise RuntimeError(f"Failed to get events: {errors}")
+            raise RuntimeError(f"Failed to get events: {failures}")
 
         # `errors` must travel with the partial result — dropping it made the
         # agent report a batch where some events failed as a clean success.
-        return {"events": results, "errors": errors}
+        return {
+            # JSON-native fields: python and json dumps are identical
+            "events": [result.model_dump(mode="json") for result in results],  # pragma: no mutate
+            "errors": failures,
+        }
 
     @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
     @with_doc(CUSTOM_DELETE_EVENT_DOC)
     def CUSTOM_DELETE_EVENT(
         request: DeleteEventInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "delete_event"})
-        user_id = _get_user_id(auth_credentials)
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
 
-        deleted = []
-        errors = []
+        deleted: list[EventReference] = []
+        errors: list[EventToolFailure] = []
 
         for event_ref in request.events:
             try:
@@ -451,12 +463,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                         query={"sendUpdates": request.send_updates},
                     )
                 )
-                deleted.append(
-                    {
-                        "event_id": event_ref.event_id,
-                        "calendar_id": event_ref.calendar_id,
-                    }
-                )
+                deleted.append(event_ref)
             except AppError as e:
                 log.error(
                     f"{LogTag.TOOL} Error deleting event",
@@ -464,74 +471,94 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     error_type=type(e).__name__,
                 )
                 errors.append(
-                    {
-                        "event_id": event_ref.event_id,
-                        "calendar_id": event_ref.calendar_id,
-                        "error": f"Failed to delete: {e.message}",
-                    }
+                    EventToolFailure(
+                        event_id=event_ref.event_id,
+                        calendar_id=event_ref.calendar_id,
+                        error=f"Failed to delete: {e.message}",
+                    )
                 )
 
+        # JSON-native fields: python and json dumps are identical
+        failures = [error.model_dump(mode="json") for error in errors]  # pragma: no mutate
         if errors and not deleted:
-            raise RuntimeError(f"Failed to delete events: {errors}")
+            raise RuntimeError(f"Failed to delete events: {failures}")
 
-        return {"deleted": deleted, "errors": errors}
+        # JSON-native fields: python and json dumps are identical
+        deleted_refs = [ref.model_dump(mode="json") for ref in deleted]  # pragma: no mutate
+        return {
+            "deleted": deleted_refs,
+            "errors": failures,
+        }
 
     @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
     @with_doc(CUSTOM_PATCH_EVENT_DOC)
     def CUSTOM_PATCH_EVENT(
         request: PatchEventInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "patch_event"})
-        user_id = _get_user_id(auth_credentials)
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
 
-        body: dict[str, Any] = {}
-        if request.summary is not None:
-            body["summary"] = request.summary
-        if request.description is not None:
-            body["description"] = request.description
-        if request.location is not None:
-            body["location"] = request.location
-        if request.start_datetime is not None:
-            body["start"] = {"dateTime": request.start_datetime}
-        if request.end_datetime is not None:
-            body["end"] = {"dateTime": request.end_datetime}
-        if request.attendees is not None:
-            body["attendees"] = [{"email": email} for email in request.attendees]
+        body = GoogleCalendarEventWrite(
+            summary=request.summary,
+            description=request.description,
+            location=request.location,
+            start=(
+                GoogleCalendarEventDateTime(dateTime=request.start_datetime)
+                if request.start_datetime is not None
+                else None
+            ),
+            end=(
+                GoogleCalendarEventDateTime(dateTime=request.end_datetime)
+                if request.end_datetime is not None
+                else None
+            ),
+            attendees=(
+                [GoogleCalendarAttendee(email=email) for email in request.attendees]
+                if request.attendees is not None
+                else None
+            ),
+        )
 
-        event = proxy_request_sync(
-            ProxyRequest(
-                user_id=user_id,
-                toolkit=CALENDAR_TOOLKIT,
-                endpoint=calendar_events_endpoint(request.calendar_id, request.event_id),
-                method="PATCH",
-                body=body,
-                query={"sendUpdates": request.send_updates},
+        event = GoogleCalendarEventResource.model_validate(
+            proxy_request_sync(
+                ProxyRequest(
+                    user_id=user_id,
+                    toolkit=CALENDAR_TOOLKIT,
+                    endpoint=calendar_events_endpoint(request.calendar_id, request.event_id),
+                    method="PATCH",
+                    # JSON-native fields: python and json dumps are identical
+                    body=body.model_dump(mode="json", exclude_none=True),  # pragma: no mutate
+                    query={"sendUpdates": request.send_updates},
+                )
             )
         )
 
-        return {"event": event}
+        # JSON-native fields: python and json dumps are identical
+        return {"event": event.model_dump(mode="json")}  # pragma: no mutate
 
     @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
     @with_doc(CUSTOM_ADD_RECURRENCE_DOC)
     def CUSTOM_ADD_RECURRENCE(
         request: AddRecurrenceInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "add_recurrence"})
-        user_id = _get_user_id(auth_credentials)
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
         endpoint = calendar_events_endpoint(request.calendar_id, request.event_id)
 
-        event = proxy_request_sync(
-            ProxyRequest(
-                user_id=user_id,
-                toolkit=CALENDAR_TOOLKIT,
-                endpoint=endpoint,
-                method="GET",
+        event = GoogleCalendarEventResource.model_validate(
+            proxy_request_sync(
+                ProxyRequest(
+                    user_id=user_id,
+                    toolkit=CALENDAR_TOOLKIT,
+                    endpoint=endpoint,
+                    method="GET",
+                )
             )
         )
 
@@ -547,20 +574,24 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
             rrule_parts.append(f"BYDAY={','.join(request.by_day)}")
 
         rrule = "RRULE:" + ";".join(rrule_parts)
-        event["recurrence"] = [rrule]
+        event.recurrence = [rrule]
 
-        updated = proxy_request_sync(
-            ProxyRequest(
-                user_id=user_id,
-                toolkit=CALENDAR_TOOLKIT,
-                endpoint=endpoint,
-                method="PUT",
-                body=event,
+        updated = GoogleCalendarEventResource.model_validate(
+            proxy_request_sync(
+                ProxyRequest(
+                    user_id=user_id,
+                    toolkit=CALENDAR_TOOLKIT,
+                    endpoint=endpoint,
+                    method="PUT",
+                    # JSON-native fields: python and json dumps are identical
+                    body=event.model_dump(mode="json"),  # pragma: no mutate
+                )
             )
         )
 
         return {
-            "event": updated,
+            # JSON-native fields: python and json dumps are identical
+            "event": updated.model_dump(mode="json"),  # pragma: no mutate
             "recurrence_rule": rrule,
         }
 
@@ -569,160 +600,174 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_CREATE_EVENT(
         request: CreateEventInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "create_event"})
-        user_id = _get_user_id(auth_credentials)
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
 
         try:
             color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
         except Exception:
             color_map, name_map = {}, {}
 
-        created_events = []
-        calendar_options = []
-        errors = []
+        created_events: list[CreatedEventSummary] = []
+        calendar_options: list[CalendarOptionDraft] = []
+        errors: list[EventDraftFailure] = []
 
         for index, event in enumerate(request.events):
             try:
                 start_dt = datetime.fromisoformat(event.start_datetime)
             except ValueError as e:
                 errors.append(
-                    {
-                        "index": index,
-                        "summary": event.summary,
-                        "error": f"Invalid start_datetime format: {e}",
-                    }
+                    EventDraftFailure(
+                        index=index,
+                        summary=event.summary,
+                        error=f"Invalid start_datetime format: {e}",
+                    )
                 )
                 continue
 
             duration = timedelta(hours=event.duration_hours, minutes=event.duration_minutes)
             end_dt = start_dt + duration
 
-            body: dict[str, Any] = {"summary": event.summary}
-
             if event.is_all_day:
                 # Google treats an all-day `end.date` as exclusive and rejects an
                 # empty range, so a one-day event ends on the following date.
                 # Same convention as calendar_service.create_calendar_event.
-                body["start"] = {"date": start_dt.strftime("%Y-%m-%d")}
-                body["end"] = {"date": (start_dt + timedelta(days=1)).strftime("%Y-%m-%d")}
-            elif start_dt.tzinfo is not None:
-                body["start"] = {"dateTime": start_dt.isoformat()}
-                body["end"] = {"dateTime": end_dt.isoformat()}
+                start = GoogleCalendarEventDateTime(date=start_dt.strftime("%Y-%m-%d"))
+                end = GoogleCalendarEventDateTime(
+                    date=(start_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+                )
             else:
-                user_tz = _get_user_timezone()
-                if user_tz is not None:
-                    start_dt = start_dt.replace(tzinfo=user_tz)
-                    end_dt = end_dt.replace(tzinfo=user_tz)
-                body["start"] = {"dateTime": start_dt.isoformat()}
-                body["end"] = {"dateTime": end_dt.isoformat()}
-            if event.description:
-                body["description"] = event.description
-            if event.location:
-                body["location"] = event.location
-            if event.attendees:
-                body["attendees"] = [{"email": email} for email in event.attendees]
-            if event.create_meeting_room:
-                body["conferenceData"] = {
-                    "createRequest": {
-                        "requestId": f"meet_{index}_{int(datetime.now(UTC).timestamp())}",
-                        "conferenceSolutionKey": {"type": "hangoutsMeet"},
-                    }
-                }
+                if start_dt.tzinfo is None:
+                    user_tz = _get_user_timezone()
+                    if user_tz is not None:
+                        start_dt = start_dt.replace(tzinfo=user_tz)
+                        end_dt = end_dt.replace(tzinfo=user_tz)
+                start = GoogleCalendarEventDateTime(dateTime=start_dt.isoformat())
+                end = GoogleCalendarEventDateTime(dateTime=end_dt.isoformat())
 
             if request.confirm_immediately:
-                query: dict[str, Any] = {"sendUpdates": "all"}
+                body = GoogleCalendarEventWrite(
+                    summary=event.summary,
+                    start=start,
+                    end=end,
+                    description=event.description or None,
+                    location=event.location or None,
+                    attendees=(
+                        [GoogleCalendarAttendee(email=email) for email in event.attendees]
+                        if event.attendees
+                        else None
+                    ),
+                    conferenceData=(
+                        GoogleConferenceData(
+                            createRequest=GoogleConferenceCreateRequest(
+                                # naive local now() and UTC now() give the same epoch
+                                requestId=f"meet_{index}_{int(datetime.now(UTC).timestamp())}",  # pragma: no mutate
+                                conferenceSolutionKey=GoogleConferenceSolutionKey(
+                                    type="hangoutsMeet"
+                                ),
+                            )
+                        )
+                        if event.create_meeting_room
+                        else None
+                    ),
+                )
+                query: dict[str, str] = {"sendUpdates": "all"}
                 if event.create_meeting_room:
                     query["conferenceDataVersion"] = "1"
 
-                created_event = proxy_request_sync(
-                    ProxyRequest(
-                        user_id=user_id,
-                        toolkit=CALENDAR_TOOLKIT,
-                        endpoint=calendar_events_endpoint(event.calendar_id),
-                        method="POST",
-                        body=body,
-                        query=query,
+                # JSON-native fields: python and json dumps are identical
+                event_body = body.model_dump(mode="json", exclude_none=True)  # pragma: no mutate
+                created_event = GoogleCalendarEventResource.model_validate(
+                    proxy_request_sync(
+                        ProxyRequest(
+                            user_id=user_id,
+                            toolkit=CALENDAR_TOOLKIT,
+                            endpoint=calendar_events_endpoint(event.calendar_id),
+                            method="POST",
+                            body=event_body,
+                            query=query,
+                        )
                     )
                 )
                 created_events.append(
-                    {
-                        "index": index,
-                        "summary": event.summary,
-                        "event_id": created_event.get("id"),
-                        "calendar_id": event.calendar_id,
-                        "link": created_event.get("htmlLink"),
-                        "start": body["start"],
-                        "end": body["end"],
-                    }
+                    CreatedEventSummary(
+                        index=index,
+                        summary=event.summary,
+                        event_id=created_event.id,
+                        calendar_id=event.calendar_id,
+                        link=created_event.htmlLink,
+                        start=start,
+                        end=end,
+                    )
                 )
             else:
-                calendar_option = {
-                    "index": index,
-                    "summary": event.summary,
-                    "description": event.description or "",
-                    "is_all_day": event.is_all_day,
-                    "start": body["start"],
-                    "end": body["end"],
-                    "calendar_id": event.calendar_id,
-                    "color": color_map.get(event.calendar_id, DEFAULT_CALENDAR_COLOR),
-                    "calendar_name": name_map.get(event.calendar_id, "Calendar"),
-                }
-                if event.location:
-                    calendar_option["location"] = event.location
-                if event.attendees:
-                    calendar_option["attendees"] = event.attendees
-                if event.create_meeting_room:
-                    calendar_option["create_meeting_room"] = True
-                calendar_options.append(calendar_option)
+                calendar_options.append(
+                    CalendarOptionDraft(
+                        index=index,
+                        summary=event.summary,
+                        description=event.description or "",
+                        is_all_day=event.is_all_day,
+                        start=start,
+                        end=end,
+                        calendar_id=event.calendar_id,
+                        color=color_map.get(event.calendar_id, DEFAULT_CALENDAR_COLOR),
+                        calendar_name=name_map.get(event.calendar_id, "Calendar"),
+                        location=event.location or None,
+                        attendees=event.attendees or None,
+                        create_meeting_room=True if event.create_meeting_room else None,
+                    )
+                )
 
+        # JSON-native fields: python and json dumps are identical
+        failures = [error.model_dump(mode="json") for error in errors]  # pragma: no mutate
         if errors and not created_events and not calendar_options:
-            raise ValueError(f"All events failed validation: {errors}")
+            raise ValueError(f"All events failed validation: {failures}")
 
         if request.confirm_immediately:
             writer = get_stream_writer()
             if created_events:
-                writer(
-                    {
-                        "calendar_fetch_data": [
-                            {
-                                "summary": e.get("summary", ""),
-                                "start_time": _extract_datetime(e.get("start")),
-                                "end_time": _extract_datetime(e.get("end")),
-                                "calendar_name": name_map.get(e.get("calendar_id", ""), ""),
-                                "background_color": color_map.get(
-                                    e.get("calendar_id", ""), DEFAULT_CALENDAR_COLOR
-                                ),
-                            }
-                            for e in created_events
-                            if isinstance(e, dict)
-                        ]
-                    }
-                )
+                displays = [
+                    CalendarEventDisplay(
+                        summary=e.summary,
+                        start_time=_extract_datetime(e.start),
+                        end_time=_extract_datetime(e.end),
+                        calendar_name=name_map.get(e.calendar_id, ""),
+                        background_color=color_map.get(e.calendar_id, DEFAULT_CALENDAR_COLOR),
+                    )
+                    for e in created_events
+                ]
+                # JSON-native fields: python and json dumps are identical
+                dumps = [d.model_dump(mode="json") for d in displays]  # pragma: no mutate
+                writer({"calendar_fetch_data": dumps})
 
+            # JSON-native fields: python and json dumps are identical
+            created_dumps = [e.model_dump(mode="json") for e in created_events]  # pragma: no mutate
             return {
                 "created": len(created_events) > 0,
-                "created_events": created_events,
-                "errors": errors,
+                "created_events": created_dumps,
+                "errors": failures,
             }
 
         writer = get_stream_writer()
         writer(
             {
                 "calendar_options": [
-                    _format_calendar_option_for_stream(opt)
-                    for opt in calendar_options
-                    if isinstance(opt, dict)
+                    _format_calendar_option_for_stream(opt) for opt in calendar_options
                 ]
             }
         )
 
         return {
             "created": False,
-            "calendar_options": calendar_options,
-            "errors": errors,
+            "calendar_options": [
+                # JSON-native fields: python and json dumps are identical
+                opt.model_dump(mode="json", exclude_none=True)  # pragma: no mutate
+                for opt in calendar_options
+            ],
+            "errors": failures,
             "message": (
                 f"{len(calendar_options)} event(s) have been drafted for review. "
                 "They have NOT been added to your calendar yet. "
@@ -734,18 +779,20 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Google Calendar context snapshot: today's events, busy hours, free slots.
 
         Zero required parameters. Returns today's schedule for situational awareness.
         """
         del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "gather_context"})
-        user_id = _get_user_id(auth_credentials)
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
         # No date: the day summary resolves "today" in the user's home timezone,
         # which this process cannot do (its own date may be a day off).
-        return execute_tool("GOOGLECALENDAR_CUSTOM_GET_DAY_SUMMARY", {}, user_id)
+        return TypeAdapter(dict[str, object]).validate_python(
+            execute_tool("GOOGLECALENDAR_CUSTOM_GET_DAY_SUMMARY", {}, user_id)
+        )
 
     return [
         "GOOGLECALENDAR_CUSTOM_CREATE_EVENT",

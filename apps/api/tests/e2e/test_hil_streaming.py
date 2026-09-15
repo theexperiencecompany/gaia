@@ -52,11 +52,11 @@ from tests.e2e.test_agent_chain import call, streaming_model
 
 pytestmark = pytest.mark.e2e
 
-USER: AuthenticatedUser = {
-    "user_id": "u-hil-stream",
-    "email": "hil-stream@test.local",
-    "name": "Test User",
-}
+USER = AuthenticatedUser(
+    user_id="u-hil-stream",
+    email="hil-stream@test.local",
+    name="Test User",
+)
 
 FOLLOW_UP_NODE = "app.agents.core.nodes.follow_up_actions_node"
 
@@ -316,7 +316,7 @@ class HilWorld:
         else:
             record = self.approvals.only_record()
         await resolution.resolve_approval(
-            approval_id=record.approval_id, user_id=str(USER["user_id"]), kind=kind, scope=scope
+            approval_id=record.approval_id, user_id=USER.user_id, kind=kind, scope=scope
         )
         await drain_resumes()
         reloaded = await self.approvals.get(record.approval_id)
@@ -586,7 +586,7 @@ async def run_turn(world: HilWorld, prompt: str, *, follow_up: bool = False) -> 
     await stream_manager.start_stream(
         stream_id=stream_id,
         conversation_id=world.conversation_id,
-        user_id=str(USER["user_id"]),
+        user_id=USER.user_id,
     )
     await chat_stream.run_chat_stream_background(
         stream_id=stream_id,
@@ -745,7 +745,7 @@ class TestResumedResultReachesTheStreamOnce:
 
             await world.decide("approve", scope="always_tool")
 
-            assert world.overrides_set == [(str(USER["user_id"]), GATED_TOOL, False)], (
+            assert world.overrides_set == [(USER.user_id, GATED_TOOL, False)], (
                 "approving with always_tool must clear the tool's ask-override so the "
                 f"user is never asked again, got {world.overrides_set}"
             )
@@ -911,13 +911,13 @@ class TestCancellationWhileParked:
             with pytest.raises(resolution.ApprovalNotResumableError):
                 await resolution.resolve_approval(
                     approval_id=record.approval_id,
-                    user_id=str(USER["user_id"]),
+                    user_id=USER.user_id,
                     kind="approve",
                 )
             with pytest.raises(resolution.ApprovalRequestNotFoundError):
                 await resolution.resolve_approval(
                     approval_id=record.approval_id,
-                    user_id=str(USER["user_id"]),
+                    user_id=USER.user_id,
                     kind="deny",
                 )
             assert world.approvals.only_record().status == "abandoned", (

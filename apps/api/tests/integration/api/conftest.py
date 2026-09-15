@@ -12,7 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import pytest
 
-from tests.factories import make_user
+from app.models.user_models import AuthenticatedUser
+from tests.factories import make_authenticated_user
 from tests.helpers import MockAuthMiddleware, NoAuthMiddleware
 
 
@@ -46,8 +47,8 @@ def _create_test_app() -> FastAPI:
 
 
 @pytest.fixture
-def test_user() -> dict:
-    return make_user(user_id="integration-test-user-1", email="test@test.com")
+def test_user() -> AuthenticatedUser:
+    return make_authenticated_user(user_id="integration-test-user-1", email="test@test.com")
 
 
 @pytest.fixture

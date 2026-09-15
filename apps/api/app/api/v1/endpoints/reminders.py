@@ -69,7 +69,7 @@ async def create_reminder_endpoint(
         HTTPException: If validation fails or creation errors occur
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         if not user_id:
             raise HTTPException(
                 status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -111,7 +111,7 @@ async def create_reminder_endpoint(
     except Exception as e:
         log.error(
             f"{LogTag.API} Error creating reminder",
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -138,7 +138,7 @@ async def get_reminder_endpoint(
         HTTPException: If reminder not found or access denied
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         if not user_id:
             raise HTTPException(
                 status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -169,7 +169,7 @@ async def get_reminder_endpoint(
         log.error(
             f"{LogTag.API} Error getting reminder",
             reminder_id=reminder_id,
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -199,7 +199,7 @@ async def update_reminder_endpoint(
         HTTPException: If reminder not found or validation fails
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         if not user_id:
             raise HTTPException(
                 status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -244,7 +244,7 @@ async def update_reminder_endpoint(
         log.error(
             f"{LogTag.API} Error updating reminder",
             reminder_id=reminder_id,
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -268,7 +268,7 @@ async def cancel_reminder_endpoint(
         HTTPException: If reminder not found or access denied
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         if not user_id:
             raise HTTPException(
                 status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -297,7 +297,7 @@ async def cancel_reminder_endpoint(
         log.error(
             f"{LogTag.API} Error cancelling reminder",
             reminder_id=reminder_id,
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -326,7 +326,7 @@ async def list_reminders_endpoint(
     Returns:
         List of reminders
     """
-    user_id = user.get("user_id")
+    user_id = user.user_id
     try:
         if not user_id:
             raise HTTPException(
@@ -388,7 +388,7 @@ async def pause_reminder_endpoint(
         HTTPException: If reminder not found or access denied
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         if not user_id:
             raise HTTPException(
                 status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -424,7 +424,7 @@ async def pause_reminder_endpoint(
         log.error(
             f"{LogTag.API} Error pausing reminder",
             reminder_id=reminder_id,
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -451,7 +451,7 @@ async def resume_reminder_endpoint(
         HTTPException: If reminder not found or access denied
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         if not user_id:
             raise HTTPException(
                 status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -505,7 +505,7 @@ async def resume_reminder_endpoint(
         log.error(
             f"{LogTag.API} Error resuming reminder",
             reminder_id=reminder_id,
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )

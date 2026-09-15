@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Any, cast
 
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
@@ -8,7 +7,7 @@ from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
-from app.models.user_models import AuthenticatedUser, UserUpdate, user_to_legacy_dict
+from app.models.user_models import AuthenticatedUser, UserUpdate
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
@@ -56,7 +55,11 @@ async def get_current_user(request: Request) -> AuthenticatedUser:  # NOSONAR py
                 "message": "Authentication required",
             },
         )
-    if not request.state.user:
+    # request.state is Starlette's untyped bag; the auth middlewares only ever
+    # put an AuthenticatedUser there when authenticated=True, and this is the
+    # one place that fact is checked rather than assumed.
+    user = request.state.user
+    if not isinstance(user, AuthenticatedUser):
         log.error(f"{LogTag.OAUTH} User marked as authenticated but no user data found")
         raise HTTPException(
             status_code=401,
@@ -66,20 +69,15 @@ async def get_current_user(request: Request) -> AuthenticatedUser:  # NOSONAR py
             },
         )
 
-    # request.state is Starlette's untyped bag (Any); WorkOSAuthMiddleware always
-    # sets .user to the dict built by build_user_context() when authenticated=True.
-    user = cast(dict[str, Any], request.state.user)
     log.set(
         auth={
-            "user_id": user.get("user_id"),
-            "email": user.get("email"),
-            "method": user.get("auth_provider", "workos"),
-            "is_agent_token": bool(user.get("is_agent_token", False)),
+            "user_id": user.user_id,
+            "email": user.email,
+            "method": user.auth_provider or "workos",
+            "is_agent_token": user.impersonated,
         }
     )
-    # request.state is untyped by Starlette; the middleware only ever puts an
-    # AuthenticatedUser there (see WorkOSAuthMiddleware).
-    return cast(AuthenticatedUser, user)
+    return user
 
 
 # NOSONAR justification: same as get_current_user above — a FastAPI dependency that
@@ -88,32 +86,30 @@ async def get_user_id(  # NOSONAR python:S7503
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> str:
     """Extract user_id from authenticated user or raise 400."""
-    user_id = user.get("user_id")
-    if not user_id:
+    if not user.user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
-    return str(user_id)
+    return user.user_id
 
 
-async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
-    """Authenticate a WebSocket connection via cookies or a Sec-WebSocket-Protocol bearer token."""
+async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser | None:
+    """Authenticate a WebSocket connection via cookies or a Sec-WebSocket-Protocol bearer token.
+
+    Returns None after closing the socket on failure.
+    """
     # WebSockets skip WorkOSAuthMiddleware (HTTP only), so the dev bypass —
     # including X-Dev-User impersonation — is mirrored here. get_settings()
     # hard-fails if this is set in production.
     if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
-        target_email, user_data = await resolve_dev_bypass_user(
-            websocket.headers, websocket.cookies
-        )
+        target_email, user_data = await resolve_dev_bypass_user(websocket)
         if user_data is not None:
-            return build_user_context(
-                user_to_legacy_dict(user_data), auth_provider="workos", dev_bypass=True
-            )
+            return build_user_context(user_data, auth_provider="workos", dev_bypass=True)
         log.error(
             f"{LogTag.OAUTH} Dev bypass target has no Mongo user",
             target_email=target_email,
             fix=DEV_USER_MISSING_HINT,
         )
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return {}
+        return None
 
     # Extract the session cookie from WebSocket
     wos_session = websocket.cookies.get("wos_session")
@@ -129,17 +125,17 @@ async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
     if not wos_session:
         log.info(f"{LogTag.OAUTH} No session cookie or protocol token in WebSocket request")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return {}
+        return None
 
     # Use shared authentication logic
     user_info, _ = await authenticate_workos_session(session_token=wos_session)
 
-    if not user_info:
+    if user_info is None:
         log.warning(f"{LogTag.OAUTH} WebSocket authentication failed")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return {}
+        return None
 
-    return cast(AuthenticatedUser, user_info)
+    return user_info
 
 
 GET_USER_TZ_TYPE = tuple[str, datetime]
@@ -172,23 +168,20 @@ async def get_user_timezone_from_preferences(
     heals it (so header-less background paths converge on the real zone);
     UTC is the last resort. Emits timezone_source on the wide event.
     """
-    user_id = user.get("user_id")
+    user_id = user.user_id
 
     try:
-        resolved = resolve_home_timezone(user.get("timezone"), x_timezone)
+        resolved = resolve_home_timezone(user.timezone, x_timezone)
         log.set(timezone_source=resolved.source.value, user_timezone=resolved.timezone.value)
 
         if resolved.source is TimezoneSource.X_TIMEZONE_HEADER:
             log.warning(
                 f"{LogTag.OAUTH} Healing user.timezone from x-timezone header",
                 user_id=user_id,
-                stored_timezone=(user.get("timezone") or "").strip() or None,
+                stored_timezone=(user.timezone or "").strip() or None,
                 header_timezone=resolved.timezone.value,
             )
-        elif (
-            resolved.source is TimezoneSource.FALLBACK_UTC
-            and not (user.get("timezone") or "").strip()
-        ):
+        elif resolved.source is TimezoneSource.FALLBACK_UTC and not (user.timezone or "").strip():
             log.warning(
                 f"{LogTag.OAUTH} user.timezone missing and no valid x-timezone header; falling back to UTC",
                 user_id=user_id,

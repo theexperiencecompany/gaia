@@ -8,7 +8,7 @@ and the ProjectService guards.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 from bson import ObjectId
 from fastapi import HTTPException
@@ -52,6 +52,7 @@ from app.services.todos.todo_service import (
     get_todo,
     update_project,
 )
+from app.utils.todo_vector_utils import TodoSearchFilters
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
 FAKE_TODO_ID = str(ObjectId())
@@ -196,15 +197,24 @@ def _workflow_doc(wf_id: str, categories: list[str]):
 @pytest.fixture
 def mock_vector_utils():
     with (
-        patch("app.services.todos.todo_service.store_todo_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.update_todo_embedding", new_callable=AsyncMock),
+        patch(
+            "app.services.todos.todo_service.store_todo_embedding", new_callable=AsyncMock
+        ) as m_store,
+        patch(
+            "app.services.todos.todo_service.update_todo_embedding", new_callable=AsyncMock
+        ) as m_update,
         patch("app.services.todos.todo_service.delete_todo_embedding", new_callable=AsyncMock),
         patch("app.services.todos.todo_service.vector_search", new_callable=AsyncMock) as m_vsearch,
         patch(
             "app.services.todos.todo_service.vector_hybrid_search", new_callable=AsyncMock
         ) as m_hybrid,
     ):
-        yield {"vector_search": m_vsearch, "hybrid_search": m_hybrid}
+        yield {
+            "vector_search": m_vsearch,
+            "hybrid_search": m_hybrid,
+            "store_embedding": m_store,
+            "update_embedding": m_update,
+        }
 
 
 @pytest.fixture
@@ -286,6 +296,9 @@ class TestCreateTodo:
         await TodoService.create_todo(TodoModel(title="Buy milk"), FAKE_USER_ID)
         # Queued as a fire-and-forget background task, so assert the call, not the await.
         mock_workflow_queue.queue_todo_workflow_generation.assert_called_once()
+        mock_vector_utils["store_embedding"].assert_awaited_once_with(
+            created.id, created, FAKE_USER_ID
+        )
 
     async def test_captures_todo_created(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
@@ -371,10 +384,22 @@ class TestListTodos:
         self, mock_todo_repo, mock_project_repo, mock_vector_utils
     ):
         mock_vector_utils["vector_search"].return_value = []
-        params = TodoSearchParams(q="find", mode=SearchMode.SEMANTIC, page=1, per_page=50)
+        params = TodoSearchParams(
+            q="find",
+            mode=SearchMode.SEMANTIC,
+            page=1,
+            per_page=50,
+            completed=True,
+            priority=Priority.HIGH,
+            project_id=FAKE_PROJECT_ID,
+        )
         await TodoService.list_todos(FAKE_USER_ID, params)
         mock_vector_utils["vector_search"].assert_awaited_once()
         mock_todo_repo.list_page.assert_not_called()
+        # The request's narrowing reaches the vector search, priority as its stored string.
+        assert mock_vector_utils["vector_search"].await_args.kwargs["filters"] == TodoSearchFilters(
+            completed=True, priority="high", project_id=FAKE_PROJECT_ID
+        )
 
 
 class TestUpdateTodo:
@@ -390,15 +415,17 @@ class TestUpdateTodo:
     async def test_updates_and_returns(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
-        mock_todo_repo.update = AsyncMock(
-            return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, title="new")
-        )
+        updated = _make_todo_doc(todo_id=FAKE_TODO_ID, title="new")
+        mock_todo_repo.update = AsyncMock(return_value=updated)
         result = await TodoService.update_todo(
             FAKE_TODO_ID, TodoUpdateRequest(title="new"), FAKE_USER_ID
         )
         assert result.title == "new"
         update = mock_todo_repo.update.call_args.kwargs["update"]
         assert update.title == "new"
+        mock_vector_utils["update_embedding"].assert_awaited_once_with(
+            FAKE_TODO_ID, updated, FAKE_USER_ID
+        )
 
     async def test_captures_todo_updated(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -538,10 +565,18 @@ class TestBulkOps:
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
         mock_todo_repo.bulk_update = AsyncMock(return_value=2)
+        doc_a = _make_todo_doc(todo_id="a")
+        doc_b = _make_todo_doc(todo_id="b")
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[doc_a, doc_b])
         req = BulkUpdateRequest(todo_ids=["a", "b"], updates=TodoUpdateRequest(completed=True))
         result = await TodoService.bulk_update_todos(req, FAKE_USER_ID)
         assert result.total == 2
         mock_todo_repo.bulk_update.assert_awaited_once()
+        # Every modified todo is re-indexed under its own id and owner.
+        assert mock_vector_utils["update_embedding"].await_args_list == [
+            call("a", doc_a, FAKE_USER_ID),
+            call("b", doc_b, FAKE_USER_ID),
+        ]
 
     async def test_bulk_update_no_fields_is_noop(self, mock_todo_repo, mock_project_repo):
         req = BulkUpdateRequest(todo_ids=["a"], updates=TodoUpdateRequest())

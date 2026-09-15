@@ -70,9 +70,10 @@ async def add_workflow_execution_messages(
             conversation_id=conversation_id, messages=workflow_execution_messages
         )
 
-        user_dict: AuthenticatedUser = {"user_id": user_id}
         await update_messages(
-            messages_request, user_dict, max_messages=WORKFLOW_CONVERSATION_MAX_MESSAGES
+            messages_request,
+            AuthenticatedUser(user_id=user_id),
+            max_messages=WORKFLOW_CONVERSATION_MAX_MESSAGES,
         )
 
     except Exception as e:

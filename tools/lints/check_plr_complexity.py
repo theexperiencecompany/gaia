@@ -10,38 +10,25 @@ notice a PR making an already-flagged function *worse* -- ruff's per-file
 ignore silences a rule for the whole file, not just the violations recorded
 at the time.
 
-This script closes that gap: a violation is allowed only if it is (a) already
-in the checked-in baseline, AND (b) its file is not touched by the current
-PR. Touch a grandfathered file and its known violations stop being free --
-fix them in the same PR, same as any other lint failure. A genuinely new
-violation (new file, or a rule the file didn't already have) is never
-grandfathered, touched or not.
-
-The one escape hatch is explicit, reviewed and expiring: a baseline line may
-carry a third field, ``deferred-until=YYYY-MM-DD; <reason>``. While the date
-is in the future, touching that file emits a ``::warning`` annotation naming
-the deferral instead of failing; once it has passed, the touched file fails
-with "deferral expired" until the violation is fixed or the deferral renewed
-with a fresh reason. ``--update`` preserves deferral fields.
+The ratchet mechanics (grandfathered only while untouched, expiring
+deferrals, ``--update``) live in ``_ratchet.py`` and are shared with the other
+baseline-carrying lints; this script only knows how to ask ruff for the
+current violations.
 
 Usage::
 
     python3 tools/lints/check_plr_complexity.py       # check (exits 1 on failure)
     python3 tools/lints/check_plr_complexity.py --update   # record the current baseline
-
-Stdlib only, like the AST rules and the ignore-ratchet beside it.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import UTC, date, datetime
 import json
 from pathlib import Path
 import subprocess
 import sys
 
-from _common import Violation, report_rule
+from _ratchet import REPO_ROOT, RatchetRule, run_ratchet
 
 RULE = "plr-complexity-ratchet"
 WHY = (
@@ -52,12 +39,8 @@ WHY = (
 DOC = "tools/lints/README.md#plr-complexity-ratchet"
 
 _HERE = Path(__file__).resolve().parent
-REPO_ROOT = _HERE.parents[1]
 BASELINE = _HERE / "plr_complexity_baseline.txt"
-CHANGES_SCRIPT = REPO_ROOT / "scripts" / "ci" / "changes.sh"
 PLR_RULES = ("PLR0911", "PLR0912", "PLR0913", "PLR0915")
-FULL_SENTINEL = "__FULL__"
-DEFERRAL_PREFIX = "deferred-until="
 
 # Pinned to the same ruff version as the "Python ruff" CI lane
 # (.github/workflows/code-quality.yml) -- bump both together. `uvx` resolves
@@ -78,31 +61,8 @@ _BASELINE_HEADER = """\
 # A line may carry a third field, "deferred-until=YYYY-MM-DD; <reason>", to
 # keep a touched file's known violation from failing until that date (CI
 # warns instead). Past the date it fails again: fix it, or renew the deferral
-# with a new reason. --update preserves these fields.
+# with a fresh reason. --update keeps the field.
 """
-
-Baseline = dict[tuple[str, str], "Deferral | None"]
-
-
-@dataclass(frozen=True)
-class Deferral:
-    """A reviewed, dated exemption carried on one baseline line."""
-
-    until: date
-    reason: str
-
-    @classmethod
-    def parse(cls, field: str, line: str) -> Deferral:
-        if not field.startswith(DEFERRAL_PREFIX) or "; " not in field:
-            raise SystemExit(
-                f"{RULE}: malformed deferral in {BASELINE.name}: {line!r} "
-                f"(expected '{DEFERRAL_PREFIX}YYYY-MM-DD; <reason>')"
-            )
-        until, reason = field.removeprefix(DEFERRAL_PREFIX).split("; ", 1)
-        return cls(date.fromisoformat(until), reason)
-
-    def __str__(self) -> str:
-        return f"{DEFERRAL_PREFIX}{self.until.isoformat()}; {self.reason}"
 
 
 def _current_violations() -> dict[tuple[str, str], int]:
@@ -139,135 +99,19 @@ def _current_violations() -> dict[tuple[str, str], int]:
     return out
 
 
-def _touched_files() -> set[str] | None:
-    """Files this PR changed, or ``None`` on a full/push scan (no diff to check)."""
-    proc = subprocess.run(  # nosec B603 - fixed repo script argv, no shell
-        [str(CHANGES_SCRIPT), "files", "py"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    lines = [line for line in proc.stdout.splitlines() if line]
-    if lines == [FULL_SENTINEL]:
-        return None
-    return set(lines)
-
-
-def read_baseline() -> Baseline:
-    if not BASELINE.exists():
-        return {}
-    entries: Baseline = {}
-    for raw in BASELINE.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        path, rule, *rest = line.split("\t")
-        entries[(path, rule)] = Deferral.parse(rest[0], line) if rest else None
-    return entries
-
-
-def write_baseline(entries: Baseline) -> None:
-    lines = []
-    for (path, rule), deferral in sorted(entries.items()):
-        lines.append(f"{path}\t{rule}" + (f"\t{deferral}" if deferral else ""))
-    BASELINE.write_text(f"{_BASELINE_HEADER}{chr(10).join(lines)}\n", encoding="utf-8")
-
-
-def _touched_debt(
-    baseline: Baseline, touched: set[str], current: dict[tuple[str, str], int]
-) -> set[tuple[str, str]]:
-    """Grandfathered violations the PR touched and must fix now.
-
-    A live deferral keeps its entry out of the result and surfaces it as a
-    workflow warning instead, so the debt stays visible on every run.
-    """
-    today = datetime.now(tz=UTC).date()
-    must_fix_now: set[tuple[str, str]] = set()
-    for (path, rule), deferral in baseline.items():
-        if path not in touched or (path, rule) not in current:
-            continue
-        if deferral is not None and deferral.until > today:
-            print(
-                f"::warning file={path},line={current[(path, rule)]}::"
-                f"{rule} deferred until {deferral.until.isoformat()} -- {deferral.reason}"
-            )
-            continue
-        must_fix_now.add((path, rule))
-    return must_fix_now
-
-
-def _violation(
-    path: str, rule: str, line: int, *, is_new: bool, deferral: Deferral | None
-) -> Violation:
-    if is_new:
-        label = "new"
-        fix = (
-            "new complexity violation -- simplify the function, or if it's "
-            "a genuine one-off, justify it in review and add it to "
-            "tools/lints/plr_complexity_baseline.txt with --update"
-        )
-    elif deferral is not None:
-        label = f"touched, deferral expired {deferral.until.isoformat()}"
-        fix = (
-            "deferral expired -- fix or renew with a reason: update the "
-            "deferred-until field on this line of "
-            "tools/lints/plr_complexity_baseline.txt"
-        )
-    else:
-        label = "touched, grandfathered"
-        fix = (
-            "this file is grandfathered for this rule, but this PR "
-            "touches it -- fix the violation now and delete its line "
-            "from tools/lints/plr_complexity_baseline.txt"
-        )
-    return Violation(path=Path(path), line=line, detail=f"{rule} ({label})", fix=fix)
+_RATCHET = RatchetRule(
+    name=RULE,
+    why=WHY,
+    doc=DOC,
+    baseline=BASELINE,
+    header=_BASELINE_HEADER,
+    script="tools/lints/check_plr_complexity.py",
+    fix_new="new complexity violation -- simplify the function",
+)
 
 
 def main(argv: list[str]) -> int:
-    current = _current_violations()
-    current_keys = set(current)
-
-    if "--update" in argv:
-        previous = read_baseline()
-        write_baseline({key: previous.get(key) for key in current_keys})
-        print(
-            f"{RULE}: baseline updated -- {len(current_keys)} known violation(s) "
-            f"(+{len(current_keys - previous.keys())} / -{len(previous.keys() - current_keys)}). "
-            "Commit the diff so the change is reviewable."
-        )
-        return 0
-
-    baseline = read_baseline()
-    touched = _touched_files()
-
-    unexpected = current_keys - baseline.keys()
-    must_fix_now = _touched_debt(baseline, touched, current) if touched is not None else set()
-
-    failures = unexpected | must_fix_now
-    if failures:
-        violations = [
-            _violation(
-                path,
-                rule,
-                current.get((path, rule), 0),
-                is_new=(path, rule) in unexpected,
-                deferral=baseline.get((path, rule)),
-            )
-            for path, rule in sorted(failures)
-        ]
-        report_rule(RULE, WHY, DOC, violations)
-        return 1
-
-    fixed = baseline.keys() - current_keys
-    if fixed:
-        print(f"{RULE}: {len(fixed)} grandfathered violation(s) no longer present -- nice.")
-        for path, rule in sorted(fixed):
-            print(f"  - {path} ({rule})")
-        print("  Lock the win in with: python3 tools/lints/check_plr_complexity.py --update")
-
-    print(f"{RULE}: {len(current_keys)} current violation(s), all grandfathered and untouched")
-    return 0
+    return run_ratchet(_RATCHET, _current_violations(), argv)
 
 
 if __name__ == "__main__":

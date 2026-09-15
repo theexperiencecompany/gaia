@@ -15,14 +15,16 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 from starlette.testclient import TestClient
 
+from app.api.v1.middleware.agent_auth import AgentTokenInfo
 from app.api.v1.middleware.auth import (
     PostHogRequestContextMiddleware,
     WorkOSAuthMiddleware,
     get_current_user,
 )
-from app.constants.auth import DEV_USER_MISSING_HINT
+from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
-from app.models.user_models import UserDocument
+from app.core.request_context import get_authenticated_user
+from app.models.user_models import AuthenticatedUser, UserDocument
 from tests.helpers import captured_wide_event
 
 
@@ -42,9 +44,16 @@ def _no_dev_bypass(monkeypatch):
 class TestGetCurrentUser:
     def test_returns_user_from_request_state(self) -> None:
         request = MagicMock()
-        request.state.user = {"user_id": "u1", "email": "a@b.com"}
+        user = AuthenticatedUser(user_id="u1", email="a@b.com")
+        request.state.user = user
         result = get_current_user(request)
-        assert result == {"user_id": "u1", "email": "a@b.com"}
+        assert result is user
+
+    def test_returns_none_when_state_holds_something_else(self) -> None:
+        """Only an AuthenticatedUser counts — a stray dict on state is nobody."""
+        request = MagicMock()
+        request.state.user = {"user_id": "u1"}
+        assert get_current_user(request) is None
 
     def test_returns_none_when_no_user(self) -> None:
         request = MagicMock()
@@ -121,7 +130,7 @@ class TestWorkOSAuthMiddlewareSessionAuth:
         assert data["user"] is None
 
     def test_cookie_session_authenticates(self) -> None:
-        user_info = {"user_id": "u1", "email": "a@b.com", "name": "Test"}
+        user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
         app = _build_test_app()
         with patch.object(
             WorkOSAuthMiddleware,
@@ -138,7 +147,7 @@ class TestWorkOSAuthMiddlewareSessionAuth:
         assert data["user"]["email"] == "a@b.com"
 
     def test_bearer_header_fallback(self) -> None:
-        user_info = {"user_id": "u2", "email": "b@c.com", "name": "User2"}
+        user_info = AuthenticatedUser(user_id="u2", email="b@c.com", name="User2")
         app = _build_test_app()
         with patch.object(
             WorkOSAuthMiddleware,
@@ -155,7 +164,7 @@ class TestWorkOSAuthMiddlewareSessionAuth:
         assert resp.json()["authenticated"] is True
 
     def test_session_refresh_sets_cookie(self) -> None:
-        user_info = {"user_id": "u1", "email": "a@b.com", "name": "Test"}
+        user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
         new_session = "refreshed_session_token"
         app = _build_test_app()
         with patch.object(
@@ -216,10 +225,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         with (
             patch(
                 "app.api.v1.middleware.auth.verify_agent_token",
-                return_value={
-                    "user_id": "507f1f77bcf86cd799439011",
-                    "impersonated": True,
-                },
+                return_value=AgentTokenInfo(user_id="507f1f77bcf86cd799439011"),
             ),
             patch(
                 "app.api.v1.middleware.auth.user_repository.get",
@@ -256,10 +262,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         with (
             patch(
                 "app.api.v1.middleware.auth.verify_agent_token",
-                return_value={
-                    "user_id": "507f1f77bcf86cd799439011",
-                    "impersonated": True,
-                },
+                return_value=AgentTokenInfo(user_id="507f1f77bcf86cd799439011"),
             ),
             patch(
                 "app.api.v1.middleware.auth.user_repository.get",
@@ -279,7 +282,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         app = _build_test_app()
         with patch(
             "app.api.v1.middleware.auth.verify_agent_token",
-            return_value={"user_id": "not-an-objectid", "impersonated": True},
+            return_value=AgentTokenInfo(user_id="not-an-objectid"),
         ):
             client = TestClient(app)
             resp = client.post(
@@ -456,7 +459,7 @@ class TestAuthenticateAgentTokenDirectly:
         with (
             patch(
                 "app.api.v1.middleware.auth.verify_agent_token",
-                return_value={"user_id": "507f1f77bcf86cd799439011"},
+                return_value=AgentTokenInfo(user_id="507f1f77bcf86cd799439011"),
             ),
             patch(
                 "app.api.v1.middleware.auth.user_repository.get",
@@ -473,7 +476,7 @@ class TestAuthenticateAgentTokenDirectly:
         with (
             patch(
                 "app.api.v1.middleware.auth.verify_agent_token",
-                return_value={"user_id": "not-an-objectid"},
+                return_value=AgentTokenInfo(user_id="not-an-objectid"),
             ),
             patch(
                 "app.api.v1.middleware.auth.user_repository.get",
@@ -500,7 +503,7 @@ class TestAuthenticateAgentTokenDirectly:
         with (
             patch(
                 "app.api.v1.middleware.auth.verify_agent_token",
-                return_value={"user_id": "507f1f77bcf86cd799439011"},
+                return_value=AgentTokenInfo(user_id="507f1f77bcf86cd799439011"),
             ),
             patch(
                 "app.api.v1.middleware.auth.user_repository.get",
@@ -511,15 +514,15 @@ class TestAuthenticateAgentTokenDirectly:
             await _middleware()._authenticate_agent_token(request)
 
         assert request.state.authenticated is True
-        assert request.state.user["auth_provider"] == "workos"
-        assert request.state.user["impersonated"] is True
+        assert request.state.user.auth_provider == "workos"
+        assert request.state.user.impersonated is True
 
 
 class TestAuthenticateSession:
     """Unit tests for _authenticate_session helper."""
 
     async def test_successful_authentication_updates_last_activity(self) -> None:
-        user_info = {"user_id": "u1", "email": "a@b.com", "name": "Test"}
+        user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
         middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
         with (
             patch(
@@ -550,7 +553,7 @@ class TestAuthenticateSession:
 
     async def test_auth_outcome_is_independent_of_last_active_touch(self) -> None:
         """A valid WorkOS session authenticates regardless of the fire-and-forget last-active touch; touch_last_active never raises."""
-        user_info = {"user_id": "u1", "email": "a@b.com", "name": "Test"}
+        user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
         middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
         with (
             patch(
@@ -567,6 +570,22 @@ class TestAuthenticateSession:
         assert result_user == user_info
         mock_touch.assert_awaited_once_with("a@b.com")
 
+    async def test_a_user_without_an_email_touches_last_active_with_an_empty_key(self) -> None:
+        middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
+        with (
+            patch(
+                "app.api.v1.middleware.auth.authenticate_workos_session",
+                new_callable=AsyncMock,
+                return_value=(AuthenticatedUser(user_id="u1"), None),
+            ),
+            patch(
+                "app.api.v1.middleware.auth.user_repository.touch_last_active",
+                new_callable=AsyncMock,
+            ) as mock_touch,
+        ):
+            await middleware._authenticate_session("tok")
+        mock_touch.assert_awaited_once_with("")
+
 
 # PostHogRequestContextMiddleware is the identity every authenticated capture
 # inherits; a wrong or missing id lands events on the wrong profile and
@@ -580,7 +599,7 @@ async def _noop_asgi(scope, receive, send) -> None:  # pragma: no cover - never 
     """BaseHTTPMiddleware requires an inner app; dispatch is driven directly."""
 
 
-def _authenticated_request(user: dict | None) -> Request:
+def _authenticated_request(user: AuthenticatedUser | None) -> Request:
     """Build a plain GET carrying state.user exactly as WorkOSAuthMiddleware leaves it."""
     request = Request(
         {
@@ -627,7 +646,9 @@ class TestPostHogRequestContextIdentity:
         """A capture in the route handler is attributed to the stable Mongo user id, with no call site repeating it."""
         posthog_provider(available=True, client=object())
 
-        response, downstream = await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
+        response, downstream = await _dispatch(
+            _authenticated_request(AuthenticatedUser(user_id=GAIA_USER_ID))
+        )
 
         assert downstream["distinct_id"] == GAIA_USER_ID
         assert downstream["path"] == REQUEST_PATH
@@ -637,7 +658,7 @@ class TestPostHogRequestContextIdentity:
         """The context is per-request; work after it must not inherit the user."""
         posthog_provider(available=True, client=object())
 
-        await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
+        await _dispatch(_authenticated_request(AuthenticatedUser(user_id=GAIA_USER_ID)))
 
         assert get_context_distinct_id() is None
 
@@ -655,7 +676,9 @@ class TestPostHogRequestContextIdentity:
         """A user document missing the id is still nobody — never identify ""."""
         posthog_provider(available=True, client=object())
 
-        _, downstream = await _dispatch(_authenticated_request({"email": "a@b.com"}))
+        _, downstream = await _dispatch(
+            _authenticated_request(AuthenticatedUser(user_id="", email="a@b.com"))
+        )
 
         assert downstream["distinct_id"] is None
 
@@ -663,7 +686,9 @@ class TestPostHogRequestContextIdentity:
         """Analytics is never load-bearing: no token configured still serves the route."""
         posthog_provider(available=False, client=object())
 
-        response, downstream = await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
+        response, downstream = await _dispatch(
+            _authenticated_request(AuthenticatedUser(user_id=GAIA_USER_ID))
+        )
 
         assert downstream["distinct_id"] is None
         assert downstream["path"] == REQUEST_PATH
@@ -675,7 +700,9 @@ class TestPostHogRequestContextIdentity:
         """An available-but-unbuilt provider resolves to None; identifying against no client would raise inside every authenticated request."""
         posthog_provider(available=True, client=None)
 
-        response, downstream = await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
+        response, downstream = await _dispatch(
+            _authenticated_request(AuthenticatedUser(user_id=GAIA_USER_ID))
+        )
 
         assert downstream["distinct_id"] is None
         assert downstream["path"] == REQUEST_PATH
@@ -690,7 +717,7 @@ class TestPostHogRequestContextIdentity:
 
         class _AuthenticateEveryone(BaseHTTPMiddleware):
             async def dispatch(self, request, call_next):
-                request.state.user = {"user_id": GAIA_USER_ID}
+                request.state.user = AuthenticatedUser(user_id=GAIA_USER_ID)
                 return await call_next(request)
 
         app.add_middleware(PostHogRequestContextMiddleware)
@@ -726,3 +753,56 @@ class TestDevBypassWithoutAMongoUser:
             "message": f"No GAIA user exists for 'ghost@example.com' — {DEV_USER_MISSING_HINT}",
             "code": NOT_AUTHENTICATED,
         }
+
+
+class TestDevBypassWithAMongoUser:
+    """The bypass resolves the requested user and hands the route a dev-bypass context."""
+
+    _USER = UserDocument.model_validate(
+        {"id": "507f1f77bcf86cd799439011", "email": "alice@example.com", "name": "Alice"}
+    )
+
+    @pytest.fixture(autouse=True)
+    def _bypass_on(self, monkeypatch) -> None:
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", "dev@example.com")
+
+    def test_the_impersonated_user_is_looked_up_and_marked_dev_bypass(self) -> None:
+        app = _build_test_app()
+        with patch(
+            "app.utils.auth_utils.user_repository.get_by_email",
+            new_callable=AsyncMock,
+            return_value=self._USER,
+        ) as get_by_email:
+            resp = TestClient(app).get(
+                "/api/v1/protected", headers={DEV_USER_HEADER: "alice@example.com"}
+            )
+
+        assert get_by_email.call_args.args == ("alice@example.com",)
+        user = resp.json()["user"]
+        assert resp.json()["authenticated"] is True
+        assert (user["user_id"], user["email"]) == ("507f1f77bcf86cd799439011", "alice@example.com")
+        assert (user["auth_provider"], user["dev_bypass"], user["impersonated"]) == (
+            "workos",
+            True,
+            False,
+        )
+
+    def test_the_bypass_user_is_published_to_the_request_context(self) -> None:
+        app = _build_test_app()
+
+        @app.get("/api/v1/whoami")
+        async def whoami() -> dict:
+            user = get_authenticated_user()
+            return {"user_id": user.user_id if user else None}
+
+        with patch(
+            "app.utils.auth_utils.user_repository.get_by_email",
+            new_callable=AsyncMock,
+            return_value=self._USER,
+        ):
+            resp = TestClient(app).get("/api/v1/whoami")
+
+        assert resp.json() == {"user_id": "507f1f77bcf86cd799439011"}

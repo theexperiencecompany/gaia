@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 import json
 from typing import Any
@@ -8,6 +9,8 @@ from langchain_core.tools import StructuredTool
 
 from app.constants.email import GMAIL_MULTIPLE_ATTACHMENTS_ERROR
 from app.constants.log_tags import LogTag
+from app.models.composio_schemas.gmail import GmailDraftEntry
+from app.models.integrations.gmail_messages import GmailMessageTimestamps
 from app.models.mail_models import (
     ComposioAttachment,
     GmailDraftsResponse,
@@ -16,7 +19,6 @@ from app.models.mail_models import (
     GmailLabelsResult,
     GmailMessageResource,
     GmailMessagesResponse,
-    GmailMessageSummary,
     GmailToolResult,
 )
 from app.services.composio.attachments import upload_bytes_sync
@@ -62,7 +64,7 @@ def get_gmail_tool(
 async def invoke_gmail_tool(
     user_id: str,
     tool_name: str,
-    parameters: dict[str, Any],
+    parameters: Mapping[str, object],
     *,
     use_schema_modifier: bool = True,
 ) -> GmailToolResult:
@@ -78,7 +80,7 @@ async def invoke_gmail_tool(
         if not tool:
             return GmailToolResult(error=f"Tool {tool_name} not found", successful=False)
 
-        result = await tool.ainvoke(parameters)
+        result = await tool.ainvoke(dict(parameters))
         # BaseTool.ainvoke is typed Any (arbitrary tool output); this is the
         # provider boundary, so validate Composio's response before it travels on.
         return GmailToolResult.model_validate(result)
@@ -316,23 +318,21 @@ async def unstar_messages(user_id: str, message_ids: list[str]) -> list[GmailMes
     return await modify_message_labels(user_id, message_ids, remove_labels=["STARRED"])
 
 
-async def trash_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
-    """Move Gmail messages to trash.
+async def trash_messages(user_id: str, message_ids: list[str]) -> list[GmailMessageResource]:
+    """Move Gmail messages to trash, returning one resource per message trashed.
 
-    Each entry is the raw Composio envelope, not a Gmail message resource, so it
-    stays an untyped payload: the route reads msg["id"] off it, which the
-    envelope does not carry. Returning a real message resource here would change
-    what the route receives, so that mismatch is left for a deliberate fix.
+    Each resource carries the id that was asked for: the tool's result is the
+    Composio {data, error, successful} envelope, which has no top-level message id.
     """
     log.info(f"{LogTag.MAIL} Moving messages to trash", message_ids_count=len(message_ids))
-    results: list[dict[str, Any]] = []
+    results: list[GmailMessageResource] = []
 
     for message_id in message_ids:
         try:
             parameters = {"message_id": message_id}
             result = await invoke_gmail_tool(user_id, "GMAIL_TRASH_MESSAGE", parameters)
             if result.successful:
-                results.append(result.as_payload())
+                results.append(GmailMessageResource(id=message_id))
             else:
                 log.error(
                     f"{LogTag.MAIL} Error trashing message",
@@ -351,17 +351,17 @@ async def trash_messages(user_id: str, message_ids: list[str]) -> list[dict[str,
     return results
 
 
-async def untrash_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
-    """Restore Gmail messages from trash — entries are raw envelopes, see trash_messages."""
+async def untrash_messages(user_id: str, message_ids: list[str]) -> list[GmailMessageResource]:
+    """Restore Gmail messages from trash, one resource per message — see trash_messages."""
     log.info(f"{LogTag.MAIL} Restoring messages from trash", message_ids_count=len(message_ids))
-    results: list[dict[str, Any]] = []
+    results: list[GmailMessageResource] = []
 
     for message_id in message_ids:
         try:
             parameters = {"message_id": message_id}
             result = await invoke_gmail_tool(user_id, "GMAIL_UNTRASH_MESSAGE", parameters)
             if result.successful:
-                results.append(result.as_payload())
+                results.append(GmailMessageResource(id=message_id))
             else:
                 log.error(
                     f"{LogTag.MAIL} Error untrashing message",
@@ -406,11 +406,17 @@ async def fetch_thread(user_id: str, thread_id: str) -> GmailToolResult:
         if result.successful:
             # Transform messages in the thread for easier frontend processing
             if result.messages is not None:
-                messages = [transform_gmail_message(msg) for msg in result.messages]
-
-                # Sort messages by date (oldest first)
-                messages.sort(key=lambda msg: int(msg.get("internalDate", 0)))
-                result.messages = messages
+                # Oldest first. The thread is forwarded as the provider's own
+                # envelope, whose ``messages`` are dicts, hence the dump.
+                oldest_first = sorted(
+                    result.messages,
+                    key=lambda msg: int(
+                        GmailMessageTimestamps.model_validate(msg).internal_date or 0
+                    ),
+                )
+                result.messages = [
+                    transform_gmail_message(msg).model_dump(by_alias=True) for msg in oldest_first
+                ]
 
             log.set_ns("mail", message_count=len(result.messages or []), success=True)
             return result
@@ -465,10 +471,7 @@ async def search_messages(
             data = GmailFetchEmailsData.model_validate(result.data or {})
             log.set_ns("mail", result_count=len(data.messages), success=True)
             return GmailMessagesResponse(
-                messages=[
-                    GmailMessageSummary.model_validate(transform_gmail_message(msg))
-                    for msg in data.messages
-                ],
+                messages=[transform_gmail_message(msg) for msg in data.messages],
                 next_page_token=data.next_page_token,
             )
         log.set_ns("mail", success=False)
@@ -653,10 +656,15 @@ async def list_drafts(
 
         if result.successful:
             # Transform draft messages if needed
-            detailed_drafts = []
+            detailed_drafts: list[dict[str, Any]] = []
             for draft in result.drafts or []:
-                if "message" in draft:
-                    draft["message"] = transform_gmail_message(draft["message"])
+                message = GmailDraftEntry.model_validate(draft).message
+                if message is not None:
+                    # The drafts ride to the client as the provider's own dicts.
+                    draft = {
+                        **draft,
+                        "message": transform_gmail_message(message).model_dump(by_alias=True),
+                    }
                 detailed_drafts.append(draft)
 
             return GmailDraftsResponse(
@@ -686,7 +694,7 @@ async def get_draft(user_id: str, draft_id: str) -> GmailToolResult:
         if result.successful:
             # Transform the message data if present
             if result.message is not None:
-                result.message = transform_gmail_message(result.message)
+                result.message = transform_gmail_message(result.message).model_dump(by_alias=True)
             return result
         log.error(f"{LogTag.MAIL} Error from GMAIL_GET_DRAFT", error=result.error)
         return GmailToolResult(error=result.error, successful=False)
@@ -827,7 +835,9 @@ async def get_email_by_id(user_id: str, message_id: str) -> GmailEmailResult:
 
         if result.successful:
             # Transform the message data for easier frontend processing
-            transformed_message = transform_gmail_message(result.as_payload())
+            transformed_message = transform_gmail_message(result.as_payload()).model_dump(
+                by_alias=True
+            )
             log.set_ns("mail", result_count=1, success=True)
             return GmailEmailResult(success=True, message=transformed_message)
         log.error(f"{LogTag.MAIL} Error from GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", error=result.error)

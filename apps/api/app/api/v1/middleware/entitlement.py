@@ -19,6 +19,7 @@ from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.api.v1.middleware.auth import get_current_user
 from app.api.v1.middleware.entitlement_allowlist import is_free_path
 from app.decorators.entitlements import (
     SubscriptionRequiredException,
@@ -54,13 +55,13 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
         if is_free_path(request.url.path):
             return await call_next(request)
 
-        user = getattr(request.state, "user", None)
-        user_id = user.get("user_id") if user else None
+        user = get_current_user(request)
+        user_id = user.user_id if user else None
         if not user_id:
             return await call_next(request)
 
         try:
-            await require_active_subscription(str(user_id), feature=request.url.path)
+            await require_active_subscription(user_id, feature=request.url.path)
         except SubscriptionRequiredException as exc:
             return self._payment_required(exc)
         except Exception as e:

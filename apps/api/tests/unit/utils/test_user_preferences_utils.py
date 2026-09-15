@@ -11,8 +11,11 @@ from app.utils.user_preferences_utils import (
     format_profession_for_display,
     format_response_style_instruction,
     format_user_preferences_for_agent,
+    format_writing_style_for_prompt,
     onboarding_preferences,
 )
+
+WRITING_STYLE_HEADER = "Learned Writing Style (match this tone and voice when composing the email):"
 
 # ---------------------------------------------------------------------------
 # format_response_style_instruction
@@ -104,6 +107,12 @@ class TestBuildUserContextParts:
         assert parts[0] == "User Profession: Software Engineer"
         assert parts[1] == "Communication Style: Keep responses brief and to the point"
         assert parts[2] == "Special Instructions: Always use Python examples"
+        mock_log.set.assert_called_once_with(
+            operation="build_user_context_parts",
+            has_profession=True,
+            has_response_style=True,
+            has_custom_instructions=True,
+        )
 
     @patch("app.utils.user_preferences_utils.log")
     def test_empty_preferences(self, mock_log: Any) -> None:
@@ -182,6 +191,43 @@ class TestBuildUserContextParts:
         parts = build_user_context_parts({"custom_instructions": long_instructions})
         assert len(parts) == 1
         assert parts[0] == f"Special Instructions: {long_instructions}"
+
+
+# ---------------------------------------------------------------------------
+# format_writing_style_for_prompt
+# ---------------------------------------------------------------------------
+
+
+class TestFormatWritingStyleForPrompt:
+    def test_the_users_edited_summary_wins_over_the_learned_one(self) -> None:
+        result = format_writing_style_for_prompt(
+            {"summary": "Formal", "user_edited_summary": "Warm"}
+        )
+        assert result == f"{WRITING_STYLE_HEADER}\n  Style: Warm"
+
+    def test_the_learned_summary_is_used_when_the_user_never_edited_it(self) -> None:
+        result = format_writing_style_for_prompt({"summary": "Formal"})
+        assert result == f"{WRITING_STYLE_HEADER}\n  Style: Formal"
+
+    def test_no_summary_renders_nothing_even_with_an_example(self) -> None:
+        assert format_writing_style_for_prompt({"example": "Hi there"}) == ""
+
+    def test_example_blocks_are_rendered_in_their_voice(self) -> None:
+        result = format_writing_style_for_prompt(
+            {
+                "summary": "Warm",
+                "example": {
+                    "greeting": "Hi Sam,",
+                    "body": ["Thanks."],
+                    "signoff": "Best,",
+                    "name": "Ana",
+                },
+            }
+        )
+        assert result == (
+            f"{WRITING_STYLE_HEADER}\n  Style: Warm\n"
+            '  Example email in their voice:\n    "Hi Sam,\n\nThanks.\n\nBest,\nAna"'
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -276,17 +322,6 @@ class TestOnboardingPreferences:
         onboarding = OnboardingSubdocument(preferences=OnboardingPreferences(profession="doctor"))
 
         assert onboarding_preferences(onboarding) == ({"profession": "doctor"}, None)
-
-    def test_raw_dict_is_read_by_key(self) -> None:
-        onboarding: dict[str, Any] = {
-            "preferences": {"profession": "doctor", "response_style": None},
-            "writing_style": {"summary": "terse"},
-        }
-
-        assert onboarding_preferences(onboarding) == (
-            {"profession": "doctor", "response_style": None},
-            {"summary": "terse"},
-        )
 
     @pytest.mark.parametrize("onboarding", [None, {}])
     def test_missing_onboarding_reads_as_a_pair_of_none(

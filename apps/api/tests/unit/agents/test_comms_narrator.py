@@ -26,11 +26,12 @@ from app.agents.prompts.comms_prompts import (
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
+from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.core.background.comms_narrator"
 
-USER: dict = {"user_id": "user-1", "email": "u@gaia.local"}
+USER = AuthenticatedUser(user_id="user-1", email="u@gaia.local")
 CONVERSATION_ID = "conv-1"
 RESULT_TEXT = f"Downloaded the report.{NEW_MESSAGE_BREAKER}It has 3 pages."
 CARD_NOTE = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "a card is on screen")
@@ -70,18 +71,21 @@ class TestNarrateExecutorResult:
         assert config["configurable"]["conversation_id"] == CONVERSATION_ID
 
     async def test_the_users_onboarding_data_reaches_build_agent_config(self) -> None:
-        """The (preferences, writing_style) pair from user["onboarding"] must reach the configurable, unmocked."""
-        user_with_onboarding = {
-            **USER,
-            "onboarding": {
-                "preferences": {"profession": "engineer"},
-                "writing_style": {"summary": "terse"},
-            },
-        }
+        """The (preferences, writing_style) pair from user.onboarding must reach the configurable, unmocked."""
+        user_with_onboarding = USER.model_copy(
+            update={
+                "onboarding": OnboardingSubdocument.model_validate(
+                    {
+                        "preferences": {"profession": "engineer"},
+                        "writing_style": {"summary": "terse"},
+                    }
+                )
+            }
+        )
         with (
             _patch_graph(_fake_comms_graph()),
             patch(
-                f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", {}))
+                f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", []))
             ) as silent,
         ):
             await narrate_executor_result(
@@ -96,7 +100,7 @@ class TestNarrateExecutorResult:
         with (
             _patch_graph(_fake_comms_graph()),
             patch(
-                f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", {}))
+                f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", []))
             ) as silent,
         ):
             await narrate_executor_result("boom", "error", CONVERSATION_ID, USER)
@@ -110,7 +114,7 @@ class TestNarrateExecutorResult:
         with (
             _patch_graph(_fake_comms_graph()),
             patch(
-                f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", {}))
+                f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", []))
             ) as silent,
         ):
             await narrate_executor_result(
@@ -130,7 +134,7 @@ class TestNarrateExecutorResult:
         with (
             _patch_graph(_fake_comms_graph()),
             patch(
-                f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", {}))
+                f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", []))
             ) as silent,
         ):
             await narrate_executor_result(
@@ -268,7 +272,7 @@ class TestNarrationResolvesItsOwnCommsLane:
         with (
             _patch_graph(graph),
             patch(f"{MODULE}.build_agent_config", built),
-            patch(f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("narrated", {}))),
+            patch(f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("narrated", []))),
         ):
             await narrate_executor_result(
                 result_text=RESULT_TEXT,

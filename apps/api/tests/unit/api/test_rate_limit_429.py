@@ -20,6 +20,8 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     tiered_limiter,
 )
 from app.models.payment_models import PlanType
+from app.models.user_models import AuthenticatedUser
+from tests.conftest import PRO_USER_SUBSCRIPTION
 
 NOTES_BASE = "/api/v1/notes"
 
@@ -81,14 +83,14 @@ async def test_rate_limit_exceeded_returns_429(
 
 async def test_pro_user_reaches_limiter_on_pro_plan(
     client: AsyncClient,
-    pro_user: dict,
+    pro_user: AuthenticatedUser,
 ) -> None:
     """Opting into a paying context routes the PRO tier into the limiter."""
     with (
         patch(
             "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
             new_callable=AsyncMock,
-            return_value=pro_user["subscription"],
+            return_value=PRO_USER_SUBSCRIPTION,
         ),
         patch(
             "app.decorators.rate_limiting.tiered_limiter.check_and_increment",

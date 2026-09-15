@@ -26,10 +26,10 @@ import pytest
 from app.agents.core.background.session import RunKind, create_session, teardown_session
 from app.helpers.agent_helpers import (
     _buffer_mcp_app,
-    _buffer_subagent_mcp_app,
     _emit_mcp_app_event,
     _model_fallback_frame,
     _parse_stream_event,
+    _PendingMcpApp,
     _settle_message_boundary,
     _stream_custom,
     _stream_messages,
@@ -39,6 +39,8 @@ from app.helpers.agent_helpers import (
     _StreamAccumulators,
     execute_graph_streaming,
 )
+from app.models.mcp_app_models import McpUiMetadata
+from app.utils.agent_utils import IntegrationDisplayMetadata
 
 HELPERS = "app.helpers.agent_helpers"
 
@@ -124,14 +126,9 @@ def test_buffer_mcp_app_records_every_field_of_the_pending_app() -> None:
     _buffer_mcp_app(_mcp_tool_entry(), pending)
 
     assert pending == {
-        "call_1": {
-            "tool_category": "custom_mcp",
-            "tool_name": "get_time",
-            "server_url": "https://mcp.example.com/mcp",
-            "mcp_ui": {"resource_uri": "ui://get-time/app.html", "csp": "default-src 'self'"},
-            "timestamp": "2026-08-27T00:00:00Z",
-            "tool_arguments": {"tz": "UTC"},
-        }
+        "call_1": _pending_app(
+            mcp_ui={"resource_uri": "ui://get-time/app.html", "csp": "default-src 'self'"}
+        )
     }
 
 
@@ -148,14 +145,14 @@ def test_buffer_mcp_app_falls_back_to_empty_values_for_absent_fields() -> None:
     )
 
     assert pending == {
-        "call_1": {
-            "tool_category": "",
-            "tool_name": "",
-            "server_url": "",
-            "mcp_ui": {"resource_uri": "ui://x"},
-            "timestamp": None,
-            "tool_arguments": {},
-        }
+        "call_1": _PendingMcpApp(
+            tool_category="",
+            tool_name="",
+            server_url="",
+            mcp_ui=McpUiMetadata(resource_uri="ui://x"),
+            timestamp=None,
+            tool_arguments={},
+        )
     }
 
 
@@ -203,46 +200,48 @@ def test_buffer_mcp_app_buffers_nothing_for(entry: dict[str, Any]) -> None:
 # ── _buffer_subagent_mcp_app ─────────────────────────────────────────
 
 
-def test_buffer_subagent_mcp_app_records_every_field_of_the_pending_app() -> None:
+async def test_buffer_subagent_mcp_app_records_every_field_of_the_pending_app() -> None:
     pending: dict[str, dict[str, Any]] = {}
 
-    _buffer_subagent_mcp_app({"tool_data": _mcp_tool_entry()}, pending)
-
-    assert pending == {
-        "call_1": {
-            "tool_category": "custom_mcp",
-            "tool_name": "get_time",
-            "server_url": "https://mcp.example.com/mcp",
-            "mcp_ui": {"resource_uri": "ui://get-time/app.html", "csp": "default-src 'self'"},
-            "timestamp": "2026-08-27T00:00:00Z",
-            "tool_arguments": {"tz": "UTC"},
-        }
-    }
-
-
-def test_buffer_subagent_mcp_app_falls_back_to_empty_values_for_absent_fields() -> None:
-    pending: dict[str, dict[str, Any]] = {}
-
-    _buffer_subagent_mcp_app(
-        {
-            "tool_data": {
-                "tool_name": "tool_calls_data",
-                "mcp_ui": {"resource_uri": "ui://x"},
-                "data": {"tool_call_id": "call_1"},
-            }
-        },
-        pending,
+    await _drain(
+        _stream_custom(
+            {"tool_data": _mcp_tool_entry()}, _StreamAccumulators(pending_mcp_apps=pending), "u"
+        )
     )
 
     assert pending == {
-        "call_1": {
-            "tool_category": "",
-            "tool_name": "",
-            "server_url": "",
-            "mcp_ui": {"resource_uri": "ui://x"},
-            "timestamp": None,
-            "tool_arguments": {},
-        }
+        "call_1": _pending_app(
+            mcp_ui={"resource_uri": "ui://get-time/app.html", "csp": "default-src 'self'"}
+        )
+    }
+
+
+async def test_buffer_subagent_mcp_app_falls_back_to_empty_values_for_absent_fields() -> None:
+    pending: dict[str, dict[str, Any]] = {}
+
+    await _drain(
+        _stream_custom(
+            {
+                "tool_data": {
+                    "tool_name": "tool_calls_data",
+                    "mcp_ui": {"resource_uri": "ui://x"},
+                    "data": {"tool_call_id": "call_1"},
+                }
+            },
+            _StreamAccumulators(pending_mcp_apps=pending),
+            "u",
+        )
+    )
+
+    assert pending == {
+        "call_1": _PendingMcpApp(
+            tool_category="",
+            tool_name="",
+            server_url="",
+            mcp_ui=McpUiMetadata(resource_uri="ui://x"),
+            timestamp=None,
+            tool_arguments={},
+        )
     }
 
 
@@ -297,10 +296,10 @@ def test_buffer_subagent_mcp_app_falls_back_to_empty_values_for_absent_fields() 
         ),
     ],
 )
-def test_buffer_subagent_mcp_app_buffers_nothing_for(payload: Any) -> None:
+async def test_buffer_subagent_mcp_app_buffers_nothing_for(payload: Any) -> None:
     pending: dict[str, dict[str, Any]] = {}
 
-    _buffer_subagent_mcp_app(payload, pending)
+    await _drain(_stream_custom(payload, _StreamAccumulators(pending_mcp_apps=pending), "u"))
 
     assert pending == {}
 
@@ -350,7 +349,9 @@ async def test_tool_call_frames_emit_one_entry_per_new_call_in_order() -> None:
     formatter = _RecordingFormatter([{"tool_name": "a"}, {"tool_name": "b"}])
     emitted: set[str] = set()
     pending: dict[str, dict[str, Any]] = {}
-    msg = SimpleNamespace(tool_calls=[_tc("call_1"), _tc("call_2", name="fetch_page")])
+    msg = AIMessage.model_construct(
+        content="", tool_calls=[_tc("call_1"), _tc("call_2", name="fetch_page")]
+    )
 
     with patch(f"{HELPERS}.format_tool_call_entry", formatter):
         frames = await _drain(_stream_tool_call_frames(msg, emitted, pending, "user-1"))
@@ -375,12 +376,14 @@ async def test_tool_call_frames_emit_one_entry_per_new_call_in_order() -> None:
 @pytest.mark.asyncio
 async def test_tool_call_frames_resolve_handoff_display_metadata() -> None:
     formatter = _RecordingFormatter([{"tool_name": "handoff_card"}])
-    handoff_metadata = {
-        "icon_url": "https://cdn/gh.png",
-        "integration_id": "github",
-        "integration_name": "GitHub",
-    }
-    msg = SimpleNamespace(tool_calls=[_tc("call_1", name="handoff", args={"subagent_id": "gh-1"})])
+    handoff_metadata = IntegrationDisplayMetadata(
+        icon_url="https://cdn/gh.png",
+        integration_id="github",
+        integration_name="GitHub",
+    )
+    msg = AIMessage.model_construct(
+        content="", tool_calls=[_tc("call_1", name="handoff", args={"subagent_id": "gh-1"})]
+    )
 
     with (
         patch(f"{HELPERS}.format_tool_call_entry", formatter),
@@ -424,7 +427,9 @@ async def test_tool_call_frames_look_up_no_handoff_metadata_for(tool_call: dict[
         patch(f"{HELPERS}.get_handoff_metadata", AsyncMock()) as lookup,
     ):
         frames = await _drain(
-            _stream_tool_call_frames(SimpleNamespace(tool_calls=[tool_call]), set(), {}, "user-1")
+            _stream_tool_call_frames(
+                AIMessage.model_construct(content="", tool_calls=[tool_call]), set(), {}, "user-1"
+            )
         )
 
     assert frames == [_sse({"tool_data": {"tool_name": "card"}})]
@@ -441,7 +446,7 @@ async def test_tool_call_frames_look_up_no_handoff_metadata_for(tool_call: dict[
 async def test_tool_call_frames_skip_already_emitted_calls_without_stopping() -> None:
     formatter = _RecordingFormatter([{"tool_name": "b"}])
     emitted = {"call_1"}
-    msg = SimpleNamespace(tool_calls=[_tc("call_1"), _tc("call_2")])
+    msg = AIMessage.model_construct(content="", tool_calls=[_tc("call_1"), _tc("call_2")])
 
     with patch(f"{HELPERS}.format_tool_call_entry", formatter):
         frames = await _drain(_stream_tool_call_frames(msg, emitted, {}, None))
@@ -457,7 +462,9 @@ async def test_tool_call_frames_skip_a_call_with_no_id() -> None:
 
     with patch(f"{HELPERS}.format_tool_call_entry", formatter):
         frames = await _drain(
-            _stream_tool_call_frames(SimpleNamespace(tool_calls=[_tc(None)]), emitted, {}, None)
+            _stream_tool_call_frames(
+                AIMessage.model_construct(content="", tool_calls=[_tc(None)]), emitted, {}, None
+            )
         )
 
     assert frames == []
@@ -466,11 +473,22 @@ async def test_tool_call_frames_skip_a_call_with_no_id() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tool_call_frames_emit_nothing_for_a_message_that_is_not_an_ai_message() -> None:
+    formatter = _RecordingFormatter([])
+
+    with patch("app.helpers.agent_helpers.format_tool_call_entry", new=formatter):
+        frames = await _drain(_stream_tool_call_frames(HumanMessage(content="hi"), set(), {}, None))
+
+    assert frames == []
+    assert formatter.calls == []
+
+
+@pytest.mark.asyncio
 async def test_tool_call_frames_emit_nothing_for_a_message_with_no_tool_calls_attribute() -> None:
     formatter = _RecordingFormatter([])
 
     with patch(f"{HELPERS}.format_tool_call_entry", formatter):
-        frames = await _drain(_stream_tool_call_frames(SimpleNamespace(), set(), {}, None))
+        frames = await _drain(_stream_tool_call_frames(AIMessage(content=""), set(), {}, None))
 
     assert frames == []
 
@@ -482,7 +500,9 @@ async def test_tool_call_frames_emit_nothing_when_the_entry_cannot_be_formatted(
 
     with patch(f"{HELPERS}.format_tool_call_entry", formatter):
         frames = await _drain(
-            _stream_tool_call_frames(SimpleNamespace(tool_calls=[_tc("call_1")]), emitted, {}, None)
+            _stream_tool_call_frames(
+                AIMessage.model_construct(content="", tool_calls=[_tc("call_1")]), emitted, {}, None
+            )
         )
 
     assert frames == []
@@ -497,28 +517,26 @@ async def test_tool_call_frames_buffer_the_mcp_app_for_deferred_emission() -> No
     with patch(f"{HELPERS}.format_tool_call_entry", formatter):
         frames = await _drain(
             _stream_tool_call_frames(
-                SimpleNamespace(tool_calls=[_tc("call_1")]), set(), pending, "u"
+                AIMessage.model_construct(content="", tool_calls=[_tc("call_1")]),
+                set(),
+                pending,
+                "u",
             )
         )
 
     assert frames == [_sse({"tool_data": _mcp_tool_entry()})]
     assert pending == {
-        "call_1": {
-            "tool_category": "custom_mcp",
-            "tool_name": "get_time",
-            "server_url": "https://mcp.example.com/mcp",
-            "mcp_ui": {"resource_uri": "ui://get-time/app.html", "csp": "default-src 'self'"},
-            "timestamp": "2026-08-27T00:00:00Z",
-            "tool_arguments": {"tz": "UTC"},
-        }
+        "call_1": _pending_app(
+            mcp_ui={"resource_uri": "ui://get-time/app.html", "csp": "default-src 'self'"}
+        )
     }
 
 
 # ── _stream_tool_message_frames ──────────────────────────────────────
 
 
-def _pending_app() -> dict[str, Any]:
-    return {
+def _pending_app(**overrides: Any) -> _PendingMcpApp:
+    fields: dict[str, Any] = {
         "tool_category": "custom_mcp",
         "tool_name": "get_time",
         "server_url": "https://mcp.example.com/mcp",
@@ -526,6 +544,9 @@ def _pending_app() -> dict[str, Any]:
         "timestamp": "2026-08-27T00:00:00Z",
         "tool_arguments": {"tz": "UTC"},
     }
+    fields.update(overrides)
+    fields["mcp_ui"] = McpUiMetadata.model_validate(fields["mcp_ui"])
+    return _PendingMcpApp(**fields)
 
 
 def _mcp_app_frame(tool_result: Any) -> str:
@@ -675,14 +696,9 @@ async def test_a_subagent_tool_data_event_buffers_its_mcp_app() -> None:
 
     assert frames == [_sse(payload)]
     assert state.pending_mcp_apps == {
-        "call_1": {
-            "tool_category": "custom_mcp",
-            "tool_name": "get_time",
-            "server_url": "https://mcp.example.com/mcp",
-            "mcp_ui": {"resource_uri": "ui://get-time/app.html", "csp": "default-src 'self'"},
-            "timestamp": "2026-08-27T00:00:00Z",
-            "tool_arguments": {"tz": "UTC"},
-        }
+        "call_1": _pending_app(
+            mcp_ui={"resource_uri": "ui://get-time/app.html", "csp": "default-src 'self'"}
+        )
     }
 
 
@@ -822,7 +838,7 @@ async def test_updates_buffer_the_mcp_app_and_pass_the_user_id_through() -> None
         _sse({"tool_data": _mcp_tool_entry()}),
         _boundary_frame("msg-1", True),
     ]
-    assert state.pending_mcp_apps["call_1"]["tool_name"] == "get_time"
+    assert state.pending_mcp_apps["call_1"].tool_name == "get_time"
     assert formatter.calls[0][1]["user_id"] == "u-1"
 
 
@@ -1018,17 +1034,8 @@ async def test_a_cancelled_run_emits_the_cancelled_nostream_frame() -> None:
 # Served MCP values win over declared mcp_ui metadata; permissions defaults to [] not null.
 
 
-def _emit_meta(**overrides: Any) -> dict[str, Any]:
-    meta: dict[str, Any] = {
-        "tool_category": "custom_mcp",
-        "tool_name": "get_time",
-        "server_url": "https://mcp.example.com/mcp",
-        "mcp_ui": {"resource_uri": "ui://get-time/app.html"},
-        "timestamp": "2026-08-27T00:00:00Z",
-        "tool_arguments": {"tz": "UTC"},
-    }
-    meta.update(overrides)
-    return meta
+def _emit_meta(**overrides: Any) -> _PendingMcpApp:
+    return _pending_app(**overrides)
 
 
 def _emit_frame(csp: Any, permissions: Any, tool_arguments: Any) -> str:
@@ -1095,8 +1102,7 @@ async def test_the_declared_csp_and_permissions_are_used_when_none_are_served() 
 
 @pytest.mark.asyncio
 async def test_undeclared_permissions_bottom_out_at_an_empty_list() -> None:
-    meta = _emit_meta()
-    del meta["tool_arguments"]
+    meta = _emit_meta(tool_arguments={})
 
     with patch(
         f"{HELPERS}.fetch_mcp_ui_resource", AsyncMock(return_value={"html": "<h1>12:00</h1>"})

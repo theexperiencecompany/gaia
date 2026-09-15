@@ -23,6 +23,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents
 
 NOTIF_BASE = "/api/v1/notifications"
@@ -132,7 +133,7 @@ class TestGetNotifications:
         assert response.status_code == 200
         # The whole query string reaches the service as one query object.
         mock_get.assert_awaited_once_with(
-            FAKE_USER["user_id"],
+            FAKE_USER.user_id,
             filters=NotificationListFilters(
                 status=NotificationStatus.READ, channel_type="inapp", limit=7, offset=3
             ),
@@ -561,7 +562,7 @@ class TestMarkAllRead:
     async def test_mark_all_read_no_user_id(self, test_app: FastAPI) -> None:
         """Missing user_id yields 401 with the exact detail string."""
         original = test_app.dependency_overrides.get(get_current_user)
-        test_app.dependency_overrides[get_current_user] = lambda: {"user_id": None}
+        test_app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(user_id="")
         try:
             transport = ASGITransport(app=test_app, raise_app_exceptions=False)
             async with AsyncClient(transport=transport, base_url="http://test") as ac:  # NOSONAR

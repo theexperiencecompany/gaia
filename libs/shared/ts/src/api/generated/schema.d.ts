@@ -8294,6 +8294,8 @@ export interface components {
             end?: components["schemas"]["GoogleCalendarEventDateTime"] | null;
             /** Eventtype */
             eventType?: string | null;
+            /** Htmllink */
+            htmlLink?: string | null;
             /** Id */
             id?: string | null;
             /** Recurrence */
@@ -10206,8 +10208,8 @@ export interface components {
             /** Success */
             success: boolean;
         };
-        /** NotificationResponse[dict[str, Any]] */
-        NotificationResponse_dict_str__Any__: {
+        /** NotificationResponse[dict[str, object]] */
+        NotificationResponse_dict_str__object__: {
             /** Data */
             data?: {
                 [key: string]: unknown;
@@ -14784,7 +14786,7 @@ export type NotificationContentView = components['schemas']['NotificationContent
 export type NotificationRecord = components['schemas']['NotificationRecord'];
 export type NotificationRequest = components['schemas']['NotificationRequest'];
 export type NotificationResponse_BulkActionSummary_ = components['schemas']['NotificationResponse_BulkActionSummary_'];
-export type NotificationResponse_dict_str__Any__ = components['schemas']['NotificationResponse_dict_str__Any__'];
+export type NotificationResponse_dict_str__object__ = components['schemas']['NotificationResponse_dict_str__object__'];
 export type NotificationResponse_MarkAllReadSummary_ = components['schemas']['NotificationResponse_MarkAllReadSummary_'];
 export type NotificationResponse_NotificationRecord_ = components['schemas']['NotificationResponse_NotificationRecord_'];
 export type NotificationResponse_NotificationView_ = components['schemas']['NotificationResponse_NotificationView_'];
@@ -22347,7 +22349,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["NotificationResponse_dict_str__Any__"];
+                    "application/json": components["schemas"]["NotificationResponse_dict_str__object__"];
                 };
             };
             /** @description Unprocessable Entity */

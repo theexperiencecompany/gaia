@@ -5,6 +5,7 @@ This module provides utilities to normalize schemas before conversion.
 """
 
 from mcp.types import Tool
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -64,6 +65,14 @@ def normalize_schema_refs(schema: object) -> object:
     return schema
 
 
+class _SchemaRef(BaseModel):
+    """A JSON Schema node's ``$ref`` pointer."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    ref: str = Field(alias="$ref")
+
+
 def _update_refs_recursive(obj: object, key_mapping: dict[str, str], defs_key: str) -> None:
     """Recursively update $ref values in a schema.
 
@@ -75,7 +84,7 @@ def _update_refs_recursive(obj: object, key_mapping: dict[str, str], defs_key: s
     if isinstance(obj, dict):
         # Check if this object has a $ref
         if "$ref" in obj:
-            ref = obj["$ref"]
+            ref = _SchemaRef.model_validate(obj).ref
             # Parse ref like "#/$defs/0" or "#/definitions/0"
             if ref.startswith(f"#/{defs_key}/"):
                 ref_key = ref.split("/")[-1]

@@ -21,6 +21,7 @@ from app.helpers.agent_helpers import (
     build_agent_config,
     execute_graph_silent,
 )
+from app.models.agent_models import agent_user_context
 from app.models.user_models import AuthenticatedUser
 from app.utils.agent_utils import strip_internal_agent_tags
 from app.utils.user_preferences_utils import onboarding_preferences
@@ -66,14 +67,14 @@ async def narrate_executor_result(
         )
         return ""
     try:
-        user_preferences, writing_style = onboarding_preferences(user.get("onboarding"))
+        user_preferences, writing_style = onboarding_preferences(user.onboarding)
         # A fresh background task with no parent configurable to inherit from, so
         # build_agent_config resolves its own comms lane and stamps plan_type —
         # matching the interactive comms path and keeping the budget wall enforced.
         config = await build_agent_config(
             identity=AgentIdentity(
                 conversation_id=conversation_id,
-                user=user,
+                user=agent_user_context(user),
                 agent_name="comms_agent",
             ),
             lane=AgentLane(role=AgentRole.COMMS),

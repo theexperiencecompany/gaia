@@ -18,6 +18,7 @@ from app.api.v1.middleware.logging import LoggingMiddleware
 from app.api.v1.middleware.timeout import RequestTimeoutMiddleware
 from app.core.app_factory import create_app
 from app.core.middleware import configure_middleware
+from app.models.user_models import AuthenticatedUser
 from shared.py.logging import MAX_JSON_LINE_BYTES, _json_stdout_sink, env_context
 from shared.py.wide_events import (
     _event_state,
@@ -150,7 +151,7 @@ def test_user_identity_attached_from_request_state(emitted):
 
     class FakeAuth(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
-            request.state.user = {"user_id": "u_state", "email": "s@x.com"}
+            request.state.user = AuthenticatedUser(user_id="u_state", email="s@x.com")
             return await call_next(request)
 
     # Auth INSIDE the boundary, as in production.

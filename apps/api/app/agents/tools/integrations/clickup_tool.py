@@ -1,13 +1,21 @@
 """ClickUp tools using Composio custom tool infrastructure."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 from composio import Composio
 from composio.types import ExecuteRequestFn
 
 from app.models.common_models import GatherContextInput
+from app.models.integrations.clickup import ClickUpTask, ClickUpTaskList
+from app.models.integrations.composio import CustomToolAuthCredentials
 from app.utils.context_utils import execute_tool
+
+
+def _is_overdue(task: ClickUpTask, today_ms: int) -> bool:
+    if not task.due_date or int(task.due_date) >= today_ms:
+        return False
+    status_type = task.status.type if task.status is not None else None
+    return status_type not in ("closed",)
 
 
 def register_clickup_custom_tools(composio: Composio) -> list[str]:
@@ -17,31 +25,39 @@ def register_clickup_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get ClickUp context snapshot: assigned tasks across teams.
 
         Zero required parameters. Returns current account state for situational awareness.
         """
         del request, execute_request  # unused: framework-mandated custom-tool signature
-        user_id = auth_credentials.get("user_id", "")
-        if not user_id:
-            raise ValueError("Missing user_id in auth_credentials")
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
 
-        data = execute_tool(
-            "CLICKUP_GET_FILTERED_TEAM_TASKS",
-            {"assignees": ["me"], "include_closed": False},
-            user_id,
-        )
-        tasks = data.get("tasks", [])
+        tasks = ClickUpTaskList.model_validate(
+            execute_tool(
+                "CLICKUP_GET_FILTERED_TEAM_TASKS",
+                {"assignees": ["me"], "include_closed": False},
+                user_id,
+            )
+        ).tasks
         today_ms = int(datetime.now(UTC).timestamp() * 1000)
-        overdue = [
-            t
-            for t in tasks
-            if t.get("due_date")
-            and int(t["due_date"]) < today_ms
-            and t.get("status", {}).get("type") not in ("closed",)
-        ]
-        return {"tasks": tasks, "overdue_tasks": overdue}
+        overdue = [t for t in tasks if _is_overdue(t, today_ms)]
+        return {
+            "tasks": [
+                t.model_dump(  # pragma: no mutate -- dropping mode= is unobservable here and banned by tool-dump-boundary
+                    mode="json",  # pragma: no mutate -- JSON-native fields only, so any mode value dumps identically
+                    exclude_unset=True,
+                )
+                for t in tasks
+            ],
+            "overdue_tasks": [
+                t.model_dump(  # pragma: no mutate -- dropping mode= is unobservable here and banned by tool-dump-boundary
+                    mode="json",  # pragma: no mutate -- JSON-native fields only, so any mode value dumps identically
+                    exclude_unset=True,
+                )
+                for t in overdue
+            ],
+        }
 
     return ["CLICKUP_CUSTOM_GATHER_CONTEXT"]

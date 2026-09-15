@@ -8,36 +8,15 @@ This module provides helpers for Google Sheets and Drive API interactions:
 """
 
 import re
-from typing import NotRequired, TypedDict, cast
 
+from app.models.integrations.google_sheets import (
+    GoogleSheetsColor,
+    GoogleSheetsGridRange,
+    GoogleSheetsSpreadsheet,
+    GoogleSheetsValueRange,
+)
 from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from shared.py.wide_events import log
-
-
-class SheetsColor(TypedDict):
-    """A Google Sheets API Color — channels as 0-1 floats."""
-
-    red: float
-    green: float
-    blue: float
-
-
-class SheetsGridRange(TypedDict):
-    """A Google Sheets API GridRange.
-
-    Every key is NotRequired: an A1 reference may leave rows or columns open
-    ('A:C'), and Sheets reads an absent bound as unbounded — omitting it is what
-    keeps a column range from collapsing onto row 1. parse_a1_range never
-    sets sheetId (A1 notation carries a sheet *name*); callers resolve the id
-    and add it to the range they build.
-    """
-
-    sheetId: NotRequired[int]
-    startRowIndex: NotRequired[int]
-    endRowIndex: NotRequired[int]
-    startColumnIndex: NotRequired[int]
-    endColumnIndex: NotRequired[int]
-
 
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
 SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets"
@@ -47,16 +26,16 @@ SHEETS_TOOLKIT = "GOOGLESHEETS"
 _HEX_COLOR_RE = re.compile(r"^[0-9A-Fa-f]{6}$")
 
 
-def hex_to_rgb(hex_color: str) -> SheetsColor:
+def hex_to_rgb(hex_color: str) -> GoogleSheetsColor:
     """Convert hex color (#RRGGBB) to Google API RGB format (0-1 floats)."""
     digits = hex_color.lstrip("#")
     if not _HEX_COLOR_RE.match(digits):
         raise ValueError(f"Invalid hex color: '{hex_color}' (expected '#RRGGBB')")
-    return {
-        "red": int(digits[0:2], 16) / 255.0,
-        "green": int(digits[2:4], 16) / 255.0,
-        "blue": int(digits[4:6], 16) / 255.0,
-    }
+    return GoogleSheetsColor(
+        red=int(digits[0:2], 16) / 255.0,
+        green=int(digits[2:4], 16) / 255.0,
+        blue=int(digits[4:6], 16) / 255.0,  # pragma: no mutate — regex ensures 6 digits
+    )
 
 
 _CELL_REF_RE = re.compile(r"^([A-Z]+)?(\d+)?$")
@@ -81,7 +60,7 @@ def _parse_cell(cell: str) -> tuple[int | None, int | None]:
     return row, col
 
 
-def parse_a1_range(range_str: str) -> SheetsGridRange:
+def parse_a1_range(range_str: str) -> GoogleSheetsGridRange:
     """Parse A1 notation (e.g. 'A1:B10', 'Sheet1!A:C') into a Google GridRange.
 
     Bounds that the reference leaves open are omitted rather than defaulted, so
@@ -107,16 +86,12 @@ def parse_a1_range(range_str: str) -> SheetsGridRange:
     if start_col is not None and end_col is not None and start_col > end_col:
         start_col, end_col = end_col, start_col
 
-    grid: SheetsGridRange = {}
-    if start_row is not None:
-        grid["startRowIndex"] = start_row
-    if end_row is not None:
-        grid["endRowIndex"] = end_row + 1
-    if start_col is not None:
-        grid["startColumnIndex"] = start_col
-    if end_col is not None:
-        grid["endColumnIndex"] = end_col + 1
-    return grid
+    return GoogleSheetsGridRange(
+        startRowIndex=start_row,
+        endRowIndex=None if end_row is None else end_row + 1,
+        startColumnIndex=start_col,
+        endColumnIndex=None if end_col is None else end_col + 1,
+    )
 
 
 def parse_a1_anchor(cell_ref: str) -> tuple[int, int]:
@@ -126,9 +101,9 @@ def parse_a1_anchor(cell_ref: str) -> tuple[int, int]:
     specific cell, so an open-ended reference like 'A' has no defined position.
     """
     grid = parse_a1_range(cell_ref)
-    if "startRowIndex" not in grid or "startColumnIndex" not in grid:
+    if grid.startRowIndex is None or grid.startColumnIndex is None:
         raise ValueError(f"Not a single cell reference: '{cell_ref}' (expected e.g. 'A1')")
-    return grid["startRowIndex"], grid["startColumnIndex"]
+    return grid.startRowIndex, grid.startColumnIndex
 
 
 def get_sheet_id_by_name(spreadsheet_id: str, sheet_name: str, user_id: str) -> int | None:
@@ -138,18 +113,21 @@ def get_sheet_id_by_name(spreadsheet_id: str, sheet_name: str, user_id: str) -> 
     found", so swallowing them would report a missing tab for an expired token.
     """
     log.set(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name)
-    data = proxy_request_sync(
-        ProxyRequest(
-            user_id=user_id,
-            toolkit=SHEETS_TOOLKIT,
-            endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}",
-            method="GET",
-            query={"fields": "sheets.properties"},
+    spreadsheet = GoogleSheetsSpreadsheet.model_validate(
+        proxy_request_sync(
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=SHEETS_TOOLKIT,
+                endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}",
+                method="GET",
+                query={"fields": "sheets.properties"},
+            )
         )
+        or {}
     )
-    for sheet in (data or {}).get("sheets", []):
-        if sheet.get("properties", {}).get("title") == sheet_name:
-            return cast(int, sheet["properties"]["sheetId"])
+    for sheet in spreadsheet.sheets:
+        if sheet.properties is not None and sheet.properties.title == sheet_name:
+            return sheet.properties.sheetId
     return None
 
 
@@ -165,16 +143,19 @@ def get_column_index_by_header(
     get_sheet_id_by_name: None means "no such column", not "lookup failed".
     """
     log.set(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name, column_name=column_name)
-    data = proxy_request_sync(
-        ProxyRequest(
-            user_id=user_id,
-            toolkit=SHEETS_TOOLKIT,
-            endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}/values/{sheet_name}!1:1",
-            method="GET",
+    value_range = GoogleSheetsValueRange.model_validate(
+        proxy_request_sync(
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=SHEETS_TOOLKIT,
+                endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}/values/{sheet_name}!1:1",
+                method="GET",
+            )
         )
+        or {}
     )
     # An empty sheet comes back with no `values` at all, not an empty first row.
-    rows = (data or {}).get("values") or [[]]
+    rows = value_range.values or [[]]
     for idx, header in enumerate(rows[0]):
         if str(header).lower() == column_name.lower():
             return idx

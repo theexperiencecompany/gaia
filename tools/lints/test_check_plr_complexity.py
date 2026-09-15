@@ -26,6 +26,7 @@ import pytest
 _HERE = Path(__file__).resolve().parent
 SCRIPT = _HERE / "check_plr_complexity.py"
 COMMON = _HERE / "_common.py"
+RATCHET = _HERE / "_ratchet.py"
 
 # Six parameters: PLR0913 (max-args defaults to 5) fires on line 1.
 APP_WITH_VIOLATION = """\
@@ -49,6 +50,7 @@ def repo(tmp_path: Path) -> Path:
     lints_dir.mkdir(parents=True)
     shutil.copy(SCRIPT, lints_dir / "check_plr_complexity.py")
     shutil.copy(COMMON, lints_dir / "_common.py")
+    shutil.copy(RATCHET, lints_dir / "_ratchet.py")
     ci_dir = tmp_path / "scripts" / "ci"
     ci_dir.mkdir(parents=True)
     changes = ci_dir / "changes.sh"

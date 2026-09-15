@@ -12,11 +12,13 @@ the shared before-hook acts on) is tested in test_file_upload_hooks.py.
 """
 
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest.mock import patch
 
 from pydantic import BaseModel
 import pytest
 
+from app.models.integrations.gmail import GmailComposeArguments
 from app.utils.composio_hooks import file_upload_hooks
 from app.utils.composio_hooks.file_upload_hooks import (
     NATIVE_UPLOAD_PARAM,
@@ -29,8 +31,16 @@ from app.utils.composio_hooks.gmail_hooks import (
     _normalize_compose_body,
     _pending_draft_card,
     _stream_compose_preview,
+    gmail_attachment_after_hook,
     gmail_compose_before_hook,
     gmail_create_draft_after_hook,
+    gmail_draft_detail_after_hook,
+    gmail_drafts_after_hook,
+    gmail_fetch_by_id_after_hook,
+    gmail_get_contacts_after_hook,
+    gmail_modify_labels_before_hook,
+    gmail_send_draft_after_hook,
+    gmail_thread_after_hook,
 )
 from app.utils.composio_hooks.registry import ComposioHookRegistry, HookAbortError
 from app.utils.errors import AppError
@@ -45,6 +55,10 @@ def _no_held_card():
     _pending_draft_card.set(None)
     yield
     _pending_draft_card.set(None)
+
+
+def _compose(arguments: dict) -> GmailComposeArguments:
+    return GmailComposeArguments.model_validate(arguments)
 
 
 def _schema(props: dict, required: list[str] | None = None) -> SimpleNamespace:
@@ -249,24 +263,25 @@ class TestNormalizeComposeBody:
 
 class TestComposeRecipients:
     def test_forward_string_becomes_single_element_list(self):
-        assert _compose_recipients("GMAIL_FORWARD_MESSAGE", {"to_recipients": "a@b.com"}) == [
-            "a@b.com"
-        ]
+        assert _compose_recipients(
+            "GMAIL_FORWARD_MESSAGE", _compose({"to_recipients": "a@b.com"})
+        ) == ["a@b.com"]
 
     def test_forward_list_passes_through(self):
         assert _compose_recipients(
-            "GMAIL_FORWARD_MESSAGE", {"to_recipients": ["a@b.com", "c@d.com"]}
+            "GMAIL_FORWARD_MESSAGE", _compose({"to_recipients": ["a@b.com", "c@d.com"]})
         ) == ["a@b.com", "c@d.com"]
 
     def test_compose_prepends_recipient_then_extras(self):
         assert _compose_recipients(
             "GMAIL_SEND_EMAIL",
-            {"recipient_email": "r@x.com", "extra_recipients": ["e@x.com"]},
+            _compose({"recipient_email": "r@x.com", "extra_recipients": ["e@x.com"]}),
         ) == ["r@x.com", "e@x.com"]
 
     def test_non_list_extra_recipients_are_dropped(self):
         assert _compose_recipients(
-            "GMAIL_SEND_EMAIL", {"recipient_email": "r@x.com", "extra_recipients": "oops"}
+            "GMAIL_SEND_EMAIL",
+            _compose({"recipient_email": "r@x.com", "extra_recipients": "oops"}),
         ) == ["r@x.com"]
 
 
@@ -312,15 +327,15 @@ class TestStreamComposePreview:
         sent, writer = self._capture()
         display = [{"name": "f.pdf", "mimetype": "application/pdf"}]
         with patch(f"{HOOKS}.get_stream_writer", return_value=writer):
-            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", DRAFT_ARGS, display)
+            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", _compose(DRAFT_ARGS), display)
         assert sent == []
-        assert _pending_draft_card.get()["subject"] == "Subj"
+        assert _pending_draft_card.get().subject == "Subj"
 
     def test_after_hook_streams_the_held_card_with_every_field(self):
         sent, writer = self._capture()
         display = [{"name": "f.pdf", "mimetype": "application/pdf"}]
         with patch(f"{HOOKS}.get_stream_writer", return_value=writer):
-            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", DRAFT_ARGS, display)
+            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", _compose(DRAFT_ARGS), display)
             gmail_create_draft_after_hook(
                 "GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {"id": "draft-1"}}
             )
@@ -346,7 +361,7 @@ class TestStreamComposePreview:
         sent, writer = self._capture()
         with patch(f"{HOOKS}.get_stream_writer", return_value=writer):
             _stream_compose_preview(
-                "GMAIL_SEND_EMAIL", {"recipient_email": "r@x.com", "subject": "s"}, []
+                "GMAIL_SEND_EMAIL", _compose({"recipient_email": "r@x.com", "subject": "s"}), []
             )
         assert list(sent[0].keys()) == ["email_sent_data"]
         assert sent[0]["email_sent_data"][0]["attachments"] == []
@@ -361,7 +376,7 @@ class TestCreateDraftAfterHook:
         sent, writer = self._capture()
         response = {"data": {"id": "d-1", "message": {"threadId": "t"}}}
         with patch(f"{HOOKS}.get_stream_writer", return_value=writer):
-            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", DRAFT_ARGS, [])
+            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", _compose(DRAFT_ARGS), [])
             assert (
                 gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", response)
                 is response
@@ -378,7 +393,7 @@ class TestCreateDraftAfterHook:
     def test_a_card_is_streamed_once_only(self):
         sent, writer = self._capture()
         with patch(f"{HOOKS}.get_stream_writer", return_value=writer):
-            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", DRAFT_ARGS, [])
+            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", _compose(DRAFT_ARGS), [])
             gmail_create_draft_after_hook(
                 "GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {"id": "d-1"}}
             )
@@ -393,7 +408,7 @@ class TestCreateDraftAfterHook:
         # their compose UI for no gain.
         sent, writer = self._capture()
         with patch(f"{HOOKS}.get_stream_writer", return_value=writer):
-            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", DRAFT_ARGS, [])
+            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", _compose(DRAFT_ARGS), [])
             gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {}})
         assert "draft_id" not in sent[0]["email_compose_data"][0]
 
@@ -403,7 +418,7 @@ class TestCreateDraftAfterHook:
         sent, writer = self._capture()
         display = [{"name": "f.pdf", "mimetype": "application/pdf"}]
         with patch(f"{HOOKS}.get_stream_writer", return_value=writer):
-            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", DRAFT_ARGS, display)
+            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", _compose(DRAFT_ARGS), display)
             gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {}})
         assert sent == []
 
@@ -413,7 +428,7 @@ class TestCreateDraftAfterHook:
         # keep its files pays that price.
         sent, writer = self._capture()
         with patch(f"{HOOKS}.get_stream_writer", return_value=writer):
-            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", DRAFT_ARGS, [])
+            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", _compose(DRAFT_ARGS), [])
             gmail_create_draft_after_hook(
                 "GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {"id": "d-1"}}
             )
@@ -422,13 +437,13 @@ class TestCreateDraftAfterHook:
     def test_non_dict_data_is_survived(self):
         sent, writer = self._capture()
         with patch(f"{HOOKS}.get_stream_writer", return_value=writer):
-            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", DRAFT_ARGS, [])
+            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", _compose(DRAFT_ARGS), [])
             gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": "oops"})
         assert "draft_id" not in sent[0]["email_compose_data"][0]
 
     def test_no_writer_does_not_raise(self):
         with patch(f"{HOOKS}.get_stream_writer", return_value=None):
-            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", DRAFT_ARGS, [])
+            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", _compose(DRAFT_ARGS), [])
             gmail_create_draft_after_hook(
                 "GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {"id": "d-1"}}
             )
@@ -548,7 +563,9 @@ class TestComposePreviewDefaults:
         # as the empty value on the card rather than dropping out.
         sent: list[dict] = []
         with patch(f"{HOOKS}.get_stream_writer", return_value=sent.append):
-            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", {"recipient_email": "r@x.com"}, [])
+            _stream_compose_preview(
+                "GMAIL_CREATE_EMAIL_DRAFT", _compose({"recipient_email": "r@x.com"}), []
+            )
             gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {}})
         assert sent[0]["email_compose_data"][0] == {
             "to": ["r@x.com"],
@@ -562,8 +579,8 @@ class TestComposePreviewDefaults:
         }
 
     def test_recipients_default_to_empty_recipient_and_no_extras(self):
-        assert _compose_recipients("GMAIL_SEND_EMAIL", {}) == [""]
-        assert _compose_recipients("GMAIL_FORWARD_MESSAGE", {}) == []
+        assert _compose_recipients("GMAIL_SEND_EMAIL", _compose({})) == [""]
+        assert _compose_recipients("GMAIL_FORWARD_MESSAGE", _compose({})) == []
 
     def test_empty_recipient_email_falls_back_to_to(self):
         # recipient_email present-but-empty is not remapped; the `or ...get("to")`
@@ -583,3 +600,241 @@ class TestComposePreviewDefaults:
             )
         # Body alone (no subject) also counts as content.
         assert _compose_recipient_ready("GMAIL_SEND_EMAIL", {"to": "a", "body": "b"}) is True
+
+
+class TestThreadAfterHook:
+    _PROCESSED: ClassVar[dict] = {
+        "id": "t1",
+        "messages": [
+            {
+                "id": "m1",
+                "from": "a@x.com",
+                "subject": "Hi",
+                "time": "Mon",
+                "snippet": "sn",
+                "body": "text",
+                "content": {"text": "text", "html": "<p>text</p>"},
+            },
+            {
+                "id": "m2",
+                "from": "b@x.com",
+                "subject": "Re",
+                "time": "Tue",
+                "snippet": "",
+                "body": "",
+            },
+        ],
+        "messageCount": 2,
+    }
+
+    def test_streams_thread_card_and_returns_processed_thread(self):
+        sent: list[dict] = []
+        raw = {"id": "t1", "messages": [{"id": "m1"}]}
+        with (
+            patch(f"{HOOKS}.get_stream_writer", return_value=sent.append),
+            patch(f"{HOOKS}.process_get_thread_response", return_value=self._PROCESSED) as proc,
+        ):
+            result = gmail_thread_after_hook(
+                "GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "gmail", {"data": raw}
+            )
+        proc.assert_called_once_with(raw)
+        assert result == self._PROCESSED
+        # A message without content renders content as "" rather than null.
+        assert sent == [
+            {
+                "email_thread_data": {
+                    "thread_id": "t1",
+                    "messages": [
+                        {
+                            "id": "m1",
+                            "from": "a@x.com",
+                            "subject": "Hi",
+                            "time": "Mon",
+                            "snippet": "sn",
+                            "body": "text",
+                            "content": {"text": "text", "html": "<p>text</p>"},
+                        },
+                        {
+                            "id": "m2",
+                            "from": "b@x.com",
+                            "subject": "Re",
+                            "time": "Tue",
+                            "snippet": "",
+                            "body": "",
+                            "content": "",
+                        },
+                    ],
+                    "messages_count": 2,
+                }
+            }
+        ]
+
+    def test_without_a_writer_still_returns_processed_thread(self):
+        with (
+            patch(f"{HOOKS}.get_stream_writer", return_value=None),
+            patch(f"{HOOKS}.process_get_thread_response", return_value=self._PROCESSED),
+        ):
+            result = gmail_thread_after_hook(
+                "GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "gmail", {"data": {"id": "t1"}}
+            )
+        assert result == self._PROCESSED
+
+    def test_error_payload_is_returned_untouched_without_streaming(self):
+        sent: list[dict] = []
+        raw = {"error": "Not found"}
+        with patch(f"{HOOKS}.get_stream_writer", return_value=sent.append):
+            result = gmail_thread_after_hook(
+                "GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "gmail", {"data": raw}
+            )
+        assert result is raw
+        assert sent == []
+
+
+class TestTemplatedAfterHooks:
+    """Hooks that hand a non-error dict to a mail template and pass errors through."""
+
+    @pytest.mark.parametrize(
+        ("hook", "tool", "seam"),
+        [
+            (gmail_drafts_after_hook, "GMAIL_LIST_DRAFTS", "process_list_drafts_response"),
+            (gmail_draft_detail_after_hook, "GMAIL_GET_DRAFT", "draft_template"),
+            (gmail_fetch_by_id_after_hook, "GMAIL_FETCH_EMAIL_BY_ID", "detailed_message_template"),
+        ],
+    )
+    def test_payload_is_transformed_by_its_template(self, hook, tool, seam):
+        raw = {"id": "x1", "payload": {}}
+        with patch(f"{HOOKS}.{seam}", return_value={"shaped": True}) as template:
+            result = hook(tool, "gmail", {"data": raw})
+        template.assert_called_once_with(raw)
+        assert result == {"shaped": True}
+
+    @pytest.mark.parametrize(
+        ("hook", "tool"),
+        [
+            (gmail_draft_detail_after_hook, "GMAIL_GET_DRAFT"),
+            (gmail_fetch_by_id_after_hook, "GMAIL_FETCH_EMAIL_BY_ID"),
+        ],
+    )
+    def test_error_payload_is_returned_untouched(self, hook, tool):
+        raw = {"error": "Not found", "id": "x1"}
+        assert hook(tool, "gmail", {"data": raw}) is raw
+
+
+class TestAttachmentAfterHook:
+    def test_summary_keeps_metadata_under_the_card_keys(self):
+        response = {
+            "data": {
+                "attachmentId": "att1",
+                "filename": "report.pdf",
+                "mimeType": "application/pdf",
+                "size": 1024,
+                "data": "base64",
+            },
+            "successful": True,
+        }
+        assert gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response) == {
+            "attachmentId": "att1",
+            "filename": "report.pdf",
+            "mimeType": "application/pdf",
+            "size": 1024,
+            "message": "Attachment content available but not displayed to preserve context",
+        }
+
+
+class TestModifyLabelsProgress:
+    def test_progress_counts_messages_and_labels(self):
+        sent: list[dict] = []
+        params = {"arguments": {"message_ids": ["m1"], "label_ids": ["A", "B", "C"]}}
+        with patch(f"{HOOKS}.get_stream_writer", return_value=sent.append):
+            gmail_modify_labels_before_hook("GMAIL_ADD_LABEL_TO_EMAIL", "gmail", params)
+        assert sent == [{"progress": "Adding labels to 1 message(s) with 3 label(s)..."}]
+
+
+class TestSendDraftAfterHook:
+    _SENT_CARD: ClassVar[dict] = {
+        "email_sent_data": [
+            {
+                "message_id": "s1",
+                "message": "Draft sent successfully!",
+                "timestamp": "2024-01-01T00:00:00Z",
+                "recipients": ["a@b.com"],
+                "subject": "Hello",
+            }
+        ]
+    }
+
+    def _raw(self, **extra) -> dict:
+        return {
+            "id": "s1",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "message": {"to": ["a@b.com"], "subject": "Hello"},
+            **extra,
+        }
+
+    def test_successful_send_streams_card_and_returns_summary(self):
+        sent: list[dict] = []
+        with patch(f"{HOOKS}.get_stream_writer", return_value=sent.append):
+            result = gmail_send_draft_after_hook(
+                "GMAIL_SEND_DRAFT", "gmail", {"data": self._raw(successful=True)}
+            )
+        assert sent == [self._SENT_CARD]
+        assert result == {"id": "s1", "successful": True, "message": "Draft sent successfully"}
+
+    def test_successful_send_without_writer_still_returns_summary(self):
+        with patch(f"{HOOKS}.get_stream_writer", return_value=None):
+            result = gmail_send_draft_after_hook(
+                "GMAIL_SEND_DRAFT", "gmail", {"data": self._raw(successful=True)}
+            )
+        assert result == {"id": "s1", "successful": True, "message": "Draft sent successfully"}
+
+    def test_missing_successful_key_streams_card_but_returns_raw(self):
+        sent: list[dict] = []
+        raw = self._raw()
+        with patch(f"{HOOKS}.get_stream_writer", return_value=sent.append):
+            result = gmail_send_draft_after_hook("GMAIL_SEND_DRAFT", "gmail", {"data": raw})
+        assert sent == [self._SENT_CARD]
+        assert result is raw
+
+
+class TestGetContactsAfterHook:
+    _PERSON: ClassVar[dict] = {
+        "resourceName": "people/c1",
+        "names": [{"displayName": "John Doe", "metadata": {"primary": True}}],
+        "emailAddresses": [{"value": "john@example.com", "metadata": {"primary": True}}],
+    }
+
+    def test_streams_contacts_page_and_summarises_with_provider_total(self):
+        sent: list[dict] = []
+        raw = {
+            "response_data": {"connections": [self._PERSON]},
+            "totalPeople": 7,
+            "nextPageToken": "tok2",
+        }
+        with patch(f"{HOOKS}.get_stream_writer", return_value=sent.append):
+            result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "gmail", {"data": raw})
+        assert sent == [
+            {
+                "contacts_data": [
+                    {
+                        "name": "John Doe",
+                        "email": "john@example.com",
+                        "phone": "",
+                        "resource_name": "people/c1",
+                    }
+                ],
+                "total_count": 7,
+                "next_page_token": "tok2",
+            }
+        ]
+        assert result == {
+            "contacts": [{"name": "John Doe", "email": "john@example.com"}],
+            "total_count": 7,
+            "has_more": True,
+        }
+
+    def test_error_payload_is_returned_untouched(self):
+        raw = {"error": "quota"}
+        with patch(f"{HOOKS}.get_stream_writer", return_value=None):
+            assert (
+                gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "gmail", {"data": raw}) is raw
+            )

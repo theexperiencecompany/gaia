@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from pydantic import TypeAdapter
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
@@ -21,11 +22,11 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.constants.cache import STREAM_TURN_DEDUP_PREFIX, STREAM_TURN_DEDUP_TTL
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
+from app.core.stream_manager import StreamProgress, stream_manager
 from app.db.redis import redis_cache
 from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
 from app.models.chat_models import CancelStreamResponse, ConversationSource
-from app.models.message_models import MessageRequestWithHistory
+from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import ErrorFrame
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
@@ -34,6 +35,10 @@ from app.services.latency_metrics import observe_sse_delivery
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import ChatContext, get_trace_id, log, log_context
+
+# ``stream_manager.get_progress`` returns the Redis JSON blob; routes validate it
+# into ``StreamProgress`` (the shape ``start_stream`` writes) once, on entry.
+_STREAM_PROGRESS = TypeAdapter(StreamProgress)
 
 _USER_ID_REQUIRED = "user_id is required"
 _DUPLICATE_TURN = "duplicate turn_id: this send was already accepted"
@@ -141,7 +146,7 @@ async def chat_stream_endpoint(
     """Stream a chat turn. Continues in the background if the client disconnects."""
     stream_id = str(uuid4())
     conversation_id = body.conversation_id or str(uuid4())
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -153,11 +158,12 @@ async def chat_stream_endpoint(
     await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
     # Seed the agent's home zone (DB-resolved, browser-header-healed) so its
     # "now" and schedule defaults run in the user's real zone, not stored UTC.
-    user = {**user, "timezone": home_timezone}
+    user = user.with_timezone(home_timezone)
+    last_message: MessageDict | None = body.messages[-1] if body.messages else None
     log.set(
         user={"id": user_id},
         chat=_build_chat_context(body, conversation_id, stream_id),
-        user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
+        user_message_length=len(last_message["content"]) if last_message else 0,
         selected_tool=body.selectedTool,
     )
 
@@ -240,17 +246,15 @@ async def cancel_stream_endpoint(
     """Cancel a running stream owned by the requesting user."""
     log.set(user={"id": user_id}, chat={"stream_id": stream_id})
 
-    # Progress is a free-form JSON blob deserialized from Redis, not a model —
-    # keyed access is the honest read here.
-    progress = await stream_manager.get_progress(stream_id)
-    if not progress:
+    raw_progress = await stream_manager.get_progress(stream_id)
+    if not raw_progress:
         return CancelStreamResponse(
             success=False,
             stream_id=stream_id,
             error="Stream not found",
         )
 
-    if progress.get("user_id") != user_id:
+    if _STREAM_PROGRESS.validate_python(raw_progress).user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to cancel this stream",
@@ -275,21 +279,22 @@ async def subscribe_executor_stream(
     The stream_id is delivered via the `executor.stream_started` WebSocket event.
     Verifies stream ownership before allowing subscription.
     """
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=_USER_ID_REQUIRED,
         )
 
-    progress = await stream_manager.get_progress(stream_id)
-    if not progress:
+    raw_progress = await stream_manager.get_progress(stream_id)
+    if not raw_progress:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Stream not found",
         )
+    progress = _STREAM_PROGRESS.validate_python(raw_progress)
 
-    if progress.get("user_id") != user_id:
+    if progress.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to subscribe to this stream",
@@ -300,7 +305,7 @@ async def subscribe_executor_stream(
     # A finished stream still replays its log to DONE, so late attach loses
     # nothing (an is_complete short-circuit here once dropped HIL resume
     # frames). Only reply [DONE] outright once the log itself has expired.
-    if progress.get("is_complete") and not await stream_manager.has_events(stream_id):
+    if progress.is_complete and not await stream_manager.has_events(stream_id):
         log.info(
             f"{LogTag.CHAT} Executor stream complete and log expired, returning [DONE]",
             stream_id=stream_id,

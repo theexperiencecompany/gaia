@@ -19,6 +19,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from tests.factories import make_authenticated_user
+
 
 @pytest.mark.service
 class TestConversationQueriesReal:
@@ -46,7 +48,7 @@ class TestConversationQueriesReal:
         )
 
         result = await conv_svc.get_conversations(
-            user={"user_id": "svc-sort-user"}, page=1, limit=10
+            user=make_authenticated_user(user_id="svc-sort-user"), page=1, limit=10
         )
 
         conversation_ids = [c.conversation_id for c in result.conversations]
@@ -62,10 +64,10 @@ class TestConversationQueriesReal:
         await make_conversation("svc-user-B")
 
         result_a = await conv_svc.get_conversations(
-            user={"user_id": "svc-user-A"}, page=1, limit=10
+            user=make_authenticated_user(user_id="svc-user-A"), page=1, limit=10
         )
         result_b = await conv_svc.get_conversations(
-            user={"user_id": "svc-user-B"}, page=1, limit=10
+            user=make_authenticated_user(user_id="svc-user-B"), page=1, limit=10
         )
 
         ids_a = {c.conversation_id for c in result_a.conversations}
@@ -86,7 +88,7 @@ class TestConversationQueriesReal:
             await make_conversation("paginate-svc-user")
 
         result = await conv_svc.get_conversations(
-            user={"user_id": "paginate-svc-user"}, page=1, limit=2
+            user=make_authenticated_user(user_id="paginate-svc-user"), page=1, limit=2
         )
 
         # 5 non-starred conversations at limit=2 → ceil(5/2) = 3 pages
@@ -113,7 +115,7 @@ class TestConversationQueriesReal:
         )
 
         result = await conv_svc.get_conversations(
-            user={"user_id": "starred-test-user"}, page=1, limit=10
+            user=make_authenticated_user(user_id="starred-test-user"), page=1, limit=10
         )
 
         conversation_ids = [c.conversation_id for c in result.conversations]

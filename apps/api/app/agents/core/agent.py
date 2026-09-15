@@ -14,6 +14,8 @@ from typing import Any, cast
 from uuid import uuid4
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
+from langgraph.constants import CONF
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.background.executor_capture import (
     await_executor_done,
@@ -27,7 +29,11 @@ from app.agents.core.background.session import (
     queued_without_run,
 )
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
-from app.agents.core.messages import construct_langchain_messages
+from app.agents.core.messages import (
+    MessageAttachments,
+    MessageScope,
+    construct_langchain_messages,
+)
 from app.agents.llm.lane import AgentRole, dev_model_id, dev_option_for
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
@@ -47,16 +53,44 @@ from app.helpers.agent_helpers import (
 )
 from app.models.agent_models import (
     AgentConfigurable,
+    AgentConfigurableView,
     AgentRunnableConfig,
     ExecutionMode,
     SilentRunResult,
-    agent_configurable,
+    agent_user_context,
+    read_agent_configurable,
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.chat.state import aggregate_usage_metadata
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log
+
+
+class _AgentTriggerContext(BaseModel):
+    """The agent-owned keys of a background run's ``trigger_context``, parsed once.
+
+    The bag is open — schedulers spread provider trigger data through it — so
+    this reads only the keys the scheduling task itself sets.
+    ``execution_mode`` stays ``object``: an unrecognised mode falls back to
+    interactive below rather than failing the run.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    active_todo_id: str | None = None
+    todo_id: str | None = None
+    execution_mode: object = None
+    workflow_id: str | None = None
+    workflow_title: str = ""
+    workflow_notify_on_completion: bool = True
+    playbook_fallback: str | None = Field(
+        default=None, validation_alias=PLAYBOOK_FALLBACK_CONTEXT_KEY
+    )
+    playbook_replayed_calls: list[dict[str, object]] | None = Field(
+        default=None, validation_alias=PLAYBOOK_REPLAYED_CALLS_KEY
+    )
 
 
 @dataclass(frozen=True)
@@ -93,7 +127,7 @@ async def _core_agent_logic(
     conversation_id: str,
     user: AuthenticatedUser,
     options: AgentRunOptions | None = None,
-) -> tuple[CompiledAgentGraph, dict[str, Any], AgentRunnableConfig]:
+) -> tuple[CompiledAgentGraph, dict[str, object], AgentRunnableConfig]:
     """Shared setup for streaming and silent execution.
 
     Constructs messages, initializes the graph, builds state, and kicks off
@@ -107,38 +141,42 @@ async def _core_agent_logic(
     langfuse_trace_id = options.langfuse_trace_id
     langfuse_tags = options.langfuse_tags
 
-    user_id = user.get("user_id")
+    user_id = user.user_id
 
     # Extract active todo binding + execution mode from trigger_context (scheduled
     # runs set these; interactive turns leave them unset / "interactive").
+    trigger = _AgentTriggerContext.model_validate(trigger_context or {})
     active_todo_id: str | None = None
     execution_mode: ExecutionMode = "interactive"
     if trigger_context:
-        active_todo_id = trigger_context.get("active_todo_id") or trigger_context.get("todo_id")
-        mode = trigger_context.get("execution_mode")
-        if mode in ("interactive", "background"):
-            execution_mode = cast(ExecutionMode, mode)
+        active_todo_id = trigger.active_todo_id or trigger.todo_id
+        if trigger.execution_mode == "background":
+            execution_mode = "background"
 
     # Build langchain messages and get graph concurrently
     history, graph = await asyncio.gather(
         construct_langchain_messages(
             messages=request.messages,
-            files_data=request.fileData,
-            currently_uploaded_file_ids=request.fileIds,
-            user_id=user_id,
             query=request.message,
-            user_name=user.get("name"),
-            user_dict=user,
-            selected_tool=request.selectedTool,
-            tool_category=request.toolCategory,
-            selected_workflow=request.selectedWorkflow,
-            selected_calendar_event=request.selectedCalendarEvent,
-            reply_to_message=request.replyToMessage,
-            trigger_context=trigger_context,
-            active_todo_id=active_todo_id,
-            execution_mode=execution_mode,
-            conversation_id=conversation_id,
-            source=source,
+            scope=MessageScope(
+                user_id=user_id,
+                user_name=user.name,
+                user_dict=user,
+                conversation_id=conversation_id,
+                source=source,
+                active_todo_id=active_todo_id,
+                execution_mode=execution_mode,
+            ),
+            attachments=MessageAttachments(
+                selected_tool=request.selectedTool,
+                tool_category=request.toolCategory,
+                selected_workflow=request.selectedWorkflow,
+                selected_calendar_event=request.selectedCalendarEvent,
+                reply_to_message=request.replyToMessage,
+                files_data=request.fileData,
+                currently_uploaded_file_ids=request.fileIds,
+                trigger_context=trigger_context,
+            ),
         ),
         GraphManager.get_graph("comms_agent"),
     )
@@ -157,14 +195,14 @@ async def _core_agent_logic(
 
     # Established here (comms has the full user document) so the executor and
     # every subagent inherit it — worker tiers read it off configurable.
-    user_preferences, writing_style = onboarding_preferences(user.get("onboarding"))
+    user_preferences, writing_style = onboarding_preferences(user.onboarding)
 
     # This is the top-level run, so build_agent_config resolves the comms lane
     # here; the executor and every subagent inherit it whole.
     config = await build_agent_config(
         identity=AgentIdentity(
             conversation_id=conversation_id,
-            user=user,
+            user=agent_user_context(user),
             agent_name="comms_agent",
         ),
         lane=AgentLane(role=AgentRole.COMMS, dev_option=dev_option),
@@ -189,7 +227,7 @@ async def _core_agent_logic(
     # The live bag build_agent_config just produced — mutated below, so it is
     # indexed (KeyError if absent) rather than read via agent_configurable,
     # whose empty-dict fallback would swallow the writes.
-    configurable = cast(AgentConfigurable, config["configurable"])
+    configurable = cast(AgentConfigurable, config[CONF])
 
     # DEV-ONLY: the executor builds its own configurable and would otherwise
     # inherit comms's lane, so the executor's own dev choice rides down here and
@@ -202,18 +240,16 @@ async def _core_agent_logic(
     # Workflow runs carry their id/title so the background executor's delivery
     # path can route the final result to the workflow-completion notification
     # instead of a normal conversation message. Absent for interactive chat.
-    if trigger_context and trigger_context.get("workflow_id"):
-        configurable["workflow_id"] = trigger_context["workflow_id"]
-        configurable["workflow_title"] = trigger_context.get("workflow_title", "")
-        configurable["workflow_notify_on_completion"] = trigger_context.get(
-            "workflow_notify_on_completion", True
-        )
-        configurable["playbook_fallback"] = trigger_context.get(PLAYBOOK_FALLBACK_CONTEXT_KEY)
-        configurable["playbook_replayed_calls"] = trigger_context.get(PLAYBOOK_REPLAYED_CALLS_KEY)
+    if trigger.workflow_id:
+        configurable["workflow_id"] = trigger.workflow_id
+        configurable["workflow_title"] = trigger.workflow_title
+        configurable["workflow_notify_on_completion"] = trigger.workflow_notify_on_completion
+        configurable["playbook_fallback"] = trigger.playbook_fallback
+        configurable["playbook_replayed_calls"] = trigger.playbook_replayed_calls
 
     log.set(
         agent={
-            "model": configurable.get("model"),
+            "model": AgentConfigurableView.model_validate(configurable).model,
             "has_workflow": bool(request.selectedWorkflow),
             "has_trigger_context": bool(trigger_context),
             "has_calendar_event": bool(request.selectedCalendarEvent),
@@ -247,7 +283,7 @@ async def call_agent(
         ids.bot_message_id,
     )
 
-    user_id = user.get("user_id")
+    user_id = user.user_id
     try:
         langfuse_trace_id = trace_id_for_message(bot_message_id) if bot_message_id else None
 
@@ -265,7 +301,7 @@ async def call_agent(
 
         # The live bag (see the same cast in _core_agent_logic) — mutated, so
         # indexed rather than read through agent_configurable.
-        configurable = cast(AgentConfigurable, config["configurable"])
+        configurable = cast(AgentConfigurable, config[CONF])
 
         # Add stream_id to config for cancellation checking
         if stream_id:
@@ -351,7 +387,7 @@ async def call_agent_silent(
     source = options.source
 
     stream_id = str(uuid4())
-    user_id = user.get("user_id")
+    user_id = user.user_id
     try:
         graph, initial_state, config = await _core_agent_logic(
             request,
@@ -367,7 +403,7 @@ async def call_agent_silent(
         # Mirror the live-chat path: wait for the detached executor and fold
         # its tool_data onto this message. Bind stream_id + register the
         # collector before the graph runs so tool events are captured.
-        cast(AgentConfigurable, config["configurable"])["stream_id"] = stream_id
+        cast(AgentConfigurable, config[CONF])["stream_id"] = stream_id
         register_executor_capture(stream_id)
 
         if user_id:
@@ -384,18 +420,13 @@ async def call_agent_silent(
         await await_executor_done(stream_id, timeout=BACKGROUND_EXECUTOR_WAIT_TIMEOUT)
         executor_tool_data = drain_executor_tool_data(stream_id)
         if executor_tool_data:
-            tool_data["tool_data"] = [*tool_data.get("tool_data", []), *executor_tool_data]
+            tool_data = [*tool_data, *executor_tool_data]
 
         if usage_metadata_callback and hasattr(usage_metadata_callback, "usage_metadata"):
-            usage = usage_metadata_callback.usage_metadata or {}
-            total_input = sum(
-                v.get("input_tokens", 0) for v in usage.values() if isinstance(v, dict)
-            )
-            total_output = sum(
-                v.get("output_tokens", 0) for v in usage.values() if isinstance(v, dict)
-            )
+            totals = aggregate_usage_metadata(usage_metadata_callback.usage_metadata or {})
+            total_input, total_output = totals.input_tokens, totals.output_tokens
             log.set(
-                agent={"model": agent_configurable(config).get("model")},
+                agent={"model": read_agent_configurable(config).model},
                 token_input=total_input,
                 token_output=total_output,
                 token_total=total_input + total_output,

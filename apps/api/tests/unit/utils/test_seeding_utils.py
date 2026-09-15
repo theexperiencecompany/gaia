@@ -12,7 +12,7 @@ import pytest
 
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
-from app.models.user_models import OnboardingPreferences
+from app.models.user_models import AuthenticatedUser, OnboardingPreferences
 from app.services.onboarding.first_conversation import (
     FirstConversation,
     compose_first_conversation,
@@ -75,6 +75,21 @@ class TestSeedFirstConversation:
         assert question.tool_data is None
         # The chips hang off the last message only, so they render once.
         assert question.follow_up_actions == composed.follow_ups
+
+    async def test_the_conversation_is_created_for_that_user(self) -> None:
+        """The owner routes the write; the wrong owner means the user never sees the welcome."""
+        create = AsyncMock()
+
+        with (
+            patch(f"{MODULE}.create_conversation_service", create),
+            patch(
+                f"{MODULE}.conversation_repository.append_messages",
+                AsyncMock(return_value=["m1"]),
+            ),
+        ):
+            await seed_first_conversation("user-1", _composed())
+
+        assert create.await_args.args[1] == AuthenticatedUser(user_id="user-1")
 
     async def test_the_messages_are_written_to_that_conversation_for_that_user(self) -> None:
         """Both id and owner route the write — dropping either loses the turn silently."""
@@ -207,7 +222,7 @@ class TestSeedHoloCardConversation:
         ):
             await seed_holo_card_conversation("user-1", "Your card is here")
 
-        assert create.await_args.args[1] == {"user_id": "user-1"}
+        assert create.await_args.args[1] == AuthenticatedUser(user_id="user-1")
 
     async def test_the_message_is_written_to_that_conversation_for_that_user(self) -> None:
         create = AsyncMock()

@@ -1,29 +1,58 @@
-from typing import Any
+from collections.abc import Mapping
+
+from pydantic import BaseModel, ConfigDict
 
 from app.constants.log_tags import LogTag
+from app.models.onboarding_models import WritingStyleExampleBlocks
 from app.models.user_models import OnboardingSubdocument
 from shared.py.wide_events import log
 
 
+class PreferencePromptFields(BaseModel):
+    """The OnboardingPreferences keys the system prompt reads, off a run's configurable.
+
+    A lenient projection rather than OnboardingPreferences itself: that model
+    re-judges a stored value against today's input rules on every validation,
+    and a prompt must render what the user has, not refuse it.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    profession: str | None = None
+    response_style: str | None = None
+    custom_instructions: str | None = None
+
+
+class WritingStylePromptFields(BaseModel):
+    """The stored ``onboarding.writing_style`` keys the email composer reads.
+
+    ``example`` is the pipeline's block structure on current rows and a plain
+    string on rows written before it existed.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    summary: str | None = None
+    user_edited_summary: str | None = None
+    example: WritingStyleExampleBlocks | str | None = None
+
+
 def onboarding_preferences(
-    onboarding: OnboardingSubdocument | dict[str, Any] | None,
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    onboarding: OnboardingSubdocument | None,
+) -> tuple[dict[str, object] | None, dict[str, object] | None]:
     """Return the (preferences, writing_style) pair off a user's onboarding data.
 
-    Pulled out once so reading doesn't drift between call sites. Takes both
-    shapes since UserDocument.onboarding is typed while AuthenticatedUser's
-    is a raw Mongo dict.
+    Pulled out once so reading doesn't drift between call sites. Returns
+    mappings because both travel in the JSON-checkpointed run configurable.
     """
     if not onboarding:
         return None, None
-    if isinstance(onboarding, OnboardingSubdocument):
-        # Only what was stored: the typed model would otherwise add every
-        # unset field as None, and the prompt formatters key off presence.
-        preferences = (
-            onboarding.preferences.model_dump(exclude_none=True) if onboarding.preferences else None
-        )
-        return preferences, onboarding.writing_style
-    return onboarding.get("preferences"), onboarding.get("writing_style")
+    # Only what was stored: the typed model would otherwise add every
+    # unset field as None, and the prompt formatters key off presence.
+    preferences = (
+        onboarding.preferences.model_dump(exclude_none=True) if onboarding.preferences else None
+    )
+    return preferences, onboarding.writing_style
 
 
 def format_response_style_instruction(response_style: str) -> str:
@@ -47,31 +76,32 @@ def format_profession_for_display(profession: str) -> str:
     return profession.strip().title()
 
 
-def build_user_context_parts(preferences: dict[str, Any]) -> list[str]:
+def build_user_context_parts(preferences: Mapping[str, object]) -> list[str]:
     """Build formatted user-context lines from preferences for the system prompt."""
+    fields = PreferencePromptFields.model_validate(preferences)
     log.set(
         operation="build_user_context_parts",
-        has_profession=bool(preferences.get("profession")),
-        has_response_style=bool(preferences.get("response_style")),
-        has_custom_instructions=bool(preferences.get("custom_instructions")),
+        has_profession=bool(fields.profession),
+        has_response_style=bool(fields.response_style),
+        has_custom_instructions=bool(fields.custom_instructions),
     )
     parts = []
 
     try:
         # Add profession context
-        if preferences.get("profession"):
-            profession = format_profession_for_display(preferences["profession"])
+        if fields.profession:
+            profession = format_profession_for_display(fields.profession)
             if profession:
                 parts.append(f"User Profession: {profession}")
 
         # Add communication style context
-        if preferences.get("response_style"):
-            style_instruction = format_response_style_instruction(preferences["response_style"])
+        if fields.response_style:
+            style_instruction = format_response_style_instruction(fields.response_style)
             parts.append(f"Communication Style: {style_instruction}")
 
         # Add custom instructions
-        if preferences.get("custom_instructions"):
-            instructions = preferences["custom_instructions"].strip()
+        if fields.custom_instructions:
+            instructions = fields.custom_instructions.strip()
             if instructions:
                 parts.append(f"Special Instructions: {instructions}")
 
@@ -86,15 +116,15 @@ def build_user_context_parts(preferences: dict[str, Any]) -> list[str]:
 
 
 def format_writing_style_for_prompt(
-    writing_style: dict[str, Any] | None,
+    writing_style: Mapping[str, object] | None,
 ) -> str:
     """Format the user's learned writing style into an email-composer prompt block."""
     if not writing_style:
         return ""
 
-    summary = writing_style.get("user_edited_summary") or writing_style.get("summary", "")
-    raw_example = writing_style.get("example")
-    example_text = _example_blocks_to_text(raw_example)
+    style = WritingStylePromptFields.model_validate(writing_style)
+    summary = style.user_edited_summary or style.summary or ""
+    example_text = _example_blocks_to_text(style.example)
 
     if not summary:
         return ""
@@ -110,25 +140,25 @@ def format_writing_style_for_prompt(
     return "\n".join(lines)
 
 
-def _example_blocks_to_text(raw: object) -> str:
-    """Render example blocks dict ({greeting, body[], signoff, name}) or legacy string as text."""
+def _example_blocks_to_text(raw: WritingStyleExampleBlocks | str | None) -> str:
+    """Render example blocks ({greeting, body[], signoff, name}) or a legacy string as text."""
     if isinstance(raw, str):
         return raw
-    if not isinstance(raw, dict):
+    if raw is None:
         return ""
     sections: list[str] = []
-    greeting = str(raw.get("greeting", "")).strip()
+    greeting = raw.greeting.strip()
     if greeting:
         sections.append(greeting)
-    for paragraph in raw.get("body", []):
-        text = str(paragraph).strip()
+    for paragraph in raw.body:
+        text = paragraph.strip()
         if text:
             sections.append(text)
     signoff_lines: list[str] = []
-    signoff = str(raw.get("signoff", "")).strip()
+    signoff = raw.signoff.strip()
     if signoff:
         signoff_lines.append(signoff)
-    name = str(raw.get("name", "")).strip()
+    name = raw.name.strip()
     if name:
         signoff_lines.append(name)
     if signoff_lines:
@@ -137,8 +167,8 @@ def _example_blocks_to_text(raw: object) -> str:
 
 
 def format_user_preferences_for_agent(
-    preferences: dict[str, Any],
-    writing_style: dict[str, Any] | None = None,
+    preferences: Mapping[str, object] | None,
+    writing_style: Mapping[str, object] | None = None,
 ) -> str | None:
     """Format user preferences (and writing style) into a system-prompt block, or None."""
     if not preferences and not writing_style:

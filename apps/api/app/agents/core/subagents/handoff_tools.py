@@ -13,7 +13,7 @@ Subagent identity/metadata comes from agents/core/subagents/registry.py
 from dataclasses import dataclass
 import re
 import time
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import uuid4
 
 from langchain_core.messages import AnyMessage
@@ -23,6 +23,7 @@ from langgraph.config import get_stream_writer
 from langgraph.errors import GraphBubbleUp
 from langgraph.store.base import BaseStore, PutOp
 from langgraph.types import Command
+from pydantic import BaseModel, ConfigDict
 
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background.bg_results import try_claim_bg_dispatch
@@ -122,7 +123,47 @@ class _HandoffDispatch:
     record_calls: bool = False
 
 
-def _extract_service_username(metadata: dict[str, Any] | None) -> str | None:
+class CustomMcpSubagent(BaseModel):
+    """A custom MCP resolved as a handoff target, as cached under ``SUBAGENT_CACHE_PREFIX``.
+
+    Fields default because the cache holds whatever an earlier resolution wrote;
+    ``_resolve_custom_mcp_subagent`` refuses one with no ``id``.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = ""
+    name: str | None = None
+    source: str | None = None
+    managed_by: str | None = None
+    mcp_config: dict[str, object] | None = None
+    icon_url: str | None = None
+    subagent_config: None = None
+
+
+class _CustomIntegrationDoc(BaseModel):
+    """The ``IntegrationResolver.custom_doc`` keys a custom-MCP handoff target copies.
+
+    ``mcp_config`` stays the stored mapping: it is cached verbatim, never read here.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    integration_id: str = ""
+    name: str | None = None
+    mcp_config: dict[str, object] | None = None
+    icon_url: str | None = None
+
+
+class _RunMetadata(BaseModel):
+    """The ``metadata`` key of a ``RunnableConfig`` the handoff falls back on."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    user_id: str | None = None
+
+
+def _extract_service_username(metadata: dict[str, str] | None) -> str | None:
     if not metadata:
         return None
     for key in ("username", "login", "handle"):
@@ -173,7 +214,7 @@ async def check_integration_connection(
     return await request_integration_connection(subagent.id, subagent.name, user_id)
 
 
-async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, Any] | None:
+async def _get_subagent_by_id(subagent_id: str) -> Subagent | CustomMcpSubagent | None:
     """Get subagent by ID or short_name.
 
     Checks both platform/builtin subagents (via registry) and custom MCPs
@@ -188,25 +229,24 @@ async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, Any] | N
 
     # Check Redis cache for custom integrations
     cache_key = f"{SUBAGENT_CACHE_PREFIX}:{search_id}"
-    cached: dict[str, Any] | None = await get_cache(cache_key)
+    cached = await get_cache(cache_key)
     if cached is not None:
         # Return cached result (could be empty dict for negative cache)
-        return cached or None
+        return CustomMcpSubagent.model_validate(cached) if cached else None
 
     # Search by integration_id (case-insensitive) or exact name
     custom = await integration_repository.find_by_id_prefix_or_name(search_id)
 
     if custom:
-        result = {
-            "id": custom.integration_id,
-            "name": custom.name,
-            "source": custom.source,
-            "managed_by": custom.managed_by,
-            "mcp_config": custom.mcp_config.model_dump() if custom.mcp_config else None,
-            "icon_url": custom.icon_url,
-            "subagent_config": None,
-        }
-        await set_cache(cache_key, result, ttl=SUBAGENT_CACHE_TTL)
+        result = CustomMcpSubagent(
+            id=custom.integration_id,
+            name=custom.name,
+            source=custom.source,
+            managed_by=custom.managed_by,
+            mcp_config=custom.mcp_config.model_dump() if custom.mcp_config else None,
+            icon_url=custom.icon_url,
+        )
+        await set_cache(cache_key, result.model_dump(), ttl=SUBAGENT_CACHE_TTL)
         return result
 
     # Fallback: Try IntegrationResolver which checks multiple sources
@@ -214,17 +254,16 @@ async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, Any] | N
 
     resolved = await IntegrationResolver.resolve(search_id)
     if resolved and resolved.custom_doc:
-        doc = resolved.custom_doc
-        result = {
-            "id": doc.get("integration_id"),
-            "name": doc.get("name"),
-            "source": resolved.source,
-            "managed_by": "mcp",
-            "mcp_config": doc.get("mcp_config"),
-            "icon_url": doc.get("icon_url"),
-            "subagent_config": None,
-        }
-        await set_cache(cache_key, result, ttl=SUBAGENT_CACHE_TTL)
+        doc = _CustomIntegrationDoc.model_validate(resolved.custom_doc)
+        result = CustomMcpSubagent(
+            id=doc.integration_id,
+            name=doc.name,
+            source=resolved.source,
+            managed_by="mcp",
+            mcp_config=doc.mcp_config,
+            icon_url=doc.icon_url,
+        )
+        await set_cache(cache_key, result.model_dump(), ttl=SUBAGENT_CACHE_TTL)
         return result
 
     # Cache negative result to avoid repeated DB queries
@@ -284,12 +323,12 @@ async def index_custom_mcp_as_subagent(
 
 
 async def _resolve_custom_mcp_subagent(
-    resolved: dict[str, Any],
+    resolved: CustomMcpSubagent,
     user_id: str | None,
 ) -> tuple[CompiledAgentGraph | None, str | None, str | None, bool]:
-    """Resolve a custom MCP (a MongoDB dict) into the _resolve_subagent tuple."""
-    integration_id = str(resolved.get("id", ""))
-    integration_name = str(resolved.get("name", integration_id))
+    """Resolve a custom MCP into the _resolve_subagent tuple."""
+    integration_id = resolved.id
+    integration_name = resolved.name if resolved.name is not None else integration_id
 
     if not integration_id:
         return None, None, "Error: Custom integration has no ID", False
@@ -384,8 +423,8 @@ async def _resolve_subagent(
         )
         return None, None, error, False
 
-    # Handle custom MCPs (returned as dict from MongoDB)
-    if isinstance(resolved, dict):
+    # Handle custom MCPs (resolved from MongoDB)
+    if isinstance(resolved, CustomMcpSubagent):
         return await _resolve_custom_mcp_subagent(resolved, user_id)
 
     # Platform/builtin subagent (Subagent object)
@@ -415,11 +454,11 @@ async def _build_integration_metadata(
     """Build display metadata for a resolved subagent integration."""
     if is_custom:
         integration = await _get_subagent_by_id(integration_id)
-        if isinstance(integration, dict):
+        if isinstance(integration, CustomMcpSubagent):
             return IntegrationMetadata(
-                icon_url=integration.get("icon_url"),
+                icon_url=integration.icon_url,
                 integration_id=integration_id,
-                name=str(integration.get("name") or integration_id),
+                name=integration.name or integration_id,
             )
         return None
     platform_integ = get_subagent_by_id(integration_id)
@@ -441,9 +480,9 @@ def _resolve_display_metadata(
     if not metadata:
         return fallback_name, None, fallback_category
     return (
-        str(metadata.get("name") or fallback_name),
-        metadata.get("icon_url"),
-        str(metadata.get("integration_id") or fallback_category),
+        str(metadata.name or fallback_name),
+        metadata.icon_url,
+        str(metadata.integration_id or fallback_category),
     )
 
 
@@ -651,8 +690,9 @@ async def _has_parked_subagent(ctx: SubagentExecutionContext) -> bool:
     Durable check (Mongo), so it holds across executor pause/resume and process
     restarts — the session slot only tracks live tasks in this invocation.
     """
-    conversation_id = str(ctx.configurable.get("conversation_id") or "")
-    thread_id = str(ctx.configurable.get("thread_id") or "")
+    configurable: AgentConfigurable = ctx.configurable
+    conversation_id = str(configurable.get("conversation_id") or "")
+    thread_id = str(configurable.get("thread_id") or "")
     if not conversation_id or not thread_id:
         return False
     records = await list_parked_subagents_for_conversation(conversation_id)
@@ -783,7 +823,8 @@ async def _dispatch_background_handoff(
         )
     # Idempotent across node replays: tool_call_id is stable (lives in the
     # checkpointed AI message); the claim is durable in Redis.
-    conversation_id = str(ctx.configurable.get("conversation_id") or "")
+    configurable: AgentConfigurable = ctx.configurable
+    conversation_id = str(configurable.get("conversation_id") or "")
     if (
         dispatch.tool_call_id
         and conversation_id
@@ -863,12 +904,12 @@ async def handoff(
         background: If True, run non-blocking and return immediately
     """
     try:
-        configurable = agent_configurable(config)
+        configurable: AgentConfigurable = agent_configurable(config)
         user_id = configurable.get("user_id")
 
         # Fallback: try to get user_id from metadata if not in configurable
         if not user_id:
-            user_id = config.get("metadata", {}).get("user_id")
+            user_id = _RunMetadata.model_validate(config.get("metadata") or {}).user_id
             if user_id:
                 configurable["user_id"] = user_id
 

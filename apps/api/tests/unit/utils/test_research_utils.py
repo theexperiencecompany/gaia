@@ -8,6 +8,8 @@ heuristic fallback, plus the cache key and the URL ranker.
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+import pytest
+
 from app.utils.research_utils import (
     build_research_cache_key,
     decompose_research_queries,
@@ -68,5 +70,24 @@ def test_rank_and_deduplicate_urls() -> None:
     ranked = rank_and_deduplicate_urls(results, max_urls=1)
 
     assert len(ranked) == 1
-    assert ranked[0]["url"] == "https://a.com"
-    assert ranked[0]["appearances"] == 2
+    assert ranked[0].url == "https://a.com"
+    assert ranked[0].appearances == 2
+    assert ranked[0].score == pytest.approx(1.7)
+
+
+def test_rank_weights_appearances_double_over_score() -> None:
+    results = [
+        {
+            "results": [
+                {"url": "https://x.com", "score": 0.1},
+                {"url": "https://y.com", "score": 3.0},
+                {"url": "https://z.com", "score": 2.1},
+            ]
+        },
+        {"results": [{"url": "https://x.com", "score": 0.1}]},
+    ]
+
+    ranked = rank_and_deduplicate_urls(results, max_urls=3)
+
+    # rank key = appearances * 2 + score: y 5.0 > x 4.2 > z 4.1
+    assert [r.url for r in ranked] == ["https://y.com", "https://x.com", "https://z.com"]

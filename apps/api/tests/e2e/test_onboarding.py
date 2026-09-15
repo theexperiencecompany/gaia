@@ -58,7 +58,7 @@ from tests.conftest import FAKE_USER
 
 pytestmark = pytest.mark.e2e
 
-USER_ID: str = FAKE_USER["user_id"]
+USER_ID: str = FAKE_USER.user_id
 
 #: Patch-target prefix for the onboarding service package.
 SVC = "app.services.onboarding"

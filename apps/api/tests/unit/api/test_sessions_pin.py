@@ -32,7 +32,7 @@ class TestPinArtifact:
 
         assert resp.status_code == 201
         assert resp.json() == {"pinned_path": "/workspace/pinned/report.pdf"}
-        pin.assert_awaited_once_with(FAKE_USER["user_id"], "conv_1", "out/report.pdf", None)
+        pin.assert_awaited_once_with(FAKE_USER.user_id, "conv_1", "out/report.pdf", None)
         capture.assert_called_once_with(AnalyticsEvents.SESSION_ARTIFACT_PINNED)
 
     async def test_a_target_name_is_handed_through(self, client: AsyncClient) -> None:
@@ -40,7 +40,7 @@ class TestPinArtifact:
             pin.return_value = "/workspace/pinned/final.pdf"
             await client.post(PIN_URL, json={"path": "out/report.pdf", "target_name": "final.pdf"})
 
-        pin.assert_awaited_once_with(FAKE_USER["user_id"], "conv_1", "out/report.pdf", "final.pdf")
+        pin.assert_awaited_once_with(FAKE_USER.user_id, "conv_1", "out/report.pdf", "final.pdf")
 
     @pytest.mark.parametrize(
         ("raised", "status", "message"),

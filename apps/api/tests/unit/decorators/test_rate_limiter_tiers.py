@@ -19,6 +19,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 )
 from app.config.rate_limits import get_limits_for_plan
 from app.models.payment_models import PlanType
+from app.models.user_models import AuthenticatedUser
 from app.services.limit_upsell import LimitHitOrigin
 
 
@@ -250,7 +251,7 @@ class TestRateLimitHitAnalytics:
         with (
             patch(
                 "app.core.request_context.get_authenticated_user",
-                return_value={"user_id": "user-1"},
+                return_value=AuthenticatedUser(user_id="user-1"),
             ),
             patch(
                 "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
@@ -284,7 +285,7 @@ class TestRateLimitHitAnalytics:
         with (
             patch(
                 "app.core.request_context.get_authenticated_user",
-                return_value={"user_id": "user-1"},
+                return_value=AuthenticatedUser(user_id="user-1"),
             ),
             patch(
                 "app.decorators.rate_limiting.payment_service.get_user_subscription_status",

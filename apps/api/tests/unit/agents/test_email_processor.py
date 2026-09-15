@@ -4,16 +4,20 @@ import asyncio
 import contextlib
 from datetime import UTC, datetime
 import itertools
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.memory.email_processor import (
+    DiscoveredProfile,
     OnboardingFetchOptions,
+    PlatformProfileStored,
+    PlatformSkipped,
+    ProfileExtractionResult,
     _await_discovery_tasks,
     _collect_platform_results,
+    _collect_profile_extraction,
     _collect_storage_results,
     _crawl_and_store_discovered,
     _discover_and_store_linked_profiles,
@@ -29,9 +33,10 @@ from app.agents.memory.email_processor import (
     fetch_emails_for_onboarding,
     process_gmail_to_memory,
 )
+from app.agents.memory.profile_crawler import ProfileCrawlResult
 from app.constants.log_tags import LogTag
 from app.constants.memory import MemorySourceType
-from app.models.mail_models import GmailMessagesResponse, GmailToolResult
+from app.models.mail_models import GmailMessagesResponse, GmailMessageSummary, GmailToolResult
 from app.models.user_models import UserDocument
 from app.services.onboarding.social_profile_service import (
     extract_social_profiles_from_emails,
@@ -71,6 +76,23 @@ _PATCH_MARK_PROC = "app.agents.memory.email_processor._mark_processing_complete"
 _PATCH_EXTRACT_LINKS = "app.agents.memory.email_processor._extract_linked_profile_links"
 _PATCH_CRAWL_DISCOVERED = "app.agents.memory.email_processor._crawl_and_store_discovered"
 _PATCH_LOG = "app.agents.memory.email_processor.log"
+
+
+def _crawl(content: str | None, error: str | None) -> ProfileCrawlResult:
+    return ProfileCrawlResult(url="u", platform="p", content=content, error=error)
+
+
+def _platform_config(
+    sender_domains: list[str] | None = None,
+    url_template: str = "https://example.com/{username}",
+    regex_pattern: str = r"^[a-z]+$",
+) -> dict[str, object]:
+    return {
+        "sender_domains": sender_domains or [],
+        "url_template": url_template,
+        "regex_pattern": regex_pattern,
+    }
+
 
 _EXTRACTION_HINTS_TWITTER = (
     "These are the user's own social profiles, discovered from their "
@@ -132,8 +154,8 @@ class TestSearchPlatformEmailsParallel:
     @patch(
         _PATCH_PLATFORM_CONFIG,
         {
-            "github": {"sender_domains": ["github.com", "notifications.github.com"]},
-            "twitter": {"sender_domains": ["twitter.com", "x.com"]},
+            "github": _platform_config(["github.com", "notifications.github.com"]),
+            "twitter": _platform_config(["twitter.com", "x.com"]),
         },
     )
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
@@ -150,7 +172,7 @@ class TestSearchPlatformEmailsParallel:
 
     @patch(
         _PATCH_PLATFORM_CONFIG,
-        {"github": {"sender_domains": ["github.com"]}},
+        {"github": _platform_config(["github.com"])},
     )
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     async def test_parallel_search_handles_exception(self, mock_search: AsyncMock) -> None:
@@ -186,30 +208,31 @@ class TestProcessSinglePlatform:
         mock_crawl: AsyncMock,
         mock_store: AsyncMock,
     ) -> None:
-        mock_crawl.return_value = {"content": "Profile content", "error": None}
-        emails: list[dict[str, Any]] = [{"id": "1"}]
+        mock_crawl.return_value = _crawl("Profile content", None)
+        emails = [GmailMessageSummary(id="1")]
 
         result = await _process_single_platform(
             USER_ID, "github", emails, asyncio.Semaphore(), "Test User"
         )
 
-        assert result["success"] is True
-        assert result["platform"] == "github"
-        assert result["url"] == "https://github.com/testuser"
-        assert "discovery_task" in result
+        assert isinstance(result, PlatformProfileStored)
+        assert result.platform == "github"
+        assert result.url == "https://github.com/testuser"
         mock_store.assert_awaited_once()
+        mock_extract.assert_awaited_once_with(
+            "github", [emails[0].model_dump(by_alias=True)], "Test User", user_id=USER_ID
+        )
 
         # Clean up the discovery task
-        if "discovery_task" in result:
-            result["discovery_task"].cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await result["discovery_task"]
+        result.discovery_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await result.discovery_task
 
     @patch(_PATCH_VALIDATE, return_value=False)
     @patch(_PATCH_EXTRACT_USER, new_callable=AsyncMock, return_value="bad!")
     @patch(
         _PATCH_PLATFORM_CONFIG,
-        {"github": {"regex_pattern": r"^[a-zA-Z0-9]+$"}},
+        {"github": _platform_config(regex_pattern=r"^[a-zA-Z0-9]+$")},
     )
     async def test_invalid_username(
         self, mock_extract: AsyncMock, mock_validate: MagicMock
@@ -217,8 +240,8 @@ class TestProcessSinglePlatform:
         result = await _process_single_platform(
             USER_ID, "github", [{"id": "1"}], asyncio.Semaphore()
         )
-        assert "error" in result
-        assert "Invalid username" in result["error"]
+        assert isinstance(result, PlatformSkipped)
+        assert "Invalid username" in (result.error or "")
 
     @patch(_PATCH_BUILD_URL, return_value=None)
     @patch(_PATCH_VALIDATE, return_value=True)
@@ -232,8 +255,8 @@ class TestProcessSinglePlatform:
         result = await _process_single_platform(
             USER_ID, "github", [{"id": "1"}], asyncio.Semaphore()
         )
-        assert "error" in result
-        assert "Could not build URL" in result["error"]
+        assert isinstance(result, PlatformSkipped)
+        assert "Could not build URL" in (result.error or "")
 
     @patch(_PATCH_BUILD_URL, return_value="https://github.com/testuser")
     @patch(_PATCH_VALIDATE, return_value=True)
@@ -248,7 +271,7 @@ class TestProcessSinglePlatform:
         result = await _process_single_platform(
             USER_ID, "github", [{"id": "1"}], asyncio.Semaphore(), crawled_urls=crawled_urls
         )
-        assert result["error"] == "duplicate"
+        assert result == PlatformSkipped(error="duplicate", url="https://github.com/testuser")
 
     @patch(_PATCH_CRAWL, new_callable=AsyncMock)
     @patch(_PATCH_BUILD_URL, return_value="https://github.com/testuser")
@@ -261,12 +284,31 @@ class TestProcessSinglePlatform:
         mock_build: MagicMock,
         mock_crawl: AsyncMock,
     ) -> None:
-        mock_crawl.return_value = {"content": None, "error": "timeout"}
+        mock_crawl.return_value = _crawl(None, "timeout")
         result = await _process_single_platform(
             USER_ID, "github", [{"id": "1"}], asyncio.Semaphore()
         )
-        assert "error" in result
-        assert result["error"] == "timeout"
+        assert result == PlatformSkipped(error="timeout")
+
+    @patch(_PATCH_STORE_PROFILE, new_callable=AsyncMock)
+    @patch(_PATCH_CRAWL, new_callable=AsyncMock)
+    @patch(_PATCH_BUILD_URL, return_value="https://github.com/testuser")
+    @patch(_PATCH_VALIDATE, return_value=True)
+    @patch(_PATCH_EXTRACT_USER, new_callable=AsyncMock, return_value="testuser")
+    async def test_crawl_with_content_but_an_error_is_skipped_not_stored(
+        self,
+        mock_extract: AsyncMock,
+        mock_validate: MagicMock,
+        mock_build: MagicMock,
+        mock_crawl: AsyncMock,
+        mock_store: AsyncMock,
+    ) -> None:
+        mock_crawl.return_value = _crawl("partial page", "truncated")
+        result = await _process_single_platform(
+            USER_ID, "github", [{"id": "1"}], asyncio.Semaphore()
+        )
+        assert result == PlatformSkipped(error="truncated")
+        mock_store.assert_not_awaited()
 
     @patch(
         _PATCH_EXTRACT_USER,
@@ -277,8 +319,8 @@ class TestProcessSinglePlatform:
         result = await _process_single_platform(
             USER_ID, "github", [{"id": "1"}], asyncio.Semaphore()
         )
-        assert "error" in result
-        assert "LLM down" in result["error"]
+        assert isinstance(result, PlatformSkipped)
+        assert "LLM down" in (result.error or "")
 
     @patch(_PATCH_BUILD_URL, return_value="https://github.com/testuser")
     @patch(_PATCH_VALIDATE, return_value=True)
@@ -293,7 +335,7 @@ class TestProcessSinglePlatform:
         crawled_urls: set[str] = set()
 
         with patch(_PATCH_CRAWL, new_callable=AsyncMock) as mock_crawl:
-            mock_crawl.return_value = {"content": None, "error": "fail"}
+            mock_crawl.return_value = _crawl(None, "fail")
             await _process_single_platform(
                 USER_ID, "github", [{"id": "1"}], asyncio.Semaphore(), crawled_urls=crawled_urls
             )
@@ -346,7 +388,7 @@ class TestProcessGmailToMemory:
         mock_search.return_value = GmailMessagesResponse(messages=[{"id": "1"}, {"id": "2"}])
         mock_process.return_value = ([{"role": "user", "content": "email1"}], 0)
         mock_store.return_value = None
-        mock_profiles.return_value = {"profiles_stored": 2}
+        mock_profiles.return_value = ProfileExtractionResult(profiles_stored=2)
 
         result = await process_gmail_to_memory(USER_ID)
 
@@ -355,6 +397,9 @@ class TestProcessGmailToMemory:
         assert result["profiles_stored"] == 2
         assert result["processing_complete"] is True
         mock_mark.assert_awaited_once()
+        mock_process.assert_called_once_with(
+            [GmailMessageSummary(id="1"), GmailMessageSummary(id="2")]
+        )
 
     @patch(_PATCH_USERS)
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
@@ -376,7 +421,7 @@ class TestProcessGmailToMemory:
         )
         mock_users.set_gmail_scan_timestamp = AsyncMock()
         mock_search.return_value = GmailMessagesResponse(messages=[])
-        mock_profiles.return_value = {"profiles_stored": 0}
+        mock_profiles.return_value = ProfileExtractionResult(profiles_stored=0)
 
         result = await process_gmail_to_memory(USER_ID)
 
@@ -397,7 +442,7 @@ class TestProcessGmailToMemory:
             patch(
                 _PATCH_EXTRACT_PROFILES,
                 new_callable=AsyncMock,
-                return_value={"profiles_stored": 0},
+                return_value=ProfileExtractionResult(profiles_stored=0),
             ),
         ):
             mock_search.return_value = GmailMessagesResponse(messages=[])
@@ -431,7 +476,7 @@ class TestProcessGmailToMemory:
         )
         mock_users.set_gmail_scan_timestamp = AsyncMock()
         mock_search.return_value = GmailMessagesResponse(messages=[])
-        mock_profiles.return_value = {"profiles_stored": 0}
+        mock_profiles.return_value = ProfileExtractionResult(profiles_stored=0)
 
         await process_gmail_to_memory(USER_ID)
 
@@ -499,7 +544,7 @@ class TestProcessGmailToMemory:
         mock_search.return_value = GmailMessagesResponse(messages=[{"id": "1"}])
         mock_process.return_value = ([{"role": "user", "content": "c"}], 0)
         mock_store.return_value = None
-        mock_profiles.return_value = {"profiles_stored": 0}
+        mock_profiles.return_value = ProfileExtractionResult(profiles_stored=0)
 
         result = await process_gmail_to_memory(USER_ID)
 
@@ -525,7 +570,7 @@ class TestExtractProfilesFromParallelSearches:
         mock_parallel.return_value = {"github": [], "twitter": []}
 
         result = await _extract_profiles_from_parallel_searches(USER_ID)
-        assert result["profiles_stored"] == 0
+        assert result.profiles_stored == 0
 
     @patch(_PATCH_USERS)
     @patch(_PATCH_SEARCH_PARALLEL, new_callable=AsyncMock)
@@ -535,7 +580,7 @@ class TestExtractProfilesFromParallelSearches:
         mock_users.get = AsyncMock(side_effect=RuntimeError("db down"))
 
         result = await _extract_profiles_from_parallel_searches(USER_ID)
-        assert result["profiles_stored"] == 0
+        assert result.profiles_stored == 0
 
 
 # ---------------------------------------------------------------------------
@@ -575,7 +620,7 @@ class TestDiscoverAndStoreLinkedProfiles:
         mock_validate.return_value = True
         mock_build.return_value = "https://github.com/johndoe"
         # crawl_profile_url returns a single dict (not a list)
-        mock_crawl.return_value = {"content": "profile data", "error": None}
+        mock_crawl.return_value = _crawl("profile data", None)
         mock_memory.retain = AsyncMock(return_value=MagicMock(facts_extracted=1))
 
         content = "Check out my github: https://github.com/johndoe"
@@ -677,7 +722,7 @@ class TestDiscoverAndStoreLinkedProfiles:
         mock_memory: MagicMock,
     ) -> None:
         # crawl_profile_url returns a single dict with error set
-        mock_crawl.return_value = {"content": None, "error": "timeout"}
+        mock_crawl.return_value = _crawl(None, "timeout")
         mock_memory.retain = AsyncMock(return_value=MagicMock(facts_extracted=1))
 
         content = "https://github.com/johndoe"
@@ -713,7 +758,7 @@ class TestDiscoverAndStoreLinkedProfiles:
         mock_memory: MagicMock,
     ) -> None:
         # crawl_profile_url returns a single dict with content
-        mock_crawl.return_value = {"content": "data", "error": None}
+        mock_crawl.return_value = _crawl("data", None)
         mock_memory.retain = AsyncMock(return_value=MagicMock(facts_extracted=0))
 
         content = "https://github.com/johndoe"
@@ -963,7 +1008,7 @@ class TestCollectStorageResultsPins:
         mock_search.return_value = GmailMessagesResponse(messages=[{"id": "1"}])
         mock_process.return_value = ([{"role": "user", "content": "c"}], 0)
         mock_store.side_effect = RuntimeError("mongo down")
-        mock_profiles.return_value = {"profiles_stored": 0}
+        mock_profiles.return_value = ProfileExtractionResult(profiles_stored=0)
 
         with patch("app.agents.memory.email_processor.log") as log:
             result = await process_gmail_to_memory(USER_ID)
@@ -1008,7 +1053,7 @@ class TestCollectStorageResultsPins:
         )
         mock_users.set_gmail_scan_timestamp = AsyncMock()
         mock_search.return_value = GmailMessagesResponse(messages=[])
-        mock_profiles.return_value = {"profiles_stored": 0}
+        mock_profiles.return_value = ProfileExtractionResult(profiles_stored=0)
 
         with patch("app.agents.memory.email_processor.log") as log:
             result = await process_gmail_to_memory(USER_ID)
@@ -1043,7 +1088,7 @@ class TestCollectStorageResultsPins:
         # Emails fetched but ALL fail parsing → nothing stored → not complete.
         mock_search.return_value = GmailMessagesResponse(messages=[{"id": "1"}])
         mock_process.return_value = ([], 3)
-        mock_profiles.return_value = {"profiles_stored": 0}
+        mock_profiles.return_value = ProfileExtractionResult(profiles_stored=0)
 
         result = await process_gmail_to_memory(USER_ID)
 
@@ -1138,6 +1183,20 @@ class TestCollectStorageResultsDirect:
         assert critical[0].kwargs["error_type"] == "RuntimeError"
 
 
+class TestCollectProfileExtraction:
+    async def test_returns_the_tracks_count_and_extracted_profiles(self) -> None:
+        profiles = [{"platform": "github", "url": "https://github.com/testuser"}]
+
+        async def _track() -> ProfileExtractionResult:
+            return ProfileExtractionResult(profiles_stored=1, extracted_profiles=profiles)
+
+        result = await _collect_profile_extraction(
+            USER_ID, asyncio.create_task(_track()), _StepTimer()
+        )
+
+        assert result == (1, profiles)
+
+
 class TestMarkProcessingCompletePins:
     async def test_incomplete_processing_skips_the_mark_write_but_stamps_the_time(self) -> None:
         timer = MagicMock()
@@ -1215,6 +1274,18 @@ class TestLatestGmailScanTimestampEdges:
         object.__setattr__(user, "integration_scan_states", "not-a-dict")
         assert _latest_gmail_scan_timestamp(user) is None
 
+    def test_missing_gmail_state_returns_none(self) -> None:
+        user = UserDocument(
+            id=USER_ID, integration_scan_states={"other": {"last_scan_timestamp": "x"}}
+        )
+        assert _latest_gmail_scan_timestamp(user) is None
+
+    def test_non_datetime_timestamp_returns_none(self) -> None:
+        user = UserDocument(
+            id=USER_ID, integration_scan_states={"gmail": {"last_scan_timestamp": "not-a-date"}}
+        )
+        assert _latest_gmail_scan_timestamp(user) is None
+
     def test_missing_last_scan_key_returns_none(self) -> None:
         user = UserDocument(id=USER_ID, integration_scan_states={"gmail": {"other": 1}})
         assert _latest_gmail_scan_timestamp(user) is None
@@ -1258,7 +1329,7 @@ class TestProcessGmailToMemoryReturnShape:
         )
         mock_users.set_gmail_scan_timestamp = AsyncMock()
         mock_search.return_value = GmailMessagesResponse(messages=[])
-        mock_profiles.return_value = {"profiles_stored": 0}
+        mock_profiles.return_value = ProfileExtractionResult(profiles_stored=0)
 
         await process_gmail_to_memory(USER_ID)
 
@@ -1288,7 +1359,7 @@ class TestProcessGmailToMemoryReturnShape:
         )
         mock_users.set_gmail_scan_timestamp = AsyncMock()
         mock_search.return_value = GmailMessagesResponse(messages=[])
-        mock_profiles.return_value = {"profiles_stored": 0}
+        mock_profiles.return_value = ProfileExtractionResult(profiles_stored=0)
 
         await process_gmail_to_memory(USER_ID)
 
@@ -1300,13 +1371,12 @@ class TestProcessGmailToMemoryReturnShape:
 # ---------------------------------------------------------------------------
 
 
-def _success_platform_result(platform: str) -> dict[str, Any]:
-    return {
-        "success": True,
-        "platform": platform,
-        "url": f"https://{platform}.example/user",
-        "discovery_task": f"task-{platform}",
-    }
+def _success_platform_result(platform: str) -> PlatformProfileStored:
+    return PlatformProfileStored(
+        platform=platform,
+        url=f"https://{platform}.example/user",
+        discovery_task=MagicMock(name=f"task-{platform}"),
+    )
 
 
 class TestExtractProfilesParallelPins:
@@ -1322,7 +1392,7 @@ class TestExtractProfilesParallelPins:
 
         result = await _extract_profiles_from_parallel_searches(USER_ID)
 
-        assert result == {"profiles_stored": 0}
+        assert result == ProfileExtractionResult(profiles_stored=0)
 
     @patch(_PATCH_LOG)
     @patch(_PATCH_USERS)
@@ -1333,7 +1403,7 @@ class TestExtractProfilesParallelPins:
 
         result = await _extract_profiles_from_parallel_searches(USER_ID)
 
-        assert result == {"profiles_stored": 0, "extracted_profiles": []}
+        assert result == ProfileExtractionResult()
         (msg,), kwargs = mock_log.error.call_args
         assert msg == f"{LogTag.MEMORY} Error in profile extraction from parallel searches"
         assert kwargs["error_type"] == "RuntimeError"
@@ -1361,35 +1431,44 @@ class TestExtractProfilesParallelPins:
             "twitter": [{"id": "t"}],
         }
         seen: list[tuple[str, str | None, set[str]]] = []
+        stored_by_platform: dict[str, PlatformProfileStored] = {}
 
         def fake_single(
             user_id: str,
             platform: str,
-            emails: list[dict[str, Any]],
+            emails: list[GmailMessageSummary],
             semaphore: asyncio.Semaphore,
             user_name: str | None = None,
             crawled_urls: set[str] | None = None,
-        ) -> dict[str, Any]:
+        ) -> PlatformProfileStored:
             seen.append((platform, user_name, crawled_urls if crawled_urls is not None else set()))
-            return _success_platform_result(platform)
+            stored = _success_platform_result(platform)
+            stored_by_platform[platform] = stored
+            return stored
 
         mock_single.side_effect = fake_single
 
         result = await _extract_profiles_from_parallel_searches(USER_ID)
 
-        assert result == {
-            "profiles_stored": 7,  # 2 platforms succeeded + 5 discovered
-            "extracted_profiles": [
+        assert result == ProfileExtractionResult(
+            profiles_stored=7,  # 2 platforms succeeded + 5 discovered
+            extracted_profiles=[
                 {"platform": "github", "url": "https://github.example/user"},
                 {"platform": "twitter", "url": "https://twitter.example/user"},
             ],
-        }
+        )
         assert [s[0] for s in seen] == ["github", "twitter"]
         assert all(s[1] == "Test User" for s in seen)
         # Both calls share one deduplication set.
         shared_sets = {id(s[2]) for s in seen}
         assert len(shared_sets) == 1
-        mock_discovery.assert_awaited_once_with(USER_ID, ["task-github", "task-twitter"])
+        mock_discovery.assert_awaited_once_with(
+            USER_ID,
+            [
+                stored_by_platform["github"].discovery_task,
+                stored_by_platform["twitter"].discovery_task,
+            ],
+        )
 
         completed = [
             c
@@ -1416,7 +1495,7 @@ class TestExtractProfilesParallelPins:
             mock_single.side_effect = lambda *a, **k: _success_platform_result(a[1])
             result = await _extract_profiles_from_parallel_searches(USER_ID)
 
-        assert result["profiles_stored"] == 1
+        assert result.profiles_stored == 1
         assert mock_single.await_args.args[4] is None
 
 
@@ -1429,10 +1508,10 @@ class TestSourceDomainFor:
     @patch(
         _PATCH_PLATFORM_CONFIG,
         {
-            "twitter": {"url_template": "https://x.com/{username}"},
-            "linkedin": {"url_template": "https://linkedin.com/in/{username}"},
-            "quora": {"url_template": "https://quora.com/profile/{username}"},
-            "substack": {"url_template": "https://{username}.substack.com"},
+            "twitter": _platform_config(url_template="https://x.com/{username}"),
+            "linkedin": _platform_config(url_template="https://linkedin.com/in/{username}"),
+            "quora": _platform_config(url_template="https://quora.com/profile/{username}"),
+            "substack": _platform_config(url_template="https://{username}.substack.com"),
         },
     )
     def test_returns_second_path_segment_of_the_url_template(self) -> None:
@@ -1441,7 +1520,9 @@ class TestSourceDomainFor:
         assert _source_domain_for("quora") == "quora.com"
         assert _source_domain_for("substack") == "{username}.substack.com"
 
-    @patch(_PATCH_PLATFORM_CONFIG, {"github": {"url_template": "https://github.com/{u}"}})
+    @patch(
+        _PATCH_PLATFORM_CONFIG, {"github": _platform_config(url_template="https://github.com/{u}")}
+    )
     def test_unknown_platform_returns_none(self) -> None:
         assert _source_domain_for("myspace") is None
 
@@ -1454,42 +1535,6 @@ class TestSourceDomainFor:
 # ---------------------------------------------------------------------------
 # Mutation-kill pins: exact calls inside the remaining helpers
 # ---------------------------------------------------------------------------
-
-
-class _GetSpyDict(dict):
-    """dict that records every .get() call so the exact query can be pinned."""
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.get_calls: list[tuple[str, Any]] = []
-
-    def get(self, key: str, default: Any = None) -> Any:
-        self.get_calls.append((key, default))
-        return super().get(key, default)
-
-
-class TestLatestGmailScanTimestampExactCallPins:
-    def test_missing_gmail_key_is_queried_with_an_empty_dict_default(self) -> None:
-        scan_states = _GetSpyDict({"other": {"last_scan_timestamp": "x"}})
-        user = UserDocument(id=USER_ID)
-        object.__setattr__(user, "integration_scan_states", scan_states)
-
-        assert _latest_gmail_scan_timestamp(user) is None
-        assert scan_states.get_calls == [("gmail", {})]
-
-    def test_present_gmail_state_result_is_cast_to_datetime_or_none(self) -> None:
-        ts = datetime(2025, 6, 1, tzinfo=UTC)
-        user = UserDocument(
-            id=USER_ID, integration_scan_states={"gmail": {"last_scan_timestamp": ts}}
-        )
-
-        with patch(
-            "app.agents.memory.email_processor.cast", side_effect=lambda typ, val: val
-        ) as mock_cast:
-            result = _latest_gmail_scan_timestamp(user)
-
-        assert result == ts
-        mock_cast.assert_called_once_with(datetime | None, ts)
 
 
 class TestExtractProfilesEarlyPhasePins:
@@ -1506,7 +1551,7 @@ class TestExtractProfilesEarlyPhasePins:
 
         result = await _extract_profiles_from_parallel_searches(USER_ID)
 
-        assert result == {"profiles_stored": 0}
+        assert result == ProfileExtractionResult(profiles_stored=0)
         mock_users.get.assert_awaited_once_with(USER_ID)
         mock_parallel.assert_awaited_once_with(USER_ID)
 
@@ -1516,7 +1561,7 @@ class TestExtractProfilesEarlyPhasePins:
         assert isinstance(kwargs["duration_s"], float)
 
 
-def _linked_links_config() -> dict[str, dict[str, str]]:
+def _linked_links_config() -> dict[str, dict[str, object]]:
     return {
         "twitter": {
             "sender_domains": ["x.com"],
@@ -1562,16 +1607,12 @@ class TestExtractLinkedProfileLinksPins:
         result = _extract_linked_profile_links(_LINKED_CONTENT, "twitter", crawled_urls)
 
         assert result == {
-            "github_johndoe": {
-                "platform": "github",
-                "url": "https://built.github/johndoe",
-                "username": "johndoe",
-            },
-            "anchorp_sam99": {
-                "platform": "anchorp",
-                "url": "https://built.anchorp/sam99",
-                "username": "sam99",
-            },
+            "github_johndoe": DiscoveredProfile(
+                platform="github", url="https://built.github/johndoe", username="johndoe"
+            ),
+            "anchorp_sam99": DiscoveredProfile(
+                platform="anchorp", url="https://built.anchorp/sam99", username="sam99"
+            ),
         }
         mock_validate.assert_has_calls([call("johndoe", "github"), call("sam99", "anchorp")])
         assert mock_validate.call_count == 2
@@ -1595,11 +1636,9 @@ class TestExtractLinkedProfileLinksPins:
         result = _extract_linked_profile_links(_LINKED_CONTENT, "twitter", crawled_urls)
 
         assert result == {
-            "anchorp_sam99": {
-                "platform": "anchorp",
-                "url": "https://built.anchorp/sam99",
-                "username": "sam99",
-            },
+            "anchorp_sam99": DiscoveredProfile(
+                platform="anchorp", url="https://built.anchorp/sam99", username="sam99"
+            ),
         }
         assert crawled_urls == {
             "https://built.github/johndoe",
@@ -1623,11 +1662,9 @@ class TestExtractLinkedProfileLinksPins:
         )
 
         assert result == {
-            "github_octo99": {
-                "platform": "github",
-                "url": "https://built.github/octo99",
-                "username": "octo99",
-            },
+            "github_octo99": DiscoveredProfile(
+                platform="github", url="https://built.github/octo99", username="octo99"
+            ),
         }
 
     @patch(_PATCH_BUILD_URL)
@@ -1645,32 +1682,23 @@ class TestExtractLinkedProfileLinksPins:
 
 
 _CRAWL_DISCOVERED_PROFILES = {
-    "github_johndoe": {
-        "platform": "github",
-        "url": "u-github",
-        "username": "johndoe",
-    },
-    "empty_content": {
-        "platform": "anchorp",
-        "url": "u-empty",
-        "username": "sam99",
-    },
-    "boom": {"platform": "badplat", "url": "u-boom", "username": "x"},
-    "errored": {"platform": "erplat", "url": "u-err", "username": "y"},
+    "github_johndoe": DiscoveredProfile(platform="github", url="u-github", username="johndoe"),
+    "empty_content": DiscoveredProfile(platform="anchorp", url="u-empty", username="sam99"),
+    "boom": DiscoveredProfile(platform="badplat", url="u-boom", username="x"),
+    "errored": DiscoveredProfile(platform="erplat", url="u-err", username="y"),
 }
 
 _CRAWL_RESPONSES = {
-    "u-github": {"content": "GH CONTENT", "error": None},
-    "u-empty": {"content": "", "error": None},
-    "u-err": {"content": "SOME", "error": "boom"},
+    "u-github": _crawl("GH CONTENT", None),
+    "u-empty": _crawl("", None),
+    "u-err": _crawl("SOME", "boom"),
 }
 
 
-async def _fake_crawl(url: str, platform: str, semaphore: asyncio.Semaphore) -> dict[str, Any]:
-    response = _CRAWL_RESPONSES.get(url)
+async def _fake_crawl(url: str, platform: str, semaphore: asyncio.Semaphore) -> ProfileCrawlResult:
     if url == "u-boom":
         raise RuntimeError("crawl blew up")
-    return response
+    return _CRAWL_RESPONSES[url]
 
 
 class TestCollectStorageResultsLogArgPins:
@@ -1848,7 +1876,7 @@ class TestDiscoverAndStoreLinkedProfilesArgPins:
         mock_crawl: AsyncMock,
         mock_memory: MagicMock,
     ) -> None:
-        mock_crawl.return_value = {"content": "C", "error": None}
+        mock_crawl.return_value = _crawl("C", None)
         mock_memory.retain = AsyncMock(return_value=MagicMock(facts_extracted=1))
         crawled_urls: set[str] = set()
         semaphore = asyncio.Semaphore()
@@ -1900,7 +1928,7 @@ class TestExtractProfilesPlatformFailurePins:
         assert failures[0].kwargs["platform"] == "github"
         assert failures[0].kwargs["error_type"] == "RuntimeError"
         assert failures[0].kwargs["user_id"] == USER_ID
-        assert result["profiles_stored"] == 0
+        assert result.profiles_stored == 0
 
 
 # ---------------------------------------------------------------------------
@@ -1933,7 +1961,7 @@ class TestCollectPlatformResultsDirect:
         profiles_stored, extracted, discovery = _collect_platform_results(
             USER_ID,
             [("github", None)],
-            [{"error": "Invalid username 'bad!' for github"}],
+            [PlatformSkipped(error="Invalid username 'bad!' for github")],
         )
 
         assert profiles_stored == 0
@@ -1993,7 +2021,7 @@ class TestProcessGmailToMemoryForwardingPins:
         )
         mock_users.set_gmail_scan_timestamp = AsyncMock()
         mock_search = AsyncMock(return_value=GmailMessagesResponse(messages=[{"id": "1"}]))
-        mock_profiles = AsyncMock(return_value={"profiles_stored": 0})
+        mock_profiles = AsyncMock(return_value=ProfileExtractionResult(profiles_stored=0))
         mock_process = MagicMock(return_value=([{"role": "user", "content": "c"}], 0))
         mock_store = AsyncMock()
         mock_collect_storage = AsyncMock(return_value=0)
@@ -2057,7 +2085,11 @@ class TestProcessGmailToMemoryForwardingPins:
     @patch(_PATCH_PROCESS, return_value=([], 0))
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     @patch(_PATCH_USERS)
-    @patch(_PATCH_EXTRACT_PROFILES, new_callable=AsyncMock, return_value={"profiles_stored": 0})
+    @patch(
+        _PATCH_EXTRACT_PROFILES,
+        new_callable=AsyncMock,
+        return_value=ProfileExtractionResult(profiles_stored=0),
+    )
     async def test_fetch_phase_timing_is_recorded_under_its_exact_label(
         self,
         mock_profiles: AsyncMock,

@@ -5,7 +5,6 @@ Supports Google OAuth (managed_by="self": calendar, drive, docs) and Composio
 """
 
 from collections.abc import Callable, Coroutine
-from typing import Any
 
 from fastapi import Depends, HTTPException, status
 import httpx
@@ -14,6 +13,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.oauth_config import get_integration_by_id, get_short_name_mapping
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.constants.log_tags import LogTag
+from app.models.user_models import AuthenticatedUser
 from app.services.oauth.oauth_service import check_integration_status
 from shared.py.wide_events import log
 
@@ -22,7 +22,7 @@ http_async_client = httpx.AsyncClient(timeout=10.0)
 
 def require_integration(
     integration_short_name: str,
-) -> Callable[..., Coroutine[Any, Any, dict[str, Any]]]:
+) -> Callable[..., Coroutine[None, None, AuthenticatedUser]]:
     """Create a dependency checking Google OAuth or Composio integration access.
 
     Raises:
@@ -41,8 +41,8 @@ def require_integration(
     if not integration_config:
         raise ValueError(f"Integration config not found for: {integration_id}")
 
-    async def wrapper(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-        user_id = user.get("user_id")
+    async def wrapper(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+        user_id = user.user_id
         if not user_id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -51,7 +51,7 @@ def require_integration(
 
         try:
             # Use unified integration status checker
-            is_connected = await check_integration_status(integration_id, str(user_id))
+            is_connected = await check_integration_status(integration_id, user_id)
 
             if not is_connected:
                 detail = {
@@ -86,7 +86,7 @@ def require_integration(
 
 def require_integration_user_id(
     integration_short_name: str,
-) -> Callable[..., Coroutine[Any, Any, str]]:
+) -> Callable[..., Coroutine[None, None, str]]:
     """require_integration for handlers that need only the authenticated user id.
 
     Same checks, same failure modes — it just unwraps the one field instead of
@@ -95,13 +95,13 @@ def require_integration_user_id(
     integration_dependency = require_integration(integration_short_name)
 
     # NOSONAR justification: the factory's return type commits this to a coroutine
-    # (Callable[..., Coroutine[Any, Any, str]]), and as a FastAPI dependency `async def`
+    # (Callable[..., Coroutine[None, None, str]]), and as a FastAPI dependency `async def`
     # keeps it on the event loop instead of a threadpool. Dropping `async` would change
     # both the declared contract and where every request runs it.
     async def wrapper(  # NOSONAR python:S7503
-        user: dict[str, Any] = Depends(integration_dependency),
+        user: AuthenticatedUser = Depends(integration_dependency),
     ) -> str:
         # require_integration has already rejected a missing/empty user_id with a 401.
-        return str(user["user_id"])
+        return user.user_id
 
     return wrapper

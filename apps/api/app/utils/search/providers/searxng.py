@@ -6,12 +6,36 @@ budget-capped, so search can never incur a bill while it is reachable.
 """
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config.settings import settings
 from app.utils.search.models import SearchResponse, SearchResultItem
 from app.utils.search.providers.base import SearchProvider
 
 _TIMEOUT = 15.0
+
+
+class _SearxngResult(BaseModel):
+    """One SearXNG result.
+
+    A result without a url is skipped rather than failing the whole page.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    url: str | None = None
+    title: str | None = None
+    content: str | None = None
+    score: float | None = None
+    publishedDate: str | None = None
+
+
+class _SearxngPayload(BaseModel):
+    """SearXNG ``/search?format=json`` response — only ``results`` is read."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    results: list[_SearxngResult] | None = Field(default_factory=list)
 
 
 class SearxngProvider(SearchProvider):
@@ -34,16 +58,16 @@ class SearxngProvider(SearchProvider):
                 headers={"Accept": "application/json"},
             )
             response.raise_for_status()
-            payload = response.json()
+            payload = _SearxngPayload.model_validate(response.json())
         results = [
             SearchResultItem(
-                url=item["url"],
-                title=item.get("title") or "",
-                content=item.get("content") or "",
-                score=item["score"] if item.get("score") is not None else 0.5,
-                published_date=item.get("publishedDate") or "",
+                url=item.url,
+                title=item.title or "",
+                content=item.content or "",
+                score=item.score if item.score is not None else 0.5,
+                published_date=item.publishedDate or "",
             )
-            for item in (payload.get("results") or [])[:count]
-            if item.get("url")
+            for item in (payload.results or [])[:count]
+            if item.url
         ]
         return SearchResponse(results=results, provider=self.name)

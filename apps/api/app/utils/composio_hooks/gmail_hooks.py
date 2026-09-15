@@ -8,7 +8,8 @@ for customizing tool descriptions and defaults.
 
 from collections.abc import Sequence
 from contextvars import ContextVar
-from typing import Any, TypeVar
+from dataclasses import dataclass
+from typing import TypedDict, TypeVar
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
@@ -34,6 +35,26 @@ from app.models.composio_schemas.google_people import (
     GooglePersonName,
     GooglePersonValue,
 )
+from app.models.integrations.composio_hooks import (
+    ComposioToolCall,
+    ComposioToolResponse,
+    JsonSchemaNode,
+)
+from app.models.integrations.gmail import (
+    GmailAttachmentData,
+    GmailComposeArguments,
+    GmailContactsData,
+    GmailDraftCreatedData,
+    GmailGetContactsArguments,
+    GmailLabelArguments,
+    GmailListDraftsArguments,
+    GmailModifyLabelsArguments,
+    GmailSearchPeopleArguments,
+    GmailSearchPeopleData,
+    GmailSentDraftData,
+    GmailSentDraftMessage,
+    GmailThreadView,
+)
 from app.utils.markdown_utils import normalize_email_body_to_html
 from shared.py.wide_events import log
 
@@ -43,6 +64,7 @@ from .file_upload_hooks import (
     swapped_upload_param,
 )
 from .registry import (
+    AfterHookResponse,
     HookAbortError,
     register_after_hook,
     register_before_hook,
@@ -57,11 +79,80 @@ _GMAIL_COMPOSE_TOOLS = (
 )
 # Gmail's ``body`` field is named differently across compose tools.
 _GMAIL_BODY_KEYS = ("body", "message_body", "message")
+# Composio's names for the Gmail params the hooks read or rewrite.
+_IS_HTML_PARAM = "is_html"
+_SUBJECT_PARAM = "subject"
+_FORMAT_PARAM = "format"
+_USER_ID_PARAM = "user_id"
+_RECIPIENT_EMAIL_PARAM = "recipient_email"
+_TO_PARAM = "to"
+_PAGE_SIZE_PARAM = "page_size"
+_DEFAULT_CONTACTS_PAGE_SIZE = 50
+
+
+@dataclass(slots=True)
+class ComposeCard:
+    """The compose/sent card for one Gmail compose call, as the chat UI renders it.
+
+    draft_id is set only on a draft card that must be sent as the stored
+    draft (see gmail_create_draft_after_hook); the payload omits it otherwise.
+    """
+
+    to: list[str]
+    subject: str | None
+    body: str | None
+    thread_id: str | None
+    bcc: list[str] | str | None
+    cc: list[str] | str | None
+    is_html: bool | None
+    attachments: list[AttachmentDisplay]
+    draft_id: str | None = None
+
+    def payload(self) -> dict[str, object]:
+        card: dict[str, object] = {
+            "to": self.to,
+            "subject": self.subject,
+            "body": self.body,
+            "thread_id": self.thread_id,
+            "bcc": self.bcc,
+            "cc": self.cc,
+            "is_html": self.is_html,
+            "attachments": self.attachments,
+        }
+        if self.draft_id is not None:
+            card["draft_id"] = self.draft_id
+        return card
+
+
+class SentDraftSummary(TypedDict):
+    id: str | None
+    successful: bool
+    message: str
+
+
+class ContactsSummary(TypedDict):
+    contacts: list[ContactSummary]
+    total_count: int
+    has_more: bool
+
+
+class PeopleSearchSummary(TypedDict):
+    people: list[ContactSummary]
+    result_count: int
+
+
+class AttachmentSummary(TypedDict):
+    attachmentId: str | None
+    filename: str | None
+    mimeType: str | None
+    size: int | None
+    message: str
+
 
 # The draft compose card, built before the tool runs but streamed after it, once
 # Gmail has returned the draft id the card's Send button needs. Set and read
 # within one tool execution, so a ContextVar is the whole lifetime.
-_pending_draft_card: ContextVar[dict[str, Any] | None] = ContextVar(
+_pending_draft_card: ContextVar[ComposeCard | None] = ContextVar(
     "gmail_pending_draft_card", default=None
 )
 
@@ -92,29 +183,45 @@ def _entry_value(entry: GooglePersonValue | None) -> str | None:
     return entry.value
 
 
-def _contact_card(person: GooglePerson) -> ContactCard:
-    """Flatten a People API person to the primary name/email/phone the UI shows.
+@dataclass(frozen=True, slots=True)
+class _Contact:
+    """A People API person flattened to the primary name/email/phone the UI shows.
 
     Fallbacks key off model_fields_set, not None: matching the original .get(key, default) semantics (default only when the key is missing, an explicit null stays None) keeps the payload the web client and LLM already receive unchanged.
     """
-    return {
-        "name": _display_name(_primary(person.names)),
-        "email": _entry_value(_primary(person.email_addresses)),
-        "phone": _entry_value(_primary(person.phone_numbers)),
-        "resource_name": (
-            person.resource_name if "resource_name" in person.model_fields_set else ""
-        ),
-    }
 
+    name: str | None
+    email: str | None
+    phone: str | None
+    resource_name: str | None
 
-def _contact_summary(card: ContactCard) -> ContactSummary:
-    """Trim a contact card for the LLM: name always, email/phone only when known."""
-    summary: ContactSummary = {"name": card["name"]}
-    if card["email"]:
-        summary["email"] = card["email"]
-    if card["phone"]:
-        summary["phone"] = card["phone"]
-    return summary
+    @classmethod
+    def from_person(cls, person: GooglePerson) -> "_Contact":
+        return cls(
+            name=_display_name(_primary(person.names)),
+            email=_entry_value(_primary(person.email_addresses)),
+            phone=_entry_value(_primary(person.phone_numbers)),
+            resource_name=(
+                person.resource_name if "resource_name" in person.model_fields_set else ""
+            ),
+        )
+
+    def card(self) -> ContactCard:
+        return {
+            "name": self.name,
+            "email": self.email,
+            "phone": self.phone,
+            "resource_name": self.resource_name,
+        }
+
+    def summary(self) -> ContactSummary:
+        """Trim the contact for the LLM: name always, email/phone only when known."""
+        summary: ContactSummary = {"name": self.name}
+        if self.email:
+            summary["email"] = self.email
+        if self.phone:
+            summary["phone"] = self.phone
+        return summary
 
 
 # ====================== SCHEMA MODIFIERS ======================
@@ -149,19 +256,7 @@ def gmail_compose_hide_is_html_schema_modifier(tool: str, toolkit: str, schema: 
     writes Markdown, Gmail renders **bold** as literal asterisks). The
     agent writes Markdown — everything else is our problem.
     """
-    # `input_parameters` is typed as a Dict by Composio's SDK, but callers in practice
-    # (including this codebase's own test doubles) don't always hand us a real,
-    # validated `Tool`, so this stays defensive against a non-dict value.
-    input_params: object = schema.input_parameters
-    if not isinstance(input_params, dict):
-        return schema
-    props = input_params.get("properties")
-    if isinstance(props, dict):
-        props.pop("is_html", None)
-    required = input_params.get("required")
-    if isinstance(required, list) and "is_html" in required:
-        required.remove("is_html")
-    return schema
+    return _drop_param(schema, _IS_HTML_PARAM)
 
 
 @register_schema_modifier(tools=["GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"])
@@ -170,32 +265,36 @@ def gmail_compose_require_subject_schema_modifier(tool: str, toolkit: str, schem
 
     A blank subject reads as spam and gets buried, so require it with minLength — the function-calling / args-validation layer then rejects a call that omits or blanks it before the tool runs, which matters because before-hook exceptions are swallowed and schema enforcement is the only hard guarantee.
     """
-    input_params = schema.input_parameters
-    if isinstance(input_params, dict):
-        required = input_params.setdefault("required", [])
-        if isinstance(required, list) and "subject" not in required:
-            required.append("subject")
+    input_params = JsonSchemaNode.parse(schema.input_parameters)
+    if input_params is None:
+        return schema
+    if input_params.required is None:
+        input_params.required = []
+    if _SUBJECT_PARAM not in input_params.required:
+        input_params.required.append(_SUBJECT_PARAM)
 
-        props = input_params.get("properties")
-        if isinstance(props, dict) and isinstance(props.get("subject"), dict):
-            props["subject"]["minLength"] = 1
-            props["subject"]["description"] = (
-                "Email subject line. Required — write a clear, specific subject "
-                "that summarizes the email. Never leave it blank."
-            )
+    subject = input_params.properties.get(_SUBJECT_PARAM) if input_params.properties else None
+    if subject is not None:
+        subject.minLength = 1
+        subject.description = (
+            "Email subject line. Required — write a clear, specific subject "
+            "that summarizes the email. Never leave it blank."
+        )
+    schema.input_parameters = input_params.as_schema()
     return schema
 
 
 @register_schema_modifier(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
 def gmail_fetch_message_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
     """Default GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID to format='full' for detailed content."""
-    input_params: object = schema.input_parameters
-    if not isinstance(input_params, dict):
+    input_params = JsonSchemaNode.parse(schema.input_parameters)
+    if input_params is None:
         return schema
 
-    props = input_params.get("properties", {})
-    if isinstance(props, dict) and "format" in props and isinstance(props["format"], dict):
-        props["format"]["default"] = "full"
+    fmt = input_params.properties.get(_FORMAT_PARAM) if input_params.properties else None
+    if fmt is not None:
+        fmt.default = "full"
+        schema.input_parameters = input_params.as_schema()
 
     return schema
 
@@ -208,15 +307,19 @@ def gmail_hide_user_id_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
     always be "me". Exposing it baits the agent into passing the literal
     address, which returns zero results; removing it forces Composio's default.
     """
-    input_params: object = schema.input_parameters
-    if not isinstance(input_params, dict):
+    return _drop_param(schema, _USER_ID_PARAM)
+
+
+def _drop_param(schema: Tool, param: str) -> Tool:
+    """Remove param from a tool's agent-facing properties and its required list."""
+    input_params = JsonSchemaNode.parse(schema.input_parameters)
+    if input_params is None:
         return schema
-    props = input_params.get("properties")
-    if isinstance(props, dict):
-        props.pop("user_id", None)
-    required = input_params.get("required")
-    if isinstance(required, list) and "user_id" in required:
-        required.remove("user_id")
+    if input_params.properties is not None:
+        input_params.properties.pop(param, None)
+    if input_params.required and param in input_params.required:
+        input_params.required.remove(param)
+    schema.input_parameters = input_params.as_schema()
     return schema
 
 
@@ -224,7 +327,7 @@ def gmail_hide_user_id_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
 # These hooks send progress/streaming data to frontend before tool execution
 
 
-def _normalize_compose_body(arguments: dict[str, Any]) -> None:
+def _normalize_compose_body(arguments: dict[str, object]) -> None:
     """Convert the Markdown body to HTML in place and flag it (idempotent).
 
     The agent writes Markdown; Gmail renders Markdown literally as plain text.
@@ -234,10 +337,10 @@ def _normalize_compose_body(arguments: dict[str, Any]) -> None:
         # Defensive guard; and->or is equivalent for realistic (str) bodies.
         if isinstance(raw_body, str) and raw_body:  # pragma: no mutate
             arguments[body_key] = normalize_email_body_to_html(raw_body)
-    arguments["is_html"] = True
+    arguments[_IS_HTML_PARAM] = True
 
 
-def _compose_recipient_ready(tool: str, arguments: dict[str, Any]) -> bool:
+def _compose_recipient_ready(tool: str, arguments: dict[str, object]) -> bool:
     """Map to -> recipient_email and confirm a SEND/DRAFT call is streamable.
 
     Non-compose tools (reply/forward) are always ready. Returns False (and logs) when
@@ -245,62 +348,57 @@ def _compose_recipient_ready(tool: str, arguments: dict[str, Any]) -> bool:
     """
     if tool not in ("GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"):
         return True
-    if "to" in arguments and "recipient_email" not in arguments:
-        arguments["recipient_email"] = arguments["to"]
+    compose = GmailComposeArguments.model_validate(arguments)
+    if _TO_PARAM in arguments and _RECIPIENT_EMAIL_PARAM not in arguments:
+        arguments[_RECIPIENT_EMAIL_PARAM] = compose.to
         log.info(GMAIL_TO_MAPPED_LOG, tool=tool)  # pragma: no mutate
-    has_recipient = bool(
-        arguments.get("recipient_email")
-        or arguments.get("to")
-        or arguments.get("cc")
-        or arguments.get("bcc")
-    )
-    has_content = bool(arguments.get("subject") or arguments.get("body"))
+    has_recipient = bool(compose.recipient_email or compose.to or compose.cc or compose.bcc)
+    has_content = bool(compose.subject or compose.body)
     if not has_recipient or not has_content:
         log.warning(GMAIL_SKIP_STREAM_LOG, tool=tool)  # pragma: no mutate
         return False
     return True
 
 
-def _compose_recipients(tool: str, arguments: dict[str, Any]) -> list[str]:
+def _compose_recipients(tool: str, compose: GmailComposeArguments) -> list[str]:
     """Flatten the recipient set for the compose card, per tool."""
     if tool == "GMAIL_FORWARD_MESSAGE":
-        recipients = arguments.get("to_recipients", [])
+        recipients = compose.to_recipients
         return [recipients] if isinstance(recipients, str) else recipients
-    # Default [] is neutralised by the isinstance guard below (equivalent).
-    extra_recipients = arguments.get("extra_recipients", [])  # pragma: no mutate
+    extra_recipients = compose.extra_recipients
     if not isinstance(extra_recipients, list):
         extra_recipients = []
-    return [arguments.get("recipient_email", ""), *extra_recipients]
+    return [compose.recipient_email, *extra_recipients]
 
 
 def _compose_card(
-    tool: str, arguments: dict[str, Any], attachment_display: list[AttachmentDisplay]
-) -> dict[str, Any]:
-    """Build the compose/sent card payload for one Gmail compose call."""
-    return {
-        "to": _compose_recipients(tool, arguments),
-        "subject": arguments.get("subject", ""),
-        "body": arguments.get("body", ""),
-        "thread_id": arguments.get("thread_id", ""),
-        "bcc": arguments.get("bcc", []),
-        "cc": arguments.get("cc", []),
-        "is_html": arguments.get("is_html", False),
-        "attachments": attachment_display,
-    }
+    tool: str, compose: GmailComposeArguments, attachment_display: list[AttachmentDisplay]
+) -> ComposeCard:
+    """Build the compose/sent card for one Gmail compose call."""
+    return ComposeCard(
+        to=_compose_recipients(tool, compose),
+        subject=compose.subject,
+        body=compose.body,
+        thread_id=compose.thread_id,
+        bcc=compose.bcc,
+        cc=compose.cc,
+        is_html=compose.is_html,
+        attachments=attachment_display,
+    )
 
 
 def _stream_compose_preview(
-    tool: str, arguments: dict[str, Any], attachment_display: list[AttachmentDisplay]
+    tool: str, compose: GmailComposeArguments, attachment_display: list[AttachmentDisplay]
 ) -> None:
     """Stream the sent card now; hold the draft card until its id exists.
 
     A draft card's Send button sends the draft (attachments and all), which needs the id Gmail only returns once the tool has run; streaming it here would fall back to composing a fresh mail and silently drop every attachment, so the draft card is handed to gmail_create_draft_after_hook instead.
     """
-    card = _compose_card(tool, arguments, attachment_display)
+    card = _compose_card(tool, compose, attachment_display)
     if tool == "GMAIL_CREATE_EMAIL_DRAFT":
         _pending_draft_card.set(card)
         return
-    get_stream_writer()({"email_sent_data": [card]})
+    get_stream_writer()({"email_sent_data": [card.payload()]})
 
 
 @register_before_hook(
@@ -317,7 +415,6 @@ def gmail_compose_before_hook(
     """Resolve attachments, normalise the body, and stream the compose/sent card."""
     log.set(gmail_tool=tool, toolkit=toolkit)  # pragma: no mutate -- observability
     try:
-        arguments = params.get("arguments", {})  # pragma: no mutate -- defensive default
         # Strict: raises HookAbortError if a file can't be attached, so we never
         # send mail missing a requested attachment. The native param name comes
         # from the swap record, not a constant: Composio names it per tool.
@@ -329,14 +426,19 @@ def gmail_compose_before_hook(
         )
         if attachment_display:
             log.set(gmail_attachment_count=len(attachment_display))  # pragma: no mutate
+        # Read after attachment resolution, which rewrites the bag under the tool's
+        # native upload param; the view is a copy, so the edits below reach the
+        # tool only through the write-back.
+        arguments = ComposioToolCall.model_validate(params).arguments
         _normalize_compose_body(arguments)
-        # Redundant: `arguments` is already `params["arguments"]` by reference.
-        params["arguments"] = arguments  # pragma: no mutate
+        params["arguments"] = arguments
         # Drop any card a previous draft call in this context left held, so an
         # aborted run can never have its card streamed by a later one.
         _pending_draft_card.set(None)
         if _compose_recipient_ready(tool, arguments):
-            _stream_compose_preview(tool, arguments, attachment_display)
+            _stream_compose_preview(
+                tool, GmailComposeArguments.model_validate(arguments), attachment_display
+            )
         return params
     except HookAbortError:
         # Attachment resolution failed: propagate so the compose tool aborts
@@ -367,9 +469,9 @@ def gmail_create_draft_after_hook(
     _pending_draft_card.set(None)
     if card is None:
         return response
-    data: object = response["data"]
-    draft_id = data.get("id") if isinstance(data, dict) else None
-    if card["attachments"]:
+    data = ComposioToolResponse.model_validate(response).data
+    draft_id = GmailDraftCreatedData.model_validate(data).id if isinstance(data, dict) else None
+    if card.attachments:
         if not draft_id:
             # Every send path open to this card recomposes the mail from its
             # visible fields, so it would go out without the files the card is
@@ -379,25 +481,25 @@ def gmail_create_draft_after_hook(
         # Only a card that MUST be sent as the stored draft carries the id: it is
         # what makes Send send this draft, and it is why the card renders
         # read-only (the draft's files cannot be re-attached to an edited copy).
-        card["draft_id"] = draft_id
+        card.draft_id = draft_id
     writer = get_stream_writer()
     if writer is not None:
-        writer({"email_compose_data": [card]})
+        writer({"email_compose_data": [card.payload()]})
     return response
 
 
 @register_after_hook(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
 def gmail_message_detail_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process single message response to minimize raw data."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
-        if not response or "error" in response["data"]:
-            return response["data"]
+        if not isinstance(raw, dict) or "error" in raw:
+            return raw
 
         # Transform raw message data to detailed but clean format
-        processed_response = detailed_message_template(response["data"])
-        return processed_response
+        return detailed_message_template(raw)
 
     except Exception as e:
         log.error(
@@ -405,45 +507,45 @@ def gmail_message_detail_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response["data"]
+        return raw
 
 
 @register_after_hook(tools=["GMAIL_FETCH_MESSAGE_BY_THREAD_ID"])
 def gmail_thread_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process thread response and send data to frontend."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
         writer = get_stream_writer()
 
-        if not response or "error" in response["data"]:
-            return response["data"]
+        if not isinstance(raw, dict) or "error" in raw:
+            return raw
 
-        # Process the raw thread response
-        processed_response = process_get_thread_response(response["data"])
+        processed_response = process_get_thread_response(raw)
+        thread = GmailThreadView.model_validate(processed_response)
 
-        if writer is not None and processed_response.get("messages"):
+        if writer is not None and thread.messages:
             # Transform to EmailThreadData format for frontend
-            thread_messages = []
-            for msg in processed_response["messages"]:
-                thread_messages.append(
-                    {
-                        "id": msg.get("id", ""),
-                        "from": msg.get("from", ""),
-                        "subject": msg.get("subject", ""),
-                        "time": msg.get("time", ""),
-                        "snippet": msg.get("snippet", ""),
-                        "body": msg.get("body", ""),
-                        "content": msg.get("content", ""),
-                    }
-                )
+            thread_messages = [
+                {
+                    "id": msg.id,
+                    "from": msg.sender,
+                    "subject": msg.subject,
+                    "time": msg.time,
+                    "snippet": msg.snippet,
+                    "body": msg.body,
+                    "content": msg.content if msg.content is not None else "",
+                }
+                for msg in thread.messages
+            ]
 
             # Send thread data to frontend
             payload = {
                 "email_thread_data": {
-                    "thread_id": processed_response.get("id"),
+                    "thread_id": thread.id,
                     "messages": thread_messages,
-                    "messages_count": processed_response.get("messageCount", 0),
+                    "messages_count": thread.message_count,
                 }
             }
             writer(payload)
@@ -457,21 +559,20 @@ def gmail_thread_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response["data"]
+        return raw
 
 
 @register_after_hook(tools=["GMAIL_LIST_DRAFTS"])
 def gmail_drafts_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process drafts list response to minimize raw data."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
-        if not response or "error" in response["data"]:
-            return response["data"]
+        if not isinstance(raw, dict) or "error" in raw:
+            return raw
 
-        # Process the raw drafts response
-        processed_response = process_list_drafts_response(response["data"])
-        return processed_response
+        return process_list_drafts_response(raw)
 
     except Exception as e:
         log.error(
@@ -479,21 +580,21 @@ def gmail_drafts_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response["data"]
+        return raw
 
 
 @register_after_hook(tools=["GMAIL_GET_DRAFT"])
 def gmail_draft_detail_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process single draft response to minimize raw data."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
-        if not response or "error" in response["data"]:
-            return response["data"]
+        if not isinstance(raw, dict) or "error" in raw:
+            return raw
 
         # Transform raw draft data to clean format
-        processed_response = draft_template(response["data"])
-        return processed_response
+        return draft_template(raw)
 
     except Exception as e:
         log.error(
@@ -501,34 +602,36 @@ def gmail_draft_detail_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response["data"]
+        return raw
 
 
 @register_after_hook(tools=["GMAIL_FETCH_ATTACHMENT"])
-def gmail_attachment_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> object:
+def gmail_attachment_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> AfterHookResponse:
     """Process attachment response to extract metadata only."""
+    result = ComposioToolResponse.model_validate(response)
+    # Composio's envelope types `data` as a plain Dict, but this endpoint has been
+    # observed returning a non-dict `data` (e.g. a bare string) on some error paths,
+    # so both branches below pass the raw value through unprocessed.
+    data = result.data
     try:
-        # Composio's envelope types `data` as a plain Dict, but this endpoint has been
-        # observed returning a non-dict `data` (e.g. a bare string) on some error paths,
-        # so both branches below pass the raw value through unprocessed.
-        data: object = response["data"]
-
-        if not response["successful"]:
+        if not result.successful:
             return data
 
         # Extract only metadata, not the base64 content
         if not isinstance(data, dict):
             return data
 
-        processed_response = {
-            "attachmentId": data.get("attachmentId", ""),
-            "filename": data.get("filename", ""),
-            "mimeType": data.get("mimeType", ""),
-            "size": data.get("size", 0),
+        attachment = GmailAttachmentData.model_validate(data)
+        summary: AttachmentSummary = {
+            "attachmentId": attachment.attachment_id,
+            "filename": attachment.filename,
+            "mimeType": attachment.mime_type,
+            "size": attachment.size,
             "message": "Attachment content available but not displayed to preserve context",
         }
-
-        return processed_response
+        return summary
 
     except Exception as e:
         log.error(
@@ -536,7 +639,7 @@ def gmail_attachment_after_hook(tool: str, toolkit: str, response: ToolExecution
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response["data"]
+        return data
 
 
 # ====================== PROGRESS HOOKS FOR OTHER OPERATIONS ======================
@@ -597,11 +700,11 @@ def gmail_label_before_hook(
         if writer is None:
             return params
 
-        arguments = params.get("arguments", {})
-
         if tool == "GMAIL_CREATE_LABEL":
-            name = arguments.get("name", "")
-            payload = {"progress": f"Creating label: {name}..."}
+            arguments = GmailLabelArguments.model_validate(
+                ComposioToolCall.model_validate(params).arguments
+            )
+            payload = {"progress": f"Creating label: {arguments.name}..."}
         elif tool == "GMAIL_UPDATE_LABEL":
             payload = {"progress": "Updating label..."}
         elif tool == "GMAIL_DELETE_LABEL":
@@ -632,9 +735,11 @@ def gmail_modify_labels_before_hook(
         if writer is None:
             return params
 
-        arguments = params.get("arguments", {})
-        message_ids = arguments.get("message_ids", [])
-        label_ids = arguments.get("label_ids", [])
+        arguments = GmailModifyLabelsArguments.model_validate(
+            ComposioToolCall.model_validate(params).arguments
+        )
+        message_ids = arguments.message_ids
+        label_ids = arguments.label_ids
 
         action = (
             "Adding labels to" if tool == "GMAIL_ADD_LABEL_TO_EMAIL" else "Removing labels from"
@@ -690,10 +795,11 @@ def gmail_list_drafts_before_hook(
         if writer is None:
             return params
 
-        arguments = params.get("arguments", {})
-        max_results = arguments.get("max_results", 20)
+        arguments = GmailListDraftsArguments.model_validate(
+            ComposioToolCall.model_validate(params).arguments
+        )
 
-        payload = {"progress": f"Fetching drafts (max {max_results} results)..."}
+        payload = {"progress": f"Fetching drafts (max {arguments.max_results} results)..."}
         writer(payload)
 
     except Exception as e:
@@ -733,11 +839,11 @@ def gmail_get_contacts_before_hook(
 ) -> ToolExecuteParams:
     """Handle contacts fetching with default page size."""
     try:
-        arguments = params.get("arguments", {})
+        arguments = ComposioToolCall.model_validate(params).arguments
 
         # Set default page size to 50 if not specified
-        if "page_size" not in arguments or not arguments["page_size"]:
-            arguments["page_size"] = 50
+        if not GmailGetContactsArguments.model_validate(arguments).page_size:
+            arguments[_PAGE_SIZE_PARAM] = _DEFAULT_CONTACTS_PAGE_SIZE
 
         params["arguments"] = arguments
 
@@ -764,9 +870,10 @@ def gmail_search_people_before_hook(
     try:
         writer = get_stream_writer()
         if writer is not None:
-            arguments = params.get("arguments", {})
-            query = arguments.get("query", "")
-            payload = {"progress": f"Searching for people matching '{query}'..."}
+            arguments = GmailSearchPeopleArguments.model_validate(
+                ComposioToolCall.model_validate(params).arguments
+            )
+            payload = {"progress": f"Searching for people matching '{arguments.query}'..."}
             writer(payload)
 
     except Exception as e:
@@ -785,15 +892,15 @@ def gmail_search_people_before_hook(
 @register_after_hook(tools=["GMAIL_FETCH_EMAIL_BY_ID"])
 def gmail_fetch_by_id_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process single email fetch response to minimize raw data."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
-        if not response or "error" in response["data"]:
-            return response["data"]
+        if not isinstance(raw, dict) or "error" in raw:
+            return raw
 
         # Transform raw message data to detailed but clean format
-        processed_response = detailed_message_template(response["data"])
-        return processed_response
+        return detailed_message_template(raw)
 
     except Exception as e:
         log.error(
@@ -801,42 +908,49 @@ def gmail_fetch_by_id_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response["data"]
+        return raw
 
 
 @register_after_hook(tools=["GMAIL_SEND_DRAFT"])
 def gmail_send_draft_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process draft sending response."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
         writer = get_stream_writer()
 
-        if writer is not None and response["data"].get("successful", True):
+        sent = GmailSentDraftData.model_validate(raw)
+        # ``successful`` reads with two defaults: the card streams unless the key
+        # says otherwise, the LLM summary only when the key is present and true.
+        successful_present = "successful" in sent.model_fields_set
+
+        if writer is not None and (sent.successful if successful_present else True):
             # Send email sent data to frontend
-            message_data = response["data"].get("message", {})
+            message_data = sent.message or GmailSentDraftMessage()
 
             payload = {
                 "email_sent_data": [
                     {
-                        "message_id": response["data"].get("id", ""),
+                        "message_id": sent.id,
                         "message": "Draft sent successfully!",
-                        "timestamp": response["data"].get("timestamp", ""),
-                        "recipients": message_data.get("to", []),
-                        "subject": message_data.get("subject", ""),
+                        "timestamp": sent.timestamp,
+                        "recipients": message_data.to,
+                        "subject": message_data.subject,
                     }
                 ]
             }
             writer(payload)
 
         # Keep the response minimal for LLM
-        if "successful" in response["data"] and response["data"]["successful"]:
-            return {
-                "id": response["data"].get("id", ""),
+        if successful_present and sent.successful:
+            summary: SentDraftSummary = {
+                "id": sent.id,
                 "successful": True,
                 "message": "Draft sent successfully",
             }
-        return response["data"]
+            return summary
+        return raw
 
     except Exception as e:
         log.error(
@@ -844,44 +958,45 @@ def gmail_send_draft_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response["data"]
+        return raw
 
 
 @register_after_hook(tools=["GMAIL_GET_CONTACTS"])
 def gmail_get_contacts_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process contacts list response to minimize raw data."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
         writer = get_stream_writer()
 
-        if not response or "error" in response["data"]:
-            return response["data"]
+        if not isinstance(raw, dict) or "error" in raw:
+            return raw
 
-        response_data = GoogleContactsResponseData.model_validate(
-            response["data"].get("response_data") or {}
-        )
+        data = GmailContactsData.model_validate(raw)
+        response_data = data.response_data or GoogleContactsResponseData()
 
-        contact_list: list[ContactCard] = [
-            _contact_card(person) for person in response_data.connections
-        ]
-        llm_contacts: list[ContactSummary] = [_contact_summary(card) for card in contact_list]
+        contacts = [_Contact.from_person(person) for person in response_data.connections]
+        contact_list: list[ContactCard] = [contact.card() for contact in contacts]
+        llm_contacts: list[ContactSummary] = [contact.summary() for contact in contacts]
+        total_count = data.total_people if data.total_people is not None else len(contacts)
 
         # Send to frontend
         if writer is not None and contact_list:
             payload = {
                 "contacts_data": contact_list,
-                "total_count": response["data"].get("totalPeople", len(contact_list)),
-                "next_page_token": response["data"].get("nextPageToken"),
+                "total_count": total_count,
+                "next_page_token": data.next_page_token,
             }
             writer(payload)
 
         # Return minimal data for LLM
-        return {
+        summary: ContactsSummary = {
             "contacts": llm_contacts,
-            "total_count": response["data"].get("totalPeople", len(llm_contacts)),
-            "has_more": bool(response["data"].get("nextPageToken")),
+            "total_count": total_count,
+            "has_more": bool(data.next_page_token),
         }
+        return summary
 
     except Exception as e:
         log.error(
@@ -889,28 +1004,27 @@ def gmail_get_contacts_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response["data"]
+        return raw
 
 
 @register_after_hook(tools=["GMAIL_SEARCH_PEOPLE"])
 def gmail_search_people_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> AfterHookResponse:
     """Process people search response to minimize raw data."""
+    raw = ComposioToolResponse.model_validate(response).data
     try:
         writer = get_stream_writer()
 
-        if not response or "error" in response["data"]:
-            return response["data"]
+        if not isinstance(raw, dict) or "error" in raw:
+            return raw
 
-        response_data = GooglePeopleSearchResponseData.model_validate(
-            response["data"].get("response_data") or {}
-        )
+        data = GmailSearchPeopleData.model_validate(raw)
+        response_data = data.response_data or GooglePeopleSearchResponseData()
 
-        people_list: list[ContactCard] = [
-            _contact_card(result.person) for result in response_data.results
-        ]
-        llm_people: list[ContactSummary] = [_contact_summary(card) for card in people_list]
+        people = [_Contact.from_person(result.person) for result in response_data.results]
+        people_list: list[ContactCard] = [person.card() for person in people]
+        llm_people: list[ContactSummary] = [person.summary() for person in people]
 
         # Send to frontend
         if writer is not None and people_list:
@@ -921,10 +1035,11 @@ def gmail_search_people_after_hook(
             writer(payload)
 
         # Return minimal data for LLM
-        return {
+        summary: PeopleSearchSummary = {
             "people": llm_people,
             "result_count": len(llm_people),
         }
+        return summary
 
     except Exception as e:
         log.error(
@@ -932,4 +1047,4 @@ def gmail_search_people_after_hook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return response["data"]
+        return raw

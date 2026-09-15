@@ -49,6 +49,7 @@ from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.models.chat_models import SourceCategory
+from app.models.user_models import AuthenticatedUser
 from shared.py.wide_events import log, log_context
 
 # The task text the finalize step now receives; forwarded to comms on a cancel.
@@ -77,7 +78,7 @@ def _run(
     return ExecutorRun(
         stream_id=stream_id,
         conversation_id="conv-1",
-        user={"user_id": "u1"},
+        user=AuthenticatedUser(user_id="u1"),
         kind=kind,
         task_id="task-1",
         user_message_id=None,
@@ -195,6 +196,49 @@ class TestAnAbandonedExecutorIsNotDelivered:
             await er._finalize_executor_run(run, TASK, "done", "final")
 
         collect.assert_awaited_once_with(run, TASK)
+
+
+class TestCollectionWakeCarriesTheRunsUser:
+    """The queued collection turn runs as the user who owns the parked work."""
+
+    @pytest.mark.parametrize(
+        ("user", "expected"),
+        [
+            (
+                AuthenticatedUser(
+                    user_id="u1", email="a@x.com", name="Ann", timezone="Asia/Kolkata"
+                ),
+                {
+                    "user_id": "u1",
+                    "email": "a@x.com",
+                    "user_name": "Ann",
+                    "user_timezone": "Asia/Kolkata",
+                },
+            ),
+            (
+                AuthenticatedUser(user_id="u1"),
+                {"user_id": "u1", "email": "", "user_name": "", "user_timezone": None},
+            ),
+        ],
+        ids=["full-profile", "empty-profile"],
+    )
+    async def test_the_enqueued_collection_names_the_runs_user(self, user, expected) -> None:
+        run = ExecutorRun(
+            stream_id="s1",
+            conversation_id="conv-1",
+            user=user,
+            kind=RunKind.LIVE,
+            task_id="task-1",
+            user_message_id=None,
+            workflow_execution_id="exec-7",
+        )
+        with (
+            patch.object(er, "has_bg_subagent_results", new_callable=AsyncMock, return_value=True),
+            patch.object(er, "enqueue_collection_run", new_callable=AsyncMock) as enqueue,
+        ):
+            await er._queue_collection_if_uncollected(run, TASK)
+
+        enqueue.assert_awaited_once_with("conv-1", expected, workflow_execution_id="exec-7")
 
 
 class TestCancelledRouting:

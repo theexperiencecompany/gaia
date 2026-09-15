@@ -2,13 +2,18 @@
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
+from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 import pytest
 
 from app.agents.llm.lane import AgentRole, ModelLane
 from app.agents.llm.ttft import LLMTtftCallback
 from app.agents.llm.types import LLMProviderName
+from app.config.posthog import POSTHOG_PROVIDER_KEY
+from app.constants.cache import CUSTOM_INT_METADATA_TTL, HANDOFF_METADATA_CACHE_PREFIX
+from app.constants.llm import LLM_LABEL_METADATA_KEY
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -21,17 +26,21 @@ from app.helpers.agent_helpers import (
     _collect_silent_tool_entries,
     _hold_silent_chunk,
     _record_interruption_quietly,
+    _SilentAccumulators,
     _stamp_langfuse,
     build_agent_config,
     build_initial_state,
     execute_graph_silent,
     execute_graph_streaming,
     get_handoff_metadata,
+    recent_user_messages,
 )
 from app.models.integration_models import Integration
 from app.models.mcp_config import SubAgentConfig
 from app.models.payment_models import PlanType
 from app.models.subagent_models import Subagent
+from app.utils.agent_utils import IntegrationDisplayMetadata
+from app.utils.stream_publishers import ExtractedToolData
 
 
 def _integration(integration_id: str, name: str, icon_url: str | None = None) -> Integration:
@@ -76,6 +85,8 @@ def _make_subagent(
 # ---------------------------------------------------------------------------
 
 USER_ID = "507f1f77bcf86cd799439011"
+_TODO_A = {"id": "t1", "content": "draft", "status": "in_progress"}
+_TODO_B = {"id": "t1", "content": "draft", "status": "completed"}
 CONV_ID = "conv-001"
 
 FAKE_USER = {
@@ -96,28 +107,28 @@ class TestGetHandoffMetadata:
     @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
     async def test_cache_hit_returns_cached(self, mock_lookup, mock_get_cache):
         """Cache check happens after the registry lookup misses."""
-        mock_get_cache.return_value = {"integration_id": "github", "icon_url": None}
+        mock_get_cache.return_value = IntegrationDisplayMetadata(integration_id="github")
 
         result = await get_handoff_metadata("github")
-        assert result["integration_id"] == "github"
+        assert result.integration_id == "github"
 
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
     async def test_cache_hit_empty_returns_empty(self, mock_lookup, mock_get_cache):
-        """Cached empty dict means negative cache hit."""
-        mock_get_cache.return_value = {}
+        """Cached empty metadata means negative cache hit."""
+        mock_get_cache.return_value = IntegrationDisplayMetadata()
 
         result = await get_handoff_metadata("nonexistent")
-        assert result == {}
+        assert result == IntegrationDisplayMetadata()
 
     @patch("app.helpers.agent_helpers.get_subagent_by_id")
     async def test_platform_integration_match_by_id(self, mock_lookup):
         mock_lookup.return_value = _make_subagent("github", "gh", "GitHub")
 
         result = await get_handoff_metadata("github")
-        assert result["integration_id"] == "github"
-        assert result["integration_name"] == "GitHub"
-        assert result["icon_url"] is None
+        assert result.integration_id == "github"
+        assert result.integration_name == "GitHub"
+        assert result.icon_url is None
 
     @patch("app.helpers.agent_helpers.get_subagent_by_id")
     async def test_platform_integration_match_by_short_name(self, mock_lookup):
@@ -126,7 +137,7 @@ class TestGetHandoffMetadata:
         mock_lookup.return_value = _make_subagent("github", "gh", "GitHub")
 
         result = await get_handoff_metadata("gh")
-        assert result["integration_name"] == "GitHub"
+        assert result.integration_name == "GitHub"
 
     @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
@@ -141,8 +152,15 @@ class TestGetHandoffMetadata:
         )
 
         result = await get_handoff_metadata("custom_mymcp")
-        assert result["integration_name"] == "MyMCP"
-        mock_set_cache.assert_called_once()
+        expected = IntegrationDisplayMetadata(
+            icon_url="https://icon.png",
+            integration_id="custom_mymcp",
+            integration_name="MyMCP",
+        )
+        assert result == expected
+        cache_key = f"{HANDOFF_METADATA_CACHE_PREFIX}:custom_mymcp"
+        mock_get_cache.assert_awaited_once_with(cache_key, IntegrationDisplayMetadata)
+        mock_set_cache.assert_awaited_once_with(cache_key, expected, ttl=CUSTOM_INT_METADATA_TTL)
 
     @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
@@ -155,7 +173,7 @@ class TestGetHandoffMetadata:
         mock_repo.find_by_id_prefix_or_name = AsyncMock(side_effect=Exception("DB failure"))
 
         result = await get_handoff_metadata("broken")
-        assert result == {}
+        assert result == IntegrationDisplayMetadata()
 
     @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
@@ -171,7 +189,7 @@ class TestGetHandoffMetadata:
         )
 
         result = await get_handoff_metadata("subagent:custom_abc")
-        assert result["integration_name"] == "Custom"
+        assert result.integration_name == "Custom"
         # parse_subagent_id strips "subagent:" → registry sees "custom_abc"
         mock_lookup.assert_called_once_with("custom_abc")
 
@@ -205,8 +223,6 @@ class TestBuildAgentConfig:
     @patch("app.helpers.agent_helpers.providers")
     async def test_metadata_stamps_the_agent_label_for_the_ttft_callback(self, mock_providers):
         """build_agent_config stamps the agent tier as the default LLM_LABEL_METADATA_KEY, or the graph's own streaming calls land on agent=unknown."""
-        from app.constants.llm import LLM_LABEL_METADATA_KEY
-
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
@@ -217,6 +233,65 @@ class TestBuildAgentConfig:
             ),
         )
         assert config["metadata"][LLM_LABEL_METADATA_KEY] == "executor_agent"
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_a_root_run_stamps_the_users_identity_and_its_own_conversation(
+        self, mock_providers
+    ):
+        mock_providers.get.return_value = None
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+        )
+
+        configurable = config["configurable"]
+        assert configurable["conversation_id"] == CONV_ID
+        assert configurable["email"] == "test@example.com"
+        assert configurable["user_name"] == "Test User"
+        assert configurable["execution_mode"] == "interactive"
+        assert config["metadata"]["user_id"] == USER_ID
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_a_root_run_mints_a_request_id_that_a_child_inherits(self, mock_providers):
+        mock_providers.get.return_value = None
+
+        root = (
+            await build_agent_config(
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+                ),
+            )
+        )["configurable"]
+        child = (
+            await build_agent_config(
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"
+                ),
+                thread=AgentThread(base_configurable={"root_request_id": "root-req-1"}),
+            )
+        )["configurable"]
+
+        assert str(UUID(root["root_request_id"])) == root["root_request_id"]
+        assert child["root_request_id"] == "root-req-1"
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_a_child_whose_parent_has_no_zone_falls_back_to_utc(self, mock_providers):
+        mock_providers.get.return_value = None
+
+        configurable = (
+            await build_agent_config(
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"
+                ),
+                thread=AgentThread(base_configurable={"stream_id": "stream-1"}),
+            )
+        )["configurable"]
+
+        assert configurable["user_timezone"] == "UTC"
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_uses_home_profile_timezone(self, mock_providers):
@@ -448,11 +523,13 @@ class TestBuildAgentConfig:
                 ),
                 turn=AgentTurn(
                     user_request="pls archive the junk mail",
+                    user_messages=["pls archive the junk mail"],
                 ),
             )
         )["configurable"]
 
         assert configurable["user_request"] == "pls archive the junk mail"
+        assert configurable["user_messages"] == ["pls archive the junk mail"]
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_a_handoff_subagent_inherits_preferences_established_by_comms(
@@ -651,6 +728,27 @@ class TestBuildAgentConfig:
         assert len(config["callbacks"]) >= 1
 
     @patch("app.helpers.agent_helpers.providers")
+    async def test_the_posthog_callback_uses_the_client_registered_under_the_posthog_key(
+        self, mock_providers
+    ):
+        client = MagicMock()
+        mock_providers.is_available.side_effect = lambda key: key == POSTHOG_PROVIDER_KEY
+        mock_providers.get.side_effect = lambda key: client if key == POSTHOG_PROVIDER_KEY else None
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+        )
+
+        posthog_callbacks = [
+            cb for cb in config["callbacks"] if isinstance(cb, PostHogCallbackHandler)
+        ]
+        assert len(posthog_callbacks) == 1
+
+    @patch("app.helpers.agent_helpers.providers")
     async def test_usage_metadata_callback(self, mock_providers):
         mock_providers.get.return_value = None
 
@@ -795,6 +893,31 @@ class TestBuildInitialState:
         assert state["trigger_context"] == ctx
         assert state["selected_tool"] == "tool_x"
 
+    def test_a_trigger_binds_its_todo_and_execution_mode_into_state(self):
+        request = MagicMock()
+        request.message = "Trigger"
+        request.selectedTool = None
+        request.selectedWorkflow = None
+        request.selectedCalendarEvent = None
+
+        ctx = {"todo_id": "todo-3", "execution_mode": "background"}
+        state = build_initial_state(request, USER_ID, CONV_ID, [], trigger_context=ctx)
+
+        assert state["active_todo_id"] == "todo-3"
+        assert state["execution_mode"] == "background"
+
+
+class TestRecentUserMessages:
+    def test_only_non_blank_user_turns_are_kept_and_the_current_turn_ends_the_list(self):
+        history = [
+            {"role": "user", "content": " draft an email to Bob "},
+            {"role": "assistant", "content": "Here is a draft"},
+            {"role": "user", "content": None},
+            {"role": "user", "content": "   "},
+        ]
+
+        assert recent_user_messages(history, "send it") == ["draft an email to Bob", "send it"]
+
     def test_with_all_selections(self):
         request = MagicMock()
         request.message = "Do stuff"
@@ -878,11 +1001,11 @@ class TestExecuteGraphSilent:
     async def test_custom_events_merged(self, mock_process):
         """tool_data entries accumulate across events while every other key merges by name."""
         mock_process.side_effect = [
-            {"tool_data": [{"tool_name": "first_tool"}]},
-            {
-                "tool_data": [{"tool_name": "custom_tool"}],
-                "follow_up_actions": ["action1"],
-            },
+            ExtractedToolData(tool_data=[{"tool_name": "first_tool", "data": None}]),
+            ExtractedToolData(
+                tool_data=[{"tool_name": "custom_tool", "data": None}],
+                other_data={"follow_up_actions": ["action1"]},
+            ),
         ]
 
         events = [
@@ -898,16 +1021,15 @@ class TestExecuteGraphSilent:
             {},
             {"configurable": {"user_id": USER_ID}},
         )
-        assert [e["tool_name"] for e in tool_data["tool_data"]] == [
-            "first_tool",
-            "custom_tool",
+        assert tool_data == [
+            {"tool_name": "first_tool", "data": None},
+            {"tool_name": "custom_tool", "data": None},
         ]
-        assert tool_data["follow_up_actions"] == ["action1"]
 
     async def test_todo_progress_accumulated(self):
         events = [
-            ((), "custom", {"todo_progress": {"source": "executor", "count": 3}}),
-            ((), "custom", {"todo_progress": {"source": "executor", "count": 5}}),
+            ((), "custom", {"todo_progress": {"source": "executor", "todos": [_TODO_A]}}),
+            ((), "custom", {"todo_progress": {"source": "executor", "todos": [_TODO_B]}}),
         ]
 
         graph = AsyncMock()
@@ -915,7 +1037,7 @@ class TestExecuteGraphSilent:
 
         with patch(
             "app.helpers.agent_helpers.process_custom_event_for_tools",
-            return_value=None,
+            return_value=ExtractedToolData(),
         ):
             _, tool_data = await execute_graph_silent(
                 graph,
@@ -924,22 +1046,22 @@ class TestExecuteGraphSilent:
             )
 
         # Should have one todo_progress entry
-        todo_entries = [e for e in tool_data["tool_data"] if e["tool_name"] == "todo_progress"]
+        todo_entries = [e for e in tool_data if e["tool_name"] == "todo_progress"]
         assert len(todo_entries) == 1
         # Last snapshot wins
-        assert todo_entries[0]["data"]["executor"]["count"] == 5
+        assert todo_entries[0]["data"] == {"executor": {"source": "executor", "todos": [_TODO_B]}}
 
     @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_handoff_metadata", new_callable=AsyncMock)
     async def test_updates_handoff_tool_calls(self, mock_handoff, mock_format):
         """Handoff tool calls on the agent node resolve + forward handoff metadata."""
-        mock_handoff.return_value = {
-            "icon_url": "https://icon.png",
-            "integration_id": "github",
-        }
+        mock_handoff.return_value = IntegrationDisplayMetadata(
+            icon_url="https://icon.png",
+            integration_id="github",
+        )
         mock_format.return_value = {"tool_name": "handoff", "data": {}}
 
-        msg = MagicMock()
+        msg = AIMessage.model_construct(content="", tool_calls=None)
         msg.tool_calls = [{"id": "tc1", "name": "handoff", "args": {"subagent_id": "github"}}]
 
         events = [
@@ -958,14 +1080,14 @@ class TestExecuteGraphSilent:
         mock_handoff.assert_called_once_with("github")
         # The resolved handoff metadata must be forwarded into the formatted entry.
         assert mock_format.await_args.kwargs["integration_id"] == "github"
-        assert tool_data["tool_data"] == [{"tool_name": "handoff", "data": {}}]
+        assert tool_data == [{"tool_name": "handoff", "data": {}}]
 
     @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
     async def test_updates_regular_tool_calls_thread_user_id(self, mock_format):
         """Non-handoff tool calls are formatted with the originating user_id."""
         mock_format.return_value = {"tool_name": "custom_tool", "data": {}}
 
-        msg = MagicMock()
+        msg = AIMessage.model_construct(content="", tool_calls=None)
         msg.tool_calls = [{"id": "tc2", "name": "custom_tool", "args": {}}]
 
         events = [
@@ -983,11 +1105,11 @@ class TestExecuteGraphSilent:
 
         mock_format.assert_awaited_once()
         assert mock_format.await_args.kwargs["user_id"] == USER_ID
-        assert tool_data["tool_data"] == [{"tool_name": "custom_tool", "data": {}}]
+        assert tool_data == [{"tool_name": "custom_tool", "data": {}}]
 
     async def test_updates_ignores_non_agent_nodes(self):
         """Tool calls from non-'agent' nodes must not be collected."""
-        msg = MagicMock()
+        msg = AIMessage.model_construct(content="", tool_calls=None)
         msg.tool_calls = [{"id": "tc_hook", "name": "some_tool", "args": {}}]
 
         events = [
@@ -1009,11 +1131,11 @@ class TestExecuteGraphSilent:
             )
 
         mock_format.assert_not_awaited()
-        assert tool_data["tool_data"] == []
+        assert tool_data == []
 
     async def test_updates_skips_plan_tasks(self):
         """plan_tasks and update_tasks tool calls are filtered before formatting."""
-        msg = MagicMock()
+        msg = AIMessage.model_construct(content="", tool_calls=None)
         msg.tool_calls = [
             {"id": "tc_plan", "name": "plan_tasks", "args": {}},
             {"id": "tc_update", "name": "update_tasks", "args": {}},
@@ -1038,11 +1160,11 @@ class TestExecuteGraphSilent:
             )
 
         mock_format.assert_not_awaited()
-        assert len(tool_data["tool_data"]) == 0
+        assert len(tool_data) == 0
 
     async def test_updates_deduplicates_tool_calls(self):
         """Same tool call ID across multiple agent updates is emitted once."""
-        msg = MagicMock()
+        msg = AIMessage.model_construct(content="", tool_calls=None)
         msg.tool_calls = [{"id": "tc_dup", "name": "some_tool", "args": {}}]
 
         events = [
@@ -1065,7 +1187,7 @@ class TestExecuteGraphSilent:
             )
 
         assert mock_format.await_count == 1  # the duplicate is not formatted again
-        assert len(tool_data["tool_data"]) == 1
+        assert len(tool_data) == 1
 
     async def test_a_handoff_preamble_is_never_persisted(self):
         """Text accompanying a tool call is narration, not a reply, and is dropped once the node's boundary reveals the handoff."""
@@ -1096,7 +1218,7 @@ class TestExecuteGraphSilent:
 
         assert msg == ""
         # ...and silencing the narration did not silence the tool card.
-        assert len(tool_data["tool_data"]) == 1
+        assert len(tool_data) == 1
 
     async def test_a_tool_free_reply_survives_its_boundary(self):
         """A message that ends without a tool call is the answer, and the boundary must release it."""
@@ -1283,7 +1405,7 @@ class TestStampLangfuse:
             metadata,
             "trace-abc",
             ["tag-one"],
-            {"user_id": USER_ID},
+            USER_ID,
             CONV_ID,
         )
 
@@ -1305,7 +1427,7 @@ class TestStampLangfuse:
         configurable = {}
         metadata = {}
 
-        _stamp_langfuse(configurable, metadata, None, None, {"user_id": USER_ID}, CONV_ID)
+        _stamp_langfuse(configurable, metadata, None, None, USER_ID, CONV_ID)
 
         assert configurable == {}
         assert metadata == {}
@@ -1315,7 +1437,7 @@ class TestStampLangfuse:
         configurable = {}
         metadata = {}
 
-        _stamp_langfuse(configurable, metadata, None, ["tag-one"], {"user_id": USER_ID}, CONV_ID)
+        _stamp_langfuse(configurable, metadata, None, ["tag-one"], USER_ID, CONV_ID)
 
         assert configurable == {"langfuse_tags": ["tag-one"]}
         assert metadata == {}
@@ -1325,7 +1447,7 @@ class TestStampLangfuse:
         configurable = {}
         metadata = {}
 
-        _stamp_langfuse(configurable, metadata, "trace-abc", None, {}, CONV_ID)
+        _stamp_langfuse(configurable, metadata, "trace-abc", None, None, CONV_ID)
 
         assert metadata == {
             "langfuse_trace_id": "trace-abc",
@@ -1390,7 +1512,7 @@ class TestBuildAgentConfigCallbackWiring:
 
         assert mock_build_callbacks.call_args.args == (
             CONV_ID,
-            FAKE_USER,
+            USER_ID,
             "comms_agent",
             usage_cb,
         )
@@ -1669,7 +1791,7 @@ class TestCollectSilentToolEntries:
     async def test_an_unusable_tool_call_is_skipped_and_the_rest_still_emit(self, mock_format):
         """An id-less call and an already-emitted one are both skipped without stopping the scan."""
         mock_format.return_value = {"tool_name": "custom_tool"}
-        msg = MagicMock()
+        msg = AIMessage.model_construct(content="", tool_calls=None)
         msg.tool_calls = [
             {"id": "", "name": "nameless", "args": {}},
             {"id": "tc_seen", "name": "already_sent", "args": {}},
@@ -1687,7 +1809,7 @@ class TestCollectSilentToolEntries:
     async def test_a_todo_tool_call_is_skipped_without_ending_the_scan(self, mock_format):
         """Todo tools already stream todo_progress and are skipped, but calls that follow them in the same message are not."""
         mock_format.return_value = {"tool_name": "custom_tool"}
-        msg = MagicMock()
+        msg = AIMessage.model_construct(content="", tool_calls=None)
         msg.tool_calls = [
             {"id": "tc_plan", "name": "plan_tasks", "args": {}},
             {"id": "tc_real", "name": "custom_tool", "args": {}},
@@ -1707,9 +1829,9 @@ class TestCollectSilentToolEntries:
     ):
         """No args and empty args both mean "no subagent named yet", and neither may reach the registry."""
         mock_format.return_value = {"tool_name": "handoff"}
-        no_args = MagicMock()
+        no_args = AIMessage.model_construct(content="", tool_calls=None)
         no_args.tool_calls = [{"id": "tc_a", "name": "handoff"}]
-        empty_args = MagicMock()
+        empty_args = AIMessage.model_construct(content="", tool_calls=None)
         empty_args.tool_calls = [{"id": "tc_b", "name": "handoff", "args": {}}]
         entries: list = []
 
@@ -1724,14 +1846,14 @@ class TestCollectSilentToolEntries:
         self, mock_handoff, mock_format
     ):
         """Each display field is forwarded under its own name — a crossed one would type-check fine since all three are str | None."""
-        mock_handoff.return_value = {
-            "icon_url": "https://icon.png",
-            "integration_id": "github",
-            "integration_name": "GitHub",
-        }
+        mock_handoff.return_value = IntegrationDisplayMetadata(
+            icon_url="https://icon.png",
+            integration_id="github",
+            integration_name="GitHub",
+        )
         mock_format.return_value = {"tool_name": "handoff"}
         tool_call = {"id": "tc_h", "name": "handoff", "args": {"subagent_id": "github"}}
-        msg = MagicMock()
+        msg = AIMessage.model_construct(content="", tool_calls=None)
         msg.tool_calls = [tool_call]
 
         await _collect_silent_tool_entries([msg], set(), [], USER_ID)
@@ -1752,41 +1874,58 @@ class TestCollectSilentToolEntries:
 
 
 class TestAccumulateSilentCustomEvent:
-    @patch("app.helpers.agent_helpers.process_custom_event_for_tools", return_value=None)
+    @patch(
+        "app.helpers.agent_helpers.process_custom_event_for_tools",
+        return_value=ExtractedToolData(),
+    )
     def test_a_todo_snapshot_is_filed_under_its_own_source(self, _mock_process):
         """The accumulator is keyed by source so the planner's and the executor's snapshots do not overwrite each other."""
-        accumulated: dict = {}
+        acc = _SilentAccumulators()
 
         _accumulate_silent_custom_event(
-            {"todo_progress": {"source": "planner", "count": 1}},
-            {},
-            accumulated,
-            {"tool_data": []},
+            {"todo_progress": {"source": "planner", "todos": [_TODO_A]}}, acc
         )
 
-        assert accumulated == {"planner": {"source": "planner", "count": 1}}
+        assert acc.todo_progress == {"planner": {"source": "planner", "todos": [_TODO_A]}}
 
-    @patch("app.helpers.agent_helpers.process_custom_event_for_tools", return_value=None)
+    @patch(
+        "app.helpers.agent_helpers.process_custom_event_for_tools",
+        return_value=ExtractedToolData(),
+    )
     def test_a_sourceless_todo_snapshot_is_filed_under_the_executor(self, _mock_process):
         """The executor predates the source field, so an unlabelled snapshot is its."""
-        accumulated: dict = {}
+        acc = _SilentAccumulators()
 
-        _accumulate_silent_custom_event(
-            {"todo_progress": {"count": 1}}, {}, accumulated, {"tool_data": []}
-        )
+        _accumulate_silent_custom_event({"todo_progress": {"todos": [_TODO_A]}}, acc)
 
-        assert accumulated == {"executor": {"count": 1}}
+        assert acc.todo_progress == {"executor": {"todos": [_TODO_A]}}
 
     @patch("app.helpers.agent_helpers.process_custom_event_for_tools")
     def test_the_event_payload_itself_is_handed_to_the_tool_parser(self, mock_process):
-        mock_process.return_value = {"tool_data": [{"tool_name": "t"}], "follow_up_actions": ["a"]}
+        mock_process.return_value = ExtractedToolData(
+            tool_data=[{"tool_name": "t", "data": None}],
+            other_data={"follow_up_actions": ["a"]},
+        )
         payload = {"some": "custom event"}
-        tool_data: dict = {"tool_data": []}
+        acc = _SilentAccumulators(entries=[{"tool_name": "earlier", "data": None}])
 
-        _accumulate_silent_custom_event(payload, {}, {}, tool_data)
+        _accumulate_silent_custom_event(payload, acc)
 
         assert mock_process.call_args.args == (payload,)
-        assert tool_data == {"tool_data": [{"tool_name": "t"}], "follow_up_actions": ["a"]}
+        assert acc.entries == [
+            {"tool_name": "earlier", "data": None},
+            {"tool_name": "t", "data": None},
+        ]
+
+    @patch("app.helpers.agent_helpers.process_custom_event_for_tools")
+    def test_a_non_mapping_event_is_only_checked_for_retraction(self, mock_process):
+        acc = _SilentAccumulators()
+
+        _accumulate_silent_custom_event("a bare progress string", acc)
+
+        mock_process.assert_not_called()
+        assert acc.entries == []
+        assert acc.todo_progress == {}
 
 
 # ---------------------------------------------------------------------------

@@ -147,7 +147,7 @@ class TestToolsEndpoints:
         # Verify the service was called with the test user's ID (not None or empty)
         mock_get_tools.assert_awaited_once()
         call_kwargs = mock_get_tools.call_args
-        assert call_kwargs.kwargs.get("user_id") == str(test_user["user_id"])
+        assert call_kwargs.kwargs.get("user_id") == str(test_user.user_id)
 
     @patch(_PATCH_GET_AVAILABLE_TOOLS, new_callable=AsyncMock)
     async def test_list_tools_returns_full_service_result(self, mock_get_tools, test_client):
@@ -467,7 +467,7 @@ class TestMCPToolMerge:
         assert response.status_code == 200
         mock_get_tools.assert_awaited_once()
         call_kwargs = mock_get_tools.call_args
-        assert call_kwargs.kwargs.get("user_id") == str(test_user["user_id"]), (
+        assert call_kwargs.kwargs.get("user_id") == str(test_user.user_id), (
             "user_id not forwarded to get_available_tools — user-specific MCP tools won't be fetched"
         )
 

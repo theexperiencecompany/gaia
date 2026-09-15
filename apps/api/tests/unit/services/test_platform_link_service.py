@@ -3,7 +3,7 @@
 The service now delegates persistence to user_repository (link/unlink/lookup
 behaviour against real Mongo is covered by the UserRepository contract tests).
 These tests mock the repository singleton and cover the service's own logic:
-conflict detection, profile assembly, the legacy dict it returns to bot consumers,
+conflict detection, profile assembly, the user document it returns to bot consumers,
 and the get_linked_platforms filtering.
 """
 
@@ -99,24 +99,6 @@ class TestPlatform:
 
     def test_values_returns_all_platforms(self):
         assert set(Platform.values()) == {"discord", "imessage", "slack", "telegram", "whatsapp"}
-
-
-class TestGetUserByPlatformId:
-    async def test_finds_user_returns_legacy_dict(self, mock_repo, sample_user_id):
-        mock_repo.get_by_platform_id.return_value = _user(
-            id=sample_user_id, platform_links={"discord": {"id": "discord123"}}
-        )
-
-        result = await PlatformLinkService.get_user_by_platform_id("discord", "discord123")
-
-        assert result is not None
-        assert result["email"] == "test@example.com"
-        assert result["_id"] == sample_user_id  # string id for bot consumers
-        mock_repo.get_by_platform_id.assert_awaited_once_with("discord", "discord123")
-
-    async def test_returns_none_when_not_found(self, mock_repo):
-        mock_repo.get_by_platform_id.return_value = None
-        assert await PlatformLinkService.get_user_by_platform_id("slack", "nope") is None
 
 
 class TestLinkAccount:

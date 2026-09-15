@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Annotated
 
@@ -267,15 +267,10 @@ class TodoSearchParams(BaseModel):
     include_stats: bool = Field(default=False)
 
 
-class TodoListQuery(BaseModel):
-    """Flattened query params for ``GET /todos`` (bound via ``Depends()``).
+class TodoListParams(BaseModel):
+    """The query string of GET /todos, bound with Depends() so each field is its own param."""
 
-    Bound as a dependency, not ``Query()``: FastAPI does not flatten
-    query-models through ``include_router``, so a ``Query()``-bound model
-    422s every request expecting a JSON body. ``Depends()`` binds each
-    field as its own flattened query param (same wire as the individual
-    ``Query()`` params it replaces).
-    """
+    model_config = ConfigDict(frozen=True)
 
     q: str | None = Field(default=None, description="Search query")
     mode: SearchMode = Field(
@@ -294,6 +289,51 @@ class TodoListQuery(BaseModel):
     page: int = Field(default=1, ge=1, le=MAX_PAGE_NUMBER)
     per_page: int = Field(default=50, ge=1, le=100)
     include_stats: bool = Field(default=False, description="Include statistics in response")
+
+    @property
+    def filters_applied(self) -> list[str]:
+        applied = (
+            ("query", bool(self.q)),
+            ("project", bool(self.project_id)),
+            ("completed", self.completed is not None),
+            ("priority", bool(self.priority)),
+            ("labels", bool(self.labels)),
+            ("due_today", self.due_today),
+            ("due_this_week", self.due_this_week),
+            ("date_range", bool(self.due_after or self.due_before)),
+        )
+        return [name for name, is_applied in applied if is_applied]
+
+    def to_search_params(self) -> TodoSearchParams:
+        """Build the service-level search with due_today and due_this_week resolved.
+
+        Those flags become a concrete due-date range that overrides due_after and due_before.
+        """
+        due_after, due_before = self.due_after, self.due_before
+        if self.due_today:
+            today = datetime.now(UTC).date()
+            due_after = datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
+            due_before = datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
+        elif self.due_this_week:
+            now = datetime.now(UTC)
+            due_after = now
+            due_before = now + timedelta(days=7)
+
+        return TodoSearchParams(
+            q=self.q,
+            mode=self.mode,
+            project_id=self.project_id,
+            completed=self.completed,
+            priority=self.priority,
+            has_due_date=self.has_due_date,
+            overdue=self.overdue,
+            due_date_start=due_after,
+            due_date_end=due_before,
+            labels=self.labels,
+            page=self.page,
+            per_page=self.per_page,
+            include_stats=self.include_stats,
+        )
 
 
 # Bulk operations

@@ -15,11 +15,12 @@ conversation. TTL of 30 minutes is a safety net — released explicitly.
 
 from dataclasses import dataclass, replace
 import time
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 from langsmith import traceable
+from pydantic import BaseModel, ConfigDict
 
 from app.agents.core.background.bg_results import has_bg_subagent_results
 from app.agents.core.background.comms_narrator import record_executor_cancellation
@@ -58,7 +59,7 @@ from app.constants.executor import (
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS, HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
-from app.models.agent_models import AgentConfigurable
+from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import ToolDataEntry
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.hil.approvals_store import (
@@ -112,7 +113,7 @@ async def run_executor_background(
         # Surface the turn came from, carried so auxiliary calls inside this run
         # (handed a bare config) can still name it — without it a web turn is
         # metered as "system", undercounting COGS exactly where it matters most.
-        conversation_source=configurable.get("conversation_source"),
+        conversation_source=AgentConfigurableView.model_validate(configurable).conversation_source,
         # The workflow run this executor is part of; the workflow task stamped it
         # on ITS boundary, this one is fresh. Without it every model call lands in
         # the ledger with no execution, so "what did this run cost" reads only comms.
@@ -133,7 +134,7 @@ async def run_executor_background(
         active_ms: float | None = None
 
         # One lifecycle event per run segment; a resumed run re-enters here.
-        executor_user_id = run.user.get("user_id", "")
+        executor_user_id = run.user.user_id
         run_props = _run_props(run)
         if executor_user_id:
             capture_event(executor_user_id, AnalyticsEvents.AGENT_RUN_STARTED, run_props)
@@ -184,9 +185,9 @@ async def run_executor_background(
                 await release_resume_dispatch(run.conversation_id)
 
 
-def _run_props(run: ExecutorRun) -> dict[str, Any]:
+def _run_props(run: ExecutorRun) -> dict[str, str]:
     """Build the lifecycle props shared by the start and terminal events."""
-    props: dict[str, Any] = {
+    props: dict[str, str] = {
         "agent": "executor",
         "mode": "background",
         "conversation_id": run.conversation_id,
@@ -243,13 +244,13 @@ def _active_status(result_type: str, cancelled: bool) -> str:
 def _capture_executor_terminal(
     run: ExecutorRun,
     *,
-    run_props: dict[str, Any],
+    run_props: dict[str, str],
     queued: bool,
     timing_fields: dict[str, float],
     result_type: str,
 ) -> None:
     """Emit the run's terminal lifecycle event with its measured timings."""
-    user_id = run.user.get("user_id", "")
+    user_id = run.user.user_id
     if not user_id or result_type not in ("final", "error"):
         return
     event = (
@@ -325,14 +326,28 @@ class _ExecutorResult(NamedTuple):
     paused_on: tuple[str, ...] = ()
 
 
-def _paused_approval_ids(payload: dict[str, Any]) -> tuple[str, ...]:
+class _PauseInterrupt(BaseModel):
+    """The approval ids a subagent's interrupt payload carries.
+
+    Both are ``object``: the payload is the gate's raw interrupt value, and the
+    reader below keeps its own guards (a non-list batch is ignored, a single id
+    is stringified) rather than letting validation reject a pause outright.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    approval_ids: object = None
+    approval_id: object = ""
+
+
+def _paused_approval_ids(interrupt: _PauseInterrupt) -> tuple[str, ...]:
     """Approval ids from an interrupt payload — batch shape first, then single."""
-    batch = payload.get("approval_ids")
+    batch = interrupt.approval_ids
     if isinstance(batch, list):
         ids = tuple(str(a) for a in batch if a)
         if ids:
             return ids
-    single = str(payload.get("approval_id", ""))
+    single = str(interrupt.approval_id)
     return (single,) if single else ()
 
 
@@ -368,7 +383,9 @@ async def _execute_executor(
         writer = make_redis_stream_writer(stream_id)
         outcome = await execute_subagent_stream(ctx=ctx, stream_writer=writer, resume=resume)
         if outcome.paused:
-            approval_ids = _paused_approval_ids(outcome.interrupt or {})
+            approval_ids = _paused_approval_ids(
+                _PauseInterrupt.model_validate(outcome.interrupt or {})
+            )
             if not approval_ids:
                 # Unresumable: nothing can ever re-dispatch this thread. Fail the
                 # run loudly rather than leave the conversation's lock held.
@@ -510,10 +527,10 @@ async def _queue_collection_if_uncollected(run: ExecutorRun, task: str) -> None:
             await enqueue_collection_run(
                 run.conversation_id,
                 {
-                    "user_id": run.user.get("user_id", ""),
-                    "email": run.user.get("email", ""),
-                    "user_name": run.user.get("name", ""),
-                    "user_timezone": run.user.get("timezone"),
+                    "user_id": run.user.user_id,
+                    "email": run.user.email or "",
+                    "user_name": run.user.name or "",
+                    "user_timezone": run.user.timezone,
                 },
                 workflow_execution_id=run.workflow_execution_id,
             )

@@ -6,7 +6,9 @@ tracked todos. Follows the same pattern as todo_vector_utils.py.
 """
 
 from datetime import UTC, datetime
-from typing import Any, TypedDict
+from typing import TypedDict
+
+from pydantic import BaseModel, ConfigDict
 
 from app.constants.chroma import CHROMA_CANVAS_COLLECTION
 from app.constants.log_tags import LogTag
@@ -14,6 +16,34 @@ from app.db.chroma.chromadb import ChromaClient
 from shared.py.wide_events import log
 
 COLLECTION_NAME = CHROMA_CANVAS_COLLECTION
+
+
+class CanvasIndexMetadata(BaseModel):
+    """The Chroma metadata stored with a canvas embedding.
+
+    ``extra="allow"`` because :func:`mark_canvas_completed` reads a stored row
+    and writes it back whole — a key this model does not declare must survive
+    the round trip rather than be stripped.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    user_id: str = ""
+    todo_id: str = ""
+    title: str = ""
+    updated_at: str = ""
+    completed: bool = False
+    labels: str | None = None
+    completed_at: str | None = None
+    revision: str | None = None
+
+
+class _StoredCanvasRows(BaseModel):
+    """The ``metadatas`` column of a chromadb ``GetResult`` — the only part read here."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    metadatas: list[CanvasIndexMetadata | None] | None = None
 
 
 class CanvasSearchMatch(TypedDict):
@@ -40,21 +70,18 @@ async def store_canvas_embedding(
             collection_name=COLLECTION_NAME, create_if_not_exists=True
         )
 
-        metadata = {
-            "user_id": str(user_id),
-            "todo_id": str(todo_id),
-            "title": title,
-            "updated_at": datetime.now(UTC).isoformat(),
-            "completed": False,
-        }
-        if labels:
-            metadata["labels"] = ", ".join(labels)
-        if revision is not None:
-            metadata["revision"] = revision
+        metadata = CanvasIndexMetadata(
+            user_id=str(user_id),
+            todo_id=str(todo_id),
+            title=title,
+            updated_at=datetime.now(UTC).isoformat(),
+            labels=", ".join(labels) if labels else None,
+            revision=revision,
+        )
 
         await chroma_collection.aadd_texts(
             texts=[canvas_content],
-            metadatas=[metadata],
+            metadatas=[metadata.model_dump(exclude_none=True)],
             ids=[f"canvas_{todo_id}"],
         )
         return True
@@ -87,11 +114,10 @@ async def update_canvas_embedding(
         raw_client = await ChromaClient.get_client()
         collection = await raw_client.get_collection(COLLECTION_NAME)
         existing = await collection.get(ids=[f"canvas_{todo_id}"], include=["metadatas"])
-        metadatas = existing.get("metadatas") if existing else None
+        metadatas = _StoredCanvasRows.model_validate(existing).metadatas if existing else None
         if metadatas and metadatas[0]:
-            was_completed = bool(metadatas[0].get("completed", False))
-            raw_revision = metadatas[0].get("revision")
-            stored_revision = str(raw_revision) if raw_revision is not None else None
+            was_completed = metadatas[0].completed
+            stored_revision = metadatas[0].revision
     except Exception as e:
         log.debug("canvas.preserve_completed_metadata_failed", todo_id=todo_id, error=str(e))
 
@@ -143,17 +169,20 @@ async def mark_canvas_completed(todo_id: str) -> bool:
         collection = await raw_client.get_collection(COLLECTION_NAME)
 
         existing = await collection.get(ids=[doc_id], include=["metadatas"])
-        if not existing or not existing["metadatas"]:
+        metadatas = _StoredCanvasRows.model_validate(existing).metadatas if existing else None
+        if not metadatas:
             return False
 
-        # Value type is inferred from chromadb's own Metadata alias rather than
-        # restated here; chromadb 1.5.x widened it (SparseVector, list values) and a
-        # hand-written union silently goes stale on the next widening.
-        metadata = dict(existing["metadatas"][0])
-        metadata["completed"] = True
-        metadata["completed_at"] = datetime.now(UTC).isoformat()
+        stored = metadatas[0]
+        if stored is None:
+            return False
+        metadata = stored.model_copy(
+            update={"completed": True, "completed_at": datetime.now(UTC).isoformat()}
+        )
 
-        await collection.update(ids=[doc_id], metadatas=[metadata])
+        # exclude_unset: the row goes back exactly as stored plus the two stamps
+        # — a key the stored row never had must not be invented as a default.
+        await collection.update(ids=[doc_id], metadatas=[metadata.model_dump(exclude_unset=True)])
         return True
     except Exception as e:
         log.warning("canvas.mark_completed_failed", todo_id=todo_id, error=str(e))
@@ -173,7 +202,7 @@ async def search_canvas_context(
         )
 
         if include_completed:
-            where_filter: dict[str, Any] = {"user_id": str(user_id)}
+            where_filter: dict[str, object] = {"user_id": str(user_id)}
         else:
             where_filter = {
                 "$and": [
@@ -190,14 +219,16 @@ async def search_canvas_context(
 
         matches: list[CanvasSearchMatch] = []
         for doc, score in results:
-            meta = doc.metadata if hasattr(doc, "metadata") else {}
+            meta = CanvasIndexMetadata.model_validate(
+                doc.metadata if hasattr(doc, "metadata") else {}
+            )
             matches.append(
                 {
-                    "todo_id": meta.get("todo_id", ""),
-                    "title": meta.get("title", ""),
+                    "todo_id": meta.todo_id,
+                    "title": meta.title,
                     "score": round(score, 3),
                     "snippet": doc.page_content[:500] if hasattr(doc, "page_content") else "",
-                    "completed": meta.get("completed", False),
+                    "completed": meta.completed,
                 }
             )
         return matches

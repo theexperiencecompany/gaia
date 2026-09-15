@@ -1,10 +1,12 @@
 import asyncio
 import time
-from typing import Annotated, Any, TypedDict, cast
+from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
+from langgraph.types import StreamWriter
+from pydantic import BaseModel, ConfigDict
 
 from app.constants.cache import ONE_HOUR_TTL
 from app.constants.log_tags import LogTag
@@ -23,30 +25,37 @@ from app.templates.docstrings.research_tool_docs import (
 from app.utils.chat_utils import get_user_id_from_config
 from app.utils.crawl4ai_utils import batch_fetch_with_crawl4ai
 from app.utils.research_utils import (
+    RankedUrl,
     build_research_cache_key,
     decompose_research_queries,
     rank_and_deduplicate_urls,
 )
 from app.utils.search import search_for_research
+from app.utils.search.models import ResearchSearchResult
 from app.utils.webpage_fetch import fetch_with_httpx
 from shared.py.wide_events import log
 
 
-class ResearchResult(TypedDict):
-    """The research_data frame — also what gets cached and what the tool
-    returns (plus cached/instructions, added per call site).
+class ResearchSource(RankedUrl):
+    """One ranked source with the fetched page layered on — a sources entry."""
 
-    sources entries stay open dicts: each one is a ranked-URL record from
-    rank_and_deduplicate_urls (built by spreading a search provider's own
-    result item) with content/fetch_error layered on, so the provider —
-    not this module — owns their shape.
-    """
+    model_config = ConfigDict(extra="forbid")
+
+    content: str | None
+    fetch_error: str | None
+
+
+class ResearchResult(BaseModel):
+    """The research_data frame — also what gets cached and what the tool
+    returns (plus cached/instructions, added per call site)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     query: str
     scope: str
     focus_areas: list[str]
     sub_queries: list[str]
-    sources: list[dict[str, Any]]
+    sources: list[ResearchSource]
     source_count: int
     authoritative_urls: list[str]
     depth: int
@@ -56,9 +65,117 @@ class ResearchResult(TypedDict):
     integrity_note: str
 
 
-# The return stays dict[str, Any]: the five exit branches return genuinely
-# different key sets (Type Safety item 14). ResearchResult above names the
-# one branch that is fully built here.
+_INTEGRITY_NOTE = (
+    "All URLs in `sources` and `authoritative_urls` were returned by real search "
+    "queries. Only cite URLs from this list; never invent or guess URLs."
+)
+
+
+async def _run_searches(
+    sub_queries: list[str], writer: StreamWriter
+) -> list[ResearchSearchResult | BaseException]:
+    """Every sub-query searched in parallel; a failed search rides along as its exception."""
+    writer({"progress": f"Running {len(sub_queries)} parallel searches..."})
+
+    async def _resilient_search(q: str) -> ResearchSearchResult:
+        # search_for_research is @Cacheable-wrapped, which types its return
+        # Awaitable[Any] (app/decorators/caching.py); parsed back into the
+        # wrapped function's own declared return here.
+        return ResearchSearchResult.model_validate(await search_for_research(q, count=5))
+
+    search_results = await asyncio.gather(
+        *[_resilient_search(q) for q in sub_queries],
+        return_exceptions=True,
+    )
+
+    non_empty = [r for r in search_results if isinstance(r, ResearchSearchResult) and r.results]
+    total_raw_urls = sum(len(r.results) for r in non_empty)
+    writer(
+        {
+            "progress": (
+                f"{len(non_empty)}/{len(sub_queries)} searches returned results "
+                f"({total_raw_urls} total URLs before deduplication)"
+            )
+        }
+    )
+    return search_results
+
+
+async def _fetch_sources(
+    ranked_urls: list[RankedUrl], query: str, writer: StreamWriter
+) -> list[ResearchSource]:
+    """Batch crawl4ai fetch, then per-URL httpx and search-snippet fallbacks."""
+    writer({"progress": "Fetching sources..."})
+    urls_to_fetch = [u.url for u in ranked_urls]
+    crawl4ai_contents, crawl4ai_errors = await batch_fetch_with_crawl4ai(
+        urls_to_fetch,
+        page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
+        total_timeout_seconds=DEEP_RESEARCH_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
+        semaphore_count=DEEP_RESEARCH_CRAWL4AI_SEMAPHORE_COUNT,
+        context_name="crawl4ai",
+        content_query=query,
+    )
+
+    semaphore = asyncio.Semaphore(DEEP_RESEARCH_FALLBACK_SEMAPHORE_COUNT)
+    fetch_counter = 0
+    total_urls = len(ranked_urls)
+
+    def _source(
+        url_info: RankedUrl, content: str | None, fetch_error: str | None
+    ) -> ResearchSource:
+        return ResearchSource(
+            **url_info.model_dump(mode="json"),  # pragma: no mutate -- RankedUrl is all primitives
+            content=content,
+            fetch_error=fetch_error,
+        )
+
+    async def _bounded_fetch(url_info: RankedUrl) -> ResearchSource:
+        nonlocal fetch_counter
+        async with semaphore:
+            url = url_info.url
+            errors: list[str] = []
+
+            batch_content = crawl4ai_contents.get(url)
+            if batch_content and batch_content.strip():
+                fetch_counter += 1
+                writer({"progress": f"Fetched source {fetch_counter}/{total_urls}..."})
+                return _source(url_info, batch_content, None)
+
+            crawl_error = crawl4ai_errors.get(url)
+            if crawl_error:
+                errors.append(f"crawl4ai: {crawl_error}")
+            else:
+                errors.append("crawl4ai: returned no content")
+
+            # Tier 2: httpx + BeautifulSoup (always available)
+            try:
+                content = await fetch_with_httpx(url)
+                fetch_counter += 1
+                writer({"progress": f"Fetched source {fetch_counter}/{total_urls}..."})
+                return _source(url_info, content, None)
+            except Exception as e:
+                errors.append(f"httpx: {e}")
+
+            # Tier 3: fall back to search snippet
+            fetch_counter += 1
+            snippet = url_info.snippet.strip()
+            if snippet:
+                log.warning(f"{LogTag.TOOL} All fetchers failed, using search snippet", url=url)
+                return _source(
+                    url_info,
+                    f"[Snippet only: full page unavailable]\n\n{snippet}",
+                    "; ".join(errors),
+                )
+            log.warning(
+                f"{LogTag.TOOL} All fetchers failed and no snippet to fall back on",
+                url=url,
+                error="; ".join(errors),
+            )
+            return _source(url_info, None, "; ".join(errors))
+
+    return await asyncio.gather(*[_bounded_fetch(u) for u in ranked_urls])
+
+
 @tool
 @with_rate_limiting("deep_research")
 @with_doc(DEEP_RESEARCH)
@@ -77,7 +194,10 @@ async def deep_research(
         list[str] | None,
         "Specific subtopics or aspects to prioritize (e.g. ['performance', 'cost', 'adoption'])",
     ] = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
+    # The return is an open JSON object, not a model: the exit branches return
+    # different key sets, the cache-hit branch spreads a Redis-deserialized
+    # payload, and a LangChain tool serializes a dict (not a model) as JSON.
     log.set(tool={"name": "deep_research", "action": "research"})
     focus_areas = focus_areas or []
     user_id = get_user_id_from_config(config)
@@ -97,7 +217,7 @@ async def deep_research(
 
     # ── Phase 0: Full-result cache check ────────────────────────────────────
     cache_key = build_research_cache_key(query, scope, focus_areas, depth)
-    cached_result: dict[str, Any] | None = await get_cache(cache_key)
+    cached_result: dict[str, object] | None = await get_cache(cache_key)
     if cached_result:
         writer({"progress": "Loaded research from cache!"})
         writer({"research_data": cached_result})
@@ -120,39 +240,11 @@ async def deep_research(
         )
 
         # ── Phase 2: Parallel searches ────────────────────────────────────────
-        writer({"progress": f"Running {len(sub_queries)} parallel searches..."})
-
-        async def _resilient_search(q: str) -> dict[str, Any]:
-            # search_for_research is @Cacheable-wrapped, which types its return
-            # Awaitable[Any] (app/decorators/caching.py); the wrapped function's
-            # own declared return is dict[str, Any].
-            return cast("dict[str, Any]", await search_for_research(q, count=5))
-
-        search_results = await asyncio.gather(
-            *[_resilient_search(q) for q in sub_queries],
-            return_exceptions=True,
-        )
-
-        successful_searches = sum(
-            1 for r in search_results if isinstance(r, dict) and r.get("results")
-        )
-        total_raw_urls = sum(
-            len(r.get("results", []))
-            for r in search_results
-            if isinstance(r, dict) and r.get("results")
-        )
-        writer(
-            {
-                "progress": (
-                    f"{successful_searches}/{len(sub_queries)} searches returned results "
-                    f"({total_raw_urls} total URLs before deduplication)"
-                )
-            }
-        )
+        search_results = await _run_searches(sub_queries, writer)
 
         # ── Phase 3: Deduplicate + rank URLs ────────────────────────────────
         ranked_urls = rank_and_deduplicate_urls(search_results, max_urls=max_sources)
-        found_urls = [u["url"] for u in ranked_urls]
+        found_urls = [u.url for u in ranked_urls]
         writer(
             {
                 "progress": f"Found {len(ranked_urls)} unique sources, fetching full content...",
@@ -174,64 +266,9 @@ async def deep_research(
             }
 
         # ── Phase 4: Batch crawl4ai fetch + bounded fallback fetches ─────────
-        writer({"progress": "Fetching sources..."})
-        urls_to_fetch = [u["url"] for u in ranked_urls]
-        crawl4ai_contents, crawl4ai_errors = await batch_fetch_with_crawl4ai(
-            urls_to_fetch,
-            page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
-            total_timeout_seconds=DEEP_RESEARCH_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
-            semaphore_count=DEEP_RESEARCH_CRAWL4AI_SEMAPHORE_COUNT,
-            context_name="crawl4ai",
-            content_query=query,
-        )
+        sources = await _fetch_sources(ranked_urls, query, writer)
 
-        semaphore = asyncio.Semaphore(DEEP_RESEARCH_FALLBACK_SEMAPHORE_COUNT)
-        fetch_counter = 0
-        total_urls = len(ranked_urls)
-
-        async def _bounded_fetch(url_info: dict[str, Any]) -> dict[str, Any]:
-            nonlocal fetch_counter
-            async with semaphore:
-                url = url_info["url"]
-                errors: list[str] = []
-
-                batch_content = crawl4ai_contents.get(url)
-                if batch_content and batch_content.strip():
-                    fetch_counter += 1
-                    writer({"progress": f"Fetched source {fetch_counter}/{total_urls}..."})
-                    return {**url_info, "content": batch_content, "fetch_error": None}
-
-                crawl_error = crawl4ai_errors.get(url)
-                if crawl_error:
-                    errors.append(f"crawl4ai: {crawl_error}")
-                else:
-                    errors.append("crawl4ai: returned no content")
-
-                # Tier 2: httpx + BeautifulSoup (always available)
-                try:
-                    content = await fetch_with_httpx(url)
-                    fetch_counter += 1
-                    writer({"progress": f"Fetched source {fetch_counter}/{total_urls}..."})
-                    return {**url_info, "content": content, "fetch_error": None}
-                except Exception as e:
-                    errors.append(f"httpx: {e}")
-
-                # Tier 3: fall back to search snippet
-                fetch_counter += 1
-                snippet = url_info.get("snippet", "").strip()
-                if snippet:
-                    log.warning(f"{LogTag.TOOL} All fetchers failed, using search snippet", url=url)
-                    return {
-                        **url_info,
-                        "content": f"[Snippet only: full page unavailable]\n\n{snippet}",
-                        "fetch_error": "; ".join(errors),
-                    }
-                return {**url_info, "content": None, "fetch_error": "; ".join(errors)}
-
-        fetch_tasks = [_bounded_fetch(u) for u in ranked_urls]
-        sources: list[dict[str, Any]] = await asyncio.gather(*fetch_tasks, return_exceptions=False)
-
-        valid_sources = [s for s in sources if s.get("content")]
+        valid_sources = [s for s in sources if s.content]
         failed_count = len(sources) - len(valid_sources)
 
         elapsed = round(time.time() - start_time, 2)
@@ -246,24 +283,21 @@ async def deep_research(
 
         # ── Build result ─────────────────────────────────────────────────────
         # Include the authoritative list of real URLs so the LLM cannot fabricate others
-        authoritative_urls = [s["url"] for s in valid_sources]
-        result: ResearchResult = {
-            "query": query,
-            "scope": scope,
-            "focus_areas": focus_areas,
-            "sub_queries": sub_queries,
-            "sources": valid_sources,
-            "source_count": len(valid_sources),
-            "authoritative_urls": authoritative_urls,
-            "depth": depth,
-            "elapsed_seconds": elapsed,
-            "failed_sources": failed_count,
-            "error": None,
-            "integrity_note": (
-                "All URLs in `sources` and `authoritative_urls` were returned by real search "
-                "queries. Only cite URLs from this list; never invent or guess URLs."
-            ),
-        }
+        research = ResearchResult(
+            query=query,
+            scope=scope,
+            focus_areas=focus_areas,
+            sub_queries=sub_queries,
+            sources=valid_sources,
+            source_count=len(valid_sources),
+            authoritative_urls=[s.url for s in valid_sources],
+            depth=depth,
+            elapsed_seconds=elapsed,
+            failed_sources=failed_count,
+            error=None,
+            integrity_note=_INTEGRITY_NOTE,
+        )
+        result = research.model_dump(mode="json")  # pragma: no mutate -- every field is JSON-native
 
         # Only cache when we have content — avoid masking transient fetch failures
         if valid_sources:

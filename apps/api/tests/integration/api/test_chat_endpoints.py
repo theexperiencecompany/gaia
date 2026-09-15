@@ -500,7 +500,7 @@ class TestCancelStreamEndpoint:
     ):
         """POST /api/v1/cancel-stream/{id} should return 200 with success=True."""
         mock_get_progress.return_value = {
-            "user_id": test_user["user_id"],
+            "user_id": test_user.user_id,
             "conversation_id": "conv-abc",
         }
         mock_cancel.return_value = True

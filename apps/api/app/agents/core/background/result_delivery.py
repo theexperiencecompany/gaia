@@ -22,6 +22,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 from langsmith import traceable
+from pydantic import BaseModel, ConfigDict
 
 from app.agents.core.background.comms_narrator import (
     narrate_executor_result,
@@ -175,7 +176,7 @@ async def deliver_message_to_conversation(
     """
     if not text.strip():
         return None
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     bot_message = MessageModel(type="bot", response=text, date=datetime.now(UTC).isoformat())
     bot_message.message_id = str(uuid4())
 
@@ -237,7 +238,7 @@ async def _narrate_and_deliver(
     Returns (narrated_text, message_id) of the saved bot message, or
     (None, None) if it could not be saved.
     """
-    user_id = run.user.get("user_id", "")
+    user_id = run.user.user_id
 
     notification_text = await _narrate_result(run, result_text, result_type, returned_note)
 
@@ -423,7 +424,7 @@ async def _attach_reply_quote(
     show_reply_quote = run.is_queued and not is_hil_resume and bool(run.user_message_id)
     if show_reply_quote:
         user_msg_content = await _lookup_user_message_content(
-            run.conversation_id, run.user_message_id, run.user.get("user_id", "")
+            run.conversation_id, run.user_message_id, run.user.user_id
         )
         bot_message.replyToMessage = ReplyToMessageData(
             id=run.user_message_id,
@@ -542,7 +543,7 @@ async def _merge_resumed_result(
     _persist_follow_up_actions also guards against). Returns the FULL merged
     tool_data, since the WebSocket push replaces the client's message wholesale.
     """
-    user_id = run.user.get("user_id", "")
+    user_id = run.user.user_id
     message_id = bot_message.message_id
     existing = await conversation_repository.get_message(
         run.conversation_id, message_id, user_id=user_id
@@ -617,7 +618,7 @@ async def _approval_outcomes_note(run: ExecutorRun) -> str:
         return ""
     try:
         message = await conversation_repository.get_message(
-            run.conversation_id, run.bot_message_id, user_id=run.user.get("user_id", "")
+            run.conversation_id, run.bot_message_id, user_id=run.user.user_id
         )
     except Exception as e:
         log.warning(f"{LogTag.AGENT} _approval_outcomes_note: message lookup failed", error=str(e))
@@ -642,12 +643,25 @@ async def _approval_outcomes_note(run: ExecutorRun) -> str:
     )
 
 
+class _ApprovalFrameData(BaseModel):
+    """The ``data`` keys of an ``approval_request`` tool_data entry delivery reads.
+
+    ``object``: the frame is emitter-owned JSON, so the readers below keep their
+    own guards instead of letting validation reject a malformed card.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    approval_id: object = None
+    status: object = None
+
+
 def _approval_id(entry: ToolDataEntry) -> str | None:
     if entry.get("tool_name") != APPROVAL_REQUEST_TOOL_NAME:
         return None
     data = entry.get("data")
     if isinstance(data, dict):
-        approval_id = data.get("approval_id")
+        approval_id = _ApprovalFrameData.model_validate(data).approval_id
         return approval_id if isinstance(approval_id, str) else None
     return None
 
@@ -664,7 +678,10 @@ def _merge_tool_data(
 
     def _is_settled(entry: ToolDataEntry) -> bool:
         data = entry.get("data")
-        return isinstance(data, dict) and data.get("status") in _SETTLED_APPROVAL_STATUSES
+        return (
+            isinstance(data, dict)
+            and _ApprovalFrameData.model_validate(data).status in _SETTLED_APPROVAL_STATUSES
+        )
 
     merged = list(existing)
     index_by_approval = {
@@ -693,6 +710,7 @@ async def _reconcile_approval_statuses(entries: list[ToolDataEntry]) -> list[Too
     hil_approvals record is the single source of truth; read it.
     """
     reconciled: list[ToolDataEntry] = []
+    entry: ToolDataEntry
     for entry in entries:
         approval_id = _approval_id(entry)
         data = entry.get("data")
@@ -965,7 +983,7 @@ async def _broadcast_bot_message(
     )
 
 
-async def _broadcast_message(user_id: str, ws_event: dict[str, Any]) -> None:
+async def _broadcast_message(user_id: str, ws_event: dict[str, object]) -> None:
     """Best-effort WebSocket broadcast with one retry."""
     for attempt in range(2):
         try:

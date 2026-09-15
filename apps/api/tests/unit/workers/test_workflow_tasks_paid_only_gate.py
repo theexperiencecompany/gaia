@@ -281,7 +281,7 @@ class TestTheGateNeverDestroys:
             context = {"trigger_type": "schedule"}
             await execute_workflow_by_id({}, workflow.id, context)
 
-        rearm.assert_awaited_once_with(scheduler, workflow, context, workflow.id)
+        rearm.assert_awaited_once_with(scheduler, workflow, "schedule", workflow.id)
 
     async def test_a_skipped_manual_run_does_not_shift_the_schedule(self) -> None:
         workflow = _make_workflow(user_id="user-free-5")

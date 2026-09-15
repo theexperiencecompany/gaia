@@ -13,7 +13,7 @@ Custom tools:
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
-from typing import Any
+from dataclasses import dataclass
 
 from composio import Composio
 from composio.types import ExecuteRequestFn
@@ -22,6 +22,13 @@ from langgraph.config import get_stream_writer
 from app.constants.log_tags import LogTag
 from app.decorators.documentation import with_doc
 from app.models.common_models import GatherContextInput
+from app.models.integrations.composio import CustomToolAuthCredentials
+from app.models.integrations.twitter import (
+    TwitterTimelineResponse,
+    TwitterUser,
+    TwitterUserPublicMetrics,
+    TwitterUserResponse,
+)
 from app.models.twitter_models import (
     BatchFollowInput,
     BatchUnfollowInput,
@@ -50,11 +57,40 @@ from app.utils.twitter_utils import (
 from shared.py.wide_events import log
 
 
-def _user_id(auth_credentials: dict[str, Any]) -> str:
-    user_id = auth_credentials.get("user_id")
-    if not isinstance(user_id, str) or not user_id:
-        raise ValueError("Missing user_id in auth_credentials")
-    return user_id
+def _user_id(auth_credentials: dict[str, object]) -> str:
+    return CustomToolAuthCredentials.parse(auth_credentials).user_id
+
+
+def _public_metrics(metrics: TwitterUserPublicMetrics | None) -> dict[str, object]:
+    """A user's metrics for the stream; empty when X did not expand them."""
+    # integer counts only: python and json dumps are identical
+    return metrics.model_dump(mode="json") if metrics else {}  # pragma: no mutate
+
+
+@dataclass(slots=True, frozen=True)
+class _FollowTarget:
+    """One account a batch follow/unfollow acts on; username is set when resolved from a handle."""
+
+    user_id: str
+    username: str | None = None
+
+
+def _resolve_targets(
+    user_id: str,
+    request: BatchFollowInput | BatchUnfollowInput,
+    results: list[dict[str, object]],
+) -> tuple[list[_FollowTarget], int]:
+    """Targets for the batch, appending a failed result per unknown handle; returns the failure count."""
+    targets = [_FollowTarget(user_id=uid) for uid in request.user_ids or []]
+    failed_count = 0
+    for username in request.usernames or []:
+        user_data = lookup_user_by_username(user_id, username)
+        if user_data:
+            targets.append(_FollowTarget(user_id=user_data.id, username=user_data.username))
+        else:
+            results.append({"username": username, "success": False, "error": "User not found"})
+            failed_count += 1
+    return targets, failed_count
 
 
 def register_twitter_custom_tools(composio: Composio) -> list[str]:
@@ -65,8 +101,8 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_BATCH_FOLLOW(
         request: BatchFollowInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Follow multiple Twitter users at once."""
         del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
@@ -79,60 +115,29 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
         if not request.usernames and not request.user_ids:
             raise ValueError("Either usernames or user_ids must be provided")
 
-        results: list[dict[str, Any]] = []
+        results: list[dict[str, object]] = []
         success_count = 0
-        failed_count = 0
+        targets, failed_count = _resolve_targets(user_id, request, results)
 
-        user_ids_to_process: list[dict[str, Any]] = []
-
-        if request.user_ids:
-            for uid in request.user_ids:
-                user_ids_to_process.append({"user_id": uid, "username": None})
-
-        if request.usernames:
-            for username in request.usernames:
-                user_data = lookup_user_by_username(user_id, username)
-                if user_data and user_data.get("id"):
-                    user_ids_to_process.append(
-                        {
-                            "user_id": user_data["id"],
-                            "username": user_data.get("username"),
-                            "name": user_data.get("name"),
-                        }
-                    )
-                else:
-                    results.append(
-                        {
-                            "username": username,
-                            "success": False,
-                            "error": "User not found",
-                        }
-                    )
-                    failed_count += 1
-
-        total = len(user_ids_to_process)
+        total = len(targets)
         if writer is not None:
             writer({"progress": f"Following {total} users..."})
 
-        for i, user_info in enumerate(user_ids_to_process):
-            result = follow_user(user_id, my_user_id, user_info["user_id"])
+        for i, target in enumerate(targets):
+            result = follow_user(user_id, my_user_id, target.user_id)
 
-            if result["success"]:
+            if result.success:
                 results.append(
-                    {
-                        "user_id": user_info["user_id"],
-                        "username": user_info.get("username"),
-                        "success": True,
-                    }
+                    {"user_id": target.user_id, "username": target.username, "success": True}
                 )
                 success_count += 1
             else:
                 results.append(
                     {
-                        "user_id": user_info["user_id"],
-                        "username": user_info.get("username"),
+                        "user_id": target.user_id,
+                        "username": target.username,
                         "success": False,
-                        "error": result.get("error"),
+                        "error": result.error,
                     }
                 )
                 failed_count += 1
@@ -154,8 +159,8 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_BATCH_UNFOLLOW(
         request: BatchUnfollowInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Unfollow multiple Twitter users at once. DESTRUCTIVE - requires user consent."""
         del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
@@ -168,59 +173,29 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
         if not request.usernames and not request.user_ids:
             raise ValueError("Either usernames or user_ids must be provided")
 
-        results: list[dict[str, Any]] = []
+        results: list[dict[str, object]] = []
         success_count = 0
-        failed_count = 0
+        targets, failed_count = _resolve_targets(user_id, request, results)
 
-        user_ids_to_process: list[dict[str, Any]] = []
-
-        if request.user_ids:
-            for uid in request.user_ids:
-                user_ids_to_process.append({"user_id": uid, "username": None})
-
-        if request.usernames:
-            for username in request.usernames:
-                user_data = lookup_user_by_username(user_id, username)
-                if user_data and user_data.get("id"):
-                    user_ids_to_process.append(
-                        {
-                            "user_id": user_data["id"],
-                            "username": user_data.get("username"),
-                        }
-                    )
-                else:
-                    results.append(
-                        {
-                            "username": username,
-                            "success": False,
-                            "error": "User not found",
-                        }
-                    )
-                    failed_count += 1
-
-        total = len(user_ids_to_process)
+        total = len(targets)
         if writer is not None:
             writer({"progress": f"Unfollowing {total} users..."})
 
-        for i, user_info in enumerate(user_ids_to_process):
-            result = unfollow_user(user_id, my_user_id, user_info["user_id"])
+        for i, target in enumerate(targets):
+            result = unfollow_user(user_id, my_user_id, target.user_id)
 
-            if result["success"]:
+            if result.success:
                 results.append(
-                    {
-                        "user_id": user_info["user_id"],
-                        "username": user_info.get("username"),
-                        "success": True,
-                    }
+                    {"user_id": target.user_id, "username": target.username, "success": True}
                 )
                 success_count += 1
             else:
                 results.append(
                     {
-                        "user_id": user_info["user_id"],
-                        "username": user_info.get("username"),
+                        "user_id": target.user_id,
+                        "username": target.username,
                         "success": False,
-                        "error": result.get("error"),
+                        "error": result.error,
                     }
                 )
                 failed_count += 1
@@ -242,8 +217,8 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_CREATE_THREAD(
         request: CreateThreadInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Create a Twitter thread (multiple connected tweets)."""
         del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
@@ -271,18 +246,12 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
                 media_ids=media_ids,
             )
 
-            if not result["success"]:
+            if not result.success or result.tweet is None:  # pragma: no mutate — set iff success
                 raise RuntimeError(
-                    f"Failed at tweet {i + 1}: {result.get('error')}. "
-                    f"Partial tweet IDs: {tweet_ids}"
+                    f"Failed at tweet {i + 1}: {result.error}. Partial tweet IDs: {tweet_ids}"
                 )
 
-            tweet_id = result["data"].get("id")
-            if not tweet_id:
-                raise RuntimeError(
-                    f"No ID returned for tweet {i + 1}. Partial tweet IDs: {tweet_ids}"
-                )
-
+            tweet_id = result.tweet.id
             tweet_ids.append(tweet_id)
             previous_tweet_id = tweet_id
 
@@ -290,7 +259,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
                 writer({"progress": f"Posted tweet {i + 1}/{total_tweets}..."})
 
         try:
-            data = (
+            username = TwitterUserResponse.model_validate(
                 proxy_request_sync(
                     ProxyRequest(
                         user_id=user_id,
@@ -299,9 +268,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
                         method="GET",
                     )
                 )
-                or {}
-            )
-            username = data.get("data", {}).get("username", "i")
+            ).data.username
         except Exception:
             username = "i"
 
@@ -330,8 +297,8 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_SEARCH_USERS(
         request: SearchUsersInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Search for Twitter users by name, bio, or keywords."""
         del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
@@ -343,43 +310,45 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
         search_query = f"{request.query} -is:retweet"
         result = search_tweets(user_id, search_query, max_results=request.max_results * 3)
 
-        if not result["success"]:
-            raise RuntimeError(f"Search failed: {result.get('error')}")
+        if not result.success or result.data is None:  # pragma: no mutate — data set iff success
+            raise RuntimeError(f"Search failed: {result.error}")
 
-        data = result["data"]
-        includes = data.get("includes", {})
-        api_users = includes.get("users", [])
-
-        users_map: dict[str, dict[str, Any]] = {}
-        for user in api_users:
-            twitter_user_id = user.get("id")
-            if twitter_user_id and twitter_user_id not in users_map:
-                users_map[twitter_user_id] = {
-                    "id": twitter_user_id,
-                    "username": user.get("username"),
-                    "name": user.get("name"),
-                    "description": user.get("description", ""),
-                    "profile_image_url": user.get("profile_image_url"),
-                    "verified": user.get("verified", False),
-                    "public_metrics": user.get("public_metrics", {}),
-                    "created_at": user.get("created_at"),
-                    "location": user.get("location"),
-                }
+        users_map: dict[str, TwitterUser] = {}
+        for user in result.data.includes.users:
+            if user.id not in users_map:
+                users_map[user.id] = user
 
         unique_users = list(users_map.values())[: request.max_results]
 
         if writer is not None and unique_users:
-            writer({"twitter_user_data": unique_users})
+            writer(
+                {
+                    "twitter_user_data": [
+                        {
+                            "id": u.id,
+                            "username": u.username,
+                            "name": u.name,
+                            "description": u.description or "",
+                            "profile_image_url": u.profile_image_url,
+                            "verified": u.verified or False,
+                            "public_metrics": _public_metrics(u.public_metrics),
+                            "created_at": u.created_at,
+                            "location": u.location,
+                        }
+                        for u in unique_users
+                    ]
+                }
+            )
 
         return {
             "users": [
                 {
-                    "id": u["id"],
-                    "username": u.get("username"),
-                    "name": u.get("name"),
-                    "description": u.get("description", "")[:150],
-                    "followers": u.get("public_metrics", {}).get("followers_count", 0),
-                    "verified": u.get("verified", False),
+                    "id": u.id,
+                    "username": u.username,
+                    "name": u.name,
+                    "description": (u.description or "")[:150],
+                    "followers": u.public_metrics.followers_count if u.public_metrics else 0,
+                    "verified": u.verified or False,
                 }
                 for u in unique_users
             ],
@@ -391,8 +360,8 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_SCHEDULE_TWEET(
         request: ScheduleTweetInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Schedule a tweet for later posting (creates a draft with scheduled time).
 
         Note: Twitter API doesn't support scheduled tweets directly for free tier.
@@ -424,8 +393,8 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Twitter/X context snapshot: profile info and recent tweets.
 
         Zero required parameters. Returns authenticated user's profile and recent activity.
@@ -433,7 +402,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
         del request, execute_request  # unused: framework-mandated custom-tool signature
         user_id = _user_id(auth_credentials)
 
-        me_data = (
+        me = TwitterUserResponse.model_validate(
             proxy_request_sync(
                 ProxyRequest(
                     user_id=user_id,
@@ -443,60 +412,54 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
                     query={"user.fields": "public_metrics,description,username"},
                 )
             )
-            or {}
-        ).get("data", {})
+        ).data
+        metrics = me.public_metrics
 
-        twitter_user_id = me_data.get("id")
-        metrics = me_data.get("public_metrics", {})
-
-        tweets: list[dict[str, Any]] = []
-        if twitter_user_id:
-            try:
-                tweets_data = (
-                    proxy_request_sync(
-                        ProxyRequest(
-                            user_id=user_id,
-                            toolkit=TWITTER_TOOLKIT,
-                            endpoint=f"{TWITTER_API_BASE}/users/{twitter_user_id}/tweets",
-                            method="GET",
-                            query={
-                                "max_results": 5,
-                                "tweet.fields": "created_at,public_metrics",
-                            },
-                        )
+        tweets: list[dict[str, object]] = []
+        try:
+            timeline = TwitterTimelineResponse.model_validate(
+                proxy_request_sync(
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=TWITTER_TOOLKIT,
+                        endpoint=f"{TWITTER_API_BASE}/users/{me.id}/tweets",
+                        method="GET",
+                        query={
+                            "max_results": 5,
+                            "tweet.fields": "created_at,public_metrics",
+                        },
                     )
-                    or {}
                 )
-                items = tweets_data.get("data", [])
-                tweets = [
-                    {
-                        "id": t.get("id"),
-                        "text": t.get("text", "")[:200],
-                        "created_at": t.get("created_at"),
-                        "likes": t.get("public_metrics", {}).get("like_count", 0),
-                        "retweets": t.get("public_metrics", {}).get("retweet_count", 0),
-                    }
-                    for t in (items if isinstance(items, list) else [])
-                ]
-            except Exception as e:
-                # Profile context is still useful without recent tweets, so this
-                # returns a partial result rather than failing the whole tool.
-                log.warning(
-                    f"{LogTag.TOOL} Failed to fetch recent tweets, returning profile without them",
-                    twitter_user_id=twitter_user_id,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
+            )
+            tweets = [
+                {
+                    "id": t.id,
+                    "text": t.text[:200],
+                    "created_at": t.created_at,
+                    "likes": t.public_metrics.like_count if t.public_metrics else 0,
+                    "retweets": t.public_metrics.retweet_count if t.public_metrics else 0,
+                }
+                for t in timeline.data
+            ]
+        except Exception as e:
+            # Profile context is still useful without recent tweets, so this
+            # returns a partial result rather than failing the whole tool.
+            log.warning(
+                f"{LogTag.TOOL} Failed to fetch recent tweets, returning profile without them",
+                twitter_user_id=me.id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
         return {
             "user": {
-                "id": twitter_user_id,
-                "username": me_data.get("username"),
-                "name": me_data.get("name"),
-                "description": me_data.get("description", "")[:200],
-                "followers": metrics.get("followers_count", 0),
-                "following": metrics.get("following_count", 0),
-                "tweet_count": metrics.get("tweet_count", 0),
+                "id": me.id,
+                "username": me.username,
+                "name": me.name,
+                "description": (me.description or "")[:200],
+                "followers": metrics.followers_count if metrics else 0,
+                "following": metrics.following_count if metrics else 0,
+                "tweet_count": metrics.tweet_count if metrics else 0,
             },
             "recent_tweets": tweets,
         }

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 import random
-from typing import Any, Literal, cast
+from typing import Literal
 from uuid import uuid4
 
 from arq.connections import ArqRedis
@@ -26,6 +27,7 @@ from app.services.notification_service import notification_service
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
+from app.utils.auth_utils import load_user_context
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import is_within_local_daytime
 from shared.py.wide_events import log
@@ -62,7 +64,7 @@ ExpiredOutcome = Literal["archived", "notified", "muted"]
 DormantOutcome = Literal["requeued", "needs_attention"]
 
 
-async def maintenance_sweep_tracked_todos(_ctx: dict[str, Any]) -> str:
+async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
     """Cron task: scan active tracked todos and apply tiered staleness handling.
 
     Tiers:
@@ -612,17 +614,12 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
     """
 
     try:
-        # The legacy bridge dict is a spread of a validated UserDocument plus the
-        # user_id stamped below: AuthenticatedUser's shape by construction
-        # (Type Safety item 12).
-        user_data = cast(AuthenticatedUser, await get_user_by_id(user_id) or {})
-        if user_data:
-            user_data["user_id"] = user_id
-        else:
-            user_data = {"user_id": user_id, "name": "User"}
+        user_data = await load_user_context(user_id) or AuthenticatedUser(
+            user_id=user_id, name="User"
+        )
     except Exception as exc:
         log.warning("maintenance_sweep.user_fetch_failed", user_id=user_id, error=str(exc))
-        user_data = {"user_id": user_id, "name": "User"}
+        user_data = AuthenticatedUser(user_id=user_id, name="User")
 
     conversation_id = str(uuid4())
 
@@ -751,7 +748,7 @@ async def _is_user_daytime(user_id: str, now: datetime, cache: dict[str, bool]) 
     try:
         user = await get_user_by_id(user_id)
         if user:
-            timezone_name = user.get("timezone")
+            timezone_name = user.timezone
     except Exception as exc:
         log.warning("maintenance_sweep.user_tz_lookup_failed", user_id=user_id, error=str(exc))
 

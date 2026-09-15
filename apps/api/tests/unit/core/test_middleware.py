@@ -7,7 +7,7 @@ asserted anywhere; the module had no unit test at all.
 
 from unittest.mock import MagicMock, patch
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from limits import parse
 import pytest
 from slowapi.errors import RateLimitExceeded
@@ -18,7 +18,67 @@ from starlette.responses import Response
 from starlette.testclient import TestClient
 
 from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
+from app.api.v1.middleware.websocket_wide_event import WebSocketWideEventMiddleware
 from app.core.middleware import configure_middleware, rate_limit_handler
+from shared.py.wide_events import log
+
+
+def _boundary_fields() -> dict[str, object]:
+    event = log.get()
+    return {key: event.get(key) for key in ("task", "trace_id", "path")}
+
+
+@pytest.fixture
+def ws_client() -> TestClient:
+    app = FastAPI()
+
+    @app.websocket("/api/v1/ws/device/")
+    async def device(websocket: WebSocket) -> None:
+        await websocket.accept()
+        await websocket.send_json(_boundary_fields())
+        await websocket.close()
+
+    @app.websocket("/api/v1/ws/chat")
+    async def chat(websocket: WebSocket) -> None:
+        await websocket.accept()
+        await websocket.send_json(_boundary_fields())
+        await websocket.close()
+
+    @app.get("/plain")
+    async def plain() -> dict[str, object]:
+        return _boundary_fields()
+
+    app.add_middleware(WebSocketWideEventMiddleware)
+    return TestClient(app)
+
+
+class TestWebSocketWideEventBoundary:
+    def test_the_device_socket_gets_its_own_task_and_the_callers_trace_id(
+        self, ws_client: TestClient
+    ) -> None:
+        with ws_client.websocket_connect(
+            "/api/v1/ws/device/", headers={"x-trace-id": "trace-1"}
+        ) as ws:
+            fields = ws.receive_json()
+
+        assert fields == {
+            "task": "device_ws_connection",
+            "trace_id": "trace-1",
+            "path": "/api/v1/ws/device/",
+        }
+
+    def test_any_other_socket_is_a_generic_connection_with_a_minted_trace(
+        self, ws_client: TestClient
+    ) -> None:
+        with ws_client.websocket_connect("/api/v1/ws/chat") as ws:
+            fields = ws.receive_json()
+
+        assert (fields["task"], fields["path"]) == ("ws_connection", "/api/v1/ws/chat")
+        assert isinstance(fields["trace_id"], str)
+        assert fields["trace_id"]
+
+    def test_http_requests_pass_through_without_a_boundary(self, ws_client: TestClient) -> None:
+        assert ws_client.get("/plain", headers={"x-trace-id": "trace-1"}).json()["task"] is None
 
 
 @pytest.fixture

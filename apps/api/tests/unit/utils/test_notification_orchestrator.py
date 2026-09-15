@@ -14,6 +14,7 @@ from app.models.notification.notification_models import (
     BulkActions,
     ChannelConfig,
     ChannelDeliveryStatus,
+    ModalConfig,
     NotificationAction,
     NotificationContent,
     NotificationListFilters,
@@ -663,6 +664,38 @@ class TestExecuteAction:
         ws.broadcast_to_user.assert_awaited_once()
         payload = ws.broadcast_to_user.call_args[0][1]
         assert payload["type"] == "notification.updated"
+
+    async def test_modal_action_fills_template_variables_in_props(self) -> None:
+        """The real modal handler substitutes the notification, action and user ids into string props only."""
+        storage = AsyncMock()
+        action = NotificationAction(
+            id="act-1",
+            type=ActionType.MODAL,
+            label="Open",
+            style=ActionStyle.PRIMARY,
+            config=ActionConfig(
+                modal=ModalConfig(
+                    component="ReviewModal",
+                    props={
+                        "href": "/n/{{notification_id}}/a/{{action_id}}?u={{user_id}}",
+                        "count": 3,
+                    },
+                )
+            ),
+        )
+        storage.get_notification.return_value = _make_record(
+            request=_make_request(actions=[action])
+        )
+        orch = NotificationOrchestrator(storage=storage)
+
+        with patch("app.utils.notification.orchestrator.websocket_manager"):
+            result = await orch.execute_action("notif-1", "act-1", "user-1", None)
+
+        assert result.success is True
+        assert result.data == {
+            "modal_component": "ReviewModal",
+            "modal_props": {"href": "/n/notif-1/a/act-1?u=user-1", "count": 3},
+        }
 
     async def test_failed_execution_does_not_mark_action(self) -> None:
         """If the handler returns success=False, action is NOT marked as executed."""

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.helpers.integration_helpers import ParsedIntegrationSlug
 from app.models.integration_models import (
     Integration,
     IntegrationWithCreator,
@@ -19,6 +20,8 @@ from app.services.analytics_service import AnalyticsEvents
 BASE = "/api/v1/integrations"
 
 _PUBLIC = "app.api.v1.endpoints.integrations.public"
+_NO_SLUG = ParsedIntegrationSlug(name_part="bad-slug", category=None, shortid=None)
+_LEGACY_SLUG = ParsedIntegrationSlug(name_part="legacy", category=None, shortid="abc123")
 
 
 def _integration(integration_id: str, name: str, **overrides: object) -> Integration:
@@ -78,12 +81,15 @@ class TestGetPublicIntegration:
                 "app.api.v1.endpoints.integrations.public.get_integration_tools",
                 new_callable=AsyncMock,
                 return_value=[{"name": "create_event", "description": "Create event"}],
-            ),
+            ) as get_tools,
         ):
             resp = await client.get(f"{BASE}/public/googlecalendar")
 
         assert resp.status_code == 200
+        get_tools.assert_awaited_once_with("googlecalendar")
         body = resp.json()
+        assert body["tools"][0]["name"] == "create_event"
+        assert body["tools"][0]["description"] == "Create event"
         assert body["integrationId"] == "googlecalendar"
         assert body["name"] == "Google Calendar"
         assert body["source"] == "platform"
@@ -129,7 +135,7 @@ class TestGetPublicIntegration:
         with (
             patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", [fake_native]),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
-            patch(f"{_PUBLIC}.parse_integration_slug", return_value={}),
+            patch(f"{_PUBLIC}.parse_integration_slug", return_value=_NO_SLUG),
         ):
             mock_repo.get_public_by_slug = AsyncMock(return_value=None)
             resp = await client.get(f"{BASE}/public/internal_tool")
@@ -148,9 +154,11 @@ class TestGetPublicIntegration:
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
         ):
             mock_repo.get_public_by_slug = AsyncMock(return_value=integration)
-            resp = await client.get(f"{BASE}/public/my-tool")
+            with patch(f"{_PUBLIC}.log") as mock_log:
+                resp = await client.get(f"{BASE}/public/my-tool")
 
         assert resp.status_code == 200
+        mock_log.set.assert_any_call(integration_name="My Tool")
         body = resp.json()
         assert body["name"] == "My Tool"
         assert body["slug"] == "my-tool"
@@ -164,7 +172,7 @@ class TestGetPublicIntegration:
         with (
             patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", []),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
-            patch(f"{_PUBLIC}.parse_integration_slug", return_value={"shortid": "abc123"}),
+            patch(f"{_PUBLIC}.parse_integration_slug", return_value=_LEGACY_SLUG),
         ):
             mock_repo.get_public_by_slug = AsyncMock(return_value=None)
             mock_repo.get_public_by_id_prefix = AsyncMock(return_value=integration)
@@ -179,7 +187,7 @@ class TestGetPublicIntegration:
         with (
             patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", []),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
-            patch(f"{_PUBLIC}.parse_integration_slug", return_value={}),
+            patch(f"{_PUBLIC}.parse_integration_slug", return_value=_NO_SLUG),
         ):
             mock_repo.get_public_by_slug = AsyncMock(return_value=None)
             resp = await client.get(f"{BASE}/public/nonexistent")
@@ -536,7 +544,7 @@ class TestSearchIntegrations:
                 f"{_PUBLIC}.search_public_integrations",
                 new_callable=AsyncMock,
                 return_value=search_results,
-            ),
+            ) as search,
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
             patch(
                 f"{_PUBLIC}.generate_integration_slug",
@@ -547,6 +555,7 @@ class TestSearchIntegrations:
             resp = await client.get(f"{BASE}/search", params={"q": "tool"})
 
         assert resp.status_code == 200
+        search.assert_awaited_once_with(query="tool", limit=20)
         body = resp.json()
         assert len(body["integrations"]) == 2
         assert body["integrations"][0]["name"] == "Tool A"

@@ -13,6 +13,8 @@ import pytest
 from starlette.testclient import TestClient
 
 from app.api.v1.middleware.logging import LoggingMiddleware, log_function_call
+from app.models.user_models import AuthenticatedUser
+from shared.py.wide_events import log as wide_log
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -21,7 +23,7 @@ from app.api.v1.middleware.logging import LoggingMiddleware, log_function_call
 
 def _build_test_app(skip_paths: frozenset | None = None):
     """Create a minimal FastAPI app with LoggingMiddleware."""
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Request
     from fastapi.responses import JSONResponse
 
     app = FastAPI()
@@ -53,6 +55,17 @@ def _build_test_app(skip_paths: frozenset | None = None):
     @app.get("/api/v1/raise")
     async def raise_route():
         raise RuntimeError("boom")
+
+    @app.get("/api/v1/authed")
+    async def authed_route(request: Request):
+        request.state.user = AuthenticatedUser(user_id="user_42")
+        return {"result": "ok"}
+
+    @app.get("/api/v1/authed-explicit-id")
+    async def authed_explicit_id_route(request: Request):
+        request.state.user = AuthenticatedUser(user_id="user_42")
+        wide_log.set(user={"id": "handler_chosen_id"})
+        return {"result": "ok"}
 
     app.add_middleware(LoggingMiddleware)
     return app
@@ -109,6 +122,9 @@ class TestLoggingMiddlewareNormalRequests:
         assert context["status_code"] == 200
         assert "duration_ms" in context
         mock_bound.log.assert_called_once()
+        # A clean 2xx with no warning/error calls stays at INFO, and every HTTP
+        # event is emitted under the one name the dashboards query.
+        assert mock_bound.log.call_args[0] == ("INFO", "http_request")
 
     def test_400_response_logged_as_warning(self) -> None:
         app = _build_test_app()
@@ -133,6 +149,33 @@ class TestLoggingMiddlewareNormalRequests:
         mock_bound.log.assert_called_once()
         level = mock_bound.log.call_args[0][0]
         assert level == "ERROR"
+
+
+class TestLoggingMiddlewareUserContext:
+    """The authenticated user's id is merged into the emitted event."""
+
+    def test_authenticated_user_id_is_stamped_on_the_event(self) -> None:
+        app = _build_test_app()
+        with patch("app.api.v1.middleware.logging.request_logger") as mock_logger:
+            client = TestClient(app)
+            resp = client.get("/api/v1/authed")
+        assert resp.status_code == 200
+        assert mock_logger.bind.call_args[1]["user"] == {"id": "user_42"}
+
+    def test_handler_set_user_id_wins_over_the_request_user(self) -> None:
+        app = _build_test_app()
+        with patch("app.api.v1.middleware.logging.request_logger") as mock_logger:
+            client = TestClient(app)
+            resp = client.get("/api/v1/authed-explicit-id")
+        assert resp.status_code == 200
+        assert mock_logger.bind.call_args[1]["user"] == {"id": "handler_chosen_id"}
+
+    def test_unauthenticated_request_carries_no_user(self) -> None:
+        app = _build_test_app()
+        with patch("app.api.v1.middleware.logging.request_logger") as mock_logger:
+            client = TestClient(app)
+            client.get("/api/v1/test")
+        assert "user" not in mock_logger.bind.call_args[1]
 
 
 class TestLoggingMiddlewareTraceId:

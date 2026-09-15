@@ -13,9 +13,10 @@ from fastapi import FastAPI
 from httpx import AsyncClient
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.models.user_models import UserDocument
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.integrations.responses import ConnectIntegrationResponse
 from app.services.analytics_service import AnalyticsEvents
+from tests.factories import make_authenticated_user
 
 API = "/api/v1/integrations"
 
@@ -207,7 +208,7 @@ def _error_body(integration_id: str, name: str, error: str) -> dict:
 
 
 @contextmanager
-def _current_user(test_app: FastAPI, user: dict) -> Iterator[None]:
+def _current_user(test_app: FastAPI, user: AuthenticatedUser) -> Iterator[None]:
     """Serve user from get_current_user for the duration of the block."""
     original = test_app.dependency_overrides.get(get_current_user)
     test_app.dependency_overrides[get_current_user] = lambda: user
@@ -416,7 +417,7 @@ class TestConnectIntegration:
     ) -> None:
         resolved = _resolved(managed_by="self", name="Google Calendar", provider="GCAL")
         with (
-            _current_user(test_app, {"user_id": _VALID_UID}),
+            _current_user(test_app, make_authenticated_user(user_id=_VALID_UID, email=None)),
             patch(
                 f"{_MODULE}.IntegrationResolver.resolve",
                 new_callable=AsyncMock,

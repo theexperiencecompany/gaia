@@ -23,11 +23,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     user = await get_current_user_ws(websocket)
 
     # Check if we have a valid user with a user_id
-    user_id = user.get("user_id")
-    if not user_id or not isinstance(user_id, str):
+    if user is None or not user.user_id:
         log.set(disconnect_reason="auth_failure")
         log.warning("WebSocket connection attempted with invalid user_id")
         return
+    user_id = user.user_id
 
     log.set(user={"id": user_id})
 

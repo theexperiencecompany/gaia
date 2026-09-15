@@ -19,7 +19,7 @@ from tests.conftest import FAKE_USER
 # ---------------------------------------------------------------------------
 
 API = "/api/v1/reminders"
-USER_ID = FAKE_USER["user_id"]
+USER_ID = FAKE_USER.user_id
 ANALYTICS_PATCH = "app.api.v1.endpoints.reminders.capture_context_event"
 
 

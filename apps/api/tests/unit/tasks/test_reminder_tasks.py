@@ -6,6 +6,7 @@ the user's chat platforms via the shared deliver_result_to_platforms path,
 which records it into the conversation's langgraph thread.
 """
 
+from collections.abc import Callable
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
@@ -14,6 +15,7 @@ import pytest
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.models.chat_models import ConversationSource
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
+from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents
 from app.tasks.reminder_tasks import (
     _deliver_reminder_to_platforms,
@@ -22,6 +24,12 @@ from app.tasks.reminder_tasks import (
     execute_reminder_by_agent,
 )
 from shared.py.wide_events import log
+
+
+def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
+    """Fake load_user_context: answer for whichever user id it is asked for."""
+    return lambda user_id: AuthenticatedUser(user_id=user_id, **fields)
+
 
 MODULE = "app.tasks.reminder_tasks"
 
@@ -191,9 +199,9 @@ class TestReminderReachesChatPlatforms:
                 new_callable=AsyncMock,
             ),
             patch(
-                f"{MODULE}.get_user_by_id",
+                f"{MODULE}.load_user_context",
                 new_callable=AsyncMock,
-                return_value={"user_id": "user-1", "email": "u@gaia.local"},
+                side_effect=_user_context(email="u@gaia.local"),
             ),
             patch(f"{MODULE}.deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
             patch("app.tasks.reminder_tasks.log.info"),
@@ -218,7 +226,7 @@ class TestReminderReachesChatPlatforms:
                 "app.tasks.reminder_tasks.notification_service.create_notification",
                 new_callable=AsyncMock,
             ),
-            patch(f"{MODULE}.get_user_by_id", new_callable=AsyncMock, return_value=None),
+            patch(f"{MODULE}.load_user_context", new_callable=AsyncMock, return_value=None),
             patch(f"{MODULE}.deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
             patch("app.tasks.reminder_tasks.log.info"),
         ):
@@ -238,7 +246,7 @@ class TestReminderReachesChatPlatforms:
                 new_callable=AsyncMock,
             ) as create,
             patch(
-                f"{MODULE}.get_user_by_id",
+                f"{MODULE}.load_user_context",
                 new_callable=AsyncMock,
                 side_effect=HTTPException(status_code=404, detail="User not found"),
             ),
@@ -280,13 +288,13 @@ class TestDeliverReminderToPlatforms:
 
     async def test_stamps_user_id_and_passes_exact_delivery_args(self) -> None:
         reminder = _reminder()
-        # get_user_by_id returns the raw doc keyed by _id, with NO user_id — the
-        # helper must stamp it, or update_messages/session keying use the wrong owner.
+        # The context is loaded for THIS reminder's user; its id is what update_messages
+        # and session keying scope the delivery to, so the owner must match.
         with (
             patch(
-                f"{MODULE}.get_user_by_id",
+                f"{MODULE}.load_user_context",
                 new_callable=AsyncMock,
-                return_value={"_id": "user-1", "email": "u@gaia.local"},
+                side_effect=_user_context(email="u@gaia.local"),
             ) as get_user,
             patch(f"{MODULE}.deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
         ):
@@ -296,7 +304,7 @@ class TestDeliverReminderToPlatforms:
         get_user.assert_awaited_once_with("user-1")
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
-        assert kwargs["user"]["user_id"] == "user-1"
+        assert kwargs["user"].user_id == "user-1"
         assert kwargs["user_id"] == "user-1"
         assert kwargs["origin"] == 'reminder "Water the plants" (id rem-1)'
         assert kwargs["notification_text"] == "**Water the plants**\nNow"
@@ -307,9 +315,9 @@ class TestDeliverReminderToPlatforms:
         reminder = _reminder(source_conversation_id="conv-42")
         with (
             patch(
-                f"{MODULE}.get_user_by_id",
+                f"{MODULE}.load_user_context",
                 new_callable=AsyncMock,
-                return_value={"_id": "user-1"},
+                side_effect=_user_context(),
             ),
             patch(
                 f"{MODULE}.deliver_message_to_conversation",
@@ -324,7 +332,7 @@ class TestDeliverReminderToPlatforms:
         assert deliver_conv.await_args.kwargs["conversation_id"] == "conv-42"
         # The resolved owner is delivered to the source conversation, not some
         # other id — the stamped user_id keys the langgraph record to this user.
-        assert deliver_conv.await_args.kwargs["user"]["user_id"] == "user-1"
+        assert deliver_conv.await_args.kwargs["user"].user_id == "user-1"
         assert deliver_conv.await_args.kwargs["text"] == "**Water the plants**\nNow"
         assert deliver_conv.await_args.kwargs["origin"] == 'reminder "Water the plants" (id rem-1)'
         assert deliver.await_args.kwargs["exclude_source"] == ConversationSource.TELEGRAM
@@ -333,9 +341,9 @@ class TestDeliverReminderToPlatforms:
         reminder = _reminder()  # no source_conversation_id
         with (
             patch(
-                f"{MODULE}.get_user_by_id",
+                f"{MODULE}.load_user_context",
                 new_callable=AsyncMock,
-                return_value={"_id": "user-1"},
+                side_effect=_user_context(),
             ),
             patch(
                 f"{MODULE}.deliver_message_to_conversation", new_callable=AsyncMock
@@ -351,9 +359,9 @@ class TestDeliverReminderToPlatforms:
         reminder = _reminder(payload=StaticReminderPayload(title="", body="Now"))
         with (
             patch(
-                f"{MODULE}.get_user_by_id",
+                f"{MODULE}.load_user_context",
                 new_callable=AsyncMock,
-                return_value={"_id": "user-1"},
+                side_effect=_user_context(),
             ),
             patch(f"{MODULE}.deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
         ):
@@ -365,7 +373,7 @@ class TestDeliverReminderToPlatforms:
     async def test_missing_user_skips_delivery_and_warns(self) -> None:
         reminder = _reminder()
         with (
-            patch(f"{MODULE}.get_user_by_id", new_callable=AsyncMock, return_value=None),
+            patch(f"{MODULE}.load_user_context", new_callable=AsyncMock, return_value=None),
             patch(f"{MODULE}.deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
             patch(f"{MODULE}.log") as mock_log,
         ):
@@ -382,7 +390,7 @@ class TestDeliverReminderToPlatforms:
         reminder = _reminder()
         with (
             patch(
-                f"{MODULE}.get_user_by_id",
+                f"{MODULE}.load_user_context",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("db down"),
             ),
@@ -404,7 +412,7 @@ class TestDeliverReminderToPlatforms:
     async def test_non_static_payload_never_looks_up_the_user(self) -> None:
         reminder = _reminder(payload={"not": "a static payload"})
         with (
-            patch(f"{MODULE}.get_user_by_id", new_callable=AsyncMock) as get_user,
+            patch(f"{MODULE}.load_user_context", new_callable=AsyncMock) as get_user,
             patch(f"{MODULE}.deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
         ):
             await _deliver_reminder_to_platforms(reminder)
@@ -416,7 +424,7 @@ class TestDeliverReminderToPlatforms:
         reminder = _reminder()
         reminder.id = None
         with (
-            patch(f"{MODULE}.get_user_by_id", new_callable=AsyncMock) as get_user,
+            patch(f"{MODULE}.load_user_context", new_callable=AsyncMock) as get_user,
             patch(f"{MODULE}.deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
         ):
             await _deliver_reminder_to_platforms(reminder)

@@ -24,7 +24,7 @@ MCP_BASE = "/api/v1/mcp"
 CALLBACK_URL = f"{MCP_BASE}/oauth/callback"
 _MODULE = "app.api.v1.endpoints.mcp"
 _CALLBACK = "app.services.mcp.oauth_callback"
-USER_ID = FAKE_USER["user_id"]
+USER_ID = FAKE_USER.user_id
 REDIRECT_URI = "http://api/api/v1/mcp/oauth/callback"
 
 
@@ -371,3 +371,29 @@ class TestMCPOAuthCallback:
         resp = await client.get(CALLBACK_URL, params={"code": "code1"})
 
         assert resp.status_code == 422
+
+
+class TestMCPConnectionTest:
+    """POST /api/v1/mcp/test/{integration_id}."""
+
+    async def test_the_resolved_server_url_is_what_gets_probed(self, client: AsyncClient) -> None:
+        # The probe is the only thing that reaches out; probing anything but the
+        # integration's own URL reports another server's health as this one's.
+        probe_client = MagicMock()
+        probe_client.probe_connection = AsyncMock(return_value={"error": "timeout"})
+        resolved = MagicMock()
+        resolved.mcp_config.server_url = "https://mcp.example.com/sse"
+        with (
+            patch(f"{_MODULE}.get_mcp_client", new_callable=AsyncMock, return_value=probe_client),
+            patch(
+                f"{_MODULE}.IntegrationResolver.resolve",
+                new_callable=AsyncMock,
+                return_value=resolved,
+            ),
+            patch(f"{_MODULE}.capture_context_event"),
+        ):
+            resp = await client.post(f"{MCP_BASE}/test/github")
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "failed"
+        probe_client.probe_connection.assert_awaited_once_with("https://mcp.example.com/sse")

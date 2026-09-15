@@ -17,7 +17,7 @@ from tests.conftest import FAKE_USER
 from tests.helpers import captured_wide_event
 
 URL = "/api/v1/user/first-steps"
-USER_ID = FAKE_USER["user_id"]
+USER_ID = FAKE_USER.user_id
 MODULE = "app.api.v1.endpoints.first_steps"
 
 

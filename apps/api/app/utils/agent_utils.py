@@ -1,10 +1,11 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
-from typing import Any, TypedDict, cast
+from typing import Any, cast
 
 from langchain_core.messages import ToolCall
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
@@ -23,10 +24,70 @@ from app.models.stream_events import (
     ToolCallsDataEntryData,
 )
 from app.services.chat.chunks import extract_tool_data
+from app.utils.stream_publishers import ExtractedToolData
 from shared.py.wide_events import log
 
 # Type for the stream_writer callable used across agent execution paths.
 StreamWriterCallable = Callable[[dict[str, Any]], None]
+
+
+class ToolCallView(BaseModel):
+    """A LangChain ``ToolCall`` parsed once — the TypedDict is only readable by key.
+
+    ``args`` is the LLM-authored argument bag: open per tool, never read here
+    beyond forwarding it as the card's ``inputs``.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str | None = None
+    args: dict[str, object] = Field(default_factory=dict)
+    id: str | None = None
+
+
+class HandoffCallArgs(BaseModel):
+    """The ``handoff`` tool's arguments, as far as the display path reads them."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    subagent_id: str | None = None
+
+
+class IntegrationDisplayMetadata(BaseModel):
+    """Icon, id and name for a custom integration's tool card.
+
+    Redis-cached under two prefixes (handoff lookups by subagent id, MCP icon
+    lookups by integration id); an all-``None`` instance is the cached negative
+    result, written as ``{}``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    icon_url: str | None = None
+    integration_id: str | None = None
+    integration_name: str | None = None
+
+
+class NodeMessagesUpdate(BaseModel):
+    """One node's "updates" stream payload, read for the messages it wrote.
+
+    ``object`` elements: the drivers narrow each to ``AIMessage`` themselves, so
+    a node writing anything else (a tombstone, a message-like) is skipped, not fatal.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    messages: list[object] = Field(default_factory=list)
+
+
+class _McpToolMetadata(BaseModel):
+    """The MCP keys the adapter stamps on a tool's ``metadata`` (see resilient_adapter)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    #: Forwarded to the client verbatim — whatever keys the adapter stamped.
+    mcp_ui: dict[str, object] | None = None
+    mcp_server_url: str | None = None
 
 
 def strip_internal_agent_tags(text: str) -> str:
@@ -37,12 +98,13 @@ def strip_internal_agent_tags(text: str) -> str:
     return INTERNAL_AGENT_TAG_PATTERN.sub("", text).strip()
 
 
-class IntegrationMetadata(TypedDict, total=False):
+@dataclass(slots=True, frozen=True)
+class IntegrationMetadata:
     """Metadata for a custom MCP integration, used to decorate tool events."""
 
-    icon_url: str | None
-    integration_id: str | None
-    name: str | None
+    icon_url: str | None = None
+    integration_id: str | None = None
+    name: str | None = None
 
 
 def parse_subagent_id(subagent_id: str) -> tuple[str, str | None]:
@@ -104,7 +166,7 @@ def format_subagent_start_event(
     subagent_id: str,
     details: SubagentStartDetails | None = None,
     subagent: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Format a subagent_start SSE payload."""
     details = details or SubagentStartDetails()
     return SubagentStartPayload(
@@ -123,7 +185,7 @@ def format_subagent_end_event(
     subagent_id: str,
     duration_ms: int,
     token_count: int | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Format a subagent_end SSE payload."""
     return SubagentEndPayload(
         subagent_id=subagent_id,
@@ -145,7 +207,8 @@ async def format_tool_call_entry(
         user_id: resolves MCP tool provenance via the user's MCPClient (MCP tools no longer live in the global registry).
     """
     tool_registry = await get_tool_registry()
-    tool_name_raw = tool_call.get("name")
+    call = ToolCallView.model_validate(tool_call)
+    tool_name_raw = call.name
     if not tool_name_raw:
         return None
 
@@ -153,7 +216,7 @@ async def format_tool_call_entry(
 
     if tool_name_raw in _SPECIAL_TOOLS:
         tool_category, tool_display_name, show_category = await _special_tool_display(
-            tool_name_raw, tool_call
+            tool_name_raw, call
         )
     else:
         tool_category, integration_id, is_core_tool = await _general_tool_category(
@@ -198,8 +261,8 @@ async def format_tool_call_entry(
                 tool_category=tool_category or "",
                 message=tool_display_name,
                 show_category=show_category,
-                tool_call_id=tool_call.get("id"),
-                inputs=tool_call.get("args", {}),
+                tool_call_id=call.id,
+                inputs=call.args,
                 icon_url=icon_url,
                 integration_name=integration_name,
             ),
@@ -229,14 +292,13 @@ _SPECIAL_TOOLS: dict[str, tuple[str, str | None, bool]] = {
 
 
 async def _special_tool_display(
-    tool_name_raw: str, tool_call: ToolCall
+    tool_name_raw: str, tool_call: ToolCallView
 ) -> tuple[str, str | None, bool]:
     """Category, display name and show_category for a tool in _SPECIAL_TOOLS."""
     tool_category, tool_display_name, show_category = _SPECIAL_TOOLS[tool_name_raw]
 
     if tool_name_raw == "handoff":
-        args = tool_call.get("args", {})
-        subagent_id = args.get("subagent_id", "subagent")
+        subagent_id = HandoffCallArgs.model_validate(tool_call.args).subagent_id or "subagent"
         display_name = await _resolve_handoff_display_name(subagent_id)
         tool_display_name = f"Handing off to {display_name}"
     return tool_category, tool_display_name, show_category
@@ -276,9 +338,9 @@ async def _general_tool_category(
 
 def _registry_mcp_ui_metadata(
     tool_registry: ToolRegistry, tool_name_raw: str
-) -> tuple[dict[str, Any] | None, str | None]:
+) -> tuple[dict[str, object] | None, str | None]:
     """Return the mcp_ui metadata the global registry holds for a tool, if any."""
-    mcp_ui: dict[str, Any] | None = None
+    mcp_ui: dict[str, object] | None = None
     mcp_server_url: str | None = None
     try:
         registry_tools = tool_registry.get_all_tools_for_search()
@@ -287,8 +349,9 @@ def _registry_mcp_ui_metadata(
                 base_tool = registry_tool.tool
                 tool_meta = getattr(base_tool, "metadata", None)
                 if tool_meta and isinstance(tool_meta, dict):
-                    mcp_ui = tool_meta.get("mcp_ui")
-                    mcp_server_url = tool_meta.get("mcp_server_url")
+                    mcp_meta = _McpToolMetadata.model_validate(tool_meta)
+                    mcp_ui = mcp_meta.mcp_ui
+                    mcp_server_url = mcp_meta.mcp_server_url
                 break
     except Exception as registry_error:
         # Recoverable via the per-user MCPClient fallback below, but must not be
@@ -328,7 +391,7 @@ async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | Non
 
 async def _resolve_mcp_ui_metadata(
     tool_name: str, user_id: str
-) -> tuple[dict[str, Any] | None, str | None]:
+) -> tuple[dict[str, object] | None, str | None]:
     """Pull mcp_ui + mcp_server_url off the user's MCPClient tool object."""
     from app.services.mcp.mcp_client import get_mcp_client
 
@@ -339,7 +402,8 @@ async def _resolve_mcp_ui_metadata(
                 if tool.name == tool_name:
                     meta = getattr(tool, "metadata", None)
                     if meta and isinstance(meta, dict):
-                        return meta.get("mcp_ui"), meta.get("mcp_server_url")
+                        mcp_meta = _McpToolMetadata.model_validate(meta)
+                        return mcp_meta.mcp_ui, mcp_meta.mcp_server_url
                     return None, None
     except Exception as e:
         log.warning(
@@ -361,22 +425,22 @@ async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str |
     from app.db.redis import get_cache, set_cache
 
     cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"
-    cached = await get_cache(cache_key)
+    cached = await get_cache(cache_key, IntegrationDisplayMetadata)
     if cached:
-        return cached.get("icon_url"), cached.get("integration_name")
+        return cached.icon_url, cached.integration_name
 
     try:
         integration = await integration_repository.get(integration_id)
         if not integration:
             await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
             return None, None
-        metadata: dict[str, str | None] = {
-            "icon_url": integration.icon_url,
-            "integration_id": integration_id,
-            "integration_name": integration.name,
-        }
+        metadata = IntegrationDisplayMetadata(
+            icon_url=integration.icon_url,
+            integration_id=integration_id,
+            integration_name=integration.name,
+        )
         await set_cache(cache_key, metadata, ttl=CUSTOM_INT_METADATA_TTL)
-        return metadata["icon_url"], metadata["integration_name"]
+        return metadata.icon_url, metadata.integration_name
     except Exception as e:
         log.warning(
             f"{LogTag.AGENT} MCP icon/name lookup failed for",
@@ -392,22 +456,21 @@ def format_sse_response(content: str) -> str:
     return f"data: {json.dumps(ResponseFrame(response=content).model_dump())}\n\n"
 
 
-def format_sse_data(data: dict[str, Any]) -> str:
-    """Wrap a dict as a JSON-encoded SSE data: line."""
+def format_sse_data(data: Mapping[str, object]) -> str:
+    """Wrap a mapping as a JSON-encoded SSE data: line."""
     return f"data: {json.dumps(data)}\n\n"
 
 
-def process_custom_event_for_tools(payload: dict[str, Any]) -> dict[str, Any]:
+def process_custom_event_for_tools(payload: Mapping[str, object] | None) -> ExtractedToolData:
     """Extract tool execution data from a custom LangGraph event payload.
 
-    Returns the extracted tool data, or an empty dict on failure / no data.
+    Returns the extracted tool data, empty on failure / no data.
     """
     try:
         serialized = json.dumps(payload) if payload else "{}"
-        new_data = extract_tool_data(serialized)
-        return new_data or {}
+        return ExtractedToolData.model_validate(extract_tool_data(serialized) or {})
     except Exception as e:
         log.error(
             f"{LogTag.AGENT} Error extracting tool data", error=str(e), error_type=type(e).__name__
         )
-        return {}
+        return ExtractedToolData()

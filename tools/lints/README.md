@@ -295,6 +295,55 @@ any other diff, and `--update` preserves the field.
 
 ---
 
+## typed-boundaries
+
+A touch-to-fix ratchet like `plr-complexity-ratchet`, sharing its mechanics
+(`_ratchet.py`) and its baseline format:
+
+```bash
+python3 tools/lints/check_typed_boundaries.py           # check
+python3 tools/lints/check_typed_boundaries.py --update  # record the current baseline
+python3 tools/lints/check_typed_boundaries.py --count   # the debt, per rule and directory
+```
+
+**Rule:** under `apps/api/app/`, (TB001) no parameter or return annotated
+`Any`, `dict`, or `dict[str, Any]` — anything whose keys a reader must guess —
+and (TB002) no `value.get("key")` / `value["key"]` read. Reads on a map keyed
+by a *protocol* rather than a shape (`os.environ`, `request.headers`,
+`query_params`, `path_params`, `cookies`) are fine; `Literal["…"]` is a type,
+not a read; a `.get(...)` call used as a decorator (`@router.get("/path")`) is
+a registration, not a read. A read on a name annotated with a TypedDict
+(a parameter or annotated assignment in the same function or module) is a
+declared shape that mypy key-checks — Type Safety item 6 — so it is exempt too:
+TypedDicts are discovered from `class X(TypedDict)` across the scan, and the
+library ones (`ToolCall`, `RunnableConfig`) are named in `EXTERNAL_TYPEDDICTS`.
+The check is syntactic: a TypedDict reached through an attribute chain or an
+unannotated loop variable is still flagged — bind it to an annotated local.
+
+**Why:** a string key is a guess about a shape that nothing checks: a typo
+compiles, a renamed field compiles, a key the producer never sets compiles and
+surfaces as a `None` three layers away. Every one of the contract bugs this
+rule postdates — `improvedPrompt` vs `improved_prompt`, `total_count` never
+sent, a `status` no endpoint emitted, `error_code` vs `code` — was a string
+key nobody could type-check. The shape belongs in a model at the boundary
+(repository, provider client, request body), read once by string there and by
+attribute everywhere else; mypy then owns every read.
+
+**Fix:** declare the shape — a Pydantic model for anything that crosses a
+validation boundary (a document, a provider payload, a request) or a
+`TypedDict`/dataclass for an in-process record — and read its attribute. The
+`BOUNDARY_MODULES` map in the script names the few files that *are* the
+boundary (the Mongo base repository, the vendored library patches); string
+keys are the point there and nowhere else. A new entry there needs a reason
+and a review, not a convenience.
+
+**Baseline** `tools/lints/typed_boundaries_baseline.txt`, one line per
+(file, rule): a listed file only stays quiet while untouched; the PR that
+touches it fixes its violations and deletes the line. Deferrals work as for the
+PLR ratchet.
+
+---
+
 ## no-silent-fallback
 
 **Rule:** a broad `except` (`Exception` / `BaseException` / bare) may not both stay

@@ -13,6 +13,7 @@ from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.models.common_models import GatherContextInput
@@ -98,7 +99,8 @@ def test_gather_context_tools_use_proxy(
     register = getattr(module, register_name)
 
     with patch(f"{module_path}.proxy_request_sync") as proxy:
-        proxy.return_value = {}
+        # Instagram's /me always answers with the account id; the others tolerate {}.
+        proxy.return_value = {"id": "ig-1"} if toolkit == "INSTAGRAM" else {}
         tools = _capture_tools(register)
         fn = tools[tool_name]
         fn(GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS)
@@ -313,19 +315,6 @@ def test_notion_markdown_survives_a_missing_results_key() -> None:
     assert result["title"] == ""
 
 
-def test_notion_markdown_survives_non_dict_title_data() -> None:
-    """Real Notion payloads are not guaranteed to be dicts — the defensive isinstance branch must fall back to no title."""
-    captured = _register_notion_with_blocks([], {"successful": True, "data": ["unexpected"]})
-
-    result = captured["FETCH_PAGE_AS_MARKDOWN"](
-        FetchPageAsMarkdownInput(page_id="page-1"),
-        EXECUTE_REQUEST,
-        AUTH_CREDS,
-    )
-
-    assert result["markdown"] == ""
-
-
 def test_notion_markdown_first_title_block_wins() -> None:
     """Scanning stops at the first title block — later titles must not win."""
     captured = _register_notion_with_blocks(
@@ -351,71 +340,19 @@ def test_notion_markdown_first_title_block_wins() -> None:
     assert "Second Title" not in result["markdown"]
 
 
-def test_notion_markdown_title_block_without_plain_text_stops_scan() -> None:
-    """A title-shaped block without plain_text yields an empty title and ends the scan (break fires on the shape match, not on extracting text)."""
-    captured = _register_notion_with_blocks(
-        [],
-        {
-            "successful": True,
-            "data": {
-                "results": [
-                    {"type": "title", "title": {"id": 1}},
-                    {"type": "title", "title": {"plain_text": "Never Reached"}},
-                ]
-            },
-        },
-    )
-
-    result = captured["FETCH_PAGE_AS_MARKDOWN"](
-        FetchPageAsMarkdownInput(page_id="page-1"),
-        EXECUTE_REQUEST,
-        AUTH_CREDS,
-    )
-
-    assert result["title"] == ""
-    assert "Never Reached" not in result["markdown"]
-
-
-def test_notion_markdown_skips_items_without_type_key() -> None:
-    """Items lacking a type key are skipped; the scan continues to the real title."""
-    captured = _register_notion_with_blocks(
-        [],
-        {
-            "successful": True,
-            "data": {
-                "results": [
-                    {"title": {"plain_text": "No Type"}},
-                    {"type": "title", "title": {"plain_text": "Real Title"}},
-                ]
-            },
-        },
-    )
-
-    result = captured["FETCH_PAGE_AS_MARKDOWN"](
-        FetchPageAsMarkdownInput(page_id="page-1"),
-        EXECUTE_REQUEST,
-        AUTH_CREDS,
-    )
-
-    assert "# Real Title" in result["markdown"]
-    assert "No Type" not in result["markdown"]
-
-
-def test_notion_markdown_survives_non_list_results_value() -> None:
-    """A dict payload whose results value is not a list yields no title, not a crash."""
+def test_notion_markdown_non_list_results_fails_loudly() -> None:
+    """A property response whose results is not a list is a provider fault, not an empty title."""
     captured = _register_notion_with_blocks(
         [],
         {"successful": True, "data": {"results": "unexpected-string"}},
     )
 
-    result = captured["FETCH_PAGE_AS_MARKDOWN"](
-        FetchPageAsMarkdownInput(page_id="page-1"),
-        EXECUTE_REQUEST,
-        AUTH_CREDS,
-    )
-
-    assert result["markdown"] == ""
-    assert result["title"] == ""
+    with pytest.raises(ValidationError):
+        captured["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            AUTH_CREDS,
+        )
 
 
 def test_twitter_batch_follow_uses_proxy_via_utils() -> None:
@@ -432,8 +369,8 @@ def test_twitter_batch_follow_uses_proxy_via_utils() -> None:
     ):
         # First call: get_my_user_id; second: lookup_user_by_username; third: follow
         proxy.side_effect = [
-            {"data": {"id": "me"}},
-            {"data": {"id": "u1", "username": "elon"}},
+            {"data": {"id": "me", "name": "Me", "username": "me"}},
+            {"data": {"id": "u1", "username": "elon", "name": "Elon"}},
             {"data": {"following": True}},
         ]
         tools = _capture_tools(register_twitter_custom_tools)
@@ -460,10 +397,10 @@ def test_twitter_create_thread_uses_proxy() -> None:
         patch("app.agents.tools.integrations.twitter_tool.proxy_request_sync") as tool_proxy,
     ):
         utils_proxy.side_effect = [
-            {"data": {"id": "tw1"}},
-            {"data": {"id": "tw2"}},
+            {"data": {"id": "tw1", "text": "a"}},
+            {"data": {"id": "tw2", "text": "b"}},
         ]
-        tool_proxy.return_value = {"data": {"username": "me"}}
+        tool_proxy.return_value = {"data": {"id": "me", "name": "Me", "username": "me"}}
         tools = _capture_tools(register_twitter_custom_tools)
         result = tools["CUSTOM_CREATE_THREAD"](
             CreateThreadInput(tweets=["a", "b"]),
@@ -518,6 +455,7 @@ def test_linkedin_add_comment_uses_proxy_full() -> None:
         ),
     ):
         proxy_full.return_value = {
+            "status": 201,
             "data": {"id": "comment-1"},
             "headers": {},
         }

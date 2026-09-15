@@ -27,6 +27,16 @@ from app.utils.google_sheets_utils import (
 MODULE = "app.utils.google_sheets_utils"
 
 
+def _rgb(hex_color: str) -> dict[str, float]:
+    """Return the Color JSON Google receives for hex_color."""
+    return hex_to_rgb(hex_color).model_dump()
+
+
+def _grid(a1: str) -> dict[str, int]:
+    """Return the GridRange JSON Google receives for a1, with open bounds omitted."""
+    return parse_a1_range(a1).model_dump(exclude_none=True)
+
+
 # ---------------------------------------------------------------------------
 # hex_to_rgb
 # ---------------------------------------------------------------------------
@@ -34,32 +44,32 @@ MODULE = "app.utils.google_sheets_utils"
 
 class TestHexToRgb:
     def test_pure_red(self) -> None:
-        assert hex_to_rgb("#FF0000") == {"red": 1.0, "green": 0.0, "blue": 0.0}
+        assert _rgb("#FF0000") == {"red": 1.0, "green": 0.0, "blue": 0.0}
 
     def test_pure_blue(self) -> None:
-        assert hex_to_rgb("#0000FF") == {"red": 0.0, "green": 0.0, "blue": 1.0}
+        assert _rgb("#0000FF") == {"red": 0.0, "green": 0.0, "blue": 1.0}
 
     def test_black_and_white_are_the_scale_endpoints(self) -> None:
-        assert hex_to_rgb("#000000") == {"red": 0.0, "green": 0.0, "blue": 0.0}
-        assert hex_to_rgb("#FFFFFF") == {"red": 1.0, "green": 1.0, "blue": 1.0}
+        assert _rgb("#000000") == {"red": 0.0, "green": 0.0, "blue": 0.0}
+        assert _rgb("#FFFFFF") == {"red": 1.0, "green": 1.0, "blue": 1.0}
 
     def test_leading_hash_is_optional(self) -> None:
         assert hex_to_rgb("00FF00") == hex_to_rgb("#00FF00")
 
     def test_lowercase_digits_accepted(self) -> None:
-        assert hex_to_rgb("#00ff00") == {"red": 0.0, "green": 1.0, "blue": 0.0}
+        assert _rgb("#00ff00") == {"red": 0.0, "green": 1.0, "blue": 0.0}
 
     def test_channels_are_not_transposed(self) -> None:
         # Distinct values per channel: a red/blue swap would still pass an
         # all-equal fixture, so pin each channel to its own byte.
-        assert hex_to_rgb("#112233") == {
+        assert _rgb("#112233") == {
             "red": 0x11 / 255.0,
             "green": 0x22 / 255.0,
             "blue": 0x33 / 255.0,
         }
 
     def test_midpoint_byte_scales_to_fraction(self) -> None:
-        assert hex_to_rgb("#808080")["red"] == pytest.approx(128 / 255.0)
+        assert hex_to_rgb("#808080").red == pytest.approx(128 / 255.0)
 
     # BUG: three-digit shorthand used to crash with "invalid literal for int()
     # with base 16: ''" — an opaque message for a colour the model routinely
@@ -83,7 +93,7 @@ class TestParseA1Range:
     def test_simple_range_is_half_open_on_the_end(self) -> None:
         # A1:B10 covers rows 1-10 and columns A-B, so the exclusive end indices
         # are 10 and 2 respectively.
-        assert parse_a1_range("A1:B10") == {
+        assert _grid("A1:B10") == {
             "startRowIndex": 0,
             "endRowIndex": 10,
             "startColumnIndex": 0,
@@ -91,7 +101,7 @@ class TestParseA1Range:
         }
 
     def test_single_cell_spans_exactly_one_row_and_column(self) -> None:
-        assert parse_a1_range("C3") == {
+        assert _grid("C3") == {
             "startRowIndex": 2,
             "endRowIndex": 3,
             "startColumnIndex": 2,
@@ -100,8 +110,8 @@ class TestParseA1Range:
 
     def test_multi_letter_columns_use_base_26(self) -> None:
         # AA is the 27th column (index 26); a naive per-character sum yields 0.
-        assert parse_a1_range("AA1")["startColumnIndex"] == 26
-        assert parse_a1_range("ZZ1")["startColumnIndex"] == 701
+        assert parse_a1_range("AA1").startColumnIndex == 26
+        assert parse_a1_range("ZZ1").startColumnIndex == 701
 
     def test_absolute_markers_are_stripped(self) -> None:
         assert parse_a1_range("$A$1:$B$2") == parse_a1_range("A1:B2")
@@ -122,18 +132,18 @@ class TestParseA1Range:
     # "highlight column C" silently formatted one cell and reported success.
     # Omitting row bounds is what Google's GridRange means by "unbounded".
     def test_whole_column_range_leaves_rows_unbounded(self) -> None:
-        assert parse_a1_range("A:C") == {"startColumnIndex": 0, "endColumnIndex": 3}
+        assert _grid("A:C") == {"startColumnIndex": 0, "endColumnIndex": 3}
 
     def test_single_whole_column_leaves_rows_unbounded(self) -> None:
-        assert parse_a1_range("B:B") == {"startColumnIndex": 1, "endColumnIndex": 2}
+        assert _grid("B:B") == {"startColumnIndex": 1, "endColumnIndex": 2}
 
     def test_whole_row_range_leaves_columns_unbounded(self) -> None:
-        assert parse_a1_range("1:5") == {"startRowIndex": 0, "endRowIndex": 5}
+        assert _grid("1:5") == {"startRowIndex": 0, "endRowIndex": 5}
 
     def test_open_ended_column_keeps_its_start_row(self) -> None:
         # "A2:A" means "column A from row 2 down", so the start row survives and
         # only the end is unbounded.
-        assert parse_a1_range("A2:A") == {
+        assert _grid("A2:A") == {
             "startRowIndex": 1,
             "startColumnIndex": 0,
             "endColumnIndex": 1,

@@ -28,6 +28,7 @@ from app.agents.core.background.executor_queue import (
 from app.agents.core.background.session import RunIdentity, RunKind, get_session
 from app.constants.cache import EXECUTOR_BUSY_TTL, EXECUTOR_QUEUE_TTL
 from app.models.agent_models import AgentConfigurable
+from app.models.user_models import AuthenticatedUser
 
 
 def _queue_item(**overrides) -> str:
@@ -96,7 +97,9 @@ class TestPopNextQueuedRun:
         assert run.task_id == "task-7"
         assert run.user_message_id == "msg-1"
         assert run.conversation_id == "conv-1"
-        assert run.user == {"user_id": "u1", "email": "u1@x.com", "name": "Uno", "timezone": None}
+        assert run.user == AuthenticatedUser(
+            user_id="u1", email="u1@x.com", name="Uno", timezone=None
+        )
 
         # The popped item's stale stream_id is replaced by the fresh queued one.
         assert prepared.configurable["stream_id"] == run.stream_id

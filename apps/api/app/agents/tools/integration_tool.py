@@ -9,6 +9,7 @@ from typing import Annotated, cast
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
+from pydantic import BaseModel, ConfigDict
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.integrations import (
@@ -20,11 +21,8 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators import with_doc
-from app.helpers.integration_helpers import (
-    build_search_patterns,
-    generate_integration_slug,
-    normalize_server_url,
-)
+from app.helpers.integration_helpers import build_search_patterns, normalize_server_url
+from app.helpers.slug_helpers import generate_integration_slug
 from app.models.agent_models import agent_configurable
 from app.models.device import Device
 from app.models.device_models import DeviceInfo, DeviceServerInfo, ListDevicesResult
@@ -68,18 +66,40 @@ from app.utils.url_safety import assert_safe_url_shape
 from shared.py.wide_events import log
 
 
-async def _partition_platform_integrations(
-    user_id: str,
-) -> tuple[list[IntegrationInfo], list[IntegrationInfo]]:
-    """Available platform (OAuth) integrations split into connected vs available."""
+class _ConfiguredUser(BaseModel):
+    """The run's ``user_id``, read off its ``AgentConfigurable``."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    user_id: str | None = None
+
+
+def _configured_user_id(config: RunnableConfig) -> str | None:
+    return _ConfiguredUser.model_validate(agent_configurable(config)).user_id
+
+
+class _IntegrationLists:
+    """The connected/available split, plus every id already listed for the user."""
+
+    def __init__(self) -> None:
+        self.connected: list[IntegrationInfo] = []
+        self.available: list[IntegrationInfo] = []
+        self.listed_ids: set[str] = set()
+
+    def add(self, info: IntegrationInfo, integration_id: str, is_connected: bool) -> None:
+        self.listed_ids.add(integration_id)
+        (self.connected if is_connected else self.available).append(info)
+
+
+async def _add_platform_integrations(lists: _IntegrationLists, user_id: str) -> None:
+    """Platform integrations with their connection status."""
     platform_ids = [i.id for i in OAUTH_INTEGRATIONS if i.available]
     status_map = await check_multiple_integrations_status(platform_ids, user_id)
 
-    connected: list[IntegrationInfo] = []
-    available: list[IntegrationInfo] = []
     for integration in OAUTH_INTEGRATIONS:
         if not integration.available:
             continue
+
         is_connected = status_map.get(integration.id, False)
         info: IntegrationInfo = {
             "id": integration.id,
@@ -88,41 +108,55 @@ async def _partition_platform_integrations(
             "category": integration.category,
             "connected": is_connected,
         }
-        (connected if is_connected else available).append(info)
-    return connected, available
+        lists.add(info, integration.id, is_connected)
 
 
-async def _partition_custom_integrations(
-    user_id: str, user_integration_ids: set[str]
-) -> tuple[list[IntegrationInfo], list[IntegrationInfo]]:
-    """The user's own custom integrations split into connected vs available."""
-    connected: list[IntegrationInfo] = []
-    available: list[IntegrationInfo] = []
-    if not user_integration_ids:
-        return connected, available
+async def _add_custom_integrations(lists: _IntegrationLists, user_id: str) -> set[str]:
+    """The user's custom integrations; returns the ids the user has added."""
+    user_integrations = await user_integration_repository.list_for_user(user_id)
+    user_integration_ids = {ui.integration_id for ui in user_integrations}
 
-    custom_docs = await integration_repository.find_custom_by_ids(list(user_integration_ids))
-    for doc in custom_docs:
-        is_connected = await user_integration_repository.is_connected(user_id, doc.integration_id)
-        info: IntegrationInfo = {
-            "id": doc.integration_id,
-            "name": doc.name,
-            "description": doc.description,
-            "category": doc.category,
-            "connected": is_connected,
-        }
-        (connected if is_connected else available).append(info)
-    return connected, available
+    if user_integration_ids:
+        custom_docs = await integration_repository.find_custom_by_ids(list(user_integration_ids))
+        for doc in custom_docs:
+            integration_id = doc.integration_id
+            is_connected = await user_integration_repository.is_connected(user_id, integration_id)
+
+            custom_info: IntegrationInfo = {
+                "id": integration_id,
+                "name": doc.name,
+                "description": doc.description,
+                "category": doc.category,
+                "connected": is_connected,
+            }
+            lists.add(custom_info, integration_id, is_connected)
+
+    return user_integration_ids
 
 
-async def _search_suggested_integrations(
-    query: str, exclude_ids: set[str]
-) -> list[SuggestedIntegration]:
-    """Best-effort marketplace search — a failure logs and yields nothing rather
-    than failing the whole listing."""
+def _stream_frame(suggested: SuggestedIntegration) -> dict[str, object]:
+    """A suggested integration as the frontend's camelCase stream frame."""
+    return {
+        "id": suggested["id"],
+        "name": suggested["name"],
+        "description": suggested["description"],
+        "category": suggested["category"],
+        "iconUrl": suggested["icon_url"],
+        "authType": suggested["auth_type"],
+        "relevanceScore": suggested["relevance_score"],
+        "slug": suggested["slug"],
+    }
+
+
+async def _search_suggested(query: str, exclude_ids: set[str]) -> list[SuggestedIntegration]:
+    """Public integrations matching query, excluding ids the user already has."""
+    suggested_list: list[SuggestedIntegration] = []
     try:
+        log.info(f"{LogTag.TOOL} Searching public integrations", query=query)
+
         # Flexible word-based search (regex construction lives in the repo)
         words = build_search_patterns(query)
+
         docs = await integration_repository.search_public(
             words=words,
             query=query,
@@ -130,25 +164,42 @@ async def _search_suggested_integrations(
             limit=MAX_SUGGESTED_FOR_LLM,
         )
 
-        return [
-            {
-                "id": doc.integration_id,
-                "name": doc.name,
-                "description": doc.description,
-                "category": doc.category,
-                "icon_url": doc.icon_url,
-                "auth_type": doc.mcp_config.auth_type if doc.mcp_config else None,
-                "relevance_score": 1.0,  # All matches are equal with regex
-                "slug": generate_integration_slug(name=doc.name, category=doc.category),
-            }
-            for doc in docs
-        ]
+        for doc in docs:
+            iid = doc.integration_id
+            log.info(
+                f"{LogTag.TOOL} Found public integration",
+                integration_id=iid,
+                integration_name=doc.name,
+            )
+
+            suggested_list.append(
+                {
+                    "id": iid,
+                    "name": doc.name,
+                    "description": doc.description,
+                    "category": doc.category,
+                    "icon_url": doc.icon_url,
+                    "auth_type": doc.mcp_config.auth_type if doc.mcp_config else None,
+                    "relevance_score": 1.0,  # All matches are equal with regex
+                    "slug": generate_integration_slug(
+                        name=doc.name,
+                        category=doc.category,
+                    ),
+                }
+            )
+
+        log.info(
+            f"{LogTag.TOOL} Found public integrations",
+            integration_count=len(suggested_list),
+        )
+
     except Exception as e:
         log.warning(
             f"{LogTag.TOOL} Failed to search public integrations",
             error_type=type(e).__name__,
         )
-        return []
+
+    return suggested_list
 
 
 @tool
@@ -170,59 +221,38 @@ async def list_integrations(
     """
     try:
         log.set(tool={"name": "list_integrations", "action": "list"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id") if configurable else None
+        user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
 
         writer = get_stream_writer()
 
-        connected_list, available_list = await _partition_platform_integrations(user_id)
+        lists = _IntegrationLists()
+        await _add_platform_integrations(lists, user_id)
+        user_integration_ids = await _add_custom_integrations(lists, user_id)
 
-        user_integrations = await user_integration_repository.list_for_user(user_id)
-        user_integration_ids = {ui.integration_id for ui in user_integrations}
-        custom_connected, custom_available = await _partition_custom_integrations(
-            user_id, user_integration_ids
-        )
-        connected_list += custom_connected
-        available_list += custom_available
-
+        # Search for suggested public integrations if query provided
         suggested_list: list[SuggestedIntegration] = []
         if search_public_query and search_public_query.strip():
-            existing_ids = {i["id"] for i in connected_list + available_list}
-            existing_ids.update(user_integration_ids)
-            suggested_list = await _search_suggested_integrations(
-                search_public_query.strip(), existing_ids
+            # Exclude IDs the user already has
+            suggested_list = await _search_suggested(
+                search_public_query.strip(), lists.listed_ids | user_integration_ids
             )
 
         # Stream suggested integrations to frontend (camelCase)
-        suggested_for_stream = [
-            {
-                "id": s["id"],
-                "name": s["name"],
-                "description": s["description"],
-                "category": s["category"],
-                "iconUrl": s["icon_url"],
-                "authType": s["auth_type"],
-                "relevanceScore": s["relevance_score"],
-                "slug": s["slug"],
-            }
-            for s in suggested_list[:MAX_SUGGESTED_FOR_LLM]
-        ]
-
         writer(
             {
                 "integration_list_data": {
                     "hasSuggestions": len(suggested_list) > 0,
-                    "suggested": suggested_for_stream,
+                    "suggested": [_stream_frame(s) for s in suggested_list[:MAX_SUGGESTED_FOR_LLM]],
                 }
             }
         )
 
         # Return structured data for LLM (with limits)
         return {
-            "connected": connected_list[:MAX_CONNECTED_FOR_LLM],
-            "available": available_list[:MAX_AVAILABLE_FOR_LLM],
+            "connected": lists.connected[:MAX_CONNECTED_FOR_LLM],
+            "available": lists.available[:MAX_AVAILABLE_FOR_LLM],
             "suggested": suggested_list[:MAX_SUGGESTED_FOR_LLM],
         }
 
@@ -268,8 +298,7 @@ async def connect_integration(
 ) -> str:
     try:
         log.set(tool={"name": "connect_integration", "action": "connect"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id") if configurable else None
+        user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
 
@@ -340,8 +369,7 @@ async def check_integrations_status(
 ) -> str:
     try:
         log.set(tool={"name": "check_integrations_status", "action": "check"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id") if configurable else None
+        user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
 

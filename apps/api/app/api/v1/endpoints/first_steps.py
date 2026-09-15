@@ -16,8 +16,8 @@ async def read_first_steps(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> FirstStepsResponse:
     """The activation checklist; every ``done`` is derived server-side."""
-    log.set(user={"id": user["user_id"]}, first_steps={"operation": "read"})
-    checklist = await get_first_steps(user["user_id"])
+    log.set(user={"id": user.user_id}, first_steps={"operation": "read"})
+    checklist = await get_first_steps(user.user_id)
     log.set_ns(
         "first_steps",
         done=sum(step.done for step in checklist.steps),
@@ -32,8 +32,8 @@ async def collapse(
     body: FirstStepsCollapseRequest,
 ) -> FirstStepsResponse:
     """Collapse the checklist to its header, or expand it again. Idempotent."""
-    log.set(user={"id": user["user_id"]}, first_steps={"operation": "collapse"})
-    checklist = await set_first_steps_collapsed(user["user_id"], body.collapsed)
+    log.set(user={"id": user.user_id}, first_steps={"operation": "collapse"})
+    checklist = await set_first_steps_collapsed(user.user_id, body.collapsed)
     log.set_ns(
         "first_steps",
         done=sum(step.done for step in checklist.steps),

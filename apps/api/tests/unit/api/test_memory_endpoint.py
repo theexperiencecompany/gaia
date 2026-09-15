@@ -13,6 +13,7 @@ import pytest
 from app.api.v1.endpoints.memory import _require_user_id
 from app.constants.general import MAX_PAGE_NUMBER
 from app.models.memory_models import MemoryListResponse
+from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents
 
 MEMORY_ENDPOINT = "app.api.v1.endpoints.memory"
@@ -36,11 +37,11 @@ class TestRequireUserId:
     """_require_user_id: extract the user id or fail the request."""
 
     def test_returns_user_id_when_present(self) -> None:
-        assert _require_user_id({"user_id": "u-1"}) == "u-1"
+        assert _require_user_id(AuthenticatedUser(user_id="u-1")) == "u-1"
 
     def test_missing_user_id_raises_400(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
-            _require_user_id({})
+            _require_user_id(AuthenticatedUser(user_id=""))
         assert exc_info.value.status_code == 400
         assert exc_info.value.detail == "User ID not found"
 

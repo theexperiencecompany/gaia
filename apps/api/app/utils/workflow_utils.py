@@ -1,13 +1,14 @@
 """Workflow utility functions for GAIA workflow system."""
 
 import asyncio
-from typing import Any, TypedDict, cast
+from collections.abc import Mapping
+from typing import TypedDict
 
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
 
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import read_agent_configurable
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -83,24 +84,24 @@ async def handle_workflow_error(
         )
 
 
-def ensure_trigger_config_object(trigger_config: TriggerConfig | dict[str, Any]) -> TriggerConfig:
-    """Convert dict to TriggerConfig object if needed."""
-    if isinstance(trigger_config, dict):
-        return TriggerConfig(**trigger_config)
-    return trigger_config
+def ensure_trigger_config_object(
+    trigger_config: TriggerConfig | Mapping[str, object],
+) -> TriggerConfig:
+    """Convert a mapping to a TriggerConfig object if needed (an instance is returned as is)."""
+    return TriggerConfig.model_validate(trigger_config)
 
 
-# The two envelopes below stay `dict[str, Any]`: every workflow tool returns
-# them straight out of a `-> dict` handler, and mypy rejects a TypedDict
-# where a plain `dict` is declared (Type Safety item 14).
-def error_response(error_code: str, message: str) -> dict[str, Any]:
+# The two envelopes below stay plain dicts: every workflow tool returns them
+# straight out of a `-> dict[str, Any]` handler, and mypy rejects a model where
+# a plain `dict` is declared (Type Safety item 14).
+def error_response(error_code: str, message: str) -> dict[str, object]:
     """Return a standardized error response."""
     return {"success": False, "error": error_code, "message": message}
 
 
-def success_response(data: object, message: str | None = None) -> dict[str, Any]:
+def success_response(data: object, message: str | None = None) -> dict[str, object]:
     """Return a standardized success response."""
-    response: dict[str, Any] = {"success": True, "data": data}
+    response: dict[str, object] = {"success": True, "data": data}
     if message:
         response["message"] = message
     return response
@@ -154,7 +155,7 @@ async def filter_existing_integration_ids(integration_ids: list[str] | None) -> 
 
 def get_user_id(config: RunnableConfig) -> str:
     """Extract user_id from config. Raises error if missing."""
-    user_id: str | None = agent_configurable(config).get("user_id")
+    user_id = read_agent_configurable(config).user_id
     if not user_id:
         raise WorkflowConfigError("User authentication required")
     return user_id
@@ -162,7 +163,7 @@ def get_user_id(config: RunnableConfig) -> str:
 
 def get_workflow_id(config: RunnableConfig) -> str:
     """Extract workflow_id from config. Raises error if missing."""
-    workflow_id: str | None = agent_configurable(config).get("workflow_id")
+    workflow_id = read_agent_configurable(config).workflow_id
     if not workflow_id:
         raise WorkflowConfigError(
             "No workflow in this run's config: this tool only works inside a workflow run."
@@ -172,7 +173,7 @@ def get_workflow_id(config: RunnableConfig) -> str:
 
 def get_stream_id(config: RunnableConfig) -> str:
     """Return the run this tool call belongs to. Raises when the config carries none."""
-    stream_id: str | None = agent_configurable(config).get("stream_id")
+    stream_id = read_agent_configurable(config).stream_id
     if not stream_id:
         raise WorkflowConfigError(
             "No stream id in this run's config: cannot tell which run this is."
@@ -182,8 +183,7 @@ def get_stream_id(config: RunnableConfig) -> str:
 
 def get_thread_id(config: RunnableConfig) -> str | None:
     """Extract thread_id from config."""
-    thread_id: str | None = agent_configurable(config).get("thread_id")
-    return thread_id
+    return read_agent_configurable(config).thread_id
 
 
 def can_create_directly(draft: FinalizedOutput) -> bool:
@@ -205,7 +205,7 @@ async def create_workflow_directly(
     user_id: str,
     writer: StreamWriter,
     user_timezone: str = "UTC",
-) -> dict[str, Any] | None:
+) -> dict[str, object] | None:
     """
     Create a workflow directly from a finalized draft.
 
@@ -428,7 +428,7 @@ async def apply_workflow_edit(
     user_id: str,
     writer: StreamWriter,
     user_timezone: str = "UTC",
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Apply a finalized edit draft to an existing workflow via WorkflowService.update_workflow.
 
     Applies title/description/prompt and manual/scheduled trigger changes directly.
@@ -456,14 +456,12 @@ async def apply_workflow_edit(
             "No changes to apply.",
         )
 
-    # The splat is what gives the request its ``exclude_unset`` semantics — only
-    # the keys set above are persisted. Widened back to Any for the call because
-    # mypy checks a ``**`` splat field-by-field and cannot match a union value
-    # type against each optional field; the narrow type above is what actually
-    # guards the writes.
+    # Validating the mapping (rather than splatting it) is what gives the
+    # request its ``exclude_unset`` semantics — only the keys set above are
+    # persisted — without widening the narrow value type back to Any.
     updated = await WorkflowService.update_workflow(
         workflow.id or "",
-        UpdateWorkflowRequest(**cast(dict[str, Any], update_fields)),
+        UpdateWorkflowRequest.model_validate(update_fields),
         user_id,
         user_timezone=user_timezone,
     )

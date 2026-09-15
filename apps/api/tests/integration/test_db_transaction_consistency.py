@@ -39,6 +39,7 @@ from app.models.todo_models import (
     TodoUpdate,
     TodoUpdateRequest,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import (
     create_conversation_service,
     delete_all_conversations,
@@ -53,7 +54,7 @@ from app.utils.errors import AppError
 # ---------------------------------------------------------------------------
 
 USER_ID = "user_txn_test_001"
-FAKE_USER: dict[str, Any] = {"user_id": USER_ID}
+FAKE_USER = AuthenticatedUser(user_id=USER_ID)
 
 
 def _stored_todo(document: TodoDocument, **overrides: Any) -> TodoDocument:
@@ -140,11 +141,11 @@ class TestConversationCreationConsistency:
         assert "connection refused" in exc_info.value.detail
 
     async def test_create_conversation_requires_user_id(self) -> None:
-        """Missing user_id in user dict must raise 403."""
+        """An empty user_id must raise 403."""
         conversation = ConversationModel(conversation_id=str(uuid4()), description="No user")
 
         with pytest.raises(HTTPException) as exc_info:
-            await create_conversation_service(conversation, {})
+            await create_conversation_service(conversation, AuthenticatedUser(user_id=""))
 
         assert exc_info.value.status_code == 403
 

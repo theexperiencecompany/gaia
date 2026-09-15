@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from app.utils.favicon_utils import (
+    IconCandidate,
     _fetch_favicon_impl,
     _fetch_smithery_icon,
     _get_domain_cache_key,
@@ -167,15 +168,15 @@ class TestParseIconsFromHtml:
         icons = _parse_icons_from_html(html, "https://example.com")
 
         assert len(icons) == 3
-        assert icons[0]["href"] == "https://example.com/favicon.ico"
-        assert icons[0]["format"] == "ico"
-        assert icons[0]["size"] == 16
-        assert icons[1]["href"] == "https://example.com/icon-192.png"
-        assert icons[1]["format"] == "png"
-        assert icons[1]["size"] == 192
-        assert icons[2]["href"] == "https://example.com/icon.svg"
-        assert icons[2]["format"] == "svg"
-        assert icons[2]["size"] == 0
+        assert icons[0].href == "https://example.com/favicon.ico"
+        assert icons[0].format == "ico"
+        assert icons[0].size == 16
+        assert icons[1].href == "https://example.com/icon-192.png"
+        assert icons[1].format == "png"
+        assert icons[1].size == 192
+        assert icons[2].href == "https://example.com/icon.svg"
+        assert icons[2].format == "svg"
+        assert icons[2].size == 0
 
     def test_no_icon_links(self) -> None:
         """HTML without any link[rel=icon] yields empty list."""
@@ -191,8 +192,8 @@ class TestParseIconsFromHtml:
         </head></html>
         """
         icons = _parse_icons_from_html(html, "https://example.com/page/")
-        assert icons[0]["href"] == "https://example.com/assets/icon.png"
-        assert icons[1]["href"] == "https://example.com/page/icons/favicon.ico"
+        assert icons[0].href == "https://example.com/assets/icon.png"
+        assert icons[1].href == "https://example.com/page/icons/favicon.ico"
 
     def test_data_uri_skipped(self) -> None:
         """data: URIs are filtered out (empty string after _make_absolute_url)."""
@@ -209,14 +210,14 @@ class TestParseIconsFromHtml:
         html = """<html><head><link rel="icon" href="/icon.gif"></head></html>"""
         icons = _parse_icons_from_html(html, "https://example.com")
         assert len(icons) == 1
-        assert icons[0]["format"] == "other"
+        assert icons[0].format == "other"
 
     def test_shortcut_icon_rel(self) -> None:
         """rel='shortcut icon' (contains 'icon') is also matched."""
         html = """<html><head><link rel="shortcut icon" href="/favicon.ico"></head></html>"""
         icons = _parse_icons_from_html(html, "https://example.com")
         assert len(icons) == 1
-        assert icons[0]["href"] == "https://example.com/favicon.ico"
+        assert icons[0].href == "https://example.com/favicon.ico"
 
 
 # ---------------------------------------------------------------------------
@@ -234,24 +235,24 @@ class TestSelectBestIcon:
     def test_png_prioritized_over_ico(self) -> None:
         """PNG format has higher priority than ICO."""
         icons = [
-            {"href": "https://example.com/fav.ico", "size": 32, "format": "ico"},
-            {"href": "https://example.com/fav.png", "size": 32, "format": "png"},
+            IconCandidate(href="https://example.com/fav.ico", size=32, format="ico"),
+            IconCandidate(href="https://example.com/fav.png", size=32, format="png"),
         ]
         assert _select_best_icon(icons) == "https://example.com/fav.png"
 
     def test_larger_size_preferred_within_same_format(self) -> None:
         """Within the same format, larger sizes are preferred (secondary sort desc)."""
         icons = [
-            {"href": "https://example.com/small.png", "size": 16, "format": "png"},
-            {"href": "https://example.com/large.png", "size": 256, "format": "png"},
+            IconCandidate(href="https://example.com/small.png", size=16, format="png"),
+            IconCandidate(href="https://example.com/large.png", size=256, format="png"),
         ]
         assert _select_best_icon(icons) == "https://example.com/large.png"
 
     def test_png_beats_svg_even_if_svg_larger(self) -> None:
         """Format priority trumps size — PNG beats SVG even if SVG is larger."""
         icons = [
-            {"href": "https://example.com/huge.svg", "size": 1024, "format": "svg"},
-            {"href": "https://example.com/small.png", "size": 16, "format": "png"},
+            IconCandidate(href="https://example.com/huge.svg", size=1024, format="svg"),
+            IconCandidate(href="https://example.com/small.png", size=16, format="png"),
         ]
         assert _select_best_icon(icons) == "https://example.com/small.png"
 

@@ -72,7 +72,8 @@ class NotificationOrchestrator:
         self.register_action_handler(RedirectActionHandler())
         self.register_action_handler(ModalActionHandler())
 
-    def register_channel_adapter(self, adapter: ChannelAdapter[Any]) -> None:
+    def register_channel_adapter(self, adapter: ChannelAdapter[TContent]) -> None:
+        """Accept any adapter's own payload type; the registry holds it erased."""
         self.channel_adapters[adapter.channel_type] = adapter
         log.info(
             f"{LogTag.NOTIFICATION} Registered channel adapter", channel_type=adapter.channel_type

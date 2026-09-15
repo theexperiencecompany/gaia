@@ -772,6 +772,23 @@ class TestRevokeToken:
 # ---------------------------------------------------------------------------
 
 
+# Every RFC 7662 claim the model declares, so a dump can be compared whole.
+_INTROSPECTION_DEFAULTS = {
+    "active": None,
+    "scope": None,
+    "client_id": None,
+    "username": None,
+    "token_type": None,
+    "exp": None,
+    "iat": None,
+    "nbf": None,
+    "sub": None,
+    "aud": None,
+    "iss": None,
+    "jti": None,
+}
+
+
 class TestIntrospectToken:
     """Tests for introspect_token — RFC 7662 token introspection."""
 
@@ -793,8 +810,9 @@ class TestIntrospectToken:
             )
 
         assert result is not None
-        assert result["active"] is True
-        assert result["scope"] == "read write"
+        assert result.active is True
+        assert result.scope == "read write"
+        assert result.model_dump() == {**_INTROSPECTION_DEFAULTS, **introspection_data}
 
     async def test_non_200_returns_none(self) -> None:
         mock_response = MagicMock()
@@ -918,11 +936,24 @@ class TestParseOauthErrorResponse:
             json_data={
                 "error": "server_error",
                 "error_description": "Internal failure",
+                "error_uri": "https://docs.example.com/errors/server_error",
             },
         )
         result = parse_oauth_error_response(response)
 
         assert result["error"] == "server_error"
+        assert result["error_description"] == "Internal failure"
+        assert result["error_uri"] == "https://docs.example.com/errors/server_error"
+
+    def test_non_json_content_type_json_body_without_error_code(self) -> None:
+        response = _make_response(
+            status_code=400,
+            headers={"content-type": "text/html"},
+            json_data={"error_description": "Internal failure"},
+        )
+        result = parse_oauth_error_response(response)
+
+        assert result["error"] == "unknown_error"
         assert result["error_description"] == "Internal failure"
 
     def test_non_json_content_type_non_json_body(self) -> None:

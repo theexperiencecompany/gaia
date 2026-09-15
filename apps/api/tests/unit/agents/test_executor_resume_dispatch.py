@@ -13,8 +13,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from langgraph.types import Command
 
-from app.agents.core.background.executor_runner import _execute_executor
+from app.agents.core.background.executor_runner import _execute_executor, _ExecutorResult
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
+from app.constants.executor import EXECUTOR_PAUSED
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
 
 RUNNER = "app.agents.core.background.executor_runner"
@@ -48,6 +49,37 @@ async def test_a_resume_stamps_the_replay_flag_on_both_config_surfaces() -> None
 
     assert ctx.configurable.get(HIL_RESUME_CONFIG_KEY) is True
     assert ctx.config["configurable"].get(HIL_RESUME_CONFIG_KEY) is True
+
+
+async def test_a_paused_run_reports_the_approval_it_is_parked_on() -> None:
+    # The id is the only handle a later decision has to re-dispatch this thread.
+    execute = AsyncMock(return_value=SubagentOutcome(text="", interrupt={"approval_id": "ap-1"}))
+    with (
+        patch(f"{RUNNER}.prepare_executor_execution", AsyncMock(return_value=(_Ctx(), None))),
+        patch(f"{RUNNER}.make_redis_stream_writer", lambda _stream_id: None),
+        patch(f"{RUNNER}.execute_subagent_stream", execute),
+    ):
+        result = await _execute_executor("task", {"user_id": "u1"}, "stream-1")
+
+    assert result == _ExecutorResult("", EXECUTOR_PAUSED, ("ap-1",))
+
+
+async def test_a_batch_pause_reports_every_approval_not_the_single_id() -> None:
+    # A barrier pause parks on several approvals at once; dropping the batch
+    # would leave every id but the fallback single one unresumable.
+    execute = AsyncMock(
+        return_value=SubagentOutcome(
+            text="", interrupt={"approval_ids": ["ap-1", "ap-2"], "approval_id": "ap-3"}
+        )
+    )
+    with (
+        patch(f"{RUNNER}.prepare_executor_execution", AsyncMock(return_value=(_Ctx(), None))),
+        patch(f"{RUNNER}.make_redis_stream_writer", lambda _stream_id: None),
+        patch(f"{RUNNER}.execute_subagent_stream", execute),
+    ):
+        result = await _execute_executor("task", {"user_id": "u1"}, "stream-1")
+
+    assert result == _ExecutorResult("", EXECUTOR_PAUSED, ("ap-1", "ap-2"))
 
 
 async def test_a_fresh_run_does_not_arm_the_probe() -> None:

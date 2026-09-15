@@ -1,25 +1,17 @@
-from typing import Any
-
 from fastapi import HTTPException
 
 from app.db.repositories.users import user_repository
-from app.models.user_models import UserUpdate, UserUpdateResponse, user_to_legacy_dict
+from app.models.user_models import UserDocument, UserUpdate, UserUpdateResponse
 from app.utils.oauth_utils import upload_user_picture
 from shared.py.wide_events import log
 
 
-async def get_user_by_id(user_id: str) -> dict[str, Any] | None:
-    """Get user by ID from database.
-
-    Returns the user_to_legacy_dict bridge shape — a raw-style dict with a
-    string _id — because its consumers (agent tools, workflow/todo workers)
-    mutate it and pass it on as a plain dict. Typing it as UserDocument is
-    the real fix and belongs with retiring that bridge, not here.
-    """
+async def get_user_by_id(user_id: str) -> UserDocument | None:
+    """Get user by ID from database."""
     log.set(component="user_service", user_id=user_id)
     try:
         user = await user_repository.get(user_id)
-        return user_to_legacy_dict(user) if user else None
+        return user
     except Exception as e:
         log.error("Error fetching user", user_id=user_id, error=str(e), error_type=type(e).__name__)
         raise HTTPException(status_code=404, detail="User not found") from e

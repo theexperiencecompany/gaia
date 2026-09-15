@@ -15,13 +15,11 @@ different asks. Only the stored record tells the two apart, so this module
 reads it rather than taking it as an argument.
 """
 
-from typing import cast
-
 from langgraph.config import get_config, get_stream_writer
 
 from app.config.settings import settings
 from app.db.repositories.user_integrations import user_integration_repository
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import read_agent_configurable
 from app.models.chat_models import SourceCategory
 from app.services.connect_link_service import build_connect_link_url
 
@@ -36,7 +34,7 @@ def _current_source_category() -> str | None:
         config = get_config()
     except RuntimeError:
         return None
-    return cast(str | None, agent_configurable(config).get("source_category"))
+    return read_agent_configurable(config).source_category
 
 
 async def request_integration_connection(

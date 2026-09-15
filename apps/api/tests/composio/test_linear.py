@@ -13,6 +13,7 @@ an ImportError, so the tests are proven to import and call the real code.
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 # --- import the real production module (tests fail if it is deleted) ---
@@ -64,21 +65,19 @@ def _capture_tools() -> dict[str, Any]:
 _TOOLS = _capture_tools()
 
 
-def _call(tool_name: str, request, side_effects=None, return_values=None):
-    """
-    Call a captured tool function with graphql_request mocked.
+PROXY = "app.utils.linear_utils.proxy_request_sync"
 
-    Either side_effects (iterable consumed in call order) or
-    return_values (iterable consumed in call order) must be provided.
-    """
+
+def _call(tool_name, request, return_values):
+    """Call a captured tool with each GraphQL data in return_values answered in order."""
     tool_fn = _TOOLS[tool_name]
-    with patch(
-        "app.agents.tools.integrations.linear_tool.graphql_request",
-        side_effect=side_effects if side_effects is not None else None,
-    ) as mock_gql:
-        if return_values is not None:
-            mock_gql.side_effect = return_values
-        return tool_fn(request, EXECUTE_REQUEST, AUTH), mock_gql
+    with patch(PROXY, side_effect=[{"data": data} for data in return_values]) as proxy:
+        return tool_fn(request, EXECUTE_REQUEST, AUTH), proxy
+
+
+def _variables(call):
+    """Return the GraphQL variables one proxy call sent."""
+    return call.args[0].body["variables"]
 
 
 # ---------------------------------------------------------------------------
@@ -133,8 +132,8 @@ class TestResolveContext:
         teams_response = {
             "teams": {
                 "nodes": [
-                    {"id": "team-1", "name": "Engineering"},
-                    {"id": "team-2", "name": "Product"},
+                    {"id": "team-1", "name": "Engineering", "key": "ENG", "activeCycle": None},
+                    {"id": "team-2", "name": "Product", "key": "PROD", "activeCycle": None},
                 ]
             }
         }
@@ -184,8 +183,8 @@ class TestResolveContext:
         labels_response = {
             "issueLabels": {
                 "nodes": [
-                    {"id": "lbl-1", "name": "bug"},
-                    {"id": "lbl-2", "name": "feature"},
+                    {"id": "lbl-1", "name": "bug", "color": "#ff0000"},
+                    {"id": "lbl-2", "name": "feature", "color": "#00ff00"},
                 ]
             }
         }
@@ -202,7 +201,7 @@ class TestResolveContext:
         states_response = {
             "workflowStates": {
                 "nodes": [
-                    {"id": "s1", "name": "In Progress", "type": "started"},
+                    {"id": "s1", "name": "In Progress", "type": "started", "position": 2.0},
                 ]
             }
         }
@@ -217,7 +216,7 @@ class TestResolveContext:
     def test_resolve_graphql_error_propagates(self):
         """graphql_request exceptions bubble up to the caller."""
         with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
+            PROXY,
             side_effect=Exception("Unauthorized"),
         ):
             with pytest.raises(Exception, match="Unauthorized"):
@@ -250,13 +249,13 @@ class TestGetMyTasks:
         assert mock_gql.call_count == 2
 
     @pytest.mark.composio
-    def test_viewer_id_missing_raises(self):
-        """Raises ValueError when viewer response is empty."""
+    def test_viewer_without_id_fails_validation(self):
+        """The viewer field is non-null in Linear's schema; a body without its id is a provider fault."""
         with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value={"viewer": {}},
+            PROXY,
+            return_value={"data": {"viewer": {}}},
         ):
-            with pytest.raises(ValueError, match="Could not get current user"):
+            with pytest.raises(ValidationError, match="viewer.id"):
                 _TOOLS["CUSTOM_GET_MY_TASKS"](GetMyTasksInput(), EXECUTE_REQUEST, AUTH)
 
     @pytest.mark.composio
@@ -339,8 +338,7 @@ class TestGetMyTasks:
             return_values=[VIEWER_RESPONSE, issues_response],
         )
         # Second call contains the variables dict
-        second_call_kwargs = mock_gql.call_args_list[1]
-        variables = second_call_kwargs[0][1]  # positional arg index 1
+        variables = _variables(mock_gql.call_args_list[1])
         assert variables["assigneeId"] == "user-1"
 
 
@@ -373,7 +371,7 @@ class TestSearchIssues:
             SearchIssuesInput(query="deploy pipeline"),
             return_values=[search_response],
         )
-        variables = mock_gql.call_args[0][1]
+        variables = _variables(mock_gql.call_args)
         assert variables["query"] == "deploy pipeline"
 
     @pytest.mark.composio
@@ -475,7 +473,7 @@ class TestSearchIssues:
     def test_graphql_error_propagates(self):
         """HTTP-level errors from graphql_request surface as exceptions."""
         with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
+            PROXY,
             side_effect=Exception("403 Forbidden"),
         ):
             with pytest.raises(Exception, match="403 Forbidden"):
@@ -546,7 +544,7 @@ class TestGetIssueFullContext:
     @pytest.mark.composio
     def test_invalid_identifier_format_raises(self):
         """Raises ValueError for identifiers that are not 'TEAM-NUMBER' format."""
-        with patch("app.agents.tools.integrations.linear_tool.graphql_request"):
+        with patch(PROXY):
             with pytest.raises(ValueError, match="Invalid identifier format"):
                 _TOOLS["CUSTOM_GET_ISSUE_FULL_CONTEXT"](
                     GetIssueFullContextInput(issue_identifier="BADFORMAT"),
@@ -556,12 +554,12 @@ class TestGetIssueFullContext:
 
     @pytest.mark.composio
     def test_issue_not_found_raises(self):
-        """Raises ValueError when the API returns no issue data."""
+        """An unknown id is a GraphQL error from Linear (issue is non-null), surfaced as-is."""
         with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value={"issue": None},
+            PROXY,
+            return_value={"data": None, "errors": [{"message": "Entity not found: Issue"}]},
         ):
-            with pytest.raises(ValueError, match="Issue not found"):
+            with pytest.raises(Exception, match="GraphQL errors: Entity not found: Issue"):
                 _TOOLS["CUSTOM_GET_ISSUE_FULL_CONTEXT"](
                     GetIssueFullContextInput(issue_id="missing-id"),
                     EXECUTE_REQUEST,
@@ -576,6 +574,7 @@ class TestGetIssueFullContext:
             "children": {
                 "nodes": [
                     {
+                        "id": "issue-child",
                         "identifier": "ENG-2",
                         "title": "Sub task",
                         "state": {"name": "Todo"},
@@ -630,8 +629,8 @@ class TestGetIssueFullContext:
                         "toState": {"id": "s1", "name": "In Progress"},
                         "fromAssignee": None,
                         "toAssignee": None,
-                        "addedLabels": {"nodes": []},
-                        "removedLabels": {"nodes": []},
+                        "addedLabels": [],
+                        "removedLabels": [],
                     }
                 ]
             },
@@ -694,7 +693,7 @@ class TestCreateIssue:
             ),
             return_values=[CREATE_ISSUE_SUCCESS],
         )
-        call_variables = mock_gql.call_args[0][1]
+        call_variables = _variables(mock_gql.call_args)
         inp = call_variables["input"]
         assert inp["teamId"] == "team-1"
         assert inp["description"] == "Details here"
@@ -709,8 +708,8 @@ class TestCreateIssue:
         """Raises RuntimeError when issueCreate.success is False."""
         failure_response = {"issueCreate": {"success": False, "issue": None}}
         with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value=failure_response,
+            PROXY,
+            return_value={"data": failure_response},
         ):
             with pytest.raises(RuntimeError, match="Failed to create issue"):
                 _TOOLS["CUSTOM_CREATE_ISSUE"](
@@ -729,6 +728,7 @@ class TestCreateIssue:
                     "id": "sub-1",
                     "identifier": "ENG-11",
                     "title": "Sub task",
+                    "url": "https://linear.app/team/issue/ENG-11",
                 },
             }
         }
@@ -766,7 +766,7 @@ class TestCreateIssue:
     def test_graphql_error_propagates(self):
         """Network-level errors bubble out of create_issue."""
         with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
+            PROXY,
             side_effect=Exception("GraphQL errors: Unauthorized"),
         ):
             with pytest.raises(Exception, match="Unauthorized"):
@@ -786,16 +786,16 @@ class TestCreateSubIssues:
     @pytest.mark.composio
     def test_create_sub_issues_by_parent_id(self):
         """Creates sub-issues when parent_issue_id is supplied directly."""
-        parent_response = {
-            "issue": {
-                "id": "parent-1",
-                "team": {"id": "team-1"},
-            }
-        }
+        parent_response = {"issue": {**FULL_ISSUE, "id": "parent-1"}}
         sub_success = {
             "issueCreate": {
                 "success": True,
-                "issue": {"id": "sub-2", "identifier": "ENG-20", "title": "Sub A"},
+                "issue": {
+                    "id": "sub-2",
+                    "identifier": "ENG-20",
+                    "title": "Sub A",
+                    "url": "https://linear.app/team/issue/ENG-20",
+                },
             }
         }
         result, _ = _call(
@@ -811,12 +811,12 @@ class TestCreateSubIssues:
 
     @pytest.mark.composio
     def test_parent_not_found_raises(self):
-        """Raises ValueError when parent_issue_id resolves to nothing."""
+        """An unknown parent id is Linear's GraphQL error, surfaced before any create."""
         with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value={"issue": None},
-        ):
-            with pytest.raises(ValueError, match="Parent issue not found"):
+            PROXY,
+            return_value={"data": None, "errors": [{"message": "Entity not found: Issue"}]},
+        ) as proxy:
+            with pytest.raises(Exception, match="GraphQL errors: Entity not found: Issue"):
                 _TOOLS["CUSTOM_CREATE_SUB_ISSUES"](
                     CreateSubIssuesInput(
                         parent_issue_id="bad-id",
@@ -826,10 +826,12 @@ class TestCreateSubIssues:
                     AUTH,
                 )
 
+        proxy.assert_called_once()
+
     @pytest.mark.composio
     def test_no_parent_raises(self):
         """Raises ValueError when neither parent_issue_id nor parent_identifier given."""
-        with patch("app.agents.tools.integrations.linear_tool.graphql_request"):
+        with patch(PROXY):
             with pytest.raises(ValueError, match="Could not resolve parent issue"):
                 _TOOLS["CUSTOM_CREATE_SUB_ISSUES"](
                     CreateSubIssuesInput(sub_issues=[SubIssueItem(title="Sub")]),
@@ -838,13 +840,11 @@ class TestCreateSubIssues:
                 )
 
     @pytest.mark.composio
-    def test_team_id_missing_from_parent_raises(self):
-        """Raises ValueError when parent issue has no team."""
-        with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value={"issue": {"id": "p1", "team": {}}},
-        ):
-            with pytest.raises(ValueError, match="Could not get parent's team"):
+    def test_parent_without_team_fails_validation(self):
+        """Issue.team is non-null in Linear's schema; a parent body without it is rejected."""
+        parent = {key: value for key, value in FULL_ISSUE.items() if key != "team"}
+        with patch(PROXY, return_value={"data": {"issue": parent}}):
+            with pytest.raises(ValidationError, match="issue.team"):
                 _TOOLS["CUSTOM_CREATE_SUB_ISSUES"](
                     CreateSubIssuesInput(
                         parent_issue_id="p1",
@@ -853,6 +853,37 @@ class TestCreateSubIssues:
                     EXECUTE_REQUEST,
                     AUTH,
                 )
+
+    @pytest.mark.composio
+    def test_parent_identifier_is_fetched_by_issue_id(self):
+        """A TEAM-123 parent is looked up through issue(id:), which accepts identifiers."""
+        sub_success = {
+            "issueCreate": {
+                "success": True,
+                "issue": {
+                    "id": "sub-3",
+                    "identifier": "ENG-21",
+                    "title": "Sub B",
+                    "url": "https://linear.app/team/issue/ENG-21",
+                },
+            }
+        }
+        result, proxy = _call(
+            "CUSTOM_CREATE_SUB_ISSUES",
+            CreateSubIssuesInput(
+                parent_identifier="ENG-1", sub_issues=[SubIssueItem(title="Sub B")]
+            ),
+            return_values=[{"issue": FULL_ISSUE}, sub_success],
+        )
+        assert _variables(proxy.call_args_list[0]) == {"id": "ENG-1"}
+        assert _variables(proxy.call_args_list[1]) == {
+            "input": {"teamId": "team-1", "title": "Sub B", "parentId": "issue-abc"}
+        }
+        assert result == {
+            "parent": "ENG-1",
+            "created_count": 1,
+            "sub_issues": [{"id": "sub-3", "identifier": "ENG-21", "title": "Sub B"}],
+        }
 
 
 # ===========================================================================
@@ -902,16 +933,21 @@ class TestCreateIssueRelation:
             ),
             return_values=[relation_success],
         )
-        variables = mock_gql.call_args[0][1]
+        variables = _variables(mock_gql.call_args)
         assert variables["type"] == "blocked_by"
 
     @pytest.mark.composio
     def test_create_relation_failure_raises(self):
         """Raises RuntimeError when the API reports failure."""
-        failure = {"issueRelationCreate": {"success": False, "issueRelation": None}}
+        failure = {
+            "issueRelationCreate": {
+                "success": False,
+                "issueRelation": {"id": "rel-x", "type": "related"},
+            }
+        }
         with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value=failure,
+            PROXY,
+            return_value={"data": failure},
         ):
             with pytest.raises(RuntimeError, match="Failed to create relation"):
                 _TOOLS["CUSTOM_CREATE_ISSUE_RELATION"](
@@ -940,7 +976,7 @@ class TestCreateIssueRelation:
             ),
             return_values=[relation_success],
         )
-        variables = mock_gql.call_args[0][1]
+        variables = _variables(mock_gql.call_args)
         assert variables["type"] == "related"
 
 
@@ -967,8 +1003,8 @@ class TestGetIssueActivity:
                             "toAssignee": None,
                             "fromPriority": None,
                             "toPriority": None,
-                            "addedLabels": {"nodes": []},
-                            "removedLabels": {"nodes": []},
+                            "addedLabels": [],
+                            "removedLabels": [],
                         }
                     ]
                 }
@@ -987,14 +1023,14 @@ class TestGetIssueActivity:
     @pytest.mark.composio
     def test_no_issue_id_raises(self):
         """Raises ValueError when neither issue_id nor issue_identifier is given."""
-        with patch("app.agents.tools.integrations.linear_tool.graphql_request"):
+        with patch(PROXY):
             with pytest.raises(ValueError, match="Could not resolve issue"):
                 _TOOLS["CUSTOM_GET_ISSUE_ACTIVITY"](GetIssueActivityInput(), EXECUTE_REQUEST, AUTH)
 
     @pytest.mark.composio
     def test_activity_by_identifier(self):
         """Resolves issue_identifier to an ID before fetching history."""
-        identifier_response = {"issue": {"id": "issue-abc", "identifier": "ENG-1"}}
+        identifier_response = {"issue": FULL_ISSUE}
         history_response = {
             "issue": {
                 "history": {
@@ -1009,8 +1045,8 @@ class TestGetIssueActivity:
                             "toState": None,
                             "fromPriority": None,
                             "toPriority": None,
-                            "addedLabels": {"nodes": []},
-                            "removedLabels": {"nodes": []},
+                            "addedLabels": [],
+                            "removedLabels": [],
                         }
                     ]
                 }
@@ -1041,8 +1077,8 @@ class TestGetIssueActivity:
                             "toAssignee": None,
                             "fromPriority": 4,
                             "toPriority": 1,
-                            "addedLabels": {"nodes": []},
-                            "removedLabels": {"nodes": []},
+                            "addedLabels": [],
+                            "removedLabels": [],
                         }
                     ]
                 }
@@ -1175,8 +1211,8 @@ class TestBulkUpdateIssues:
             "issueBatchUpdate": {
                 "success": True,
                 "issues": [
-                    {"id": "i1", "identifier": "ENG-1"},
-                    {"id": "i2", "identifier": "ENG-2"},
+                    {"id": "i1", "identifier": "ENG-1", "title": "Task A"},
+                    {"id": "i2", "identifier": "ENG-2", "title": "Task B"},
                 ],
             }
         }
@@ -1199,7 +1235,7 @@ class TestBulkUpdateIssues:
         update_success = {
             "issueBatchUpdate": {
                 "success": True,
-                "issues": [{"id": "i1", "identifier": "ENG-1"}],
+                "issues": [{"id": "i1", "identifier": "ENG-1", "title": "Task A"}],
             }
         }
         _, mock_gql = _call(
@@ -1211,7 +1247,7 @@ class TestBulkUpdateIssues:
             ),
             return_values=[update_success],
         )
-        variables = mock_gql.call_args[0][1]
+        variables = _variables(mock_gql.call_args)
         assert variables["issueIds"] == ["i1"]
         assert variables["input"]["priority"] == 1
         assert variables["input"]["assigneeId"] == "user-2"
@@ -1219,7 +1255,7 @@ class TestBulkUpdateIssues:
     @pytest.mark.composio
     def test_empty_issue_ids_raises(self):
         """Raises ValueError when issue_ids list is empty."""
-        with patch("app.agents.tools.integrations.linear_tool.graphql_request"):
+        with patch(PROXY):
             with pytest.raises(ValueError, match="No issue IDs provided"):
                 _TOOLS["CUSTOM_BULK_UPDATE_ISSUES"](
                     BulkUpdateIssuesInput(issue_ids=[]),
@@ -1230,7 +1266,7 @@ class TestBulkUpdateIssues:
     @pytest.mark.composio
     def test_no_update_fields_raises(self):
         """Raises ValueError when no update fields are provided."""
-        with patch("app.agents.tools.integrations.linear_tool.graphql_request"):
+        with patch(PROXY):
             with pytest.raises(ValueError, match="No updates specified"):
                 _TOOLS["CUSTOM_BULK_UPDATE_ISSUES"](
                     BulkUpdateIssuesInput(issue_ids=["i1"]),
@@ -1243,8 +1279,8 @@ class TestBulkUpdateIssues:
         """Raises RuntimeError when the batch update API reports failure."""
         failure = {"issueBatchUpdate": {"success": False, "issues": []}}
         with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value=failure,
+            PROXY,
+            return_value={"data": failure},
         ):
             with pytest.raises(RuntimeError, match="Batch update failed"):
                 _TOOLS["CUSTOM_BULK_UPDATE_ISSUES"](
@@ -1259,7 +1295,7 @@ class TestBulkUpdateIssues:
         update_success = {
             "issueBatchUpdate": {
                 "success": True,
-                "issues": [{"id": "i1", "identifier": "ENG-1"}],
+                "issues": [{"id": "i1", "identifier": "ENG-1", "title": "Task A"}],
             }
         }
         _, mock_gql = _call(
@@ -1267,7 +1303,7 @@ class TestBulkUpdateIssues:
             BulkUpdateIssuesInput(issue_ids=["i1"], labels_to_add=["lbl-1", "lbl-2"]),
             return_values=[update_success],
         )
-        variables = mock_gql.call_args[0][1]
+        variables = _variables(mock_gql.call_args)
         assert variables["input"]["labelIds"] == ["lbl-1", "lbl-2"]
 
 
@@ -1339,7 +1375,7 @@ class TestGetNotifications:
             GetNotificationsInput(limit=10),
             return_values=[{"notifications": {"nodes": []}}],
         )
-        variables = mock_gql.call_args[0][1]
+        variables = _variables(mock_gql.call_args)
         assert variables["first"] == 10
 
     @pytest.mark.composio
@@ -1488,7 +1524,7 @@ class TestGetWorkspaceContext:
     def test_graphql_error_propagates(self):
         """Errors from any graphql_request call surface as exceptions."""
         with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
+            PROXY,
             side_effect=Exception("GraphQL errors: token expired"),
         ):
             with pytest.raises(Exception, match="token expired"):

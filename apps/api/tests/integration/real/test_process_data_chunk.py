@@ -26,7 +26,7 @@ class TestProcessDataChunkReal:
         stream_id = "chunk-test-1"
         await StreamManager.start_stream(stream_id, "c1", "u1")
 
-        tool_data_acc: dict = {"tool_data": []}
+        tool_entries: list = []
         tool_outputs: dict = {}
         todo_progress_accumulated: dict = {}
         follow_up_actions: list = []
@@ -50,19 +50,19 @@ class TestProcessDataChunkReal:
                 stream_id,
                 chunk,
                 ChunkAccumulators(
-                    tool_data_acc, tool_outputs, todo_progress_accumulated, follow_up_actions
+                    tool_entries, {}, {}, tool_outputs, todo_progress_accumulated, follow_up_actions
                 ),
             )
 
-        assert len(tool_data_acc["tool_data"]) == 1
-        assert tool_data_acc["tool_data"][0]["tool_name"] == "web_search"
+        assert len(tool_entries) == 1
+        assert tool_entries[0]["tool_name"] == "web_search"
 
     async def test_follow_up_actions_extracted(self, real_redis):
         """Follow-up actions must be extracted and returned."""
         stream_id = "chunk-test-2"
         await StreamManager.start_stream(stream_id, "c2", "u2")
 
-        tool_data_acc: dict = {"tool_data": []}
+        tool_entries: list = []
         tool_outputs: dict = {}
         todo_progress_accumulated: dict = {}
         follow_up_actions: list = []
@@ -79,7 +79,7 @@ class TestProcessDataChunkReal:
                 stream_id,
                 chunk,
                 ChunkAccumulators(
-                    tool_data_acc, tool_outputs, todo_progress_accumulated, follow_up_actions
+                    tool_entries, {}, {}, tool_outputs, todo_progress_accumulated, follow_up_actions
                 ),
             )
 
@@ -90,7 +90,7 @@ class TestProcessDataChunkReal:
         stream_id = "chunk-test-3"
         await StreamManager.start_stream(stream_id, "c3", "u3")
 
-        tool_data_acc: dict = {"tool_data": []}
+        tool_entries: list = []
         tool_outputs: dict = {}
         todo_progress_accumulated: dict = {}
         follow_up_actions: list = []
@@ -108,7 +108,7 @@ class TestProcessDataChunkReal:
                 stream_id,
                 chunk,
                 ChunkAccumulators(
-                    tool_data_acc, tool_outputs, todo_progress_accumulated, follow_up_actions
+                    tool_entries, {}, {}, tool_outputs, todo_progress_accumulated, follow_up_actions
                 ),
             )
 

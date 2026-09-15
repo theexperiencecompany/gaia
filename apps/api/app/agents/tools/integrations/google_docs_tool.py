@@ -7,16 +7,21 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
 import json
-from typing import Any, cast
 
 from composio import Composio
-from composio.core.models.tools import ToolExecutionResponse
 from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
 from app.models.common_models import GatherContextInput
 from app.models.google_docs_models import CreateTOCInput, DeleteDocInput, ShareDocInput
+from app.models.integrations.composio import CustomToolAuthCredentials
+from app.models.integrations.google_docs import GoogleDocsDocument, GoogleDocsToolExecution
+from app.models.integrations.google_drive import (
+    GoogleDriveFileList,
+    GoogleDrivePermission,
+    GoogleDrivePermissionCreate,
+)
 from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.templates.docstrings.google_docs_tool_docs import (
     CUSTOM_CREATE_TOC as CUSTOM_CREATE_TOC_DOC,
@@ -34,18 +39,14 @@ DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
 DOCS_TOOLKIT = "GOOGLEDOCS"
 
 
-def _user_id(auth_credentials: dict[str, Any]) -> str:
-    user_id = auth_credentials.get("user_id")
-    if not isinstance(user_id, str) or not user_id:
-        raise ValueError("Missing user_id in auth_credentials")
-    return user_id
-
-
-def _share_doc(request: ShareDocInput, user_id: str) -> dict[str, Any]:
-    shared: list[dict[str, Any]] = []
-    errors: list[dict[str, Any]] = []
+def _share_doc(request: ShareDocInput, user_id: str) -> dict[str, object]:
+    shared: list[dict[str, object]] = []
+    errors: list[dict[str, str]] = []
 
     for recipient in request.recipients:
+        permission = GoogleDrivePermissionCreate(
+            type="user", role=recipient.role, emailAddress=recipient.email
+        )
         try:
             result = proxy_request_sync(
                 ProxyRequest(
@@ -53,11 +54,9 @@ def _share_doc(request: ShareDocInput, user_id: str) -> dict[str, Any]:
                     toolkit=DOCS_TOOLKIT,
                     endpoint=f"{DRIVE_API_BASE}/files/{request.document_id}/permissions",
                     method="POST",
-                    body={
-                        "type": "user",
-                        "role": recipient.role,
-                        "emailAddress": recipient.email,
-                    },
+                    # Every field is str, so json and python dumps are byte identical
+                    # and the mode value is provably unobservable here.
+                    body=permission.model_dump(mode="json"),  # pragma: no mutate
                     query={"sendNotificationEmail": str(recipient.send_notification).lower()},
                 )
             )
@@ -65,7 +64,7 @@ def _share_doc(request: ShareDocInput, user_id: str) -> dict[str, Any]:
                 {
                     "email": recipient.email,
                     "role": recipient.role,
-                    "permission_id": (result or {}).get("id"),
+                    "permission_id": GoogleDrivePermission.model_validate(result or {}).id,
                     "notification_sent": recipient.send_notification,
                 }
             )
@@ -84,7 +83,7 @@ def _share_doc(request: ShareDocInput, user_id: str) -> dict[str, Any]:
     if errors and not shared:
         raise RuntimeError(f"Failed to share document with all recipients: {errors}")
 
-    response: dict[str, Any] = {
+    response: dict[str, object] = {
         "document_id": request.document_id,
         "url": f"https://docs.google.com/document/d/{request.document_id}/edit",
         "shared": shared,
@@ -97,26 +96,28 @@ def _share_doc(request: ShareDocInput, user_id: str) -> dict[str, Any]:
 def _fetch_document_data(
     composio: Composio,
     document_id: str,
-    auth_credentials: dict[str, Any],
-) -> dict[str, Any]:
+    credentials: CustomToolAuthCredentials,
+) -> GoogleDocsDocument:
     try:
-        get_doc_result: ToolExecutionResponse = composio.tools.execute(
-            slug="GOOGLEDOCS_GET_DOCUMENT_BY_ID",
-            arguments={"id": document_id},
-            version=auth_credentials.get("version"),
-            dangerously_skip_version_check=True,
-            user_id=auth_credentials.get("user_id"),
+        get_doc_result = GoogleDocsToolExecution.model_validate(
+            composio.tools.execute(
+                slug="GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+                arguments={"id": document_id},
+                version=credentials.version,
+                dangerously_skip_version_check=True,
+                user_id=credentials.user_id,
+            )
         )
     except TypeError as e:
         log.debug(f"{LogTag.TOOL} TypeError in execute", error_type=type(e).__name__)
         raise
 
-    if not get_doc_result["successful"]:
-        raise ValueError(f"Failed to get document: {get_doc_result.get('error')}")
+    if not get_doc_result.successful:
+        raise ValueError(f"Failed to get document: {get_doc_result.error}")
 
-    # ToolExecutionResponse.data is typed as a plain Dict, but Composio can
-    # return it stringified — widen the type here to keep that handling live.
-    doc_data = cast("dict[str, Any] | str", get_doc_result["data"])
+    # Composio has answered with the document JSON-encoded as a string as well
+    # as a dict — decode it before the shape checks.
+    doc_data = get_doc_result.data
     if isinstance(doc_data, str):
         try:
             doc_data = json.loads(doc_data)
@@ -125,34 +126,38 @@ def _fetch_document_data(
                 f"{LogTag.TOOL} JSON parsing skipped for doc_data", error_type=type(e).__name__
             )
 
-    if not doc_data or "body" not in doc_data:
+    # A key on a dict, a substring on a string that did not decode: an
+    # undecodable blob without one fails here, not as "unexpected format".
+    if not doc_data or not (isinstance(doc_data, dict | str) and "body" in doc_data):
         raise ValueError("Failed to get document or document has no body content")
 
     if not isinstance(doc_data, dict):
         raise ValueError("Document data is not in expected format")
-    return doc_data
+    return GoogleDocsDocument.model_validate(doc_data)
 
 
 def _insert_toc_text(
     composio: Composio,
     request: CreateTOCInput,
     toc_text: str,
-    auth_credentials: dict[str, Any],
-) -> ToolExecutionResponse:
-    insert_result: ToolExecutionResponse = composio.tools.execute(
-        slug="GOOGLEDOCS_INSERT_TEXT_ACTION",
-        arguments={
-            "document_id": request.document_id,
-            "text": toc_text,
-            "insertion_index": request.insertion_index,
-        },
-        version=auth_credentials.get("version"),
-        dangerously_skip_version_check=True,
-        user_id=auth_credentials.get("user_id"),
+    credentials: CustomToolAuthCredentials,
+) -> GoogleDocsToolExecution:
+    insert_result = GoogleDocsToolExecution.model_validate(
+        composio.tools.execute(
+            slug="GOOGLEDOCS_INSERT_TEXT_ACTION",
+            arguments={
+                "document_id": request.document_id,
+                "text": toc_text,
+                "insertion_index": request.insertion_index,
+            },
+            version=credentials.version,
+            dangerously_skip_version_check=True,
+            user_id=credentials.user_id,
+        )
     )
 
-    if not insert_result["successful"]:
-        raise ValueError(f"Failed to insert text: {insert_result.get('error')}")
+    if not insert_result.successful:
+        raise ValueError(f"Failed to insert text: {insert_result.error}")
 
     return insert_result
 
@@ -160,24 +165,25 @@ def _insert_toc_text(
 def _create_toc(
     composio: Composio,
     request: CreateTOCInput,
-    auth_credentials: dict[str, Any],
-) -> dict[str, Any]:
-    doc_data = _fetch_document_data(composio, request.document_id, auth_credentials)
-    headings = extract_headings_from_document(doc_data, request.include_heading_levels)
+    credentials: CustomToolAuthCredentials,
+) -> dict[str, object]:
+    document = _fetch_document_data(composio, request.document_id, credentials)
+    headings = extract_headings_from_document(document, request.include_heading_levels)
     toc_text = generate_toc_text(headings, request.title)
-    insert_result = _insert_toc_text(composio, request, toc_text, auth_credentials)
+    insert_result = _insert_toc_text(composio, request, toc_text, credentials)
 
     return {
         "document_id": request.document_id,
         "url": f"https://docs.google.com/document/d/{request.document_id}/edit",
         "headings_found": len(headings),
         "toc_content": toc_text,
-        "headings": headings,
-        "insert_response": insert_result["data"],
+        # str/int fields only: json and python dumps are byte identical here.
+        "headings": [heading.model_dump(mode="json") for heading in headings],  # pragma: no mutate
+        "insert_response": insert_result.data,
     }
 
 
-def _delete_doc(request: DeleteDocInput, user_id: str) -> dict[str, Any]:
+def _delete_doc(request: DeleteDocInput, user_id: str) -> dict[str, object]:
     try:
         proxy_request_sync(
             ProxyRequest(
@@ -201,30 +207,28 @@ def _delete_doc(request: DeleteDocInput, user_id: str) -> dict[str, Any]:
     }
 
 
-def _gather_recent_docs(user_id: str) -> dict[str, Any]:
+def _gather_recent_docs(user_id: str) -> dict[str, object]:
     mime = "application/vnd.google-apps.document"
-    data = proxy_request_sync(
-        ProxyRequest(
-            user_id=user_id,
-            toolkit=DOCS_TOOLKIT,
-            endpoint=f"{DRIVE_API_BASE}/files",
-            method="GET",
-            query={
-                "q": f"mimeType='{mime}'",
-                "orderBy": "viewedByMeTime desc",
-                "pageSize": 20,
-                "fields": "files(id,name,modifiedTime,webViewLink)",
-            },
+    listing = GoogleDriveFileList.model_validate(
+        proxy_request_sync(
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=DOCS_TOOLKIT,
+                endpoint=f"{DRIVE_API_BASE}/files",
+                method="GET",
+                query={
+                    "q": f"mimeType='{mime}'",
+                    "orderBy": "viewedByMeTime desc",
+                    "pageSize": 20,
+                    "fields": "files(id,name,modifiedTime,webViewLink)",
+                },
+            )
         )
+        or {}
     )
     files = [
-        {
-            "id": f.get("id"),
-            "name": f.get("name"),
-            "modified": f.get("modifiedTime"),
-            "url": f.get("webViewLink"),
-        }
-        for f in (data or {}).get("files", [])
+        {"id": f.id, "name": f.name, "modified": f.modifiedTime, "url": f.webViewLink}
+        for f in listing.files
     ]
 
     return {"recent_docs": files, "doc_count": len(files)}
@@ -238,49 +242,49 @@ def register_google_docs_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_SHARE_DOC(
         request: ShareDocInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Share a Google Doc with one or more recipients."""
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_docs", "action": "share_doc"})
-        return _share_doc(request, _user_id(auth_credentials))
+        return _share_doc(request, CustomToolAuthCredentials.parse(auth_credentials).user_id)
 
     @composio.tools.custom_tool(toolkit="GOOGLEDOCS")
     @with_doc(CUSTOM_CREATE_TOC_DOC)
     def CUSTOM_CREATE_TOC(
         request: CreateTOCInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_docs", "action": "create_toc"})
-        return _create_toc(composio, request, auth_credentials)
+        return _create_toc(composio, request, CustomToolAuthCredentials.parse(auth_credentials))
 
     @composio.tools.custom_tool(toolkit="GOOGLEDOCS")
     @with_doc(CUSTOM_DELETE_DOC_DOC)
     def CUSTOM_DELETE_DOC(
         request: DeleteDocInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Delete a file permanently using Drive API."""
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_docs", "action": "delete_doc"})
-        return _delete_doc(request, _user_id(auth_credentials))
+        return _delete_doc(request, CustomToolAuthCredentials.parse(auth_credentials).user_id)
 
     @composio.tools.custom_tool(toolkit="GOOGLEDOCS")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Google Docs context snapshot: recently viewed/modified documents.
 
         Zero required parameters. Returns user's recently accessed Google Docs.
         """
         del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_docs", "action": "gather_context"})
-        return _gather_recent_docs(_user_id(auth_credentials))
+        return _gather_recent_docs(CustomToolAuthCredentials.parse(auth_credentials).user_id)
 
     return [
         "GOOGLEDOCS_CUSTOM_SHARE_DOC",

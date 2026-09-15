@@ -22,6 +22,7 @@ from app.agents.core.background.executor_runner import _ExecutorResult, run_exec
 from app.agents.core.background.session import ExecutorRun, RunKind, get_session, teardown_session
 from app.agents.tools import executor_tool as et
 from app.constants.executor import EXECUTOR_PAUSED
+from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents
 
 
@@ -31,22 +32,6 @@ def _count(name: str, labels: dict[str, str]) -> float:
 
 def _sum(name: str, labels: dict[str, str]) -> float:
     return REGISTRY.get_sample_value(f"{name}_sum", labels) or 0.0
-
-
-class _RecordingUser(dict):
-    """Record the default handed to .get on a user mapping.
-
-    The default only exists on the missing-key path, where the value is falsy
-    either way — recording the argument is the only way a test can pin it.
-    """
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.get_calls: list[tuple[str, tuple[Any, ...]]] = []
-
-    def get(self, key: str, *default: Any) -> Any:
-        self.get_calls.append((key, default))
-        return super().get(key, *default)
 
 
 def _configurable(stream_id: str) -> dict[str, Any]:
@@ -63,7 +48,7 @@ def _run(stream_id: str, **overrides: Any) -> ExecutorRun:
     kwargs: dict[str, Any] = {
         "stream_id": stream_id,
         "conversation_id": "conv-1",
-        "user": {"user_id": "user-1"},
+        "user": AuthenticatedUser(user_id="user-1"),
         "kind": RunKind.LIVE,
         "task_id": "task-1",
         "user_message_id": "umsg-1",
@@ -672,9 +657,8 @@ class TestBackgroundRunExactWiring:
 class TestCaptureExecutorTerminalWiring:
     """The terminal lifecycle event's exact payload: the user-id sentinel and dedupe key."""
 
-    def test_user_id_defaults_to_the_empty_string(self) -> None:
-        user = _RecordingUser()
-        run = _run("terminal-user", user=user)
+    def test_an_empty_user_id_captures_nothing(self) -> None:
+        run = _run("terminal-user", user=AuthenticatedUser(user_id=""))
 
         with patch.object(er, "capture_event") as capture:
             er._capture_executor_terminal(
@@ -686,11 +670,9 @@ class TestCaptureExecutorTerminalWiring:
             )
 
         capture.assert_not_called()
-        assert user.get_calls == [("user_id", ("",))]
 
     def test_dedupe_key_prefers_the_task_id_and_carries_exact_props(self) -> None:
-        user = _RecordingUser({"user_id": "u1"})
-        run = _run("s1", user=user, task_id="task-1")
+        run = _run("s1", user=AuthenticatedUser(user_id="u1"), task_id="task-1")
 
         with patch.object(er, "capture_event") as capture:
             er._capture_executor_terminal(

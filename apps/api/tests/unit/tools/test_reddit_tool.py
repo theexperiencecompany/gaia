@@ -39,7 +39,7 @@ _SUBS = {
     "data": {
         "children": [
             {"data": {"display_name": "python", "title": "t" * 100, "subscribers": 5}},
-            {"data": {"display_name": "rust"}},
+            {"data": {"display_name": "rust", "title": "", "subscribers": 0}},
         ]
     }
 }
@@ -55,7 +55,14 @@ _UNREAD = {
                     "created_utc": 1700000000.0,
                 }
             },
-            {"data": {"id": "msg-2"}},
+            {
+                "data": {
+                    "id": "msg-2",
+                    "subject": "",
+                    "author": None,
+                    "created_utc": 1700000001.0,
+                }
+            },
         ]
     }
 }
@@ -129,13 +136,14 @@ def test_returns_profile_subreddits_and_truncated_unread(tool) -> None:
         ],
         "unread_messages": [
             {"id": "msg-1", "subject": "s" * 80, "author": "bob", "created_utc": 1700000000.0},
-            {"id": "msg-2", "subject": "", "author": None, "created_utc": None},
+            {"id": "msg-2", "subject": "", "author": None, "created_utc": 1700000001.0},
         ],
         "unread_message_count": 2,
     }
 
 
 def test_degraded_proxy_returns_empty_snapshot(tool) -> None:
+    """Bodies that are not the documented shapes fail each fetch, and each degrades alone."""
     with patch(f"{MODULE}.proxy_request_sync", return_value=None):
         out = tool(GatherContextInput(), EXECUTE_REQUEST, AUTH)
 

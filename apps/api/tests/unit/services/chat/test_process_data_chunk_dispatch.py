@@ -10,6 +10,7 @@ import json
 from unittest.mock import AsyncMock, patch
 
 from app.services.chat.chunks import ChunkAccumulators, process_data_chunk
+from app.utils.stream_publishers import ExtractedOtherData, ExtractedToolData
 
 MODULE = "app.services.chat.chunks"
 STREAM = "stream-77"
@@ -17,7 +18,9 @@ STREAM = "stream-77"
 
 def _acc() -> ChunkAccumulators:
     return ChunkAccumulators(
-        tool_data={"tool_data": []},
+        tool_entries=[],
+        subagent_starts={},
+        subagent_ends={},
         tool_outputs={},
         todo_progress={},
         follow_up_actions=["earlier chip"],
@@ -41,7 +44,11 @@ class TestSubagentLifecycleForwarding:
         ):
             result = await process_data_chunk(STREAM, _chunk(payload), acc, forward_subagents=True)
 
-        lifecycle.assert_awaited_once_with(STREAM, payload, acc.tool_data)
+        lifecycle.assert_awaited_once()
+        stream_id, frames, accumulators = lifecycle.await_args.args
+        assert stream_id == STREAM
+        assert frames.subagent_start == payload["subagent_start"]
+        assert accumulators is acc
         assert result == (["earlier chip"], True)
         # Already published as dedicated frames: the raw chunk must not go out twice.
         publish_chunk.assert_not_awaited()
@@ -69,7 +76,7 @@ class TestToolDataDispatch:
         acc = _acc()
         payload = {"follow_up_actions": ["Draft the reply", "Book the slot"]}
         # extract_tool_data files non-tool keys under other_data before publishing.
-        new_data = {"other_data": payload}
+        new_data = ExtractedToolData(other_data=ExtractedOtherData(**payload))
         other = AsyncMock(return_value=["Draft the reply", "Book the slot"])
         tool_data = AsyncMock()
         tool_output = AsyncMock()
@@ -83,7 +90,34 @@ class TestToolDataDispatch:
             result = await process_data_chunk(STREAM, _chunk(payload), acc)
 
         other.assert_awaited_once_with(STREAM, new_data, ["earlier chip"])
-        tool_data.assert_awaited_once_with(STREAM, new_data, acc.tool_data)
+        tool_data.assert_awaited_once_with(STREAM, new_data, acc.tool_entries)
         tool_output.assert_awaited_once_with(STREAM, new_data, acc.tool_outputs)
         assert result == (["Draft the reply", "Book the slot"], True)
         assert acc.follow_up_actions == ["Draft the reply", "Book the slot"]
+
+    async def test_a_todo_snapshot_is_published_and_progress_saves_only_the_set_tool_fields(
+        self,
+    ) -> None:
+        acc = _acc()
+        snapshot = {"source": "executor", "todos": [{"id": "t1", "status": "done"}]}
+        payload = {"follow_up_actions": ["Draft the reply"], "todo_progress": snapshot}
+        publish_chunk = AsyncMock()
+        update_progress = AsyncMock()
+        with (
+            patch(f"{MODULE}._settle_boundary", AsyncMock()),
+            patch(f"{MODULE}.publish_other_data", AsyncMock(return_value=["Draft the reply"])),
+            patch(f"{MODULE}.publish_tool_data", AsyncMock()),
+            patch(f"{MODULE}.publish_tool_output", AsyncMock()),
+            patch(f"{MODULE}.stream_manager.publish_chunk", publish_chunk),
+            patch(f"{MODULE}.stream_manager.update_progress", update_progress),
+        ):
+            await process_data_chunk(STREAM, _chunk(payload), acc)
+
+        publish_chunk.assert_awaited_once_with(
+            STREAM, f"data: {json.dumps({'todo_progress': snapshot})}\n\n"
+        )
+        update_progress.assert_awaited_once_with(
+            STREAM,
+            message_chunk="",
+            tool_data={"other_data": {"follow_up_actions": ["Draft the reply"]}},
+        )

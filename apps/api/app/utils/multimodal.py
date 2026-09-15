@@ -12,6 +12,7 @@ delivery lives in app/agents/llm/vision/.
 from typing import Any, TypeAlias, TypeGuard
 
 from langchain_core.messages import is_data_content_block
+from pydantic import BaseModel, ConfigDict
 
 from app.constants.media import MEDIA_BLOCK_TOKEN_ESTIMATE
 
@@ -27,6 +28,15 @@ ContentItem: TypeAlias = str | ContentBlock
 # A message's ``content``: plain text, or a list of items. Mirrors the shape of
 # ``BaseMessage.content`` (``str | list[str | dict]``).
 MessageContent: TypeAlias = str | list[ContentItem]
+
+
+class _BlockText(BaseModel):
+    """A content block's discriminator and text, as far as text extraction reads them."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    type: object = None
+    text: object = None
 
 
 def text_content_block(text: str) -> ContentBlock:
@@ -69,8 +79,10 @@ def extract_text_content(content: object) -> str:
         for item in content:
             if isinstance(item, str):
                 text_parts.append(item)
-            elif isinstance(item, dict) and item.get("type") == "text":
-                text_parts.append(str(item.get("text") or ""))
+            elif (
+                isinstance(item, dict) and (block := _BlockText.model_validate(item)).type == "text"
+            ):
+                text_parts.append(str(block.text or ""))
         return "\n".join(text_parts)
 
     return str(content)

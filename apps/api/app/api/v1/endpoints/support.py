@@ -67,9 +67,9 @@ async def submit_support_request(
     """
     log.set(operation="submit_support_request", category=request_data.type)
     try:
-        user_id = current_user.get("user_id")
-        user_email = current_user.get("email")
-        user_name = current_user.get("name")
+        user_id = current_user.user_id
+        user_email = current_user.email
+        user_name = current_user.name
 
         if not user_id or not user_email:
             raise HTTPException(status_code=401, detail="User authentication required")
@@ -142,9 +142,9 @@ async def submit_support_request_with_attachments(
     """
     log.set(operation="submit_support_request_with_attachments", category=ticket_type)
     try:
-        user_id = current_user.get("user_id")
-        user_email = current_user.get("email")
-        user_name = current_user.get("name")
+        user_id = current_user.user_id
+        user_email = current_user.email
+        user_name = current_user.name
 
         if not user_id or not user_email:
             raise HTTPException(status_code=401, detail="User authentication required")

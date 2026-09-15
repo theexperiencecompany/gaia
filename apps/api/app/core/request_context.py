@@ -15,7 +15,6 @@ downstream task, and a set inside one request's task never leaks into another's.
 """
 
 from contextvars import ContextVar
-from typing import cast
 
 from app.models.user_models import AuthenticatedUser
 
@@ -38,20 +37,16 @@ def resolve_caller(args: tuple[object, ...], kwargs: dict[str, object]) -> Authe
     """Resolve the calling user for a decorator wrapping an endpoint handler.
 
     Tries the request-scoped auth context first (immune to per-endpoint
-    parameter naming — see the module docstring), then an explicit user kwarg
-    or the first positional dict carrying user_id, for direct non-HTTP
+    parameter naming — see the module docstring), then the first AuthenticatedUser
+    kwarg (whatever it is named) or positional arg, for direct non-HTTP
     invocation. Returns None when no caller can be resolved.
     """
     user = get_authenticated_user()
     if user:
         return user
 
-    user = cast(AuthenticatedUser | None, kwargs.get("user"))
-    if user:
-        return user
-
-    for arg in args:
-        if isinstance(arg, dict) and "user_id" in arg:
-            return cast(AuthenticatedUser, arg)
+    for candidate in (*kwargs.values(), *args):
+        if isinstance(candidate, AuthenticatedUser):
+            return candidate
 
     return None

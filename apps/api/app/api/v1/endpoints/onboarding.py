@@ -1,5 +1,6 @@
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -9,6 +10,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone,
 )
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.core.websocket_manager import websocket_manager
@@ -58,6 +60,7 @@ from app.services.onboarding.writing_style_service import (
     save_generated_example,
     save_user_edited_summary,
 )
+from app.utils.user_preferences_utils import WritingStylePromptFields
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -68,25 +71,33 @@ _MEMBER_SINCE_FORMAT = "%b %d, %Y"
 _PERSONALIZED_PHASES = ("personalization_complete", "getting_started", "completed")
 
 
-def _normalize_example_blocks(raw: object) -> WritingStyleExampleBlocks | None:
+class PersistedSocialProfile(BaseModel):
+    """One ``users.onboarding.social_profiles`` entry as read back from a row.
+
+    Both keys default: rows written by older pipeline versions may lack either,
+    and a missing key degrades to an empty string rather than failing the read.
+    """
+
+    platform: str = ""
+    url: str = ""
+
+
+def _normalize_example_blocks(
+    example: WritingStyleExampleBlocks | str | None,
+) -> WritingStyleExampleBlocks | None:
     """Normalize a persisted writing-style example (blocks or legacy string).
 
     Returns None when there is nothing renderable — including a stored example
     whose paragraphs are all whitespace, which the reveal card already treats
     identically to a missing example (it regenerates from the summary either way).
     """
-    if isinstance(raw, dict):
-        body = [str(p) for p in raw.get("body", []) if str(p).strip()]
+    if isinstance(example, WritingStyleExampleBlocks):
+        body = [p for p in example.body if p.strip()]
         if not body:
             return None
-        return WritingStyleExampleBlocks(
-            greeting=str(raw.get("greeting", "")),
-            body=body,
-            signoff=str(raw.get("signoff", "")),
-            name=str(raw.get("name", "")),
-        )
-    if isinstance(raw, str) and raw.strip():
-        return WritingStyleExampleBlocks(greeting="", body=[raw.strip()], signoff="", name="")
+        return example.model_copy(update={"body": body})
+    if isinstance(example, str) and example.strip():
+        return WritingStyleExampleBlocks(body=[example.strip()])
     return None
 
 
@@ -101,7 +112,7 @@ async def complete_user_onboarding(
     Nothing is generated here: the personalization pipeline fires when the user
     connects Gmail, not at signup."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         onboarding={
             "operation": "complete",
             "is_complete": True,
@@ -110,7 +121,7 @@ async def complete_user_onboarding(
     )
 
     try:
-        updated_user = await complete_onboarding(user["user_id"], onboarding_data)
+        updated_user = await complete_onboarding(user.user_id, onboarding_data)
         return OnboardingResponse(
             success=True, message="Onboarding completed successfully", user=updated_user
         )
@@ -119,7 +130,7 @@ async def complete_user_onboarding(
     except Exception as e:
         log.error(
             f"{LogTag.ONBOARDING} Error completing onboarding",
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
             exc_info=True,
@@ -135,9 +146,9 @@ async def reset_user_onboarding(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> OnboardingResetResponse:
     """Fully reset onboarding so the user can run the flow again from scratch."""
-    log.set(user={"id": user["user_id"]}, onboarding={"operation": "reset"})
+    log.set(user={"id": user.user_id}, onboarding={"operation": "reset"})
     try:
-        counts = await reset_onboarding(user["user_id"])
+        counts = await reset_onboarding(user.user_id)
         capture_context_event(AnalyticsEvents.ONBOARDING_RESET)
         return OnboardingResetResponse(success=True, **counts.model_dump())
     except HTTPException:
@@ -145,7 +156,7 @@ async def reset_user_onboarding(
     except Exception as e:
         log.error(
             f"{LogTag.ONBOARDING} Error resetting onboarding",
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
             exc_info=True,
@@ -159,17 +170,17 @@ async def get_onboarding_status(
 ) -> OnboardingStatusResponse:
     """Get the current user's onboarding status and preferences."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         onboarding={"operation": "get_status"},
     )
     try:
-        status = await get_user_onboarding_status(user["user_id"])
+        status = await get_user_onboarding_status(user.user_id)
         log.set(onboarding={"operation": "get_status", "is_complete": status.completed})
         return status
     except Exception as e:
         log.error(
             f"{LogTag.ONBOARDING} Error getting onboarding status",
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
             exc_info=True,
@@ -187,7 +198,7 @@ async def update_onboarding_phase(
     Used to track progress through onboarding stages.
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         phase = request.phase.value
 
         log.set(
@@ -245,7 +256,7 @@ async def update_onboarding_phase(
     except Exception as e:
         log.error(
             f"{LogTag.ONBOARDING} Error updating onboarding phase",
-            user_id=user.get("user_id"),
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
             exc_info=True,
@@ -263,13 +274,13 @@ async def update_user_preferences(
     This can be used from the settings page to update preferences after onboarding.
     """
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         onboarding={"operation": "update_personality"},
     )
 
     try:
-        updated_user = await update_onboarding_preferences(user["user_id"], preferences)
-        schedule_account_sync(user["user_id"])
+        updated_user = await update_onboarding_preferences(user.user_id, preferences)
+        schedule_account_sync(user.user_id)
         # PATCH semantics: only the fields the caller actually sent were written,
         # so `fields` is what changed — not the whole preferences object.
         capture_context_event(
@@ -292,7 +303,7 @@ async def update_user_preferences(
     except Exception as e:
         log.error(
             f"{LogTag.ONBOARDING} Error updating preferences",
-            user_id=user["user_id"],
+            user_id=user.user_id,
             error_type=type(e).__name__,
             error=str(e),
             exc_info=True,
@@ -354,27 +365,28 @@ async def _resolve_display_bio(onboarding: OnboardingSubdocument, user_id: str) 
     if bio_status != BioStatus.PENDING:
         return onboarding.user_bio
 
-    connection_status = await get_composio_service().check_connection_status(["gmail"], user_id)
-    if connection_status.get("gmail", False):
+    connection_status = await get_composio_service().check_connection_status(
+        [GMAIL_INTEGRATION_ID], user_id
+    )
+    if connection_status.get(GMAIL_INTEGRATION_ID, False):
         return _BIO_PROCESSING_MESSAGE
     return "Setting up your profile..."
 
 
 def _build_writing_style(
-    raw_writing_style: dict[str, Any] | None,
+    raw_writing_style: Mapping[str, object] | None,
 ) -> PersonalizationWritingStyle | None:
     """Only surface writing_style if it has a usable summary; otherwise return
     None so the frontend skips the reveal."""
     if not raw_writing_style:
         return None
-    resolved_summary = (
-        raw_writing_style.get("user_edited_summary") or raw_writing_style.get("summary") or ""
-    ).strip()
+    style = WritingStylePromptFields.model_validate(raw_writing_style)
+    resolved_summary = (style.user_edited_summary or style.summary or "").strip()
     if not resolved_summary:
         return None
     return PersonalizationWritingStyle(
         style_summary=resolved_summary,
-        example=_normalize_example_blocks(raw_writing_style.get("example")),
+        example=_normalize_example_blocks(style.example),
     )
 
 
@@ -409,7 +421,7 @@ async def get_onboarding_personalization(
     Returns default values if personalization hasn't completed yet.
     """
     try:
-        user_id = user.get("user_id")
+        user_id = user.user_id
         log.set(
             user={"id": user_id},
             onboarding={"operation": "get_personalization"},
@@ -456,8 +468,8 @@ async def get_onboarding_personalization(
             first_message=onboarding.first_message,
             writing_style=_build_writing_style(onboarding.writing_style),
             social_profiles=[
-                SocialProfile(platform=p.get("platform", ""), url=p.get("url", ""))
-                for p in raw_social_profiles
+                SocialProfile(platform=stored.platform, url=stored.url)
+                for stored in map(PersistedSocialProfile.model_validate, raw_social_profiles)
             ]
             if raw_social_profiles
             else None,
@@ -499,7 +511,7 @@ async def save_writing_style(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> SaveWritingStyleResponse:
     """Save a user-edited writing style summary from the onboarding reveal card."""
-    user_id: str = user["user_id"]
+    user_id: str = user.user_id
     log.set(user={"id": user_id}, onboarding={"operation": "save_writing_style"})
     try:
         await save_user_edited_summary(user_id, request.edited_summary.strip())
@@ -534,7 +546,7 @@ async def regenerate_writing_style_example(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> RegenerateWritingStyleExampleResponse:
     """Generate a new example email from an edited writing style summary."""
-    user_id: str = user["user_id"]
+    user_id: str = user.user_id
     log.set(user={"id": user_id}, onboarding={"operation": "regenerate_style_example"})
     # /api/v1/onboarding is a free prefix, so this LLM route gates itself with
     # the same fail-closed check the middleware runs everywhere else.
@@ -575,7 +587,7 @@ async def confirm_social_profiles(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> SaveSocialProfilesResponse:
     """Save user-confirmed (and optionally edited) social profiles from onboarding."""
-    user_id: str = user["user_id"]
+    user_id: str = user.user_id
     log.set(user={"id": user_id}, onboarding={"operation": "confirm_social_profiles"})
     try:
         await save_confirmed_profiles(user_id, request.profiles)

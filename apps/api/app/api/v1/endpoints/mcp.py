@@ -17,6 +17,7 @@ from app.helpers.mcp_helpers import (
     get_api_base_url,
     get_frontend_url,
 )
+from app.models.mcp_config import McpProbeResult
 from app.models.user_models import AuthenticatedUser
 from app.schemas.mcp import MCPConnectionTestResponse
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
@@ -46,7 +47,7 @@ async def test_mcp_connection(
     Probes the server and returns auth requirements.
     Can be used to retry failed connections.
     """
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     log.set(
@@ -64,7 +65,7 @@ async def test_mcp_connection(
 
     server_url = resolved.mcp_config.server_url
 
-    probe_result = await client.probe_connection(server_url)
+    probe_result: McpProbeResult = await client.probe_connection(server_url)
     log.set(
         probe={
             "requires_auth": probe_result.get("requires_auth", False),
@@ -163,7 +164,7 @@ async def mcp_oauth_callback(
 
     Handles both success (with code) and error responses from OAuth server.
     """
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     log.set(user={"id": user_id}, operation="mcp_oauth_callback")

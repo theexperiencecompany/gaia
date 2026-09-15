@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 import pytest
 
+from app.models.integrations.reddit_hooks import RedditCommentThing, RedditPostThing
 from app.services.composio.custom_tools.context_tool import (
     PROVIDER_TOOLS,
     tool_namespace,
@@ -905,7 +906,7 @@ class TestRedditHooks:
             },
         }
 
-        result = process_reddit_post(raw_post)
+        result = process_reddit_post(RedditPostThing.model_validate(raw_post).data)
 
         assert result["id"] == "abc123"
         assert result["title"] == "My Post"
@@ -928,7 +929,7 @@ class TestRedditHooks:
             },
         }
 
-        result = process_reddit_comment(raw_comment)
+        result = process_reddit_comment(RedditCommentThing.model_validate(raw_comment).data)
 
         assert result["id"] == "comment1"
         assert result["body"] == "Great post!"

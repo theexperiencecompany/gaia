@@ -40,7 +40,8 @@ from app.agents.tools.tracked_todo_tools import (
     update_tracked_todo,
 )
 from app.constants.todos import GAIA_TRACKED_LABEL
-from app.models.todo_models import Priority, TodoDocument, TodoResponse
+from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
+from app.models.user_models import UserDocument
 from shared.py.wide_events import spawn_logged_task
 
 _FUTURE = (datetime.now(UTC) + timedelta(days=7)).replace(microsecond=0)
@@ -346,6 +347,10 @@ class TestUpdateTrackedTodoValidation:
         result = await update_tracked_todo.coroutine(config=_config(None), todo_id="t1")
         assert "user_id not found" in result
 
+    async def test_missing_metadata_key_returns_error_not_a_crash(self):
+        result = await update_tracked_todo.coroutine(config={}, todo_id="t1")
+        assert "user_id not found" in result
+
     async def test_no_fields_provided_returns_error(self):
         result = await update_tracked_todo.coroutine(config=_config(), todo_id="t1")
         assert "No fields to update" in result
@@ -462,6 +467,10 @@ class TestCompleteTrackedTodo:
         )
         assert "user_id not found" in result
 
+    async def test_missing_metadata_key_returns_error_not_a_crash(self):
+        result = await complete_tracked_todo.coroutine(config={}, todo_id="t1", summary="done")
+        assert "user_id not found" in result
+
     async def test_service_failure_returns_error(self):
         with patch(
             "app.agents.tools.tracked_todo_tools.tracked_todo_service.complete_tracked_todo",
@@ -495,7 +504,7 @@ class TestGetUserTz:
         with patch(
             "app.agents.tools.tracked_todo_tools.get_user_by_id",
             new_callable=AsyncMock,
-            return_value={"timezone": "America/New_York"},
+            return_value=UserDocument(timezone="America/New_York"),
         ):
             tz = await _get_user_tz("u1")
         assert tz == "America/New_York"
@@ -504,7 +513,7 @@ class TestGetUserTz:
         with patch(
             "app.agents.tools.tracked_todo_tools.get_user_by_id",
             new_callable=AsyncMock,
-            return_value={"timezone": "Not/A_Real_Zone"},
+            return_value=UserDocument(timezone="Not/A_Real_Zone"),
         ):
             tz = await _get_user_tz("u1")
         assert tz == "UTC"
@@ -517,6 +526,18 @@ class TestGetUserTz:
         ):
             tz = await _get_user_tz("u1")
         assert tz == "UTC"
+
+    async def test_no_user_found_records_only_the_fallback_warning(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch("app.agents.tools.tracked_todo_tools.log") as mock_log,
+        ):
+            await _get_user_tz("u1")
+        mock_log.warning.assert_called_once_with("tracked_todo.user_tz_fallback_utc", user_id="u1")
 
     async def test_lookup_failure_falls_back_to_utc_not_a_crash(self):
         with patch(
@@ -835,6 +856,42 @@ class TestSearchTodoContext:
         result = await search_todo_context.coroutine(config=_config(None), query="q")
         assert "user_id not found" in result
 
+    async def test_missing_metadata_key_returns_error_not_a_crash(self):
+        result = await search_todo_context.coroutine(config={}, query="q")
+        assert "user_id not found" in result
+
+    async def test_matches_render_one_block_per_line_with_a_200_char_snippet(self):
+        matches = [
+            {
+                "title": "Fix the thing",
+                "todo_id": "66f838cc8829054e5f10e407",
+                "score": 0.9,
+                "snippet": "a" * 250,
+                "completed": True,
+            },
+            {
+                "title": "Fix the thing",
+                "todo_id": "66f838cc8829054e5f10e407",
+                "score": 0.5,
+                "snippet": "short",
+                "completed": False,
+            },
+        ]
+        with patch(
+            "app.agents.tools.tracked_todo_tools.search_canvas_context",
+            new_callable=AsyncMock,
+            return_value=matches,
+        ):
+            result = await search_todo_context.coroutine(config=_config(), query="q")
+        assert result == (
+            "- [Fix the thing] [completed] (todo_id: 66f838cc8829054e5f10e407, score: 0.9)\n"
+            "  files: /workspace/gaia-tasks/fix-the-thing-5f10e407/\n"
+            f"  {'a' * 200}\n"
+            "- [Fix the thing] (todo_id: 66f838cc8829054e5f10e407, score: 0.5)\n"
+            "  files: /workspace/gaia-tasks/fix-the-thing-5f10e407/\n"
+            "  short"
+        )
+
     async def test_no_matches_returns_friendly_message(self):
         with patch(
             "app.agents.tools.tracked_todo_tools.search_canvas_context",
@@ -913,6 +970,28 @@ class TestUpdateTrackedTodoSuccess:
         base = {"id": "t1", "user_id": "user-1", "title": "t"}
         base.update(overrides)
         return TodoDocument(**base)
+
+    async def test_clearing_recurrence_on_an_unscheduled_todo_persists_the_clear(self):
+        existing = self._existing_doc(recurrence="daily")
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=existing,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ) as mock_update,
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", recurrence=""
+            )
+        assert result == "Updated tracked todo t1: recurrence"
+        mock_update.assert_awaited_once_with(
+            "t1", user_id="user-1", update=TodoUpdate.model_validate({"recurrence": None})
+        )
 
     async def test_priority_update_persists_and_reports_updated_keys(self):
         with (
@@ -1233,6 +1312,10 @@ class TestCreateTrackedTodoSuccess:
 class TestListTrackedTodos:
     async def test_missing_user_id_returns_error(self):
         result = await list_tracked_todos.coroutine(config=_config(None))
+        assert "user_id not found" in result
+
+    async def test_missing_metadata_key_returns_error_not_a_crash(self):
+        result = await list_tracked_todos.coroutine(config={})
         assert "user_id not found" in result
 
     async def test_no_active_todos_returns_friendly_message(self):

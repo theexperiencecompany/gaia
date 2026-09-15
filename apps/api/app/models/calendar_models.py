@@ -1,6 +1,6 @@
 from datetime import datetime
 import re
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 from pydantic import (
     BaseModel,
@@ -39,7 +39,7 @@ class GooglePassthroughModel(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     @model_serializer(mode="wrap")
-    def _drop_unset_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+    def _drop_unset_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
         dumped = handler(self)
         return {key: value for key, value in dumped.items() if key in self.model_fields_set}
 
@@ -87,6 +87,7 @@ class GoogleCalendarEventResource(GooglePassthroughModel):
     start: GoogleCalendarEventDateTime | None = None
     end: GoogleCalendarEventDateTime | None = None
     recurrence: list[str] | None = None
+    htmlLink: str | None = None
     # Injected by GAIA when events are merged across several calendars; absent from
     # a raw single-event response.
     calendarId: str | None = None
@@ -216,14 +217,17 @@ class GoogleCalendarAttendee(BaseModel):
 
 
 class GoogleCalendarEventWrite(BaseModel):
-    """Request body GAIA sends to Google's ``events.insert`` / ``events.update``.
+    """Request body GAIA sends to Google's ``events.insert`` / ``events.update`` /
+    ``events.patch``.
 
+    Every field is optional because a patch carries only what the caller supplied.
     Serialized with ``exclude_none=True`` so an unset field is omitted rather than
     sent as an explicit ``null``, which Google rejects.
     """
 
-    summary: str
-    description: str
+    summary: str | None = None
+    description: str | None = None
+    location: str | None = None
     start: GoogleCalendarEventDateTime | None = None
     end: GoogleCalendarEventDateTime | None = None
     recurrence: list[str] | None = None
@@ -333,18 +337,6 @@ class EventDeleteRequest(BaseModel):
     event_id: str = Field(..., title="Event ID to delete")
     calendar_id: str = Field("primary", title="Calendar ID containing the event")
     summary: str | None = Field(None, title="Event summary for confirmation")
-
-
-class BatchEventCreateRequest(BaseModel):
-    """A batch of events to create in one call."""
-
-    events: list["EventCreateRequest"] = Field(..., title="List of events to create")
-
-
-class BatchEventUpdateRequest(BaseModel):
-    """A batch of events to update in one call."""
-
-    events: list["EventUpdateRequest"] = Field(..., title="List of events to update")
 
 
 class BatchEventDeleteRequest(BaseModel):
@@ -618,6 +610,18 @@ class EventCreateRequest(BaseCalendarEvent):
         return self
 
 
+class BatchEventCreateRequest(BaseModel):
+    """A batch of events to create in one call."""
+
+    events: list[EventCreateRequest] = Field(..., title="List of events to create")
+
+
+class BatchEventUpdateRequest(BaseModel):
+    """A batch of events to update in one call."""
+
+    events: list[EventUpdateRequest] = Field(..., title="List of events to update")
+
+
 class SingleEventInput(BaseModel):
     """Single event definition for creation."""
 
@@ -775,3 +779,60 @@ class AddRecurrenceInput(BaseModel):
         if self.count > 0 and self.until_date:
             raise ValueError("Cannot specify both 'count' and 'until_date'")
         return self
+
+
+class EventToolFailure(BaseModel):
+    """One event a get/delete tool could not act on, keyed like its ``EventReference``."""
+
+    event_id: str
+    calendar_id: str
+    error: str
+
+
+class FetchedEvent(BaseModel):
+    """One event the get-event tool fetched, alongside the reference that asked for it."""
+
+    event_id: str
+    calendar_id: str
+    event: GoogleCalendarEventResource
+
+
+class EventDraftFailure(BaseModel):
+    """One event of a create batch rejected before any Google call."""
+
+    index: int
+    summary: str
+    error: str
+
+
+class CreatedEventSummary(BaseModel):
+    """What the create-event tool reports for an event Google accepted."""
+
+    index: int
+    summary: str
+    event_id: str | None
+    calendar_id: str
+    link: str | None
+    start: GoogleCalendarEventDateTime
+    end: GoogleCalendarEventDateTime
+
+
+class CalendarOptionDraft(BaseModel):
+    """An event drafted for the user's confirmation card, not yet sent to Google.
+
+    ``location`` / ``attendees`` / ``create_meeting_room`` are ``None`` when the
+    draft has none, and ``exclude_none`` keeps them out of the tool output.
+    """
+
+    index: int
+    summary: str
+    description: str
+    is_all_day: bool
+    start: GoogleCalendarEventDateTime
+    end: GoogleCalendarEventDateTime
+    calendar_id: str
+    color: str
+    calendar_name: str
+    location: str | None = None
+    attendees: list[str] | None = None
+    create_meeting_room: bool | None = None

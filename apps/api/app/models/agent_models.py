@@ -7,6 +7,11 @@ from typing import Any, Literal, TypedDict, cast
 from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_config
+from langgraph.constants import CONF
+from pydantic import BaseModel, ConfigDict
+
+from app.models.chat_models import ToolDataEntry
+from app.models.user_models import AuthenticatedUser
 
 #: One entry of an agent's middleware stack. ``StateT`` is erased since a
 #: stack is genuinely heterogeneous, but this still checks every entry IS an
@@ -20,13 +25,13 @@ AgentMiddlewareStack = list[AnyAgentMiddleware]
 class AgentUserContext(TypedDict, total=False):
     """The user fields build_agent_config reads — nothing more.
 
-    Deliberately narrower than :class:~app.models.user_models.AuthenticatedUser,
-    which is assignable to it: only the top-level entries (chat, background
-    narration) hold a real request auth context. Every child agent — executor,
-    handoff subagents, spawn, the workflow author — reconstructs a bare identity
-    bag from its parent's configurable, and typing those as
-    AuthenticatedUser would claim they carry auth-path flags and the whole
-    user document, which they do not.
+    Deliberately narrower than AuthenticatedUser, which agent_user_context
+    narrows to it: only the top-level entries (chat, background narration) hold
+    a real request auth context. Every child agent — executor, handoff
+    subagents, spawn, the workflow author — reconstructs a bare identity bag
+    from its parent's configurable, and typing those as AuthenticatedUser would
+    claim they carry auth-path flags and the whole user document, which they
+    do not.
 
     total=False because those child bags omit timezone (they inherit the
     resolved zone from the parent configurable instead).
@@ -36,6 +41,19 @@ class AgentUserContext(TypedDict, total=False):
     email: str | None
     name: str | None
     timezone: str | None
+
+
+def agent_user_context(user: AuthenticatedUser) -> AgentUserContext:
+    """Narrow an AuthenticatedUser to the identity bag a top-level run hands build_agent_config.
+
+    The ONE place that narrowing happens.
+    """
+    return {
+        "user_id": user.user_id,
+        "email": user.email,
+        "name": user.name,
+        "timezone": user.timezone,
+    }
 
 
 #: The execution mode a run is in. ``background`` runs have no user waiting on
@@ -52,6 +70,10 @@ class AgentConfigurable(TypedDict, total=False):
     a Pydantic model, since LangGraph owns the runtime object (merges in its
     own keys, checkpoints it) — this only describes the GAIA-owned keys.
     """
+
+    # Stamped at the top level by build_agent_config and folded in here by
+    # LangGraph's ensure_config before a node runs.
+    agent_name: str
 
     # --- identity: who and which conversation ------------------------------
     #: LangGraph's checkpoint thread. For child agents this is the WRAPPED
@@ -169,7 +191,57 @@ def agent_configurable(config: RunnableConfig | None) -> AgentConfigurable:
     and correct by construction. Reads only — the or {} means a write
     through the result would be silently dropped.
     """
-    return cast(AgentConfigurable, (config or {}).get("configurable") or {})
+    return cast(AgentConfigurable, (config or {}).get(CONF) or {})
+
+
+class AgentConfigurableView(BaseModel):
+    """The GAIA-owned keys of a ``configurable``, parsed once for attribute reads.
+
+    :class:`AgentConfigurable` describes the live bag LangGraph owns; this is
+    how a consumer READS it, instead of guessing at string keys. Every field is
+    optional because the bag may be partial (see ``AgentConfigurable``); the two
+    workflow defaults match what ``build_agent_config`` writes for a workflow
+    run. ``model_fields_set`` still tells an absent key from one carried as
+    ``None`` where that matters (``session_id`` inheritance).
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    thread_id: str | None = None
+    conversation_id: str | None = None
+    session_id: str | None = None
+    user_id: str | None = None
+    email: str | None = None
+    user_name: str | None = None
+    user_timezone: str | None = None
+    user_messages: list[str] | None = None
+    user_request: str | None = None
+    user_preferences: dict[str, object] | None = None
+    writing_style: dict[str, object] | None = None
+    root_request_id: str | None = None
+    lane: dict[str, object] | None = None
+    #: LangChain's binding key — logged, never used to pick a model (read ``lane``).
+    model: str | None = None
+    selected_tool: str | None = None
+    tool_category: str | None = None
+    subagent_id: str | None = None
+    vfs_session_id: str | None = None
+    stream_id: str | None = None
+    active_todo_id: str | None = None
+    execution_mode: ExecutionMode | None = None
+    conversation_source: str | None = None
+    source_category: str | None = None
+    plan_type: str | None = None
+    workflow_id: str | None = None
+    workflow_title: str = ""
+    workflow_notify_on_completion: bool = True
+    langfuse_trace_id: str | None = None
+    langfuse_tags: list[str] | None = None
+
+
+def read_agent_configurable(config: RunnableConfig | None) -> AgentConfigurableView:
+    """Return agent_configurable, parsed into AgentConfigurableView."""
+    return AgentConfigurableView.model_validate(agent_configurable(config))
 
 
 def config_agent_name(config: RunnableConfig | None) -> str:
@@ -179,9 +251,8 @@ def config_agent_name(config: RunnableConfig | None) -> str:
     ensure_config folds every non-standard top-level key into configurable
     before a node sees the config — so inside a graph the key only exists there.
     """
-    bag = cast(dict[str, Any], config or {})
-    name = (bag.get("configurable") or {}).get("agent_name") or bag.get("agent_name")
-    return str(name) if name else "unknown"
+    configurable: AgentConfigurable = agent_configurable(config)
+    return configurable.get("agent_name") or "unknown"
 
 
 def runtime_configurable(request: ToolCallRequest) -> AgentConfigurable:
@@ -195,6 +266,18 @@ def runtime_configurable(request: ToolCallRequest) -> AgentConfigurable:
     if not isinstance(config, dict):
         return {}
     return agent_configurable(cast(RunnableConfig, config))
+
+
+class LlmCallMetadata(TypedDict, total=False):
+    """The run-metadata keys the TTFT callback reads off one LLM call.
+
+    lane_* is stamped by build_agent_config for the whole run; llm_label by
+    ainvoke_llm per call (under LLM_LABEL_METADATA_KEY).
+    """
+
+    lane_provider: str
+    lane_model: str
+    llm_label: str
 
 
 class AgentRunnableConfig(RunnableConfig):
@@ -227,7 +310,7 @@ class SilentRunResult:
     """
 
     message: str
-    tool_data: dict[str, Any]
+    tool_data: list[ToolDataEntry]
     queued_task_id: str | None = None
     #: The executor this turn delegated to ended in an error. ``message`` is
     #: then comms' account of that error, not a result; ``executor_failure``

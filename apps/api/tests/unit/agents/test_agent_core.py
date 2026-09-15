@@ -15,6 +15,7 @@ from app.agents.core.agent import (
     call_agent,
     call_agent_silent,
 )
+from app.agents.core.messages import MessageAttachments, MessageScope
 from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import AgentRole
 from app.config.settings import settings
@@ -28,13 +29,15 @@ from app.helpers.agent_helpers import (
     AgentTurn,
     recent_user_messages,
 )
-from app.models.agent_models import SilentRunResult
+from app.models.agent_models import SilentRunResult, agent_user_context
 from app.models.message_models import (
+    FileData,
     MessageRequestWithHistory,
     ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents
 
 # ---------------------------------------------------------------------------
@@ -58,14 +61,14 @@ def _make_request(**overrides) -> MessageRequestWithHistory:
     return MessageRequestWithHistory(**defaults)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict into the model
 
 
-def _make_user(**overrides) -> dict:
+def _make_user(**overrides) -> AuthenticatedUser:
     defaults = {
         "user_id": "user-123",
         "email": "test@example.com",
         "name": "Test User",
     }
     defaults.update(overrides)
-    return defaults
+    return AuthenticatedUser(**defaults)
 
 
 FAKE_HISTORY = [
@@ -175,7 +178,63 @@ class TestCoreAgentLogic:
         mock_construct.assert_awaited_once()
         kwargs = mock_construct.call_args.kwargs
         assert kwargs["query"] == "custom query"
-        assert kwargs["user_name"] == "Alice"
+        assert kwargs["scope"].user_name == "Alice"
+
+    @pytest.mark.asyncio
+    async def test_every_request_and_run_field_reaches_message_construction(self):
+        workflow = SelectedWorkflowData(id="wf-1", title="Wf", description="d", steps=[])
+        event = SelectedCalendarEventData(
+            id="evt-1", summary="Evt", description="d", start={}, end={}
+        )
+        reply = ReplyToMessageData(id="msg-1", content="hi", role="user")
+        files = [FileData(fileId="file-1", url="https://files/1", filename="a.txt")]
+        req = _make_request(
+            selectedTool="web_search",
+            toolCategory="research",
+            selectedWorkflow=workflow,
+            selectedCalendarEvent=event,
+            replyToMessage=reply,
+            fileData=files,
+            fileIds=["file-1"],
+        )
+        user = _make_user()
+        trigger = {"execution_mode": "background", "active_todo_id": "todo-7"}
+        patches = _common_patches()
+        with (
+            patches["construct"] as mock_construct,
+            patches["get_graph"],
+            patches["build_state"] as mock_build_state,
+            patches["build_config"],
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=req,
+                conversation_id="conv-1",
+                user=user,
+                options=AgentRunOptions(trigger_context=trigger, source="web"),
+            )
+
+        kwargs = mock_construct.call_args.kwargs
+        assert kwargs["scope"] == MessageScope(
+            user_id="user-123",
+            user_name="Test User",
+            user_dict=user,
+            conversation_id="conv-1",
+            source="web",
+            active_todo_id="todo-7",
+            execution_mode="background",
+        )
+        assert kwargs["attachments"] == MessageAttachments(
+            selected_tool="web_search",
+            tool_category="research",
+            selected_workflow=workflow,
+            selected_calendar_event=event,
+            reply_to_message=reply,
+            files_data=files,
+            currently_uploaded_file_ids=["file-1"],
+            trigger_context=trigger,
+        )
+        assert mock_build_state.call_args.args[1] == "user-123"
 
     @pytest.mark.asyncio
     async def test_the_users_onboarding_data_reaches_build_agent_config(self):
@@ -666,7 +725,7 @@ class TestCallAgent:
             gen = await call_agent(
                 request=_make_request(),
                 conversation_id="conv-1",
-                user=_make_user(user_id=None),
+                user=_make_user(user_id=""),
             )
 
         chunks = [chunk async for chunk in gen]
@@ -694,7 +753,7 @@ class TestCallAgentSilent:
             patch(
                 "app.agents.core.agent.execute_graph_silent",
                 new_callable=AsyncMock,
-                return_value=("Hello!", {"tool": "data"}),
+                return_value=("Hello!", [{"tool_name": "tool", "data": "data"}]),
             ),
             patch("app.agents.core.agent.await_executor_done", new_callable=AsyncMock) as waited,
             patch("app.agents.core.agent.executor_failed", return_value=False) as failed,
@@ -707,7 +766,7 @@ class TestCallAgentSilent:
             )
 
         assert result == SilentRunResult(
-            message="Hello!", tool_data={"tool": "data"}, queued_task_id=None
+            message="Hello!", tool_data=[{"tool_name": "tool", "data": "data"}], queued_task_id=None
         )
         # The executor's outcome is read off THIS run's stream, after a wait
         # bounded to end before the worker job that awaits it would.
@@ -716,6 +775,37 @@ class TestCallAgentSilent:
         waited.assert_awaited_once_with(stream_id, timeout=BACKGROUND_EXECUTOR_WAIT_TIMEOUT)
         failed.assert_called_once_with(stream_id)
         failure.assert_called_once_with(stream_id)
+
+    @pytest.mark.asyncio
+    async def test_the_detached_executors_tool_data_is_appended_to_the_result(self):
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                return_value=("Hello!", [{"tool_name": "comms_tool", "data": "c"}]),
+            ),
+            patch("app.agents.core.agent.await_executor_done", new_callable=AsyncMock),
+            patch(
+                "app.agents.core.agent.drain_executor_tool_data",
+                return_value=[{"tool_name": "executor_tool", "data": "e"}],
+            ),
+        ):
+            result = await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+
+        assert result.tool_data == [
+            {"tool_name": "comms_tool", "data": "c"},
+            {"tool_name": "executor_tool", "data": "e"},
+        ]
 
     @pytest.mark.asyncio
     async def test_a_graph_failure_propagates_instead_of_becoming_a_result_string(self):
@@ -764,7 +854,7 @@ class TestCallAgentSilent:
             )
 
         # construct_langchain_messages should get trigger_context
-        assert mock_construct.call_args.kwargs["trigger_context"] == trigger
+        assert mock_construct.call_args.kwargs["attachments"].trigger_context == trigger
 
     @pytest.mark.asyncio
     async def test_usage_metadata_logging(self):
@@ -936,7 +1026,7 @@ class TestCallAgentSilent:
             patch(
                 "app.agents.core.agent.execute_graph_silent",
                 new_callable=AsyncMock,
-                return_value=("Hello!", {"tool": "data"}),
+                return_value=("Hello!", [{"tool_name": "tool", "data": "data"}]),
             ),
         ):
             await call_agent_silent(
@@ -1023,7 +1113,7 @@ class TestCallAgentSilent:
             await call_agent_silent(
                 request=_make_request(),
                 conversation_id="conv-1",
-                user=_make_user(user_id=None),
+                user=_make_user(user_id=""),
             )
 
         _no_real_analytics.assert_not_called()
@@ -1079,13 +1169,19 @@ class TestTheLaneTheRunResolves:
             )
 
         assert build_config.call_args.args == ()
+        assert build_config.call_args.kwargs["identity"].user == {
+            "user_id": "user-123",
+            "email": "test@example.com",
+            "name": "Test User",
+            "timezone": None,
+        }
         # Dataclass equality, so this is exactly as strict as the flat-kwargs dict
         # it replaced: every field of every group has to match, and an argument
         # dropped on the floor shows up as a default that is not the value here.
         assert build_config.call_args.kwargs == {
             "identity": AgentIdentity(
                 conversation_id="conv-1",
-                user=user,
+                user=agent_user_context(user),
                 agent_name="comms_agent",
             ),
             "lane": AgentLane(role=AgentRole.COMMS, dev_option=None),
@@ -1296,7 +1392,7 @@ class TestTheWorkflowKeysTheRunStashes:
             "workflow_id": "wf-1",
             "workflow_title": "Daily digest",
             "workflow_notify_on_completion": False,
-            PLAYBOOK_FALLBACK_CONTEXT_KEY: {"reason": "hash_drift", "step": 3},
+            PLAYBOOK_FALLBACK_CONTEXT_KEY: "Replay stopped at step 3: hash drift.",
         }
         patches = _common_patches()
         with (
@@ -1328,7 +1424,7 @@ class TestTheWorkflowKeysTheRunStashes:
             "workflow_id": "wf-1",
             "workflow_title": "Daily digest",
             "workflow_notify_on_completion": False,
-            "playbook_fallback": {"reason": "hash_drift", "step": 3},
+            "playbook_fallback": "Replay stopped at step 3: hash drift.",
             # Read by name in write_playbook (_replayed_results): the calls a
             # stopped replay made, so a rewrite may freeze them. None here
             # because this trigger carries no replay.
@@ -1449,7 +1545,7 @@ class TestTheOptionsEachEntryPointDerives:
             patch(
                 "app.agents.core.agent.execute_graph_silent",
                 new_callable=AsyncMock,
-                return_value=("Hello!", {"tool": "data"}),
+                return_value=("Hello!", [{"tool_name": "tool", "data": "data"}]),
             ),
         ):
             await call_agent_silent(
@@ -1504,7 +1600,7 @@ class TestTheQueuedTaskIdComesFromThisRunsOwnStream:
             patch(
                 "app.agents.core.agent.execute_graph_silent",
                 new_callable=AsyncMock,
-                return_value=("Hello!", {"tool": "data"}),
+                return_value=("Hello!", [{"tool_name": "tool", "data": "data"}]),
             ),
             patch(
                 "app.agents.core.agent.queued_without_run",
@@ -1521,6 +1617,6 @@ class TestTheQueuedTaskIdComesFromThisRunsOwnStream:
         assert UUID(stream_id)
         assert result == SilentRunResult(
             message="Hello!",
-            tool_data={"tool": "data"},
+            tool_data=[{"tool_name": "tool", "data": "data"}],
             queued_task_id=f"queued-for-{stream_id}",
         )

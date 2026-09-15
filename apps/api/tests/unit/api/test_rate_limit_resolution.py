@@ -17,8 +17,9 @@ import pytest
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.core.request_context import set_authenticated_user
 from app.decorators import tiered_rate_limit
+from app.models.user_models import AuthenticatedUser
 
-USER = {"user_id": "u1", "email": "a@b.c"}
+USER = AuthenticatedUser(user_id="u1", email="a@b.c")
 
 
 def _build_app() -> FastAPI:
@@ -38,17 +39,21 @@ def _build_app() -> FastAPI:
 
     @app.get("/named-user")
     @tiered_rate_limit("generate_image")
-    async def named_user(user: dict = Depends(get_current_user)) -> dict[str, str]:
+    async def named_user(user: AuthenticatedUser = Depends(get_current_user)) -> dict[str, str]:
         return {"ok": "1"}
 
     @app.get("/named-current-user")
     @tiered_rate_limit("generate_image")
-    async def named_current_user(current_user: dict = Depends(get_current_user)) -> dict[str, str]:
+    async def named_current_user(
+        current_user: AuthenticatedUser = Depends(get_current_user),
+    ) -> dict[str, str]:
         return {"ok": "1"}
 
     @app.get("/named-underscore-user")
     @tiered_rate_limit("generate_image")
-    async def named_underscore_user(_user: dict = Depends(get_current_user)) -> dict[str, str]:
+    async def named_underscore_user(
+        _user: AuthenticatedUser = Depends(get_current_user),
+    ) -> dict[str, str]:
         return {"ok": "1"}
 
     @app.get("/named-user-id")

@@ -268,6 +268,31 @@ class TestListIntegrations:
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
+    async def test_listed_custom_ids_are_excluded_from_public_search_exactly(
+        self,
+        mock_status: AsyncMock,
+        mock_gsw: MagicMock,
+        mock_repo: MagicMock,
+        mock_int_repo: MagicMock,
+    ) -> None:
+        mock_gsw.return_value = _writer()
+        mock_status.return_value = {}
+        mock_repo.list_for_user = AsyncMock(return_value=[MagicMock(integration_id="c1")])
+        mock_int_repo.find_custom_by_ids = AsyncMock(
+            return_value=[_custom_doc("c1", "Sentry", "Errors", "observability")]
+        )
+        mock_repo.is_connected = AsyncMock(return_value=True)
+        mock_int_repo.search_public = AsyncMock(return_value=[])
+
+        await _list(_cfg(), search="monitoring")
+
+        assert mock_int_repo.search_public.await_args.kwargs["exclude_ids"] == ["c1"]
+
+    @patch(f"{MODULE}.integration_repository")
+    @patch(f"{MODULE}.user_integration_repository")
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
+    @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_no_custom_integrations_skips_the_lookup(
         self,
         mock_status: AsyncMock,

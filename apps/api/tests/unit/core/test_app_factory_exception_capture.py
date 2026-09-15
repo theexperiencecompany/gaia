@@ -13,7 +13,6 @@ key the registry finds nothing and every crash goes uncaptured.
 
 from collections.abc import Callable
 from contextlib import asynccontextmanager
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI, Request
@@ -22,6 +21,7 @@ from httpx import ASGITransport, AsyncClient
 import pytest
 
 from app.core.app_factory import create_app
+from app.models.user_models import AuthenticatedUser
 
 
 @asynccontextmanager
@@ -53,7 +53,7 @@ def _client(app: FastAPI) -> AsyncClient:
     )
 
 
-def _app_with_boom_route(user: dict[str, Any] | None) -> FastAPI:
+def _app_with_boom_route(user: AuthenticatedUser | None) -> FastAPI:
     """Build an app whose only route authenticates, then raises.
 
     The user is set inside the route, not an outer middleware: WorkOSAuthMiddleware
@@ -77,7 +77,7 @@ async def test_unhandled_exception_is_attributed_to_the_authenticated_user(
 ) -> None:
     posthog_client = MagicMock()
     posthog_provider(available=True, client=posthog_client)
-    app = _app_with_boom_route({"user_id": "uid1"})
+    app = _app_with_boom_route(AuthenticatedUser(user_id="uid1"))
 
     async with _client(app) as client:
         response = await client.get("/boom")
@@ -116,7 +116,7 @@ async def test_unavailable_posthog_provider_still_returns_the_json_500(
     """Apps built without the production lifespan have no usable provider; a raising handler would turn the JSON body into a bare Starlette 500."""
     posthog_client = MagicMock()
     posthog_provider(available=False, client=posthog_client)
-    app = _app_with_boom_route({"user_id": "uid1"})
+    app = _app_with_boom_route(AuthenticatedUser(user_id="uid1"))
 
     async with _client(app) as client:
         response = await client.get("/boom")

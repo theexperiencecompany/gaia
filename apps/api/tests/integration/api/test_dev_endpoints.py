@@ -15,7 +15,7 @@ import httpx
 import pytest
 
 from app.constants.auth import DEV_USER_MISSING_HINT
-from app.models.user_models import UserDocument
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataResponse
 
 DEV_EMAIL = "dev@gaia.local"
@@ -498,11 +498,9 @@ def _build_bypass_probe_app() -> FastAPI:
     @app.get("/probe")
     async def probe(request: Request) -> JSONResponse:
         user = getattr(request.state, "user", None)
-        if not user:
+        if not isinstance(user, AuthenticatedUser):
             return JSONResponse(status_code=401, content={"detail": "no user"})
-        return JSONResponse(
-            content={"email": user.get("email"), "dev_bypass": user.get("dev_bypass")}
-        )
+        return JSONResponse(content={"email": user.email, "dev_bypass": user.dev_bypass})
 
     app.add_middleware(WorkOSAuthMiddleware, workos_client=MagicMock())
     return app

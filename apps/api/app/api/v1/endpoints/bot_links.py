@@ -40,8 +40,9 @@ from app.services.platform_link_completion import (
     PostLinkSideEffectError,
     complete_platform_link,
 )
-from app.services.platform_link_service import PlatformLinkService, require_platform_plan
+from app.services.platform_link_service import require_platform_plan
 from app.services.user_service import get_user_by_id
+from app.utils.auth_utils import resolve_bot_user
 from app.utils.errors import create_error
 from shared.py.wide_events import log
 
@@ -177,11 +178,9 @@ async def redeem_link_code(request: Request, body: RedeemLinkCodeRequest) -> Red
         # A spent code from an already-linked account is a second tap (deep
         # links and Telegram's /start re-fire), not a dead link. Replying with
         # the first tap's success avoids double side effects, for every platform.
-        linked_user = await PlatformLinkService.get_user_by_platform_id(
-            body.platform, body.platform_user_id
-        )
+        linked_user = await resolve_bot_user(body.platform, body.platform_user_id)
         if linked_user is not None:
-            linked_user_id = str(linked_user["_id"])
+            linked_user_id = linked_user.user_id
             log.set(user={"id": linked_user_id})
             log.audit(
                 "platform link code already redeemed by this account",
@@ -234,7 +233,7 @@ async def redeem_link_code(request: Request, body: RedeemLinkCodeRequest) -> Red
         # Link completion delivers it on the outbound queue.
         user = await get_user_by_id(payload.user_id)
         bubbles = await build_first_contact(
-            payload.user_id, body.platform, (user or {}).get("name"), payload.preferences
+            payload.user_id, body.platform, user.name if user else None, payload.preferences
         )
         completion = await complete_platform_link(
             payload.user_id,
@@ -263,7 +262,7 @@ async def redeem_link_code(request: Request, body: RedeemLinkCodeRequest) -> Red
     )
     delivered = completion.first_contact_delivered
     log.set(outcome="success", is_new_link=completion.link.is_new_link, delivered=delivered)
-    await _persist_first_contact(payload.user_id, body, user, bubbles)
+    await _persist_first_contact(payload.user_id, body, bubbles)
     # A publish the queue refused is never retried, so the bubbles go back to
     # the bot that asked for the link rather than being lost.
     return RedeemLinkCodeResponse(
@@ -274,7 +273,6 @@ async def redeem_link_code(request: Request, body: RedeemLinkCodeRequest) -> Red
 async def _persist_first_contact(
     user_id: str,
     body: RedeemLinkCodeRequest,
-    user: dict | None,
     bubbles: list[str],
 ) -> None:
     """Write the first contact into the platform's bot conversation.
@@ -284,7 +282,7 @@ async def _persist_first_contact(
     a successful link into an error, retried with a code already spent.
     """
     try:
-        actor: AuthenticatedUser = {**(user or {}), "user_id": user_id}
+        actor = AuthenticatedUser(user_id=user_id)
         conversation_id = await BotService.get_or_create_session(
             body.platform, body.platform_user_id, None, actor, is_dm=True
         )

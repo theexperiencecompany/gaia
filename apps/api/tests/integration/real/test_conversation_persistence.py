@@ -14,6 +14,7 @@ import pytest
 
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.services.conversation_service import update_messages
+from tests.factories import make_authenticated_user
 
 
 @pytest.mark.service
@@ -22,7 +23,7 @@ class TestUpdateMessagesReal:
 
     async def test_messages_persisted(self, conversations_collection, make_conversation):
         """update_messages must $push user+bot messages to real MongoDB."""
-        user = {"user_id": "user-1"}
+        user = make_authenticated_user(user_id="user-1")
         conv_id = await make_conversation("user-1")
 
         request = UpdateMessagesRequest(
@@ -70,13 +71,13 @@ class TestUpdateMessagesReal:
         )
 
         with pytest.raises(HTTPException) as exc_info:
-            await update_messages(request, {"user_id": "no-one"})
+            await update_messages(request, make_authenticated_user(user_id="no-one"))
 
         assert exc_info.value.status_code == 404
 
     async def test_tool_data_survives_roundtrip(self, conversations_collection, make_conversation):
         """tool_data on a bot message must survive MongoDB serialization."""
-        user = {"user_id": "user-2"}
+        user = make_authenticated_user(user_id="user-2")
         conv_id = await make_conversation("user-2")
 
         request = UpdateMessagesRequest(
@@ -106,7 +107,7 @@ class TestUpdateMessagesReal:
 
     async def test_consecutive_updates_append(self, conversations_collection, make_conversation):
         """Multiple update_messages calls must append, not overwrite."""
-        user = {"user_id": "user-3"}
+        user = make_authenticated_user(user_id="user-3")
         conv_id = await make_conversation("user-3")
 
         for i in range(3):
@@ -143,6 +144,6 @@ class TestUpdateMessagesReal:
         )
 
         with pytest.raises(HTTPException) as exc_info:
-            await update_messages(request, {"user_id": "user-B"})
+            await update_messages(request, make_authenticated_user(user_id="user-B"))
 
         assert exc_info.value.status_code == 404

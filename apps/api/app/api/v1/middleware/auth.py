@@ -1,7 +1,6 @@
 """WorkOS session auth middleware + get_current_user dependency."""
 
 from collections.abc import Awaitable, Callable
-from typing import Any, cast
 
 from fastapi import Request, Response
 from posthog import identify_context, new_context
@@ -10,6 +9,7 @@ from starlette.types import ASGIApp
 from workos import AsyncWorkOSClient
 
 from app.api.v1.middleware.agent_auth import verify_agent_token
+from app.config.posthog import POSTHOG_PROVIDER_KEY
 from app.config.settings import settings
 from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
@@ -17,7 +17,7 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.core.request_context import set_authenticated_user
 from app.db.repositories.users import user_repository
-from app.models.user_models import AuthenticatedUser, user_to_legacy_dict
+from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import ErrorEnvelope, error_response
 from app.utils.auth_utils import (
     authenticate_workos_session,
@@ -27,9 +27,10 @@ from app.utils.auth_utils import (
 from shared.py.wide_events import log
 
 
-def get_current_user(request: Request) -> dict[str, Any] | None:
-    """Return the authenticated user dict on request.state, or None."""
-    return cast("dict[str, Any] | None", getattr(request.state, "user", None))
+def get_current_user(request: Request) -> AuthenticatedUser | None:
+    """Return the authenticated user on request.state, or None."""
+    user = getattr(request.state, "user", None)
+    return user if isinstance(user, AuthenticatedUser) else None
 
 
 class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
@@ -43,12 +44,12 @@ class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        user = getattr(request.state, "user", None)
-        user_id = user.get("user_id") if user else None
+        user = get_current_user(request)
+        user_id = user.user_id if user else None
         if not user_id or not providers.is_available("posthog"):
             return await call_next(request)
 
-        if providers.get("posthog") is None:
+        if providers.get(POSTHOG_PROVIDER_KEY) is None:
             return await call_next(request)
 
         # capture_exceptions=False is load-bearing: autocapture uses the
@@ -191,7 +192,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             )
             # Don't block request on auth failures - routes can handle this
             return
-        if not user_info:
+        if user_info is None:
             # Can't log.set() here — this runs outside LoggingMiddleware's context, so
             # wide event fields would be wiped by log.reset(). Stash the reason instead
             # so the route layer can log it inside the right context.
@@ -211,7 +212,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         if not agent_info:
             return
         try:
-            user_data = await user_repository.get(str(agent_info["user_id"]))
+            user_data = await user_repository.get(agent_info.user_id)
         except Exception as e:
             log.error(
                 f"{LogTag.API} Invalid user_id in agent token",
@@ -225,7 +226,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         # the agent token carries timezone + onboarding. Hand-picking fields here dropped
         # them, so voice mode lost the user's system instructions.
         request.state.user = build_user_context(
-            user_to_legacy_dict(user_data), auth_provider="workos", impersonated=True
+            user_data, auth_provider="workos", impersonated=True
         )
         request.state.authenticated = True
 
@@ -243,7 +244,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         request.state.authenticated = False
         request.state.new_session = None
 
-        target_email, user_data = await resolve_dev_bypass_user(request.headers, request.cookies)
+        target_email, user_data = await resolve_dev_bypass_user(request)
         if user_data is None:
             log.error(
                 f"{LogTag.API} Dev bypass target has no Mongo user",
@@ -258,9 +259,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 ),
             )
 
-        request.state.user = build_user_context(
-            user_to_legacy_dict(user_data), auth_provider="workos", dev_bypass=True
-        )
+        request.state.user = build_user_context(user_data, auth_provider="workos", dev_bypass=True)
         request.state.authenticated = True
         self._publish_user(request)
         return await call_next(request)
@@ -274,7 +273,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         before call_next — that is where the downstream task is created, and
         the task inherits the context as it stands at that moment.
         """
-        set_authenticated_user(getattr(request.state, "user", None))
+        set_authenticated_user(get_current_user(request))
 
     async def _authenticate_session(
         self, wos_session: str
@@ -288,10 +287,10 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         user_info, new_session = await authenticate_workos_session(
             session_token=wos_session, workos_client=self.workos
         )
-        if not user_info:
+        if user_info is None:
             return None, new_session
         # Fire-and-forget: touch_last_active is debounced and never raises, so a
         # failed last-active write can no longer turn a valid session into a
         # failed authentication (the previous try/except returned None here).
-        await user_repository.touch_last_active(user_info["email"])
+        await user_repository.touch_last_active(user_info.email or "")
         return user_info, new_session

@@ -17,19 +17,10 @@ one canonical background_task line with outcome and duration_ms.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from typing import Any
+from starlette.types import ASGIApp, Receive, Scope, Send
 
+from app.api.v1.middleware.asgi_scope import AsgiScope
 from shared.py.wide_events import log_context
-
-ASGIApp = Callable[
-    [
-        dict[str, Any],
-        Callable[[], Awaitable[dict[str, Any]]],
-        Callable[[dict[str, Any]], Awaitable[None]],
-    ],
-    Awaitable[None],
-]
 
 
 class WebSocketWideEventMiddleware:
@@ -38,21 +29,17 @@ class WebSocketWideEventMiddleware:
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
-    async def __call__(
-        self,
-        scope: dict[str, Any],
-        receive: Callable[[], Awaitable[dict[str, Any]]],
-        send: Callable[[dict[str, Any]], Awaitable[None]],
-    ) -> None:
-        if scope.get("type") != "websocket":
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        parsed = AsgiScope.model_validate(scope)
+        if parsed.type != "websocket":
             await self.app(scope, receive, send)
             return
 
         # Mirror LoggingMiddleware: honour an incoming trace-id so distributed
         # callers can correlate the connection with the request that opened it.
-        trace_id = _header(scope, b"x-trace-id")
-        task = _task_name(scope.get("path", ""))
-        async with log_context(task, trace_id=trace_id, path=scope.get("path", "")):
+        trace_id = parsed.header(b"x-trace-id")
+        task = _task_name(parsed.path)
+        async with log_context(task, trace_id=trace_id, path=parsed.path):
             await self.app(scope, receive, send)
 
 
@@ -65,11 +52,3 @@ def _task_name(path: str) -> str:
     if path.rstrip("/") == "/api/v1/ws/device":
         return "device_ws_connection"
     return "ws_connection"
-
-
-def _header(scope: dict[str, Any], key: bytes) -> str | None:
-    """Return the value of a header in a raw ASGI scope, if present."""
-    for name, value in scope.get("headers", ()):
-        if name == key:
-            return str(value.decode("latin-1"))
-    return None

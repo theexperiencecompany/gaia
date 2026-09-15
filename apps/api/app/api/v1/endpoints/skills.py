@@ -54,7 +54,7 @@ router = APIRouter(prefix="/skills", tags=["skills"])
 
 
 def _get_user_id(user: AuthenticatedUser = Depends(get_current_user)) -> str:
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(
             status_code=http_status.HTTP_401_UNAUTHORIZED,

@@ -1,4 +1,4 @@
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 
@@ -10,6 +10,7 @@ from app.api.v1.dependencies.google_scope_dependencies import (
 )
 from app.constants.log_tags import LogTag
 from app.decorators import tiered_rate_limit
+from app.models.composio_schemas.gmail import GmailResourceId
 from app.models.mail_models import (
     ApplyLabelRequest,
     ArchiveEmailsResponse,
@@ -46,6 +47,7 @@ from app.models.mail_models import (
     UnstarEmailsResponse,
     UntrashEmailsResponse,
 )
+from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.mail.email_importance_service import (
@@ -82,7 +84,10 @@ from app.services.mail.mail_service import (
     update_label as update_label_service,
 )
 from app.utils.embedding_utils import search_notes_by_similarity
-from app.utils.user_preferences_utils import format_writing_style_for_prompt
+from app.utils.user_preferences_utils import (
+    format_writing_style_for_prompt,
+    onboarding_preferences,
+)
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -239,31 +244,29 @@ async def search_emails(
 @tiered_rate_limit("mail_actions")
 async def process_email(
     request: EmailRequest,
-    current_user: dict[str, Any] = Depends(require_integration("gmail")),
+    current_user: AuthenticatedUser = Depends(require_integration("gmail")),
 ) -> ComposedEmailOutput:
     log.set(mail={"operation": "compose"})
     try:
-        user_id = current_user.get("user_id")
-        if user_id is None:
+        user_id = current_user.user_id
+        if not user_id:
             raise HTTPException(status_code=401, detail="User ID is required")
-        log.set(user={"id": str(user_id)})
+        log.set(user={"id": user_id})
 
-        notes = await search_notes_by_similarity(input_text=request.prompt, user_id=str(user_id))
+        notes = await search_notes_by_similarity(input_text=request.prompt, user_id=user_id)
 
-        writing_style_data = current_user.get("onboarding", {}).get("writing_style")
+        _, writing_style_data = onboarding_preferences(current_user.onboarding)
         learned_style_block = format_writing_style_for_prompt(writing_style_data)
 
         prompt = EMAIL_COMPOSER.format(
-            sender_name=current_user.get("name") or "none",
+            sender_name=current_user.name or "none",
             subject=request.subject or "empty",
             body=request.body or "empty",
             writing_style=request.writingStyle or "Professional",
             content_length=request.contentLength or "None",
             clarity_option=request.clarityOption or "None",
             notes=(
-                "- ".join(note.get("content", "") for note in notes)
-                if notes
-                else "No relevant notes found."
+                "- ".join(note.content for note in notes) if notes else "No relevant notes found."
             ),
             prompt=request.prompt,
             learned_writing_style=learned_style_block,
@@ -340,7 +343,7 @@ async def send_email_route(
         )
         # Gmail owns the schema of the Composio envelope's ``data``; this is the boundary read.
         return SendEmailWithAttachmentsResponse(
-            message_id=(sent_message.data or {}).get("id"),
+            message_id=GmailResourceId.model_validate(sent_message.data or {}).id,
             status="Email sent successfully",
             attachments_count=len(form.attachments) if form.attachments else 0,
         )
@@ -396,7 +399,7 @@ async def send_email_json(
             outcome="success",
         )
         return SendEmailResponse(
-            message_id=(sent_message.data or {}).get("id"),
+            message_id=GmailResourceId.model_validate(sent_message.data or {}).id,
             status="Email sent successfully",
         )
     except HTTPException:
@@ -580,7 +583,7 @@ async def trash_emails(
         )
         return TrashEmailsResponse(
             success=True,
-            trashed=[msg["id"] for msg in modified_messages],
+            trashed=[msg.id for msg in modified_messages],
             count=len(modified_messages),
             status="Messages moved to trash",
         )
@@ -617,7 +620,7 @@ async def untrash_emails(
         )
         return UntrashEmailsResponse(
             success=True,
-            restored=[msg["id"] for msg in modified_messages],
+            restored=[msg.id for msg in modified_messages],
             count=len(modified_messages),
             status="Messages restored from trash",
         )
@@ -945,7 +948,7 @@ async def create_draft_route(
             cc_list=request.cc,
             bcc_list=request.bcc,
         )
-        message_id = (draft.message or {}).get("id")
+        message_id = GmailResourceId.model_validate(draft.message or {}).id
 
         log.set(
             operation="create_draft",
@@ -1060,7 +1063,7 @@ async def update_draft_route(
         capture_context_event(AnalyticsEvents.EMAIL_DRAFT_UPDATED)
         return DraftMutationResponse(
             draft_id=updated_draft.id,
-            message_id=(updated_draft.message or {}).get("id"),
+            message_id=GmailResourceId.model_validate(updated_draft.message or {}).id,
             status="Draft updated successfully",
         )
     except Exception as e:
@@ -1141,7 +1144,7 @@ async def send_draft_route(
 async def get_email_importance_summaries(
     limit: int = 50,
     important_only: bool = False,
-    current_user: dict[str, Any] = Depends(require_integration("gmail")),
+    current_user: AuthenticatedUser = Depends(require_integration("gmail")),
 ) -> EmailImportanceSummariesResponse:
     """
     Get email importance summaries for the current user.
@@ -1152,7 +1155,7 @@ async def get_email_importance_summaries(
     Returns list of email summaries with importance analysis.
     """
     try:
-        user_id = current_user.get("user_id")
+        user_id = current_user.user_id
         if not user_id:
             raise HTTPException(status_code=401, detail="User ID not found")
 
@@ -1175,7 +1178,7 @@ async def get_email_importance_summaries(
     summary="Get single email importance summary",
 )
 async def get_single_email_importance_summary(
-    message_id: str, current_user: dict[str, Any] = Depends(require_integration("gmail"))
+    message_id: str, current_user: AuthenticatedUser = Depends(require_integration("gmail"))
 ) -> EmailImportanceSummaryResponse:
     """
     Get importance summary for a specific email.
@@ -1185,7 +1188,7 @@ async def get_single_email_importance_summary(
     Returns the importance analysis for the specified email.
     """
     try:
-        user_id = current_user.get("user_id")
+        user_id = current_user.user_id
         if not user_id:
             raise HTTPException(status_code=401, detail="User ID not found")
 
@@ -1210,7 +1213,7 @@ async def get_single_email_importance_summary(
 @router.post("/gmail/importance-summaries/bulk", summary="Get bulk email importance summaries")
 async def get_bulk_email_importance_summaries(
     request: EmailActionRequest,
-    current_user: dict[str, Any] = Depends(require_integration("gmail")),
+    current_user: AuthenticatedUser = Depends(require_integration("gmail")),
 ) -> BulkEmailImportanceSummariesResponse:
     """
     Get importance summaries for multiple emails in bulk.
@@ -1220,7 +1223,7 @@ async def get_bulk_email_importance_summaries(
     Returns summaries for all available emails. Does not throw error for missing summaries.
     """
     try:
-        user_id = current_user.get("user_id")
+        user_id = current_user.user_id
         if not user_id:
             raise HTTPException(status_code=401, detail="User ID not found")
 

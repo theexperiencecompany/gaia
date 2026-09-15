@@ -36,6 +36,7 @@ from app.agents.core.background.session import (
     signal_executor_done,
     teardown_session,
 )
+from app.models.user_models import AuthenticatedUser
 
 
 def _spawned(stream_id: str) -> bool:
@@ -159,7 +160,7 @@ class TestOwnershipRule:
         run = ExecutorRun(
             stream_id="s1",
             conversation_id="conv-1",
-            user={"user_id": "u1"},
+            user=AuthenticatedUser(user_id="u1"),
             kind=kind,
             task_id="t1",
             user_message_id=None,
@@ -172,7 +173,7 @@ class TestOwnershipRule:
         run = ExecutorRun(
             stream_id="queued_looking_but_live",
             conversation_id="c",
-            user={},
+            user=AuthenticatedUser(user_id=""),
             kind=RunKind.LIVE,
             task_id=None,
             user_message_id=None,
@@ -197,7 +198,9 @@ class TestOwnershipRule:
                 user_message_id="m1",
             ),
         )
-        assert run.user == {"user_id": "u1", "email": "u1@x.com", "name": "Uno", "timezone": None}
+        assert run.user == AuthenticatedUser(
+            user_id="u1", email="u1@x.com", name="Uno", timezone=None
+        )
         assert run.workflow_id == "wf-9"
         assert run.workflow_title == "Daily digest"
         assert run.workflow_notify_on_completion is False

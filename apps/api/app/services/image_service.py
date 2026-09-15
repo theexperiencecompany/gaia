@@ -6,13 +6,23 @@ import uuid
 
 import cloudinary.uploader
 from fastapi import HTTPException, UploadFile
+from pydantic import BaseModel, ConfigDict
 
 from app.agents.prompts.image_prompts import IMAGE_PROMPT_REFINER
 from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
+from app.models.integrations.cloudinary import CloudinaryUploadResult
 from app.utils.chat_utils import do_prompt_no_stream
 from app.utils.image_utils import convert_image_to_text, generate_image
 from shared.py.wide_events import get_trace_id, log, log_context
+
+
+class ImageGenerationFailure(BaseModel):
+    """The failure dict ``generate_image`` returns in place of image bytes."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    error: str = "unknown error"
 
 
 def generate_public_id(refined_text: str, max_length: int = 50) -> str:
@@ -41,7 +51,7 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
                 part.strip()
                 for part in [
                     message or "",
-                    improved_prompt.get("response", "") or "",
+                    improved_prompt.response or "",
                 ]
                 if part.strip()
             )
@@ -61,9 +71,8 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
         # ever returns a dict on the httpx failure path ({"error": str(e)});
         # bytes is the sole success shape.
         if isinstance(image_data, dict):
-            raise ValueError(
-                f"Failed to generate image: {image_data.get('error', 'unknown error')}"
-            )
+            failure = ImageGenerationFailure.model_validate(image_data)
+            raise ValueError(f"Failed to generate image: {failure.error}")
         if isinstance(image_data, bytes):
             # Already bytes, use as is
             image_bytes = image_data
@@ -77,7 +86,7 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
             overwrite=True,
         )
 
-        image_url = upload_result.get("secure_url")
+        image_url = CloudinaryUploadResult.model_validate(upload_result).secure_url
         log.info("Image uploaded successfully. URL", image_url=image_url)
 
         return ImageData(

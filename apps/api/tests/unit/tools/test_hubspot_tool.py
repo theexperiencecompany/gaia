@@ -7,7 +7,7 @@ projection, the counts, and the per-call degradation paths.
 """
 
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 
@@ -103,9 +103,15 @@ def test_sends_contacts_and_deals_requests_through_the_proxy() -> None:
 
 def test_projects_contacts_and_deals_with_counts() -> None:
     tool = _capture_tool()
-    with patch(f"{MODULE}.proxy_request_sync", side_effect=[_CONTACTS, _DEALS]):
+    with (
+        patch(f"{MODULE}.proxy_request_sync", side_effect=[_CONTACTS, _DEALS]),
+        patch(f"{MODULE}.log") as log_mock,
+    ):
         result = tool(GatherContextInput(), None, AUTH_CREDS)
 
+    assert log_mock.set.call_args_list == [
+        call(tool={"integration": "hubspot", "action": "gather_context"})
+    ]
     assert result == {
         "recent_contacts": [
             {

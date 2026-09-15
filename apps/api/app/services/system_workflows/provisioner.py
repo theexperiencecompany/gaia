@@ -107,8 +107,8 @@ async def provision_system_workflows(
             # the user's local time instead of UTC.
             if trigger_config.type == TriggerType.SCHEDULE and not trigger_config.timezone:
                 if user_timezone is None:
-                    user = await get_user_by_id(user_id) or {}
-                    user_timezone = (user.get("timezone") or "").strip() or "UTC"
+                    user = await get_user_by_id(user_id)
+                    user_timezone = ((user.timezone if user else None) or "").strip() or "UTC"
                 trigger_config.timezone = user_timezone
                 request.trigger_config = trigger_config
             workflow = await WorkflowService.create_workflow(request, user_id)
@@ -239,8 +239,8 @@ async def _stamp_reset_trigger_timezone(trigger_config: TriggerConfig, user_id: 
     if trigger_config.type != TriggerType.SCHEDULE:
         return
     if not trigger_config.timezone:
-        user = await get_user_by_id(user_id) or {}
-        trigger_config.timezone = (user.get("timezone") or "").strip() or "UTC"
+        user = await get_user_by_id(user_id)
+        trigger_config.timezone = ((user.timezone if user else None) or "").strip() or "UTC"
     if trigger_config.cron_expression:
         trigger_config.update_next_run(user_timezone=trigger_config.timezone)
 

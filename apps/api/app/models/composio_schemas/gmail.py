@@ -4,7 +4,7 @@ Gmail trigger payload and tool output models.
 Reference: node_modules/@composio/core/generated/gmail.ts
 """
 
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, Self, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -179,7 +179,8 @@ class GmailHeader(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     name: str = ""
-    value: str = ""
+    # Null on some Composio-relayed messages (see transform_gmail_message's regression test).
+    value: str | None = None
 
 
 class GmailPartBody(BaseModel):
@@ -190,6 +191,26 @@ class GmailPartBody(BaseModel):
     attachment_id: str | None = Field(default=None, alias="attachmentId")
     size: int | None = None
     data: str | None = None
+
+
+class GmailResourceId(BaseModel):
+    """A Gmail resource (message, draft) in a tool result, read only for its ``id``.
+
+    Optional because Composio documents only the result envelope, not the Gmail
+    resource inside it.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str | None = None
+
+
+class GmailDraftEntry(BaseModel):
+    """One ``GMAIL_LIST_DRAFTS`` draft, read only for the message it wraps."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    message: dict[str, object] | None = None
 
 
 class GmailMessagePart(BaseModel):
@@ -206,7 +227,7 @@ class GmailMessagePart(BaseModel):
     filename: str | None = None
     headers: list[GmailHeader] = Field(default_factory=list)
     body: GmailPartBody | None = None
-    parts: list["GmailMessagePart"] = Field(default_factory=list)
+    parts: list[Self] = Field(default_factory=list)
 
 
 class GmailAttachmentMetadata(TypedDict):

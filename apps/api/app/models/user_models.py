@@ -332,69 +332,6 @@ class OnboardingPhaseUpdateRequest(BaseModel):
         return v
 
 
-class AuthenticatedUser(TypedDict, total=False):
-    """request.state.user — what every Depends(get_current_user) yields.
-
-    TypedDict, not BaseModel (Type Safety item 6): never crosses a validation
-    boundary (build_user_context assembles it from an already-validated
-    UserDocument), and ~205 call sites read it via user["user_id"] — swapping to
-    a model would be a behaviour change (item 13) for no extra safety.
-
-    total=False: auth paths populate different subsets (WorkOS sets no flags,
-    agent-token sets impersonated, bots set bot_authenticated, dev bypass sets
-    dev_bypass); the legacy bot dict carries _id where the rest carry user_id,
-    and fields otherwise mirror the UserDocument build_user_context spreads.
-    """
-
-    # Auth context layered on by build_user_context()/user_to_legacy_dict().
-    user_id: str
-    auth_provider: str
-    impersonated: bool
-    bot_authenticated: bool
-    dev_bypass: bool
-    is_agent_token: bool
-    # The bot/legacy path carries the raw Mongo id instead of `user_id`.
-    _id: str
-
-    # Spread from UserDocument — see that class for why these stay loose.
-    email: str | None
-    name: str | None
-    picture: str | None
-    timezone: str | None
-    created_at: datetime | None
-    updated_at: datetime | None
-    last_active_at: datetime | None
-    onboarding: dict[str, Any] | None
-    provider_metadata: dict[str, Any] | None
-    hil_preferences: dict[str, Any] | None
-    notification_channel_prefs: dict[str, Any] | None
-    chat_channel_priority: list[str] | None
-    platform_links: dict[str, Any] | None
-    platform_links_connected_at: dict[str, Any] | None
-    starred_voice_ids: list[str] | None
-    selected_voice_id: str | None
-    first_name: str | None
-    email_memory_processed: bool | None
-    email_memory_processed_at: datetime | None
-    email_memory_count: int | None
-    integration_scan_states: dict[str, Any] | None
-    is_active: bool | None
-    memory_backfilled: datetime | None
-    last_inactive_email_sent: datetime | None
-    inactive_email_count: int | None
-    # Usage-limit upsell email dedupe + activity badge tier (usage system).
-    last_limit_email_sent: datetime | None
-    highest_activity_tier: str | None
-    highest_activity_tier_at: datetime | None
-    # Nurture email sequence state (workers) — completed_steps + send history.
-    nurture: dict[str, Any] | None
-    # Activation checklist collapse (first_steps_service).
-    first_steps: FirstStepsState | None
-    # Signup delivery stamps (signup_email_tasks) — absent while still owed.
-    welcome_email_sent_at: datetime | None
-    marketing_contact_added_at: datetime | None
-
-
 class PlatformLinkRecord(TypedDict, total=False):
     """One users.platform_links.{platform} entry — the bot-account link.
 
@@ -409,6 +346,15 @@ class PlatformLinkRecord(TypedDict, total=False):
     id: str
     username: str
     display_name: str
+
+
+class _StoredProfession(BaseModel):
+    """The one key of a stored ``onboarding.preferences`` blob that the guard
+    below re-judges — parsed here so the raw row is read exactly once."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    profession: object = None
 
 
 class OnboardingSubdocument(BaseModel):
@@ -497,7 +443,7 @@ class OnboardingSubdocument(BaseModel):
         """
         if not isinstance(value, Mapping):
             return value
-        stored = value.get("profession")
+        stored = _StoredProfession.model_validate(value).profession
         if stored is None:
             return value
         if isinstance(stored, str):
@@ -574,6 +520,74 @@ class UserDocument(MongoDocument):
     # which the repository/sweep key on; dev-minted users are pre-stamped to skip the sweep.
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
+
+
+class AuthenticatedUser(BaseModel):
+    """``request.state.user`` — what every ``Depends(get_current_user)`` yields.
+
+    Frozen and closed: ``build_user_context`` is the one constructor for every
+    auth path (WorkOS session, agent token, bots, the dev bypass), and the
+    workers/system paths that act on a user's behalf build one from the same
+    ``UserDocument``. ``user_id`` is always present; the per-path flags default
+    to ``False`` so a reader never has to ask whether a key exists.
+
+    The profile fields mirror ``UserDocument``'s declared fields one-for-one,
+    because ``GET /me`` serves this object and its wire shape is those fields.
+    The agent reads ``timezone`` and ``onboarding`` (custom instructions,
+    preferences, writing style) — hand-picking a subset is what once made voice
+    mode and the bots silently drop the user's system instructions.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    user_id: str
+    #: ``"workos"`` for a session/agent token, ``"bot:<platform>"`` for a bot;
+    #: ``None`` for a context our own code assembled for a background run on the
+    #: user's behalf — no auth path produced it.
+    auth_provider: str | None = None
+    impersonated: bool = False
+    bot_authenticated: bool = False
+    dev_bypass: bool = False
+
+    email: str | None = None
+    name: str | None = None
+    picture: str | None = None
+    timezone: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    last_active_at: datetime | None = None
+    onboarding: OnboardingSubdocument | None = None
+    # Typed exactly as ``UserDocument`` types them (loose there, per that
+    # class's note); nothing in ``app/`` reads them off the auth context, they
+    # are carried only so ``GET /me`` keeps serving them.
+    provider_metadata: dict[str, Any] | None = None
+    hil_preferences: dict[str, Any] | None = None
+    notification_channel_prefs: dict[str, Any] | None = None
+    platform_links: dict[str, Any] | None = None
+    platform_links_connected_at: dict[str, Any] | None = None
+    chat_channel_priority: list[str] | None = None
+    starred_voice_ids: list[str] | None = None
+    selected_voice_id: str | None = None
+    first_name: str | None = None
+    email_memory_processed: bool | None = None
+    email_memory_processed_at: datetime | None = None
+    email_memory_count: int | None = None
+    integration_scan_states: dict[str, Any] | None = None
+    is_active: bool | None = None
+    memory_backfilled: datetime | None = None
+    last_inactive_email_sent: datetime | None = None
+    inactive_email_count: int | None = None
+    last_limit_email_sent: datetime | None = None
+    highest_activity_tier: str | None = None
+    highest_activity_tier_at: datetime | None = None
+    nurture: dict[str, Any] | None = None
+    first_steps: FirstStepsState | None = None
+    welcome_email_sent_at: datetime | None = None
+    marketing_contact_added_at: datetime | None = None
+
+    def with_timezone(self, timezone: str) -> "AuthenticatedUser":
+        """A copy carrying the resolved home timezone (the model is frozen)."""
+        return self.model_copy(update={"timezone": timezone})
 
 
 class OnboardingStatusResponse(BaseModel):
@@ -708,10 +722,3 @@ class UserUpdate(BaseModel):
     name: str | None = None
     timezone: str | None = None
     picture: str | None = None
-
-
-def user_to_legacy_dict(user: UserDocument) -> dict[str, Any]:
-    """Raw-style user dict (string _id) for consumers not yet migrated off
-    the pre-repository dict shape — auth context building, bot resolution. A
-    transitional bridge; removed once those consumers take UserDocument."""
-    return {**user.model_dump(exclude={"id"}, exclude_none=True), "_id": user.id}

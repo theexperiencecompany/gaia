@@ -10,21 +10,17 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.api.v1.endpoints.todos import (
-    _resolve_todo_date_range,
-    _todo_filters_applied,
-    _todo_search_params,
-)
 from app.constants.general import MAX_PAGE_NUMBER
 from app.models.todo_models import (
     BulkOperationResponse,
     BulkUpdateRequest,
     PaginationMeta,
     Priority,
+    ProjectResponse,
     SearchMode,
     SubTask,
     TodoDocument,
-    TodoListQuery,
+    TodoListParams,
     TodoListResponse,
     TodoResponse,
     TodoUpdateRequest,
@@ -53,6 +49,16 @@ def _todo_response() -> TodoResponse:
         id="todo-1",
         user_id="507f1f77bcf86cd799439011",
         title="Test todo",
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
+        updated_at=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+
+
+def _project_response(name: str = "Work") -> ProjectResponse:
+    return ProjectResponse(
+        id="p1",
+        user_id="507f1f77bcf86cd799439011",
+        name=name,
         created_at=datetime(2025, 1, 1, tzinfo=UTC),
         updated_at=datetime(2025, 1, 1, tzinfo=UTC),
     )
@@ -152,6 +158,7 @@ class TestTodoAnalytics:
                 return_value=BulkOperationResponse(total=2, message="ok"),
             ) as mock_bulk,
             patch(ANALYTICS_PATCH) as mock_capture,
+            patch(f"{TODOS_ENDPOINT}.log.set") as set_log,
         ):
             resp = await client.post(
                 "/api/v1/todos/bulk/complete",
@@ -159,6 +166,10 @@ class TestTodoAnalytics:
             )
 
         assert resp.status_code == 200
+        set_log.assert_any_call(
+            user={"id": "507f1f77bcf86cd799439011"},
+            todo={"operation": "bulk_complete", "bulk_count": 2},
+        )
         mock_capture.assert_called_once_with(AnalyticsEvents.TODO_TOGGLED, {"bulk_count": 2})
         mock_bulk.assert_awaited_once_with(
             BulkUpdateRequest(
@@ -184,31 +195,139 @@ class TestTodoAnalytics:
                 f"{TODOS_ENDPOINT}.todo_repository.get",
                 new_callable=AsyncMock,
                 return_value=doc,
-            ),
+            ) as get,
             patch(
                 f"{TODOS_ENDPOINT}.todo_repository.set_subtask_fields",
                 new_callable=AsyncMock,
                 return_value=updated_doc,
             ),
             patch(ANALYTICS_PATCH) as mock_capture,
+            patch(f"{TODOS_ENDPOINT}.log.set") as set_log,
         ):
             resp = await client.post("/api/v1/todos/todo-1/subtasks/sub-1/toggle")
 
         assert resp.status_code == 200
+        get.assert_awaited_once_with("todo-1", user_id="507f1f77bcf86cd799439011")
+        set_log.assert_any_call(
+            user={"id": "507f1f77bcf86cd799439011"},
+            todo={"operation": "toggle_subtask", "id": "todo-1"},
+        )
         mock_capture.assert_called_once_with(
             AnalyticsEvents.TODO_TOGGLED,
             {"is_subtask": True, "completed": True},
         )
 
 
+class TestTodoWideEventContext:
+    """The user and todo namespaces the bulk-move, project and subtask routes stamp.
+
+    These are the only record of who did what on a route whose response body
+    carries no operation name, so a renamed key or a dropped namespace is a
+    silent observability regression.
+    """
+
+    async def test_bulk_move_stamps_the_move(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.TodoService.bulk_move_todos",
+                new_callable=AsyncMock,
+                return_value=BulkOperationResponse(success=["t1"], total=1, message="ok"),
+            ),
+            patch(f"{TODOS_ENDPOINT}.log.set") as set_log,
+        ):
+            resp = await client.post(
+                "/api/v1/todos/bulk/move",
+                json={"todo_ids": ["t1", "t2"], "project_id": "p1"},
+            )
+
+        assert resp.status_code == 200
+        set_log.assert_any_call(
+            user={"id": "507f1f77bcf86cd799439011"},
+            todo={"operation": "bulk_move", "bulk_count": 2, "project_id": "p1"},
+        )
+
+    async def test_create_project_stamps_the_operation(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.ProjectService.create_project",
+                new_callable=AsyncMock,
+                return_value=_project_response(),
+            ),
+            patch(f"{TODOS_ENDPOINT}.log.set") as set_log,
+        ):
+            resp = await client.post("/api/v1/projects", json={"name": "Work"})
+
+        assert resp.status_code == 201
+        set_log.assert_any_call(
+            user={"id": "507f1f77bcf86cd799439011"},
+            todo={"operation": "create_project"},
+        )
+
+    async def test_update_project_stamps_the_target(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.ProjectService.update_project",
+                new_callable=AsyncMock,
+                return_value=_project_response(name="Renamed"),
+            ),
+            patch(f"{TODOS_ENDPOINT}.log.set") as set_log,
+        ):
+            resp = await client.put("/api/v1/projects/p1", json={"name": "Renamed"})
+
+        assert resp.status_code == 200
+        set_log.assert_any_call(
+            user={"id": "507f1f77bcf86cd799439011"},
+            todo={"operation": "update_project", "project_id": "p1"},
+        )
+
+    async def test_delete_project_stamps_the_target(self, client: AsyncClient) -> None:
+        with (
+            patch(f"{TODOS_ENDPOINT}.ProjectService.delete_project", new_callable=AsyncMock),
+            patch(f"{TODOS_ENDPOINT}.log.set") as set_log,
+        ):
+            resp = await client.delete("/api/v1/projects/p1")
+
+        assert resp.status_code == 204
+        set_log.assert_any_call(
+            user={"id": "507f1f77bcf86cd799439011"},
+            todo={"operation": "delete_project", "project_id": "p1"},
+        )
+
+    async def test_create_subtask_stamps_the_parent_todo(self, client: AsyncClient) -> None:
+        doc = TodoDocument(
+            id="todo-1",
+            user_id="507f1f77bcf86cd799439011",
+            title="Test todo",
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
+            updated_at=datetime(2025, 1, 1, tzinfo=UTC),
+            subtasks=[SubTask(id="sub-1", title="Buy milk", completed=False)],
+        )
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.todo_repository.add_subtask",
+                new_callable=AsyncMock,
+                return_value=doc,
+            ) as add_subtask,
+            patch(f"{TODOS_ENDPOINT}.log.set") as set_log,
+        ):
+            resp = await client.post("/api/v1/todos/todo-1/subtasks", json={"title": "Buy milk"})
+
+        assert resp.status_code == 201
+        set_log.assert_any_call(
+            user={"id": "507f1f77bcf86cd799439011"},
+            todo={"operation": "create_subtask", "id": "todo-1"},
+        )
+        assert add_subtask.await_args.kwargs["user_id"] == "507f1f77bcf86cd799439011"
+
+
 class TestListQueryHelpers:
-    """Test the list endpoint's extracted filter-label and date-range helpers directly."""
+    """The list endpoint's filter labels and due-date resolution, read off TodoListParams."""
 
     def test_no_filters_applied(self):
-        assert _todo_filters_applied(TodoListQuery()) == []
+        assert TodoListParams().filters_applied == []
 
     def test_every_filter_applied(self):
-        query = TodoListQuery(
+        params = TodoListParams(
             q="launch",
             project_id="p1",
             completed=False,
@@ -218,7 +337,7 @@ class TestListQueryHelpers:
             due_after=datetime(2026, 1, 1, tzinfo=UTC),
         )
 
-        assert _todo_filters_applied(query) == [
+        assert params.filters_applied == [
             "query",
             "project",
             "completed",
@@ -229,15 +348,16 @@ class TestListQueryHelpers:
         ]
 
     def test_due_this_week_only(self):
-        assert _todo_filters_applied(TodoListQuery(due_this_week=True)) == ["due_this_week"]
+        assert TodoListParams(due_this_week=True).filters_applied == ["due_this_week"]
 
     def test_date_range_from_due_before_only(self):
-        query = TodoListQuery(due_before=datetime(2026, 1, 1, tzinfo=UTC))
+        params = TodoListParams(due_before=datetime(2026, 1, 1, tzinfo=UTC))
 
-        assert _todo_filters_applied(query) == ["date_range"]
+        assert params.filters_applied == ["date_range"]
 
     def test_due_today_is_the_utc_day_bounds(self):
-        start, end = _resolve_todo_date_range(TodoListQuery(due_today=True))
+        search = TodoListParams(due_today=True).to_search_params()
+        start, end = search.due_date_start, search.due_date_end
 
         today = datetime.now(UTC).date()
         assert start == datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
@@ -255,16 +375,17 @@ class TestListQueryHelpers:
                 now_calls.append(tz)
                 return super().now(tz)
 
-        monkeypatch.setattr(f"{TODOS_ENDPOINT}.datetime", _RecordingDatetime)
+        monkeypatch.setattr("app.models.todo_models.datetime", _RecordingDatetime)
 
-        _resolve_todo_date_range(TodoListQuery(due_today=True))
+        TodoListParams(due_today=True).to_search_params()
 
         # A naive local ``datetime.now()`` would silently shift the day bounds
         # for non-UTC deployments; the tz is the observable contract here.
         assert now_calls == [UTC]
 
     def test_due_this_week_is_a_seven_day_window(self):
-        start, end = _resolve_todo_date_range(TodoListQuery(due_this_week=True))
+        search = TodoListParams(due_this_week=True).to_search_params()
+        start, end = search.due_date_start, search.due_date_end
 
         assert start is not None and end is not None
         assert end - start == timedelta(days=7)
@@ -274,18 +395,19 @@ class TestListQueryHelpers:
         after = datetime(2026, 1, 1, tzinfo=UTC)
         before = datetime(2026, 2, 1, tzinfo=UTC)
 
-        assert _resolve_todo_date_range(TodoListQuery(due_after=after, due_before=before)) == (
-            after,
-            before,
-        )
+        search = TodoListParams(due_after=after, due_before=before).to_search_params()
+
+        assert (search.due_date_start, search.due_date_end) == (after, before)
 
     def test_no_date_filter_is_none(self):
-        assert _resolve_todo_date_range(TodoListQuery()) == (None, None)
+        search = TodoListParams().to_search_params()
+
+        assert (search.due_date_start, search.due_date_end) == (None, None)
 
     def test_search_params_maps_every_field(self):
         after = datetime(2026, 1, 1, tzinfo=UTC)
         before = datetime(2026, 2, 1, tzinfo=UTC)
-        query = TodoListQuery(
+        params = TodoListParams(
             q="x",
             mode=SearchMode.TEXT,
             project_id="p1",
@@ -297,9 +419,9 @@ class TestListQueryHelpers:
             page=3,
             per_page=25,
             include_stats=True,
-        )
-
-        params = _todo_search_params(query, after, before)
+            due_after=after,
+            due_before=before,
+        ).to_search_params()
 
         assert params.q == "x"
         assert params.mode == SearchMode.TEXT
@@ -325,14 +447,21 @@ class TestTodoCanvas:
             canvas_content="# Fix the thing",
             activity_content="- 2026-09-01T09:00:00+00:00 started",
         )
-        with patch(
-            f"{TODOS_ENDPOINT}.todo_repository.get",
-            new_callable=AsyncMock,
-            return_value=doc,
-        ) as get:
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=doc,
+            ) as get,
+            patch(f"{TODOS_ENDPOINT}.log.set") as set_log,
+        ):
             resp = await client.get("/api/v1/todos/todo-1/canvas")
 
         assert resp.status_code == 200
+        set_log.assert_any_call(
+            user={"id": "507f1f77bcf86cd799439011"},
+            todo={"operation": "get_canvas", "id": "todo-1"},
+        )
         assert resp.json() == {
             "content": "# Fix the thing",
             "activity": "- 2026-09-01T09:00:00+00:00 started",

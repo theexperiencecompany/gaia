@@ -29,7 +29,7 @@ from app.utils.errors import AppError
 from tests.conftest import FAKE_USER
 
 BASE = "/api/v1/platform-links"
-FAKE_USER_ID = FAKE_USER["user_id"]
+FAKE_USER_ID = FAKE_USER.user_id
 
 
 # ---------------------------------------------------------------------------

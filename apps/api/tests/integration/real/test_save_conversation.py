@@ -13,6 +13,7 @@ from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.persistence import (
     save_conversation_async as _save_conversation_async,
 )
+from tests.factories import make_authenticated_user
 
 
 @pytest.mark.service
@@ -36,7 +37,7 @@ class TestSaveConversationAsyncReal:
 
         await _save_conversation_async(
             body=body,
-            user={"user_id": "save-user-1"},
+            user=make_authenticated_user(user_id="save-user-1"),
             conversation_id=conv_id,
             complete_message="Bot response",
             tool_data={},
@@ -65,7 +66,7 @@ class TestSaveConversationAsyncReal:
 
         await _save_conversation_async(
             body=body,
-            user={"user_id": "save-user-2"},
+            user=make_authenticated_user(user_id="save-user-2"),
             conversation_id=conv_id,
             complete_message="Response",
             tool_data={},
@@ -91,7 +92,7 @@ class TestSaveConversationAsyncReal:
 
         await _save_conversation_async(
             body=body,
-            user={"user_id": "save-user-3"},
+            user=make_authenticated_user(user_id="save-user-3"),
             conversation_id=conv_id,
             complete_message="Hi",
             tool_data={},
@@ -122,7 +123,7 @@ class TestSaveConversationAsyncReal:
 
         await _save_conversation_async(
             body=body,
-            user={"user_id": "save-user-4"},
+            user=make_authenticated_user(user_id="save-user-4"),
             conversation_id=conv_id,
             complete_message="Results",
             tool_data=tool_data,

@@ -16,6 +16,7 @@ outcome is decided by the production code, not by the harness.
 """
 
 import asyncio
+from collections.abc import Callable
 from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -26,7 +27,7 @@ import pytest
 from app.constants.log_tags import LogTag
 from app.models.agent_models import SilentRunResult
 from app.models.playbook_models import PlaybookRunStatus
-from app.models.user_models import UserDocument
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_models import TriggerType, WorkflowStep
 from app.services.analytics_service import AnalyticsEvents
 from app.services.workflow.conversation_service import build_selected_workflow_data
@@ -37,6 +38,12 @@ from app.workers.tasks.workflow_tasks import (
     QUEUED_MESSAGE,
     execute_workflow_by_id,
 )
+
+
+def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
+    """Answer load_user_context for whichever user id it is asked for."""
+    return lambda user_id: AuthenticatedUser(user_id=user_id, **fields)
+
 
 MODULE = "app.workers.tasks.workflow_tasks"
 
@@ -76,12 +83,12 @@ class _Harness:
         self.add_messages = AsyncMock()
         self.reset_threads = AsyncMock()
         self.conversation = AsyncMock(return_value="conv_1")
-        self.get_user = AsyncMock(return_value={"user_id": workflow.user_id, "timezone": "UTC"})
+        self.get_user = AsyncMock(side_effect=_user_context(timezone="UTC"))
         self.log = MagicMock()
         self.agent = AsyncMock(
             return_value=SilentRunResult(
                 message="I'm on it — I'll handle that right after the current task.",
-                tool_data={},
+                tool_data=[],
                 queued_task_id=queued_task_id,
             )
         )
@@ -115,7 +122,7 @@ class _Harness:
             # ``playbook_repository.get_for_workflow`` is already pinned to None
             # by the autouse fixture in tests/unit/workers/conftest.py, so this
             # fire takes the agent path.
-            patch(f"{MODULE}.get_user_by_id", self.get_user),
+            patch(f"{MODULE}.load_user_context", self.get_user),
             patch(f"{MODULE}.get_or_create_workflow_conversation", self.conversation),
             patch(f"{MODULE}.add_workflow_execution_messages", self.add_messages),
             patch(f"{MODULE}.reset_workflow_threads", self.reset_threads),

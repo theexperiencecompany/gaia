@@ -84,7 +84,7 @@ async def _cleanup_checkpoint_threads(conversation_id: str) -> None:
 async def create_conversation_service(
     conversation: ConversationModel, user: AuthenticatedUser
 ) -> CreateConversationResponse:
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
 
@@ -136,7 +136,7 @@ async def get_conversations(
     Bot-originated conversations are excluded from the web list (reachable by
     direct URL); the repository applies that source filter.
     """
-    user_id = user["user_id"]
+    user_id = user.user_id
     skip = (page - 1) * limit
 
     starred, non_starred, non_starred_count = await asyncio.gather(
@@ -158,7 +158,7 @@ async def get_conversations(
 
 async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> ConversationDocument:
     """Fetch a specific conversation by ID (messages already normalized on read)."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     document = await conversation_repository.get(conversation_id, user_id=user_id)
     if document is None:
         raise HTTPException(
@@ -172,7 +172,7 @@ async def star_conversation(
     conversation_id: str, starred: bool, user: AuthenticatedUser
 ) -> StarConversationResponse:
     """Star or unstar a conversation."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     updated = await conversation_repository.set_starred(
         conversation_id, user_id=user_id, starred=starred
     )
@@ -190,7 +190,7 @@ async def star_conversation(
 
 async def delete_all_conversations(user: AuthenticatedUser) -> DeleteAllConversationsResponse:
     """Delete all conversations for the authenticated user."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     # The repository returns the deleted ids so their (non-user-scoped) checkpoint
     # threads can be cleaned up afterwards.
     conversation_ids = await conversation_repository.delete_all_for_user(user_id)
@@ -209,7 +209,7 @@ async def delete_conversation(
     conversation_id: str, user: AuthenticatedUser
 ) -> ConversationActionResponse:
     """Delete a specific conversation by ID."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     deleted = await conversation_repository.delete(conversation_id, user_id=user_id)
 
     if not deleted:
@@ -247,7 +247,7 @@ async def update_messages(
     max_messages caps stored history to the most recent N (via $slice) so
     per-workflow threads can't outgrow MongoDB's 16MB document limit.
     """
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     message_ids = await conversation_repository.append_messages(
         request.conversation_id,
         user_id=user_id,
@@ -273,7 +273,7 @@ async def pin_message(
     conversation_id: str, message_id: str, pinned: bool, user: AuthenticatedUser
 ) -> PinMessageResponse:
     """Pin or unpin a message within a conversation."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     document = await conversation_repository.get(conversation_id, user_id=user_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -301,7 +301,7 @@ async def pin_message(
 
 async def get_starred_messages(user: AuthenticatedUser) -> PinnedMessagesResponse:
     """Fetch all pinned messages across all conversations for the authenticated user."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     return PinnedMessagesResponse(
         results=await conversation_repository.list_pinned_messages(user_id)
     )
@@ -356,7 +356,7 @@ async def update_conversation_description(
     conversation_id: str, description: str, user: AuthenticatedUser
 ) -> UpdateDescriptionResponse:
     """Update the description of a specific conversation."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     updated = await conversation_repository.set_description(
         conversation_id, user_id=user_id, description=description
     )
@@ -386,7 +386,7 @@ async def mark_conversation_as_read(
     conversation_id: str, user: AuthenticatedUser
 ) -> ConversationActionResponse:
     """Mark a conversation as read (set is_unread to False)."""
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
     await conversation_repository.set_unread(conversation_id, user_id=user_id, unread=False)
@@ -399,7 +399,7 @@ async def mark_conversation_as_read(
 async def mark_conversation_as_unread(
     conversation_id: str, user: AuthenticatedUser
 ) -> ConversationActionResponse:
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
 
@@ -427,7 +427,7 @@ async def batch_sync_conversations(
     (active_stream_id) so a reloaded client can re-attach without a separate
     discovery request.
     """
-    user_id = user.get("user_id", "")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
 

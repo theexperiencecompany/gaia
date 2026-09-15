@@ -1,12 +1,12 @@
 """Microsoft Teams tools using Composio custom tool infrastructure."""
 
-from typing import Any
-
 from composio import Composio
 from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
+from app.models.integrations.composio import CustomToolAuthCredentials
+from app.models.integrations.microsoft_teams import GraphChatsPage, GraphTeamsPage, GraphUser
 from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from shared.py.wide_events import log
 
@@ -21,21 +21,19 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Microsoft Teams context snapshot: user info, joined teams, and recent chats.
 
         Zero required parameters. Returns current Teams state for situational awareness.
         """
         del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "microsoft_teams", "action": "gather_context"})
-        user_id = auth_credentials.get("user_id")
-        if not user_id:
-            raise ValueError("Missing user_id in auth_credentials")
+        user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
 
-        user_info: dict[str, Any] = {}
+        user_info: dict[str, str | None] = {}
         try:
-            me = (
+            me = GraphUser.model_validate(
                 proxy_request_sync(
                     ProxyRequest(
                         user_id=user_id,
@@ -48,16 +46,16 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
                 or {}
             )
             user_info = {
-                "id": me.get("id"),
-                "display_name": me.get("displayName"),
-                "email": me.get("mail") or me.get("userPrincipalName"),
+                "id": me.id,
+                "display_name": me.displayName,
+                "email": me.mail or me.userPrincipalName,
             }
         except Exception as e:
             log.debug(f"{LogTag.TOOL} Teams /me fetch failed", error_type=type(e).__name__)
 
-        teams: list[dict[str, Any]] = []
+        teams: list[dict[str, str | None]] = []
         try:
-            data = (
+            joined = GraphTeamsPage.model_validate(
                 proxy_request_sync(
                     ProxyRequest(
                         user_id=user_id,
@@ -71,19 +69,19 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
             )
             teams = [
                 {
-                    "id": t.get("id"),
-                    "name": t.get("displayName"),
-                    "description": t.get("description"),
+                    "id": t.id,
+                    "name": t.displayName,
+                    "description": t.description,
                 }
-                for t in data.get("value", [])
+                for t in joined.value
             ]
         except Exception as e:
             log.debug(f"{LogTag.TOOL} Teams joinedTeams fetch failed", error_type=type(e).__name__)
 
-        chats: list[dict[str, Any]] = []
+        chats: list[dict[str, str | bool | None]] = []
         unread_count = 0
         try:
-            data = (
+            raw_chats = GraphChatsPage.model_validate(
                 proxy_request_sync(
                     ProxyRequest(
                         user_id=user_id,
@@ -94,28 +92,19 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
                     )
                 )
                 or {}
-            )
-            raw_chats = data.get("value", [])
+            ).value
             unread_count = sum(
-                1
-                for c in raw_chats
-                if c.get("lastMessagePreview") and not c["lastMessagePreview"].get("isRead", True)
+                1 for c in raw_chats if c.lastMessagePreview and not c.lastMessagePreview.isRead
             )
             chats = [
                 {
-                    "id": c.get("id"),
-                    "topic": c.get("topic"),
-                    "chat_type": c.get("chatType"),
+                    "id": c.id,
+                    "topic": c.topic,
+                    "chat_type": c.chatType,
                     "last_message_preview": (
-                        c["lastMessagePreview"].get("body", {}).get("content", "")[:100]
-                        if c.get("lastMessagePreview")
-                        else None
+                        c.lastMessagePreview.body.content[:100] if c.lastMessagePreview else None
                     ),
-                    "is_read": (
-                        c["lastMessagePreview"].get("isRead", True)
-                        if c.get("lastMessagePreview")
-                        else True
-                    ),
+                    "is_read": (c.lastMessagePreview.isRead if c.lastMessagePreview else True),
                 }
                 for c in raw_chats
             ]

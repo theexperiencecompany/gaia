@@ -1,12 +1,17 @@
 """Unit tests for app.helpers.integration_helpers."""
 
+from datetime import UTC, datetime
+
 import pytest
 
 from app.helpers.integration_helpers import (
     dedup_server_url_key,
-    generate_integration_slug,
+    format_public_integration_response,
     normalize_server_url,
 )
+from app.helpers.slug_helpers import generate_integration_slug
+from app.models.integration_models import IntegrationWithCreator
+from app.models.oauth_models import IntegrationContent
 
 
 @pytest.mark.parametrize(
@@ -131,6 +136,55 @@ def test_truncation_cutting_right_after_a_one_char_name() -> None:
 def test_empty_category_leaves_a_trailing_hyphen_for_rstrip() -> None:
     """An empty category ends the raw slug on '-'; rstrip('-') removes it."""
     assert generate_integration_slug("ab-", "") == "ab-mcp"
+
+
+def test_public_response_carries_every_published_field() -> None:
+    """Each stored field reaches the public detail page under its own name."""
+    published = datetime(2026, 3, 1, tzinfo=UTC)
+    integration = IntegrationWithCreator.model_validate(
+        {
+            "integration_id": "int-1",
+            "name": "My Tool",
+            "description": "Does things",
+            "category": "developer",
+            "managed_by": "mcp",
+            "is_public": True,
+            "slug": "my-tool-mcp-developer",
+            "mcp_config": {
+                "server_url": "https://mcp.example.com/mcp",
+                "requires_auth": True,
+                "auth_type": "bearer",
+            },
+            "creator": {"name": "Ada", "picture": "https://pics.example/ada.png"},
+            "icon_url": "https://icons.example/tool.png",
+            "tools": [{"name": "t1", "description": "does t1"}],
+            "clone_count": 3,
+            "published_at": published,
+            "content": {"use_cases": ["triage"]},
+        }
+    )
+
+    result = format_public_integration_response(integration)
+
+    assert result.integration_id == "int-1"
+    assert result.slug == "my-tool-mcp-developer"
+    assert result.icon_url == "https://icons.example/tool.png"
+    assert result.creator is not None
+    assert result.creator.model_dump() == {"name": "Ada", "picture": "https://pics.example/ada.png"}
+    assert result.mcp_config is not None
+    assert result.mcp_config.model_dump() == {
+        "server_url": "https://mcp.example.com/mcp",
+        "requires_auth": True,
+        "auth_type": "bearer",
+    }
+    assert [t.model_dump() for t in result.tools] == [
+        {"name": "t1", "description": "does t1", "destructive": False}
+    ]
+    assert result.clone_count == 3
+    assert result.tool_count == 1
+    assert result.published_at == published
+    assert result.source == "custom"
+    assert result.content == IntegrationContent(use_cases=["triage"])
 
 
 def test_default_cap_is_60_chars() -> None:

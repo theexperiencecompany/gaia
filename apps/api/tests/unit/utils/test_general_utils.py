@@ -1,11 +1,13 @@
 """Unit tests for general utility functions."""
 
 import base64
+import re
 from typing import Any
 from unittest.mock import mock_open, patch
 
 import pytest
 
+from app.models.integrations.gmail_messages import GmailApiMessage
 from app.utils.general_utils import (
     decode_message_body,
     describe_structure,
@@ -111,7 +113,7 @@ class TestGetContextWindow:
 
 
 class TestTransformGmailMessage:
-    """Normalises Composio and Gmail API message formats into one frontend-friendly dict."""
+    """Normalises Composio and Gmail API message formats into one GmailMessageSummary."""
 
     def test_composio_format_basic(self) -> None:
         msg: dict[str, Any] = {
@@ -124,7 +126,7 @@ class TestTransformGmailMessage:
             "date": "2024-01-15 10:00",
             "labelIds": ["INBOX"],
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["id"] == "msg-123"
         assert result["threadId"] == "thread-1"
         assert result["from"] == "alice@example.com"
@@ -135,12 +137,29 @@ class TestTransformGmailMessage:
         assert result["body"] == "Hello there"
         assert result["isThread"] is True
 
+    def test_composio_format_without_message_text_keeps_its_identity(self) -> None:
+        """verbose=false omits messageText; the message is still Composio-shaped, not Gmail-API."""
+        msg: dict[str, Any] = {
+            "messageId": "msg-123",
+            "threadId": "thread-1",
+            "from": "alice@example.com",
+            "subject": "Test Subject",
+            "snippet": "Hello there",
+            "labelIds": ["INBOX"],
+        }
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
+        assert result["id"] == "msg-123"
+        assert result["threadId"] == "thread-1"
+        assert result["from"] == "alice@example.com"
+        assert result["subject"] == "Test Subject"
+        assert result["snippet"] == "Hello there"
+
     def test_composio_format_snippet_fallback_to_messageText(self) -> None:
         msg: dict[str, Any] = {
             "messageId": "id1",
             "messageText": "fallback text",
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["snippet"] == "fallback text"
         assert result["body"] == "fallback text"
 
@@ -150,7 +169,7 @@ class TestTransformGmailMessage:
             "messageText": "text",
             "sender": "sender@example.com",
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["from"] == "sender@example.com"
 
     def test_composio_format_sender_empty_when_missing(self) -> None:
@@ -158,7 +177,7 @@ class TestTransformGmailMessage:
             "messageId": "id1",
             "messageText": "text",
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["from"] == ""
 
     def test_composio_format_messageTimestamp_used_when_no_date(self) -> None:
@@ -167,9 +186,8 @@ class TestTransformGmailMessage:
             "messageText": "text",
             "messageTimestamp": "2024-06-15T14:30:00Z",
         }
-        result = transform_gmail_message(msg)
-        assert "2024-06-15" in result["time"]
-        assert "14:30" in result["time"]
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
+        assert result["time"] == "2024-06-15 14:30"
 
     def test_composio_format_messageTimestamp_unparseable_returned_raw(self) -> None:
         msg: dict[str, Any] = {
@@ -177,7 +195,7 @@ class TestTransformGmailMessage:
             "messageText": "text",
             "messageTimestamp": "not-a-date",
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["time"] == "not-a-date"
 
     def test_composio_format_isThread_false_when_no_labelIds(self) -> None:
@@ -186,7 +204,7 @@ class TestTransformGmailMessage:
             "messageText": "text",
             "threadId": "thread-1",
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         # labelIds is missing → len([]) == 0 → False
         assert result["isThread"] is False
 
@@ -196,7 +214,7 @@ class TestTransformGmailMessage:
             "messageText": "text",
             "labelIds": ["INBOX"],
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["isThread"] is False
 
     def test_gmail_api_format_basic(self) -> None:
@@ -219,7 +237,7 @@ class TestTransformGmailMessage:
                 "body": {"data": encoded_body},
             },
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["id"] == "gmail-1"
         assert result["threadId"] == "thread-2"
         assert result["from"] == "sender@gmail.com"
@@ -235,30 +253,32 @@ class TestTransformGmailMessage:
             "internalDate": "1705305600000",
             "payload": {"headers": []},
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         # Should produce a formatted datetime string
         assert "2024" in result["time"]
+        # Rendered in the server's local zone, so pin the shape, not the hour.
+        assert re.fullmatch(r"2024-01-1[45] \d{2}:\d{2}", result["time"])
 
     def test_gmail_api_format_invalid_internalDate_returns_string(self) -> None:
         msg: dict[str, Any] = {
             "internalDate": "not_a_number",
             "payload": {"headers": []},
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["time"] == "not_a_number"
 
     def test_gmail_api_format_missing_headers(self) -> None:
         msg: dict[str, Any] = {
             "payload": {"headers": []},
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["from"] == ""
         assert result["to"] == ""
         assert result["subject"] == ""
 
     def test_gmail_api_format_missing_payload(self) -> None:
         msg: dict[str, Any] = {}
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["from"] == ""
         assert result["to"] == ""
         assert result["body"] == ""
@@ -267,7 +287,7 @@ class TestTransformGmailMessage:
         msg: dict[str, Any] = {
             "payload": {"headers": []},
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["time"] == ""
 
     def test_gmail_api_format_isThread_true(self) -> None:
@@ -276,7 +296,7 @@ class TestTransformGmailMessage:
             "labelIds": ["INBOX", "IMPORTANT"],
             "payload": {"headers": []},
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["isThread"] is True
 
     def test_gmail_api_format_isThread_false_empty_labels(self) -> None:
@@ -285,7 +305,7 @@ class TestTransformGmailMessage:
             "labelIds": [],
             "payload": {"headers": []},
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["isThread"] is False
 
     def test_composio_preserves_extra_keys(self) -> None:
@@ -295,7 +315,7 @@ class TestTransformGmailMessage:
             "messageText": "text",
             "customField": "custom_value",
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["customField"] == "custom_value"
 
     def test_gmail_api_preserves_extra_keys(self) -> None:
@@ -303,7 +323,7 @@ class TestTransformGmailMessage:
             "payload": {"headers": []},
             "historyId": "12345",
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["historyId"] == "12345"
 
     @pytest.mark.regression
@@ -320,7 +340,7 @@ class TestTransformGmailMessage:
             "snippet": None,
             "labelIds": None,
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["threadId"] == ""
         assert result["to"] == ""
         assert result["cc"] == ""
@@ -340,7 +360,7 @@ class TestTransformGmailMessage:
             "labelIds": None,
             "payload": {"headers": [{"name": "From", "value": None}]},
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["id"] == ""
         assert result["threadId"] == ""
         assert result["from"] == ""
@@ -363,7 +383,7 @@ class TestTransformGmailMessage:
             "body": "<p>Body</p>",
             "labelIds": ["INBOX", "UNREAD"],
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result == {
             **msg,
             "id": "msg-9",
@@ -396,7 +416,7 @@ class TestTransformGmailMessage:
             "body": None,
             "labelIds": None,
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result == {
             **msg,
             "id": "",
@@ -432,7 +452,7 @@ class TestTransformGmailMessage:
                 "body": {"data": base64.urlsafe_b64encode(b"Body").decode()},
             },
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result == {
             **msg,
             "id": "gm-1",
@@ -467,7 +487,7 @@ class TestTransformGmailMessage:
                 "body": {"data": None},
             },
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result == {
             **msg,
             "id": "",
@@ -493,7 +513,7 @@ class TestTransformGmailMessage:
             "messageTimestamp": "2025-12-31T23:59:59Z",
             "internalDate": "9999999999999",
         }
-        result = transform_gmail_message(msg)
+        result = transform_gmail_message(msg).model_dump(by_alias=True)
         assert result["time"] == "2024-01-01 09:00"
 
 
@@ -513,7 +533,7 @@ class TestDecodeMessageBody:
                 "body": {"data": encoded},
             }
         }
-        result = decode_message_body(msg)
+        result = decode_message_body(GmailApiMessage.model_validate(msg))
         assert result == text
 
     def test_single_part_no_data_returns_empty(self) -> None:
@@ -522,17 +542,17 @@ class TestDecodeMessageBody:
                 "body": {"data": ""},
             }
         }
-        result = decode_message_body(msg)
+        result = decode_message_body(GmailApiMessage.model_validate(msg))
         assert result == ""
 
     def test_single_part_no_body_key_returns_empty(self) -> None:
         msg: dict[str, Any] = {"payload": {}}
-        result = decode_message_body(msg)
+        result = decode_message_body(GmailApiMessage.model_validate(msg))
         assert result == ""
 
     def test_no_payload_returns_empty(self) -> None:
         msg: dict[str, Any] = {}
-        result = decode_message_body(msg)
+        result = decode_message_body(GmailApiMessage.model_validate(msg))
         assert result == ""
 
     def test_multipart_html_and_plain_prefers_html(self) -> None:
@@ -554,7 +574,7 @@ class TestDecodeMessageBody:
                 ]
             }
         }
-        result = decode_message_body(msg)
+        result = decode_message_body(GmailApiMessage.model_validate(msg))
         assert result == html
 
     def test_multipart_plain_only(self) -> None:
@@ -570,7 +590,7 @@ class TestDecodeMessageBody:
                 ]
             }
         }
-        result = decode_message_body(msg)
+        result = decode_message_body(GmailApiMessage.model_validate(msg))
         assert result == plain
 
     def test_multipart_html_only(self) -> None:
@@ -586,7 +606,7 @@ class TestDecodeMessageBody:
                 ]
             }
         }
-        result = decode_message_body(msg)
+        result = decode_message_body(GmailApiMessage.model_validate(msg))
         assert result == html
 
     def test_multipart_no_data_in_parts_returns_empty(self) -> None:
@@ -604,7 +624,7 @@ class TestDecodeMessageBody:
                 ]
             }
         }
-        result = decode_message_body(msg)
+        result = decode_message_body(GmailApiMessage.model_validate(msg))
         assert result == ""
 
     def test_multipart_empty_parts_list_falls_to_single_part_path(self) -> None:
@@ -615,7 +635,7 @@ class TestDecodeMessageBody:
                 "body": {"data": ""},
             }
         }
-        result = decode_message_body(msg)
+        result = decode_message_body(GmailApiMessage.model_validate(msg))
         assert result == ""
 
     def test_multipart_unknown_mime_type_ignored(self) -> None:
@@ -631,7 +651,7 @@ class TestDecodeMessageBody:
                 ]
             }
         }
-        result = decode_message_body(msg)
+        result = decode_message_body(GmailApiMessage.model_validate(msg))
         # Neither html_body nor plain_body set → empty body
         assert result == ""
 
@@ -639,15 +659,22 @@ class TestDecodeMessageBody:
         # The function replaces - with + and _ with / before decoding.
         # urlsafe_b64encode uses - and _ already, so this tests the
         # replace logic is correct (double-replace shouldn't corrupt).
-        text = "Test with special chars: +/="
+        text = "Test with special chars: +/= ???~~~"
         encoded = base64.urlsafe_b64encode(text.encode()).decode()
+        assert "_" in encoded and "-" in encoded  # both url-safe digits are exercised
         msg: dict[str, Any] = {
             "payload": {
                 "body": {"data": encoded},
             }
         }
-        result = decode_message_body(msg)
+        result = decode_message_body(GmailApiMessage.model_validate(msg))
         assert result == text
+
+    def test_invalid_utf8_bytes_are_dropped_not_raised(self) -> None:
+        encoded = base64.urlsafe_b64encode(b"ok\xffdone").decode()
+        msg: dict[str, Any] = {"payload": {"body": {"data": encoded}}}
+        result = decode_message_body(GmailApiMessage.model_validate(msg))
+        assert result == "okdone"
 
     def test_handles_utf8_content(self) -> None:
         text = "Bonjour le monde! Schone Grusse! \u3053\u3093\u306b\u3061\u306f"
@@ -657,7 +684,7 @@ class TestDecodeMessageBody:
                 "body": {"data": encoded},
             }
         }
-        result = decode_message_body(msg)
+        result = decode_message_body(GmailApiMessage.model_validate(msg))
         assert result == text
 
 

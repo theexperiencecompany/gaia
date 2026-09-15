@@ -10,9 +10,16 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from app.constants.voices import DEFAULT_STARRED_VOICE_IDS, DEFAULT_VOICE_ID, VOICE_CATALOG
+from app.constants.voices import (
+    DEFAULT_STARRED_VOICE_IDS,
+    DEFAULT_VOICE_ID,
+    SHARED_VOICES_PAGE_SIZE,
+    VOICE_CATALOG,
+)
 from app.models.voice_models import ElevenLabsAccountVoice, ElevenLabsSharedVoice
 from app.services.voice_service import (
+    _fetch_elevenlabs_voices,
+    _fetch_shared_voices,
     get_elevenlabs_voices,
     get_shared_voices,
     get_starred_voice_ids,
@@ -69,6 +76,144 @@ def _shared_voice(**overrides: object) -> ElevenLabsSharedVoice:
     }
     data.update(overrides)
     return ElevenLabsSharedVoice(**data)
+
+
+_RealAsyncClient = httpx.AsyncClient
+
+
+@pytest.fixture
+def cache_miss():
+    """Bypass the day-long Cacheable wrapper so the fetch runs, exposing the cache write."""
+    with (
+        patch("app.decorators.caching.get_cache", AsyncMock(return_value=None)),
+        patch("app.decorators.caching.set_cache", AsyncMock()) as set_cache,
+    ):
+        yield set_cache
+
+
+def _elevenlabs_serving(status: int, payload: object, seen: list[httpx.Request]):
+    """Build an httpx.AsyncClient factory whose requests hit a canned ElevenLabs response."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(status, json=payload)
+
+    return lambda **kwargs: _RealAsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+
+
+class TestFetchElevenlabsVoices:
+    async def test_trims_account_voices_and_skips_id_less_ones(self, mock_settings, cache_miss):
+        seen: list[httpx.Request] = []
+        payload = {
+            "voices": [
+                {
+                    "voice_id": "acct-1",
+                    "name": None,
+                    "preview_url": "https://cdn/p.mp3",
+                    "labels": None,
+                    "verified_languages": [{"language": "EN"}, {"language": "en"}],
+                },
+                {"voice_id": None, "name": "ghost"},
+            ]
+        }
+        with patch(f"{_MOD}.httpx.AsyncClient", _elevenlabs_serving(200, payload, seen)):
+            voices = await _fetch_elevenlabs_voices()
+
+        assert voices == [
+            ElevenLabsAccountVoice(
+                voice_id="acct-1",
+                name="",
+                preview_url="https://cdn/p.mp3",
+                labels={},
+                language_codes=["en"],
+            )
+        ]
+        assert seen[0].headers["xi-api-key"] == "el-key"
+        assert cache_miss.await_args.kwargs["value"] == voices
+
+    async def test_upstream_error_raises_and_is_not_cached(self, mock_settings, cache_miss):
+        with (
+            patch(f"{_MOD}.httpx.AsyncClient", _elevenlabs_serving(503, {}, [])),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            await _fetch_elevenlabs_voices()
+
+        cache_miss.assert_not_awaited()
+
+
+class TestFetchSharedVoices:
+    async def test_trims_shared_voices_and_skips_unowned_ones(self, mock_settings, cache_miss):
+        seen: list[httpx.Request] = []
+        payload = {
+            "voices": [
+                {
+                    "voice_id": "lib-1",
+                    "name": "Library Voice",
+                    "public_owner_id": "owner-1",
+                    "gender": None,
+                    "accent": "british",
+                    "language": None,
+                    "descriptive": None,
+                    "use_case": "narration",
+                    "verified_languages": [{"language": "fr"}],
+                },
+                {"voice_id": "lib-2", "public_owner_id": None},
+                {"voice_id": None, "public_owner_id": "owner-3"},
+            ]
+        }
+        with patch(f"{_MOD}.httpx.AsyncClient", _elevenlabs_serving(200, payload, seen)):
+            voices = await _fetch_shared_voices()
+
+        assert voices == [
+            ElevenLabsSharedVoice(
+                voice_id="lib-1",
+                name="Library Voice",
+                preview_url=None,
+                public_owner_id="owner-1",
+                gender="",
+                accent="british",
+                language="",
+                descriptive="",
+                use_case="narration",
+                language_codes=["fr"],
+            )
+        ]
+        assert seen[0].headers["xi-api-key"] == "el-key"
+        assert seen[0].url.params["page_size"] == str(SHARED_VOICES_PAGE_SIZE)
+
+    async def test_null_trimmings_become_empty_strings(self, mock_settings, cache_miss):
+        """Every trimmed field is a string in our model; ElevenLabs leaves any of them null."""
+        payload = {
+            "voices": [
+                {
+                    "voice_id": "lib-1",
+                    "public_owner_id": "owner-1",
+                    "name": None,
+                    "gender": None,
+                    "accent": None,
+                    "language": None,
+                    "descriptive": None,
+                    "use_case": None,
+                }
+            ]
+        }
+        with patch(f"{_MOD}.httpx.AsyncClient", _elevenlabs_serving(200, payload, [])):
+            voices = await _fetch_shared_voices()
+
+        assert voices == [
+            ElevenLabsSharedVoice(
+                voice_id="lib-1",
+                name="",
+                preview_url=None,
+                public_owner_id="owner-1",
+                gender="",
+                accent="",
+                language="",
+                descriptive="",
+                use_case="",
+                language_codes=[],
+            )
+        ]
 
 
 class TestGetElevenlabsVoices:

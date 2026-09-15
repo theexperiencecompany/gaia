@@ -136,7 +136,7 @@ async def _connect_by_manager(
     user: AuthenticatedUser,
 ) -> ConnectIntegrationResponse:
     """Hand the connect to the manager that owns the integration."""
-    user_id = str(user.get("user_id"))
+    user_id = user.user_id
     if resolved.managed_by == "mcp":
         result = await connect_mcp_integration(
             user_id=user_id,
@@ -167,7 +167,7 @@ async def _connect_by_manager(
     if resolved.managed_by == "self":
         return await connect_self_integration(
             user_id=user_id,
-            user_email=user.get("email", ""),
+            user_email=(user.email or ""),
             integration_id=integration_id,
             integration_name=resolved.name,
             provider=_require_provider(resolved),
@@ -188,7 +188,7 @@ async def connect_integration_endpoint(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> ConnectIntegrationResponse:
     """Connect an integration for the current user, returning the next-step action."""
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 

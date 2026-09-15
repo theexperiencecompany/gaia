@@ -7,8 +7,24 @@ Provides:
 Adapted from notion-to-md-py with modifications for Composio integration.
 """
 
+from collections.abc import Callable, Sequence
 import re
-from typing import Any
+
+from app.models.integrations.notion_blocks import (
+    NotionAnnotations,
+    NotionBlock,
+    NotionBlockContent,
+    NotionCodeBlock,
+    NotionCodeBlockBody,
+    NotionContentBlock,
+    NotionIcon,
+    NotionMarkdownBlock,
+    NotionRichText,
+    NotionTableBlock,
+    NotionTableRow,
+    NotionTextContent,
+    NotionTextRun,
+)
 
 # =============================================================================
 # Markdown Formatting Functions
@@ -71,8 +87,8 @@ def _quote(text: str) -> str:
     return f"> {no_newline}"
 
 
-def _callout(text: str, icon: dict[str, Any] | None = None) -> str:
-    emoji = icon.get("emoji", "") if icon and icon.get("type") == "emoji" else ""
+def _callout(text: str, icon: NotionIcon | None = None) -> str:
+    emoji = icon.emoji if icon and icon.type == "emoji" else ""
     formatted_text = text.replace("\n", "\n> ")
     formatted_emoji = emoji + " " if emoji else ""
     heading_match = re.match(r"^(#{1,6})\s+(.+)", formatted_text)
@@ -122,7 +138,7 @@ def _toggle(summary: str | None = None, children: str | None = None) -> str:
 # =============================================================================
 
 
-def _apply_annotations(plain_text: str, annotations: dict[str, Any]) -> str:
+def _apply_annotations(plain_text: str, annotations: NotionAnnotations) -> str:
     """Apply text annotations (bold, italic, etc.) to plain text."""
     if not plain_text.strip():
         return plain_text
@@ -133,15 +149,15 @@ def _apply_annotations(plain_text: str, annotations: dict[str, Any]) -> str:
     plain_text = plain_text.strip()
 
     if plain_text:
-        if annotations.get("code"):
+        if annotations.code:
             plain_text = _inline_code(plain_text)
-        if annotations.get("bold"):
+        if annotations.bold:
             plain_text = _bold(plain_text)
-        if annotations.get("italic"):
+        if annotations.italic:
             plain_text = _italic(plain_text)
-        if annotations.get("strikethrough"):
+        if annotations.strikethrough:
             plain_text = _strikethrough(plain_text)
-        if annotations.get("underline"):
+        if annotations.underline:
             plain_text = _underline(plain_text)
 
     return leading_space + plain_text + trailing_space
@@ -152,24 +168,20 @@ def _apply_annotations(plain_text: str, annotations: dict[str, Any]) -> str:
 # =============================================================================
 
 
-def rich_text_to_markdown(rich_text: list[dict[str, Any]]) -> str:
+def rich_text_to_markdown(rich_text: Sequence[NotionRichText]) -> str:
     """Convert Notion rich_text array to markdown string."""
     result = ""
 
     for content in rich_text:
-        if content.get("type") == "equation":
-            expression = content.get("equation", {}).get("expression", "")
-            result += _inline_equation(expression)
+        if content.type == "equation":
+            result += _inline_equation(content.equation.expression)
             continue
 
-        plain_text = content.get("plain_text", "")
-        annotations = content.get("annotations", {})
-
-        plain_text = _apply_annotations(plain_text, annotations)
+        plain_text = _apply_annotations(content.plain_text, content.annotations)
 
         # Add link if present
-        if content.get("href"):
-            plain_text = _link(plain_text, content["href"])
+        if content.href:
+            plain_text = _link(plain_text, content.href)
 
         result += plain_text
 
@@ -181,145 +193,174 @@ def rich_text_to_markdown(rich_text: list[dict[str, Any]]) -> str:
 # =============================================================================
 
 
-def block_to_markdown(block: dict[str, Any]) -> str:
-    """Convert a single Notion block to markdown string."""
-    if not isinstance(block, dict) or "type" not in block:
+def _file_link(content: NotionBlockContent) -> str:
+    """Return the URL of a file-like block: external or Notion-hosted file."""
+    return content.external.url if content.type == "external" else content.file.url
+
+
+def _plain_caption(content: NotionBlockContent) -> str:
+    return "".join(item.plain_text for item in content.caption)
+
+
+def _block_content(block: NotionBlock) -> NotionBlockContent:
+    return block.content or NotionBlockContent()
+
+
+def _parsed_rich_text(block: NotionBlock) -> str:
+    block_content = _block_content(block)
+    return rich_text_to_markdown(block_content.rich_text or block_content.text)
+
+
+def _render_image(block: NotionBlock, _list_number: int | None) -> str:
+    block_content = _block_content(block)
+    image_title = "image"
+
+    image_caption_plain = _plain_caption(block_content)
+
+    link = _file_link(block_content)
+
+    image_title = image_caption_plain.strip() or link.split("/")[-1] if "/" in link else image_title
+
+    return _image(image_title, link)
+
+
+def _render_divider(_block: NotionBlock, _list_number: int | None) -> str:
+    return _divider()
+
+
+def _render_equation(block: NotionBlock, _list_number: int | None) -> str:
+    return _equation(_block_content(block).expression)
+
+
+def _render_file_like(block: NotionBlock, _list_number: int | None) -> str:
+    """Render a video, file or pdf block."""
+    if not block.content:
         return ""
+    title = block.type
+    caption = _plain_caption(block.content)
+    link = _file_link(block.content)
+    title = caption.strip() or (link.split("/")[-1] if "/" in link else title)
+    return _link(title, link)
 
-    block_type = block["type"]
 
-    # Handle image blocks
-    if block_type == "image":
-        block_content = block.get("image", {})
-        image_title = "image"
+def _render_link_like(block: NotionBlock, _list_number: int | None) -> str:
+    """Render a bookmark, embed, link_preview or link_to_page block."""
+    block_type = block.type
+    block_content = _block_content(block)
+    if block_type != "link_to_page":
+        return _link(block_type, block_content.url)
+    if block_content.type == "page_id":
+        url = f"https://www.notion.so/{block_content.page_id}"
+    elif block_content.type == "database_id":
+        url = f"https://www.notion.so/{block_content.database_id}"
+    else:
+        url = ""
+    return _link(block_type, url)
 
-        image_caption_plain = "".join(
-            item.get("plain_text", "") for item in block_content.get("caption", [])
-        )
 
-        image_type = block_content.get("type", "")
-        if image_type == "external":
-            link = block_content.get("external", {}).get("url", "")
-        else:
-            link = block_content.get("file", {}).get("url", "")
+def _render_child_page(block: NotionBlock, _list_number: int | None) -> str:
+    return _heading2(_block_content(block).title or "")
 
-        image_title = (
-            image_caption_plain.strip() or link.split("/")[-1] if "/" in link else image_title
-        )
 
-        return _image(image_title, link)
+def _render_child_database(block: NotionBlock, _list_number: int | None) -> str:
+    title = _block_content(block).title
+    return _heading2(title if title is not None else "child_database")
 
-    # Handle divider
-    if block_type == "divider":
-        return _divider()
 
-    # Handle equation
-    if block_type == "equation":
-        expression = block.get("equation", {}).get("expression", "")
-        return _equation(expression)
+def _render_table(_block: NotionBlock, _list_number: int | None) -> str:
+    # Tables need special handling with their children (rows processed separately)
+    return "[TABLE - see children for rows]"
 
-    # Handle video, file, pdf
-    if block_type in ["video", "file", "pdf"]:
-        block_content = block.get(block_type, {})
-        title = block_type
 
-        if block_content:
-            caption = "".join(
-                item.get("plain_text", "") for item in block_content.get("caption", [])
-            )
+def _render_table_row(block: NotionBlock, _list_number: int | None) -> str:
+    row_content = [rich_text_to_markdown(cell) for cell in _block_content(block).cells]
+    return "| " + " | ".join(row_content) + " |"
 
-            file_type = block_content.get("type", "")
-            if file_type == "external":
-                link = block_content.get("external", {}).get("url", "")
-            else:
-                link = block_content.get("file", {}).get("url", "")
 
-            title = caption.strip() or (link.split("/")[-1] if "/" in link else title)
-            return _link(title, link)
+def _render_code(block: NotionBlock, _list_number: int | None) -> str:
+    return _code_block(_parsed_rich_text(block), _block_content(block).language)
 
+
+def _render_heading1(block: NotionBlock, _list_number: int | None) -> str:
+    return _heading1(_parsed_rich_text(block))
+
+
+def _render_heading2(block: NotionBlock, _list_number: int | None) -> str:
+    return _heading2(_parsed_rich_text(block))
+
+
+def _render_heading3(block: NotionBlock, _list_number: int | None) -> str:
+    return _heading3(_parsed_rich_text(block))
+
+
+def _render_quote(block: NotionBlock, _list_number: int | None) -> str:
+    return _quote(_parsed_rich_text(block))
+
+
+def _render_callout(block: NotionBlock, _list_number: int | None) -> str:
+    return _callout(_parsed_rich_text(block), _block_content(block).icon)
+
+
+def _render_bullet(block: NotionBlock, _list_number: int | None) -> str:
+    return _bullet(_parsed_rich_text(block))
+
+
+def _render_numbered(block: NotionBlock, list_number: int | None) -> str:
+    return _bullet(_parsed_rich_text(block), list_number)
+
+
+def _render_todo(block: NotionBlock, _list_number: int | None) -> str:
+    return _todo(_parsed_rich_text(block), _block_content(block).checked)
+
+
+def _render_toggle(block: NotionBlock, _list_number: int | None) -> str:
+    return _toggle(_parsed_rich_text(block))
+
+
+def _render_rich_text(block: NotionBlock, _list_number: int | None) -> str:
+    """paragraph, and the default for any other block type."""
+    return _parsed_rich_text(block)
+
+
+_BLOCK_RENDERERS: dict[str, Callable[[NotionBlock, int | None], str]] = {
+    "image": _render_image,
+    "divider": _render_divider,
+    "equation": _render_equation,
+    "video": _render_file_like,
+    "file": _render_file_like,
+    "pdf": _render_file_like,
+    "bookmark": _render_link_like,
+    "embed": _render_link_like,
+    "link_preview": _render_link_like,
+    "link_to_page": _render_link_like,
+    "child_page": _render_child_page,
+    "child_database": _render_child_database,
+    "table": _render_table,
+    "table_row": _render_table_row,
+    "code": _render_code,
+    "heading_1": _render_heading1,
+    "heading_2": _render_heading2,
+    "heading_3": _render_heading3,
+    "quote": _render_quote,
+    "callout": _render_callout,
+    "bulleted_list_item": _render_bullet,
+    "numbered_list_item": _render_numbered,
+    "to_do": _render_todo,
+    "toggle": _render_toggle,
+    "paragraph": _render_rich_text,
+}
+
+
+def block_to_markdown(block: NotionBlock, list_number: int | None = None) -> str:
+    """Convert a single Notion block to markdown string.
+
+    list_number is the 1-based position of a numbered_list_item in its run,
+    which blocks_to_markdown tracks across siblings.
+    """
+    if not block.type:
         return ""
-
-    # Handle bookmark, embed, link_preview, link_to_page
-    if block_type in ["bookmark", "embed", "link_preview", "link_to_page"]:
-        if block_type == "link_to_page":
-            link_data = block.get("link_to_page", {})
-            if link_data.get("type") == "page_id":
-                url = f"https://www.notion.so/{link_data.get('page_id', '')}"
-            elif link_data.get("type") == "database_id":
-                url = f"https://www.notion.so/{link_data.get('database_id', '')}"
-            else:
-                url = ""
-        else:
-            block_content = block.get(block_type, {})
-            url = block_content.get("url", "")
-
-        return _link(block_type, url)
-
-    # Handle child_page
-    if block_type == "child_page":
-        page_title = block.get("child_page", {}).get("title", "")
-        return _heading2(page_title)
-
-    # Handle child_database
-    if block_type == "child_database":
-        db_title = block.get("child_database", {}).get("title", "child_database")
-        return _heading2(db_title)
-
-    # Handle table (rows processed separately)
-    if block_type == "table":
-        # Tables need special handling with their children
-        return "[TABLE - see children for rows]"
-
-    # Handle table_row
-    if block_type == "table_row":
-        cells = block.get("table_row", {}).get("cells", [])
-        row_content = [rich_text_to_markdown(cell) for cell in cells]
-        return "| " + " | ".join(row_content) + " |"
-
-    # Handle standard blocks with rich_text
-    block_data = block.get(block_type, {})
-    rich_text = block_data.get("rich_text", []) or block_data.get("text", [])
-    parsed_data = rich_text_to_markdown(rich_text)
-
-    if block_type == "code":
-        language = block.get("code", {}).get("language", "")
-        return _code_block(parsed_data, language)
-
-    if block_type == "heading_1":
-        return _heading1(parsed_data)
-
-    if block_type == "heading_2":
-        return _heading2(parsed_data)
-
-    if block_type == "heading_3":
-        return _heading3(parsed_data)
-
-    if block_type == "quote":
-        return _quote(parsed_data)
-
-    if block_type == "callout":
-        icon = block.get("callout", {}).get("icon")
-        return _callout(parsed_data, icon)
-
-    if block_type == "bulleted_list_item":
-        return _bullet(parsed_data)
-
-    if block_type == "numbered_list_item":
-        number = block.get("numbered_list_item", {}).get("number")
-        return _bullet(parsed_data, number)
-
-    if block_type == "to_do":
-        checked = block.get("to_do", {}).get("checked", False)
-        return _todo(parsed_data, checked)
-
-    if block_type == "toggle":
-        return _toggle(parsed_data)
-
-    if block_type == "paragraph":
-        return parsed_data
-
-    # Default: return parsed rich text
-    return parsed_data
+    renderer = _BLOCK_RENDERERS.get(block.type, _render_rich_text)
+    return renderer(block, list_number)
 
 
 # =============================================================================
@@ -327,8 +368,22 @@ def block_to_markdown(block: dict[str, Any]) -> str:
 # =============================================================================
 
 
+def _rendered_lines(md_content: str, block_id: str | None, nesting_level: int) -> list[str]:
+    """Return a rendered block's optional block-id comment then its content, indented for nesting_level."""
+    lines: list[str] = []
+    # Add block ID comment if requested
+    if block_id:
+        block_id_comment = f"<!-- block:{block_id} -->"
+        lines.append(_add_tab_space(block_id_comment, nesting_level))
+
+    md_content = _add_tab_space(md_content, nesting_level)
+
+    lines.append(md_content)
+    return lines
+
+
 def blocks_to_markdown(
-    blocks: list[dict[str, Any]],
+    blocks: Sequence[NotionBlock],
     nesting_level: int = 0,
     include_block_ids: bool = False,
 ) -> str:
@@ -344,8 +399,8 @@ def blocks_to_markdown(
     numbered_list_index = 0
 
     for block in blocks:
-        block_type = block.get("type", "")
-        block_id = block.get("id", "")
+        block_type = block.type
+        block_id = block.id
 
         # Skip unsupported blocks
         if block_type == "unsupported":
@@ -354,31 +409,20 @@ def blocks_to_markdown(
         # Track numbered list indices
         if block_type == "numbered_list_item":
             numbered_list_index += 1
-            block["numbered_list_item"]["number"] = numbered_list_index
         else:
             numbered_list_index = 0
 
         # Convert block to markdown
-        md_content = block_to_markdown(block)
+        md_content = block_to_markdown(block, numbered_list_index or None)
 
         if md_content:
-            # Add block ID comment if requested
-            if include_block_ids and block_id:
-                block_id_comment = f"<!-- block:{block_id} -->"
-                if nesting_level > 0:
-                    block_id_comment = _add_tab_space(block_id_comment, nesting_level)
-                result_lines.append(block_id_comment)
-
-            # Add indentation for nesting
-            if nesting_level > 0:
-                md_content = _add_tab_space(md_content, nesting_level)
-
-            result_lines.append(md_content)
+            result_lines.extend(
+                _rendered_lines(md_content, block_id if include_block_ids else None, nesting_level)
+            )
 
         # Handle children recursively if present
-        children = block.get("children", [])
-        if children:
-            child_md = blocks_to_markdown(children, nesting_level + 1, include_block_ids)
+        if block.children:
+            child_md = blocks_to_markdown(block.children, nesting_level + 1, include_block_ids)
             if child_md:
                 result_lines.append(child_md)
 
@@ -386,108 +430,133 @@ def blocks_to_markdown(
 
 
 # =============================================================================
-# Simplified Block Extraction (for non-markdown use)
-# =============================================================================
-
-
-def simplify_block(block: dict[str, Any]) -> dict[str, Any]:
-    """
-    Simplify a Notion block, removing formatting metadata.
-
-    Keeps: id, type, text content, has_children, children
-    Removes: colors, annotations, parent info, timestamps, user info
-    """
-    block_type = block.get("type", "")
-
-    simplified: dict[str, Any] = {
-        "id": block.get("id", ""),
-        "type": block_type,
-    }
-
-    # Extract text content
-    block_data = block.get(block_type, {})
-    rich_text = block_data.get("rich_text", []) or block_data.get("text", [])
-
-    if rich_text:
-        # Just get plain text, no formatting
-        simplified["text"] = "".join(item.get("plain_text", "") for item in rich_text)
-
-    # Handle special block types
-    if block_type == "child_page":
-        simplified["title"] = block.get("child_page", {}).get("title", "")
-    elif block_type == "child_database":
-        simplified["title"] = block.get("child_database", {}).get("title", "")
-    elif block_type == "to_do":
-        simplified["checked"] = block.get("to_do", {}).get("checked", False)
-    elif block_type == "code":
-        simplified["language"] = block.get("code", {}).get("language", "")
-    elif block_type in ["image", "video", "file", "pdf"]:
-        content = block.get(block_type, {})
-        file_type = content.get("type", "")
-        if file_type == "external":
-            simplified["url"] = content.get("external", {}).get("url", "")
-        else:
-            simplified["url"] = content.get("file", {}).get("url", "")
-        simplified["caption"] = "".join(
-            item.get("plain_text", "") for item in content.get("caption", [])
-        )
-    elif block_type in ["bookmark", "embed", "link_preview"]:
-        simplified["url"] = block.get(block_type, {}).get("url", "")
-
-    # Handle children
-    if block.get("has_children"):
-        simplified["has_children"] = True
-    children = block.get("children", [])
-    if children:
-        simplified["children"] = [simplify_block(child) for child in children]
-
-    return simplified
-
-
-def extract_plain_text(blocks: list[dict[str, Any]]) -> str:
-    """Extract just the plain text from blocks, no formatting."""
-    texts: list[str] = []
-
-    for block in blocks:
-        block_type = block.get("type", "")
-        block_data = block.get(block_type, {})
-        rich_text = block_data.get("rich_text", []) or block_data.get("text", [])
-
-        if rich_text:
-            text = "".join(item.get("plain_text", "") for item in rich_text)
-            if text:
-                texts.append(text)
-
-        # Handle children recursively
-        children = block.get("children", [])
-        if children:
-            child_text = extract_plain_text(children)
-            if child_text:
-                texts.append(child_text)
-
-    return "\n".join(texts)
-
-
-# =============================================================================
 # Markdown → Notion Blocks (for NOTION_ADD_MULTIPLE_PAGE_CONTENT)
 # =============================================================================
 
 
-def markdown_to_notion_blocks(markdown: str) -> list[dict[str, Any]]:
+def _text_run(content: str) -> NotionTextRun:
+    return NotionTextRun(text=NotionTextContent(content=content))
+
+
+# Single-line prefixes, checked in order after the divider test.
+# GitHub's alert grammar; any other "> [!" line is an ordinary quote.
+_GITHUB_ALERT_RE = re.compile(r"^> \[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]")
+
+_PREFIX_BLOCK_PROPERTIES: tuple[tuple[str, str], ...] = (
+    ("### ", "heading_3"),
+    ("## ", "heading_2"),
+    ("# ", "heading_1"),
+    ("> ", "quote"),
+)
+
+
+def _parse_code_block(lines: list[str], start: int) -> tuple[NotionCodeBlock, int]:
+    """Parse the fenced code block opening at lines[start]; returns it and the next index."""
+    language = lines[start].strip()[3:].strip() or "plain text"
+    code_lines = []
+    i = start + 1
+    while i < len(lines) and not lines[i].strip().startswith("```"):
+        code_lines.append(lines[i])
+        i += 1
+    i += 1  # Skip closing ```
+
+    # Code blocks need full Notion format
+    block = NotionCodeBlock(
+        code=NotionCodeBlockBody(language=language, rich_text=[_text_run("\n".join(code_lines))])
+    )
+    return block, i
+
+
+def _parse_table_row(row_line: str) -> list[str]:
+    """Cells of a pipe-delimited row."""
+    return [cell.strip() for cell in row_line.strip("|").split("|")]
+
+
+def _is_table_separator(row_line: str) -> bool:
+    """Return whether a row is a separator (e.g. |---|---| or |:---|:---:|)."""
+    return all(re.match(r"^:?-+:?$", cell.strip()) for cell in row_line.split("|") if cell.strip())
+
+
+def _parse_table(lines: list[str], start: int) -> tuple[NotionTableBlock | None, int]:
+    """Parse consecutive table lines from lines[start].
+
+    Returns the table (None when only separators were found) and the next index.
+    """
+    table_lines = []
+    i = start
+    while i < len(lines) and lines[i].strip().startswith("|"):
+        table_lines.append(lines[i].strip())
+        i += 1
+
+    data_rows = [r for r in table_lines if not _is_table_separator(r)]
+    if not data_rows:
+        return None, i
+
+    # First row is header
+    header_cells = _parse_table_row(data_rows[0])
+    table_width = len(header_cells)
+
+    notion_rows: list[NotionTableRow] = []
+    for row_line in data_rows:
+        cells = _parse_table_row(row_line)
+        # Pad or trim to table_width
+        while len(cells) < table_width:  # pragma: no mutate -- the trim below re-imposes the bound
+            cells.append("")
+        cells = cells[:table_width]
+        notion_rows.append(NotionTableRow(cells=[[_text_run(cell)] for cell in cells]))
+
+    table = NotionTableBlock(table_width=table_width, rows=notion_rows)
+    return table, i
+
+
+def _line_block(stripped: str) -> NotionContentBlock:
+    """Build the block for one non-empty, non-code, non-table line."""
+    # Divider
+    if stripped in ["---", "***", "___"]:
+        return NotionContentBlock(block_property="paragraph", content="───")
+
+    # Callout (GitHub alert style) — before the "> " quote prefix, which also matches it
+    if _GITHUB_ALERT_RE.match(stripped):
+        return NotionContentBlock(block_property="callout", content=stripped[2:])
+
+    # Headings, quote
+    for prefix, block_property in _PREFIX_BLOCK_PROPERTIES:
+        if stripped.startswith(prefix):
+            return NotionContentBlock(
+                block_property=block_property, content=stripped[len(prefix) :]
+            )
+
+    # Todo items
+    todo_match = re.match(r"^- \[([ xX])\] (.+)$", stripped)
+    if todo_match:
+        return NotionContentBlock(block_property="to_do", content=todo_match.group(2))
+
+    # Bulleted list
+    if stripped.startswith(("- ", "* ")):
+        return NotionContentBlock(block_property="bulleted_list_item", content=stripped[2:])
+
+    # Numbered list
+    num_match = re.match(r"^(\d+)\. (.+)$", stripped)
+    if num_match:
+        return NotionContentBlock(block_property="numbered_list_item", content=num_match.group(2))
+
+    # Default: paragraph
+    return NotionContentBlock(block_property="paragraph", content=stripped)
+
+
+def markdown_to_notion_blocks(markdown: str) -> list[NotionMarkdownBlock]:
     """Convert markdown to NOTION_ADD_MULTIPLE_PAGE_CONTENT format.
 
-    Returns unwrapped content blocks ({"block_property": ..., "content":
-    ...}); the Composio tool parses markdown formatting in content itself.
-    Supports headings, paragraphs, bullet/numbered/todo lists, quotes, code
-    blocks, dividers, and inline bold/italic/strikethrough/code/links.
+    Returns unwrapped content blocks, with code blocks and tables in Notion's
+    full form; the Composio tool parses markdown formatting in content itself.
+    Supports headings, paragraphs, lists, todos, quotes, code, dividers, tables.
     """
-    blocks: list[dict[str, Any]] = []
+    blocks: list[NotionMarkdownBlock] = []
     lines = markdown.split("\n")
     i = 0
 
     while i < len(lines):
-        line = lines[i]
-        stripped = line.strip()
+        stripped = lines[i].strip()
 
         # Skip empty lines
         if not stripped:
@@ -496,131 +565,18 @@ def markdown_to_notion_blocks(markdown: str) -> list[dict[str, Any]]:
 
         # Code block - needs full Notion format
         if stripped.startswith("```"):
-            language = stripped[3:].strip() or "plain text"
-            code_lines = []
-            i += 1
-            while i < len(lines) and not lines[i].strip().startswith("```"):
-                code_lines.append(lines[i])
-                i += 1
-            i += 1  # Skip closing ```
-
-            # Code blocks need full Notion format
-            blocks.append(
-                {
-                    "type": "code",
-                    "code": {
-                        "language": language,
-                        "rich_text": [{"type": "text", "text": {"content": "\n".join(code_lines)}}],
-                    },
-                }
-            )
-            continue
-
-        # Divider
-        if stripped in ["---", "***", "___"]:
-            blocks.append({"block_property": "paragraph", "content": "───"})
-            i += 1
-            continue
-
-        # Headings
-        if stripped.startswith("### "):
-            blocks.append({"block_property": "heading_3", "content": stripped[4:]})
-            i += 1
-            continue
-        if stripped.startswith("## "):
-            blocks.append({"block_property": "heading_2", "content": stripped[3:]})
-            i += 1
-            continue
-        if stripped.startswith("# "):
-            blocks.append({"block_property": "heading_1", "content": stripped[2:]})
-            i += 1
-            continue
-
-        # Quote
-        if stripped.startswith("> "):
-            blocks.append({"block_property": "quote", "content": stripped[2:]})
-            i += 1
-            continue
-
-        # Todo items
-        todo_match = re.match(r"^- \[([ xX])\] (.+)$", stripped)
-        if todo_match:
-            content = todo_match.group(2)
-            blocks.append({"block_property": "to_do", "content": content})
-            i += 1
-            continue
-
-        # Bulleted list
-        if stripped.startswith(("- ", "* ")):
-            blocks.append({"block_property": "bulleted_list_item", "content": stripped[2:]})
-            i += 1
-            continue
-
-        # Numbered list
-        num_match = re.match(r"^(\d+)\. (.+)$", stripped)
-        if num_match:
-            content = num_match.group(2)
-            blocks.append({"block_property": "numbered_list_item", "content": content})
-            i += 1
-            continue
-
-        # Callout (GitHub alert style)
-        if stripped.startswith("> [!"):
-            blocks.append({"block_property": "callout", "content": stripped[2:]})
-            i += 1
+            code_block, i = _parse_code_block(lines, i)
+            blocks.append(code_block)
             continue
 
         # Markdown table — detected by a pipe-delimited row
-        # Collects consecutive table lines (header + separator + rows)
         if stripped.startswith("|") and stripped.endswith("|"):
-            table_lines = []
-            while i < len(lines) and lines[i].strip().startswith("|"):
-                table_lines.append(lines[i].strip())
-                i += 1
-
-            # Parse cells from a pipe-delimited row
-            def _parse_row(row_line: str) -> list[str]:
-                return [cell.strip() for cell in row_line.strip("|").split("|")]
-
-            # Filter out separator rows (e.g. |---|---| or |:---|:---:|)
-            def _is_separator(row_line: str) -> bool:
-                return all(
-                    re.match(r"^:?-+:?$", cell.strip())
-                    for cell in row_line.strip("|").split("|")
-                    if cell.strip()
-                )
-
-            data_rows = [r for r in table_lines if not _is_separator(r)]
-            if not data_rows:
-                continue
-
-            # First row is header
-            header_cells = _parse_row(data_rows[0])
-            table_width = len(header_cells)
-
-            notion_rows = []
-            for row_line in data_rows:
-                cells = _parse_row(row_line)
-                # Pad or trim to table_width
-                while len(cells) < table_width:
-                    cells.append("")
-                cells = cells[:table_width]
-                notion_rows.append(
-                    {"cells": [[{"type": "text", "text": {"content": cell}}] for cell in cells]}
-                )
-
-            blocks.append(
-                {
-                    "type": "table",
-                    "table_width": table_width,
-                    "has_column_header": True,
-                    "rows": notion_rows,
-                }
-            )
+            table_block, i = _parse_table(lines, i)
+            if table_block is not None:
+                blocks.append(table_block)
             continue
 
-        # Default: paragraph
-        blocks.append({"block_property": "paragraph", "content": stripped})
+        blocks.append(_line_block(stripped))
         i += 1
 
     return blocks

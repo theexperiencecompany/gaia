@@ -62,6 +62,27 @@ JSON_VALUE = st.recursive(
 )
 
 
+LEGACY_FIELD = next(field for field in tool_fields if field != "tool_data")
+
+
+class TestConvertLegacyToolDataExamples:
+    def test_existing_entries_come_first_and_the_legacy_field_is_appended(self) -> None:
+        existing = {"tool_name": "search_results", "data": {"q": "x"}}
+        output = convert_legacy_tool_data({"tool_data": [existing], LEGACY_FIELD: {"v": 1}})
+
+        entries = output["tool_data"]
+        assert isinstance(entries, list)
+        assert entries[0] == existing
+        assert [(e["tool_name"], e["data"]) for e in entries[1:]] == [(LEGACY_FIELD, {"v": 1})]
+        assert LEGACY_FIELD not in output
+
+    def test_an_empty_tool_data_list_is_left_as_it_was(self) -> None:
+        assert convert_legacy_tool_data({"tool_data": [], "content": "hi"}) == {
+            "tool_data": [],
+            "content": "hi",
+        }
+
+
 class TestConvertLegacyToolData:
     @settings(deadline=None)
     @given(

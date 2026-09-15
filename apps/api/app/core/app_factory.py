@@ -18,7 +18,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.endpoints.dev import router as dev_router
 from app.api.v1.endpoints.health import router as health_router
+from app.api.v1.middleware.auth import get_current_user
 from app.api.v1.routes import router as api_router
+from app.config.posthog import POSTHOG_PROVIDER_KEY
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
@@ -115,10 +117,9 @@ def create_app() -> FastAPI:
         exc: RequestValidationError,
     ) -> JSONResponse:
         """Log validation errors with field-level detail and return 422."""
-        errors = [
-            ValidationIssue(loc=list(err["loc"]), msg=err["msg"], type=err["type"])
-            for err in exc.errors()
-        ]
+        # Each entry is pydantic's ErrorDetails dict; the undeclared keys
+        # (input, ctx, url) are ignored by the model.
+        errors = [ValidationIssue.model_validate(err) for err in exc.errors()]
         wide_log.warning(
             "validation_failed",
             validation_errors=[issue.model_dump() for issue in errors],
@@ -175,15 +176,18 @@ def create_app() -> FastAPI:
         # Guard like PostHogRequestContextMiddleware: without the production lifespan
         # (tests, scripts) the provider is never registered, so providers.get raises
         # KeyError, turning this 500-handler's JSON body into a bare Starlette 500.
-        posthog_client = providers.get("posthog") if providers.is_available("posthog") else None
+        posthog_client = (
+            providers.get(POSTHOG_PROVIDER_KEY)
+            if providers.is_available(POSTHOG_PROVIDER_KEY)
+            else None
+        )
         if posthog_client is not None:
             # Attribute explicitly: PostHogRequestContextMiddleware's identify context
             # unwinds before an exception reaches this handler in ServerErrorMiddleware,
             # so every 500 would otherwise land on an anonymous profile.
-            user = getattr(request.state, "user", None)
-            user_id = user.get("user_id") if user else None
-            if user_id:
-                posthog_client.capture_exception(exc, distinct_id=str(user_id))
+            user = get_current_user(request)
+            if user is not None and user.user_id:
+                posthog_client.capture_exception(exc, distinct_id=user.user_id)
             else:
                 posthog_client.capture_exception(exc)
 

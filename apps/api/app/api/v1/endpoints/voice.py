@@ -14,6 +14,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
 from app.api.v1.middleware.agent_auth import create_agent_token
 from app.config.settings import settings
 from app.decorators import tiered_rate_limit
+from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
 from app.schemas.voice_schemas import (
     StarredVoicesResponse,
@@ -35,7 +36,7 @@ from shared.py.wide_events import log
 
 router = APIRouter()
 
-CurrentUser = Annotated[dict, Depends(get_current_user)]
+CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 
 
 @router.get(
@@ -54,9 +55,9 @@ async def get_token(
     conversation_id: Annotated[str | None, Query(alias="conversationId")] = None,
 ) -> VoiceTokenResponse:
     """Mint a LiveKit room token (and agent credentials) for a voice session."""
-    user_id = user.get("user_id")
-    user_email: str = user.get("email", "")
-    if not user_id or not isinstance(user_id, str):
+    user_id = user.user_id
+    user_email: str = user.email or ""
+    if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or missing user_id")
     log.set(
         user={"id": user_id},
@@ -120,8 +121,8 @@ async def get_token(
 @router.get("/voice/voices")
 async def get_voices(user: CurrentUser) -> VoiceListResponse:
     """List the curated voice catalog with the user's current selection."""
-    log.set(user={"id": user["user_id"]}, operation="list_voices")
-    result = await list_voices(user["user_id"])
+    log.set(user={"id": user.user_id}, operation="list_voices")
+    result = await list_voices(user.user_id)
     log.set(voice_count=len(result.voices), selected_voice_id=result.selected_voice_id)
     return result
 
@@ -132,9 +133,9 @@ async def select_voice(
     user: CurrentUser,
 ) -> VoiceSelectionResponse:
     """Set the user's voice for future voice-mode sessions."""
-    log.set(user={"id": user["user_id"]}, operation="select_voice", voice_id=payload.voice_id)
-    selected = await set_user_voice(user["user_id"], payload.voice_id)
-    schedule_account_sync(user["user_id"])
+    log.set(user={"id": user.user_id}, operation="select_voice", voice_id=payload.voice_id)
+    selected = await set_user_voice(user.user_id, payload.voice_id)
+    schedule_account_sync(user.user_id)
     # May differ from the requested id when a library voice was added to the account.
     log.set(selected_voice_id=selected)
     capture_context_event(
@@ -152,12 +153,12 @@ async def star_voice(
 ) -> StarredVoicesResponse:
     """Star or unstar a voice; starred voices sort to the top of the picker."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         operation="star_voice",
         voice_id=voice_id,
         starred=payload.starred,
     )
-    starred_ids = await set_voice_star(user["user_id"], voice_id, payload.starred)
+    starred_ids = await set_voice_star(user.user_id, voice_id, payload.starred)
     capture_context_event(
         AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
         {"setting": "voice_star", "voice_id": voice_id, "is_starred": payload.starred},

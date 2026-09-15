@@ -61,7 +61,7 @@ async def get_trigger_options(
         TriggerOptionsQuery(
             trigger_name=params.trigger_slug,
             field_name=params.field_name,
-            user_id=current_user["user_id"],
+            user_id=current_user.user_id,
             integration_id=params.integration_id,
             parent_ids=params.parent_ids,
             page=params.page,

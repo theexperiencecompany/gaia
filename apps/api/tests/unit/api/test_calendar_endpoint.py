@@ -29,7 +29,7 @@ from app.services.analytics_service import AnalyticsEvents
 from tests.conftest import FAKE_USER
 
 API = "/api/v1"
-USER_ID = FAKE_USER["user_id"]
+USER_ID = FAKE_USER.user_id
 ANALYTICS_PATCH = "app.api.v1.endpoints.calendar.capture_context_event"
 
 

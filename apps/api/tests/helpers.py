@@ -19,6 +19,7 @@ from starlette.requests import Request
 
 from app.config.rate_limits import RateLimitConfig
 from app.db.postgresql import LANGGRAPH_SETUP_LOCK_ID
+from app.models.user_models import AuthenticatedUser
 from shared.py.wide_events import log, log_context
 
 
@@ -195,7 +196,7 @@ class MockAuthMiddleware(BaseHTTPMiddleware):
     under test — only the login step no automated test can perform for real.
     """
 
-    def __init__(self, app, user: dict):
+    def __init__(self, app, user: AuthenticatedUser):
         super().__init__(app)
         self._user = user
 
@@ -226,7 +227,9 @@ class HeaderDrivenAuthMiddleware(BaseHTTPMiddleware):
         user_id = request.headers.get("x-test-user-id")
         if user_id:
             request.state.authenticated = True
-            request.state.user = {"user_id": user_id, "email": f"{user_id}@test.local"}
+            request.state.user = AuthenticatedUser(
+                user_id=user_id, auth_provider="workos", email=f"{user_id}@test.local"
+            )
         else:
             request.state.authenticated = False
             request.state.user = None

@@ -8,17 +8,21 @@ Budget-capped providers stop before exceeding their free allowance, so the
 self-hosted floor means search can never incur a bill. perform_search and
 search_for_research are the cached entry points the agent tools and the
 search API use — perform_search returns a typed WebSearchResult,
-search_for_research returns a dict[str, Any] wire shape.
+search_for_research a ResearchSearchResult.
 """
-
-from typing import Any
 
 from app.constants.cache import WEB_SEARCH_CACHE_TTL
 from app.decorators.caching import Cacheable
 from app.utils.search.engine import SearchEngine
-from app.utils.search.models import SearchResponse, WebSearchResult
+from app.utils.search.models import ResearchSearchResult, SearchResponse, WebSearchResult
 
-__all__ = ["SearchResponse", "WebSearchResult", "perform_search", "search_for_research"]
+__all__ = [
+    "ResearchSearchResult",
+    "SearchResponse",
+    "WebSearchResult",
+    "perform_search",
+    "search_for_research",
+]
 
 
 @Cacheable(
@@ -43,8 +47,9 @@ async def perform_search(query: str, count: int) -> WebSearchResult:
     key_pattern="research_search:{query}:{count}",
     ttl=WEB_SEARCH_CACHE_TTL,
     namespace="search",
+    model=ResearchSearchResult,
 )
-async def search_for_research(query: str, count: int = 5) -> dict[str, Any]:
-    """Run the waterfall for deep research; returns {"results": [...]} (cached)."""
+async def search_for_research(query: str, count: int = 5) -> ResearchSearchResult:
+    """Run the waterfall for deep research; returns the results only (cached)."""
     response = await SearchEngine().search(query, count)
-    return {"results": [item.model_dump() for item in response.results]}
+    return ResearchSearchResult(results=response.results)

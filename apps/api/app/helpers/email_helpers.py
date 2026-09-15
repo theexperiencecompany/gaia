@@ -1,9 +1,11 @@
 """Helper functions for email processing."""
 
+from dataclasses import dataclass
 import time
 import unicodedata
 
 import html2text
+from pydantic import BaseModel, ConfigDict
 
 from app.agents.memory.profile_extractor import PLATFORM_CONFIG
 from app.agents.prompts.email_filter_prompts import EMAIL_MEMORY_EXTRACTION_PROMPT
@@ -11,7 +13,23 @@ from app.constants.email import NO_SUBJECT, UNKNOWN_SENDER
 from app.constants.memory import MemorySourceType
 from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
+from app.models.mail_models import GmailMessageSummary
 from shared.py.wide_events import log
+
+
+class _PlatformSenderDomains(BaseModel):
+    """The one ``PlatformConfig`` key this module reads (ideal home: profile_extractor)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    sender_domains: list[str]
+
+
+_PLATFORM_SENDER_DOMAINS: tuple[str, ...] = tuple(
+    domain
+    for platform_config in PLATFORM_CONFIG.values()
+    for domain in _PlatformSenderDomains.model_validate(platform_config).sender_domains
+)
 
 # HTML to text converter
 _html_converter = html2text.HTML2Text()
@@ -38,28 +56,31 @@ def remove_invisible_chars(s: str) -> str:
     return "".join(c for c in s if unicodedata.category(c) not in ("Cf", "Cc"))
 
 
-def process_email_content(emails: list[dict]) -> tuple[list[dict], int]:
+@dataclass(slots=True, frozen=True)
+class ProcessedEmail:
+    """One email's clean text plus the metadata its memory entry cites."""
+
+    content: str
+    message_id: str
+    sender: str
+    subject: str
+
+
+def process_email_content(emails: list[GmailMessageSummary]) -> tuple[list[ProcessedEmail], int]:
     """Convert HTML email content to clean text, skipping platform emails (profile-discovery only)."""
-    processed = []
+    processed: list[ProcessedEmail] = []
     failed_count = 0
 
     for email_data in emails:
         try:
             # Skip platform emails - only used for profile discovery
-            sender = (email_data.get("sender") or email_data.get("from", "")).lower()
+            sender = email_data.sender.lower()
 
             # Check against all platform sender domains from config
-            is_platform_email = False
-            for platform_config in PLATFORM_CONFIG.values():
-                sender_domains = platform_config.get("sender_domains", [])
-                if any(domain in sender for domain in sender_domains):
-                    is_platform_email = True
-                    break
-
-            if is_platform_email:
+            if any(domain in sender for domain in _PLATFORM_SENDER_DOMAINS):
                 continue
 
-            message_text = email_data.get("messageText", "")
+            message_text = email_data.body
             if not message_text.strip():
                 failed_count += 1
                 continue
@@ -73,17 +94,12 @@ def process_email_content(emails: list[dict]) -> tuple[list[dict], int]:
                 continue
 
             processed.append(
-                {
-                    "content": clean_text,
-                    "metadata": {
-                        "type": "email",
-                        "source": "gmail",
-                        "message_id": email_data.get("messageId") or email_data.get("id"),
-                        "sender": email_data.get("sender")
-                        or email_data.get("from", UNKNOWN_SENDER),
-                        "subject": email_data.get("subject", NO_SUBJECT),
-                    },
-                }
+                ProcessedEmail(
+                    content=clean_text,
+                    message_id=email_data.id,
+                    sender=email_data.sender or UNKNOWN_SENDER,
+                    subject=email_data.subject or NO_SUBJECT,
+                )
             )
         except Exception:
             failed_count += 1
@@ -93,7 +109,7 @@ def process_email_content(emails: list[dict]) -> tuple[list[dict], int]:
 
 async def store_emails_to_memory(
     user_id: str,
-    processed_emails: list[dict],
+    processed_emails: list[ProcessedEmail],
     user_name: str | None = None,
     user_email: str | None = None,
 ) -> None:
@@ -107,13 +123,13 @@ async def store_emails_to_memory(
                 "role": "user",
                 "content": f"""The user RECEIVED this email (not sent by the user).
 
-From: {email_data.get("metadata", {}).get("sender", UNKNOWN_SENDER)}
-Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
+From: {email_data.sender}
+Subject: {email_data.subject}
 
-{email_data.get("content", "")}""",
+{email_data.content}""",
             }
             for email_data in processed_emails
-            if email_data.get("content", "").strip()
+            if email_data.content.strip()
         ]
 
         if not messages:

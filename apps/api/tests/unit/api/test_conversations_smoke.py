@@ -46,10 +46,13 @@ class TestCreateConversation:
             createdAt="2024-01-01T00:00:00+00:00",
             detail="Conversation created successfully",
         )
-        with patch(
-            f"{CONV_SERVICE}.create_conversation_service",
-            new_callable=AsyncMock,
-            return_value=mock_resp,
+        with (
+            patch(
+                f"{CONV_SERVICE}.create_conversation_service",
+                new_callable=AsyncMock,
+                return_value=mock_resp,
+            ),
+            patch(f"{CONV_SERVICE}.log") as mock_log,
         ):
             resp = await client.post(
                 "/api/v1/conversations",
@@ -59,6 +62,10 @@ class TestCreateConversation:
         assert resp.status_code == 200
         assert resp.json()["conversation_id"] == "conv_123"
         assert resp.json()["detail"] == "Conversation created successfully"
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER.user_id},
+            conversation={"operation": "create", "is_new": True},
+        )
 
     async def test_create_requires_auth(self, unauthed_client: AsyncClient):
         resp = await unauthed_client.post(
@@ -75,11 +82,14 @@ class TestListConversations:
         mock_resp = ConversationListResponse(
             conversations=[], total=0, page=1, limit=10, total_pages=1
         )
-        with patch(
-            f"{CONV_SERVICE}.get_conversations",
-            new_callable=AsyncMock,
-            return_value=mock_resp,
-        ) as mock_list:
+        with (
+            patch(
+                f"{CONV_SERVICE}.get_conversations",
+                new_callable=AsyncMock,
+                return_value=mock_resp,
+            ) as mock_list,
+            patch(f"{CONV_SERVICE}.log") as mock_log,
+        ):
             resp = await client.get("/api/v1/conversations")
 
         assert resp.status_code == 200
@@ -87,6 +97,10 @@ class TestListConversations:
         assert "conversations" in body
         assert body["page"] == 1
         assert mock_list.await_args.kwargs == {"page": 1, "limit": 10}
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER.user_id},
+            conversation={"operation": "list", "page": 1, "limit": 10},
+        )
 
     async def test_list_with_pagination(self, client: AsyncClient):
         mock_resp = ConversationListResponse(
@@ -131,14 +145,21 @@ class TestGetConversation:
                 "metadata": {"legacy": True},
             }
         )
-        with patch(
-            f"{CONV_SERVICE}.get_conversation",
-            new_callable=AsyncMock,
-            return_value=mock_resp,
-        ) as mock_get:
+        with (
+            patch(
+                f"{CONV_SERVICE}.get_conversation",
+                new_callable=AsyncMock,
+                return_value=mock_resp,
+            ) as mock_get,
+            patch(f"{CONV_SERVICE}.log") as mock_log,
+        ):
             resp = await client.get("/api/v1/conversations/conv_123")
 
         assert resp.status_code == 200
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER.user_id},
+            conversation={"operation": "get", "id": "conv_123"},
+        )
         # The lookup is scoped to the path id AND the caller — either dropped
         # would serve another user's conversation or nothing at all.
         assert mock_get.await_args.args == ("conv_123", FAKE_USER)
@@ -159,27 +180,41 @@ class TestDeleteConversation:
         mock_resp = ConversationActionResponse(
             message="Conversation deleted successfully", conversation_id="conv_123"
         )
-        with patch(
-            f"{CONV_SERVICE}.delete_conversation",
-            new_callable=AsyncMock,
-            return_value=mock_resp,
+        with (
+            patch(
+                f"{CONV_SERVICE}.delete_conversation",
+                new_callable=AsyncMock,
+                return_value=mock_resp,
+            ),
+            patch(f"{CONV_SERVICE}.log") as mock_log,
         ):
             resp = await client.delete("/api/v1/conversations/conv_123")
 
         assert resp.status_code == 200
         assert resp.json()["conversation_id"] == "conv_123"
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER.user_id},
+            conversation={"operation": "delete", "id": "conv_123"},
+        )
 
     async def test_delete_all(self, client: AsyncClient):
         mock_resp = DeleteAllConversationsResponse(message="All conversations deleted successfully")
-        with patch(
-            f"{CONV_SERVICE}.delete_all_conversations",
-            new_callable=AsyncMock,
-            return_value=mock_resp,
+        with (
+            patch(
+                f"{CONV_SERVICE}.delete_all_conversations",
+                new_callable=AsyncMock,
+                return_value=mock_resp,
+            ),
+            patch(f"{CONV_SERVICE}.log") as mock_log,
         ):
             resp = await client.delete("/api/v1/conversations")
 
         assert resp.status_code == 200
         assert resp.json()["message"] == "All conversations deleted successfully"
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER.user_id},
+            conversation={"operation": "delete_all"},
+        )
 
 
 class TestStarConversation:
@@ -187,10 +222,13 @@ class TestStarConversation:
 
     async def test_star(self, client: AsyncClient):
         mock_resp = StarConversationResponse(message="Conversation starred", starred=True)
-        with patch(
-            f"{CONV_SERVICE}.star_conversation",
-            new_callable=AsyncMock,
-            return_value=mock_resp,
+        with (
+            patch(
+                f"{CONV_SERVICE}.star_conversation",
+                new_callable=AsyncMock,
+                return_value=mock_resp,
+            ),
+            patch(f"{CONV_SERVICE}.log") as mock_log,
         ):
             resp = await client.put(
                 "/api/v1/conversations/conv_123/star",
@@ -199,6 +237,10 @@ class TestStarConversation:
 
         assert resp.status_code == 200
         assert resp.json()["starred"] is True
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER.user_id},
+            conversation={"operation": "star", "id": "conv_123", "is_starred": True},
+        )
 
 
 class TestUpdateDescription:
@@ -210,10 +252,13 @@ class TestUpdateDescription:
             conversation_id="conv_123",
             description="My important chat",
         )
-        with patch(
-            f"{CONV_SERVICE}.update_conversation_description",
-            new_callable=AsyncMock,
-            return_value=mock_resp,
+        with (
+            patch(
+                f"{CONV_SERVICE}.update_conversation_description",
+                new_callable=AsyncMock,
+                return_value=mock_resp,
+            ),
+            patch(f"{CONV_SERVICE}.log") as mock_log,
         ):
             resp = await client.put(
                 "/api/v1/conversations/conv_123/description",
@@ -222,6 +267,10 @@ class TestUpdateDescription:
 
         assert resp.status_code == 200
         assert resp.json()["description"] == "My important chat"
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER.user_id},
+            conversation={"operation": "update_description", "id": "conv_123"},
+        )
 
 
 class TestReadUnread:
@@ -231,29 +280,43 @@ class TestReadUnread:
         mock_resp = ConversationActionResponse(
             message="Conversation marked as read", conversation_id="conv_123"
         )
-        with patch(
-            f"{CONV_SERVICE}.mark_conversation_as_read",
-            new_callable=AsyncMock,
-            return_value=mock_resp,
+        with (
+            patch(
+                f"{CONV_SERVICE}.mark_conversation_as_read",
+                new_callable=AsyncMock,
+                return_value=mock_resp,
+            ),
+            patch(f"{CONV_SERVICE}.log") as mock_log,
         ):
             resp = await client.patch("/api/v1/conversations/conv_123/read")
 
         assert resp.status_code == 200
         assert resp.json()["message"] == "Conversation marked as read"
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER.user_id},
+            conversation={"operation": "mark_read", "id": "conv_123"},
+        )
 
     async def test_mark_as_unread(self, client: AsyncClient):
         mock_resp = ConversationActionResponse(
             message="Conversation marked as unread", conversation_id="conv_123"
         )
-        with patch(
-            f"{CONV_SERVICE}.mark_conversation_as_unread",
-            new_callable=AsyncMock,
-            return_value=mock_resp,
+        with (
+            patch(
+                f"{CONV_SERVICE}.mark_conversation_as_unread",
+                new_callable=AsyncMock,
+                return_value=mock_resp,
+            ),
+            patch(f"{CONV_SERVICE}.log") as mock_log,
         ):
             resp = await client.patch("/api/v1/conversations/conv_123/unread")
 
         assert resp.status_code == 200
         assert resp.json()["message"] == "Conversation marked as unread"
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER.user_id},
+            conversation={"operation": "mark_unread", "id": "conv_123"},
+        )
 
 
 class TestPinnedMessages:
@@ -271,14 +334,21 @@ class TestPinnedMessages:
                 )
             ]
         )
-        with patch(
-            f"{CONV_SERVICE}.get_starred_messages",
-            new_callable=AsyncMock,
-            return_value=mock_resp,
+        with (
+            patch(
+                f"{CONV_SERVICE}.get_starred_messages",
+                new_callable=AsyncMock,
+                return_value=mock_resp,
+            ),
+            patch(f"{CONV_SERVICE}.log") as mock_log,
         ):
             resp = await client.get("/api/v1/messages/pinned")
 
         assert resp.status_code == 200
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER.user_id},
+            conversation={"operation": "get_pinned"},
+        )
         results = resp.json()["results"]
         assert len(results) == 1
         assert results[0]["conversation_id"] == "conv_123"

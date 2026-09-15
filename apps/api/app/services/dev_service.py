@@ -22,6 +22,7 @@ from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.files_models import FileDocument
 from app.models.todo_models import TodoModel
 from app.models.user_models import (
+    AuthenticatedUser,
     BioStatus,
     OnboardingPhase,
     OnboardingPreferences,
@@ -155,7 +156,7 @@ async def seed_dev_data(
                     description=f"Sample conversation {i + 1}",
                     source=ConversationSource.WEB,
                 ),
-                {"user_id": user_id},
+                AuthenticatedUser(user_id=user_id),
             )
             for i in range(conversations)
         ),

@@ -21,13 +21,33 @@ import time
 from typing import ParamSpec, TypeVar, cast
 
 from fastapi import Request
+from pydantic import BaseModel, ConfigDict
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
+from app.api.v1.middleware.auth import get_current_user
 from app.config.loggers import request_logger
 from shared.py.wide_events import log as wide_log
 
-_LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3, "CRITICAL": 4}
+_WARNING = "WARNING"
+_LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, _WARNING: 2, "ERROR": 3, "CRITICAL": 4}
+
+
+class _WideEventUser(BaseModel):
+    """The ``user`` namespace of the wide event, as handlers have set it so far."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str | None = None
+
+
+class _WideEventFields(BaseModel):
+    """The one wide-event field this middleware reads back before emitting."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    user: _WideEventUser = _WideEventUser()
+
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -122,13 +142,13 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         request.state.user inside that boundary. Fields a handler set
         explicitly win over the automatic ones.
         """
-        user = getattr(request.state, "user", None)
-        if not user:
+        user = get_current_user(request)
+        if user is None or not user.user_id:
             return
-        auto = {"id": user.get("user_id")} if user.get("user_id") else {}
-        if not auto:
-            return
-        wide_log.set(user={**auto, **wide_log.get().get("user", {})})
+        # set() merges one level deep, so only the id is added — and only when
+        # no handler has set one, so an explicit id keeps winning.
+        if "id" not in _WideEventFields.model_validate(wide_log.get()).user.model_fields_set:
+            wide_log.set(user={"id": user.user_id})
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in self._SKIP_PATHS:
@@ -202,8 +222,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         level = wide_log.get_max_level()
         if status_code >= 500:
             level = "ERROR"
-        elif status_code >= 400 and _LEVEL_ORDER[level] < _LEVEL_ORDER["WARNING"]:
-            level = "WARNING"
+        elif status_code >= 400 and (
+            _LEVEL_ORDER[level] < _LEVEL_ORDER[_WARNING]  # pragma: no mutate -- <= is a no-op here
+        ):
+            level = _WARNING
 
         # Store final_level before get() so it appears in the emitted JSON
         wide_log.set(final_level=level)
@@ -232,7 +254,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         request_logger.bind(**context).log(level, "http_request")
 
-        trace_id = wide_log.get().get("trace_id", "")
+        trace_id = wide_log.get_trace_id()
         if trace_id:
             response.headers["x-trace-id"] = trace_id
 

@@ -2,7 +2,7 @@
 
 The pure helpers are exercised with no mocking at all; the Composio-registered
 tool bodies are exercised for real with only the true I/O boundaries faked
-(proxy_request_sync, the async calendar_service / user_service functions,
+(proxy_request_sync, the async calendar_service / user_repository reads,
 the LangGraph stream writer and config).
 
 Five production bugs were found while writing these tests and fixed at the root
@@ -16,13 +16,13 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
+from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.integrations.calendar_tool import (
     _extract_datetime,
     _format_calendar_for_stream,
     _format_calendar_option_for_stream,
-    _get_user_id,
     _get_user_timezone,
     _run_sync,
     register_calendar_custom_tools,
@@ -32,6 +32,7 @@ from app.models.calendar_models import (
     AddRecurrenceInput,
     CalendarEventsResponse,
     CalendarListResponse,
+    CalendarOptionDraft,
     CalendarSearchResult,
     CalendarSummary,
     CreateEventInput,
@@ -41,15 +42,18 @@ from app.models.calendar_models import (
     FindEventInput,
     GetDaySummaryInput,
     GetEventInput,
+    GoogleCalendarEventDateTime,
     GoogleCalendarEventResource,
     ListCalendarsInput,
     PatchEventInput,
     SingleEventInput,
 )
 from app.models.common_models import GatherContextInput
+from app.models.integrations.composio import CustomToolAuthCredentials
+from app.models.user_models import UserDocument
 from app.services.composio.proxy_client import ProxyRequest
 from app.utils.calendar_utils import CALENDAR_API_BASE
-from app.utils.concurrency import reset_captured_loop
+from app.utils.concurrency import reset_captured_loop, run_on_captured_loop
 from app.utils.errors import AppError
 
 MODULE = "app.agents.tools.integrations.calendar_tool"
@@ -131,35 +135,35 @@ def _events_response(
 # ---------------------------------------------------------------------------
 
 
+def _when(**payload: object) -> GoogleCalendarEventDateTime:
+    return GoogleCalendarEventDateTime.model_validate(payload)
+
+
 class TestExtractDatetime:
-    def test_none_yields_empty_string(self) -> None:
-        assert _extract_datetime(None) == ""
-
-    def test_empty_dict_yields_empty_string(self) -> None:
-        assert _extract_datetime({}) == ""
-
-    def test_plain_string_passes_through(self) -> None:
-        assert _extract_datetime("2026-01-15T10:00:00Z") == "2026-01-15T10:00:00Z"
+    def test_empty_bounds_yield_empty_string(self) -> None:
+        assert _extract_datetime(_when()) == ""
 
     def test_datetime_key_wins_over_date(self) -> None:
         assert (
-            _extract_datetime({"dateTime": "2026-01-15T10:00:00Z", "date": "2026-01-15"})
+            _extract_datetime(_when(dateTime="2026-01-15T10:00:00Z", date="2026-01-15"))
             == "2026-01-15T10:00:00Z"
         )
 
     def test_falls_back_to_date_for_all_day(self) -> None:
-        assert _extract_datetime({"date": "2026-01-15"}) == "2026-01-15"
+        assert _extract_datetime(_when(date="2026-01-15")) == "2026-01-15"
 
     def test_blank_datetime_falls_back_to_date(self) -> None:
-        assert _extract_datetime({"dateTime": "", "date": "2026-01-15"}) == "2026-01-15"
+        assert _extract_datetime(_when(dateTime="", date="2026-01-15")) == "2026-01-15"
 
-    def test_dict_without_time_keys_yields_empty_string(self) -> None:
-        assert _extract_datetime({"timeZone": "UTC"}) == ""
+    def test_bounds_without_time_keys_yield_empty_string(self) -> None:
+        assert _extract_datetime(_when(timeZone="UTC")) == ""
 
-    def test_non_string_value_is_rejected(self) -> None:
+    def test_non_string_value_is_rejected_at_the_boundary(self) -> None:
         # Google never returns this, but a malformed payload must not leak an int
-        # into a schema the frontend types as a string.
-        assert _extract_datetime({"dateTime": 1737000000}) == ""
+        # into a schema the frontend types as a string — it fails validation
+        # where the payload is parsed instead of reaching the stream.
+        with pytest.raises(ValidationError):
+            _when(dateTime=1737000000)
 
 
 # ---------------------------------------------------------------------------
@@ -167,9 +171,24 @@ class TestExtractDatetime:
 # ---------------------------------------------------------------------------
 
 
+def _draft(**overrides: object) -> CalendarOptionDraft:
+    fields: dict[str, object] = {
+        "index": 0,
+        "summary": "",
+        "description": "",
+        "is_all_day": False,
+        "start": {},
+        "end": {},
+        "calendar_id": "",
+        "color": DEFAULT_CALENDAR_COLOR,
+        "calendar_name": "",
+    }
+    return CalendarOptionDraft.model_validate({**fields, **overrides})
+
+
 class TestFormatCalendarOptionForStream:
-    def test_minimal_option_uses_shared_default_color(self) -> None:
-        out = _format_calendar_option_for_stream({})
+    def test_minimal_option_streams_the_full_required_shape(self) -> None:
+        out = _format_calendar_option_for_stream(_draft())
         assert out == {
             "summary": "",
             "description": "",
@@ -181,39 +200,37 @@ class TestFormatCalendarOptionForStream:
             "end": "",
         }
 
-    def test_start_end_dicts_are_flattened(self) -> None:
+    def test_start_end_are_flattened_and_color_is_renamed(self) -> None:
         out = _format_calendar_option_for_stream(
-            {
-                "summary": "Standup",
-                "start": {"dateTime": "2026-01-15T10:00:00+00:00"},
-                "end": {"dateTime": "2026-01-15T10:30:00+00:00"},
-                "color": "#123456",
-            }
+            _draft(
+                summary="Standup",
+                start={"dateTime": "2026-01-15T10:00:00+00:00"},
+                end={"dateTime": "2026-01-15T10:30:00+00:00"},
+                color="#123456",
+            )
         )
+        assert out["summary"] == "Standup"
         assert out["start"] == "2026-01-15T10:00:00+00:00"
         assert out["end"] == "2026-01-15T10:30:00+00:00"
         assert out["background_color"] == "#123456"
+        assert "color" not in out
 
     def test_optional_keys_are_omitted_when_absent(self) -> None:
-        out = _format_calendar_option_for_stream({"summary": "X"})
+        out = _format_calendar_option_for_stream(_draft(summary="X"))
         assert "location" not in out
         assert "attendees" not in out
         assert "create_meeting_room" not in out
 
     def test_optional_keys_are_included_when_present(self) -> None:
         out = _format_calendar_option_for_stream(
-            {
-                "location": "Room 3",
-                "attendees": ["a@b.com"],
-                "create_meeting_room": True,
-            }
+            _draft(location="Room 3", attendees=["a@b.com"], create_meeting_room=True)
         )
         assert out["location"] == "Room 3"
         assert out["attendees"] == ["a@b.com"]
         assert out["create_meeting_room"] is True
 
     def test_empty_attendee_list_is_not_streamed(self) -> None:
-        assert "attendees" not in _format_calendar_option_for_stream({"attendees": []})
+        assert "attendees" not in _format_calendar_option_for_stream(_draft(attendees=[]))
 
 
 # ---------------------------------------------------------------------------
@@ -245,13 +262,13 @@ class TestFormatCalendarForStream:
 
 
 # ---------------------------------------------------------------------------
-# _get_user_id
+# auth credentials
 # ---------------------------------------------------------------------------
 
 
-class TestGetUserId:
+class TestAuthCredentials:
     def test_returns_user_id(self) -> None:
-        assert _get_user_id({"user_id": "abc"}) == "abc"
+        assert CustomToolAuthCredentials.parse({"user_id": "abc"}).user_id == "abc"
 
     @pytest.mark.parametrize(
         "creds",
@@ -260,7 +277,20 @@ class TestGetUserId:
     )
     def test_rejects_unusable_credentials(self, creds: dict[str, Any]) -> None:
         with pytest.raises(ValueError, match="Missing user_id"):
-            _get_user_id(creds)
+            CustomToolAuthCredentials.parse(creds)
+
+    @pytest.mark.parametrize(
+        "creds",
+        [{}, {"user_id": ""}, {"user_id": None}, {"user_id": 123}, {"userId": "abc"}],
+        ids=["missing", "blank", "none", "int", "wrong-key"],
+    )
+    def test_tool_bodies_reject_unusable_credentials(self, tools, creds: dict[str, Any]) -> None:
+        with patch(f"{MODULE}.proxy_request_sync") as proxy:
+            with pytest.raises(ValueError, match="Missing user_id"):
+                tools["CUSTOM_GET_EVENT"](
+                    GetEventInput(events=[EventReference(event_id="e1")]), EXECUTE_REQUEST, creds
+                )
+        proxy.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -435,8 +465,9 @@ class TestGetDaySummary:
             if raises_metadata
             else AsyncMock(return_value=metadata or ({}, {}))
         )
+        user_doc = UserDocument.model_validate(user) if user is not None else None
         with (
-            patch("app.services.user_service.get_user_by_id", new=AsyncMock(return_value=user)),
+            patch(f"{MODULE}.user_repository.get", new=AsyncMock(return_value=user_doc)),
             patch(
                 "app.services.calendar_service.get_calendar_events",
                 new=AsyncMock(return_value=_events_response(events)),
@@ -461,6 +492,26 @@ class TestGetDaySummary:
         assert out["date"] == "2026-03-15"
         assert out["timezone"] == "Asia/Kolkata"
 
+    def test_user_lookup_is_for_the_caller_and_bounded_to_five_seconds(self, tools, writer) -> None:
+        user_lookup = AsyncMock(return_value=UserDocument.model_validate({"timezone": "UTC"}))
+        with (
+            patch(f"{MODULE}.user_repository.get", new=user_lookup),
+            patch(
+                "app.services.calendar_service.get_calendar_events",
+                new=AsyncMock(return_value=_events_response([])),
+            ),
+            patch(
+                "app.services.calendar_service.get_calendar_metadata_map",
+                new=AsyncMock(return_value=({}, {})),
+            ),
+            patch(f"{MODULE}.run_on_captured_loop", wraps=run_on_captured_loop) as dispatch,
+        ):
+            tools["CUSTOM_GET_DAY_SUMMARY"](
+                GetDaySummaryInput(date="2026-03-15"), EXECUTE_REQUEST, AUTH
+            )
+        user_lookup.assert_awaited_once_with("user-42")
+        assert 5 in [c.kwargs.get("timeout") for c in dispatch.call_args_list]
+
     def test_fixed_offset_timezone_is_supported(self, tools, writer) -> None:
         # A stored "+05:30" home zone makes zoneinfo.ZoneInfo raise; Timezone.parse
         # must absorb it rather than blowing up the whole tool.
@@ -483,7 +534,7 @@ class TestGetDaySummary:
     def test_user_lookup_failure_falls_back_to_utc(self, tools, writer) -> None:
         with (
             patch(
-                "app.services.user_service.get_user_by_id",
+                f"{MODULE}.user_repository.get",
                 new=AsyncMock(side_effect=RuntimeError("mongo down")),
             ),
             patch(
@@ -1470,6 +1521,7 @@ class TestCreateEvent:
             )
         streamed = writer.call_args[0][0]["calendar_fetch_data"][0]
         assert streamed["background_color"] == DEFAULT_CALENDAR_COLOR
+        assert streamed["calendar_name"] == ""
 
     def test_draft_uses_calendar_metadata_when_available(self, tools, writer) -> None:
         with patch(f"{MODULE}.get_config", return_value={"configurable": {}}):

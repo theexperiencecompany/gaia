@@ -11,8 +11,8 @@ For main functions, import directly from:
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL
 from app.decorators.caching import Cacheable
-from app.helpers.integration_helpers import generate_integration_slug
 from app.helpers.namespace_utils import derive_integration_namespace
+from app.helpers.slug_helpers import generate_integration_slug
 from app.models.integration_models import IntegrationWithCreator
 from app.schemas.integrations.responses import (
     CommunityIntegrationCreator,

@@ -215,7 +215,7 @@ class TestCallExecutorDispatch:
         assert run.stream_id == "stream-1"
         assert run.conversation_id == CONVERSATION_ID
         assert run.user_message_id == "umsg-1"
-        assert run.user["user_id"] == "user-1"
+        assert run.user.user_id == "user-1"
         assert run.kind.value == "live"
         assert _spawned("stream-1") is True
 

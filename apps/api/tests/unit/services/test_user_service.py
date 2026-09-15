@@ -36,18 +36,13 @@ def sample_user() -> UserDocument:
 
 
 class TestGetUserById:
-    async def test_returns_exact_legacy_dict(self, mock_repo, sample_user):
+    async def test_returns_exact_user_document(self, mock_repo, sample_user):
         mock_get, _ = mock_repo
         mock_get.return_value = sample_user
 
         result = await get_user_by_id(sample_user.id)
 
-        assert result == {
-            "email": "alice@example.com",
-            "name": "Alice",
-            "picture": "https://example.com/alice.jpg",
-            "_id": sample_user.id,
-        }
+        assert result is sample_user
 
     async def test_queries_repository_with_exact_id(self, mock_repo, sample_user):
         mock_get, _ = mock_repo

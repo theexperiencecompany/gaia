@@ -31,7 +31,7 @@ def artifact_url_base(conversation_id: str) -> str:
     return f"{settings.HOST}{ARTIFACT_URL_PATH_TEMPLATE.format(conversation_id=conversation_id)}"
 
 
-def build_artifact_full_entry(payload: dict[str, Any]) -> ArtifactDataEntry:
+def build_artifact_full_entry(payload: dict[str, object]) -> ArtifactDataEntry:
     """Build a live-stream artifact_data chunk carrying the file's full data."""
     return {
         "tool_name": "artifact_data",

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Coroutine
-from typing import Any, TypeVar
+from typing import TypeVar
 
 _T = TypeVar("_T")
 
@@ -46,7 +46,7 @@ def reset_captured_loop() -> None:
     _captured_loop = None
 
 
-def run_on_captured_loop(coro: Coroutine[Any, Any, _T], *, timeout: float | None = None) -> _T:
+def run_on_captured_loop(coro: Coroutine[object, None, _T], *, timeout: float | None = None) -> _T:
     """Run coro to completion from a worker thread that has no running loop.
 
     Dispatches onto the captured server loop via run_coroutine_threadsafe so a loop-bound client (Motor/Redis) stays on its own loop; without a captured loop (tests, scripts) a fresh loop is used instead, and a genuinely loop-bound client reached with no capture still fails loud rather than passing silently.

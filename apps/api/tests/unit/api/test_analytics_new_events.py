@@ -21,9 +21,11 @@ from starlette.requests import Request
 
 from app.agents.skills.models import Skill
 from app.models.integration_models import Integration
+from app.models.mail_models import GmailMessageResource
 from app.models.notification.notification_models import NotificationRecord
 from app.models.payment_models import PlanType
 from app.models.todo_models import TodoDocument
+from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import Workflow
 from app.services.analytics_service import AnalyticsEvents
 
@@ -609,7 +611,7 @@ class TestMailNewEvents:
             patch(f"{MAIL}.trash_messages", new_callable=AsyncMock) as m,
             patch(f"{MAIL}.capture_context_event") as mock_capture,
         ):
-            m.return_value = [{"id": "m1"}]
+            m.return_value = [GmailMessageResource(id="m1")]
             resp = await client.post("/api/v1/gmail/trash", json={"message_ids": ["m1"]})
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.EMAIL_TRASHED, {"message_count": 1})
@@ -713,7 +715,7 @@ class TestMailNewEvents:
             patch(f"{MAIL}.untrash_messages", new_callable=AsyncMock) as m,
             patch(f"{MAIL}.capture_context_event") as mock_capture,
         ):
-            m.return_value = [{"id": "m1"}]
+            m.return_value = [GmailMessageResource(id="m1")]
             resp = await client.post("/api/v1/gmail/untrash", json={"message_ids": ["m1"]})
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.EMAIL_UNTRASHED, {"message_count": 1})
@@ -1413,7 +1415,7 @@ class TestPostHogIdentityBinding:
 
     _MW = "app.api.v1.middleware.auth"
 
-    def _request(self, user: dict[str, object] | None) -> Request:
+    def _request(self, user: AuthenticatedUser | None) -> Request:
         from starlette.requests import Request
 
         req = Request({"type": "http", "headers": []})
@@ -1435,7 +1437,7 @@ class TestPostHogIdentityBinding:
             patch(f"{self._MW}.new_context"),
         ):
             mw = PostHogRequestContextMiddleware(app=MagicMock())
-            resp = await mw.dispatch(self._request({"user_id": UID}), call_next)
+            resp = await mw.dispatch(self._request(AuthenticatedUser(user_id=UID)), call_next)
 
         assert resp.status_code == 200
         mock_identify.assert_called_once_with(UID)

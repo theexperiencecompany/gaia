@@ -5,7 +5,9 @@ trimmed account/shared-library voices (app/models/voice_models.py) into the
 catalog-compatible VoiceOption schema used by the voice picker.
 """
 
-from typing import Any
+from dataclasses import dataclass
+
+from pydantic import BaseModel, ConfigDict
 
 from app.constants.voices import ACCENT_TO_COUNTRY, LANGUAGE_NAMES
 from app.models.voice_models import (
@@ -16,17 +18,43 @@ from app.models.voice_models import (
 from app.schemas.voice_schemas import VoiceOption
 
 
-def _verified_language_codes(voice: dict[str, Any]) -> list[str]:
+class ElevenLabsVerifiedLanguage(BaseModel):
+    """One ``verified_languages`` entry of a raw ElevenLabs voice."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    language: str | None = None
+
+
+class ElevenLabsVoiceLanguages(BaseModel):
+    """The verified_languages slice of a RAW ElevenLabs voice object, validated at the boundary."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    verified_languages: list[ElevenLabsVerifiedLanguage] | None = None
+
+
+class ElevenLabsVoiceLabels(BaseModel):
+    """The documented keys of an account voice's free-form labels bag."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    accent: str | None = None
+    gender: str | None = None
+    descriptive: str | None = None
+    use_case: str | None = None
+    language: str | None = None
+
+
+def _verified_language_codes(voice: ElevenLabsVoiceLanguages) -> list[str]:
     """Ordered, deduped ISO codes from a voice's verified_languages.
 
-    Reads the RAW provider voice object, before it is trimmed into an
-    ElevenLabsVoice model — the untyped boundary. ElevenLabs repeats a
-    language once per supporting model, so this collapses to one entry per
-    language, preserving first-seen order.
+    ElevenLabs repeats a language once per supporting model, so this collapses
+    to one entry per language, preserving first-seen order.
     """
     seen: list[str] = []
-    for entry in voice.get("verified_languages") or []:
-        code = str(entry.get("language") or "").lower()
+    for entry in voice.verified_languages or []:
+        code = (entry.language or "").lower()
         if code and code not in seen:
             seen.append(code)
     return seen
@@ -62,23 +90,32 @@ def _split_display_name(raw_name: str) -> tuple[str, str]:
     return name.strip() or raw_name, blurb.strip()
 
 
+@dataclass(frozen=True, slots=True)
+class _VoiceTraits:
+    """The descriptive labels a non-catalog voice carries, wherever ElevenLabs put them."""
+
+    accent: str
+    gender: str
+    descriptive: str
+    use_case: str
+    language_code: str
+
+
 def _build_voice_option(
     voice: ElevenLabsVoice,
+    traits: _VoiceTraits,
     *,
-    accent: str,
-    gender: str,
-    descriptive: str,
-    use_case: str,
-    language_code: str,
     source: str,
     fallback_description: str,
 ) -> VoiceOption:
     """Shape a non-catalog ElevenLabs voice into a catalog-compatible option."""
     name, blurb = _split_display_name(voice.name)
-    accent_label = _normalize_accent(accent)
+    accent_label = _normalize_accent(traits.accent)
+    language_code = traits.language_code
+    gender = traits.gender
     primary = LANGUAGE_NAMES.get(language_code, language_code.upper() or "English")
-    descriptive = descriptive.replace("_", " ")
-    use_case = use_case.replace("_", " ")
+    descriptive = traits.descriptive.replace("_", " ")
+    use_case = traits.use_case.replace("_", " ")
     return VoiceOption(
         voice_id=voice.voice_id,
         name=name,
@@ -95,14 +132,16 @@ def _build_voice_option(
 
 def _map_account_voice(voice: ElevenLabsAccountVoice) -> VoiceOption:
     """Shape a non-catalog account voice (metadata in labels) into an option."""
-    labels = voice.labels
+    labels = ElevenLabsVoiceLabels.model_validate(voice.labels)
     return _build_voice_option(
         voice,
-        accent=str(labels.get("accent") or ""),
-        gender=str(labels.get("gender") or ""),
-        descriptive=str(labels.get("descriptive") or ""),
-        use_case=str(labels.get("use_case") or ""),
-        language_code=str(labels.get("language") or ""),
+        _VoiceTraits(
+            accent=labels.accent or "",
+            gender=labels.gender or "",
+            descriptive=labels.descriptive or "",
+            use_case=labels.use_case or "",
+            language_code=labels.language or "",
+        ),
         source="account",
         fallback_description="Account voice",
     )
@@ -112,11 +151,13 @@ def _map_shared_voice(voice: ElevenLabsSharedVoice) -> VoiceOption:
     """Shape a shared-library voice (metadata at the top level) into an option."""
     return _build_voice_option(
         voice,
-        accent=voice.accent,
-        gender=voice.gender,
-        descriptive=voice.descriptive,
-        use_case=voice.use_case,
-        language_code=voice.language,
+        _VoiceTraits(
+            accent=voice.accent,
+            gender=voice.gender,
+            descriptive=voice.descriptive,
+            use_case=voice.use_case,
+            language_code=voice.language,
+        ),
         source="library",
         fallback_description="Community voice",
     )

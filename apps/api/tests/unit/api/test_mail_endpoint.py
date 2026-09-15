@@ -8,11 +8,15 @@ check_integration_status.  We patch that function to return True so
 the dependency passes without a real Composio/Redis connection.
 """
 
-from unittest.mock import AsyncMock, patch
+from collections.abc import Callable, Iterator
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from fastapi import FastAPI
 from httpx import AsyncClient
 import pytest
 
+from app.agents.prompts.mail_prompts import EMAIL_COMPOSER
+from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.endpoints.mail import _build_gmail_query
 from app.models.mail_models import (
     BulkEmailImportanceSummariesResponse,
@@ -26,7 +30,9 @@ from app.models.mail_models import (
     GmailSearchFilters,
     GmailToolResult,
 )
+from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.services.analytics_service import AnalyticsEvents
+from app.utils.embedding_utils import SimilarityMatch
 
 MAIL_BASE = "/api/v1"
 ANALYTICS_PATCH = "app.api.v1.endpoints.mail.capture_context_event"
@@ -53,17 +59,6 @@ def _noop_analytics():
 pytestmark = [
     pytest.mark.usefixtures("_bypass_integration_check"),
 ]
-
-
-@pytest.fixture(autouse=True)
-async def _bypass_integration_check():
-    """Patch check_integration_status so require_integration("gmail") passes."""
-    with patch(
-        "app.api.v1.dependencies.google_scope_dependencies.check_integration_status",
-        new_callable=AsyncMock,
-        return_value=True,
-    ):
-        yield
 
 
 # ---------------------------------------------------------------------------
@@ -421,6 +416,96 @@ class TestMailAnalytics:
         assert response.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.EMAIL_COMPOSED)
 
+
+class TestAiCompose:
+    @pytest.fixture
+    def compose_as(self, test_app: FastAPI) -> Iterator[Callable[[AuthenticatedUser], None]]:
+        original = test_app.dependency_overrides[get_current_user]
+
+        def _set(user: AuthenticatedUser) -> None:
+            test_app.dependency_overrides[get_current_user] = lambda: user
+
+        yield _set
+        test_app.dependency_overrides[get_current_user] = original
+
+    @patch("app.api.v1.endpoints.mail.log")
+    @patch("app.api.v1.endpoints.mail.ainvoke_structured", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.mail.search_notes_by_similarity", new_callable=AsyncMock)
+    async def test_prompt_carries_the_senders_name_notes_and_learned_style(
+        self,
+        mock_search: AsyncMock,
+        mock_invoke: AsyncMock,
+        mock_log: MagicMock,
+        client: AsyncClient,
+        compose_as: Callable[[AuthenticatedUser], None],
+    ):
+        user_id = "507f1f77bcf86cd799439011"
+        compose_as(
+            AuthenticatedUser(
+                user_id=user_id,
+                name="Ada",
+                onboarding=OnboardingSubdocument(writing_style={"summary": "Terse and warm"}),
+            )
+        )
+        mock_search.return_value = [
+            SimilarityMatch(id="n1", similarity_score=0.1, user_id=user_id, content="Met Bob"),
+            SimilarityMatch(id="n2", similarity_score=0.2, user_id=user_id, content="Bob likes AM"),
+        ]
+        mock_invoke.return_value = {"subject": "Hi", "body": "Hello there"}
+
+        response = await client.post(
+            f"{MAIL_BASE}/mail/ai/compose",
+            json={"prompt": "Write a follow up", "subject": "Catch up", "body": "Draft"},
+        )
+
+        assert response.status_code == 200
+        mock_search.assert_awaited_once_with(input_text="Write a follow up", user_id=user_id)
+        assert mock_invoke.call_args.args[1] == EMAIL_COMPOSER.format(
+            sender_name="Ada",
+            subject="Catch up",
+            body="Draft",
+            writing_style="Professional",
+            content_length="None",
+            clarity_option="None",
+            notes="Met Bob- Bob likes AM",
+            prompt="Write a follow up",
+            learned_writing_style=(
+                "Learned Writing Style (match this tone and voice when composing the email):\n"
+                "  Style: Terse and warm"
+            ),
+        )
+        assert call(user={"id": user_id}) in mock_log.set.call_args_list
+
+    @patch("app.api.v1.endpoints.mail.ainvoke_structured", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.mail.search_notes_by_similarity", new_callable=AsyncMock)
+    async def test_prompt_uses_placeholders_without_a_name_or_notes(
+        self,
+        mock_search: AsyncMock,
+        mock_invoke: AsyncMock,
+        client: AsyncClient,
+        compose_as: Callable[[AuthenticatedUser], None],
+    ):
+        compose_as(AuthenticatedUser(user_id="507f1f77bcf86cd799439011", name=None))
+        mock_search.return_value = []
+        mock_invoke.return_value = {"subject": "Hi", "body": "Hello there"}
+
+        response = await client.post(
+            f"{MAIL_BASE}/mail/ai/compose", json={"prompt": "Write a follow up"}
+        )
+
+        assert response.status_code == 200
+        assert mock_invoke.call_args.args[1] == EMAIL_COMPOSER.format(
+            sender_name="none",
+            subject="empty",
+            body="empty",
+            writing_style="Professional",
+            content_length="None",
+            clarity_option="None",
+            notes="No relevant notes found.",
+            prompt="Write a follow up",
+            learned_writing_style="",
+        )
+
     @patch(
         "app.api.v1.endpoints.mail.send_email",
         new_callable=AsyncMock,
@@ -600,7 +685,7 @@ class TestTrashEmails:
         new_callable=AsyncMock,
     )
     async def test_trash_returns_200(self, mock_trash: AsyncMock, client: AsyncClient):
-        mock_trash.return_value = [{"id": "msg-1"}]
+        mock_trash.return_value = [GmailMessageResource(id="msg-1")]
         response = await client.post(
             f"{MAIL_BASE}/gmail/trash",
             json={"message_ids": ["msg-1"]},
@@ -621,7 +706,7 @@ class TestUntrashEmails:
         new_callable=AsyncMock,
     )
     async def test_untrash_returns_200(self, mock_untrash: AsyncMock, client: AsyncClient):
-        mock_untrash.return_value = [{"id": "msg-1"}]
+        mock_untrash.return_value = [GmailMessageResource(id="msg-1")]
         response = await client.post(
             f"{MAIL_BASE}/gmail/untrash",
             json={"message_ids": ["msg-1"]},
@@ -855,6 +940,7 @@ class TestCreateDraft:
         assert response.status_code == 200
         data = response.json()
         assert data["draft_id"] == "draft-001"
+        assert data["message_id"] == "msg-draft-001"
         assert data["status"] == "Draft created successfully"
 
     async def test_create_draft_missing_to_returns_422(self, client: AsyncClient):

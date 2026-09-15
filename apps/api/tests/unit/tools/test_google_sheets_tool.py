@@ -21,7 +21,6 @@ from app.agents.tools.integrations.google_sheets_tool import (
     NEW_FORMAT_RULE_INDEX,
     RECENT_SPREADSHEETS_PAGE_SIZE,
     SHEETS_TOOLKIT,
-    _user_id,
     register_google_sheets_custom_tools,
 )
 from app.models.common_models import GatherContextInput
@@ -195,23 +194,27 @@ class TestRegistration:
 
 
 # ---------------------------------------------------------------------------
-# _user_id
+# auth credentials
 # ---------------------------------------------------------------------------
 
 
 class TestUserId:
-    def test_returns_the_credential_user_id(self) -> None:
-        assert _user_id({"user_id": "abc"}) == "abc"
+    def test_requests_are_sent_as_the_credential_user(self, tools: Any, api: Any) -> None:
+        tools["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), MagicMock(), {"user_id": "abc"})
+        assert api.calls[0].user_id == "abc"
 
     @pytest.mark.parametrize(
         "credentials",
         [{}, {"user_id": ""}, {"user_id": None}, {"user_id": 42}, {"userId": "abc"}],
     )
-    def test_unusable_credentials_are_rejected(self, credentials: dict[str, Any]) -> None:
+    def test_unusable_credentials_are_rejected(
+        self, tools: Any, api: Any, credentials: dict[str, Any]
+    ) -> None:
         # Falling through with a blank/None user id would send the request as
         # nobody and surface as a confusing 500 deep inside the proxy.
         with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
-            _user_id(credentials)
+            tools["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), MagicMock(), credentials)
+        assert api.calls == []
 
 
 # ---------------------------------------------------------------------------
@@ -617,7 +620,7 @@ class TestSetDataValidation:
         }
 
     def test_dropdown_list_requires_values(self, tools: Any, api: Any) -> None:
-        with pytest.raises(ValueError, match="values required for dropdown_list"):
+        with pytest.raises(ValueError, match=r"^values required for dropdown_list$"):
             _call(tools, "CUSTOM_SET_DATA_VALIDATION", _validation(values=None))
 
     def test_dropdown_range_references_the_source_as_a_formula(self, tools: Any, api: Any) -> None:
@@ -633,7 +636,7 @@ class TestSetDataValidation:
         }
 
     def test_dropdown_range_requires_a_source_range(self, tools: Any, api: Any) -> None:
-        with pytest.raises(ValueError, match="source_range required for dropdown_range"):
+        with pytest.raises(ValueError, match=r"^source_range required for dropdown_range$"):
             _call(
                 tools, "CUSTOM_SET_DATA_VALIDATION", _validation(validation_type="dropdown_range")
             )
@@ -700,7 +703,7 @@ class TestSetDataValidation:
         }
 
     def test_custom_formula_requires_a_formula(self, tools: Any, api: Any) -> None:
-        with pytest.raises(ValueError, match="formula required for custom_formula"):
+        with pytest.raises(ValueError, match=r"^formula required for custom_formula$"):
             _call(
                 tools, "CUSTOM_SET_DATA_VALIDATION", _validation(validation_type="custom_formula")
             )
@@ -1102,6 +1105,34 @@ class TestCreateChart:
         assert len(basic["series"]) == 1
         source = basic["series"][0]["series"]["sourceRange"]["sources"][0]
         assert (source["startColumnIndex"], source["endColumnIndex"]) == (1, 2)
+        assert source["sheetId"] == 111
+
+    @pytest.mark.parametrize(
+        ("data_range", "domain", "series"),
+        [
+            ("C1:E10", (2, 3), [(3, 4), (4, 5)]),
+            ("1:C10", (None, 1), [(1, 2), (2, 3)]),
+            ("C1:10", (2, None), [(2, None)]),
+        ],
+        ids=["offset-from-column-a", "open-start-column", "open-end-column"],
+    )
+    def test_domain_and_series_columns_follow_the_data_range(
+        self,
+        tools: Any,
+        api: Any,
+        data_range: str,
+        domain: tuple[int | None, int | None],
+        series: list[tuple[int | None, int | None]],
+    ) -> None:
+        _call(tools, "CUSTOM_CREATE_CHART", _chart(data_range=data_range))
+
+        def bounds(data: dict[str, Any]) -> tuple[int | None, int | None]:
+            source = data["sourceRange"]["sources"][0]
+            return source.get("startColumnIndex"), source.get("endColumnIndex")
+
+        basic = _chart_request(api)["spec"]["basicChart"]
+        assert bounds(basic["domains"][0]["domain"]) == domain
+        assert [bounds(s["series"]) for s in basic["series"]] == series
 
     # BUG: a whole-column data range collapsed to cell A1, so a chart over
     # "A:C" was built from a single cell.
@@ -1369,3 +1400,35 @@ class TestGatherContext:
         # is not hidden by the best-effort handling above.
         with pytest.raises(ValueError, match="Missing user_id"):
             tools["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), MagicMock(), {})
+
+
+# ---------------------------------------------------------------------------
+# Shared write-tool contract
+# ---------------------------------------------------------------------------
+
+_WRITE_TOOLS = [
+    ("CUSTOM_CREATE_PIVOT_TABLE", _pivot),
+    ("CUSTOM_SET_DATA_VALIDATION", _validation),
+    ("CUSTOM_ADD_CONDITIONAL_FORMAT", _format),
+    ("CUSTOM_CREATE_CHART", _chart),
+]
+
+
+@pytest.mark.parametrize(("name", "build"), _WRITE_TOOLS, ids=[n for n, _ in _WRITE_TOOLS])
+class TestWriteTools:
+    def test_every_request_is_sent_as_the_credential_user(
+        self, tools: Any, api: Any, name: str, build: Any
+    ) -> None:
+        _call(tools, name, build())
+
+        assert api.batch_bodies
+        assert {c.user_id for c in api.calls} == {AUTH["user_id"]}
+
+    def test_batch_update_targets_the_requested_spreadsheet(
+        self, tools: Any, api: Any, name: str, build: Any
+    ) -> None:
+        _call(tools, name, build())
+
+        assert [c.endpoint for c in api.calls if c.endpoint.endswith(":batchUpdate")] == [
+            f"{SHEETS_API_BASE}/{SPREADSHEET}:batchUpdate"
+        ]

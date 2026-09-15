@@ -1,13 +1,22 @@
 """Unit tests for app.utils.auth_utils — WorkOS session authentication."""
 
-import builtins
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from starlette.requests import Request
 
-from app.models.user_models import UserDocument
-from app.utils.auth_utils import authenticate_workos_session
+from app.constants.auth import DEV_USER_HEADER
+from app.models.first_steps_models import FirstStepsState
+from app.models.user_models import OnboardingSubdocument, UserDocument
+from app.utils.auth_utils import (
+    authenticate_workos_session,
+    build_user_context,
+    load_user_context,
+    resolve_bot_user,
+    resolve_dev_bypass_user,
+)
 
 
 def _as_user(db_doc: dict) -> UserDocument:
@@ -65,13 +74,7 @@ def _make_refresh_result(
     sealed_session: str | None = None,
     reason: str | None = None,
 ) -> MagicMock:
-    """Create a mock refresh result with a controlled __dict__.
-
-    MagicMock stores its attributes in __dict__, so setting mock attributes
-    before overriding __dict__ is lost.  Instead we use a SimpleNamespace-like
-    approach: build a plain object whose __dict__ contains exactly what the
-    production code reads via refresh_dict = refresh_result.__dict__.
-    """
+    """Create a fake refresh result carrying exactly the attributes the production code reads."""
 
     class _RefreshResult:
         pass
@@ -150,12 +153,11 @@ class TestAuthenticateWorkosSession:
                 session_token="sealed_tok", workos_client=client
             )
 
-        assert user_info["auth_provider"] == "workos"
-        assert user_info["email"] == "alice@example.com"
-        assert user_info["name"] == "Alice Smith"
-        assert user_info["user_id"] == str(db_doc["_id"])
+        assert user_info.auth_provider == "workos"
+        assert user_info.email == "alice@example.com"
+        assert user_info.name == "Alice Smith"
+        assert user_info.user_id == str(db_doc["_id"])
         assert new_session is None
-        assert "_id" not in user_info
 
     async def test_successful_auth_user_info_structure(self) -> None:
         """Verify the full structure of user_info: auth_provider, user_id, email, plus db fields."""
@@ -177,13 +179,12 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info["auth_provider"] == "workos"
-        assert user_info["user_id"] == "aabbccdd11223344"
-        assert user_info["email"] == "bob@test.io"
-        assert user_info["name"] == "Bob Jones"
-        assert user_info["timezone"] == "Europe/London"
-        assert user_info["picture"] == "https://example.com/avatar.png"
-        assert "_id" not in user_info
+        assert user_info.auth_provider == "workos"
+        assert user_info.user_id == "aabbccdd11223344"
+        assert user_info.email == "bob@test.io"
+        assert user_info.name == "Bob Jones"
+        assert user_info.timezone == "Europe/London"
+        assert user_info.picture == "https://example.com/avatar.png"
 
     # -- Auth fails, refresh succeeds --------------------------------------
 
@@ -214,10 +215,9 @@ class TestAuthenticateWorkosSession:
                 session_token="old_tok", workos_client=client
             )
 
-        assert user_info["auth_provider"] == "workos"
-        assert user_info["email"] == "alice@example.com"
+        assert user_info.auth_provider == "workos"
+        assert user_info.email == "alice@example.com"
         assert new_session == "new_sealed_session_token"
-        assert "_id" not in user_info
 
     # -- Auth fails, refresh also fails ------------------------------------
 
@@ -237,7 +237,7 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info == {}
+        assert user_info is None
         assert new_session is None
 
     # -- Auth fails, refresh raises exception ------------------------------
@@ -257,45 +257,10 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info == {}
+        assert user_info is None
         assert new_session is None
 
     # -- Refresh result has no __dict__ ------------------------------------
-
-    async def test_refresh_result_no_dict_returns_empty(self) -> None:
-        """Patches builtins.hasattr to fake a missing __dict__, since real objects always have one."""
-        auth_response = _make_auth_response(authenticated=False)
-        refresh_result = MagicMock()
-        refresh_result.authenticated = True
-
-        session = _make_session(auth_response, refresh_result=refresh_result)
-        client = _make_workos_client(session)
-
-        original_hasattr = builtins.hasattr
-
-        def patched_hasattr(obj: Any, name: str) -> bool:
-            if obj is refresh_result and name == "__dict__":
-                return False
-            return original_hasattr(obj, name)
-
-        with (
-            patch(_PATCH_LOG) as mock_log,
-            patch(_PATCH_SETTINGS) as mock_settings,
-            patch.object(builtins, "hasattr", side_effect=patched_hasattr),
-        ):
-            mock_settings.WORKOS_COOKIE_PASSWORD = (
-                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
-            )
-
-            user_info, new_session = await authenticate_workos_session(
-                session_token="tok", workos_client=client
-            )
-
-        assert user_info == {}
-        assert new_session is None
-        mock_log.error.assert_called_once_with(
-            "[AGENT] Refresh result doesn't have expected structure"
-        )
 
     # -- workos_user is None after auth ------------------------------------
 
@@ -310,7 +275,7 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info == {}
+        assert user_info is None
         assert new_session is None
         mock_log.error.assert_called_once_with("[AGENT] Invalid user data from WorkOS")
 
@@ -334,7 +299,7 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info == {}
+        assert user_info is None
         assert new_session == "refreshed_session_tok"
         mock_log.error.assert_any_call(
             "[AGENT] Refresh successful but no user data in refresh result"
@@ -356,7 +321,7 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info == {}
+        assert user_info is None
         assert new_session is None
         mock_log.warning.assert_called_once()
         assert mock_log.warning.call_args.kwargs["user_email"] == "unknown@example.com"
@@ -387,7 +352,7 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info == {}
+        assert user_info is None
         assert new_session == "refreshed_tok"
 
     # -- Overall exception -------------------------------------------------
@@ -408,7 +373,7 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info == {}
+        assert user_info is None
         assert new_session is None
         mock_log.error.assert_called_once()
         assert mock_log.error.call_args.kwargs["error"] == "connection refused"
@@ -429,7 +394,7 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info == {}
+        assert user_info is None
         assert new_session is None
 
     # -- Database query exception ------------------------------------------
@@ -448,7 +413,7 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info == {}
+        assert user_info is None
         assert new_session is None
         mock_log.error.assert_called_once()
         assert mock_log.error.call_args.kwargs["error"] == "MongoDB connection lost"
@@ -479,7 +444,7 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info == {}
+        assert user_info is None
         assert new_session == "fresh_tok"
 
     # -- Provided workos_client vs creating new one ------------------------
@@ -550,8 +515,8 @@ class TestAuthenticateWorkosSession:
 
     # -- user_info merges db data with auth_provider and user_id -----------
 
-    async def test_user_info_includes_all_db_fields(self) -> None:
-        """All fields from the db document are merged into user_info (except _id)."""
+    async def test_user_info_carries_the_declared_db_fields_only(self) -> None:
+        """An undeclared historical key on the row does not reach user_info (closed model)."""
         workos_user = _make_workos_user()
         auth_response = _make_auth_response(authenticated=True, user=workos_user)
         session = _make_session(auth_response)
@@ -563,7 +528,7 @@ class TestAuthenticateWorkosSession:
             "timezone": "UTC",
             "picture": None,
             "custom_field": "custom_value",
-            "preferences": {"theme": "dark"},
+            "hil_preferences": {"theme": "dark"},
         }
 
         with patch(_PATCH_USER_REPO) as mock_col, patch(_PATCH_LOG):
@@ -573,22 +538,20 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info["custom_field"] == "custom_value"
-        assert user_info["preferences"] == {"theme": "dark"}
-        assert user_info["user_id"] == "mongo_id_abc"
-        assert "_id" not in user_info
+        assert user_info is not None
+        assert user_info.hil_preferences == {"theme": "dark"}
+        assert user_info.user_id == "mongo_id_abc"
+        assert user_info.picture is None
+        assert "custom_field" not in user_info.model_dump()
 
-    # -- Refresh result __dict__ edge cases --------------------------------
+    # -- Refresh result edge cases -----------------------------------------
 
-    async def test_refresh_dict_missing_user_key(self) -> None:
-        """When refresh __dict__ has no 'user' key, return ({}, new_session)."""
+    async def test_refresh_result_without_a_user(self) -> None:
+        """A refresh that authenticated but carries no user yields (None, new_session)."""
         auth_response = _make_auth_response(authenticated=False)
-        refresh_result = MagicMock()
-        refresh_result.authenticated = True
-        refresh_result.__dict__ = {
-            "authenticated": True,
-            "sealed_session": "some_session",
-        }
+        refresh_result = _make_refresh_result(
+            authenticated=True, user=None, sealed_session="some_session"
+        )
 
         session = _make_session(auth_response, refresh_result=refresh_result)
         client = _make_workos_client(session)
@@ -602,22 +565,17 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info == {}
+        assert user_info is None
         assert new_session == "some_session"
         mock_log.error.assert_called_once_with(
             "[AGENT] Refresh successful but no user data in refresh result"
         )
 
-    async def test_refresh_dict_missing_sealed_session(self) -> None:
-        """When refresh __dict__ has user but no sealed_session, new_session is None."""
+    async def test_refresh_result_without_a_sealed_session(self) -> None:
+        """A refresh carrying a user but no sealed_session yields new_session None."""
         workos_user = _make_workos_user()
         auth_response = _make_auth_response(authenticated=False)
-        refresh_result = MagicMock()
-        refresh_result.authenticated = True
-        refresh_result.__dict__ = {
-            "authenticated": True,
-            "user": workos_user,
-        }
+        refresh_result = _make_refresh_result(authenticated=True, user=workos_user)
 
         session = _make_session(auth_response, refresh_result=refresh_result)
         client = _make_workos_client(session)
@@ -637,7 +595,7 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
-        assert user_info["email"] == "alice@example.com"
+        assert user_info.email == "alice@example.com"
         assert new_session is None
 
     # -- Verify logging calls ----------------------------------------------
@@ -734,4 +692,217 @@ class TestAuthenticateWorkosSession:
         client.user_management.load_sealed_session.assert_awaited_once_with(
             sealed_session="my_sealed_token",
             cookie_password="pw_123",  # pragma: allowlist secret
+        )
+
+
+# ---------------------------------------------------------------------------
+# build_user_context / resolve_bot_user / load_user_context
+# ---------------------------------------------------------------------------
+
+
+_STAMP = datetime(2024, 5, 1, tzinfo=UTC)
+
+# One distinct non-default sample per declared field type, matched by the
+# first type name found in the field's annotation (order matters: the nested
+# models are named before the primitives their annotations also mention).
+_SAMPLE_BY_TYPE: tuple[tuple[str, object], ...] = (
+    ("OnboardingSubdocument", OnboardingSubdocument(focus="ops")),
+    ("FirstStepsState", FirstStepsState(collapsed=True, collapsed_at=_STAMP)),
+    ("datetime", _STAMP),
+    ("bool", True),
+    ("int", 3),
+    ("list", ["item"]),
+    ("dict", {"k": "v"}),
+)
+
+
+def _sample_values() -> dict[str, object]:
+    """Return a non-default value for every declared UserDocument field but id."""
+    return {
+        name: next(
+            (value for type_name, value in _SAMPLE_BY_TYPE if type_name in str(field.annotation)),
+            f"{name}-value",
+        )
+        for name, field in UserDocument.model_fields.items()
+        if name != "id"
+    }
+
+
+def _every_field_document() -> tuple[UserDocument, dict[str, object]]:
+    """Return a document with a distinct non-default value in every declared field."""
+    values = _sample_values()
+    return UserDocument(id="64abc123def4567890abcdef", **values), values
+
+
+class TestBuildUserContext:
+    def test_every_document_field_is_copied_verbatim(self) -> None:
+        doc, values = _every_field_document()
+
+        user = build_user_context(doc, auth_provider="workos")
+
+        assert user.user_id == "64abc123def4567890abcdef"
+        assert user.auth_provider == "workos"
+        for name, value in values.items():
+            assert getattr(user, name) == value, name
+
+    def test_a_plain_session_sets_no_path_flag(self) -> None:
+        doc, _ = _every_field_document()
+
+        user = build_user_context(doc, auth_provider="workos")
+
+        assert (user.impersonated, user.bot_authenticated, user.dev_bypass) == (False, False, False)
+
+    @pytest.mark.parametrize("flag", ["impersonated", "bot_authenticated", "dev_bypass"])
+    def test_each_path_flag_is_carried_alone(self, flag: str) -> None:
+        doc, _ = _every_field_document()
+
+        user = build_user_context(doc, auth_provider="workos", **{flag: True})
+
+        flags = {
+            "impersonated": user.impersonated,
+            "bot_authenticated": user.bot_authenticated,
+            "dev_bypass": user.dev_bypass,
+        }
+        assert flags == {name: name == flag for name in flags}
+
+
+@pytest.mark.asyncio
+class TestResolveBotUser:
+    async def test_a_linked_account_is_a_bot_authenticated_context(self) -> None:
+        doc, _ = _every_field_document()
+        with patch(_PATCH_USER_REPO) as repo:
+            repo.get_by_platform_id = AsyncMock(return_value=doc)
+
+            user = await resolve_bot_user("telegram", "tg-1")
+
+        repo.get_by_platform_id.assert_awaited_once_with("telegram", "tg-1")
+        assert user is not None
+        assert user.user_id == doc.id
+        assert user.auth_provider == "bot:telegram"
+        assert (user.bot_authenticated, user.impersonated, user.dev_bypass) == (True, False, False)
+
+    async def test_an_unlinked_account_is_none(self) -> None:
+        with patch(_PATCH_USER_REPO) as repo:
+            repo.get_by_platform_id = AsyncMock(return_value=None)
+
+            assert await resolve_bot_user("telegram", "tg-1") is None
+
+
+@pytest.mark.asyncio
+class TestResolveDevBypassUser:
+    """Precedence: X-Dev-User header, then the dev_bypass_user cookie, then the configured default."""
+
+    @staticmethod
+    async def _resolve(
+        headers: dict[str, str], cookies: dict[str, str], default: str | None
+    ) -> str:
+        doc, _ = _every_field_document()
+        raw_headers = [(name.lower().encode(), value.encode()) for name, value in headers.items()]
+        if cookies:
+            cookie = "; ".join(f"{name}={value}" for name, value in cookies.items())
+            raw_headers.append((b"cookie", cookie.encode()))
+        connection = Request({"type": "http", "headers": raw_headers})
+        with patch(_PATCH_SETTINGS) as mock_settings, patch(_PATCH_USER_REPO) as repo:
+            mock_settings.DEV_AUTH_BYPASS_EMAIL = default
+            repo.get_by_email = AsyncMock(return_value=doc)
+
+            email, user = await resolve_dev_bypass_user(connection)
+
+        repo.get_by_email.assert_awaited_once_with(email)
+        assert user is doc
+        return email
+
+    async def test_the_header_outranks_the_cookie_and_the_default(self) -> None:
+        email = await self._resolve(
+            {DEV_USER_HEADER: "header@example.com"},
+            {"dev_bypass_user": "cookie@example.com"},
+            "default@example.com",
+        )
+
+        assert email == "header@example.com"
+
+    async def test_the_cookie_outranks_the_default(self) -> None:
+        email = await self._resolve({}, {"dev_bypass_user": "cookie@example.com"}, "default@e.com")
+
+        assert email == "cookie@example.com"
+
+    async def test_the_configured_default_is_the_last_resort(self) -> None:
+        email = await self._resolve({}, {}, "default@example.com")
+
+        assert email == "default@example.com"
+
+    async def test_nothing_configured_resolves_to_the_empty_email(self) -> None:
+        assert await self._resolve({}, {}, None) == ""
+
+
+@pytest.mark.asyncio
+class TestLoadUserContext:
+    async def test_a_known_user_is_a_context_no_auth_path_produced(self) -> None:
+        doc, values = _every_field_document()
+        with patch(_PATCH_USER_REPO) as repo:
+            repo.get = AsyncMock(return_value=doc)
+
+            user = await load_user_context(doc.id)
+
+        repo.get.assert_awaited_once_with(doc.id)
+        assert user is not None
+        assert user.user_id == doc.id
+        assert user.auth_provider is None
+        assert user.timezone == values["timezone"]
+        assert (user.impersonated, user.bot_authenticated, user.dev_bypass) == (False, False, False)
+
+    async def test_an_unknown_user_is_none(self) -> None:
+        with patch(_PATCH_USER_REPO) as repo:
+            repo.get = AsyncMock(return_value=None)
+
+            assert await load_user_context("missing") is None
+
+
+@pytest.mark.asyncio
+class TestAuthenticateWorkosSessionFailureLogs:
+    async def test_a_refresh_that_fails_logs_its_reason(self) -> None:
+        auth_response = _make_auth_response(authenticated=False)
+        refresh_result = _make_refresh_result(authenticated=False, reason="invalid_grant")
+        client = _make_workos_client(_make_session(auth_response, refresh_result=refresh_result))
+
+        with patch(_PATCH_LOG) as mock_log, patch(_PATCH_SETTINGS):
+            result = await authenticate_workos_session(session_token="tok", workos_client=client)
+
+        assert result == (None, None)
+        mock_log.warning.assert_called_once_with(
+            "[AGENT] Authentication failed even after refresh with reason",
+            reason="invalid_grant",
+        )
+
+    async def test_a_user_lookup_error_is_logged_and_keeps_the_rotated_session(self) -> None:
+        auth_response = _make_auth_response(authenticated=False)
+        refresh_result = _make_refresh_result(
+            authenticated=True, user=_make_workos_user(), sealed_session="rotated"
+        )
+        client = _make_workos_client(_make_session(auth_response, refresh_result=refresh_result))
+
+        with patch(_PATCH_USER_REPO) as repo, patch(_PATCH_LOG) as mock_log, patch(_PATCH_SETTINGS):
+            repo.get_by_email = AsyncMock(side_effect=RuntimeError("mongo down"))
+
+            result = await authenticate_workos_session(session_token="tok", workos_client=client)
+
+        assert result == (None, "rotated")
+        mock_log.error.assert_called_once_with(
+            "[AGENT] Error processing user data",
+            error="mongo down",
+            error_type="RuntimeError",
+        )
+
+    async def test_a_workos_failure_is_logged_with_its_type(self) -> None:
+        client = MagicMock()
+        client.user_management.load_sealed_session = AsyncMock(side_effect=ValueError("bad seal"))
+
+        with patch(_PATCH_LOG) as mock_log, patch(_PATCH_SETTINGS):
+            result = await authenticate_workos_session(session_token="tok", workos_client=client)
+
+        assert result == (None, None)
+        mock_log.error.assert_called_once_with(
+            "[AGENT] Error in authenticate_workos_session",
+            error="bad seal",
+            error_type="ValueError",
         )

@@ -37,7 +37,7 @@ async def upload_file_endpoint(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> FileData:
     """Upload a file, persist metadata, and generate embeddings for images."""
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required."

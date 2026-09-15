@@ -16,6 +16,7 @@ import pytest
 
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.stream import run_chat_stream_background
+from tests.factories import make_authenticated_user
 
 
 def _fake_stream(*chunks):
@@ -72,7 +73,7 @@ class TestChatPipelineReal:
             await run_chat_stream_background(
                 stream_id=f"stream_{ObjectId()}",
                 body=body,
-                user={"user_id": "pipe-user-1"},
+                user=make_authenticated_user(user_id="pipe-user-1"),
                 conversation_id=conv_id,
             )
 
@@ -117,7 +118,7 @@ class TestChatPipelineReal:
             await run_chat_stream_background(
                 stream_id=stream_id,
                 body=body,
-                user={"user_id": "pipe-user-3"},
+                user=make_authenticated_user(user_id="pipe-user-3"),
                 conversation_id=conv_id,
             )
 
@@ -151,7 +152,7 @@ class TestChatPipelineReal:
             await run_chat_stream_background(
                 stream_id=stream_id,
                 body=body,
-                user={"user_id": "pipe-user-4"},
+                user=make_authenticated_user(user_id="pipe-user-4"),
                 conversation_id=conv_id,
             )
 

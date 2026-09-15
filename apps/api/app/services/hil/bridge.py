@@ -14,11 +14,12 @@ where get_stream_writer is unavailable — so this dual write, keyed purely by
 stream_id, is what makes the card work at every nesting depth.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
 import json
-from typing import Any, cast
+from typing import cast
 
 from app.agents.core.background.session import get_session
 from app.constants.cache import HIL_DECLINED_PREFIX
@@ -183,7 +184,7 @@ async def publish_auto_approval(
 
 
 async def remember_declined_call(
-    stream_id: str, tool_name: str, args: dict[str, Any], feedback: str | None
+    stream_id: str, tool_name: str, args: Mapping[str, object], feedback: str | None
 ) -> None:
     """Record that the user declined this exact call for the rest of the turn."""
     if not redis_cache.redis:
@@ -197,7 +198,7 @@ async def remember_declined_call(
 
 
 async def recall_declined_call(
-    stream_id: str, tool_name: str, args: dict[str, Any]
+    stream_id: str, tool_name: str, args: Mapping[str, object]
 ) -> ApprovalOutcome | None:
     """Return the prior decline for this exact call in this turn, if any.
 
@@ -209,11 +210,11 @@ async def recall_declined_call(
     if not raw:
         return None
     # Correct by construction: the only writer is ``remember_declined_call`` above.
-    record = cast(DeclinedCallRecord, raw)
+    record: DeclinedCallRecord = cast(DeclinedCallRecord, raw)
     return ApprovalOutcome(status=HILApprovalStatus.DENIED, feedback=record.get("feedback"))
 
 
-def build_summary(tool_name: str, args: dict[str, Any], integration_name: str | None) -> str:
+def build_summary(tool_name: str, args: Mapping[str, object], integration_name: str | None) -> str:
     """Deterministic one-line summary of a gated call (no LLM in the hot path)."""
     label = tool_name.replace("_", " ").strip().capitalize()
     if integration_name:
@@ -222,7 +223,7 @@ def build_summary(tool_name: str, args: dict[str, Any], integration_name: str | 
     return f"{label} — {', '.join(parts)}" if parts else label
 
 
-def build_action_detail(summary: str, args: dict[str, Any]) -> str:
+def build_action_detail(summary: str, args: Mapping[str, object]) -> str:
     """Richer rendering of a gated call for the conversational classifier.
 
     Adds every argument up to a bound (non-scalars as compact JSON) so the
@@ -305,7 +306,7 @@ def _approval_entry(
     )
 
 
-def _summary_arg_parts(args: dict[str, Any]) -> list[str]:
+def _summary_arg_parts(args: Mapping[str, object]) -> list[str]:
     """Build a few short key: value scalars for the card's one-line summary."""
     parts: list[str] = []
     for key, value in (args or {}).items():
@@ -316,11 +317,11 @@ def _summary_arg_parts(args: dict[str, Any]) -> list[str]:
     return parts
 
 
-def _declined_key(stream_id: str, tool_name: str, args: dict[str, Any]) -> str:
+def _declined_key(stream_id: str, tool_name: str, args: Mapping[str, object]) -> str:
     return f"{HIL_DECLINED_PREFIX}{stream_id}:{tool_name}:{_args_hash(args)}"
 
 
-def _args_hash(args: dict[str, Any]) -> str:
+def _args_hash(args: Mapping[str, object]) -> str:
     # md5 over the canonical args — a cache key, not a security boundary.
     payload = json.dumps(args or {}, sort_keys=True, default=str)
     return hashlib.md5(payload.encode(), usedforsecurity=False).hexdigest()  # nosec B324

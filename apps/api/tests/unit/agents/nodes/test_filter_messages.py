@@ -171,10 +171,9 @@ class TestFilterMessages:
         )
 
     async def test_node_emits_latency_span_labelled_by_agent(self):
-        """ensure_config relocates top-level agent_name into configurable; the label survives it."""
+        """The span is labelled from configurable, where ensure_config folds agent_name before a node runs."""
         config = {
-            "agent_name": "node-test-agent",
-            "configurable": {"user_id": "u1", "thread_id": "t1"},
+            "configurable": {"user_id": "u1", "thread_id": "t1", "agent_name": "node-test-agent"},
         }
         before = (
             REGISTRY.get_sample_value(
@@ -203,8 +202,7 @@ class TestFilterMessages:
         # record 10.5, so this pins the direction of the subtraction, not just that
         # an observation happened.
         config = {
-            "agent_name": "span-test-agent",
-            "configurable": {"user_id": "u1", "thread_id": "t1"},
+            "configurable": {"user_id": "u1", "thread_id": "t1", "agent_name": "span-test-agent"},
         }
         labels = {"node": "filter_messages", "agent": "span-test-agent"}
         before = REGISTRY.get_sample_value("graph_node_seconds_sum", labels) or 0.0

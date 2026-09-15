@@ -39,7 +39,7 @@ async def post_approval_decision(
     :class:`ApprovalRequestForbiddenError` (403) — both ``AppError`` subclasses — so
     late/duplicate or cross-user deliveries can't double-resolve a request.
     """
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required")
     log.set(user={"id": user_id}, hil={"approval_id": approval_id, "decision": payload.decision})
@@ -66,7 +66,7 @@ async def post_batch_decision(
     rest. Only the first resolvable decision dispatches the paused executor; the
     join round it wakes collects the remaining decisions durably.
     """
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required")
     log.set(
@@ -94,8 +94,8 @@ async def get_preferences(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> HILPreferencesResponse:
     """Return the current user's HIL approval preferences."""
-    log.set(user={"id": user["user_id"]}, hil={"operation": "get_preferences"})
-    prefs = await get_hil_preferences(user["user_id"])
+    log.set(user={"id": user.user_id}, hil={"operation": "get_preferences"})
+    prefs = await get_hil_preferences(user.user_id)
     return HILPreferencesResponse(**prefs.model_dump())
 
 
@@ -105,9 +105,9 @@ async def put_preferences(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> HILPreferencesResponse:
     """Apply a partial update to the current user's HIL preferences."""
-    log.set(user={"id": user["user_id"]}, hil={"operation": "update_preferences"})
+    log.set(user={"id": user.user_id}, hil={"operation": "update_preferences"})
     prefs = await update_hil_preferences(
-        user["user_id"],
+        user.user_id,
         mode=payload.mode,
         tool_overrides=payload.tool_overrides,
     )
@@ -122,8 +122,8 @@ async def set_tool_approval(
 ) -> HILPreferencesResponse:
     """Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override."""
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user.user_id},
         hil={"operation": "set_tool_override", "tool": tool_name, "ask": payload.ask},
     )
-    prefs = await set_tool_override(user["user_id"], tool_name, payload.ask)
+    prefs = await set_tool_override(user.user_id, tool_name, payload.ask)
     return HILPreferencesResponse(**prefs.model_dump())

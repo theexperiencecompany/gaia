@@ -11,11 +11,13 @@ loses its working icon to a broken or missing one.
 """
 
 import contextlib
-from typing import Literal, TypedDict, cast
+from dataclasses import dataclass
+from typing import Literal, cast
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 import httpx
+from pydantic import BaseModel, ConfigDict
 import tldextract
 
 from app.constants.cache import FAVICON_CACHE_TTL
@@ -26,12 +28,30 @@ from shared.py.wide_events import log
 IconFormat = Literal["png", "svg", "ico", "other"]
 
 
-class IconCandidate(TypedDict):
+@dataclass(slots=True, frozen=True)
+class IconCandidate:
     """One <link rel="icon"> entry, ranked by format then declared size."""
 
     href: str
     size: int
     format: IconFormat
+
+
+class _SmitheryServer(BaseModel):
+    """The Smithery registry entry, read only for its icon."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    iconUrl: object = None
+
+
+class _IconLinkAttrs(BaseModel):
+    """The attributes of a ``<link rel="icon">`` tag the ranking reads."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    href: str | None = None
+    sizes: str = ""
 
 
 # HTTP client settings
@@ -105,7 +125,7 @@ async def _fetch_smithery_icon(server_url: str) -> str | None:
             )
             if response.status_code != 200:
                 return None
-            icon_url = response.json().get("iconUrl")
+            icon_url = _SmitheryServer.model_validate(response.json()).iconUrl
             return icon_url if isinstance(icon_url, str) and icon_url else None
     except Exception as e:
         log.debug(
@@ -151,7 +171,8 @@ def _parse_icons_from_html(html: str, base_url: str) -> list[IconCandidate]:
 
     # Find all link tags with rel containing "icon"
     for link in soup.find_all("link", rel=lambda x: x and "icon" in x.lower()):
-        href = link.get("href")
+        attrs = _IconLinkAttrs.model_validate(link.attrs)
+        href = attrs.href
         if not href:
             continue
 
@@ -159,8 +180,7 @@ def _parse_icons_from_html(html: str, base_url: str) -> list[IconCandidate]:
         if not href:
             continue
 
-        sizes = link.get("sizes", "")
-        size = _parse_favicon_size(sizes)
+        size = _parse_favicon_size(attrs.sizes)
 
         href_lower = href.lower()
         fmt: IconFormat
@@ -173,7 +193,7 @@ def _parse_icons_from_html(html: str, base_url: str) -> list[IconCandidate]:
         else:
             fmt = "other"
 
-        icons.append({"href": href, "size": size, "format": fmt})
+        icons.append(IconCandidate(href=href, size=size, format=fmt))
 
     return icons
 
@@ -184,8 +204,9 @@ def _select_best_icon(icons: list[IconCandidate]) -> str | None:
         return None
 
     format_priority: dict[IconFormat, int] = {"png": 0, "ico": 1, "other": 2, "svg": 3}
-    icons.sort(key=lambda x: (format_priority.get(x["format"], 2), -x["size"]))
-    return icons[0]["href"]
+    # format is a Literal of the dict's keys: default unreachable
+    icons.sort(key=lambda x: (format_priority.get(x.format, 2), -x.size))  # pragma: no mutate
+    return icons[0].href
 
 
 async def _validate_favicon_url(url: str) -> bool:

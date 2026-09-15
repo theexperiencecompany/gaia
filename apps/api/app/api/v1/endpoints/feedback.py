@@ -29,7 +29,7 @@ async def submit_message_feedback(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> MessageFeedbackResponse:
     """Record a thumbs-up/down on an assistant reply owned by the caller."""
-    user_id = user["user_id"]
+    user_id = user.user_id
     log.set(
         user={"id": user_id},
         feedback={"message_id": message_id, "is_positive": payload.is_positive},

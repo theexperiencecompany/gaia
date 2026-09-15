@@ -14,10 +14,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.agents.core.messages import construct_langchain_messages
+from app.agents.core.messages import MessageScope, construct_langchain_messages
 from app.models.agent_models import SilentRunResult
 from app.models.message_models import MessageRequestWithHistory
 from app.models.todo_models import TodoDocument
+from app.models.user_models import AuthenticatedUser
 from app.workers.tasks.tracked_todo_tasks import _execute_via_agent
 
 pytestmark = pytest.mark.integration
@@ -35,7 +36,7 @@ def _todo() -> TodoDocument:
 
 async def _captured_request() -> MessageRequestWithHistory:
     """Run the real agent path far enough to capture the request it builds."""
-    silent = AsyncMock(return_value=SilentRunResult(message="done", tool_data={}))
+    silent = AsyncMock(return_value=SilentRunResult(message="done", tool_data=[]))
     with (
         patch(f"{_MOD}.call_agent_silent", silent),
         patch(f"{_MOD}.read_canvas", new_callable=AsyncMock, return_value=None),
@@ -44,7 +45,7 @@ async def _captured_request() -> MessageRequestWithHistory:
         patch(f"{_MOD}.tracked_todo_service.append_activity_entry", new_callable=AsyncMock),
         patch(f"{_MOD}.tracked_todo_service.system_log", new_callable=AsyncMock),
     ):
-        await _execute_via_agent(_todo(), USER_ID, user_data={"user_id": USER_ID})
+        await _execute_via_agent(_todo(), USER_ID, user_data=AuthenticatedUser(user_id=USER_ID))
     return silent.await_args.kwargs["request"]
 
 
@@ -73,12 +74,14 @@ class TestTheRequestCarriesItsPrompt:
             assemble.return_value = type("Assembled", (), {"stable": None, "volatile": None})()
             messages = await construct_langchain_messages(
                 messages=request.messages,
-                user_id=USER_ID,
                 query=request.message,
-                user_dict={"user_id": USER_ID},
-                agent_type="executor",
-                execution_mode="background",
-                active_todo_id=TODO_ID,
+                scope=MessageScope(
+                    user_id=USER_ID,
+                    user_dict=AuthenticatedUser(user_id=USER_ID),
+                    agent_type="executor",
+                    execution_mode="background",
+                    active_todo_id=TODO_ID,
+                ),
             )
 
         rendered = " ".join(str(getattr(m, "content", "")) for m in messages)

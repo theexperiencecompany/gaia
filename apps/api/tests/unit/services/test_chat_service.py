@@ -29,6 +29,7 @@ from app.agents.core.background.session import (
 )
 from app.models.chat_models import ConversationModel
 from app.models.message_models import MessageRequestWithHistory
+from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents
 from app.services.chat.chunks import (
     extract_response_text as _extract_response_text,
@@ -50,6 +51,7 @@ from app.services.chat.stream import (
     run_chat_stream_background,
     stream_manager as _stream_manager,
 )
+from app.utils.stream_publishers import ExtractedToolData
 from shared.py.wide_events import log as _log
 
 
@@ -91,8 +93,8 @@ def _patch_stream_manager(sm: MagicMock) -> Iterator[MagicMock]:
 
 
 @pytest.fixture
-def test_user() -> dict:
-    return {"user_id": "user_abc", "email": "tester@example.com"}
+def test_user() -> AuthenticatedUser:
+    return AuthenticatedUser(user_id="user_abc", email="tester@example.com")
 
 
 @pytest.fixture
@@ -139,13 +141,13 @@ async def _text_then_nostream(text: str, complete: str) -> AsyncGenerator[str, N
 
 
 class TestExtractToolData:
-    def test_returns_empty_dict_on_invalid_json(self):
+    def test_returns_an_empty_result_on_invalid_json(self):
         result = extract_tool_data("not json{{")
-        assert result == {}
+        assert result == ExtractedToolData()
 
-    def test_returns_empty_dict_for_plain_response(self):
+    def test_returns_an_empty_result_for_plain_response(self):
         result = extract_tool_data(json.dumps({"response": "hello"}))
-        assert result == {}
+        assert result == ExtractedToolData()
 
     def test_extracts_unified_tool_data_list(self):
         payload = json.dumps(
@@ -160,8 +162,9 @@ class TestExtractToolData:
             }
         )
         result = extract_tool_data(payload)
-        assert "tool_data" in result
-        assert result["tool_data"][0]["tool_name"] == "search_results"
+        assert result.tool_data == [
+            {"tool_name": "search_results", "data": {"items": []}, "timestamp": "t"}
+        ]
 
     def test_extracts_unified_tool_data_single_dict(self):
         """tool_data as a single dict (not a list) should be wrapped in a list."""
@@ -169,15 +172,14 @@ class TestExtractToolData:
             {"tool_data": {"tool_name": "weather_data", "data": {}, "timestamp": "t"}}
         )
         result = extract_tool_data(payload)
-        assert isinstance(result["tool_data"], list)
-        assert result["tool_data"][0]["tool_name"] == "weather_data"
+        assert result.tool_data == [{"tool_name": "weather_data", "data": {}, "timestamp": "t"}]
 
     def test_extracts_legacy_tool_field(self):
         payload = json.dumps({"calendar_options": [{"id": 1, "title": "Meeting"}]})
         result = extract_tool_data(payload)
-        assert "tool_data" in result
-        assert result["tool_data"][0]["tool_name"] == "calendar_options"
-        assert result["tool_data"][0]["data"] == [{"id": 1, "title": "Meeting"}]
+        assert len(result.tool_data) == 1
+        assert result.tool_data[0]["tool_name"] == "calendar_options"
+        assert result.tool_data[0]["data"] == [{"id": 1, "title": "Meeting"}]
 
     def test_extracts_multiple_legacy_tool_fields(self):
         payload = json.dumps(
@@ -187,36 +189,37 @@ class TestExtractToolData:
             }
         )
         result = extract_tool_data(payload)
-        tool_names = {e["tool_name"] for e in result["tool_data"]}
-        assert "search_results" in tool_names
-        assert "weather_data" in tool_names
+        tool_names = {e["tool_name"] for e in result.tool_data}
+        assert tool_names == {"search_results", "weather_data"}
 
     def test_extracts_follow_up_actions_into_other_data(self):
         payload = json.dumps({"follow_up_actions": ["Do X", "Do Y"]})
         result = extract_tool_data(payload)
-        assert "other_data" in result
-        assert result["other_data"]["follow_up_actions"] == ["Do X", "Do Y"]
+        assert result.other_data is not None
+        assert result.other_data.follow_up_actions == ["Do X", "Do Y"]
 
     def test_extracts_tool_output(self):
         payload = json.dumps({"tool_output": {"tool_call_id": "call_1", "output": "result text"}})
         result = extract_tool_data(payload)
-        assert "tool_output" in result
-        assert result["tool_output"]["tool_call_id"] == "call_1"
+        assert result.tool_output is not None
+        assert result.tool_output.tool_call_id == "call_1"
+        assert result.tool_output.output == "result text"
 
     def test_ignores_none_valued_legacy_fields(self):
         payload = json.dumps({"calendar_options": None})
         result = extract_tool_data(payload)
-        assert "tool_data" not in result
+        assert result.tool_data == []
 
     def test_unknown_fields_produce_no_tool_data(self):
         payload = json.dumps({"completely_unknown_key": "value"})
         result = extract_tool_data(payload)
-        assert "tool_data" not in result
+        assert result.is_empty()
 
     def test_timestamp_is_iso_string(self):
         payload = json.dumps({"search_results": {"items": []}})
         result = extract_tool_data(payload)
-        ts = result["tool_data"][0]["timestamp"]
+        ts = result.tool_data[0]["timestamp"]
+        assert ts is not None
         # Verify it's a parseable ISO timestamp
         parsed = datetime.fromisoformat(ts)
         assert parsed.tzinfo is not None

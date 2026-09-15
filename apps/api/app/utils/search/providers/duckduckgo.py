@@ -2,6 +2,7 @@
 
 from bs4 import BeautifulSoup
 import httpx
+from pydantic import BaseModel, ConfigDict
 
 from app.utils.search.models import SearchResponse, SearchResultItem
 from app.utils.search.providers.base import SearchProvider
@@ -17,6 +18,14 @@ _HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
 }
+
+
+class _ResultAnchor(BaseModel):
+    """The attributes of a DDG Lite result anchor — only ``href`` is read."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    href: str = ""
 
 
 class DuckDuckGoProvider(SearchProvider):
@@ -49,7 +58,7 @@ class DuckDuckGoProvider(SearchProvider):
             link = row.select_one("a.result-link") or row.select_one("a[href]")
             if not link:
                 continue
-            href = str(link.get("href", ""))
+            href = _ResultAnchor.model_validate(link.attrs).href
             if not href.startswith("http"):
                 continue
             snippet_cell = row.find_next_sibling("tr")

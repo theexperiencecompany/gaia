@@ -1,6 +1,6 @@
 """Pydantic models for bot chat, sessions, and related operations."""
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 from app.db.repositories.base import MongoDocument
 from app.models.message_models import FileData
@@ -178,15 +178,16 @@ class ResetSessionResponse(BaseModel):
 
 
 class LinkTokenRecord(BaseModel):
-    """The display fields read from the Redis hash ``create_link_token`` writes
-    for a pending platform link (the hash also carries ``platform_user_id``,
-    which this read path never surfaces).
+    """The Redis hash ``create_link_token`` writes for a pending platform link.
 
     Validated immediately after ``HGETALL`` returns the raw hash (see the API
-    CLAUDE.md Type Safety rules on external boundaries).
+    CLAUDE.md Type Safety rules on external boundaries). ``platform_user_id``
+    defaults to empty so a hash missing it is rejected by the link route as
+    invalid token data rather than failing validation.
     """
 
     platform: str = Field(..., description=_PLATFORM_DESC)
+    platform_user_id: str = Field("", description=_PLATFORM_USER_ID_DESC)
     username: str | None = Field(None, description=_USERNAME_DESC)
     display_name: str | None = Field(None, description=_DISPLAY_NAME_DESC)
 
@@ -268,3 +269,49 @@ class BotSessionUpdate(BaseModel):
     """Bot sessions are claimed via an atomic upsert, never typed-updated."""
 
     model_config = ConfigDict(extra="forbid")
+
+
+class BotStreamToolCard(BaseModel):
+    """A web stream payload's ``tool_data`` card, as far as bot translation reads it.
+
+    ``data`` stays free-form JSON: an approval card's ``data`` is forwarded to
+    the bot verbatim, and only a rate-limit card's is read further
+    (``BotRateLimitCardData``).
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    tool_name: JsonValue = None
+    data: JsonValue = None
+
+
+class BotRateLimitCardData(BaseModel):
+    """The ``data`` of a ``rate_limit_data`` card (``build_rate_limit_card``) a bot notice reads."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    feature: JsonValue = None
+    current_plan: JsonValue = None
+
+
+class BotWebStreamPayload(BaseModel):
+    """One parsed web SSE ``data:`` payload, as the bot stream translates it.
+
+    Every field is optional because a payload carries one frame kind; which
+    keys were *present* (``model_fields_set``) is what picks the bot frame, so
+    an explicit ``null`` still counts. Keys bots never read are ignored.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    keepalive: JsonValue = None
+    tool_data: JsonValue = None
+    message_boundary: JsonValue = None
+    response: str | None = None
+    error: str | None = None
+    conversation_description: JsonValue = None
+    user_message_id: JsonValue = None
+    bot_message_id: JsonValue = None
+    stream_id: JsonValue = None
+    tool_output: JsonValue = None
+    follow_up_actions: JsonValue = None

@@ -134,19 +134,23 @@ If you need more control (e.g., inserting a table at a specific position), use `
 ```
 NOTION_APPEND_TABLE_BLOCKS(
   block_id="<page_id>",
-  table_width=3,
-  has_column_header=true,
-  rows=[
-    {"cells": [
-      [{"type": "text", "text": {"content": "Name"}}],
-      [{"type": "text", "text": {"content": "Status"}}],
-      [{"type": "text", "text": {"content": "Due"}}]
-    ]},
-    {"cells": [
-      [{"type": "text", "text": {"content": "Task A"}}],
-      [{"type": "text", "text": {"content": "In Progress"}}],
-      [{"type": "text", "text": {"content": "Mar 10"}}]
-    ]}
+  tables=[
+    {
+      "table_width": 3,
+      "has_column_header": true,
+      "rows": [
+        {"cells": [
+          [{"type": "text", "text": {"content": "Name"}}],
+          [{"type": "text", "text": {"content": "Status"}}],
+          [{"type": "text", "text": {"content": "Due"}}]
+        ]},
+        {"cells": [
+          [{"type": "text", "text": {"content": "Task A"}}],
+          [{"type": "text", "text": {"content": "In Progress"}}],
+          [{"type": "text", "text": {"content": "Mar 10"}}]
+        ]}
+      ]
+    }
   ]
 )
 ```

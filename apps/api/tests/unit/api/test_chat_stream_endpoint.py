@@ -43,7 +43,11 @@ class TestSubscribeExecutorStreamReplay:
             patch(
                 "app.api.v1.endpoints.chat.stream_manager.get_progress",
                 new=AsyncMock(
-                    return_value={"user_id": "507f1f77bcf86cd799439011", "is_complete": True}
+                    return_value={
+                        "user_id": "507f1f77bcf86cd799439011",
+                        "conversation_id": "conv-1",
+                        "is_complete": True,
+                    }
                 ),
             ),
             patch(
@@ -72,7 +76,11 @@ class TestSubscribeExecutorStreamReplay:
             patch(
                 "app.api.v1.endpoints.chat.stream_manager.get_progress",
                 new=AsyncMock(
-                    return_value={"user_id": "507f1f77bcf86cd799439011", "is_complete": True}
+                    return_value={
+                        "user_id": "507f1f77bcf86cd799439011",
+                        "conversation_id": "conv-1",
+                        "is_complete": True,
+                    }
                 ),
             ),
             patch(
@@ -99,7 +107,11 @@ class TestSubscribeExecutorStreamReplay:
             patch(
                 "app.api.v1.endpoints.chat.stream_manager.get_progress",
                 new=AsyncMock(
-                    return_value={"user_id": "507f1f77bcf86cd799439011", "is_complete": True}
+                    return_value={
+                        "user_id": "507f1f77bcf86cd799439011",
+                        "conversation_id": "conv-1",
+                        "is_complete": True,
+                    }
                 ),
             ),
             patch("app.api.v1.endpoints.chat.stream_manager.has_events", new=_has_events),
@@ -119,13 +131,15 @@ class TestSubscribeExecutorStreamReplay:
         # Both are pinned even though the short-circuit means neither should
         # be reached — if the guard stops short-circuiting, this fails fast
         # on unexpected frames instead of hanging on real keepalives.
+        get_progress = AsyncMock(
+            return_value={
+                "user_id": "507f1f77bcf86cd799439011",
+                "conversation_id": "conv-1",
+                "is_complete": True,
+            }
+        )
         with (
-            patch(
-                "app.api.v1.endpoints.chat.stream_manager.get_progress",
-                new=AsyncMock(
-                    return_value={"user_id": "507f1f77bcf86cd799439011", "is_complete": True}
-                ),
-            ),
+            patch("app.api.v1.endpoints.chat.stream_manager.get_progress", new=get_progress),
             patch(
                 "app.api.v1.endpoints.chat.stream_manager.has_events",
                 new=AsyncMock(return_value=False),
@@ -141,6 +155,7 @@ class TestSubscribeExecutorStreamReplay:
                 body = "".join([chunk async for chunk in response.aiter_text()])
 
         assert body == "data: [DONE]\n\n"
+        get_progress.assert_awaited_once_with(STREAM_ID)
 
     @pytest.mark.parametrize("has_events", [True, False])
     async def test_a_live_stream_always_replays_whatever_the_log_says(
@@ -151,7 +166,11 @@ class TestSubscribeExecutorStreamReplay:
             patch(
                 "app.api.v1.endpoints.chat.stream_manager.get_progress",
                 new=AsyncMock(
-                    return_value={"user_id": "507f1f77bcf86cd799439011", "is_complete": False}
+                    return_value={
+                        "user_id": "507f1f77bcf86cd799439011",
+                        "conversation_id": "conv-1",
+                        "is_complete": False,
+                    }
                 ),
             ),
             patch(

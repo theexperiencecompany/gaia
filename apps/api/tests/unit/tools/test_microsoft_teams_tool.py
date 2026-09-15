@@ -8,7 +8,7 @@ degradation paths.
 """
 
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 
@@ -105,9 +105,15 @@ def test_sends_me_teams_and_chats_requests_through_the_proxy() -> None:
 
 def test_projects_user_teams_and_chats_with_counts() -> None:
     tool = _capture_tool()
-    with patch(f"{MODULE}.proxy_request_sync", side_effect=[_ME, _TEAMS, _CHATS]):
+    with (
+        patch(f"{MODULE}.proxy_request_sync", side_effect=[_ME, _TEAMS, _CHATS]),
+        patch(f"{MODULE}.log") as log_mock,
+    ):
         result = tool(GatherContextInput(), None, AUTH_CREDS)
 
+    assert log_mock.set.call_args_list == [
+        call(tool={"integration": "microsoft_teams", "action": "gather_context"})
+    ]
     assert result == {
         "user": {"id": "u-1", "display_name": "Me User", "email": "me@example.com"},
         "teams": [
@@ -159,6 +165,22 @@ def test_missing_user_id_raises() -> None:
             tool(GatherContextInput(), None, {})
 
     assert proxy.call_args_list == []
+
+
+def test_unread_count_counts_only_chats_whose_preview_is_unread() -> None:
+    tool = _capture_tool()
+    chats = {
+        "value": [
+            {"id": "a", "lastMessagePreview": {"isRead": True, "body": {"content": "1"}}},
+            {"id": "b", "lastMessagePreview": {"isRead": True, "body": {"content": "2"}}},
+            {"id": "c", "lastMessagePreview": {"isRead": False, "body": {"content": "3"}}},
+            {"id": "d"},
+        ]
+    }
+    with patch(f"{MODULE}.proxy_request_sync", side_effect=[_ME, _TEAMS, chats]):
+        result = tool(GatherContextInput(), None, AUTH_CREDS)
+
+    assert result["unread_chat_count"] == 1
 
 
 def test_degraded_proxy_returns_empty_snapshot() -> None:

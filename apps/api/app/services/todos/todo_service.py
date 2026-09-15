@@ -34,6 +34,7 @@ from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.todo_vector_utils import (
+    TodoSearchFilters,
     delete_todo_embedding,
     hybrid_search_todos as vector_hybrid_search,
     semantic_search_todos as vector_search,
@@ -203,7 +204,7 @@ class TodoService:
 
         # Index for search
         try:
-            await store_todo_embedding(created.id, created.model_dump(), user_id)
+            await store_todo_embedding(created.id, created, user_id)
         except Exception as e:
             log.warning("todo.index_failed", error=str(e))
 
@@ -326,7 +327,7 @@ class TodoService:
             raise ValueError(f"Todo {todo_id} not found")
 
         try:
-            await update_todo_embedding(todo_id, updated.model_dump(), user_id)
+            await update_todo_embedding(todo_id, updated, user_id)
         except Exception as e:
             log.warning("todo.index_update_failed", todo_id=todo_id, error=str(e))
 
@@ -413,7 +414,7 @@ class TodoService:
             try:
                 updated_todos = await todo_repository.find_by_ids(user_id, request.todo_ids)
                 await asyncio.gather(
-                    *(update_todo_embedding(t.id, t.model_dump(), user_id) for t in updated_todos),
+                    *(update_todo_embedding(t.id, t, user_id) for t in updated_todos),
                     return_exceptions=True,
                 )
             except Exception as e:
@@ -486,14 +487,17 @@ class TodoService:
                 ),
             )
 
+        filters = TodoSearchFilters(
+            completed=params.completed,
+            priority=params.priority.value if params.priority else None,
+            project_id=params.project_id,
+        )
         if params.mode == SearchMode.SEMANTIC:
             results = await vector_search(
                 query=params.q,
                 user_id=user_id,
                 top_k=params.per_page * params.page,
-                completed=params.completed,
-                priority=params.priority.value if params.priority else None,
-                project_id=params.project_id,
+                filters=filters,
                 include_traditional_search=False,
             )
         else:  # HYBRID
@@ -502,9 +506,7 @@ class TodoService:
                 user_id=user_id,
                 top_k=params.per_page * params.page,
                 semantic_weight=0.7,
-                completed=params.completed,
-                priority=params.priority.value if params.priority else None,
-                project_id=params.project_id,
+                filters=filters,
             )
 
         total = len(results)

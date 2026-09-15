@@ -7,12 +7,10 @@ Cancels HTTP requests that exceed a time limit and returns 504 Gateway Timeout.
 SSE, WebSocket, and stream paths are excluded — they are long-lived by design.
 """
 
-from collections.abc import MutableMapping
-from typing import Any
-
 import anyio
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.api.v1.middleware.asgi_scope import AsgiMessage, AsgiScope
 from app.constants.log_tags import LogTag
 from app.schemas.errors import ErrorEnvelope, error_response
 from shared.py.wide_events import log
@@ -46,20 +44,21 @@ class RequestTimeoutMiddleware:
         self.exclude_prefixes = exclude_prefixes
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
+        parsed = AsgiScope.model_validate(scope)
+        if parsed.type != "http":
             await self.app(scope, receive, send)
             return
 
-        path: str = scope.get("path", "")
+        path = parsed.path
         if any(path.startswith(prefix) for prefix in self.exclude_prefixes):
             await self.app(scope, receive, send)
             return
 
         response_started = False
 
-        async def send_wrapper(message: MutableMapping[str, Any]) -> None:
+        async def send_wrapper(message: Message) -> None:
             nonlocal response_started
-            if message["type"] == "http.response.start":
+            if AsgiMessage.model_validate(message).type == "http.response.start":
                 response_started = True
             await send(message)
 

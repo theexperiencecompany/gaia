@@ -1,18 +1,18 @@
 """Integration-specific helper functions."""
 
-from __future__ import annotations
-
 from collections.abc import Callable
+from dataclasses import dataclass
 import re
-from typing import TYPE_CHECKING
 from urllib.parse import urlsplit, urlunsplit
 
-from app.helpers.slug_helpers import slugify
-
-if TYPE_CHECKING:
-    # Import under TYPE_CHECKING only: integration_models imports this module for
-    # generate_integration_slug, so a runtime import back would be circular.
-    from app.models.integration_models import IntegrationWithCreator
+from app.helpers.slug_helpers import generate_integration_slug
+from app.models.integration_models import IntegrationWithCreator
+from app.schemas.integrations.responses import (
+    CommunityIntegrationCreator,
+    IntegrationTool,
+    MCPConfigDetail,
+    PublicIntegrationDetailResponse,
+)
 
 # Stopwords filtered out of free-text integration/tool search queries.
 SEARCH_STOPWORDS = {
@@ -28,9 +28,6 @@ SEARCH_STOPWORDS = {
     "on",
     "my",
 }
-
-
-_SLUG_STRIP_CHARS = "-"
 
 
 def normalize_server_url(url: str) -> str:
@@ -92,96 +89,78 @@ def build_search_matcher(query: str | None) -> Callable[[str], bool]:
     return lambda haystack: any(pattern in haystack for pattern in patterns)
 
 
-def generate_integration_slug(
-    name: str,
-    category: str,
-    max_length: int = 80,
-) -> str:
-    """Generate canonical slug: {name}-mcp-{category}.
+@dataclass(slots=True, frozen=True)
+class ParsedIntegrationSlug:
+    """The parts of an integration slug: {name_part}-mcp-{category}[-{shortid}]."""
 
-    No longer appends a hash suffix — the slug is human-readable and
-    stored/indexed in MongoDB for direct lookup.
-    """
-    # Named constant, not an inline literal: an inline "-" mutation would still
-    # contain '-' and be behaviorally identical, making it untestable.
-    slug = f"{slugify(name, max_length=40)}-mcp-{slugify(category, max_length=20)}"
-
-    if len(slug) > max_length:
-        truncated = slug[:max_length]
-        last_hyphen = truncated.rfind(_SLUG_STRIP_CHARS)
-        slug = truncated[:last_hyphen] if last_hyphen > 0 else truncated
-
-    return slug.rstrip(_SLUG_STRIP_CHARS)
+    name_part: str
+    category: str | None
+    shortid: str | None
 
 
-def parse_integration_slug(slug: str) -> dict:
+def parse_integration_slug(slug: str) -> ParsedIntegrationSlug:
     """Parse slug to extract: name_part, category, shortid.
 
     Handles both new format (no hash) and legacy format (with 6-char hash).
     """
-    result: dict = {
-        "name_part": slug,
-        "category": None,
-        "shortid": None,
-    }
+    shortid: str | None = None
+    category: str | None = None
 
     # Check for legacy 6-char hash suffix
     parts = slug.rsplit("-", 1)
     if len(parts) == 2 and len(parts[1]) == 6 and parts[1].isalnum():
-        result["shortid"] = parts[1]
+        shortid = parts[1]
         slug = parts[0]
 
     mcp_marker = "-mcp-"
     if mcp_marker in slug:
         name_part, category = slug.split(mcp_marker, 1)
-        result["name_part"] = name_part
-        result["category"] = category
     else:
         parts = slug.rsplit("-", 1)
         if len(parts) == 2:
-            result["name_part"] = parts[0]
-            result["category"] = parts[1]
+            name_part, category = parts
         else:
-            result["name_part"] = slug
+            name_part = slug
 
-    return result
+    return ParsedIntegrationSlug(name_part=name_part, category=category, shortid=shortid)
 
 
-def format_public_integration_response(integration: IntegrationWithCreator) -> dict:
-    """Format an integration (with joined creator) into a response dict.
-
-    Returns a dict that can be unpacked into PublicIntegrationDetailResponse.
-    """
+def format_public_integration_response(
+    integration: IntegrationWithCreator,
+) -> PublicIntegrationDetailResponse:
+    """Format an integration (with joined creator) into its public detail response."""
     mcp_config = None
     if integration.mcp_config:
-        mcp_config = {
-            "server_url": integration.mcp_config.server_url,
-            "requires_auth": integration.mcp_config.requires_auth,
-            "auth_type": integration.mcp_config.auth_type,
-        }
+        mcp_config = MCPConfigDetail(
+            server_url=integration.mcp_config.server_url,
+            requires_auth=integration.mcp_config.requires_auth,
+            auth_type=integration.mcp_config.auth_type,
+        )
 
     creator = None
     if integration.creator:
-        creator = {"name": integration.creator.name, "picture": integration.creator.picture}
+        creator = CommunityIntegrationCreator(
+            name=integration.creator.name, picture=integration.creator.picture
+        )
 
     slug = integration.slug or generate_integration_slug(
         name=integration.name,
         category=integration.category,
     )
 
-    return {
-        "integration_id": integration.integration_id,
-        "slug": slug,
-        "name": integration.name,
-        "description": integration.description,
-        "category": integration.category,
-        "icon_url": integration.icon_url,
-        "creator": creator,
-        "mcp_config": mcp_config,
-        "tools": [{"name": t.name, "description": t.description} for t in integration.tools],
-        "clone_count": integration.clone_count,
-        "tool_count": len(integration.tools),
-        "published_at": integration.published_at,
-        "source": "custom",  # MongoDB integrations are always custom
-        "content": integration.content,  # LLM-generated; None until published/backfilled
-    }
+    return PublicIntegrationDetailResponse(
+        integration_id=integration.integration_id,
+        slug=slug,
+        name=integration.name,
+        description=integration.description,
+        category=integration.category,
+        icon_url=integration.icon_url,
+        creator=creator,
+        mcp_config=mcp_config,
+        tools=[IntegrationTool(name=t.name, description=t.description) for t in integration.tools],
+        clone_count=integration.clone_count,
+        tool_count=len(integration.tools),
+        published_at=integration.published_at,
+        source="custom",  # MongoDB integrations are always custom
+        content=integration.content,  # LLM-generated; None until published/backfilled
+    )

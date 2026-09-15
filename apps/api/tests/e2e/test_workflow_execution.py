@@ -18,6 +18,7 @@ from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.agent_models import SilentRunResult
+from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import (
     WorkflowExecutionDocument,
     WorkflowExecutionUpdate,
@@ -521,7 +522,7 @@ class TestWorkflowExecutionFailurePropagation:
             workflow_tasks, "add_workflow_execution_messages", AsyncMock(return_value=None)
         )
         monkeypatch.setattr(
-            workflow_tasks, "get_user_by_id", AsyncMock(return_value={"timezone": "UTC"})
+            workflow_tasks, "get_user_by_id", AsyncMock(return_value=UserDocument(timezone="UTC"))
         )
         # The checkpoint reset is Postgres; its own behaviour is proven in
         # tests/unit/services/workflow/test_thread_reset.py.
@@ -567,7 +568,7 @@ class TestWorkflowExecutionFailurePropagation:
                         },
                     }
                 )
-            return SilentRunResult(message="", tool_data={"tool_data": tool_data})
+            return SilentRunResult(message="", tool_data=tool_data)
 
         monkeypatch.setattr(agent_module, "call_agent_silent", _run_steps)
         return completed

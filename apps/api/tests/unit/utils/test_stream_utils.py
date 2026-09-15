@@ -1,10 +1,12 @@
 """Unit tests for app.utils.stream_utils."""
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
+from langchain_core.messages import AIMessage, HumanMessage
 import pytest
 
+from app.utils.agent_utils import IntegrationMetadata
 from app.utils.stream_utils import (
     extract_tool_entries_from_update,
     reconstruct_subagent_groups,
@@ -17,17 +19,14 @@ from app.utils.stream_utils import (
 
 def _make_ai_message(
     tool_calls: list[dict[str, Any]] | None = None,
-) -> MagicMock:
-    """Return a mock AIMessage with a .tool_calls attribute."""
-    msg = MagicMock()
-    msg.tool_calls = tool_calls or []
-    return msg
+) -> AIMessage:
+    """Build an AIMessage carrying these tool calls verbatim, malformed ones included."""
+    return AIMessage.model_construct(content="", tool_calls=tool_calls or [])
 
 
-def _make_plain_message() -> MagicMock:
-    """Return a mock message without a tool_calls attribute (e.g. HumanMessage)."""
-    msg = MagicMock(spec=[])  # spec=[] means no attributes
-    return msg
+def _make_plain_message() -> HumanMessage:
+    """Build a message that carries no tool calls at all."""
+    return HumanMessage(content="hi")
 
 
 # ---------------------------------------------------------------------------
@@ -181,11 +180,9 @@ class TestExtractToolEntriesFromUpdate:
     )
     async def test_integration_metadata_forwarded(self, mock_format: AsyncMock) -> None:
         mock_format.return_value = {"tool_name": "tool_calls_data"}
-        metadata = {
-            "icon_url": "https://img.com/icon.png",
-            "integration_id": "gmail",
-            "name": "Gmail",
-        }
+        metadata = IntegrationMetadata(
+            icon_url="https://img.com/icon.png", integration_id="gmail", name="Gmail"
+        )
         tc = {"id": "tc-m", "name": "send_email", "args": {}}
         msg = _make_ai_message([tc])
 
@@ -261,7 +258,7 @@ class TestExtractToolEntriesFromUpdate:
     async def test_partial_integration_metadata(self, mock_format: AsyncMock) -> None:
         """integration_metadata with only icon_url set."""
         mock_format.return_value = {"tool_name": "tool_calls_data"}
-        metadata: dict[str, Any] = {"icon_url": "https://icon.com/x.png"}
+        metadata = IntegrationMetadata(icon_url="https://icon.com/x.png")
         tc = {"id": "tc-p", "name": "search", "args": {}}
         msg = _make_ai_message([tc])
 
@@ -367,6 +364,63 @@ class TestReconstructSubagentGroups:
 
         assert self._group(td, "done")["completed_at"] is not None
         assert self._group(td, "cut")["completed_at"] is not None
+
+    def test_the_lifecycle_accumulators_are_consumed(self) -> None:
+        td = self._data(
+            starts={"sub-1": {"subagent_name": "gmail"}},
+            ends={"sub-1": {"duration_ms": 10}},
+            entries=[],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        assert "subagent_starts" not in td
+        assert "subagent_ends" not in td
+
+    def test_a_group_starts_and_is_stamped_at_its_start_events_time(self) -> None:
+        started_at = "2026-01-01T00:00:00+00:00"
+        td = self._data(
+            starts={"sub-1": {"subagent_name": "gmail", "started_at": started_at}},
+            ends={},
+            entries=[],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        [entry] = td["tool_data"]
+        assert entry["data"]["started_at"] == started_at
+        assert entry["timestamp"] == started_at
+
+    def test_only_a_known_subagents_tool_calls_move_into_its_group(self) -> None:
+        own_call = {"tool_name": "tool_calls_data", "subagent_id": "sub-1", "data": {"id": "a"}}
+        unknown_subagent = {"tool_name": "tool_calls_data", "subagent_id": "ghost", "data": {}}
+        other_kind = {"tool_name": "search_results", "subagent_id": "sub-1", "data": {}}
+        td = self._data(
+            starts={"sub-1": {"subagent_name": "gmail"}},
+            ends={},
+            entries=[own_call, unknown_subagent, other_kind],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        assert td["tool_data"][:2] == [unknown_subagent, other_kind]
+        assert self._group(td, "sub-1")["tool_calls"] == [{"id": "a"}]
+
+    def test_a_child_group_nests_inside_its_parent_instead_of_the_root(self) -> None:
+        td = self._data(
+            starts={
+                "parent": {"subagent_name": "executor"},
+                "child": {"subagent_name": "gmail", "parent_subagent_id": "parent"},
+            },
+            ends={},
+            entries=[],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        [root] = td["tool_data"]
+        assert root["data"]["subagent_id"] == "parent"
+        assert [nested["subagent_id"] for nested in root["data"]["nested_subagents"]] == ["child"]
 
 
 @pytest.mark.unit

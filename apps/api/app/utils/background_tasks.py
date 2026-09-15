@@ -2,20 +2,22 @@
 
 import asyncio
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import TypeVar
+
+T = TypeVar("T")
 
 # asyncio.create_task holds only a weak reference, so an unreferenced
 # fire-and-forget task can be GC'd before it finishes; this set strong-refs
 # each task until its done-callback discards it.
-_background_tasks: set[asyncio.Task[Any]] = set()
+_background_tasks: set[asyncio.Task[object]] = set()
 
 
 def spawn_background_task(
-    coro: Coroutine[Any, Any, Any],
+    coro: Coroutine[object, object, T],
     *,
     name: str | None = None,
-    on_done: Callable[[asyncio.Task[Any]], None] | None = None,
-) -> asyncio.Task[Any]:
+    on_done: Callable[[asyncio.Task[T]], None] | None = None,
+) -> asyncio.Task[T]:
     """Schedule coro as a fire-and-forget task kept alive until it finishes; the single canonical way to run a detached coroutine.
 
     Requires a running event loop (raises RuntimeError otherwise, like asyncio.create_task). on_done runs as an additional done-callback, e.g. to log the task's outcome since a detached task can't surface it otherwise.
@@ -33,7 +35,7 @@ def spawn_background_task(
     return task
 
 
-def guard_task(task: asyncio.Task[Any]) -> asyncio.Task[Any]:
+def guard_task(task: asyncio.Task[T]) -> asyncio.Task[T]:
     """Strong-reference an already-created task until it finishes, then release it.
 
     For a task the caller built and may await but which must survive beyond the awaiting scope; use spawn_background_task instead when starting from a coroutine.

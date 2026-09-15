@@ -136,6 +136,26 @@ def test_degraded_proxy_returns_empty_profile() -> None:
     assert result["upcoming_meet_count"] == 0
 
 
+def test_userinfo_failure_keeps_meets_with_an_empty_profile() -> None:
+    tool = _capture_tool()
+    with patch(
+        f"{MODULE}.proxy_request_sync", side_effect=[RuntimeError("userinfo down"), _CALENDAR]
+    ):
+        result = tool(GatherContextInput(), None, AUTH_CREDS)
+
+    assert result["user"] == {"email": None, "name": None, "picture": None}
+    assert [m["id"] for m in result["upcoming_meets"]] == ["evt-1"]
+
+
+def test_meet_summary_is_truncated_to_100_characters() -> None:
+    tool = _capture_tool()
+    calendar = {"items": [{**_CALENDAR["items"][0], "summary": "s" * 150}]}
+    with patch(f"{MODULE}.proxy_request_sync", side_effect=[_USERINFO, calendar]):
+        result = tool(GatherContextInput(), None, AUTH_CREDS)
+
+    assert result["upcoming_meets"][0]["summary"] == "s" * 100
+
+
 def test_calendar_failure_keeps_profile() -> None:
     tool = _capture_tool()
     with patch(

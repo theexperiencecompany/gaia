@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 import pytest
 
-from app.agents.core.messages import construct_langchain_messages
+from app.agents.core.messages import MessageScope, construct_langchain_messages
 from app.agents.templates.agent_template import get_comms_static_prompt
 from tests.e2e._harness.graph_run import comms_graph, run_graph, scripted_model_of
 
@@ -20,7 +20,7 @@ async def _construct_web_prompt(user_turn: str) -> list[AnyMessage]:
     """Assemble the message list the production prompt builder produces for a web turn."""
     return await construct_langchain_messages(
         messages=[{"role": "user", "content": user_turn}],
-        source="web",
+        scope=MessageScope(source="web"),
     )
 
 

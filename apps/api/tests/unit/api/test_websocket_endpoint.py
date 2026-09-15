@@ -15,6 +15,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.api.v1.endpoints.websocket import websocket_endpoint
 from app.core.websocket_manager import websocket_manager
+from app.models.user_models import AuthenticatedUser
 
 USER_ID = "507f1f77bcf86cd799439011"
 
@@ -50,7 +51,7 @@ class TestWebsocketAuthGate:
         ws = _ws()
         with patch(
             "app.api.v1.endpoints.websocket.get_current_user_ws",
-            new=AsyncMock(return_value={}),
+            new=AsyncMock(return_value=None),
         ):
             await websocket_endpoint(ws)
 
@@ -58,11 +59,11 @@ class TestWebsocketAuthGate:
         websocket_manager.add_connection.assert_not_called()
 
     @patch("app.core.websocket_manager.websocket_manager.add_connection", new=MagicMock())
-    async def test_non_string_user_id_closes_without_accepting(self):
+    async def test_empty_user_id_closes_without_accepting(self):
         ws = _ws()
         with patch(
             "app.api.v1.endpoints.websocket.get_current_user_ws",
-            new=AsyncMock(return_value={"user_id": 12345}),
+            new=AsyncMock(return_value=AuthenticatedUser(user_id="")),
         ):
             await websocket_endpoint(ws)
 
@@ -79,7 +80,7 @@ class TestWebsocketAccept:
     """/ws/connect — connection lifecycle for an authenticated user."""
 
     async def _run_handler(
-        self, ws: MagicMock, user: dict, add: MagicMock, remove: MagicMock
+        self, ws: MagicMock, user: AuthenticatedUser, add: MagicMock, remove: MagicMock
     ) -> None:
         with (
             patch("app.core.websocket_manager.websocket_manager.add_connection", new=add),
@@ -94,7 +95,7 @@ class TestWebsocketAccept:
     async def test_cookie_auth_accepts_plain_and_registers(self):
         ws = _ws()
         add, remove = MagicMock(), MagicMock()
-        await self._run_handler(ws, {"user_id": USER_ID}, add, remove)
+        await self._run_handler(ws, AuthenticatedUser(user_id=USER_ID), add, remove)
 
         ws.accept.assert_awaited_once_with()
         add.assert_called_once_with(user_id=USER_ID, websocket=ws)
@@ -102,7 +103,7 @@ class TestWebsocketAccept:
     async def test_subprotocol_auth_echoes_bearer_handshake(self):
         ws = _ws(protocol="Bearer, some.jwt.token")
         add, remove = MagicMock(), MagicMock()
-        await self._run_handler(ws, {"user_id": USER_ID}, add, remove)
+        await self._run_handler(ws, AuthenticatedUser(user_id=USER_ID), add, remove)
 
         ws.accept.assert_awaited_once_with(subprotocol="Bearer")
         add.assert_called_once()
@@ -110,7 +111,7 @@ class TestWebsocketAccept:
     async def test_client_disconnect_removes_connection(self):
         ws = _ws()
         add, remove = MagicMock(), MagicMock()
-        await self._run_handler(ws, {"user_id": USER_ID}, add, remove)
+        await self._run_handler(ws, AuthenticatedUser(user_id=USER_ID), add, remove)
 
         remove.assert_called_once_with(user_id=USER_ID, websocket=ws)
 
@@ -118,7 +119,7 @@ class TestWebsocketAccept:
         ws = _ws()
         ws.receive_text = AsyncMock(side_effect=["ping", "pong", WebSocketDisconnect()])
         add, remove = MagicMock(), MagicMock()
-        await self._run_handler(ws, {"user_id": USER_ID}, add, remove)
+        await self._run_handler(ws, AuthenticatedUser(user_id=USER_ID), add, remove)
 
         assert ws.receive_text.await_count == 3
         remove.assert_called_once()
@@ -128,7 +129,7 @@ class TestWebsocketAccept:
         ws.receive_text = AsyncMock(side_effect=RuntimeError("boom"))
         add, remove = MagicMock(), MagicMock()
         with pytest.raises(RuntimeError, match="boom"):
-            await self._run_handler(ws, {"user_id": USER_ID}, add, remove)
+            await self._run_handler(ws, AuthenticatedUser(user_id=USER_ID), add, remove)
 
         remove.assert_called_once_with(user_id=USER_ID, websocket=ws)
         ws.close.assert_awaited_once_with(code=1011)

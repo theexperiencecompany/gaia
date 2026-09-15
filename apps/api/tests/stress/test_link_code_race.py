@@ -120,7 +120,7 @@ class TestLinkCodeRedemptionRace:
             patch(f"{MODULE}.complete_platform_link", complete),
             patch(f"{MODULE}._persist_first_contact", persist),
             patch(
-                "app.services.platform_link_service.PlatformLinkService.get_user_by_platform_id",
+                "app.utils.auth_utils.user_repository.get_by_platform_id",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -157,7 +157,7 @@ class TestLinkCodeRedemptionRace:
             patch(f"{MODULE}.complete_platform_link", complete),
             patch(f"{MODULE}._persist_first_contact", new_callable=AsyncMock),
             patch(
-                "app.services.platform_link_service.PlatformLinkService.get_user_by_platform_id",
+                "app.utils.auth_utils.user_repository.get_by_platform_id",
                 new_callable=AsyncMock,
                 return_value=None,
             ),

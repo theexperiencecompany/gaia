@@ -93,10 +93,10 @@ class TestSearchBySimilarity:
             )
 
         assert len(results) == 1
-        assert results[0]["id"] == "abc123"
-        assert results[0]["similarity_score"] == pytest.approx(0.25)
-        assert results[0]["content"] == "my note content"
-        assert results[0]["user_id"] == "user1"
+        assert results[0].id == "abc123"
+        assert results[0].similarity_score == pytest.approx(0.25)
+        assert results[0].content == "my note content"
+        assert results[0].user_id == "user1"
 
     async def test_no_results_returns_empty_list(self) -> None:
         """Returns empty list when ChromaDB has no matches."""
@@ -207,7 +207,7 @@ class TestSearchBySimilarity:
                 "app.utils.embedding_utils.note_repository.find_by_ids",
                 new_callable=AsyncMock,
                 return_value=[note_doc],
-            ),
+            ) as find_by_ids,
             patch("app.utils.embedding_utils.log"),
         ):
             results = await search_by_similarity(
@@ -217,10 +217,11 @@ class TestSearchBySimilarity:
                 fetch_mongo_details=True,
             )
 
+        find_by_ids.assert_awaited_once_with("user1", [note_id])
         assert len(results) == 1
-        assert results[0]["id"] == note_id
-        assert results[0]["created_at"] == created.isoformat()
-        assert results[0]["updated_at"] == updated.isoformat()
+        assert results[0].id == note_id
+        assert results[0].created_at == created.isoformat()
+        assert results[0].updated_at == updated.isoformat()
 
     async def test_fetch_mongo_details_false_returns_chroma_data_only(self) -> None:
         """When fetch_mongo_details=False (default), only ChromaDB data is returned."""
@@ -247,11 +248,11 @@ class TestSearchBySimilarity:
             )
 
         assert len(results) == 1
-        assert results[0]["id"] == "n1"
-        assert results[0]["content"] == "basic content"
+        assert results[0].id == "n1"
+        assert results[0].content == "basic content"
         # Should NOT have timestamp fields from MongoDB
-        assert "created_at" not in results[0]
-        assert "updated_at" not in results[0]
+        assert results[0].created_at is None
+        assert results[0].updated_at is None
 
     async def test_exception_returns_empty_list(self) -> None:
         """Any exception during search returns [] and logs the error."""
@@ -303,8 +304,8 @@ class TestSearchBySimilarity:
                 top_k=5,
             )
 
-        assert results[0]["id"] == "close1"
-        assert results[1]["id"] == "far1"
+        assert results[0].id == "close1"
+        assert results[1].id == "far1"
 
     async def test_results_limited_to_top_k(self) -> None:
         """Only the top_k results are returned even if more exist."""
@@ -368,7 +369,7 @@ class TestSearchBySimilarity:
             )
 
         assert len(results) == 1
-        assert results[0]["id"] == "valid1"
+        assert results[0].id == "valid1"
 
     async def test_files_collection_uses_file_id_field(self) -> None:
         """The files collection keys off file_id and skips detail-enrichment, unlike notes."""
@@ -396,8 +397,8 @@ class TestSearchBySimilarity:
             )
 
         assert len(results) == 1
-        assert results[0]["id"] == file_id
-        assert "folder" not in results[0]
+        assert results[0].id == file_id
+        assert not hasattr(results[0], "folder")
 
     async def test_mongo_item_not_found_does_not_crash(self) -> None:
         """If the repository returns no match for a ChromaDB id, the item is still returned."""
@@ -431,8 +432,8 @@ class TestSearchBySimilarity:
 
         # Item should still be present, just without mongo enrichment
         assert len(results) == 1
-        assert results[0]["id"] == note_id
-        assert "created_at" not in results[0]
+        assert results[0].id == note_id
+        assert results[0].created_at is None
 
     async def test_mongo_item_without_timestamps_no_isoformat(self) -> None:
         """A note without created_at/updated_at doesn't add those fields."""
@@ -474,8 +475,8 @@ class TestSearchBySimilarity:
                 fetch_mongo_details=True,
             )
 
-        assert "created_at" not in results[0]
-        assert "updated_at" not in results[0]
+        assert results[0].created_at is None
+        assert results[0].updated_at is None
 
     async def test_multiple_additional_filters(self) -> None:
         """Multiple additional_filters entries each become a separate $and clause."""

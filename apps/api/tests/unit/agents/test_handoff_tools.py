@@ -10,6 +10,7 @@ import pytest
 
 from app.agents.core.subagents.handoff_tools import (
     CustomMcpIndexRequest,
+    CustomMcpSubagent,
     _get_subagent_by_id,
     _handoff_rejection,
     _HandoffDispatch,
@@ -21,6 +22,7 @@ from app.agents.core.subagents.handoff_tools import (
 )
 from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
 from app.agents.core.subagents.subagent_runner import SubagentOutcome, subagent_row_id
+from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.integration_models import Integration
@@ -264,10 +266,11 @@ class TestGetSubagentById:
                 "app.agents.core.subagents.handoff_tools.get_cache",
                 new_callable=AsyncMock,
                 return_value=cached,
-            ),
+            ) as mock_get_cache,
         ):
             result = await _get_subagent_by_id("abc123")
-        assert result == cached
+        assert result == CustomMcpSubagent(id="abc123", name="Custom MCP")
+        mock_get_cache.assert_awaited_once_with(f"{SUBAGENT_CACHE_PREFIX}:abc123")
 
     async def test_returns_none_for_negative_cache(self):
         with (
@@ -305,20 +308,30 @@ class TestGetSubagentById:
             patch(
                 "app.agents.core.subagents.handoff_tools.set_cache",
                 new_callable=AsyncMock,
-            ),
+            ) as mock_set_cache,
         ):
             mock_repo.find_by_id_prefix_or_name = AsyncMock(return_value=custom)
             result = await _get_subagent_by_id("abc")
 
-        assert result["id"] == "abc"
-        assert result["name"] == "My MCP"
+        expected = CustomMcpSubagent(
+            id="abc",
+            name="My MCP",
+            source="custom",
+            managed_by="mcp",
+            mcp_config=MCPConfig(server_url="https://example.com").model_dump(),
+            icon_url="https://example.com/icon.png",
+        )
+        assert result == expected
+        mock_set_cache.assert_awaited_once_with(
+            f"{SUBAGENT_CACHE_PREFIX}:abc", expected.model_dump(), ttl=SUBAGENT_CACHE_TTL
+        )
 
     async def test_fallback_to_integration_resolver(self):
         resolved_doc = {
             "integration_id": "res_id",
             "name": "Resolved",
-            "mcp_config": {},
-            "icon_url": None,
+            "mcp_config": {"server_url": "https://resolved.example.com"},
+            "icon_url": "https://resolved.example.com/icon.png",
         }
         resolved = SimpleNamespace(custom_doc=resolved_doc, source="user_integrations")
         with (
@@ -336,14 +349,24 @@ class TestGetSubagentById:
             patch(
                 "app.agents.core.subagents.handoff_tools.set_cache",
                 new_callable=AsyncMock,
-            ),
+            ) as mock_set_cache,
         ):
             mock_repo.find_by_id_prefix_or_name = AsyncMock(return_value=None)
             mock_resolver.resolve = AsyncMock(return_value=resolved)
             result = await _get_subagent_by_id("res_id")
 
-        assert result["id"] == "res_id"
-        assert result["source"] == "user_integrations"
+        expected = CustomMcpSubagent(
+            id="res_id",
+            name="Resolved",
+            source="user_integrations",
+            managed_by="mcp",
+            mcp_config={"server_url": "https://resolved.example.com"},
+            icon_url="https://resolved.example.com/icon.png",
+        )
+        assert result == expected
+        mock_set_cache.assert_awaited_once_with(
+            f"{SUBAGENT_CACHE_PREFIX}:res_id", expected.model_dump(), ttl=SUBAGENT_CACHE_TTL
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -408,7 +431,7 @@ class TestResolveSubagent:
             patch(
                 "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
                 new_callable=AsyncMock,
-                return_value=custom_dict,
+                return_value=CustomMcpSubagent.model_validate(custom_dict),
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
@@ -426,7 +449,7 @@ class TestResolveSubagent:
         with patch(
             "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
             new_callable=AsyncMock,
-            return_value=custom_dict,
+            return_value=CustomMcpSubagent.model_validate(custom_dict),
         ):
             graph, name, error, is_custom = await _resolve_subagent("abc", None)
         assert graph is None
@@ -437,7 +460,7 @@ class TestResolveSubagent:
         with patch(
             "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
             new_callable=AsyncMock,
-            return_value=custom_dict,
+            return_value=CustomMcpSubagent.model_validate(custom_dict),
         ):
             graph, name, error, is_custom = await _resolve_subagent("broken", "user1")
         assert graph is None
@@ -450,7 +473,7 @@ class TestResolveSubagent:
             patch(
                 "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
                 new_callable=AsyncMock,
-                return_value=custom_dict,
+                return_value=CustomMcpSubagent.model_validate(custom_dict),
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
@@ -990,7 +1013,7 @@ class TestCustomMcpResolution:
         with patch(
             "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
             new_callable=AsyncMock,
-            return_value=doc,
+            return_value=CustomMcpSubagent.model_validate(doc),
         ):
             yield
 
@@ -1503,6 +1526,24 @@ class TestHandoffBuildsItsDispatch:
             probe_parked=True,
             record_calls=True,
         )
+
+    async def test_a_user_id_only_in_run_metadata_is_the_one_the_subagent_runs_for(self) -> None:
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools.prepare_subagent_execution",
+                new_callable=AsyncMock,
+                return_value=(None, None, "stop here"),
+            ) as prepare,
+        ):
+            result = await handoff.coroutine(
+                subagent_id="gmail",
+                task="Fetch the unread messages.",
+                config={"configurable": {"thread_id": "t1"}, "metadata": {"user_id": "u-meta"}},
+                tool_call_id="tc1",
+            )
+
+        assert result == "stop here"
+        assert prepare.call_args.kwargs["configurable"]["user_id"] == "u-meta"
 
     async def test_the_background_fallback_runs_the_very_same_context_and_dispatch(self) -> None:
         with self._blocking_run(None) as seen:
