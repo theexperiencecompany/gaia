@@ -373,10 +373,8 @@ class TestFinalizeOnboarding:
         assert payload == CompletePayload(conversation_id="conv-1")
 
     async def test_context_reaches_the_message_generator(self, finalize_stack: Any) -> None:
-        # Every field of both bundles, not a sample: they are two positional
-        # dataclasses now, so a field silently dropped or Noned here reaches the
-        # prompt as a missing fact and `user_id` as unattributed spend, and
-        # neither shows up as an error.
+        # Every field, not a sample: the bundles are positional, so a dropped
+        # one reaches the prompt as a missing fact rather than an error.
         message, _, _, _ = finalize_stack
         triage, style = _triage(), _style()
         answers: list[ClarifyAnswerRecord] = [

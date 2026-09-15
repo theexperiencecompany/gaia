@@ -199,8 +199,6 @@ def _build_agent_callbacks(
                 properties={
                     "conversation_id": conversation_id,
                     "agent_name": agent_name,
-                    # Without these, $ai_generation cannot say what the spend was
-                    # for, where it came from, or which workflow asked for it.
                     **graph_call_properties(agent_name, source, workflow_id),
                 },
                 privacy_mode=False,
@@ -389,10 +387,8 @@ class AgentTurn:
     """The channel (web/mobile/whatsapp/...); falls back to "background" when unset."""
 
     workflow_id: str | None = None
-    """The workflow this fire belongs to, for a TOP-LEVEL workflow run. A child run
-    inherits it from its parent's configurable instead. Needed here because the
-    analytics callbacks are built inside this function, before ``_core_agent_logic``
-    stamps the workflow onto the configurable it just received."""
+    """The workflow this fire belongs to, on a top-level run only. Child runs
+    inherit it from the parent's configurable."""
 
     user_messages: list[str] | None = None
     """The user's own recent turns, verbatim, oldest first (see
@@ -517,12 +513,8 @@ async def build_agent_config(
         turn.writing_style,
     )
 
-    # Both halves are resolved the same way and for the same reason: the turn
-    # carries them on a top-level run, the parent's configurable carries them on
-    # every child. Reading only one side mislabels the other — the executor and
-    # its subagents omit `source`, so taking it from the turn alone booked a web
-    # chat's own worker tiers as background, and nothing stamps `workflow_id`
-    # until after this function returns.
+    # Child runs omit both, and `workflow_id` is stamped onto the configurable
+    # only after this returns, so each falls back to the parent's.
     inherited = base_configurable or {}
     run_source = source or inherited.get("conversation_source")
     run_workflow_id = turn.workflow_id or inherited.get("workflow_id")

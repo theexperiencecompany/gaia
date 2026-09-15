@@ -58,7 +58,6 @@ async def infer_integration_category(
     description: str,
     tools: list[dict[str, Any]],
     server_url: str,
-    *,
     user_id: str,
 ) -> str:
     """Classify an integration into one ``INTEGRATION_CATEGORIES`` value.
@@ -115,7 +114,6 @@ async def infer_integration_content(
     tools: list[dict[str, Any]],
     server_url: str,
     category: str,
-    *,
     user_id: str,
 ) -> IntegrationContent | None:
     """Generate rich marketplace content for an integration, or ``None``.

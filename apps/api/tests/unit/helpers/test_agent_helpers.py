@@ -1388,10 +1388,8 @@ DEV_OPTION = {
 
 
 class TestPostHogHandlerProperties:
-    """What `_build_agent_callbacks` does with its arguments, not just that it
-    got them. $ai_generation is the event PostHog already emits for every agent
-    call; if it stops carrying these three, every attribution chart built on it
-    silently loses its breakdown while still rendering."""
+    """The properties stamped onto ``$ai_generation``. Losing them leaves every
+    attribution chart rendering without its breakdown."""
 
     def _handler_properties(self, agent_name: str, source: str | None, workflow_id: str | None):
         client = MagicMock()
@@ -1476,9 +1474,8 @@ class TestBuildAgentConfigCallbackWiring:
     async def test_a_top_level_workflow_fire_reaches_the_callbacks(
         self, mock_build_callbacks, mock_resolve
     ):
-        """A workflow stamps its id onto the configurable only AFTER this function
-        returns, so reading it from base_configurable alone left the callbacks with
-        None and filed the workflow's own comms spend as chat."""
+        """The configurable is stamped only after this returns, so reading the id
+        from it alone left the callbacks with None."""
         mock_resolve.return_value = (DEV_LANE, None)
         mock_build_callbacks.return_value = []
 
@@ -1499,9 +1496,8 @@ class TestBuildAgentConfigCallbackWiring:
     async def test_a_child_run_inherits_its_parents_surface(
         self, mock_build_callbacks, mock_resolve
     ):
-        """The executor and its subagents carry no source of their own — they
-        inherit the parent's. Taking it from the turn alone booked a web chat's
-        own worker tiers, which burn most of the tokens, as background."""
+        """The executor and its subagents carry no source of their own, so taking
+        it from the turn alone booked a web chat's worker tiers as background."""
         mock_resolve.return_value = (DEV_LANE, None)
         mock_build_callbacks.return_value = []
 

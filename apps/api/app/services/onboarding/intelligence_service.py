@@ -55,6 +55,8 @@ from app.models.onboarding_models import (
     ClarifyAnswerRecord,
     CompletePayload,
     EmailSummary,
+    FirstMessageOutcome,
+    FirstMessageRecipient,
     InboxTriage,
     OnboardingTodoSource,
     OnboardingTodoSummary,
@@ -86,8 +88,6 @@ from app.services.composio.composio_service import get_composio_service
 from app.services.onboarding import inbox_scan_cache
 from app.services.onboarding.clarify_service import format_clarify_context
 from app.services.onboarding.first_message_service import (
-    FirstMessageOutcome,
-    FirstMessageRecipient,
     default_first_message,
     generate_first_message,
 )

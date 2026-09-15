@@ -1,6 +1,5 @@
 """Generate GAIA's first message to a new user after onboarding intelligence."""
 
-from dataclasses import dataclass
 import time
 from typing import cast
 
@@ -13,11 +12,8 @@ from app.agents.prompts.onboarding_prompts import (
 )
 from app.constants.log_tags import LogTag
 from app.models.onboarding_models import (
-    ClarifyAnswerRecord,
-    InboxTriage,
-    OnboardingTodoSummary,
-    OnboardingWorkflowSummary,
-    WritingStyleProfile,
+    FirstMessageOutcome,
+    FirstMessageRecipient,
 )
 from app.services.onboarding.clarify_service import format_clarify_context
 from shared.py.wide_events import log
@@ -35,29 +31,6 @@ def default_first_message(name: str) -> str:
         "Lined up a few action items and set up some automations from what I found."
         "<NEW_MESSAGE_BREAK>Oh, and I made you something."
     )
-
-
-@dataclass(frozen=True)
-class FirstMessageRecipient:
-    """Who the greeting is for, and how it should sound to them."""
-
-    user_id: str
-    name: str
-    profession: str
-    writing_style: WritingStyleProfile | None
-    has_gmail: bool
-    focus: str = ""
-
-
-@dataclass(frozen=True)
-class FirstMessageOutcome:
-    """What onboarding actually produced, which is what the greeting reports."""
-
-    triage: InboxTriage | None
-    created_todos: list[OnboardingTodoSummary]
-    created_workflows: list[OnboardingWorkflowSummary]
-    executed_todos: list[OnboardingTodoSummary] | None = None
-    clarify_answers: list[ClarifyAnswerRecord] | None = None
 
 
 async def generate_first_message(
@@ -130,8 +103,6 @@ async def generate_first_message(
             llm,
             [HumanMessage(content=prompt)],
             label="onboarding_first_message",
-            # Without a config the metering seam has no user to book this to, so
-            # the spend landed on nobody in usage_daily and nowhere in PostHog.
             config=metered_config(user_id),
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)

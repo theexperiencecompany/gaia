@@ -1362,8 +1362,6 @@ async def _record_auxiliary_usage(
             reasoning_tokens=reasoning_tokens,
             cost_usd=cost,
         )
-        # PostHog's own $ai_generation is only attached to agent-graph runs, so
-        # this is the sole record of background spend on that side.
         capture_auxiliary_llm_call(
             user_id=user_id,
             label=label,

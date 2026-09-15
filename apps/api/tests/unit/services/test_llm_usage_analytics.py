@@ -1,10 +1,8 @@
 """Unit tests for app/services/llm_usage_analytics.py.
 
-Two seams, two jobs: the properties stamped onto PostHog's existing
-``$ai_generation`` for agent-graph calls, and the one new event for background
-calls PostHog never sees. The PostHog *client* is mocked, never
-``capture_event`` itself — attributing an event to the wrong ``distinct_id`` is
-the failure mode that matters, and mocking the helper would hide it.
+The PostHog client is mocked, never ``capture_event`` itself: a wrong
+``distinct_id`` is the failure mode that matters, and mocking the helper
+would hide it.
 """
 
 import ast
@@ -15,10 +13,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.constants.llm import DEFAULT_MODEL_NAME
-from app.services.analytics_service import AIFeature, AnalyticsEvents
+from app.services.analytics_service import LABEL_FEATURES, AIFeature, AnalyticsEvents
 from app.services.llm_metering import TokenUsage
 from app.services.llm_usage_analytics import (
-    LABEL_FEATURES,
+    _MEMORY_LABEL_PREFIX,
     capture_auxiliary_llm_call,
     feature_for_label,
     graph_call_properties,
@@ -57,8 +55,7 @@ def test_a_subagent_is_integration_spend() -> None:
 
 
 def test_a_subagent_inside_a_workflow_is_still_workflow_spend() -> None:
-    """The workflow asked for it; Gmail merely executed it. ``agent_name``
-    carries the second half, so nothing is lost."""
+    """``agent_name`` still records which subagent ran, so nothing is lost."""
     assert llm_feature("gmail_agent", "wf-9") is AIFeature.WORKFLOW
 
 
@@ -81,8 +78,7 @@ def test_a_bot_turn_reports_the_bot_surface() -> None:
 
 
 def test_an_unset_source_reports_background() -> None:
-    """The only callers that leave the source blank are the silent background
-    paths, so 'unknown' would be a worse answer than 'bg'."""
+    """Only the silent background paths leave the source blank."""
     assert graph_call_properties("executor_agent", None, None)["surface"] == "bg"
 
 
@@ -95,8 +91,7 @@ def test_a_mapped_label_resolves_to_its_feature() -> None:
 
 
 def test_the_runtime_built_memory_label_resolves_by_prefix() -> None:
-    """``f"memory:{operation}"`` cannot be an exact key, so it is the one
-    prefix rule — and every operation must land on MEMORY, not UNATTRIBUTED."""
+    """Built at runtime, so it is matched by prefix rather than exact key."""
     assert feature_for_label("memory:extract") is AIFeature.MEMORY
     assert feature_for_label("memory:consolidate") is AIFeature.MEMORY
 
@@ -137,10 +132,8 @@ def _label_taking_functions(trees: dict[Path, ast.Module]) -> set[str]:
 
 
 def test_every_label_the_codebase_passes_has_a_feature() -> None:
-    """The table is the taxonomy; a helper added without an entry books to
-    UNATTRIBUTED. This walks the real call sites — including the ones that reach
-    a metered call through a forwarding helper — so the gap fails here rather
-    than showing up as a mystery slice on the cost dashboard."""
+    """Walks the real call sites, including those reaching a metered call
+    through a forwarding helper, so an unmapped label fails here."""
     app = Path(__file__).resolve().parents[3] / "app"
     trees: dict[Path, ast.Module] = {}
     for path in app.rglob("*.py"):
@@ -167,14 +160,12 @@ def test_every_label_the_codebase_passes_has_a_feature() -> None:
 
 
 def test_the_table_has_no_entry_for_a_label_nothing_passes() -> None:
-    """A stale row is the other half of drift: it makes the taxonomy claim a
-    capability the code no longer has."""
+    """A stale row makes the taxonomy claim a capability the code no longer has."""
     app = Path(__file__).resolve().parents[3] / "app"
     used: set[str] = set()
     for path in app.rglob("*.py"):
-        # The table itself lists every key, so counting it would make this
-        # assertion vacuous — a stale row would always look "used".
-        if path.name == "llm_usage_analytics.py":
+        # Skip the table's own module, or every row would count as used.
+        if path.name == "analytics_service.py":
             continue
         try:
             tree = ast.parse(path.read_text())
@@ -226,8 +217,7 @@ def test_the_event_carries_the_tokens_cost_and_attribution(posthog: Any) -> None
 
 
 def test_background_spend_is_never_marked_charged(posthog: Any) -> None:
-    """Auxiliary work is deliberately not billed to the user's budget, so an
-    event claiming otherwise would overstate what they consumed."""
+    """Auxiliary work is not billed to the user's budget."""
     _capture()
     props = _captured(posthog)["properties"]
     assert props["charged"] is False
@@ -240,8 +230,7 @@ def test_a_call_with_no_user_is_skipped_not_left_anonymous(posthog: Any) -> None
 
 
 def test_the_skip_says_which_call_it_dropped(posthog: Any) -> None:
-    """Skipping quietly would make unattributed background spend indistinguishable
-    from spend that never happened. The warning is the only trace it leaves."""
+    """The warning is the only trace a skipped call leaves."""
     with patch("app.services.llm_usage_analytics.log") as mock_log:
         _capture(user_id=None, label="memory:extract", model_name=DEFAULT_MODEL_NAME)
 
@@ -251,9 +240,7 @@ def test_the_skip_says_which_call_it_dropped(posthog: Any) -> None:
 
 
 def test_an_unmapped_label_raises_an_error_line_naming_itself(posthog: Any) -> None:
-    """UNATTRIBUTED is a bucket, not an answer. The error line is what turns a
-    forgotten LABEL_FEATURES entry into something greppable rather than a
-    mystery slice on the cost dashboard."""
+    """The error line is what makes a forgotten LABEL_FEATURES entry greppable."""
     with patch("app.services.llm_usage_analytics.log") as mock_log:
         _capture(label="helper_added_without_a_table_entry")
 
@@ -278,15 +265,14 @@ def test_a_priced_model_is_not_flagged_as_estimated(posthog: Any) -> None:
 
 
 def test_a_model_missing_from_the_rate_card_is_flagged(posthog: Any) -> None:
-    """An unpriced model does not raise — it is silently charged
-    DEFAULT_PRICING, so the dollar figure looks plausible and is wrong."""
+    """An unpriced model is charged DEFAULT_PRICING rather than raising, so the
+    figure looks plausible and is wrong."""
     _capture(model_name="some/model-nobody-priced")
     assert _captured(posthog)["properties"]["cost_estimated"] is True
 
 
 def test_the_event_is_not_deduped(posthog: Any) -> None:
-    """A retried task re-invokes the provider, so a second event is a second
-    real charge. Collapsing them would under-report spend."""
+    """A retry is a second real charge; collapsing them under-reports spend."""
     _capture()
     assert "uuid" not in _captured(posthog)
 
@@ -308,3 +294,25 @@ def test_the_event_carries_no_message_content(posthog: Any) -> None:
         "cost_estimated",
         "timestamp",
     }
+
+
+def test_every_feature_is_reachable() -> None:
+    """No ``AIFeature`` member may exist with no way to produce it.
+
+    Sitting beside ``LABEL_FEATURES`` does not by itself prevent drift: an
+    unreachable member reads on a chart as zero spend rather than as a wiring
+    bug. This caught ``IMAGE``.
+    """
+    graph_reachable = {
+        llm_feature("comms_agent", None),
+        llm_feature("gmail_agent", None),
+        llm_feature("comms_agent", "wf-1"),
+    }
+    reachable = (
+        set(LABEL_FEATURES.values())
+        | graph_reachable
+        | {feature_for_label(f"{_MEMORY_LABEL_PREFIX}store")}
+        | {AIFeature.UNATTRIBUTED}
+    )
+
+    assert set(AIFeature) - reachable == set()

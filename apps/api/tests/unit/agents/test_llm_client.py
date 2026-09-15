@@ -1431,10 +1431,8 @@ class TestRecordAuxiliaryUsage:
         return handler
 
     async def test_the_analytics_event_gets_this_call_s_user_model_and_cost(self) -> None:
-        """The aux event is the ONLY record of background spend on PostHog's
-        side — the LLM-analytics handler is never attached outside the graph.
-        Any of these arriving null would land the spend on nobody, on no model,
-        or at no cost, and the ledger write next to it would still look fine."""
+        """This event is the only PostHog record of background spend, and a null
+        in any of these fields still leaves the ledger write beside it valid."""
         handler = self._handler(gemini={"input_tokens": 100, "output_tokens": 20})
 
         with (
@@ -1462,8 +1460,8 @@ class TestRecordAuxiliaryUsage:
         }
 
     async def test_the_analytics_event_carries_the_cached_and_reasoning_split(self) -> None:
-        """Cached input is billed at a discount and reasoning is hidden output;
-        dropping either makes the event's cost impossible to re-derive."""
+        """Cached input is discounted and reasoning is hidden output, so dropping
+        either makes the cost impossible to re-derive."""
         handler = self._handler(
             gemini={
                 "input_tokens": 100,

@@ -207,10 +207,8 @@ class TestCoreAgentLogic:
 
     @pytest.mark.asyncio
     async def test_a_workflow_fire_reaches_build_agent_config_on_the_turn(self):
-        """The workflow is stamped onto the configurable only AFTER
-        ``build_agent_config`` returns, but the PostHog callbacks are built
-        INSIDE it — so the id has to arrive on the turn or the workflow's own
-        comms spend is filed as chat."""
+        """The configurable is stamped only after ``build_agent_config`` returns,
+        so the id must arrive on the turn or the run is filed as chat."""
         patches = _common_patches()
         with (
             patches["construct"],
