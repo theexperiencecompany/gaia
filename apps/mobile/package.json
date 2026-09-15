@@ -42,7 +42,7 @@
     "expo-constants": "^55.0.16",
     "expo-dev-client": "^55.0.36",
     "expo-device": "^55.0.18",
-    "expo-document-picker": "^55.0.14",
+    "expo-document-picker": "^57.0.1",
     "expo-font": "^55.0.8",
     "expo-haptics": "^55.0.15",
     "expo-image": "^55.0.11",
