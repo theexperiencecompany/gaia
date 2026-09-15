@@ -331,10 +331,9 @@ class TestRedisStreamWriter:
         assert get_session("unregistered") is None
 
     async def test_writer_stamps_the_first_frame_once(self) -> None:
-        # The stamp is the executor TTFT start, written on the FIRST frame only.
-        # Two distinct clock reads pin both halves: a guard that never stamps
-        # leaves it None, and a guard that stamps every frame overwrites the
-        # first (the metrics would then measure gap-to-last frame, not TTFT).
+        # The stamp is the executor TTFT start, written on the first frame only. Two
+        # clock reads pin both halves: never stamping leaves it None, stamping every
+        # frame measures gap-to-last-frame instead of TTFT.
         create_session("s1", RunKind.QUEUED)
         session = get_session("s1")
         assert session is not None

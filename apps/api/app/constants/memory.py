@@ -31,9 +31,8 @@ except ValueError:
 # ONCE for the deployment instead of in every process. Unset = load locally.
 EMBEDDING_SIDECAR_URL_ENV = "MEMORY_EMBEDDING_SIDECAR_URL"
 EMBEDDING_SIDECAR_TIMEOUT_SECONDS = 30.0
-# Interactive recall cannot afford the background budget: an embed/rerank on the
-# user's turn must fail fast and fall back to retrieval-order ranking rather than
-# hold the turn for the 30s client timeout (plus retry backoff). Ingestion keeps
+# Recall on the user's turn fails fast into retrieval-order ranking rather than
+# holding the turn for the 30s client timeout plus retry backoff; ingestion keeps
 # the long budget above because a dropped memory save is worse than a slow one.
 EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS = max(
     0.1, float(os.getenv("MEMORY_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS", "5"))

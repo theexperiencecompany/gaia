@@ -99,6 +99,59 @@ learn what one of them does.
 - Reserve comments for non-obvious decisions: why something is done a particular way, not what it does
 - If a function needs a long comment to be understood, the function probably needs to be refactored
 
+### Docstrings and comments — the mechanical bar
+
+Enforced by `tools/lints/docstring_slop.py` + `comment_slop.py` (Python, `app/`
+and `tests/`), `checks.mjs doc-comments` (TS), and ruff `D`/`DOC` — in the
+edit hook, pre-commit and CI, with no allowlist and no `noqa`.
+
+- A docstring is the contract: one imperative summary line, then only what the
+  signature does not say. Max 6 lines on a function, 12 on a class, 15 on a
+  module. Plain text — no backticks, no RST, no `Examples:`.
+- No `Args:` entry that restates the name (`user_id: The user ID.`) and no type
+  in an `Args:` entry — the signature carries both.
+- A test's name is its doc. One line at most, and only for what the name
+  cannot say (`Regression for #859: …`).
+- A comment is one line of *why* at the point of surprise. Never more than 3
+  consecutive lines; keep the numbers and constraints, drop the story. No
+  `# ---- banners ----` or `# Step N` inside a function — split it instead.
+  Module- and class-level banners are fine: a constants file is sectioned.
+- The *why* of a change lives in its PR, not in the code it changed.
+
+Before:
+
+```python
+async def try_claim_bg_dispatch(conversation_id: str, tool_call_id: str) -> bool:
+    """One background dispatch per handoff tool call, durable across node replays.
+
+    A ``handoff`` sharing its node run with ``wait_for_subagents`` re-runs when the
+    join's interrupt is resumed; ``tool_call_id`` lives in the checkpointed AI message,
+    so this SETNX makes the side effect (spawning the subagent) idempotent as the
+    pre-interrupt code must be. ``True`` = first dispatch, proceed.
+    """
+```
+
+After:
+
+```python
+async def try_claim_bg_dispatch(conversation_id: str, tool_call_id: str) -> bool:
+    """Claim the one dispatch slot for a handoff tool call; False when a node replay already did."""
+```
+
+Before / after, comments:
+
+```python
+# jina-reranker-v1-turbo-en (~150MB) measurably beats ms-marco-MiniLM on
+# implicit conversational queries ("what do I do for a living" -> the job
+# fact): top-3 gold rank 4/6 vs 2/6 on our probe set at the same ~30ms.
+RERANKER_MODEL = "jinaai/jina-reranker-v1-turbo-en"
+```
+
+```python
+# beats ms-marco-MiniLM on implicit queries (top-3 gold 4/6 vs 2/6, same ~30ms)
+RERANKER_MODEL = "jinaai/jina-reranker-v1-turbo-en"
+```
+
 ## Cleanup Is Part of the Task
 
 No change is done until the surrounding area is clean. "Working" and "complete" are different things.

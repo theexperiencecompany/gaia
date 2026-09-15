@@ -16,6 +16,7 @@ apps/api/app/agents/core/messages.py	PLR0913	deferred-until=2026-10-15; docstrin
 apps/api/app/agents/core/nodes/memory_node.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/agents/core/nodes/memory_node.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/agents/middleware/compaction.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
+apps/api/app/agents/middleware/executor.py	PLR0915	deferred-until=2026-10-15; docstring-only cleanup (#1224) touched the file; the statement count came in with master's tool-latency change (#1239), no code changed here (decided 2026-09-16)
 apps/api/app/agents/middleware/runtime_adapter.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/agents/skills/parser.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 apps/api/app/agents/tools/coding/_artifacts.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)

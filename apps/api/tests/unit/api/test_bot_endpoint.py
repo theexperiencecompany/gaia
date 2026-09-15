@@ -2085,13 +2085,12 @@ class TestForwarderWiring:
 
 
 class TestBotStreamDeliveryMetrics:
-    """`sse_delivery_seconds` is the only record of how a bot stream ended.
+    """sse_delivery_seconds is the only record of how a bot stream ended.
 
-    The observation lives in the forwarder's `finally`, so it fires on every
-    exit — clean completion, a client that dropped (polled or cancelled), the
-    generator being closed, and an error — each under a distinct `status`. The
-    duration is `end - delivery_start`; pinning the clock lands an exact 0.5,
-    so a sign error is hundreds off and a nulled start cannot observe at all.
+    The observation lives in the forwarder's finally, so it fires on every exit —
+    clean completion, a dropped client, the generator being closed, an error —
+    each under a distinct status. Pinning the clock lands an exact 0.5, so a sign
+    error is hundreds off and a nulled start cannot observe at all.
     """
 
     @staticmethod

@@ -1,10 +1,10 @@
 """True provider time-to-first-token, measured per streaming LLM call.
 
-One :class:`LLMTtftCallback` rides the agent run's callback list (wired in
-``app.helpers.agent_helpers._build_agent_callbacks``), so it covers every
-tier — comms, executor, subagents, narration — with no per-site
-instrumentation. Comparing its samples against the user-facing TTFT tells
-"provider was slow" apart from "our setup was slow".
+One LLMTtftCallback rides the agent run's callback list (wired in
+app.helpers.agent_helpers._build_agent_callbacks), so it covers every tier —
+comms, executor, subagents, narration — with no per-site instrumentation.
+Comparing its samples against the user-facing TTFT tells "provider was slow"
+apart from "our setup was slow".
 """
 
 import time
@@ -22,10 +22,9 @@ from app.services.latency_metrics import observe_llm_ttft
 class LLMTtftCallback(BaseCallbackHandler):
     """True provider time-to-first-token, measured per streaming LLM call.
 
-    Non-streaming calls emit no sample — their ``duration_ms`` already
-    exists, and substituting full duration for TTFT would poison the
-    histogram. Each retry/fallback attempt is its own run, so it gets its
-    own sample.
+    Non-streaming calls emit no sample — their duration_ms already exists, and
+    substituting full duration for TTFT would poison the histogram. Each
+    retry/fallback attempt is its own run, so it gets its own sample.
     """
 
     def __init__(self) -> None:
@@ -49,10 +48,9 @@ class LLMTtftCallback(BaseCallbackHandler):
             time.perf_counter(),
             str(meta.get("lane_model") or "unknown"),
             str(meta.get("lane_provider") or "unknown"),
-            # The CALL's label: build_agent_config stamps the run's agent tier as
-            # the default, and ainvoke_llm overrides it with a finer per-call
-            # label for the title/follow-up/memory calls that share one turn's
-            # callback list — so those side calls never pollute the tier's p95.
+            # build_agent_config stamps the run's agent tier as the default label;
+            # ainvoke_llm overrides it per side call (title/follow-up/memory) so
+            # those never pollute the tier's p95.
             str(meta.get(LLM_LABEL_METADATA_KEY) or "unknown"),
         )
 

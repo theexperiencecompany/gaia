@@ -251,7 +251,10 @@ class MiddlewareExecutor:
                 def make_wrapper(
                     middleware: AgentMiddleware, handler: ModelCallHandler
                 ) -> ModelCallHandler:
+                    """Bind this middleware and handler by value, so every link does not close over the loop's last middleware."""
+
                     async def wrapped(req: ModelRequest) -> ModelResponse:
+                        """Run the middleware's async wrap_model_call hook around the rest of the chain."""
                         return cast(ModelResponse, await middleware.awrap_model_call(req, handler))
 
                     return wrapped
@@ -262,7 +265,10 @@ class MiddlewareExecutor:
                 def make_sync_wrapper(
                     middleware: AgentMiddleware, handler: ModelCallHandler
                 ) -> ModelCallHandler:
+                    """Bind a sync-hook middleware by value into the chain, which stays async end to end."""
+
                     async def wrapped(req: ModelRequest) -> ModelResponse:
+                        """Run the sync wrap_model_call hook, awaiting its result when the hook turns out to be a coroutine."""
                         # Sync version - call and await if needed
                         # This bridge is async-only, so the sync hook is handed the
                         # async handler and its awaitable result is awaited below.
@@ -321,11 +327,9 @@ class MiddlewareExecutor:
         runtime = self._create_tool_runtime(config, store, tool_name)
         request = create_tool_call_request(tool_call, tool, state, runtime)
 
-        # Holds the tool's own result once it has run, so the fallback below can
-        # tell a middleware that failed *before* the tool from one that failed
-        # after it — only the former is safe to retry. `tool_attempted` covers
-        # the third case: the tool itself raised, so `tool_result` is still None
-        # but re-invoking would fire its side effects a second time.
+        # Set once the tool has run, so the fallback below retries only a middleware
+        # that failed *before* the tool. tool_attempted covers the third case: the
+        # tool raised, so tool_result is still None but a retry re-fires side effects.
         tool_result: ToolMessage | Command[Any] | None = None
         tool_attempted = False
 
@@ -351,7 +355,10 @@ class MiddlewareExecutor:
                 def make_wrapper(
                     middleware: AgentMiddleware, handler: ToolCallHandler
                 ) -> ToolCallHandler:
+                    """Bind this middleware and handler by value, so every link does not close over the loop's last middleware."""
+
                     async def wrapped(req: ToolCallRequest) -> ToolMessage | Command[Any]:
+                        """Run the middleware's async wrap_tool_call hook around the rest of the chain."""
                         return await middleware.awrap_tool_call(req, handler)
 
                     return wrapped
@@ -362,7 +369,10 @@ class MiddlewareExecutor:
                 def make_sync_wrapper(
                     middleware: AgentMiddleware, handler: ToolCallHandler
                 ) -> ToolCallHandler:
+                    """Bind a sync-hook middleware by value into the chain, which stays async end to end."""
+
                     async def wrapped(req: ToolCallRequest) -> ToolMessage | Command[Any]:
+                        """Run the sync wrap_tool_call hook, awaiting its result when the hook turns out to be a coroutine."""
                         # Async handler into the sync hook — see wrap_model_invocation.
                         result: Any = middleware.wrap_tool_call(
                             req,
@@ -393,14 +403,9 @@ class MiddlewareExecutor:
                 tool_name=tool_name,
                 error_type=type(e).__name__,
             )
-            # The status label must reflect the TOOL's outcome, not the
-            # middleware's: a post-tool middleware breaking after the tool
-            # succeeded is still a successful tool call.
-            #
-            # The tool already ran and succeeded — re-invoking would fire its
-            # side effects a second time (another screen capture, another
-            # write). Ship the raw result, losing only the post-tool
-            # middleware's transforms, and fall through to record a success.
+            # The tool already ran and succeeded: re-invoking would repeat its side
+            # effects, so ship the raw result (losing only the post-tool transforms)
+            # and record a success, since the status label is the tool's outcome.
             if tool_result is not None:
                 result = tool_result
             elif tool_attempted:

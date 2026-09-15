@@ -1,12 +1,11 @@
 """Analytics coverage for previously-missing backend events.
 
 Every mutating endpoint that had no PostHog event now emits exactly one,
-after success. Each test below drives the real route with the service seam
-mocked and asserts the exact event; the two ``capture_event`` paths
-(device revoke, notification unsubscribe) additionally assert the explicit
-user id. Context-attributed paths rely on ``PostHogRequestContextMiddleware``
-for identity — covered by ``TestPostHogIdentityBinding`` below, which pins
-the middleware binding itself rather than re-asserting it per endpoint.
+after success. Each test drives the real route with the service seam mocked
+and asserts the exact event; the two capture_event paths (device revoke,
+notification unsubscribe) additionally assert the explicit user id.
+Context-attributed paths rely on PostHogRequestContextMiddleware for identity,
+pinned once by TestPostHogIdentityBinding rather than per endpoint.
 """
 
 from collections.abc import Iterator
@@ -1407,9 +1406,9 @@ class TestInstructionsUpdate:
 class TestPostHogIdentityBinding:
     """The middleware must bind the request to the stable Mongo user id.
 
-    Every ``capture_context_event`` in this module sends no ``distinct_id`` by
-    design, so a middleware regression to an anonymous or wrong identity would
-    stay green in all of the above. These two tests pin the binding itself.
+    Every capture_context_event in this module sends no distinct_id by design,
+    so a middleware regression to an anonymous or wrong identity would stay
+    green in all of the above. These two tests pin the binding itself.
     """
 
     _MW = "app.api.v1.middleware.auth"

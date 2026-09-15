@@ -186,6 +186,7 @@ jobs:
       has_python: ${{ steps.detect.outputs.has_python }}
       has_typescript: ${{ steps.detect.outputs.has_typescript }}
       has_alert_rules: ${{ steps.detect.outputs.has_alert_rules }}
+      has_js_sources: ${{ steps.detect.outputs.has_js_sources }}
       python_projects: ${{ steps.detect.outputs.python_projects }}
       typescript_projects: ${{ steps.detect.outputs.typescript_projects }}
       # The branch every lane below diffs against. Resolved here, once, because
@@ -217,6 +218,8 @@ jobs:
 
       - name: Detect affected projects
         id: detect
+        env:
+          GAIA_PR_BASE: ${{ steps.base.outputs.base_ref }}
         run: |
           set -euo pipefail
           normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
@@ -249,6 +252,10 @@ jobs:
           echo "has_python=$([[ -n "$PY" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "has_typescript=$([[ -n "$TS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "has_alert_rules=$ALERTS" >> "$GITHUB_OUTPUT"
+          # Extension-scoped, not tag-scoped: a .mjs under scripts/ or the Python
+          # API belongs to no scope:typescript project but still carries comments.
+          JS=$(bash scripts/ci/changes.sh files ts tsx js jsx mjs cjs)
+          echo "has_js_sources=$([[ -n "$JS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "python: ${PY:-none} | typescript: ${TS:-none} | alert-rules: $ALERTS"
           echo "Affected Python: $PY"
           echo "Affected TypeScript: $TS"
@@ -560,6 +567,49 @@ jobs:
           status: ${{ job.status }}
           name: types-location
 
+  # --- Doc comments --------------------------------------------------------
+  doc-comments:
+    name: Doc comments state the contract (no narration, restating, banners)
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
+    if: ${{ !cancelled() && (needs.changes.outputs.has_js_sources == 'true') }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or jscpd must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.changes.outputs.base_ref }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: JSDoc + line-comment content gate (the TS half of tools/lints docstring-content / comment-content)
+        run: |
+          trap 'echo "::error::repro: node scripts/ci/checks.mjs doc-comments"' ERR
+          echo "::group::doc-comments check"
+          FILES=$(scripts/ci/changes.sh files ts tsx js jsx mjs cjs)
+          if [ "$FILES" = "__FULL__" ]; then
+            node scripts/ci/checks.mjs doc-comments
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/checks.mjs doc-comments
+          fi
+          echo "::endgroup::"
+          echo "### Doc comments — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Doc comments: OK (no narrating, restating or in-body banner comments)"
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: doc-comments
+
   # --- Components-per-file ------------------------------------------------
   components-per-file:
     name: At most 2 React components per file
@@ -800,14 +850,16 @@ jobs:
           fi
           echo "::endgroup::"
           echo "ruff: OK (strict rule set passes; every file is already formatted)"
-      - name: Custom Python AST lints (route contract, no service classes, wide events, repository boundaries)
+      - name: Custom Python AST lints (route contract, service classes, wide events, repository boundaries, docstring + comment content)
         id: custom-lints
         continue-on-error: true
+        # apps/api/tests is in scope because the docstring/comment rules opt
+        # into the test tree (INCLUDES_TESTS); the other rules still skip it.
         run: |
           echo "::group::custom lints"
-          python3 tools/lints/run.py apps/api/app
+          python3 tools/lints/run.py apps/api/app apps/api/tests
           echo "::endgroup::"
-          echo "Custom lints: OK (4 rules pass)"
+          echo "Custom lints: OK (8 rules pass)"
       - name: Ruff escape-hatch whys (ignore / per-file-ignores must be justified)
         id: ignore-whys
         continue-on-error: true
@@ -1704,6 +1756,7 @@ jobs:
       - file-size
       - types-location
       - api-schema
+      - doc-comments
       - components-per-file
       - duplicates
       - package-hygiene
@@ -1758,7 +1811,7 @@ jobs:
           # carried would go unmutated (see consolidate --help).
           # Results go through env, not inline expansion.
           EXPECT: >-
-            changes=${{ needs.changes.result }},biome=${{ needs.biome.result }},deps=${{ needs.deps.result }},circular=${{ needs.circular.result }},file-size=${{ needs.file-size.result }},types-location=${{ needs.types-location.result }},api-schema=${{ needs.api-schema.result }},components-per-file=${{ needs.components-per-file.result }},duplicates=${{ needs.duplicates.result }},package-hygiene=${{ needs.package-hygiene.result }},type-check=${{ needs.type-check.result }},python-static=${{ needs.python-static.result }},python-mypy=${{ needs.python-mypy.result }},observability=${{ needs.observability.result }},wide-event-conformance=${{ needs.wide-event-conformance.result }},dead-code=${{ needs.dead-code.result }},alert-rules=${{ needs.alert-rules.result }},suppression-hygiene=${{ needs.suppression-hygiene.result }},gitleaks=${{ needs.gitleaks.result }},semgrep=${{ needs.semgrep.result }},test-mutation-plan=${{ needs.test-mutation-plan.result }},test-mutation@mutation*${{ needs.test-mutation-plan.outputs.count }}=${{ needs.test-mutation.result }},select-runner-services@result-only=${{ needs.select-runner-services.result }}
+            changes=${{ needs.changes.result }},biome=${{ needs.biome.result }},deps=${{ needs.deps.result }},circular=${{ needs.circular.result }},file-size=${{ needs.file-size.result }},types-location=${{ needs.types-location.result }},api-schema=${{ needs.api-schema.result }},doc-comments=${{ needs.doc-comments.result }},components-per-file=${{ needs.components-per-file.result }},duplicates=${{ needs.duplicates.result }},package-hygiene=${{ needs.package-hygiene.result }},type-check=${{ needs.type-check.result }},python-static=${{ needs.python-static.result }},python-mypy=${{ needs.python-mypy.result }},observability=${{ needs.observability.result }},wide-event-conformance=${{ needs.wide-event-conformance.result }},dead-code=${{ needs.dead-code.result }},alert-rules=${{ needs.alert-rules.result }},suppression-hygiene=${{ needs.suppression-hygiene.result }},gitleaks=${{ needs.gitleaks.result }},semgrep=${{ needs.semgrep.result }},test-mutation-plan=${{ needs.test-mutation-plan.result }},test-mutation@mutation*${{ needs.test-mutation-plan.outputs.count }}=${{ needs.test-mutation.result }},select-runner-services@result-only=${{ needs.select-runner-services.result }}
         run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT"
       # The other half of the `always()` above: a title or body edit ran no
       # lane, so there is nothing to consolidate — but this check must still

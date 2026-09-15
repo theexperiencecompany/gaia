@@ -46,14 +46,14 @@ dev = "uv run --group backend --group voice_agent uvicorn app.main:app --port 80
 start = "uv run --group backend --group voice_agent fastapi run"
 arq = "uv run --group backend --group voice_agent arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG"
 worker = "task arq"
-lint = "uvx ruff check ."
-"lint.fix" = "uvx ruff check . --fix"
-format = "uvx ruff format ."
+lint = "uv run --group dev ruff check ."
+"lint.fix" = "uv run --group dev ruff check . --fix"
+format = "uv run --group dev ruff format ."
 mypy = "uv run --group backend --group dev mypy app --ignore-missing-imports"
 schema = "uvx schemathesis run http://localhost:8000/openapi.json"
 "schema.write" = "uvx schemathesis run http://localhost:8000/openapi.json --report-junit-path report.xml"
-bandit = "uvx bandit -r app"
-pip_audit = "uvx pip-audit"
+bandit = "uvx --no-build bandit@1.9.4 -r app"
+pip_audit = "uv export --no-dev --frozen --no-emit-header | uvx --no-build pip-audit@2.10.1 --disable-pip --no-deps -r /dev/stdin"
 detect_secrets = "uvx detect-secrets scan --all-files"  # pragma: allowlist secret
 
 

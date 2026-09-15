@@ -57,19 +57,19 @@ _T = TypeVar("_T")
 
 
 class EmbedQueryResponse(TypedDict):
-    """Sidecar ``/embed`` response for a single query."""
+    """Sidecar /embed response for a single query."""
 
     vector: list[float]
 
 
 class EmbedBatchResponse(TypedDict):
-    """Sidecar ``/embed`` response for a batch of texts."""
+    """Sidecar /embed response for a batch of texts."""
 
     vectors: list[list[float]]
 
 
 class RerankResponse(TypedDict):
-    """Sidecar ``/rerank`` response: one score per candidate."""
+    """Sidecar /rerank response: one score per candidate."""
 
     scores: list[float]
 
@@ -270,7 +270,7 @@ async def _sidecar_post(path: str, payload: dict, *, interactive: bool = False) 
 async def embed_query(text: str, *, interactive: bool = False) -> list[float]:
     """Embed a single query string (with the model's query instruction).
 
-    ``interactive=True`` (memory recall on a user turn) uses the fail-fast
+    interactive=True (memory recall on a user turn) uses the fail-fast
     budget; the default background budget is for ingestion.
     """
     if _sidecar_url():
@@ -333,8 +333,8 @@ async def _sidecar_rerank(
 async def rerank(query: str, documents: list[str], *, interactive: bool = False) -> list[float]:
     """Return relevance scores for documents, aligned with input order.
 
-    ``interactive=True`` (recall on a user turn) uses the fail-fast per-request
-    budget AND one deadline across all chunks — a large candidate set splits into
+    interactive=True (recall on a user turn) uses the fail-fast per-request
+    budget and one deadline across all chunks: a large candidate set splits into
     several requests, so a per-chunk timeout alone would let the total exceed the
     turn budget. On expiry it raises into the caller's retrieval-order fallback.
     """

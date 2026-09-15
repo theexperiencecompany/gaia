@@ -64,9 +64,20 @@ repos:
 
       - id: biome-check
         name: Biome check (lint + format + imports)
-        entry: npx biome check --write --no-errors-on-unmatched --files-ignore-unknown=true
+        # pnpm exec, not npx: the same binary CI runs (pnpm-lock.yaml pins it),
+        # never one npx resolves from the registry.
+        entry: pnpm exec biome check --write --no-errors-on-unmatched --files-ignore-unknown=true
         language: system
         files: \.(js|jsx|ts|tsx|json|css|html)$
+        exclude: ^(apps/api/|apps/voice-agent/|infra/|docs/)
+
+      - id: doc-comments
+        name: Doc comments state the contract (JSDoc / line-comment content gate)
+        # Staged files are passed as explicit args (the CHANGED_FILES contract
+        # in scripts/ci/lib/explicit-file-list.mjs), so only they are scanned.
+        entry: node scripts/ci/checks.mjs doc-comments
+        language: system
+        files: \.(js|jsx|ts|tsx|mjs|cjs)$
         exclude: ^(apps/api/|apps/voice-agent/|infra/|docs/)
   - repo: local
     hooks:

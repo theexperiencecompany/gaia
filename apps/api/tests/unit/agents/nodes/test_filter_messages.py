@@ -199,10 +199,9 @@ class TestFilterMessages:
         )
 
     def test_node_records_the_exact_elapsed_seconds(self):
-        # Two pinned clock reads make the recorded duration deterministic: a
-        # start/end subtraction lands exactly 0.5. A sign error (end + start)
-        # would record 10.5 here instead, so this pins the direction of the
-        # elapsed-time arithmetic, not merely that an observation happened.
+        # Two pinned clock reads land exactly 0.5; a sign error (end + start) would
+        # record 10.5, so this pins the direction of the subtraction, not just that
+        # an observation happened.
         config = {
             "agent_name": "span-test-agent",
             "configurable": {"user_id": "u1", "thread_id": "t1"},

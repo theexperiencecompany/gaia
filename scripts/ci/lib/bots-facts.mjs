@@ -129,12 +129,10 @@ function catchBinding(clause) {
 }
 
 /**
- * Whether `throw <expr>` keeps the caught error alive.
- *
- * JS analogue of tools/evlog_map's `_preserves_caught_error`: the `cause`
- * option (`throw new X(msg, { cause: err })`) is what the log sink follows,
- * `throw err` is the rethrow shape, and a bare `new X("...")` destroys the
- * caught error's type and message exactly like `raise X(...)` with no `from`.
+ * Whether `throw <expr>` keeps the caught error alive — the JS twin of
+ * tools/evlog_map's `_preserves_caught_error`. Kept: `throw err` and
+ * `throw new X(msg, { cause: err })` (the log sink follows `cause`); a
+ * `new X("...")` without it drops the caught error like `raise X` without `from`.
  */
 function throwPreservesCause(expr, binding) {
   if (binding === null) return false;

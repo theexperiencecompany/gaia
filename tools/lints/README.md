@@ -9,7 +9,7 @@ runner. They run in the `static-python` CI job and the api pre-commit config.
 # Needs Python 3.12+ (the version CI runs) and refuses to start on anything
 # older — the rules parse app sources with the running interpreter's `ast`, so
 # an older python crashes rules on syntax it cannot parse:
-uv run --project apps/api python tools/lints/run.py apps/api/app
+uv run --project apps/api python tools/lints/run.py apps/api/app apps/api/tests
 
 # Unit tests:
 uv run --project apps/api pytest tools/lints/test_lints.py -q
@@ -360,3 +360,94 @@ an allowlisted function pushes its count past the audited number and is
 reported, so a historical exemption can never absorb new code. An entry comes
 out when its model gains a datetime field and the calls take `mode="json"`;
 never raise a count.
+
+---
+
+## docstring-content
+
+**Rule:** a docstring states the contract. Ruff's `D`/`DOC` rules (in
+`pyproject.toml`) check its shape; this rule checks what is inside:
+
+| Code | Reported when |
+| --- | --- |
+| DS1 | longer than 6 lines (function), 12 (class), 15 (module) |
+| DS2 | any backtick |
+| DS3 | RST/Sphinx markup — ` ``x`` `, `:param`, `:returns:`, `:raises:`, `.. note::`, `>>>` |
+| DS4 | a `test_*` docstring longer than one line |
+| DS5 | a summary that only restates the function name |
+| DS6 | an `Args:` entry that only restates the argument name |
+| DS7 | a type written inside an `Args:` entry |
+| DS8 | an `Examples:` section |
+
+**Why:** a docstring is read by every caller, so every line of narrative in it
+is paid for many times over. The patterns above are what 900+ docstrings in
+`app/` had accumulated: pasted PR descriptions, RST markup nothing renders,
+`user_id: The user ID.`, and example blocks that rot the moment a signature
+changes. The *why* of a change belongs in its PR; the code is the example.
+
+**Scope:** `app/` and `tests/` (this rule opts into the test tree via
+`INCLUDES_TESTS`). Docstrings that are runtime data are never checked:
+`@tool` / `@custom_tool` bodies are the model-facing tool description,
+`@with_doc` injects them, `@router.*` / `@app.*` handlers feed OpenAPI, and
+`BaseModel` / `BaseSettings` / `BaseTool` class docstrings become schema
+descriptions.
+
+**Fix:** shorten. Keep the summary line and the one constraint the name does
+not carry; delete the rest. A test's name is its doc — one line at most, and
+only when it says something the name cannot (a regression reference).
+
+**No allowlist.** The cleanup that introduced this rule brought both trees to
+zero, and there is no `noqa` — a finding is fixed by editing the docstring.
+
+---
+
+## comment-content
+
+**Rule:** a comment is one line of *why* at the point of surprise.
+
+| Code | Reported when |
+| --- | --- |
+| CM1 | more than 3 consecutive own-line comment lines |
+| CM2 | a banner (`# ----`, `# ====`) or `# Step N` inside a function body |
+| CM3 | a comment whose only content is the statement directly below it |
+
+Pragmas (`noqa`, `type:`, `pragma`, `fmt`, `nosec`, `NOSONAR`, …) and trailing
+comments never count.
+
+**Why:** a four-line paragraph above `= 40` hides the one fact that mattered
+(`40 is too tight; truncates real work`); the benchmark story behind it belongs
+in the PR. A numbered `# Step 1` narration inside a function is a function that
+wants splitting. `# sort by date` above `rows.sort(key=by_date)` is noise that
+teaches readers to skip comments — which is how the load-bearing one gets
+skipped too.
+
+**Scope:** `app/` and `tests/`. Module- and class-level banners are allowed on
+purpose: a constants file or a 300-field `Settings` class is supposed to be
+sectioned, and the banner *is* the section.
+
+**Fix:** keep the numbers, limits and constraints; delete the sentences around
+them. If a block genuinely cannot fit in three lines of facts, the surprise is
+big enough to be a named helper or a paragraph in the PR — not a comment.
+
+**No allowlist**, no `noqa`.
+
+---
+
+## tool-pins
+
+**Rule:** every surface that runs a linter runs the version in the `EXPECTED`
+table of `check_tool_pins.py` — ruff, mypy, bandit, pip-audit, interrogate,
+xenon, biome. Surfaces: both pre-commit configs, `code-quality.yml`,
+`scripts/dev/verify-lanes.json`, the root `package.json` quality scripts,
+`apps/api/mise.toml`, the ignore-staleness guard's own ruff call, `uv.lock`,
+and for biome every `package.json` that declares it (exact, caret-free) plus
+every `biome.json` `$schema` URL.
+
+**Why:** "passed locally" must mean "passes CI". A ruff release promotes rules
+(0.16.0 shipped ISC004/RUF036), a biome release changes formatting — an
+unpinned surface goes red or green on its own schedule, with no commit to blame.
+
+**Fix:** bump `EXPECTED` and every invocation in the same commit. `uv run
+<tool>` surfaces are pinned through `uv.lock`; `uvx` surfaces name the version
+(`tool@x.y.z` / `tool==x.y.z`); package.json declares the exact version and
+`pnpm-lock.yaml` follows.

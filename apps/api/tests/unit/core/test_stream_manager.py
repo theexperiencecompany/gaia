@@ -344,10 +344,9 @@ class TestPublishChunk:
         assert REGISTRY.get_sample_value("transport_redis_publish_seconds_count", {}) == before
 
     async def test_publish_records_exact_elapsed_seconds(self) -> None:
-        # Two pinned clock reads make the recorded duration deterministic: a
-        # start/end subtraction lands exactly 0.5. A sign error (end + start)
-        # would record 200.5 here instead, so this pins the direction of the
-        # elapsed-time arithmetic, not merely that an observation happened.
+        # Two pinned clock reads land exactly 0.5; a sign error (end + start) would
+        # record 200.5, so this pins the direction of the subtraction, not just that
+        # an observation happened.
         before = REGISTRY.get_sample_value("transport_redis_publish_seconds_sum", {}) or 0.0
         with patch(
             "app.core.stream_manager.time.perf_counter",

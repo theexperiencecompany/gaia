@@ -157,10 +157,9 @@ class TestFollowUpActionsNode:
 
     @pytest.mark.asyncio
     async def test_node_records_the_exact_elapsed_seconds(self):
-        # Two pinned clock reads make the recorded duration deterministic: a
-        # start/end subtraction lands exactly 0.25. A sign error (end + start)
-        # would record 20.25 here instead, so this pins the direction of the
-        # elapsed-time arithmetic, not merely that an observation happened.
+        # Two pinned clock reads land exactly 0.25; a sign error (end + start) would
+        # record 20.25, so this pins the direction of the subtraction, not just that
+        # an observation happened.
         state = _make_state([HumanMessage(content="hi")])
         config = {
             "agent_name": "span-test-agent",

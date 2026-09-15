@@ -205,12 +205,11 @@ async def recall_episodes(
 
 
 async def _embed_query_interactive(query: str) -> list[float] | None:
-    """Embed a recall query, or ``None`` when the sidecar failed fast.
+    """Embed a recall query, or None when the sidecar failed fast.
 
-    Recall runs on the user's turn, so a slow/overloaded embedding sidecar must
-    degrade to the FTS leg alone (``None`` here) instead of holding — or failing
-    — the turn. A degraded order beats no memories; a handled fallback, not a
-    turn failure. Mirrors ``_rerank_scores`` for the rerank leg.
+    Recall runs on the user's turn, so a slow or overloaded embedding sidecar
+    degrades to the FTS leg alone (None here) instead of holding or failing the
+    turn: a degraded order beats no memories. Mirrors _rerank_scores.
     """
     try:
         return await embed_query(query, interactive=True)
@@ -378,11 +377,10 @@ async def _rerank_and_boost(
 
 
 async def _rerank_scores(query: str, documents: list[str]) -> list[float] | None:
-    """Cross-encoder scores for recall, or ``None`` when the sidecar failed fast.
+    """Cross-encoder scores for recall, or None when the sidecar failed fast.
 
-    Recall runs on the user's turn, so a slow/overloaded sidecar must degrade to
-    retrieval-order ranking (``None`` here) instead of holding the turn — a
-    handled fallback, not a turn failure.
+    Recall runs on the user's turn, so a slow or overloaded sidecar degrades to
+    retrieval-order ranking (None here) instead of holding the turn.
     """
     try:
         return await rerank(query, documents, interactive=True)

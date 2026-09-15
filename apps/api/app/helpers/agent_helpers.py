@@ -610,10 +610,9 @@ async def build_agent_config(
         # Lane identity for the TTFT callback, which reads it off run metadata.
         "lane_provider": model_lane.provider.value,
         "lane_model": model_lane.model or "default",
-        # Default per-call label for the TTFT callback: this run's agent tier,
-        # so the graph's own streaming model calls attribute to comms/executor/
-        # subagent instead of "unknown". Auxiliary calls (title/follow-up/memory)
-        # go through ainvoke_llm, which overrides this with their finer label.
+        # Default TTFT label: this run's agent tier, so the graph's own streaming
+        # calls attribute to comms/executor/subagent instead of "unknown";
+        # ainvoke_llm overrides it for title/follow-up/memory calls.
         LLM_LABEL_METADATA_KEY: agent_name,
     }
     _stamp_langfuse(

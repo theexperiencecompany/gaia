@@ -51,14 +51,14 @@ repos:
         priority: 0
 
       - id: gaia-python-lints
-        name: GAIA custom Python lints (route contract, service classes, wide events)
+        name: GAIA custom Python lints (route contract, service classes, wide events, docstring + comment content)
         language: system
         # cwd=apps/api: repo-root tools live at ../../tools, and the repo venv
         # python replaces the system python3 (3.9 on macOS crashes ast.parse on
         # the app's 3.10+ syntax). tools/lints/*.py is outside apps/api and
         # cannot be matched here; the root config must guard that side.
-        entry: ../../.venv/bin/python ../../tools/lints/run.py app
-        files: ^app/.*\.py$
+        entry: ../../.venv/bin/python ../../tools/lints/run.py app tests
+        files: ^(app|tests)/.*\.py$
         pass_filenames: false
         priority: 0
 

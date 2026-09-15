@@ -4,11 +4,11 @@ PostHog carries the same timings as event props for segmentation; wide events
 carry per-turn fields for Loki deep-dives.
 
 Label discipline: low-cardinality labels only. Never user/conversation/stream/
-task ids on collectors — those go on ``log.set()`` + PostHog props.
-``tool_name`` must come from a bounded catalog: built-in tool names, Composio
-action slugs, or tools collapsed to ``tool_name="mcp"`` (any tool exposing a
-``tool_connector``, i.e. the MCP adapter). Same rule for ``subagent_id``: the
-registry integration id, never the per-call row uuid.
+task ids on collectors — those go on log.set() + PostHog props. tool_name must
+come from a bounded catalog: built-in tool names, Composio action slugs, or
+tools collapsed to tool_name="mcp" (any tool exposing a tool_connector, i.e.
+the MCP adapter). Same rule for subagent_id: the registry integration id,
+never the per-call row uuid.
 """
 
 from __future__ import annotations
@@ -281,10 +281,9 @@ def _bool_label(value: bool | str) -> str:
     return value if isinstance(value, str) else ("true" if value else "false")
 
 
-# Every collector this module owns. The ARQ worker mirrors these onto its own
-# registry (app/workers/metrics.py) so samples emitted inside worker-run paths —
-# the HIL sweep, re-dispatched and workflow-triggered executor runs — are served
-# rather than landing on a default registry nothing scrapes.
+# The ARQ worker mirrors these onto its own registry (app/workers/metrics.py) so
+# samples from worker-run paths (HIL sweep, re-dispatched and workflow-triggered
+# executor runs) are served rather than landing on an unscraped default registry.
 ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _CHAT_TTFT_SECONDS,
     _CHAT_E2E_ACK_SECONDS,
@@ -345,7 +344,7 @@ def _inc(counter: Counter, **labels: str) -> None:
 
 @contextlib.contextmanager
 def span() -> Iterator[Callable[[], float]]:
-    """Time one span, yielding an ``elapsed()`` reader in seconds."""
+    """Time one span, yielding an elapsed() reader in seconds."""
     start = time.perf_counter()
     yield lambda: time.perf_counter() - start
 

@@ -28,17 +28,18 @@ class Violation:
     fix: str  # the concrete remediation for this offender
 
 
-def iter_python_files(paths: list[Path]) -> list[Path]:
-    """Expand the given paths to real, non-test ``.py`` files, sorted."""
+def iter_python_files(paths: list[Path], *, include_tests: bool = False) -> list[Path]:
+    """Expand the given paths to real ``.py`` files, sorted; tests only on request."""
+    skip = tuple(seg for seg in _SKIP_SEGMENTS if include_tests is False or seg != "/tests/")
     out: set[Path] = set()
     for raw in paths:
         p = raw.resolve()
         candidates = p.rglob("*.py") if p.is_dir() else ([p] if p.suffix == ".py" else [])
         for f in candidates:
             posix = f.as_posix()
-            if any(seg in posix for seg in _SKIP_SEGMENTS):
+            if any(seg in posix for seg in skip):
                 continue
-            if f.name.startswith("test_") or f.name.endswith("_test.py"):
+            if not include_tests and (f.name.startswith("test_") or f.name.endswith("_test.py")):
                 continue
             out.add(f)
     return sorted(out)

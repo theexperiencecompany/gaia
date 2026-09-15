@@ -173,10 +173,10 @@ def agent_configurable(config: RunnableConfig | None) -> AgentConfigurable:
 
 
 def config_agent_name(config: RunnableConfig | None) -> str:
-    """Which agent a run belongs to, for metric labels (``"unknown"`` when unstamped).
+    """Return which agent a run belongs to for metric labels, "unknown" when unstamped.
 
-    ``build_agent_config`` stamps ``agent_name`` at the top level, but LangGraph's
-    ``ensure_config`` folds every non-standard top-level key into ``configurable``
+    build_agent_config stamps agent_name at the top level, but LangGraph's
+    ensure_config folds every non-standard top-level key into configurable
     before a node sees the config — so inside a graph the key only exists there.
     """
     bag = cast(dict[str, Any], config or {})

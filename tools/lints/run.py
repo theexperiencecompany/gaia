@@ -2,7 +2,7 @@
 """Run the custom GAIA Python AST lints and fail loud with teaching messages.
 
 Usage:
-    uv run --project apps/api python tools/lints/run.py apps/api/app [more/paths ...]
+    uv run --project apps/api python tools/lints/run.py apps/api/app apps/api/tests [more/paths ...]
 
 Each failure prints the rule, why it exists, the offending file:line, the exact
 remediation, and a doc pointer — so the fix is obvious without leaving the error.
@@ -34,6 +34,8 @@ if sys.version_info < REQUIRED_PYTHON:
     )
 
 from _common import display, iter_python_files, report_rule
+import comment_slop
+import docstring_slop
 import no_service_classes
 import no_silent_fallback
 import repository_boundaries
@@ -48,6 +50,8 @@ RULES = (
     repository_boundaries,
     no_silent_fallback,
     tool_dump_boundary,
+    docstring_slop,
+    comment_slop,
 )
 
 
@@ -68,14 +72,19 @@ def _crash_location(exc: Exception) -> str:
 
 
 def main(argv: list[str]) -> int:
-    paths = [Path(a) for a in argv] or [Path("apps/api/app")]
+    """Run every rule over the given paths; return non-zero on any violation or crash."""
+    paths = [Path(a) for a in argv] or [Path("apps/api/app"), Path("apps/api/tests")]
     files = iter_python_files(paths)
+    # A rule that sets INCLUDES_TESTS governs the test tree too (the
+    # docstring/comment rules); every other rule keeps the non-test list.
+    files_with_tests = iter_python_files(paths, include_tests=True)
 
     total = 0
     crashed: list[str] = []
     for module in RULES:
         try:
-            violations = module.check(files)
+            scope = files_with_tests if getattr(module, "INCLUDES_TESTS", False) else files
+            violations = module.check(scope)
         except Exception as exc:
             # Containment, not swallowing: the crash is printed in full below
             # (rule name, file, traceback) and still fails the run — the goal

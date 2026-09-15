@@ -1167,13 +1167,7 @@ class TestRecall:
 
     @pytest.mark.regression
     async def test_recall_degrades_to_fts_only_when_the_embed_sidecar_fails(self) -> None:
-        """A failed interactive embedding must not sink the whole recall.
-
-        Before the fix, the raw HTTP error from the embedding sidecar propagated
-        through recall's ``asyncio.gather`` (discarding the successful FTS leg
-        too), so a transient sidecar blip returned zero memories instead of the
-        FTS-ranked order — the opposite of 'a degraded order beats no memories'.
-        """
+        """A failed interactive embedding degrades recall to the FTS order instead of sinking it."""
         row = make_row("PROJ-4821 tracks the refactor")
         harness = _RecallHarness()
         harness.rerank_scores = {row.content: 5.0}

@@ -66,9 +66,8 @@ const BOT_SRC_DIRS = [
   "apps/bots/telegram/src",
   "apps/bots/whatsapp/src",
   "apps/bots/imessage/src",
-  // The shared library is scanned too: the process signal/fault handlers, the
-  // AMQP consumer and the shared HTTP routes all live here, and a scan that
-  // only knew per-bot adapters would score a perfect 100 over that surface.
+  // Scanned for registrations too: process handlers, the AMQP consumer and the
+  // shared HTTP routes live here, and skipping it scored that surface a false 100.
   "libs/shared/ts/src/bots",
 ];
 
@@ -77,11 +76,10 @@ const SCHEMA_FILE = "libs/shared/ts/src/bots/utils/wide-events.ts";
 const SCHEMA_INTERFACE = "BotWideEventFields";
 
 /**
- * Named shared boundaries: functions that are entry points in their own right,
- * not SDK registrations a regex can find. Each is scored like any other entry;
- * the ones that PASS become cross-file knowledge for the per-file scan.
- * Derivation is the point — delete the boundary from `shutdown()` and it stops
- * vouching for the signal handlers that call it, instead of doing so forever.
+ * Shared functions that are entry points in their own right (several callers,
+ * no SDK registration). Only the ones that PASS the wide-event check vouch for
+ * handlers calling them — derived each run, never asserted, so removing the
+ * boundary from `shutdown()` stops it vouching for the signal handlers.
  */
 const SHARED_ENTRY_POINTS = [
   {
@@ -346,9 +344,8 @@ function discoverRegistrations(sf) {
       if (method === null) return;
       const receiver = sourceTextOf(sf, node.callee.object).replace(/^this\./, "");
       const label = registrationLabel(node.arguments[0], sf);
-      // Everything registered on `process` is a process-level handler, never a
-      // platform "event". A registration the map cannot resolve — including one
-      // driven by a loop variable — still counts, so a loop isn't a way out of the map.
+      // `process` registrations are process-level handlers, never platform events;
+      // an unresolvable one (e.g. a loop variable) still counts.
       const kind =
         receiver === "process"
           ? (PROCESS_EVENT_KINDS.get(label) ?? "signal")
@@ -404,9 +401,8 @@ function classifySensitivity(entry, ownFacts) {
     return { level: "high", label, reasons };
   }
 
-  // PII tier mirrors tools/evlog_map/sensitivity.py's `_PII_FIELDS` — keep the
-  // two term lists in step. Python also requires a nearby write call; bots have
-  // no such signal, so this tier is term-only here (broader, which is fine for a warn-only tier).
+  // PII tier mirrors tools/evlog_map/sensitivity.py `_PII_FIELDS` (keep in step);
+  // term-only here — bots have no DB-write signal — so slightly broader on purpose.
   const piiTerms = [...words].filter((word) => PII_TERMS.has(word));
   if (piiTerms.length > 0) {
     return {
@@ -680,11 +676,10 @@ function findSharedEntryNode(sf, name) {
 }
 
 /**
- * The subset of {@link SHARED_ENTRY_POINTS} that actually opens a wide-event
- * boundary today. Computed over the whole repo, ignoring `--files-from`: a
- * per-file scan needs to know `dispatchCommand` is instrumented, or handlers
- * routing through it read as dark. Suppressions are ignored — a waived
- * boundary isn't one that exists, and must not vouch for someone else.
+ * The {@link SHARED_ENTRY_POINTS} that open a wide-event boundary today. Computed
+ * over the whole repo (ignoring `--files-from`) so per-file scans still see
+ * `dispatchCommand` as instrumented; suppressions ignored, since a waived
+ * boundary must not vouch for its callers.
  */
 function verifiedSharedCalls(warnings) {
   const verified = new Set();

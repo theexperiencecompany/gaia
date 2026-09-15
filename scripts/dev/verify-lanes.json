@@ -51,6 +51,14 @@
       "command": "node scripts/ci/checks.mjs api-schema"
     },
     {
+      "name": "doc-comments",
+      "scope": "\\.(ts|tsx|js|jsx|mjs|cjs)$",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": ["node"],
+      "command": "node scripts/ci/checks.mjs doc-comments"
+    },
+    {
       "name": "api-schema-types",
       "scope": "\\.(ts|tsx)$|^apps/api/openapi\\.json$|^config/api-schema-baseline\\.json$",
       "heavy": false,
@@ -128,7 +136,7 @@
       "heavy": false,
       "timeout_s": 120,
       "require_cmd": [],
-      "command": "python3 tools/lints/run.py apps/api/app"
+      "command": "python3 tools/lints/run.py apps/api/app apps/api/tests"
     },
     {
       "name": "plr-complexity",
