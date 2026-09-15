@@ -221,6 +221,74 @@ class AnalyticsEvents(StrEnum):
 
     USAGE_QUERIED = "usage:queried"
 
+    # Background spend only; agent-graph calls are covered by $ai_generation.
+    AI_LLM_CALL_COMPLETED = "ai:llm_call_completed"
+
+
+class AIFeature(StrEnum):
+    """The product capability a metered model call was made on behalf of.
+
+    Coarser than the call's ``label`` on purpose: many one-shots roll up to one
+    member while keeping their own labels. Which integration ran is ``agent_name``.
+    """
+
+    CHAT = "chat"
+    WORKFLOW = "workflow"
+    INTEGRATION = "integration"
+    MEMORY = "memory"
+    VISION = "vision"
+    MAIL = "mail"
+    HIL = "hil"
+    ONBOARDING = "onboarding"
+    PROFILE = "profile"
+    INTEGRATION_INFERENCE = "integration_inference"
+    WORKFLOW_GENERATION = "workflow_generation"
+    FILE_EXTRACTION = "file_extraction"
+    FOLLOW_UPS = "follow_ups"
+    RESEARCH = "research"
+    MODERATION = "moderation"
+    TITLE_GENERATION = "title_generation"
+    # A caller whose label has no LABEL_FEATURES entry.
+    UNATTRIBUTED = "unattributed"
+
+
+#: Which capability each auxiliary ``label`` belongs to, keyed on the ``label``
+#: every one-shot already passes for its log line. Kept beside ``AIFeature`` so
+#: the two cannot drift; ``test_every_feature_is_reachable`` enforces it.
+LABEL_FEATURES: dict[str, AIFeature] = {
+    "chatbot": AIFeature.TITLE_GENERATION,
+    "file_image_summary": AIFeature.FILE_EXTRACTION,
+    "file_text_summary": AIFeature.FILE_EXTRACTION,
+    "follow_up_actions": AIFeature.FOLLOW_UPS,
+    "hil_conversational_resolve": AIFeature.HIL,
+    "hil_conversational_resolve_batch": AIFeature.HIL,
+    "hil_intent_judge": AIFeature.HIL,
+    "hil_tool_classification": AIFeature.HIL,
+    "holo_card": AIFeature.PROFILE,
+    "image_to_text": AIFeature.VISION,
+    "integration_category": AIFeature.INTEGRATION_INFERENCE,
+    "integration_content": AIFeature.INTEGRATION_INFERENCE,
+    "mail_compose": AIFeature.MAIL,
+    "onboarding_clarify": AIFeature.ONBOARDING,
+    "onboarding_first_message": AIFeature.ONBOARDING,
+    "onboarding_focus_todos": AIFeature.ONBOARDING,
+    "onboarding_inbox_triage": AIFeature.ONBOARDING,
+    "onboarding_social_profile": AIFeature.ONBOARDING,
+    "onboarding_todos_from_emails": AIFeature.ONBOARDING,
+    "onboarding_workflow_suggestions": AIFeature.ONBOARDING,
+    "onboarding_writing_style": AIFeature.ONBOARDING,
+    "onboarding_writing_style_example": AIFeature.ONBOARDING,
+    "playbook_ask_fill": AIFeature.WORKFLOW,
+    "playbook_narration": AIFeature.WORKFLOW,
+    "profanity": AIFeature.MODERATION,
+    "profile_extraction": AIFeature.MEMORY,
+    "research_queries": AIFeature.RESEARCH,
+    "tool_media_vision": AIFeature.VISION,
+    "vision_fallback": AIFeature.VISION,
+    "workflow_generation": AIFeature.WORKFLOW_GENERATION,
+    "workflow_prompt": AIFeature.WORKFLOW_GENERATION,
+}
+
 
 def _get_posthog_client() -> Posthog | None:
     """Get the PostHog client from providers."""

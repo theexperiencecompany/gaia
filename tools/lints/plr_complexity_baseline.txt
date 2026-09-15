@@ -61,7 +61,6 @@ apps/api/app/services/mcp/langchain_adapter.py	PLR0912
 apps/api/app/services/mcp/resilient_adapter.py	PLR0912
 apps/api/app/services/mcp/resilient_adapter.py	PLR0915
 apps/api/app/services/mcp/token_management.py	PLR0912
-apps/api/app/services/onboarding/first_message_service.py	PLR0913
 apps/api/app/services/onboarding/post_onboarding_service.py	PLR0913
 apps/api/app/services/onboarding/social_profile_service.py	PLR0912
 apps/api/app/services/onboarding/social_profile_service.py	PLR0915

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, TypedDict
 
 from pydantic import BaseModel, Field
@@ -244,6 +245,29 @@ class OnboardingWorkflowSummary(BaseModel):
     # Omitted from the wire (not null) on the fallback workflow, which is built
     # without the connected-integration check.
     missing_integrations: list[IntegrationRef] | None = None
+
+
+@dataclass(frozen=True)
+class FirstMessageRecipient:
+    """The user a first message is addressed to."""
+
+    user_id: str
+    name: str
+    profession: str
+    writing_style: WritingStyleProfile | None
+    has_gmail: bool
+    focus: str = ""
+
+
+@dataclass(frozen=True)
+class FirstMessageOutcome:
+    """What the onboarding pipeline produced, which the message reports."""
+
+    triage: InboxTriage | None
+    created_todos: list[OnboardingTodoSummary]
+    created_workflows: list[OnboardingWorkflowSummary]
+    executed_todos: list[OnboardingTodoSummary] | None = None
+    clarify_answers: list[ClarifyAnswerRecord] | None = None
 
 
 class UserProfileMetadata(BaseModel):

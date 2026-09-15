@@ -5,18 +5,15 @@ from typing import cast
 
 from langchain_core.messages import BaseMessage, HumanMessage
 
-from app.agents.llm.client import ainvoke_llm, get_helper_llm
+from app.agents.llm.client import ainvoke_llm, get_helper_llm, metered_config
 from app.agents.prompts.onboarding_prompts import (
     FIRST_MESSAGE_GENERATION_PROMPT_GMAIL,
     FIRST_MESSAGE_GENERATION_PROMPT_NO_GMAIL,
 )
 from app.constants.log_tags import LogTag
 from app.models.onboarding_models import (
-    ClarifyAnswerRecord,
-    InboxTriage,
-    OnboardingTodoSummary,
-    OnboardingWorkflowSummary,
-    WritingStyleProfile,
+    FirstMessageOutcome,
+    FirstMessageRecipient,
 )
 from app.services.onboarding.clarify_service import format_clarify_context
 from shared.py.wide_events import log
@@ -37,20 +34,17 @@ def default_first_message(name: str) -> str:
 
 
 async def generate_first_message(
-    *,
-    user_id: str,
-    name: str,
-    profession: str,
-    triage: InboxTriage | None,
-    created_todos: list[OnboardingTodoSummary],
-    created_workflows: list[OnboardingWorkflowSummary],
-    writing_style: WritingStyleProfile | None,
-    has_gmail: bool,
-    focus: str = "",
-    executed_todos: list[OnboardingTodoSummary] | None = None,
-    clarify_answers: list[ClarifyAnswerRecord] | None = None,
+    recipient: FirstMessageRecipient,
+    outcome: FirstMessageOutcome,
 ) -> str:
     """Generate GAIA's first message to a new user."""
+    user_id, name = recipient.user_id, recipient.name
+    profession, focus = recipient.profession, recipient.focus
+    writing_style, has_gmail = recipient.writing_style, recipient.has_gmail
+    triage, clarify_answers = outcome.triage, outcome.clarify_answers
+    created_todos, created_workflows = outcome.created_todos, outcome.created_workflows
+    executed_todos = outcome.executed_todos
+
     t0 = time.monotonic()
     try:
         executed_ids = {t.id for t in (executed_todos or []) if t.id}
@@ -106,7 +100,10 @@ async def generate_first_message(
         llm = get_helper_llm()
         t_llm = time.monotonic()
         response = await ainvoke_llm(
-            llm, [HumanMessage(content=prompt)], label="onboarding_first_message"
+            llm,
+            [HumanMessage(content=prompt)],
+            label="onboarding_first_message",
+            config=metered_config(user_id),
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
         message = cast(BaseMessage, response).text.strip()

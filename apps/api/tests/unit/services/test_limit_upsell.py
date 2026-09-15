@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.models.payment_models import PlanType
+from app.services.analytics_service import AnalyticsEvents
 from app.services.limit_upsell import (
     LimitHitOrigin,
     current_limit_origin,
@@ -59,7 +60,9 @@ class TestOriginRouting:
         seams.upsell.assert_awaited_once_with("user-1", "chat_messages")
         seams.paused.assert_not_awaited()
         seams.capture.assert_called_once_with(
-            "user-1", "rate_limit_hit", {"feature": "chat_messages", "origin": "interactive"}
+            "user-1",
+            AnalyticsEvents.RATE_LIMIT_HIT,
+            {"feature": "chat_messages", "origin": "interactive", "plan": "free"},
         )
 
     async def test_background_sends_workflows_paused_email(self) -> None:
@@ -73,8 +76,12 @@ class TestOriginRouting:
         seams.upsell.assert_not_awaited()
         seams.capture.assert_called_once_with(
             "user-2",
-            "rate_limit_hit",
-            {"feature": "trigger_workflow_executions", "origin": "background"},
+            AnalyticsEvents.RATE_LIMIT_HIT,
+            {
+                "feature": "trigger_workflow_executions",
+                "origin": "background",
+                "plan": "free",
+            },
         )
 
     async def test_email_failure_is_swallowed(self) -> None:

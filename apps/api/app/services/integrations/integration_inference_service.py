@@ -58,6 +58,7 @@ async def infer_integration_category(
     description: str,
     tools: list[dict[str, Any]],
     server_url: str,
+    user_id: str,
 ) -> str:
     """Classify an integration into one ``INTEGRATION_CATEGORIES`` value.
 
@@ -74,7 +75,10 @@ async def infer_integration_category(
     try:
         async with asyncio.timeout(_CATEGORY_INFERENCE_TIMEOUT_SECONDS):
             response = await ainvoke_llm(
-                get_helper_llm(), [HumanMessage(content=prompt)], label="integration_category"
+                get_helper_llm(),
+                [HumanMessage(content=prompt)],
+                label="integration_category",
+                config=metered_config(user_id),
             )
     except Exception as e:
         log.error(
@@ -110,7 +114,6 @@ async def infer_integration_content(
     tools: list[dict[str, Any]],
     server_url: str,
     category: str,
-    *,
     user_id: str,
 ) -> IntegrationContent | None:
     """Generate rich marketplace content for an integration, or ``None``.

@@ -71,15 +71,15 @@ def schedule_limit_upsell(
     """Queue the limit-hit side effects for a free user (no-op for paid plans)."""
     if user_plan != PlanType.FREE:
         return
-    spawn_background_task(_run(user_id, feature_key, origin))
+    spawn_background_task(_run(user_id, feature_key, origin, user_plan))
 
 
-async def _run(user_id: str, feature_key: str, origin: LimitHitOrigin) -> None:
+async def _run(user_id: str, feature_key: str, origin: LimitHitOrigin, user_plan: PlanType) -> None:
     try:
         capture_event(
             user_id,
             AnalyticsEvents.RATE_LIMIT_HIT,
-            {"feature": feature_key, "origin": origin.value},
+            {"feature": feature_key, "origin": origin.value, "plan": user_plan.value},
         )
         if origin == LimitHitOrigin.BACKGROUND:
             await send_workflows_paused_email(user_id)

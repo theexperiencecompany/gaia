@@ -79,6 +79,7 @@ from app.services.llm_metering import (
     record_llm_call,
     resolve_channel,
 )
+from app.services.llm_usage_analytics import capture_auxiliary_llm_call
 from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
@@ -1359,6 +1360,18 @@ async def _record_auxiliary_usage(
             cached_tokens=cached_tokens,
             output_tokens=output_tokens,
             reasoning_tokens=reasoning_tokens,
+            cost_usd=cost,
+        )
+        capture_auxiliary_llm_call(
+            user_id=user_id,
+            label=label,
+            model_name=model_name,
+            usage=TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                reasoning_tokens=reasoning_tokens,
+            ),
             cost_usd=cost,
         )
 

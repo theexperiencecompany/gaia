@@ -206,6 +206,43 @@ class TestCoreAgentLogic:
         assert kwargs["turn"].writing_style == {"summary": "terse"}
 
     @pytest.mark.asyncio
+    async def test_a_workflow_fire_reaches_build_agent_config_on_the_turn(self):
+        """The configurable is stamped only after ``build_agent_config`` returns,
+        so the id must arrive on the turn or the run is filed as chat."""
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"] as mock_build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(trigger_context={"workflow_id": "wf-brief"}),
+            )
+
+        assert mock_build_config.call_args.kwargs["turn"].workflow_id == "wf-brief"
+
+    @pytest.mark.asyncio
+    async def test_interactive_chat_carries_no_workflow_on_the_turn(self):
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"] as mock_build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(), conversation_id="conv-1", user=_make_user()
+            )
+
+        assert mock_build_config.call_args.kwargs["turn"].workflow_id is None
+
+    @pytest.mark.asyncio
     async def test_passes_trigger_context(self):
         patches = _common_patches()
         trigger = {"type": "gmail", "email_data": {}}

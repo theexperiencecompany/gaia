@@ -192,6 +192,7 @@ async def _core_agent_logic(
             user_request=request.message,
             user_preferences=user_preferences,
             writing_style=writing_style,
+            workflow_id=(trigger_context or {}).get("workflow_id"),
         ),
         tracing=AgentTracing(
             usage_metadata_callback=usage_metadata_callback,
