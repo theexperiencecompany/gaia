@@ -43,14 +43,6 @@ def _spawned(stream_id: str) -> bool:
     return session is not None and session.executor_spawned
 
 
-@pytest.fixture(autouse=True)
-def _clean_registry():
-    """Sessions are module-global; isolate every test."""
-    sess._sessions.clear()
-    yield
-    sess._sessions.clear()
-
-
 class TestSessionRegistry:
     def test_create_then_get_returns_same_session(self) -> None:
         created = create_session("s1", RunKind.LIVE)

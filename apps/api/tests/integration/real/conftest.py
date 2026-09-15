@@ -36,6 +36,7 @@ import uvicorn
 
 from tests.helpers import (
     HeaderDrivenAuthMiddleware,
+    pg_advisory_lock,
     pick_free_port,
     skip_items_without_real_services,
 )
@@ -222,9 +223,16 @@ async def live_api_server(
         await server.stop()
 
 
+# Held for a whole bridge-table test: the teardown TRUNCATE is table-wide, and on
+# another xdist worker it deleted a device between a test's seed and its insert.
+BRIDGE_TABLES_LOCK_ID = 743_001_995
+
+
 @pytest.fixture
-async def clean_bridge_tables(live_api_server: LiveApiServer) -> AsyncIterator[None]:
-    """Truncate the device-bridge Postgres tables after each test.
+async def clean_bridge_tables(
+    live_api_server: LiveApiServer, postgres_url: str
+) -> AsyncIterator[None]:
+    """Run the test alone on the device-bridge tables, then truncate them.
 
     Device-bridge E2E tests assert exact device counts/lists for a given user;
     without this, rows a previous run committed for the same test-user id would
@@ -234,18 +242,21 @@ async def clean_bridge_tables(live_api_server: LiveApiServer) -> AsyncIterator[N
     """
     from app.core.lazy_loader import providers
 
-    yield
+    async with pg_advisory_lock(postgres_url, BRIDGE_TABLES_LOCK_ID):
+        yield
 
-    engine = await providers.aget("postgresql_engine")
-    if engine is None:
-        return
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("TRUNCATE bridge_device_mcp_servers, bridge_devices CASCADE"))
-    except ProgrammingError:
-        # First-ever run against a fresh DB where no device-bridge test has
-        # created the tables yet — nothing to clean up.
-        pass
+        engine = await providers.aget("postgresql_engine")
+        if engine is None:
+            return
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text("TRUNCATE bridge_device_mcp_servers, bridge_devices CASCADE")
+                )
+        except ProgrammingError:
+            # First-ever run against a fresh DB where no device-bridge test has
+            # created the tables yet — nothing to clean up.
+            pass
 
 
 @pytest.fixture

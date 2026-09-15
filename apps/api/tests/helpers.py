@@ -18,6 +18,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from app.config.rate_limits import RateLimitConfig
+from app.db.postgresql import LANGGRAPH_SETUP_LOCK_ID
 from shared.py.wide_events import log, log_context
 
 
@@ -411,16 +412,6 @@ async def captured_wide_event(operation: str = "test") -> AsyncIterator[dict[str
     """
     async with log_context(operation):
         yield log.get()
-
-
-# Postgres runs CREATE TABLE IF NOT EXISTS as create-then-check, so two xdist
-# workers calling langgraph's checkpointer/store setup() at the same instant
-# race on pg_type ("duplicate key value violates unique constraint
-# pg_type_typname_nsp_index ... checkpoint_migrations", run 33182536377).
-# A session-level advisory lock on its own autocommit connection serializes
-# the DDL across workers; the id is arbitrary and distinct from the memory
-# suite's schema lock (743_001_993).
-LANGGRAPH_SETUP_LOCK_ID = 743_001_994
 
 
 @asynccontextmanager

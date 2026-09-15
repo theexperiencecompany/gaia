@@ -9,9 +9,11 @@ Covers:
 """
 
 from contextlib import ExitStack
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+
+from app.db.postgresql import LANGGRAPH_SETUP_LOCK_ID
 
 _MOD = "app.agents.core.graph_builder.build_graph"
 _CM_MOD = "app.agents.core.graph_builder.checkpointer_manager"
@@ -80,6 +82,15 @@ def _apply_patches(stack: ExitStack, overrides: dict | None = None):
 _TEST_DB_URL = "postgresql://localhost/test"
 
 
+def _mock_pool() -> AsyncMock:
+    """Build an AsyncConnectionPool mock whose connection() is the context manager setup() borrows."""
+    pool = AsyncMock()
+    pool.connection = MagicMock()
+    pool.connection.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    pool.connection.return_value.__aexit__ = AsyncMock(return_value=False)
+    return pool
+
+
 class TestCheckpointerManager:
     """Tests for CheckpointerManager lifecycle."""
 
@@ -122,7 +133,7 @@ class TestCheckpointerManager:
     async def test_setup_creates_pool_and_checkpointer(
         self, mock_pool_cls, mock_saver_cls, mock_store_cls
     ):
-        mock_pool = AsyncMock()
+        mock_pool = _mock_pool()
         mock_pool_cls.return_value = mock_pool
 
         mock_saver = AsyncMock()
@@ -149,7 +160,7 @@ class TestCheckpointerManager:
     @patch(f"{_CM_MOD}.AsyncPostgresSaver")
     @patch(f"{_CM_MOD}.AsyncConnectionPool")
     async def test_setup_returns_self(self, mock_pool_cls, mock_saver_cls, mock_store_cls):
-        mock_pool_cls.return_value = AsyncMock()
+        mock_pool_cls.return_value = _mock_pool()
         mock_saver_cls.return_value = AsyncMock()
         mock_store_ctx = AsyncMock()
         mock_store_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
@@ -166,7 +177,7 @@ class TestCheckpointerManager:
     async def test_setup_pool_connection_kwargs(
         self, mock_pool_cls, mock_saver_cls, mock_store_cls
     ):
-        mock_pool_cls.return_value = AsyncMock()
+        mock_pool_cls.return_value = _mock_pool()
         mock_saver_cls.return_value = AsyncMock()
         mock_store_ctx = AsyncMock()
         mock_store_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
@@ -196,6 +207,65 @@ class TestCheckpointerManager:
         mgr = self._make_manager()
         # Should not raise
         await mgr.close()
+
+    @staticmethod
+    def _record_setup_order(
+        mock_pool_cls, mock_saver_cls, mock_store_cls, *, store_error: Exception | None = None
+    ) -> MagicMock:
+        order = MagicMock()
+        pool = _mock_pool()
+        conn = pool.connection.return_value.__aenter__.return_value
+        conn.execute.side_effect = lambda sql, params: order.execute(sql, params)
+        mock_pool_cls.return_value = pool
+
+        saver = AsyncMock()
+        saver.setup.side_effect = lambda: order.saver_setup()
+        mock_saver_cls.return_value = saver
+
+        store = AsyncMock()
+        store.setup.side_effect = store_error or (lambda: order.store_setup())
+        store_ctx = AsyncMock()
+        store_ctx.__aenter__ = AsyncMock(return_value=store)
+        store_ctx.__aexit__ = AsyncMock(return_value=False)
+        mock_store_cls.from_conn_string.return_value = store_ctx
+        return order
+
+    @patch(f"{_CM_MOD}.AsyncPostgresStore")
+    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
+    @patch(f"{_CM_MOD}.AsyncConnectionPool")
+    async def test_migrations_run_under_the_advisory_lock(
+        self, mock_pool_cls, mock_saver_cls, mock_store_cls
+    ):
+        """Concurrent starters must not race langgraph's CREATE TYPE checkpoint_migrations."""
+        order = self._record_setup_order(mock_pool_cls, mock_saver_cls, mock_store_cls)
+
+        await self._make_manager().setup()
+
+        mock_store_cls.from_conn_string.assert_called_once_with(_TEST_DB_URL)
+        lock = (LANGGRAPH_SETUP_LOCK_ID,)
+        assert order.mock_calls == [
+            call.execute("SELECT pg_advisory_lock(%s)", lock),
+            call.saver_setup(),
+            call.store_setup(),
+            call.execute("SELECT pg_advisory_unlock(%s)", lock),
+        ]
+
+    @patch(f"{_CM_MOD}.AsyncPostgresStore")
+    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
+    @patch(f"{_CM_MOD}.AsyncConnectionPool")
+    async def test_a_failed_migration_still_releases_the_lock(
+        self, mock_pool_cls, mock_saver_cls, mock_store_cls
+    ):
+        order = self._record_setup_order(
+            mock_pool_cls, mock_saver_cls, mock_store_cls, store_error=RuntimeError("store DDL")
+        )
+
+        with pytest.raises(RuntimeError, match="store DDL"):
+            await self._make_manager().setup()
+
+        assert order.mock_calls[-1] == call.execute(
+            "SELECT pg_advisory_unlock(%s)", (LANGGRAPH_SETUP_LOCK_ID,)
+        )
 
 
 class TestGetCheckpointerManager:

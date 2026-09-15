@@ -46,8 +46,6 @@ from app.memory.embeddings import _embed_sync, _rerank_sync
 import app.memory.extraction as extraction_module
 from tests.integration.real.memory.llm import FakeMemoryLLM
 
-_SCHEMA_ADVISORY_LOCK_ID = 743_001_993  # serializes create_all across xdist workers
-
 _schema_ready = False
 _chroma_collections_ready = False
 
@@ -102,7 +100,10 @@ async def pg_engine(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[AsyncEngi
 
     if not _schema_ready:
         async with engine.begin() as conn:
-            await conn.execute(text(f"SELECT pg_advisory_xact_lock({_SCHEMA_ADVISORY_LOCK_ID})"))
+            await conn.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_id)"),
+                {"lock_id": postgresql_module.SCHEMA_BOOTSTRAP_LOCK_ID},
+            )
             await conn.run_sync(postgresql_module.Base.metadata.create_all)
         _schema_ready = True
 

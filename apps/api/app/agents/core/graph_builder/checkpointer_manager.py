@@ -23,6 +23,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.db.postgresql import LANGGRAPH_SETUP_LOCK_ID
 
 
 class CheckpointerManager:
@@ -78,10 +79,16 @@ class CheckpointerManager:
         self.checkpointer = AsyncPostgresSaver(
             conn=cast(AsyncConnectionPool[AsyncConnection[DictRow]], self.pool)
         )
-        await self.checkpointer.setup()
-
-        async with AsyncPostgresStore.from_conn_string(self.conninfo) as store:
-            await store.setup()
+        # Session-level lock on an autocommit connection, held across both setups so
+        # concurrent starters (API replicas, xdist workers) run the DDL one at a time.
+        async with self.pool.connection() as conn:
+            await conn.execute("SELECT pg_advisory_lock(%s)", (LANGGRAPH_SETUP_LOCK_ID,))
+            try:
+                await self.checkpointer.setup()
+                async with AsyncPostgresStore.from_conn_string(self.conninfo) as store:
+                    await store.setup()
+            finally:
+                await conn.execute("SELECT pg_advisory_unlock(%s)", (LANGGRAPH_SETUP_LOCK_ID,))
 
         return self
 

@@ -14,6 +14,7 @@ import pytest
 
 from app.constants.log_tags import LogTag
 from app.db.postgresql import (
+    SCHEMA_BOOTSTRAP_LOCK_ID,
     Base,
     _adapt_url_for_asyncpg,
     _ensure_added_columns,
@@ -312,6 +313,30 @@ class TestInitPostgresqlEngine:
                 _ensure_added_columns,
                 _ensure_timestamptz_columns,
             ]
+
+    async def test_schema_bootstrap_takes_the_advisory_lock_before_create_all(self) -> None:
+        """Concurrent starters must not race CREATE TYPE; the lock is the transaction's first statement."""
+        mock_engine = MagicMock()
+        mock_conn = AsyncMock()
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_ctx.__aexit__ = AsyncMock(return_value=None)
+        mock_engine.begin.return_value = mock_ctx
+
+        with (
+            patch("app.db.postgresql.settings") as mock_settings,
+            patch("app.db.postgresql.create_async_engine", return_value=mock_engine),
+            patch("app.db.postgresql.log"),
+        ):
+            mock_settings.POSTGRES_URL = "postgresql://localhost/test"
+
+            await _get_original_init_fn()()
+
+        first = mock_conn.mock_calls[0]
+        assert first[0] == "execute"
+        statement, params = first.args
+        assert str(statement) == "SELECT pg_advisory_xact_lock(:lock_id)"
+        assert params == {"lock_id": SCHEMA_BOOTSTRAP_LOCK_ID}
 
     async def test_engine_pool_configuration(self) -> None:
         """Engine should be created with expected pool settings."""

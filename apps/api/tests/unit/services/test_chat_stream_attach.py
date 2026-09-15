@@ -20,7 +20,6 @@ from langchain_core.callbacks import UsageMetadataCallbackHandler
 import pytest
 
 from app.agents.core.agent import AgentRunOptions, StreamMessageIds
-from app.agents.core.background import session as sess
 from app.agents.core.background.session import RunKind, create_session, get_session
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
@@ -33,13 +32,6 @@ from app.services.chat.stream import (
     _StreamState,
     _TurnContext,
 )
-
-
-@pytest.fixture(autouse=True)
-def _clean_registry():
-    sess._sessions.clear()
-    yield
-    sess._sessions.clear()
 
 
 def _ready_session_with_cards(stream_id: str) -> None:

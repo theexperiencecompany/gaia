@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from prometheus_client import REGISTRY
 import pytest
 
-from app.agents.core.background import executor_runner as er, result_delivery as rd, session as sess
+from app.agents.core.background import executor_runner as er, result_delivery as rd
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
@@ -30,13 +30,6 @@ from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.services.analytics_service import AnalyticsEvents
 from shared.py.wide_events import log
-
-
-@pytest.fixture(autouse=True)
-def _clean_registry():
-    sess._sessions.clear()
-    yield
-    sess._sessions.clear()
 
 
 def _run(

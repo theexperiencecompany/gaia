@@ -35,13 +35,6 @@ from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.log_tags import LogTag
 
 
-@pytest.fixture(autouse=True)
-def _clean_registry():
-    sess._sessions.clear()
-    yield
-    sess._sessions.clear()
-
-
 def _tool_call_event(tool_call_id: str, subagent_id: str | None = None) -> dict:
     entry: dict = {
         "tool_name": "tool_calls_data",

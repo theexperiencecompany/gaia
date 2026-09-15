@@ -22,6 +22,14 @@ from shared.py.wide_events import log
 # Create a SQLAlchemy base class for declarative models
 Base = declarative_base()
 
+# Serializes schema bootstrap: concurrent create_all calls (API replicas, xdist
+# workers) race on CREATE TYPE for enum columns and fail on pg_type's unique index.
+SCHEMA_BOOTSTRAP_LOCK_ID = 743_001_993
+
+# Same race in langgraph's checkpointer/store setup(): its CREATE TABLE IF NOT EXISTS
+# collides on pg_type ("checkpoint_migrations") when two starters run it at once.
+LANGGRAPH_SETUP_LOCK_ID = 743_001_994
+
 # Datetime columns that must store tz-aware instants (timestamptz). The schema
 # is bootstrapped with create_all, which only CREATEs missing tables and never
 # ALTERs existing ones, so legacy tables still hold naive timestamp columns —
@@ -171,6 +179,9 @@ async def init_postgresql_engine() -> AsyncEngine:
     )
 
     async with engine.begin() as conn:
+        await conn.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": SCHEMA_BOOTSTRAP_LOCK_ID}
+        )
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_added_columns)
         await conn.run_sync(_ensure_timestamptz_columns)
