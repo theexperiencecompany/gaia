@@ -19,6 +19,12 @@ MAX_MESSAGE_LENGTH = 50_000
 # own. Names the exception type so a support report still identifies the failure.
 GENERIC_TURN_ERROR = "Something went wrong while generating this response ({error_type})."
 
+# Shown when the turn finished cleanly but the model produced no text at all
+# (reasoning-only output, max_tokens exhausted mid-thought, a content filter).
+# Saving the empty string instead leaves a blank bubble the user reads as "it
+# ignored me", so they resend the same message — one honest line beats silence.
+EMPTY_RESPONSE_FALLBACK = "that didn't come through, say it again?"
+
 # A recursion-limit stop is an expected degradation, not an infrastructure
 # failure — never show the raw "Recursion limit of N reached..." internals.
 RECURSION_LIMIT_MESSAGE = (

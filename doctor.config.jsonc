@@ -44,6 +44,14 @@
         "files": ["libs/shared/ts/src/bots/consumer/outbound-consumer.ts"],
         "rules": ["react-doctor/async-await-in-loop"]
       },
+      // Same guarantee for the first-contact fallback in link-codes.ts: when
+      // the outbound queue refused the greeting, the bot sends its bubbles
+      // itself, and they are a conversation the user reads top to bottom —
+      // fanning them out would deliver "here is how to start" before "hi".
+      {
+        "files": ["libs/shared/ts/src/bots/link-codes.ts"],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
       // Tunnel.run() is a reconnection supervisor loop: each iteration awaits
       // one full connection lifecycle (connectOnce resolves only when the
       // socket closes or errors) and then a backoff sleep. async-await-in-loop's

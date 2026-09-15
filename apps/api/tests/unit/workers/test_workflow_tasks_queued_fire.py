@@ -26,6 +26,7 @@ import pytest
 from app.constants.log_tags import LogTag
 from app.models.agent_models import SilentRunResult
 from app.models.playbook_models import PlaybookRunStatus
+from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import AnalyticsEvents
 from app.services.workflow.conversation_service import build_selected_workflow_data
@@ -98,8 +99,7 @@ class _Harness:
         return merged
 
     def patches(self) -> list:
-        onboarded = MagicMock()
-        onboarded.onboarding = {"completed": True}
+        onboarded = UserDocument.model_validate({"onboarding": {"completed": True}})
         return [
             patch(f"{MODULE}.workflow_scheduler", self.scheduler),
             patch(f"{MODULE}.create_execution", AsyncMock(return_value=self.execution)),

@@ -62,7 +62,8 @@ cmd_slice() {
   if [ "$SELECTION" = "FILE" ]; then
     while IFS= read -r line; do [ -n "$line" ] && TARGETS+=("$line"); done <"$SELECTED"
     if [ ${#TARGETS[@]} -eq 0 ]; then
-      ci_ok "Python tests ($SLICE): SKIPPED (test impact selected 0 tests)"
+      ci_verdict --lane "test-python/$SLICE" --status skip \
+        --summary "test impact selected 0 tests — the diff reaches none of this slice's paths"
       exit 0
     fi
     echo "Python tests ($SLICE): running ${#TARGETS[@]} selected targets"
@@ -106,6 +107,10 @@ cmd_slice() {
   cpu_slots_acquire "$N_SLOTS"
   # Re-entered as a subprocess on purpose: /usr/bin/time -v measures the whole
   # pytest tree, and the gate needs its own exit status through the pipe.
+  # `set +e` around it because the verdict below must be written on the FAILING
+  # path above all: that is the run whose findings somebody has to go read.
+  local rc=0
+  set +e
   /usr/bin/time -v bash "$SCRIPT_DIR/pytest.sh" flake-gate \
     uv run --frozen pytest -n "$N_SLOTS" --dist worksteal \
     "${TARGETS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} \
@@ -113,11 +118,26 @@ cmd_slice() {
     --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
     --junitxml="test-results/pytest-$SLICE.xml" --durations=30 2>&1 \
     | cut -c-20000 | tee "${SCRATCH}/pytest-${SLICE}.time"
+  rc=${PIPESTATUS[0]}
+  set -e
   # cut: the Actions runner handles step output line by line (regex matchers,
   # console upload); a single multi-MB line — a parametrize id carrying a 2 MB
   # string in --durations, measured 2026-08-29 — spun Runner.Worker at 100 %
   # CPU until the job timeout. 20k chars keeps every real traceback intact.
   cpu_slots_release "$N_SLOTS"
+
+  # The verdict, from the JUnit the run already wrote: every failed test at its
+  # own file and line, with the assertion tail attached. Before this, the only
+  # statement this lane made about itself was the last hundred lines of a 20k
+  # line log — and it emitted no annotations at all, so a red slice showed
+  # nothing on the PR's Files tab. --path-prefix because pytest records paths
+  # relative to apps/api and an annotation on a path GitHub cannot resolve
+  # renders nowhere.
+  uv run --no-project "$SCRIPT_DIR/verdict.py" pytest-verdict \
+    "test-results/pytest-$SLICE.xml" --lane "test-python/$SLICE" \
+    --path-prefix apps/api/ --exit-code "$rc"
+
+  [ "$rc" -eq 0 ] || exit "$rc"
   ci_ok "Python tests ($SLICE): OK (xdist=$XDIST_N coverage=${COVERAGE:-off})"
 }
 
@@ -141,6 +161,18 @@ cmd_flake_gate() {
   set -e
 
   if [ "$first" -eq 0 ]; then
+    exit 0
+  fi
+
+  # pytest exit 5 is "nothing collected", not "something failed" — the same
+  # meaning `regression-proof` already relies on below. A slice legitimately
+  # collects nothing when the PR's diff touches none of its directories, which
+  # is normal for a small stacked PR: #1175's three-file diff left unit-a empty
+  # and the rerun then reported "genuine failure, exit code 4" for a lane that
+  # had no work. Announced rather than silent, because the other way to collect
+  # nothing is a selector that is broken, and that must not read as a pass.
+  if [ "$first" -eq 5 ]; then
+    printf '::notice::%s\n' "No tests collected for this slice — the diff touches none of its paths. Passing; if you expected tests here, the selection is what to check." >&2
     exit 0
   fi
 
@@ -216,7 +248,8 @@ cmd_regression_proof() {
   local changed=()
   while IFS= read -r f; do changed+=("$f"); done < <(git diff --diff-filter=ACMR --name-only "$BASE"...HEAD -- 'apps/api/tests/test_*.py' 'apps/api/tests/**/test_*.py')
   if [ "${#changed[@]}" -eq 0 ]; then
-    ci_ok "regression-proof: no changed test files"
+    ci_verdict --lane regression-proof --status skip \
+      --summary "no changed test files — nothing to prove on base"
     exit 0
   fi
   echo "regression-proof: ${#changed[@]} changed test file(s):"
@@ -257,7 +290,8 @@ cmd_regression_proof() {
     fi
   done
   if [ "${#regression_files[@]}" -eq 0 ]; then
-    ci_ok "regression-proof: no @pytest.mark.regression tests in this diff — nothing to prove"
+    ci_verdict --lane regression-proof --status skip \
+      --summary "no @pytest.mark.regression tests in this diff — nothing to prove"
     exit 0
   fi
   echo "regression-proof: ${#regression_files[@]} file(s) with regression-marked tests:"
@@ -288,7 +322,9 @@ cmd_regression_proof() {
     fi
   done
   if [ -z "$VENV_PY" ]; then
-    ci_die "regression-proof — main checkout venv not found under $REPO_ROOT"
+    ci_verdict_die --lane regression-proof --status error \
+      --summary "main checkout venv not found under $REPO_ROOT" \
+      --advice "setup-python-test-env leaves one; this lane cannot run the base revision without it."
   fi
 
   # Run from apps/api, the same working directory the real suite uses. Running
@@ -328,15 +364,18 @@ cmd_regression_proof() {
     fi
   done
   SELECTED="$(mktemp -p "$BASE_COPIES")"
-  if ! "$VENV_PY" "$SCRIPT_DIR/report.py" regression-proof-select "${select_args[@]}" > "$SELECTED"; then
-    ci_die "regression-proof — could not attribute this diff's regression marks to tests (see above)."
+  if ! "$VENV_PY" "$SCRIPT_DIR/verdict.py" regression-proof-select "${select_args[@]}" > "$SELECTED"; then
+    ci_verdict_die --lane regression-proof --status fail \
+      --summary "could not attribute this diff's regression marks to tests" \
+      --advice "Put the mark on the test function, its class, the module's pytestmark, or a pytest.param case."
   fi
   local new_regression_ids=()
   while IFS= read -r node_id; do
     [ -n "$node_id" ] && new_regression_ids+=("${node_id#"$API_DIR"/}")
   done < "$SELECTED"
   if [ "${#new_regression_ids[@]}" -eq 0 ]; then
-    ci_ok "regression-proof: no NEW @pytest.mark.regression tests in this diff — nothing to prove"
+    ci_verdict --lane regression-proof --status skip \
+      --summary "no NEW @pytest.mark.regression tests in this diff — nothing to prove"
     exit 0
   fi
   echo "regression-proof: ${#new_regression_ids[@]} new regression test(s) to prove on base:"
@@ -359,7 +398,8 @@ cmd_regression_proof() {
 
   # pytest exit 5 = nothing collected: no regression-marked tests in this diff.
   if [ "$rc" -eq 5 ]; then
-    ci_ok "regression-proof: no @pytest.mark.regression tests among the changed files — nothing to prove"
+    ci_verdict --lane regression-proof --status skip \
+      --summary "no @pytest.mark.regression tests among the changed files — nothing to prove"
     exit 0
   fi
 
@@ -370,13 +410,19 @@ cmd_regression_proof() {
   if [ ! -s "$JUNIT" ]; then
     echo "       The check did not run; treating that as a failure, not a pass."
     tail -40 "$LOG"
-    ci_die "regression-proof — pytest wrote no JUnit report (exit $rc)."
+    ci_verdict_die --lane regression-proof --status error \
+      --summary "pytest wrote no JUnit report (exit $rc) — the check did not run" \
+      --advice "That is a failure, not a pass: an earlier version of this script redirected into a directory absent on the runner and printed success."
   fi
 
   # The verdict is per-test and structural (JUnit), not a count scraped from the
   # summary line: a run can be "0 passed" while proving nothing, because a test
-  # that ERRORS never reached its assertions. See `report.py regression-proof-verdict`.
-  if ! uv run --no-project "$SCRIPT_DIR/report.py" regression-proof-verdict "$JUNIT"; then
+  # that ERRORS never reached its assertions. See `verdict.py regression-proof-verdict`,
+  # which also writes this lane's verdict — one finding per test that did not go
+  # red on base, at the test's own file and line. Paths in the JUnit are
+  # relative to apps/api, hence --path-prefix.
+  if ! uv run --no-project "$SCRIPT_DIR/verdict.py" regression-proof-verdict "$JUNIT" \
+    --lane regression-proof --path-prefix apps/api/; then
     echo "--- pytest output (base revision) ---"
     tail -40 "$LOG"
     exit 1

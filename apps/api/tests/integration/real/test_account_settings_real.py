@@ -18,6 +18,9 @@ from unittest.mock import patch
 from bson import ObjectId
 import pytest
 
+from app.constants.cache import REPO_GLOBAL_SCOPE
+from app.db.redis import delete_cache
+from app.db.repositories.users import user_repository
 from app.services import account_settings, voice_service
 from app.services.platform_link_service import (
     PlatformLinkService,
@@ -46,6 +49,9 @@ async def _user(mongo_db):
             "platform_links_connected_at": {},
         }
     )
+    # The raw insert bypasses the repository, so a cached entity left by an
+    # earlier test in the same process would otherwise answer the next read.
+    await delete_cache(user_repository.cache_policy.entity_key(REPO_GLOBAL_SCOPE, USER_ID))
     yield
     await mongo_db["users"].delete_many({"_id": USER_OID})
 
@@ -150,14 +156,13 @@ class TestLinkedAccounts:
         assert (await user_doc(mongo_db))["platform_links"] == {}
 
     async def test_disconnect_removes_the_link_from_the_real_document(self, mongo_db):
-        await mongo_db["users"].update_one(
-            {"_id": USER_OID},
-            {
-                "$set": {
-                    "platform_links.telegram": {"id": "tg-1", "username": "realuser"},
-                    "platform_links_connected_at.telegram": "2026-08-24T00:00:00+00:00",
-                }
-            },
+        # Seeded through the write path the bots use, so the entity cache and
+        # the document agree before the disconnect is exercised.
+        await user_repository.link_platform(
+            USER_ID,
+            "telegram",
+            {"id": "tg-1", "username": "realuser"},
+            "2026-08-24T00:00:00+00:00",
         )
         linked = await PlatformLinkService.get_linked_platforms(USER_ID)
         assert "telegram" in linked  # seeded truth

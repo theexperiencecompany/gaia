@@ -9,6 +9,7 @@ already took them.
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.models.user_models import UserDocument
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
 MODULE = "app.workers.tasks.workflow_tasks"
@@ -23,10 +24,8 @@ def _workflow() -> MagicMock:
     return wf
 
 
-def _onboarded_user() -> MagicMock:
-    user = MagicMock()
-    user.onboarding = {"completed": True}
-    return user
+def _onboarded_user() -> UserDocument:
+    return UserDocument.model_validate({"onboarding": {"completed": True}})
 
 
 async def _run_task(
@@ -42,6 +41,9 @@ async def _run_task(
         patch(
             f"{MODULE}.drain_trigger_batch", new_callable=AsyncMock, return_value=drained
         ) as drain,
+        # The paid-only gate is defaulted to active by the workers-dir conftest's
+        # autouse _subscription_active_by_default fixture — these tests are
+        # about batching, not that one.
         patch(
             f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock, side_effect=budget_error
         ),

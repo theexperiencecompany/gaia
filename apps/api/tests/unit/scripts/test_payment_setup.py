@@ -18,6 +18,7 @@ import pytest
 from scripts.payment_setup import (
     build_plan_catalogue,
     catalogue_fields,
+    deactivate_free_plan,
     invalidate_plan_cache,
     reconcile_plan,
 )
@@ -96,6 +97,49 @@ async def test_dry_run_writes_nothing_for_a_missing_plan() -> None:
 
     assert outcome == "created"
     collection.insert_one.assert_not_awaited()
+    collection.update_one.assert_not_awaited()
+
+
+def test_catalogue_has_no_free_plan() -> None:
+    """GAIA is paid-only — the seed script must not build a $0 Free row."""
+    catalogue = build_plan_catalogue("monthly-id", "yearly-id")
+    assert all(plan.amount > 0 or plan.name != "Free" for plan in catalogue)
+    assert not any(plan.name == "Free" for plan in catalogue)
+
+
+async def test_deactivate_free_plan_marks_an_existing_active_free_row_inactive() -> None:
+    """A Free row left over from before the paid-only cutover is turned off,
+    not deleted — so the historical record survives."""
+    collection = AsyncMock()
+    collection.find_one.return_value = {"_id": "free-id", "name": "Free", "is_active": True}
+
+    changed = await deactivate_free_plan(collection, dry_run=False)
+
+    assert changed is True
+    written = collection.update_one.await_args.args[1]["$set"]
+    assert written["is_active"] is False
+    assert collection.update_one.await_args.args[0] == {"_id": "free-id"}
+
+
+async def test_deactivate_free_plan_dry_run_writes_nothing() -> None:
+    collection = AsyncMock()
+    collection.find_one.return_value = {"_id": "free-id", "name": "Free", "is_active": True}
+
+    changed = await deactivate_free_plan(collection, dry_run=True)
+
+    assert changed is True
+    collection.update_one.assert_not_awaited()
+
+
+async def test_deactivate_free_plan_is_a_noop_when_no_active_free_row_exists() -> None:
+    """Idempotent: a second run (or a catalogue that never had Free) does
+    nothing rather than erroring."""
+    collection = AsyncMock()
+    collection.find_one.return_value = None
+
+    changed = await deactivate_free_plan(collection, dry_run=False)
+
+    assert changed is False
     collection.update_one.assert_not_awaited()
 
 

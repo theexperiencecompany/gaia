@@ -23,6 +23,7 @@ from starlette.requests import Request
 from app.agents.skills.models import Skill
 from app.models.integration_models import Integration
 from app.models.notification.notification_models import NotificationRecord
+from app.models.payment_models import PlanType
 from app.models.todo_models import TodoDocument
 from app.models.workflow_models import Workflow
 from app.services.analytics_service import AnalyticsEvents
@@ -1234,22 +1235,6 @@ _ONB_CAPTURE = f"{ONB}.capture_context_event"
 
 
 class TestOnboardingNewEvents:
-    async def test_integrations_submit_captures(self, client: AsyncClient) -> None:
-        from app.models.user_models import OnboardingIntegrationsStatus
-
-        with (
-            patch(f"{ONB}.submit_onboarding_integrations", new_callable=AsyncMock) as m,
-            patch(_ONB_CAPTURE) as mock_capture,
-        ):
-            m.return_value = OnboardingIntegrationsStatus.QUEUED
-            resp = await client.post(
-                "/api/v1/onboarding/integrations", json={"selected_integrations": ["gmail"]}
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(
-            AnalyticsEvents.ONBOARDING_INTEGRATIONS_SUBMITTED, {"integration_count": 1}
-        )
-
     async def test_reset_captures(self, client: AsyncClient) -> None:
         with (
             patch(f"{ONB}.reset_onboarding", new_callable=AsyncMock) as m,
@@ -1285,6 +1270,12 @@ class TestOnboardingNewEvents:
 
     async def test_regenerate_example_captures(self, client: AsyncClient) -> None:
         with (
+            # The route burns LLM spend and sits behind the paid-only gate; the
+            # gate reads the plan through this seam.
+            patch(
+                "app.decorators.entitlements.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.PRO),
+            ),
             patch(
                 f"{ONB}.regenerate_example_for_style",
                 new_callable=AsyncMock,

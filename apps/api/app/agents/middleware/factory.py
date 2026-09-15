@@ -16,10 +16,10 @@ from langchain_core.tools import BaseTool
 
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
+from app.agents.middleware.empty_completion import EmptyCompletionRetryMiddleware
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.media import MediaDescriptionMiddleware
-from app.agents.middleware.style_guard import StyleGuardMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
 from app.agents.middleware.subagent_join import SubagentJoinMiddleware
 from app.agents.middleware.summarization import (
@@ -336,12 +336,11 @@ def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentM
         subagent=SubagentStackOptions(enabled=False),
         context=ContextOptions(compact=False),
     )
-    # Innermost of the wrap_model_call chain, so it scores the response the
-    # model actually produced rather than one an outer middleware has already
-    # substituted (the budget wall's stop text, for one, is not the model's
-    # prose and must not be rewritten).
-    stack.append(StyleGuardMiddleware())
-    log.debug(f"{LogTag.AGENT} StyleGuardMiddleware enabled", agent_name="comms_agent")
+    # Innermost of all: the retry has to happen before anything reads the
+    # completion, so what the turn delivers is the model's real reply rather
+    # than the silence that preceded it.
+    stack.append(EmptyCompletionRetryMiddleware())
+    log.debug(f"{LogTag.AGENT} EmptyCompletionRetryMiddleware enabled", agent_name="comms_agent")
     return stack
 
 

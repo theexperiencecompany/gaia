@@ -107,7 +107,7 @@ async def _select_step(
     user: UserDocument, days_since_signup: int, completed: set[str], now: datetime
 ) -> NurtureStep | None:
     """First pending step whose skip predicate doesn't fire; predicate hits are recorded as skipped."""
-    onboarded = bool((user.onboarding or {}).get("completed"))
+    onboarded = bool(user.onboarding and user.onboarding.completed)
     for step in NURTURE_STEPS:
         if not _step_pending(step, days_since_signup, completed, onboarded):
             continue

@@ -15,7 +15,7 @@ GAIA's agent runtime is a **three-tier system**:
 │  Comms Agent  (user-facing, conversational)                  │
 │  - Talks to the user                                          │
 │  - Delegates ALL work via call_executor                       │
-│  - Small tool surface: call_executor, cancel_executor, memory │
+│  - Small tool surface: executor, memory, discovery            │
 └─────────────────────┬────────────────────────────────────────┘
                       │  call_executor(task)  → background asyncio task
                       ▼
@@ -58,6 +58,7 @@ The **only** agent the user talks to. Owns the conversation thread, narrates pro
 - `call_executor` — the **only** way to do work. Non-blocking; returns `Task accepted (task_id: ...)` immediately.
 - `cancel_executor` — cancel the most recent background run.
 - Memory tools — `add_memory`, `search_memory`, `forget_memory`, `read_memory_document` (see §8).
+- Discovery tools (`apps/api/app/agents/tools/discovery_tools.py`) — `find_integration` and `search_public_workflows` are read-only catalogue lookups. The connect card is not one of them: comms hands connecting to the executor, whose `connect_integration` tool and integration checker are the one card source.
 
 That's it. No `bash`. No `read`. No per-integration tools. The comms agent is a router + narrator, not a worker.
 
@@ -485,6 +486,7 @@ A **PG-backed** memory engine projected to VFS as Markdown (`/workspace/memory/.
 
 - **Tracing** — LangSmith (`@traceable` decorators in `executor_runner.py`) + Langfuse (`trace_id_for_message` in `app/config/langfuse.py`).
 - **Rate limiting** — `apps/api/app/api/v1/middleware/tiered_rate_limiter.py`, `apps/api/app/decorators/rate_limiting.py`. Used by `notification_tool`, `workflow_tool`, `bash`, `read`, etc.
+- **Entitlements (paid-only gate)** — `apps/api/app/api/v1/middleware/entitlement.py` + `entitlement_allowlist.py`. Deny-by-default: **every new authenticated route 402s unless its prefix is added to `FREE_PATH_PREFIXES`**. Distinct from rate limiting — that caps how much a plan may use, this blocks a plan with none at all. Workers and the bot router are outside the middleware and gate themselves with `app/decorators/entitlements.py`. See `apps/api/CLAUDE.md` § Entitlements.
 - **WebSocket** — `apps/api/app/core/websocket_manager.py` (real-time bot/event push).
 - **Caching** — `apps/api/app/decorators/caching.py` (`Cacheable`, `CacheInvalidator`).
 - **API client (TS)** — `libs/shared/ts/src/api/apiClient.ts`, `queryBuilder.ts`, `responseNormalizer.ts`.
@@ -500,6 +502,7 @@ A **PG-backed** memory engine projected to VFS as Markdown (`/workspace/memory/.
 | If you want to… | Go to |
 |---|---|
 | Change the user-facing chat prompt / behavior | `apps/api/app/agents/core/graph_builder/build_graph.py` (comms) + `apps/api/app/agents/core/nodes/*` |
+| Make a new endpoint reachable without a subscription | `apps/api/app/api/v1/middleware/entitlement_allowlist.py` (add the prefix **with its reason**) |
 | Change the executor's tool set or handoff behavior | `apps/api/app/agents/core/graph_builder/build_graph.py` (executor) + `apps/api/app/agents/tools/executor_tool.py` |
 | Add a new integration subagent | `apps/api/app/config/oauth_config.py` (register `SubAgentConfig`) + `apps/api/app/agents/tools/integrations/<provider>_tool.py` + `apps/api/app/agents/core/subagents/provider_subagents.py` |
 | Add a new tool the executor can use | `apps/api/app/agents/tools/<your_tool>.py` + register in `apps/api/app/agents/tools/core/registry.py` |

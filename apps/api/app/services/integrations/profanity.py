@@ -3,8 +3,7 @@
 Used by the integration publish path to gate names + descriptions before they
 become visible in the public marketplace. Calls Gemini (free chain via
 ``gemini_llm``) with a structured-output schema — the same pattern as workflow
-generation (``services/workflow/generation_service.py``) and the onboarding
-clarify service (``services/onboarding/clarify_service.py``).
+generation (``services/workflow/generation_service.py``).
 
 A static wordlist remains as the offline fallback for two narrow paths:
   1. No LLM provider is configured / available.

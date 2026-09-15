@@ -290,6 +290,82 @@ class TestContainerFunctionWithNestedDefs:
         assert result.returncode == 1
 
 
+class TestResponseHeaderCase:
+    """Starlette lowercases every response header name, so re-casing one on the
+    way OUT changes nothing a client can observe — and the entitlement
+    middleware's ``Retry-After`` survived twice as "real" because of it.
+
+    The rule has to stay narrow in the same direction as the lookup rule it
+    sits beside: a wrong header name is still a real bug, and a dict handed to
+    an HTTP client is an outgoing request, where case IS preserved on the wire.
+
+    These write the REAL module too, not just the mutants file: the rule is an
+    AST rule, so the classifier goes back to the source to find the call the
+    mutated literal sits in, and the line numbers have to agree between the two.
+    """
+
+    @staticmethod
+    def _probe(workdir: Path, call: str, header: str) -> None:
+        """Body laid out so ``headers=`` is line 4 in BOTH files."""
+        (workdir / MODULE_REL).write_text(
+            f"def probe():\n    return {call}(\n        first=1,\n"
+            f'        headers={{"{header}": "30"}},\n    )\n'
+        )
+        _write_mutants(
+            workdir,
+            f'    return {call}(\n        first=1,\n        headers={{"{header}": "30"}},\n    )',
+            f'    return {call}(\n        first=1,\n        headers={{"MUTATED": "30"}},\n    )',
+        )
+
+    def test_a_recased_response_header_is_equivalent(self, workdir: Path) -> None:
+        self._probe(workdir, "JSONResponse", "Retry-After")
+        _write_mutants(
+            workdir,
+            "    return JSONResponse(\n        first=1,\n"
+            '        headers={"Retry-After": "30"},\n    )',
+            "    return JSONResponse(\n        first=1,\n"
+            '        headers={"retry-after": "30"},\n    )',
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+        assert result.returncode == 0
+
+    def test_a_renamed_response_header_is_a_real_survivor(self, workdir: Path) -> None:
+        """Case-only, not merely different — mutmut's ``XX``-wrapped rewrite asks
+        for a header nobody is listening on, which a test can and should catch."""
+        self._probe(workdir, "JSONResponse", "Retry-After")
+        _write_mutants(
+            workdir,
+            "    return JSONResponse(\n        first=1,\n"
+            '        headers={"Retry-After": "30"},\n    )',
+            "    return JSONResponse(\n        first=1,\n"
+            '        headers={"XXRetry-AfterXX": "30"},\n    )',
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip().startswith("CHANGED"), result.stdout + result.stderr
+        assert result.returncode == 1
+
+    def test_a_recased_outgoing_request_header_is_a_real_survivor(self, workdir: Path) -> None:
+        """Not a Response: a dict handed to an HTTP client is sent as written,
+        so the server really does see a different field name."""
+        self._probe(workdir, "client.post", "X-Api-Key")
+        _write_mutants(
+            workdir,
+            "    return client.post(\n        first=1,\n"
+            '        headers={"X-Api-Key": "30"},\n    )',
+            "    return client.post(\n        first=1,\n"
+            '        headers={"x-api-key": "30"},\n    )',
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip().startswith("CHANGED"), result.stdout + result.stderr
+
+
 class TestFalsyAssignmentEquivalence:
     """A falsy literal assigned to a name whose every read is a truthiness test
     is unobservable — every falsy value takes the same branch, whether or not a

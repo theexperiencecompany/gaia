@@ -19,7 +19,7 @@ CHANNEL_TYPE_SLACK = "slack"
 CHANNEL_TYPE_IMESSAGE = "imessage"
 CHANNEL_TYPE_EMAIL = "email"
 
-# External channel types that are auto-injected based on platform links
+# External channel types a notification can be delivered on
 EXTERNAL_NOTIFICATION_CHANNELS = (
     CHANNEL_TYPE_TELEGRAM,
     CHANNEL_TYPE_DISCORD,
@@ -28,9 +28,11 @@ EXTERNAL_NOTIFICATION_CHANNELS = (
     CHANNEL_TYPE_IMESSAGE,
 )
 
-# All channel types that are auto-injected when no channels are explicitly specified.
 # inapp is always available; the external platforms respect user preferences.
-ALL_AUTO_INJECTED_CHANNELS = (
+#: Every channel type a notification may name explicitly (the tool validates
+#: against this). A notification that names none goes in-app plus the user's
+#: preferred chat platform; see ``NotificationOrchestrator._default_channels``.
+NOTIFICATION_CHANNEL_TYPES = (
     CHANNEL_TYPE_INAPP,
     CHANNEL_TYPE_TELEGRAM,
     CHANNEL_TYPE_DISCORD,
@@ -48,6 +50,20 @@ DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     CHANNEL_TYPE_IMESSAGE: True,
     CHANNEL_TYPE_EMAIL: True,
 }
+
+# Default order in which a proactive message picks its ONE chat platform. It
+# lands on the first platform in this list that the user has linked and enabled,
+# never on every linked platform (``users.chat_channel_priority`` overrides it).
+DEFAULT_CHAT_CHANNEL_PRIORITY: tuple[str, ...] = (
+    CHANNEL_TYPE_TELEGRAM,
+    CHANNEL_TYPE_WHATSAPP,
+    CHANNEL_TYPE_SLACK,
+    CHANNEL_TYPE_DISCORD,
+)
+
+# In-app route a notification action redirects to. Shared so the memory-backfill
+# and Gmail-personalization notifications can't drift onto different pages.
+MEMORY_SETTINGS_URL = "/settings/memory"
 
 # Workflow-completion notification copy. GAIA texts like a friend (first person,
 # casual), not a status bar. Each entry is (title, body); {title} is the workflow

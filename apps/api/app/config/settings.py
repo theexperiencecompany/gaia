@@ -136,6 +136,14 @@ class CommonSettings(BaseAppSettings):
     EMAIL_PROVIDER: str = "resend"
 
     # ----------------------------------------------
+    # Payment Processing
+    # ----------------------------------------------
+    # Optional coupon surfaced alongside the checkout link in every 402
+    # "subscription required" response (web and bots). Unset means no code
+    # is advertised.
+    PAYWALL_DISCOUNT_CODE: str | None = None
+
+    # ----------------------------------------------
     # Observability
     # ----------------------------------------------
     POSTHOG_PROJECT_TOKEN: str | None = None

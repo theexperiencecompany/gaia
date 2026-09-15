@@ -9,7 +9,9 @@ platform / background-job named methods.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from datetime import UTC, datetime, timedelta
+import time
 
 import pytest
 
@@ -19,6 +21,7 @@ from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
     OnboardingPreferences,
+    PersonalizationBundle,
     UserDocument,
     UserUpdate,
 )
@@ -35,6 +38,23 @@ def make_user() -> Callable[..., UserDocument]:
         return UserDocument.model_validate({"email": "a@b.com", "name": "A", **overrides})
 
     return _make
+
+
+@pytest.fixture
+def local_time_offset_from_utc(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Move the process's local timezone off UTC for the test.
+
+    The suite pins TZ=UTC, which makes a naive ``datetime.now()`` numerically
+    identical to an aware UTC one — so a timestamp that forgot its timezone
+    would look correct here and be hours wrong in production.
+    """
+    monkeypatch.setenv("TZ", "Asia/Kolkata")  # UTC+5:30
+    time.tzset()
+    try:
+        yield
+    finally:
+        monkeypatch.undo()
+        time.tzset()
 
 
 class TestUserReads:
@@ -130,26 +150,57 @@ class TestOnboardingWrites:
         created = await repo.create(make_user())
         first = await repo.complete_onboarding(
             created.id,
-            name="New Name",
             phase=OnboardingPhase.COMPLETED,
             bio_status=BioStatus.COMPLETED,
-            pipeline_mode="split",
             preferences=OnboardingPreferences(profession="eng"),
         )
         assert first is not None
-        assert first.name == "New Name"
-        assert first.onboarding["completed"] is True
-        assert first.onboarding["phase"] == OnboardingPhase.COMPLETED.value
+        assert first.onboarding is not None
+        assert first.onboarding.completed is True
+        assert first.onboarding.phase == OnboardingPhase.COMPLETED
         # Gate misses on replay (onboarding already exists) → None, original untouched.
         second = await repo.complete_onboarding(
             created.id,
             phase=OnboardingPhase.INITIAL,
             bio_status=BioStatus.PENDING,
-            pipeline_mode="z",
             preferences=OnboardingPreferences(),
         )
         assert second is None
-        assert (await repo.get(created.id)).onboarding["phase"] == OnboardingPhase.COMPLETED.value
+        assert (await repo.get(created.id)).onboarding.phase == OnboardingPhase.COMPLETED
+
+    async def test_complete_onboarding_writes_timezone_at_the_document_root(
+        self, repo, make_user, raw_collection
+    ):
+        """``user.timezone`` is the single source of truth — the wizard's answer
+        must land at the root under that exact key, not on the subdocument."""
+        created = await repo.create(make_user(email="tz@y.com"))
+        completed = await repo.complete_onboarding(
+            created.id,
+            phase=OnboardingPhase.COMPLETED,
+            bio_status=BioStatus.COMPLETED,
+            preferences=OnboardingPreferences(profession="eng"),
+            timezone="Europe/Berlin",
+        )
+        assert completed is not None
+        assert completed.timezone == "Europe/Berlin"
+        stored = await raw_collection.find_one({"email": "tz@y.com"})
+        assert stored["timezone"] == "Europe/Berlin"
+
+    async def test_complete_onboarding_without_timezone_keeps_the_stored_one(
+        self, repo, make_user, raw_collection
+    ):
+        """Omitting the argument must not clear a timezone detected earlier."""
+        created = await repo.create(make_user(email="tzkeep@y.com", timezone="Asia/Kolkata"))
+        completed = await repo.complete_onboarding(
+            created.id,
+            phase=OnboardingPhase.COMPLETED,
+            bio_status=BioStatus.COMPLETED,
+            preferences=OnboardingPreferences(profession="eng"),
+        )
+        assert completed is not None
+        assert completed.timezone == "Asia/Kolkata"
+        stored = await raw_collection.find_one({"email": "tzkeep@y.com"})
+        assert stored["timezone"] == "Asia/Kolkata"
 
     async def test_update_preferences_patches_only_given_keys(self, repo, make_user):
         created = await repo.create(make_user())
@@ -157,7 +208,6 @@ class TestOnboardingWrites:
             created.id,
             phase=OnboardingPhase.INITIAL,
             bio_status=BioStatus.PENDING,
-            pipeline_mode="m",
             preferences=OnboardingPreferences(profession="eng", response_style="brief"),
         )
         # Only `profession` is set, so exclude_unset must leave response_style alone.
@@ -165,45 +215,56 @@ class TestOnboardingWrites:
             created.id, OnboardingPreferences(profession="designer")
         )
         assert updated is not None
-        prefs = updated.onboarding["preferences"]
-        assert prefs["profession"] == "designer"
-        assert prefs["response_style"] == "brief"
+        assert updated.onboarding is not None
+        prefs = updated.onboarding.preferences
+        assert prefs is not None
+        assert prefs.profession == "designer"
+        assert prefs.response_style == "brief"
 
     async def test_save_personalization_writes_bundle_and_phase(self, repo, make_user):
         created = await repo.create(make_user())
         await repo.save_personalization(
             created.id,
-            house="explorer",
-            personality_phrase="Creative",
-            user_bio="Bio",
-            bio_status="completed",
-            account_number=42,
-            member_since="Mar 2024",
-            overlay_color="#ff0000",
-            overlay_opacity=80,
-            workflow_ids=["wf1", "wf2"],
+            PersonalizationBundle(
+                house="explorer",
+                personality_phrase="Creative",
+                user_bio="Bio",
+                bio_status=BioStatus.COMPLETED,
+                account_number=42,
+                member_since="Mar 2024",
+                overlay_color="#ff0000",
+                overlay_opacity=80,
+            ),
         )
         onboarding = (await repo.get(created.id)).onboarding
-        assert onboarding["house"] == "explorer"
-        assert onboarding["phase"] == "personalization_complete"
-        assert onboarding["account_number"] == 42
-        assert onboarding["suggested_workflows"] == ["wf1", "wf2"]
+        assert onboarding is not None
+        assert onboarding.house == "explorer"
+        assert onboarding.phase == OnboardingPhase.PERSONALIZATION_COMPLETE
+        assert onboarding.account_number == 42
 
-    async def test_save_personalization_omits_empty_workflows(self, repo, make_user):
+    async def test_mark_gmail_personalization_done_stamps_marker_and_conversation(
+        self, repo, make_user
+    ):
         created = await repo.create(make_user())
-        await repo.save_personalization(
-            created.id,
-            house="h",
-            personality_phrase="p",
-            user_bio="b",
-            bio_status="completed",
-            account_number=1,
-            member_since="Jan 2024",
-            overlay_color="#000",
-            overlay_opacity=50,
-            workflow_ids=[],
-        )
-        assert "suggested_workflows" not in (await repo.get(created.id)).onboarding
+        await repo.mark_gmail_personalization_done(created.id, conversation_id="conv-1")
+
+        onboarding = (await repo.get(created.id)).onboarding
+        assert onboarding is not None
+        assert isinstance(onboarding.gmail_personalization_at, datetime)
+        assert onboarding.holo_conversation_id == "conv-1"
+
+    async def test_mark_gmail_personalization_done_omits_missing_conversation(
+        self, repo, make_user
+    ):
+        created = await repo.create(make_user())
+        await repo.mark_gmail_personalization_done(created.id)
+
+        onboarding = (await repo.get(created.id)).onboarding
+        assert onboarding is not None
+        # model_fields_set is the typed stand-in for "key present in the Mongo doc":
+        # the write must stamp the marker and must not write the conversation id at all.
+        assert "gmail_personalization_at" in onboarding.model_fields_set
+        assert "holo_conversation_id" not in onboarding.model_fields_set
 
     async def test_set_social_profiles_overwrites(self, repo, make_user):
         created = await repo.create(make_user())
@@ -212,17 +273,18 @@ class TestOnboardingWrites:
             created.id,
             [SocialProfile(platform="y", url="u/y"), SocialProfile(platform="z", url="u/z")],
         )
-        assert len((await repo.get(created.id)).onboarding["social_profiles"]) == 2
+        assert len((await repo.get(created.id)).onboarding.social_profiles) == 2
 
     async def test_set_bio_status(self, repo, make_user):
         created = await repo.create(make_user())
         await repo.set_bio_status(created.id, "processing")
-        assert (await repo.get(created.id)).onboarding["bio_status"] == "processing"
+        assert (await repo.get(created.id)).onboarding.bio_status == BioStatus.PROCESSING
 
     async def test_set_writing_style_user_summary(self, repo, make_user):
         created = await repo.create(make_user())
         await repo.set_writing_style_user_summary(created.id, "my style")
-        style = (await repo.get(created.id)).onboarding["writing_style"]
+        style = (await repo.get(created.id)).onboarding.writing_style
+        assert style is not None
         assert style["user_edited_summary"] == "my style"
 
     async def test_reset_onboarding_removes_subdocument(self, repo, make_user):
@@ -231,7 +293,6 @@ class TestOnboardingWrites:
             created.id,
             phase=OnboardingPhase.INITIAL,
             bio_status=BioStatus.PENDING,
-            pipeline_mode="m",
             preferences=OnboardingPreferences(),
         )
         await repo.reset_onboarding(created.id)
@@ -242,13 +303,13 @@ class TestOnboardingWrites:
         await repo.set_social_profiles_if_unset(
             created.id, [SocialProfile(platform="x", url="u/x")]
         )
-        first = (await repo.get(created.id)).onboarding["social_profiles"]
+        first = (await repo.get(created.id)).onboarding.social_profiles
         assert len(first) == 1
         await repo.set_social_profiles_if_unset(
             created.id,
             [SocialProfile(platform="y", url="u/y"), SocialProfile(platform="z", url="u/z")],
         )
-        assert (await repo.get(created.id)).onboarding["social_profiles"] == first
+        assert (await repo.get(created.id)).onboarding.social_profiles == first
 
 
 class TestSettingsWrites:
@@ -276,7 +337,7 @@ class TestSettingsWrites:
         assert stored.email_memory_processed_at is not None
 
     async def test_set_gmail_scan_timestamp(self, repo, make_user):
-        from datetime import UTC, datetime
+        from datetime import datetime
 
         created = await repo.create(make_user())
         ts = datetime(2025, 1, 1, tzinfo=UTC)
@@ -308,8 +369,9 @@ class TestSettingsWrites:
         created = await repo.create(make_user())
         assert await repo.set_holo_card_colors(created.id, "rgba(1,2,3,1)", 55)
         onboarding = (await repo.get(created.id)).onboarding
-        assert onboarding["overlay_color"] == "rgba(1,2,3,1)"
-        assert onboarding["overlay_opacity"] == 55
+        assert onboarding is not None
+        assert onboarding.overlay_color == "rgba(1,2,3,1)"
+        assert onboarding.overlay_opacity == 55
         assert await repo.set_holo_card_colors("0" * 24, "x", 1) is False
 
 
@@ -320,7 +382,7 @@ class TestUserCounts:
         assert set(await repo.list_all_ids()) == {a.id, b.id}
 
     async def test_count_created_before(self, repo, make_user):
-        from datetime import UTC, datetime
+        from datetime import datetime
 
         cutoff = datetime(2025, 6, 1, tzinfo=UTC)
         await repo.create(make_user(created_at=datetime(2025, 1, 1, tzinfo=UTC)))
@@ -331,7 +393,7 @@ class TestUserCounts:
 
 class TestWorkerScans:
     async def test_find_stuck_personalization(self, repo, make_user, raw_collection):
-        from datetime import UTC, datetime, timedelta
+        from datetime import datetime, timedelta
 
         from bson import ObjectId
 
@@ -349,7 +411,7 @@ class TestWorkerScans:
         assert [u.id for u in found] == [stuck.id]
 
     async def test_find_inactive_email_candidates(self, repo, make_user):
-        from datetime import UTC, datetime, timedelta
+        from datetime import datetime, timedelta
 
         before = datetime.now(UTC)
         long_ago = datetime.now(UTC) - timedelta(days=30)
@@ -369,7 +431,7 @@ class TestWorkerScans:
         assert stored.last_inactive_email_sent is not None
 
     async def test_backfill_candidates_by_creation_and_marker(self, repo, make_user):
-        from datetime import UTC, datetime, timedelta
+        from datetime import datetime, timedelta
 
         active_since = datetime.now(UTC) - timedelta(days=1)
         eligible_before = datetime.now(UTC)
@@ -385,24 +447,18 @@ class TestWorkerScans:
         ids = await repo.find_backfill_candidate_ids(active_since, future, limit=10)
         assert ids == [eligible.id]
 
-    async def test_mark_memory_backfilled(self, repo, make_user):
+    async def test_mark_memory_backfilled_stamps_an_utc_instant(
+        self, repo, make_user, local_time_offset_from_utc
+    ):
+        """The marker is compared against a UTC cutoff by the daily cron, so a
+        naive local ``now()`` would land hours off and re-select (or hide) the
+        user."""
         created = await repo.create(make_user())
+        before = datetime.now(UTC) - timedelta(milliseconds=1)  # BSON stores milliseconds
         await repo.mark_memory_backfilled(created.id)
-        assert (await repo.get(created.id)).memory_backfilled is not None
-
-
-class TestBackgroundJobMarkers:
-    async def test_set_and_compare_and_clear(self, repo, make_user):
-        created = await repo.create(make_user())
-        field = "onboarding.intelligence_job_id"
-        await repo.set_active_job(created.id, field, "job1")
-        assert (await repo.get(created.id)).onboarding["intelligence_job_id"] == "job1"
-        # Wrong id → no-op.
-        await repo.clear_active_job_if_matches(created.id, field, "other")
-        assert (await repo.get(created.id)).onboarding["intelligence_job_id"] == "job1"
-        # Right id → cleared.
-        await repo.clear_active_job_if_matches(created.id, field, "job1")
-        assert "intelligence_job_id" not in ((await repo.get(created.id)).onboarding or {})
+        stamped = (await repo.get(created.id)).memory_backfilled
+        assert stamped is not None
+        assert before <= stamped <= datetime.now(UTC)
 
 
 class TestPlatformLinking:

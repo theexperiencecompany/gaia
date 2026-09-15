@@ -31,11 +31,15 @@ from app.constants.cache import (
     USER_CACHE_PREFIX,
 )
 from app.constants.log_tags import LogTag
+from app.constants.onboarding import (
+    GETTING_STARTED_CONVERSATION_ID_FIELD,
+    GMAIL_PERSONALIZATION_MARKER,
+    HOLO_CONVERSATION_ID_FIELD,
+)
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.onboarding_models import (
-    ClarifyAnswerRecord,
     PersistedTriageSummary,
     SocialProfile,
     WritingStyleExampleBlocks,
@@ -44,6 +48,7 @@ from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
     OnboardingPreferences,
+    PersonalizationBundle,
     PlatformLinkRecord,
     UserDocument,
     UserUpdate,
@@ -92,12 +97,16 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
 
     # ------------------------------------------------------------ worker scans
 
+    # The cohort reads below are lenient: a single legacy row whose
+    # ``onboarding`` is the wrong type used to raise here — above the per-user
+    # try/except in every sweep — so nobody in the cohort got their mail. The
+    # bad row is skipped and logged; the rest of the cohort goes through.
     async def find_stuck_personalization(
         self, cutoff: datetime, *, limit: int = 50
     ) -> list[UserDocument]:
         """Users stuck at personalization-pending whose last update predates
         ``cutoff`` (or was never stamped) — the re-queue candidates."""
-        return await self._find(
+        return await self._find_lenient(
             {
                 "onboarding.phase": OnboardingPhase.PERSONALIZATION_PENDING.value,
                 "$or": [
@@ -111,7 +120,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def find_inactive_email_candidates(self, before: datetime) -> list[UserDocument]:
         """Active users inactive since ``before`` who have not been emailed since
         then — the inactivity-email candidates (throttling is decided per user)."""
-        return await self._find(
+        return await self._find_lenient(
             {
                 "last_active_at": {"$lt": before},
                 "is_active": {"$ne": False},
@@ -127,7 +136,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         ``last_active_at`` missing means the account has never been seen active, so
         those count as dormant too; without the ``$exists`` arm a `$lt` comparison
         silently skips them."""
-        return await self._find(
+        return await self._find_lenient(
             {
                 "is_active": {"$ne": False},
                 "$or": [
@@ -142,7 +151,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         """Recently-signed-up, still-active users — the nurture-sequence cohort.
         Send eligibility (timezone hour, frequency caps, step windows) is decided
         per user per run, not by this query."""
-        return await self._find(
+        return await self._find_lenient(
             {"created_at": {"$gte": created_since}, "is_active": {"$ne": False}},
         )
 
@@ -228,20 +237,17 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         *,
         phase: OnboardingPhase,
         bio_status: BioStatus,
-        pipeline_mode: str,
         preferences: OnboardingPreferences,
-        name: str | None = None,
         timezone: str | None = None,
         completed_at: datetime | None = None,
-        focus: str | None = None,
-        clarify_answers: list[ClarifyAnswerRecord] | None = None,
-        selected_integrations: list[str] | None = None,
     ) -> UserDocument | None:
-        """Atomically create the ``onboarding`` subdocument (gated on its absence).
+        """Atomically mark onboarding complete (gated on it not being complete yet).
 
-        Returns ``None`` when the gate misses — either onboarding already exists
-        (idempotent replay) or the user is gone; the caller distinguishes via
-        ``get``.
+        The gate is ``onboarding.completed``, not the subdocument's existence:
+        the wizard writes ``onboarding.preferences`` before payment, so the
+        subdocument exists long before completion. Returns ``None`` when the
+        gate misses — already completed (idempotent replay) or the user is
+        gone; the caller distinguishes via ``get``.
         """
         now = datetime.now(UTC)
         set_fields: dict[str, object] = {
@@ -250,32 +256,14 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             "onboarding.phase": phase,
             "onboarding.bio_status": bio_status,
             "onboarding.preferences": preferences.model_dump(),
-            "onboarding.pipeline_mode": pipeline_mode,
         }
-        if name is not None:
-            set_fields["name"] = name
         if timezone is not None:
             set_fields["timezone"] = timezone
-        if focus is not None:
-            set_fields["onboarding.focus"] = focus
-        if clarify_answers is not None:
-            set_fields["onboarding.clarify_answers"] = clarify_answers
-        if selected_integrations is not None:
-            set_fields["onboarding.selected_integrations"] = selected_integrations
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
             scope=REPO_GLOBAL_SCOPE,
-            extra_filter={"onboarding": {"$exists": False}},
-        )
-
-    async def set_selected_integrations(self, user_id: str, integrations: list[str]) -> None:
-        """Persist the user's selected integrations (onboarding)."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.selected_integrations": integrations}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
+            extra_filter={"onboarding.completed": {"$ne": True}},
         )
 
     async def update_onboarding_preferences(
@@ -291,17 +279,24 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             {"_id": self._id_value(user_id)}, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
         )
 
-    async def reset_onboarding(self, user_id: str) -> None:
-        """Wipe the user's onboarding subdocument."""
-        await self._apply_raw_update(
+    async def set_first_conversation_id(
+        self, user_id: str, conversation_id: str
+    ) -> UserDocument | None:
+        """Record the seeded "Getting started" conversation on the onboarding subdoc.
+
+        Its own field, not the legacy ``first_message_conversation_id``: a user
+        who ran the pre-relocation flow and onboards again carries both, and
+        reusing the one field would overwrite the legacy id and orphan the
+        conversation it points at.
+        """
+        return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$unset": {"onboarding": ""}},
+            {"$set": {f"onboarding.{GETTING_STARTED_CONVERSATION_ID_FIELD}": conversation_id}},
             scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
         )
 
-    async def clear_onboarding(self, user_id: str) -> None:
-        """Roll back a partially-created onboarding subdocument."""
+    async def reset_onboarding(self, user_id: str) -> None:
+        """Wipe the user's onboarding subdocument."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$unset": {"onboarding": ""}},
@@ -321,34 +316,23 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
         return updated is not None
 
-    async def set_pipeline_completion(
-        self, user_id: str, *, phase: OnboardingPhase, conversation_id: str | None = None
+    async def mark_gmail_personalization_done(
+        self, user_id: str, *, conversation_id: str | None = None
     ) -> None:
-        """Advance the onboarding pipeline phase (optionally tying the first conversation)."""
-        set_fields: dict[str, object] = {"onboarding.phase": phase}
+        """Stamp the Gmail personalization pipeline as run for this user.
+
+        The marker is what makes a later Gmail reconnect a no-op. The seeded
+        holo-card conversation id rides along so ``reset_onboarding`` can tear it
+        down with the rest of the personalization state.
+        """
+        set_fields: dict[str, object] = {
+            f"onboarding.{GMAIL_PERSONALIZATION_MARKER}": _now(),
+        }
         if conversation_id is not None:
-            set_fields["onboarding.first_message_conversation_id"] = conversation_id
+            set_fields[f"onboarding.{HOLO_CONVERSATION_ID_FIELD}"] = conversation_id
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-
-    async def set_first_message(self, user_id: str, first_message: str) -> None:
-        """Store the user's first message on their onboarding subdocument."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.first_message": first_message}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-
-    async def mark_early_intelligence_done(self, user_id: str) -> None:
-        """Stamp the early-intelligence onboarding completion."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.early_intelligence_done_at": _now()}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
@@ -412,15 +396,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._cache_evict(REPO_GLOBAL_SCOPE, user_id)
         await self._invalidate(REPO_GLOBAL_SCOPE)
 
-    async def set_suggested_workflows(self, user_id: str, workflow_ids: list[str]) -> None:
-        """Persist the suggested workflows shown to the user during onboarding."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.suggested_workflows": workflow_ids}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-
     async def set_social_profiles_if_unset(
         self, user_id: str, profiles: list[SocialProfile]
     ) -> None:
@@ -464,6 +439,15 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
+    async def set_chat_channel_priority(self, user_id: str, priority: list[str]) -> None:
+        """Store the order a proactive message picks its ONE chat platform from."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"chat_channel_priority": priority}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
     async def set_bio_status(self, user_id: str, bio_status: BioStatus) -> None:
         """Update the onboarding bio-generation status (e.g. back to processing on a
         post-onboarding Gmail reconnect)."""
@@ -492,35 +476,13 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def save_personalization(
-        self,
-        user_id: str,
-        *,
-        house: str,
-        personality_phrase: str,
-        user_bio: str,
-        bio_status: BioStatus,
-        account_number: int,
-        member_since: str,
-        overlay_color: str,
-        overlay_opacity: int,
-        workflow_ids: list[str],
-    ) -> None:
+    async def save_personalization(self, user_id: str, bundle: PersonalizationBundle) -> None:
         """Persist the generated personalization bundle and advance the phase to
         personalization-complete."""
         set_fields: dict[str, object] = {
-            "onboarding.house": house,
-            "onboarding.personality_phrase": personality_phrase,
-            "onboarding.user_bio": user_bio,
-            "onboarding.bio_status": bio_status,
-            "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE.value,
-            "onboarding.account_number": account_number,
-            "onboarding.member_since": member_since,
-            "onboarding.overlay_color": overlay_color,
-            "onboarding.overlay_opacity": overlay_opacity,
+            f"onboarding.{field}": value for field, value in bundle.model_dump().items()
         }
-        if workflow_ids:
-            set_fields["onboarding.suggested_workflows"] = workflow_ids
+        set_fields["onboarding.phase"] = OnboardingPhase.PERSONALIZATION_COMPLETE.value
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
@@ -650,36 +612,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             {"_id": self._id_value(user_id)},
             {"$set": {"memory_backfilled": datetime.now(UTC)}},
             scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-
-    # --------------------------------------------------- background-job markers
-
-    async def set_active_job(self, user_id: str, field: str, job_id: str) -> None:
-        """Mark an in-flight background job for the user (``field`` → ``job_id``)."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {field: job_id}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-
-    async def clear_active_job(self, user_id: str, field: str) -> None:
-        """Clear the user's in-flight background-job marker."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$unset": {field: ""}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-
-    async def clear_active_job_if_matches(self, user_id: str, field: str, job_id: str) -> None:
-        """Clear the job marker only if it still holds ``job_id`` (compare-and-clear)."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$unset": {field: ""}},
-            scope=REPO_GLOBAL_SCOPE,
-            extra_filter={field: job_id},
             return_document=False,
         )
 

@@ -184,8 +184,19 @@ them — keep `MAX_SHARDS` and `max-parallel` in step.
 `success` nor `skipped` (the `changes` job proved its language untouched)
 fails the merge. The old marker-file ratchet (`quality-gate/enforced/<lane>`)
 is gone — the rollout it enabled is complete and the two sources of truth had
-drifted. New lane: add the job, its result to the gate's `needs:` + `RESULT`
-map, and its name to the `LANES` array; it is enforced from the first run.
+drifted.
+
+Both gates now reach that verdict through `scripts/ci/verdict.py consolidate`
+rather than a hand-rolled result loop, so the gate prints what each lane
+actually FOUND (file, line, message) instead of the word `failure`, and a lane
+that merely ran out of clock reads `timed_out` rather than `failure`. **New
+lane: add the job to the gate's `needs:`, add `<lane>=${{ needs.<lane>.result }}`
+to the gate's `EXPECT` env, and end the job with the
+`./.github/actions/upload-verdict` composite under `if: always()`.** It is
+enforced from the first run, and `scripts/ci/tests/test_workflow_verdicts.py`
+fails if you forget either half. The full contract — the JSON shape, why a
+missing verdict is itself a failure, why the job result travels with the lane
+name — is in `scripts/ci/CLAUDE.md` under "The verdict contract".
 
 ## Suppression hygiene (every inline suppression carries its why)
 

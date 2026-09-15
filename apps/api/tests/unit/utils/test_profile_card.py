@@ -7,10 +7,19 @@ from unittest.mock import AsyncMock, patch
 from bson import ObjectId
 import pytest
 
-from app.models.user_models import UserDocument
+from app.agents.prompts.onboarding_prompts import HOLO_CARD_PROMPT
+from app.constants.profession_bios import PROFESSION_BIOS
+from app.models.onboarding_models import HoloCardLLMOutput
+from app.models.user_models import (
+    BioStatus,
+    OnboardingPreferences,
+    OnboardingSubdocument,
+    UserDocument,
+)
 from app.utils.profile_card import (
     HOUSES,
     assign_random_house,
+    generate_holo_card_content,
     generate_profile_card_design,
     generate_random_color,
     get_user_metadata,
@@ -251,3 +260,117 @@ class TestGetUserMetadata:
 
         assert result.account_number == _EXPECTED_ACCOUNT_NUMBER
         assert result.member_since == _today()
+
+
+# ---------------------------------------------------------------------------
+# generate_holo_card_content — profession resolution
+# ---------------------------------------------------------------------------
+
+
+def _bios_for(profession: str, name: str) -> list[str]:
+    """Every bio the production pool can hand back for a profession."""
+    return [bio.format(name=name) for bio in PROFESSION_BIOS[profession]]
+
+
+class TestGenerateHoloCardContentProfession:
+    """The profession drives both the fallback phrase and the bio pool, and it is
+    read off a typed onboarding subdocument that is absent on most rows."""
+
+    @pytest.mark.asyncio
+    async def test_profession_comes_from_the_onboarding_preferences(self) -> None:
+        user = UserDocument(
+            name="Ada",
+            onboarding=OnboardingSubdocument(
+                preferences=OnboardingPreferences(profession="developer")
+            ),
+        )
+
+        phrase, bio, status = await generate_holo_card_content("uid", "", user=user)
+
+        assert phrase == "Curious Developer"
+        assert bio in _bios_for("developer", "Ada")
+        assert status == BioStatus.NO_GMAIL
+
+    @pytest.mark.asyncio
+    async def test_a_user_without_onboarding_falls_back_to_other(self) -> None:
+        user = UserDocument(name="Ada", onboarding=None)
+
+        phrase, bio, _ = await generate_holo_card_content("uid", "", user=user)
+
+        assert phrase == "Curious Adventurer"
+        assert bio in _bios_for("other", "Ada")
+
+    @pytest.mark.asyncio
+    async def test_onboarding_without_preferences_falls_back_to_other(self) -> None:
+        user = UserDocument(name="Ada", onboarding=OnboardingSubdocument(preferences=None))
+
+        phrase, bio, _ = await generate_holo_card_content("uid", "", user=user)
+
+        assert phrase == "Curious Adventurer"
+        assert bio in _bios_for("other", "Ada")
+
+    @pytest.mark.asyncio
+    async def test_preferences_without_a_profession_falls_back_to_other(self) -> None:
+        user = UserDocument(
+            name="Ada",
+            onboarding=OnboardingSubdocument(preferences=OnboardingPreferences(profession=None)),
+        )
+
+        phrase, bio, _ = await generate_holo_card_content("uid", "", user=user)
+
+        assert phrase == "Curious Adventurer"
+        assert bio in _bios_for("other", "Ada")
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_user_is_named_user_and_has_no_profession(self) -> None:
+        with patch(
+            "app.utils.profile_card.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            phrase, bio, _ = await generate_holo_card_content("uid", "")
+
+        assert phrase == "Curious Adventurer"
+        assert bio in _bios_for("other", "User")
+
+    @pytest.mark.asyncio
+    async def test_the_profession_reaches_the_llm_prompt(self) -> None:
+        """With a context summary the profession is interpolated into the prompt."""
+        user = UserDocument(
+            name="Ada",
+            onboarding=OnboardingSubdocument(
+                preferences=OnboardingPreferences(profession="designer")
+            ),
+        )
+        llm_output = AsyncMock(
+            return_value=HoloCardLLMOutput(
+                personality_phrase='"Pixel Wrangler"', user_bio="  Ada designs things.  "
+            )
+        )
+
+        with patch("app.utils.profile_card.ainvoke_structured", llm_output):
+            phrase, bio, status = await generate_holo_card_content(
+                "uid", "inbox summary", user=user
+            )
+
+        prompt = llm_output.await_args.args[1]
+        assert "designer" in prompt
+        assert phrase == "Pixel Wrangler"
+        assert bio == "Ada designs things."
+        assert status == BioStatus.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_a_missing_profession_reaches_the_llm_prompt_empty(self) -> None:
+        """No profession must render as nothing in the prompt — any placeholder the
+        fallback invented would be read by the LLM as the user's actual job."""
+        user = UserDocument(name="Ada", onboarding=None)
+        llm_output = AsyncMock(
+            return_value=HoloCardLLMOutput(personality_phrase="Quiet Builder", user_bio="Ada.")
+        )
+
+        with patch("app.utils.profile_card.ainvoke_structured", llm_output):
+            await generate_holo_card_content("uid", "inbox summary", user=user)
+
+        assert llm_output.await_args.args[1] == HOLO_CARD_PROMPT.format(
+            name="Ada", profession="", context_summary="inbox summary"
+        )

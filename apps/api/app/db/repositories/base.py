@@ -156,6 +156,11 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     def _identity_filter(self, doc_id: str) -> dict[str, object]:
         return {self.identity_field: self._id_value(doc_id)}
 
+    def _filter_doc_id(self, filter_: Mapping[str, object]) -> str | None:
+        """The doc id a raw filter targets, when it targets exactly one by identity."""
+        value = filter_.get(self.identity_field)
+        return None if value is None or isinstance(value, Mapping) else str(value)
+
     def _doc_identity(self, doc: TDoc) -> str:
         return doc.id if self.identity_field == "_id" else str(getattr(doc, self.identity_field))
 
@@ -492,6 +497,13 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             upsert=upsert,
         )
         if raw is None:
+            # The write matched no document. When the filter targeted one document
+            # by identity, that document is gone (or was never there) while a cached
+            # entity may still be served — evict it so the next read misses and
+            # re-reads Mongo instead of serving a deleted document indefinitely.
+            targeted = self._filter_doc_id(filter_)
+            if targeted is not None:
+                await self._cache_evict(scope, targeted)
             return None
         doc = self._to_model(raw)
         if return_document:

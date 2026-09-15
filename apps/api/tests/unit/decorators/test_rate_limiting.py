@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import HTTPException
 import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import (
@@ -456,8 +457,11 @@ class TestTieredRateLimitMetersUnderItsOrigin:
             else rl.tiered_rate_limit("chat_messages")
         )(_endpoint)
         with (
+            # tiered_rate_limit resolves the caller via
+            # app.core.request_context.resolve_caller, which reads
+            # get_authenticated_user from its own module.
             patch(
-                "app.decorators.rate_limiting.get_authenticated_user",
+                "app.core.request_context.get_authenticated_user",
                 return_value={"user_id": "user-1"},
             ),
             patch(
@@ -482,6 +486,73 @@ class TestTieredRateLimitMetersUnderItsOrigin:
         mock_check = await self._call(None)
 
         assert mock_check.await_args.kwargs["origin"] is LimitHitOrigin.INTERACTIVE
+
+
+class TestTieredRateLimitCallerResolution:
+    """The caller-resolution branches at the top of the decorator — a public
+    route with nobody to bill, an authenticated-but-id-less caller, and the
+    bot-style kwarg/positional fallback ``resolve_caller`` itself covers."""
+
+    async def test_unauthenticated_call_bypasses_the_limiter_entirely(self) -> None:
+        decorated = rl.tiered_rate_limit("chat_messages")(_endpoint)
+        with (
+            patch("app.core.request_context.get_authenticated_user", return_value=None),
+            patch(
+                "app.decorators.rate_limiting.enforce_tiered_limit", new_callable=AsyncMock
+            ) as mock_enforce,
+        ):
+            result = await decorated()
+
+        assert result == {"ok": True}
+        mock_enforce.assert_not_awaited()
+
+    async def test_a_caller_without_user_id_is_a_401(self) -> None:
+        decorated = rl.tiered_rate_limit("chat_messages")(_endpoint)
+        with patch(
+            "app.core.request_context.get_authenticated_user",
+            return_value={"email": "x@example.com"},
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await decorated()
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "User ID not found"
+
+    async def test_falls_back_to_an_explicit_user_kwarg_with_no_request_context(self) -> None:
+        async def echo(**kwargs: Any) -> dict[str, Any]:
+            return kwargs
+
+        decorated = rl.tiered_rate_limit("chat_messages")(echo)
+        with (
+            patch("app.core.request_context.get_authenticated_user", return_value=None),
+            patch(
+                "app.decorators.rate_limiting.enforce_tiered_limit", new_callable=AsyncMock
+            ) as mock_enforce,
+        ):
+            result = await decorated(user={"user_id": "kwarg-user"})
+
+        assert result == {"user": {"user_id": "kwarg-user"}}
+        mock_enforce.assert_awaited_once_with("kwarg-user", "chat_messages", origin=None)
+
+    async def test_unauthenticated_bypass_forwards_positional_and_keyword_args(self) -> None:
+        """The bypass calls the wrapped function with its ORIGINAL args and
+        kwargs — dropping either silently breaks any endpoint that takes
+        positional arguments or keyword arguments beyond ``user``."""
+
+        async def echo(*args: Any, **kwargs: Any) -> dict[str, Any]:
+            return {"args": args, "kwargs": kwargs}
+
+        decorated = rl.tiered_rate_limit("chat_messages")(echo)
+        with (
+            patch("app.core.request_context.get_authenticated_user", return_value=None),
+            patch(
+                "app.decorators.rate_limiting.enforce_tiered_limit", new_callable=AsyncMock
+            ) as mock_enforce,
+        ):
+            result = await decorated("pos1", "pos2", extra="value")
+
+        assert result == {"args": ("pos1", "pos2"), "kwargs": {"extra": "value"}}
+        mock_enforce.assert_not_awaited()
 
 
 @contextmanager

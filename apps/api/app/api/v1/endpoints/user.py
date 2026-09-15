@@ -18,10 +18,11 @@ from app.config.settings import settings
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
+from app.models.chat_channel_models import ChannelPriorityList
 from app.models.user_models import (
     AuthenticatedUser,
     AuthenticatedUserResponse,
-    HoloCardOnboardingFields,
+    OnboardingSubdocument,
     PublicHoloCardResponse,
     UpdateHoloCardColorsResponse,
     UpdateTimezoneResponse,
@@ -30,6 +31,10 @@ from app.models.user_models import (
 )
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import AnalyticsEvents, capture_context_event, track_logout
+from app.services.delivery.chat_channel import (
+    get_chat_channel_priority,
+    set_chat_channel_priority,
+)
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
 from app.utils.timezone import is_valid_timezone
@@ -232,7 +237,7 @@ async def get_public_holo_card(card_id: str) -> PublicHoloCardResponse:
         if not user_doc:
             raise HTTPException(status_code=404, detail="Card not found")
 
-        onboarding = HoloCardOnboardingFields.model_validate(user_doc.onboarding or {})
+        onboarding = user_doc.onboarding or OnboardingSubdocument()
 
         # Check if user has completed onboarding
         if not onboarding.house:
@@ -404,3 +409,29 @@ async def logout(
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Logout failed") from e
+
+
+# evlog-map-disable-next-line audit -- read-only preference lookup, no state change to audit
+@router.get("/chat-channel-priority")
+async def read_chat_channel_priority(
+    user_id: str = Depends(get_user_id),
+) -> ChannelPriorityList:
+    """The order GAIA picks the one platform it texts on."""
+    log.set(user={"id": user_id}, operation="read_chat_channel_priority")
+    return ChannelPriorityList(priority=await get_chat_channel_priority(user_id))
+
+
+@router.patch("/chat-channel-priority")
+async def update_chat_channel_priority(
+    body: ChannelPriorityList,
+    user_id: str = Depends(get_user_id),
+) -> ChannelPriorityList:
+    """Reorder where GAIA texts first.
+
+    The stored list is the validated one (duplicates collapsed), and it is echoed
+    back so the UI shows what was saved rather than what was sent.
+    """
+    log.set(user={"id": user_id}, operation="update_chat_channel_priority")
+    await set_chat_channel_priority(user_id, body.priority)
+    log.audit("chat channel priority updated", actor=user_id, priority=body.priority)
+    return body

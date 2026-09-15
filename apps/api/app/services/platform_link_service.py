@@ -30,7 +30,7 @@ from app.models.platform_models import (
     PlatformLinkEntry,
     PlatformLinkResult,
 )
-from app.models.user_models import PlatformLinkRecord, user_to_legacy_dict
+from app.models.user_models import PlatformLinkRecord, UserDocument, user_to_legacy_dict
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.payments.payment_service import payment_service
@@ -70,6 +70,23 @@ class Platform(str, Enum):
 PREMIUM_PLATFORMS: frozenset[str] = frozenset({Platform.IMESSAGE.value})
 
 IMESSAGE_REGISTRATION_FEATURE_KEY = "imessage_registration"
+
+
+class PlatformAccountTakenError(ValueError):
+    """This platform account already belongs to a different GAIA user.
+
+    Distinct from ``AccountHasDifferentPlatformError``: the conflict is on the
+    platform side, and the person linking has to free the platform account.
+    """
+
+
+class AccountHasDifferentPlatformError(ValueError):
+    """This GAIA account already has a different account on this platform.
+
+    Distinct from ``PlatformAccountTakenError``: nobody else is involved, and
+    the fix is on the GAIA side. Telling this person to "disconnect it from the
+    other GAIA account" sends them looking for an account that does not exist.
+    """
 
 
 async def _release_imessage_number(user_id: str, phone_number: str) -> bool:
@@ -196,6 +213,12 @@ async def platform_requires_upgrade(user_id: str, platform: str) -> bool:
 async def require_platform_plan(user_id: str, platform: str) -> None:
     """Raise the standard 429 upsell when a free user tries to link a paid-only platform."""
     if await platform_requires_upgrade(user_id, platform):
+        log.info(
+            "platform linking refused — paid-only platform",
+            user={"id": user_id},
+            provider=platform,
+            payment={"operation": "platform_plan_gate"},
+        )
         raise RateLimitExceededException(
             feature=f"{platform}_linking",
             plan_required=PlanType.PRO.value,
@@ -373,6 +396,32 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
     return result
 
 
+def linked_platforms_of(user: UserDocument) -> dict[str, PlatformLinkEntry]:
+    """A loaded user's linked platforms, keyed by platform name in ``Platform`` order.
+
+    Only platforms stored as a dict with a non-empty "id" are returned; legacy
+    string/int values are skipped. Split out from
+    ``PlatformLinkService.get_linked_platforms`` so callers that already hold the
+    document (onboarding completion) do not pay for a second read.
+    """
+    platform_links = user.platform_links or {}
+    connected_at = user.platform_links_connected_at or {}
+
+    result: dict[str, PlatformLinkEntry] = {}
+    for platform in Platform.values():
+        stored = platform_links.get(platform)
+        if isinstance(stored, dict) and stored.get("id"):
+            result[platform] = {
+                "platform": platform,
+                "platformUserId": stored["id"],
+                "username": stored.get("username"),
+                "displayName": stored.get("display_name"),
+                "connectedAt": connected_at.get(platform),
+            }
+
+    return result
+
+
 class PlatformLinkService:
     """Service for platform account linking operations."""
 
@@ -417,7 +466,9 @@ class PlatformLinkService:
         # Reject if this platform ID is already linked to a different user
         existing = await user_repository.get_by_platform_id(platform, platform_user_id)
         if existing and existing.id != user_id:
-            raise ValueError(f"This {platform} account is already linked to another GAIA user")
+            raise PlatformAccountTakenError(
+                f"This {platform} account is already linked to another GAIA user"
+            )
 
         # Reject if the user already has a different platform ID stored
         user = await user_repository.get(user_id)
@@ -426,7 +477,7 @@ class PlatformLinkService:
             if isinstance(current_link, dict):
                 current_id = current_link.get("id", "")
                 if current_id and current_id != platform_user_id:
-                    raise ValueError(
+                    raise AccountHasDifferentPlatformError(
                         f"Your account already has a different {platform} account linked"
                     )
 
@@ -532,28 +583,6 @@ class PlatformLinkService:
 
     @staticmethod
     async def get_linked_platforms(user_id: str) -> dict[str, PlatformLinkEntry]:
-        """Get all linked platforms for a user, mapping platform name to connection details.
-
-        Only platforms stored as a dict with a non-empty "id" are returned;
-        legacy string/int values are skipped.
-        """
+        """Get all linked platforms for a user, mapping platform name to connection details."""
         user = await user_repository.get(user_id)
-        if user is None:
-            return {}
-
-        platform_links = user.platform_links or {}
-        connected_at = user.platform_links_connected_at or {}
-
-        result: dict[str, PlatformLinkEntry] = {}
-        for platform in Platform.values():
-            stored = platform_links.get(platform)
-            if isinstance(stored, dict) and stored.get("id"):
-                result[platform] = {
-                    "platform": platform,
-                    "platformUserId": stored["id"],
-                    "username": stored.get("username"),
-                    "displayName": stored.get("display_name"),
-                    "connectedAt": connected_at.get(platform),
-                }
-
-        return result
+        return {} if user is None else linked_platforms_of(user)

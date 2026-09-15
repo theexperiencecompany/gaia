@@ -9,6 +9,7 @@ app. Manual "run now" fires and onboarded users are unaffected.
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.models.user_models import UserDocument
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
 MODULE = "app.workers.tasks.workflow_tasks"
@@ -23,10 +24,8 @@ def _workflow(user_id: str = "user-1") -> MagicMock:
     return wf
 
 
-def _user(completed: bool) -> MagicMock:
-    user = MagicMock()
-    user.onboarding = {"completed": completed}
-    return user
+def _user(completed: bool) -> UserDocument:
+    return UserDocument.model_validate({"onboarding": {"completed": completed}})
 
 
 async def _run_task(
@@ -35,6 +34,9 @@ async def _run_task(
     with (
         patch(f"{MODULE}.workflow_scheduler") as scheduler,
         patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock, return_value=user),
+        # The paid-only gate is defaulted to active by the workers-dir conftest's
+        # autouse _subscription_active_by_default fixture — these tests are
+        # about the onboarding gate, not that one.
         patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock) as budget,
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
         patch(

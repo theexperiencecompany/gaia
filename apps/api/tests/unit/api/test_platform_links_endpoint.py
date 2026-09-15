@@ -1,16 +1,30 @@
 """Tests for app/api/v1/endpoints/platform_links.py"""
 
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
+from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
+from app.api.v1.endpoints.platform_links import mint_link_code
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.config.settings import settings
+from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX
 from app.models.payment_models import PlanType
 from app.models.platform_models import DisconnectPlatformResponse, PlatformLinkResult
+from app.models.user_models import (
+    AuthenticatedUser,
+    OnboardingNeed,
+    OnboardingPreferences,
+    OnboardingStatusResponse,
+)
 from app.services.analytics_service import AnalyticsEvents
 from app.services.photon.photon_client import PhotonUser
-from app.services.platform_link_service import IMESSAGE_REGISTRATION_FEATURE_KEY
+from app.services.platform_link_service import (
+    IMESSAGE_REGISTRATION_FEATURE_KEY,
+    PlatformAccountTakenError,
+)
 from app.utils.errors import AppError
 from tests.conftest import FAKE_USER
 
@@ -49,6 +63,158 @@ class TestGetPlatformLinks:
     async def test_unauthenticated(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.get(BASE)
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# POST /platform-links/code
+# ---------------------------------------------------------------------------
+
+
+class TestMintLinkCode:
+    @staticmethod
+    def _status() -> OnboardingStatusResponse:
+        return OnboardingStatusResponse(
+            completed=True,
+            completed_at=None,
+            phase=None,
+            preferences=OnboardingPreferences(
+                profession="founder",
+                needs=[OnboardingNeed.INBOX, OnboardingNeed.FOUNDER_TEAM_UPDATES],
+            ),
+            first_message_conversation_id=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated(self, unauthed_client: AsyncClient) -> None:
+        resp = await unauthed_client.post(f"{BASE}/code")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_empty_session_user_is_refused_before_anything_is_minted(self) -> None:
+        """Direct invocation: an empty caller never reaches the mint.
+
+        The auth dependency normally fills this in, so the handler's own guard
+        is only reachable by calling it directly — and it has to answer 401,
+        not a 402 paywall or a bare status with no reason.
+        """
+        with (
+            patch(
+                "app.api.v1.endpoints.platform_links.mint_platform_link_code",
+                new_callable=AsyncMock,
+            ) as mock_mint,
+            pytest.raises(HTTPException) as exc,
+        ):
+            await mint_link_code(current_user=cast(AuthenticatedUser, {}))
+
+        assert exc.value.status_code == 401
+        assert exc.value.detail == "Not authenticated"
+        mock_mint.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_mints_a_code_bound_to_the_caller(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.platform_links.get_user_onboarding_status",
+                new_callable=AsyncMock,
+                return_value=self._status(),
+            ) as mock_status,
+            patch(
+                "app.api.v1.endpoints.platform_links.mint_platform_link_code",
+                new_callable=AsyncMock,
+                return_value="CODE123",
+            ) as mock_mint,
+            patch(
+                "app.api.v1.endpoints.platform_links.enforce_rate_limit", new_callable=AsyncMock
+            ) as mock_limit,
+        ):
+            resp = await client.post(f"{BASE}/code")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        expected_message = (
+            "I'm a founder. Inbox out of control, chasing team updates. Where do we start?"
+        )
+        assert body["code"] == "CODE123"
+        assert body["first_message"] == expected_message
+        assert body["handoff_text"] == f"{expected_message} #CODE123"
+        # Bound to the session's user, never to a client-supplied id, and the
+        # code carries the ANSWERS rather than a rendered string: GAIA's side of
+        # the first contact is composed at redeem, when the connected
+        # integrations are known.
+        mock_mint.assert_awaited_once_with(FAKE_USER_ID, self._status().preferences)
+        # The opening line is composed from THIS user's onboarding answers —
+        # read for anyone else and the message describes the wrong person.
+        mock_status.assert_awaited_once_with(FAKE_USER_ID)
+        # The mint is charged to this user against the code quota, spelled
+        # exactly: a different key bills a different (or no) budget.
+        mock_limit.assert_awaited_once_with(FAKE_USER_ID, "platform_link_code")
+
+    @pytest.mark.asyncio
+    async def test_links_carry_the_code(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.platform_links.get_user_onboarding_status",
+                new_callable=AsyncMock,
+                return_value=self._status(),
+            ),
+            patch(
+                "app.api.v1.endpoints.platform_links.mint_platform_link_code",
+                new_callable=AsyncMock,
+                return_value="CODE123",
+            ),
+            patch("app.api.v1.endpoints.platform_links.enforce_rate_limit", new_callable=AsyncMock),
+            patch.object(settings, "TELEGRAM_BOT_USERNAME", "heygaia_bot"),
+            patch.object(settings, "WHATSAPP_PHONE_NUMBER", "15551234567"),
+        ):
+            resp = await client.post(f"{BASE}/code")
+
+        links = resp.json()["links"]
+        assert links["telegram"] == "https://t.me/heygaia_bot?start=CODE123"
+        # The whole URL, not just its ends: WhatsApp prefills the message body
+        # from it, so a dropped or wrong first message ships an empty opener
+        # while the prefix and the trailing code still look right.
+        assert links["whatsapp"] == (
+            "https://wa.me/15551234567?text=I%27m%20a%20founder.%20Inbox%20out%20of%20control%2C"
+            "%20chasing%20team%20updates.%20Where%20do%20we%20start%3F%20%23CODE123"
+        )
+
+    @pytest.mark.asyncio
+    async def test_mint_records_the_audit_trail_and_outcome(self, client: AsyncClient) -> None:
+        """The code is a credential: issuing one names the actor, never the code."""
+        with (
+            patch(
+                "app.api.v1.endpoints.platform_links.get_user_onboarding_status",
+                new_callable=AsyncMock,
+                return_value=self._status(),
+            ),
+            patch(
+                "app.api.v1.endpoints.platform_links.mint_platform_link_code",
+                new_callable=AsyncMock,
+                return_value="CODE123",
+            ),
+            patch("app.api.v1.endpoints.platform_links.enforce_rate_limit", new_callable=AsyncMock),
+            patch("app.api.v1.endpoints.platform_links.log") as mock_log,
+        ):
+            resp = await client.post(f"{BASE}/code")
+
+        assert resp.status_code == 200
+        mock_log.audit.assert_called_once_with("platform link code issued", actor=FAKE_USER_ID)
+        mock_log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="mint_platform_link_code")
+        mock_log.set.assert_any_call(outcome="success")
+
+    @pytest.mark.asyncio
+    async def test_rate_limited(self, client: AsyncClient) -> None:
+        with patch(
+            "app.api.v1.endpoints.platform_links.enforce_rate_limit",
+            new_callable=AsyncMock,
+            side_effect=RateLimitExceededException(
+                feature="platform_link_code",
+                plan_required=PlanType.PRO.value,
+                current_plan=PlanType.FREE.value,
+            ),
+        ):
+            resp = await client.post(f"{BASE}/code")
+        assert resp.status_code == 429
 
 
 # ---------------------------------------------------------------------------
@@ -132,18 +298,33 @@ class TestLinkPlatform:
                 "app.api.v1.endpoints.platform_links.PlatformLinkService.link_account",
                 new_callable=AsyncMock,
                 return_value=link_result,
-            ),
-            patch("app.api.v1.endpoints.platform_links.capture_context_event") as mock_capture,
+            ) as mock_link_account,
+            patch("app.services.platform_link_completion.capture_event") as mock_capture,
         ):
             mock_cache.client = mock_redis
             resp = await client.post(f"{BASE}/discord", json={"token": "valid_tok"})
 
         assert resp.status_code == 200
-        assert resp.json()["status"] == "linked"
-        mock_capture.assert_called_once_with(
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {"integration_id": "discord", "is_new_link": False},
+        # The whole payload: the client renders which account is connected and
+        # since when, so a dropped or nulled field is a blank linked-accounts row.
+        assert resp.json() == {
+            "status": "linked",
+            "platform": "discord",
+            "platform_user_id": "DISC123",
+            "connected_at": "2024-01-01T00:00:00Z",
+        }
+        # The link is written for THIS user, on THIS platform, for THIS platform
+        # account — with the profile the token carried. Every one of those four
+        # is load-bearing: swap or drop one and the link lands on the wrong row.
+        mock_link_account.assert_awaited_once_with(
+            FAKE_USER_ID,
+            "discord",
+            "DISC123",
+            profile={"username": "testuser", "display_name": "Test User"},
         )
+        # Re-linking an account the user already has is not a new connection,
+        # so it is not captured — the count would otherwise track taps.
+        mock_capture.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_link_new_platform_captures_is_new_link_true(self, client: AsyncClient) -> None:
@@ -174,15 +355,20 @@ class TestLinkPlatform:
                 return_value=link_result,
             ),
             patch(
-                "app.api.v1.endpoints.platform_links.notify_account_linked", new_callable=AsyncMock
-            ),
-            patch("app.api.v1.endpoints.platform_links.capture_context_event") as mock_capture,
+                "app.services.platform_link_completion.notify_account_linked",
+                new_callable=AsyncMock,
+            ) as mock_notify,
+            patch("app.services.platform_link_completion.capture_event") as mock_capture,
         ):
             mock_cache.client = mock_redis
             resp = await client.post(f"{BASE}/discord", json={"token": "valid_tok"})
 
         assert resp.status_code == 200
+        # The greeting goes out on the platform just linked, to the user who
+        # linked it — argument order here decides who gets messaged where.
+        mock_notify.assert_awaited_once_with("discord", FAKE_USER_ID)
         mock_capture.assert_called_once_with(
+            FAKE_USER_ID,
             AnalyticsEvents.INTEGRATION_CONNECTED,
             {"integration_id": "discord", "is_new_link": True},
         )
@@ -212,8 +398,9 @@ class TestLinkPlatform:
                 return_value=link_result,
             ),
             patch(
-                "app.api.v1.endpoints.platform_links.schedule_account_sync"
+                "app.services.platform_link_completion.schedule_account_sync"
             ) as mock_schedule_sync,
+            patch("app.api.v1.endpoints.platform_links.log") as mock_log,
         ):
             mock_cache.client = mock_redis
             resp = await client.post(f"{BASE}/discord", json={"token": "valid_tok"})
@@ -221,10 +408,42 @@ class TestLinkPlatform:
         assert resp.status_code == 200
         # The workspace projection must sync THIS user's files, not a null id.
         mock_schedule_sync.assert_called_once_with(FAKE_USER_ID)
+        # A completed link is stamped on the wide event; without it a linked
+        # account and a silently-failed one look identical in the logs.
+        mock_log.set.assert_any_call(outcome="success")
 
     @pytest.mark.asyncio
+    async def test_an_internal_failure_is_not_reported_as_an_ownership_conflict(
+        self, client: AsyncClient
+    ) -> None:
+        """A plain ValueError is an internal fault, not something the user owns.
+
+        link_account raises bare ValueError for an empty id or a missing user.
+        Collapsed into the shared 409 these told the person linking that a
+        stranger held their account, sending them to fix something that was
+        never theirs to fix.
+        """
+        mock_redis = AsyncMock()
+        mock_redis.hgetall = AsyncMock(
+            return_value={"platform": "discord", "platform_user_id": "DISC_X"}
+        )
+        mock_redis.delete = AsyncMock()
+
+        with (
+            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+            patch(
+                "app.api.v1.endpoints.platform_links.PlatformLinkService.link_account",
+                new_callable=AsyncMock,
+                side_effect=ValueError("User not found"),
+            ),
+        ):
+            mock_cache.client = mock_redis
+            resp = await client.post(f"{BASE}/discord", json={"token": "tok"})
+
+        assert resp.status_code != 409
+
     async def test_link_conflict(self, client: AsyncClient) -> None:
-        """ValueError from link_account returns 409."""
+        """A real ownership conflict returns 409."""
         mock_redis = AsyncMock()
         mock_redis.hgetall = AsyncMock(
             return_value={
@@ -239,13 +458,93 @@ class TestLinkPlatform:
             patch(
                 "app.api.v1.endpoints.platform_links.PlatformLinkService.link_account",
                 new_callable=AsyncMock,
-                side_effect=ValueError("already linked"),
+                side_effect=PlatformAccountTakenError("already linked"),
+            ),
+            patch("app.services.platform_link_completion.log") as mock_log,
+        ):
+            mock_cache.client = mock_redis
+            resp = await client.post(f"{BASE}/discord", json={"token": "dup_tok"})
+
+        assert resp.status_code == 409
+        # The person linking has to be told what went wrong and what to do —
+        # the 409 body carries the service's reason, not a bare status code.
+        assert resp.json() == {
+            "message": "already linked",
+            "why": "the platform account is already linked to a different GAIA account",
+            "fix": "disconnect it from the other account, or link a different one",
+            # The bots read this rather than inferring the reason from the 409,
+            # which covers two conflicts with opposite fixes.
+            "code": "platform_account_taken",
+        }
+        # A rejected link is an audit event: who tried, which platform account,
+        # which provider, and why it was refused.
+        mock_log.audit.assert_called_once_with(
+            "platform account link rejected",
+            actor=FAKE_USER_ID,
+            resource="DISC_DUP",
+            provider="discord",
+            # The specific conflict, not a bare ValueError — an audit line that
+            # cannot tell the two 409s apart cannot answer which one fired.
+            error_type="PlatformAccountTakenError",
+            error="already linked",
+        )
+
+    @pytest.mark.asyncio
+    async def test_conflict_leaves_the_token_redeemable(self, client: AsyncClient) -> None:
+        """A refused link must not spend the token its own message asks them to retry with.
+
+        The 409 says "disconnect the other account, then link this one" — and the
+        retry it asks for arrives with the same token, so consuming it on the way
+        in answers the second attempt with "Invalid or expired link token".
+        """
+        mock_redis = AsyncMock()
+        mock_redis.hgetall = AsyncMock(
+            return_value={"platform": "discord", "platform_user_id": "DISC_DUP"}
+        )
+        mock_redis.delete = AsyncMock()
+
+        with (
+            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+            patch(
+                "app.api.v1.endpoints.platform_links.PlatformLinkService.link_account",
+                new_callable=AsyncMock,
+                side_effect=PlatformAccountTakenError("already linked"),
             ),
         ):
             mock_cache.client = mock_redis
             resp = await client.post(f"{BASE}/discord", json={"token": "dup_tok"})
 
         assert resp.status_code == 409
+        mock_redis.delete.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_successful_link_consumes_the_token(self, client: AsyncClient) -> None:
+        """Single-use is still single-use: the token is spent once the link is written."""
+        mock_redis = AsyncMock()
+        mock_redis.hgetall = AsyncMock(
+            return_value={"platform": "discord", "platform_user_id": "DISC123"}
+        )
+        mock_redis.delete = AsyncMock()
+
+        with (
+            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+            patch(
+                "app.api.v1.endpoints.platform_links.PlatformLinkService.link_account",
+                new_callable=AsyncMock,
+                return_value=PlatformLinkResult(
+                    status="linked",
+                    platform="discord",
+                    platform_user_id="DISC123",
+                    connected_at="2024-01-01T00:00:00Z",
+                    is_new_link=False,
+                ),
+            ),
+        ):
+            mock_cache.client = mock_redis
+            resp = await client.post(f"{BASE}/discord", json={"token": "tok"})
+
+        assert resp.status_code == 200
+        mock_redis.delete.assert_awaited_once_with(f"{PLATFORM_LINK_TOKEN_PREFIX}:tok")
 
     @pytest.mark.asyncio
     async def test_unauthenticated(self, unauthed_client: AsyncClient) -> None:

@@ -27,7 +27,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.payment_models import SubscriptionDocument
+from app.models.payment_models import ProcessedWebhookUpdate, SubscriptionDocument
 from app.services.payments.payment_webhook_service import payment_webhook_service
 
 pytestmark = pytest.mark.stress
@@ -188,27 +188,26 @@ class TestComposioWebhookReplay:
 
 
 class _FakeProcessedWebhookRepository:
-    """Stateful store: once marked, is_processed stays True — the dedup guard."""
+    """Stateful store with the unique index's semantics: the round trip to the
+    server yields once, then the insert decides atomically, so of N racing
+    claims for one id exactly one sees True."""
 
     def __init__(self) -> None:
-        self._seen: set[str] = set()
-        self.marked: list[str] = []
+        self._claimed: set[str] = set()
+        self.outcomes: list[tuple[str, str | None]] = []
 
-    async def is_processed(self, webhook_id: str) -> bool:
-        return webhook_id in self._seen
+    async def claim(self, webhook_id: str, *, event_type: str) -> bool:
+        await asyncio.sleep(0)
+        if webhook_id in self._claimed:
+            return False
+        self._claimed.add(webhook_id)
+        return True
 
-    async def mark_processed(
-        self,
-        webhook_id: str,
-        *,
-        event_type: str,
-        status: str,
-        message: str | None = None,
-        payment_id: str | None = None,
-        subscription_id: str | None = None,
-    ) -> None:
-        self._seen.add(webhook_id)
-        self.marked.append(webhook_id)
+    async def record_outcome(self, webhook_id: str, outcome: ProcessedWebhookUpdate) -> None:
+        self.outcomes.append((webhook_id, outcome.status))
+
+    async def release(self, webhook_id: str) -> None:
+        self._claimed.discard(webhook_id)
 
 
 class _FakeSubscriptionRepository:
@@ -273,19 +272,19 @@ class TestDodoWebhookReplay:
                 processed_repo,
             ),
             patch(
-                "app.services.payments.payment_webhook_service.subscription_repository",
+                "app.services.payments.subscription_events.subscription_repository",
                 subs_repo,
             ),
             patch(
-                "app.services.payments.payment_webhook_service.user_repository.get",
+                "app.services.payments.subscription_events.user_repository.get",
                 AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.payments.payment_webhook_service.payment_service.invalidate_plan_cache_by_dodo_id",
+                "app.services.payments.subscription_events.invalidate_plan_cache",
                 invalidate_cache,
             ),
             patch(
-                "app.services.payments.payment_webhook_service.track_subscription_event",
+                "app.services.payments.subscription_events.track_subscription_event",
                 track,
             ),
         ):
@@ -298,6 +297,45 @@ class TestDodoWebhookReplay:
         assert second.message == "Webhook already processed"
         assert len(subs_repo.created) == 1
         assert subs_repo.created[0].dodo_subscription_id == "sub_xyz789"
-        assert processed_repo.marked == ["wh_dodo_001"]
+        assert processed_repo.outcomes == [("wh_dodo_001", "processed")]
         track.assert_called_once()
         invalidate_cache.assert_awaited_once()
+
+    async def test_racing_duplicate_deliveries_activate_one_subscription(self):
+        """Dodo redelivers on a slow ack, so two copies of one webhook can be in
+        flight together. The claim, not a check-then-act, is what keeps the
+        second from reaching the handler."""
+        payload = _dodo_subscription_active_payload()
+        processed_repo = _FakeProcessedWebhookRepository()
+        subs_repo = _FakeSubscriptionRepository()
+
+        with (
+            patch(
+                "app.services.payments.payment_webhook_service.processed_webhook_repository",
+                processed_repo,
+            ),
+            patch(
+                "app.services.payments.subscription_events.subscription_repository",
+                subs_repo,
+            ),
+            patch(
+                "app.services.payments.subscription_events.user_repository.get",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.services.payments.subscription_events.invalidate_plan_cache",
+                AsyncMock(),
+            ),
+            patch(
+                "app.services.payments.subscription_events.track_subscription_event",
+                MagicMock(),
+            ),
+        ):
+            first, second = await asyncio.gather(
+                payment_webhook_service.process_webhook(payload, "wh_dodo_race"),
+                payment_webhook_service.process_webhook(payload, "wh_dodo_race"),
+            )
+
+        assert sorted([first.status, second.status]) == ["ignored", "processed"]
+        assert len(subs_repo.created) == 1
+        assert processed_repo.outcomes == [("wh_dodo_race", "processed")]

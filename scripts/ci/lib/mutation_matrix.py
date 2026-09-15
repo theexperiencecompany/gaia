@@ -35,6 +35,24 @@ TESTS_DIR = Path("apps/api/tests")
 LOCAL_BASE_BRANCH = "master"
 
 
+def _base_ref() -> str:
+    """The branch this diff is scoped to: the PR's base on CI, master locally.
+
+    GAIA_PR_BASE before GITHUB_BASE_REF, and the order is load-bearing rather
+    than defensive. For a PR in a native GitHub stack the `pull_request` payload
+    carries the STACK'S TRUNK in base.ref, not the PR's parent — measured
+    2026-09-11, when #1175 (parent feat/first-steps-activation, a one-module
+    diff) planned 119 modules against master. `changes.sh base` asks the API,
+    which is the only source that names the parent, and the run hands that
+    answer to every lane as GAIA_PR_BASE.
+    """
+    return (
+        os.environ.get("GAIA_PR_BASE", "")
+        or os.environ.get("GITHUB_BASE_REF", "")
+        or LOCAL_BASE_BRANCH
+    )
+
+
 def _merge_base() -> str:
     """The merge-base commit between HEAD and the PR's base ref, or "" outside CI.
 
@@ -57,7 +75,7 @@ def _merge_base() -> str:
     origin and no local master). Callers must treat "" as "scope unknown" and
     refuse to run — never as "nothing changed".
     """
-    base = os.environ.get("GITHUB_BASE_REF", "") or LOCAL_BASE_BRANCH
+    base = _base_ref()
     for ref in (f"origin/{base}", base):
         try:
             return subprocess.check_output(
@@ -67,7 +85,9 @@ def _merge_base() -> str:
             ).strip()
         except subprocess.CalledProcessError:
             continue
-    if os.environ.get("GITHUB_BASE_REF"):
+    # Either variable means "a PR run told us a base", and an unresolvable base
+    # there is a hard error rather than the local fallback below.
+    if os.environ.get("GAIA_PR_BASE") or os.environ.get("GITHUB_BASE_REF"):
         print(
             f"::error::mutation gate: could not resolve merge-base with origin/{base}",
             file=sys.stderr,
@@ -227,10 +247,10 @@ def _importers_of(module: str) -> tuple[str, ...]:
 def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
     """Test files (repo-root-relative) referencing the module, unit tier first.
 
-    Real-tier suites (tests/integration/real/...) skip without
-    USE_REAL_SERVICES=1, which would leave the mutation run with zero
-    covering tests; prefer hermetic tests/unit/ hits so the lane can
-    actually exercise the module.
+    Ordered rather than filtered here: ``with_unit_mirror`` decides which
+    tiers the lane runs. Unit sorts first because it is hermetic; the contract
+    tier needs USE_REAL_SERVICES=1 and live Mongo/Redis, which the lane now
+    inherits from its job the way every other lane does.
     """
     module = f"app.{module_rel.replace('/', '.')}"
     module_py = f"{module}.py"
@@ -288,7 +308,15 @@ def with_unit_mirror(
     # Kept as a filter rather than a cap: dropping the slow tiers is what makes
     # the run finish, and dropping *arbitrary* files is what re-introduces the
     # false-green this function exists to prevent — so every unit file stays.
-    unit_only = [hit for hit in ordered if hit.startswith("tests/unit/")]
+    #
+    # The contract tier stays too. It is the ONLY tier that exercises a
+    # repository's query shapes against real Mongo, it runs in ~2s per
+    # repository, and dropping it was how every changed repository method
+    # reported "no covering test" while the gate passed (users.py, 19 lines,
+    # on one PR). The cost this filter guards against is e2e graph compilation,
+    # which contracts never do.
+    fast_tiers = ("tests/unit/", "tests/contracts/")
+    unit_only = [hit for hit in ordered if hit.startswith(fast_tiers)]
     # A module whose only coverage is integration/e2e keeps it: measuring it
     # slowly beats not measuring it, and reporting "no test file" would be a lie.
     ordered = unit_only or ordered
@@ -334,6 +362,16 @@ def main() -> int:
         return scope(sys.argv[2].removeprefix("apps/api/"))
     changed = [line.strip() for line in sys.stdin if line.strip()]
     merge_base = _merge_base()
+    # The base is the single input that decides the entire matrix, and nothing
+    # in the lane used to print it. PR #1202 packed 119 modules into 6 shards
+    # for an 11-module diff because it was still targeting master rather than
+    # the branch it is stacked on, and the only way to find that out was to
+    # read a shard's module list and diff the two branches by hand.
+    print(
+        f"mutation gate: diffing against {_base_ref()} "
+        f"(merge-base {merge_base[:12] or 'unresolved'})",
+        file=sys.stderr,
+    )
     matrix: list[dict[str, object]] = []
     failures: list[str] = []
     for module in changed:
@@ -362,7 +400,21 @@ def main() -> int:
         rel_py = rel_py.removesuffix(".py")
         testfiles = with_unit_mirror(rel_py, _test_files_for(rel_py))
         if testfiles:
-            matrix.append(_entry(rel, testfiles, merge_base))
+            entry = _entry(rel, testfiles, merge_base)
+            # A diff that only DELETES lines adds nothing to mutate, the same
+            # way a comment-only one does — and it has to be dropped HERE.
+            # `mutation.sh module` refuses an empty scope (exit 2) because an
+            # empty scope classifies every survivor as out-of-scope and exits 0,
+            # so passing this module on would fail the shard for a module with
+            # no work in it. Printed, never silent.
+            if merge_base and not entry["changed_lines"]:
+                print(
+                    f"::notice::mutation gate: {rel}'s diff vs {merge_base[:12]} only "
+                    "deletes lines (nothing added to mutate) — skipping",
+                    file=sys.stderr,
+                )
+                continue
+            matrix.append(entry)
             continue
         unit_mirror = f"tests/unit/{Path(rel_py).parent}/test_{Path(rel_py).stem}.py"
         failures.append(
@@ -418,8 +470,19 @@ def _changed_line_ranges(path: str, merge_base: str) -> list[list[int]]:
         if not match:
             continue
         start = int(match.group(1))
-        count = int(match.group(2) or "1")
-        ranges.append([start, start + max(count, 1) - 1])
+        # A missing count is git's shorthand for exactly one line (`@@ +446 @@`).
+        # An EXPLICIT zero is the opposite: `@@ -447 +446,0 @@` is a pure
+        # deletion, which adds nothing and so leaves nothing to mutate. The old
+        # `max(count, 1)` collapsed the two, and the range it invented —
+        # [446, 446] — points at the line that happened to follow the deleted
+        # one: unchanged code the PR never touched. Every consumer believed it.
+        # On #1175 the gate failed conversation_service.py for "1 changed line
+        # no test reaches (line 446)" against a line the diff only deleted
+        # above, and mutmut's covered_lines scope carried the same phantom.
+        count = int(match.group(2)) if match.group(2) is not None else 1
+        if count == 0:
+            continue
+        ranges.append([start, start + count - 1])
     return ranges
 
 

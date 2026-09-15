@@ -16,6 +16,7 @@ from app.models.notification.notification_models import (
     ActionType,
     NotificationSourceEnum,
 )
+from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import AnalyticsEvents
@@ -54,8 +55,7 @@ def _onboarded_user():
     """Default every test's user to a finished-onboarding one, so the
     system-initiated-run gate stays out of the way. The gate's own tests
     (test_workflow_tasks_onboarding_gate.py) override this."""
-    user = MagicMock()
-    user.onboarding = {"completed": True}
+    user = UserDocument.model_validate({"onboarding": {"completed": True}})
     with patch(
         "app.workers.tasks.workflow_tasks.user_repository.get",
         AsyncMock(return_value=user),

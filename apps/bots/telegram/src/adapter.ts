@@ -40,6 +40,7 @@ import {
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
+  redeemLinkCode,
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
@@ -241,13 +242,25 @@ export class TelegramAdapter extends BaseBotAdapter {
    * and dispatches all others through the unified command system.
    */
   protected async registerCommands(commands: BotCommand[]): Promise<void> {
-    // /start → help command
+    // /start with a deep-link payload is the one-tap linking handoff; bare
+    // /start stays the help command.
     this.bot.command("start", async (ctx) => {
       const userId = ctx.from?.id.toString();
       if (!userId) return;
 
       const target = this.createCtxTarget(ctx, userId);
-      await this.dispatchCommand("help", target);
+      const code = (ctx.match || "").trim();
+      if (!code) {
+        await this.dispatchCommand("help", target);
+        return;
+      }
+
+      // The redeem delivers GAIA's whole first contact itself: nothing to run
+      // afterwards, and a failure has already told the user why.
+      await redeemLinkCode(this.gaia, this.platform, userId, code, target, {
+        username: ctx.from?.username,
+        displayName: ctx.from?.first_name,
+      });
     });
 
     for (const cmd of commands) {

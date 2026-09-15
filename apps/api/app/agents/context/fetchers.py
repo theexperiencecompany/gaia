@@ -23,21 +23,27 @@ from app.agents.context.text import (
     GAIA_KNOWLEDGE_HEADER,
     MEMORY_RECALL_HEADER,
 )
+from app.agents.prompts.new_user_prompts import build_new_user_guidance
 from app.agents.workspace.paths import session_dir
 from app.constants.cache import TRACKED_TODOS_SUMMARY_CACHE_KEY, TRACKED_TODOS_SUMMARY_CACHE_TTL
+from app.constants.tool_labels import humanize_tool_name
+from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.todos import todo_repository
 from app.decorators.caching import Cacheable
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.todo_models import TodoDocument
+from app.models.user_models import OnboardingNeed, OnboardingPreferences
 from app.services.device.device_service import (
     list_device_servers,
     list_devices as list_devices_service,
 )
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_connected_integrations_named
+from app.services.onboarding.first_question import seeded_chips
 from app.services.storage._vfs_common import folder_name
+from app.services.tools.tools_service import get_integration_tool_list
 from app.services.tracked_todo_service import tracked_todo_service
 from app.utils.artifact_utils import artifact_url_base
 from shared.py.wide_events import log
@@ -200,6 +206,77 @@ async def build_tracked_todos_block(ctx: SectionContext) -> str:
         return ""
 
 
+#: How many of the user's own conversations still count as "we just met". The
+#: live one is included in the count, so 3 covers a first session plus two
+#: returns; past that there is real history to lead from and the playbooks stop.
+NEW_USER_CONVERSATION_LIMIT = 3
+
+
+def _selected_needs(preferences: dict[str, object]) -> list[OnboardingNeed]:
+    """The onboarding needs off a raw preferences bag, in the order picked.
+
+    The bag comes from Mongo, so the values are plain strings; a value this
+    build does not know (an older client, a need since renamed) is skipped
+    rather than dropped the whole block on the floor.
+    """
+    raw_needs = preferences.get("needs")
+    if not isinstance(raw_needs, list):
+        return []
+    selected: list[OnboardingNeed] = []
+    for raw in raw_needs:
+        try:
+            selected.append(OnboardingNeed(raw))
+        except ValueError:
+            log.warning("Unknown onboarding need in preferences", need=str(raw))
+    return selected
+
+
+async def build_new_user_guidance_block(ctx: SectionContext) -> str:
+    """Per-need first-conversation playbooks, while the user is still new.
+
+    The needs check runs BEFORE the conversation count, so users who predate
+    the persona questions never pay for the lookup at all.
+    """
+    if not (ctx.user_id and ctx.user_preferences):
+        return ""
+    needs = _selected_needs(ctx.user_preferences)
+    other_need = ctx.user_preferences.get("other_need")
+    if not isinstance(other_need, str):
+        other_need = None
+    if not needs and not other_need:
+        return ""
+    try:
+        conversations = await conversation_repository.count_non_onboarding(ctx.user_id)
+    except Exception as e:
+        log.warning(
+            "Error counting conversations for new-user guidance",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=ctx.user_id,
+        )
+        return ""
+    if conversations > NEW_USER_CONVERSATION_LIMIT:
+        return ""
+    profession = ctx.user_preferences.get("profession")
+    # The chips GAIA itself offered at the end of the seeded conversation. Their
+    # first message is usually one of them, and without this the model treats a
+    # one-word choice as a fragment it has to ask about.
+    chips = await seeded_chips(
+        ctx.user_id,
+        OnboardingPreferences(
+            profession=str(profession) if profession else None,
+            needs=needs,
+            other_need=other_need,
+        ),
+    )
+    return build_new_user_guidance(
+        str(profession) if profession else "",
+        needs,
+        other_need,
+        chips,
+    )
+
+
 async def build_background_banner(ctx: SectionContext) -> str:
     return BACKGROUND_EXECUTION_BANNER if ctx.execution_mode == "background" else ""
 
@@ -319,8 +396,42 @@ async def build_connected_integrations_manifest(user_id: str, header: str) -> st
     lines = [header, *_builtin_overlap_lines(connected)]
     for item in connected:
         iid, name = item["id"], item["name"]
-        lines.append(f"- {name} ({iid})" if name and name != iid else f"- {iid}")
+        row = f"- {name} ({iid})" if name and name != iid else f"- {iid}"
+        lines.append(f"{row}{await _tool_summary(iid)}")
     return "\n".join(lines)
+
+
+#: How many tool names a manifest row shows. Enough for the model to see what an
+#: integration is for ("create issue, list pull requests, ..."), few enough that
+#: ten connected integrations stay a screen, not a catalogue.
+MANIFEST_TOOL_SAMPLE_SIZE = 5
+
+
+async def _tool_summary(integration_id: str) -> str:
+    """ ": N tools, e.g. a, b, c" for a connected integration, or "" when it has none.
+
+    Read from the registry (the same catalogue ``retrieve_tools`` searches), so
+    the model knows what a connection is FOR without anyone writing prose per
+    integration. A listing failure keeps the bare row: the connection is real
+    even when its tool list is not readable right now.
+    """
+    try:
+        tools = await get_integration_tool_list(integration_id)
+    except Exception as e:
+        log.warning(
+            "Could not list tools for a connected integration; manifest row stays bare",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return ""
+    if not tools:
+        return ""
+    sample = ", ".join(
+        humanize_tool_name(tool.name, integration_id).lower()
+        for tool in tools[:MANIFEST_TOOL_SAMPLE_SIZE]
+    )
+    return f": {len(tools)} tools, e.g. {sample}"
 
 
 async def build_connected_devices_manifest(user_id: str, header: str) -> str:

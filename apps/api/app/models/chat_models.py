@@ -77,6 +77,7 @@ tool_fields = [
     "code_data",
     "google_docs_data",
     "integration_connection_required",
+    "connect_options",
     "integration_list_data",
     "device_onboarding_required",
     "device_approval_required",
@@ -127,6 +128,8 @@ class SystemPurpose(str, Enum):
     EMAIL_PROCESSING = "email_processing"
     REMINDER_PROCESSING = "reminder_processing"
     WORKFLOW_EXECUTION = "workflow_execution"
+    #: The seeded Getting-started thread: the user's first screen after onboarding.
+    GETTING_STARTED = "getting_started"
     OTHER = "other"
 
 

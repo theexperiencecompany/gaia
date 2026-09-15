@@ -81,6 +81,10 @@ def _make_record(
 # ---------------------------------------------------------------------------
 
 
+from app.models.notification.notification_models import NotificationListFilters, NotificationStatus
+from tests.conftest import FAKE_USER
+
+
 class TestGetNotifications:
     """GET /api/v1/notifications"""
 
@@ -124,8 +128,15 @@ class TestGetNotifications:
     ):
         mock_get.return_value = []
         mock_count.return_value = 0
-        response = await client.get(f"{NOTIF_BASE}?status=read")
+        response = await client.get(f"{NOTIF_BASE}?status=read&channel_type=inapp&limit=7&offset=3")
         assert response.status_code == 200
+        # The whole query string reaches the service as one query object.
+        mock_get.assert_awaited_once_with(
+            FAKE_USER["user_id"],
+            filters=NotificationListFilters(
+                status=NotificationStatus.READ, channel_type="inapp", limit=7, offset=3
+            ),
+        )
         data = response.json()
         assert data["total"] == 0
 

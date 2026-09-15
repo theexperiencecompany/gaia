@@ -6,21 +6,32 @@ Provides functions to format user preferences for agent system prompts.
 from typing import Any
 
 from app.constants.log_tags import LogTag
+from app.models.user_models import OnboardingSubdocument
 from shared.py.wide_events import log
 
 
 def onboarding_preferences(
-    onboarding: dict[str, Any] | None,
+    onboarding: OnboardingSubdocument | dict[str, Any] | None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    """The ``(preferences, writing_style)`` pair off a raw ``onboarding`` blob.
+    """The ``(preferences, writing_style)`` pair off a user's onboarding data.
 
     Every root call site that hands a user's onboarding data to
     ``build_agent_config`` or a comms ``SectionContext`` reads the same two keys
-    off the same shape (``UserDocument.onboarding`` / ``AuthenticatedUser.onboarding``)
-    — pulled out once so that reading doesn't drift between call sites.
+    — pulled out once so that reading doesn't drift between call sites. Takes
+    both shapes because ``UserDocument.onboarding`` is the typed subdocument
+    while ``AuthenticatedUser.onboarding`` is still the raw Mongo dict the auth
+    layer spreads, and returns dicts because the prompt formatters below and the
+    context fetchers consume them that way.
     """
     if not onboarding:
         return None, None
+    if isinstance(onboarding, OnboardingSubdocument):
+        # Only what was stored: the typed model would otherwise add every
+        # unset field as None, and the prompt formatters key off presence.
+        preferences = (
+            onboarding.preferences.model_dump(exclude_none=True) if onboarding.preferences else None
+        )
+        return preferences, onboarding.writing_style
     return onboarding.get("preferences"), onboarding.get("writing_style")
 
 

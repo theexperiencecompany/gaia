@@ -20,7 +20,7 @@ _TODOS_IN_USE_THRESHOLD = 5
 # Async without await is intentional: uniform SKIP_PREDICATES interface (see module docstring).
 async def onboarding_completed(user: UserDocument) -> bool:  # NOSONAR python:S7503
     """True once the user has finished onboarding."""
-    return bool((user.onboarding or {}).get("completed"))
+    return bool(user.onboarding and user.onboarding.completed)
 
 
 async def used_chat(user: UserDocument) -> bool:

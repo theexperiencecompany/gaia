@@ -30,6 +30,7 @@ from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
     build_executor_child_tool_runtime_config,
 )
+from app.agents.tools.discovery_tools import find_integration, search_public_workflows
 from app.agents.tools.executor_tool import call_executor, cancel_executor
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_for_subagents_tool
@@ -203,9 +204,14 @@ async def build_comms_graph(
     if chat_llm is None:
         chat_llm = init_llm()
 
+    # The discovery pair are read-only catalogue lookups, so they do not breach
+    # "delegate every real ask". Connecting an integration is a real ask and
+    # goes to the executor.
     tool_registry = {
         "call_executor": call_executor,
         "cancel_executor": cancel_executor,
+        "find_integration": find_integration,
+        "search_public_workflows": search_public_workflows,
         web_search_tool.name: web_search_tool,
         fetch_webpages.name: fetch_webpages,
         **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
@@ -224,6 +230,8 @@ async def build_comms_graph(
             initial_tool_ids=[
                 "call_executor",
                 "cancel_executor",
+                "find_integration",
+                "search_public_workflows",
                 web_search_tool.name,
                 fetch_webpages.name,
                 *[memory_tool.name for memory_tool in memory_tools.tools],

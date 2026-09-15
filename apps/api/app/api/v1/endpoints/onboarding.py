@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.v1.dependencies.oauth_dependencies import (
@@ -15,8 +15,8 @@ from app.core.websocket_manager import websocket_manager
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
+from app.decorators import require_active_subscription, tiered_rate_limit
 from app.models.onboarding_models import (
-    ClarifyQuestionsResponse,
     OnboardingPhaseUpdateResponse,
     OnboardingResetResponse,
     PersistedTriageSummary,
@@ -33,24 +33,22 @@ from app.models.onboarding_models import (
 from app.models.user_models import (
     AuthenticatedUser,
     BioStatus,
-    OnboardingIntegrationsRequest,
-    OnboardingIntegrationsResponse,
+    OnboardingPhase,
     OnboardingPhaseUpdateRequest,
     OnboardingPreferences,
     OnboardingRequest,
     OnboardingResponse,
     OnboardingStatusResponse,
+    OnboardingSubdocument,
     UserDocument,
 )
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.composio.composio_service import get_composio_service
-from app.services.onboarding.clarify_service import generate_clarify_questions
 from app.services.onboarding.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
     reset_onboarding,
-    submit_onboarding_integrations,
     update_onboarding_preferences,
 )
 from app.services.onboarding.social_profile_service import save_confirmed_profiles
@@ -94,11 +92,13 @@ def _normalize_example_blocks(raw: object) -> WritingStyleExampleBlocks | None:
 @router.post("", response_model=OnboardingResponse)
 async def complete_user_onboarding(
     onboarding_data: OnboardingRequest,
-    background_tasks: BackgroundTasks,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     tz_info: Annotated[GET_USER_TZ_TYPE, Depends(get_user_timezone)],
 ) -> OnboardingResponse:
-    """Complete user onboarding by storing preferences and queuing the intelligence pipeline."""
+    """Complete user onboarding by storing the user's preferences.
+
+    Nothing is generated here: the personalization pipeline fires when the user
+    connects Gmail, not at signup."""
     log.set(
         user={"id": user["user_id"]},
         onboarding={
@@ -109,14 +109,7 @@ async def complete_user_onboarding(
     )
 
     try:
-        updated_user = await complete_onboarding(
-            user["user_id"],
-            onboarding_data,
-            background_tasks,
-        )
-        # No completion event here: this only QUEUES the pipeline. The worker
-        # emits it once the phase actually reaches PERSONALIZATION_COMPLETE,
-        # so a pipeline that fails afterwards is not counted as a completion.
+        updated_user = await complete_onboarding(user["user_id"], onboarding_data)
         return OnboardingResponse(
             success=True, message="Onboarding completed successfully", user=updated_user
         )
@@ -131,68 +124,6 @@ async def complete_user_onboarding(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Failed to complete onboarding") from e
-
-
-@router.post(
-    "/integrations",
-    responses={500: {"description": "Failed to submit integrations"}},
-)
-async def submit_integrations(
-    request: OnboardingIntegrationsRequest,
-    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-) -> OnboardingIntegrationsResponse:
-    """Persist selected integrations and start the deferred workflows phase (split-mode onboarding)."""
-    log.set(
-        user={"id": user["user_id"]},
-        onboarding={"operation": "submit_integrations"},
-    )
-    try:
-        status = await submit_onboarding_integrations(
-            user["user_id"], request.selected_integrations
-        )
-        log.set(onboarding={"result_status": status.value})
-        capture_context_event(
-            AnalyticsEvents.ONBOARDING_INTEGRATIONS_SUBMITTED,
-            {"integration_count": len(request.selected_integrations)},
-        )
-        return OnboardingIntegrationsResponse(success=True, status=status)
-    except HTTPException:
-        raise
-    except Exception as e:
-        log.error(
-            f"{LogTag.ONBOARDING} Error submitting integrations",
-            user_id=user["user_id"],
-            error_type=type(e).__name__,
-            error=str(e),
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail="Failed to submit integrations") from e
-
-
-class ClarifyQuestionsRequest(BaseModel):
-    name: str
-    profession: str
-    focus: str
-
-
-@router.post("/clarify-questions")
-async def get_clarify_questions(
-    payload: ClarifyQuestionsRequest,
-    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-) -> ClarifyQuestionsResponse:
-    """Generate the LLM 3-question follow-up for the no-Gmail path."""
-    log.set(
-        user={"id": user["user_id"]},
-        onboarding={"operation": "clarify_questions"},
-    )
-    name = payload.name.strip() or "there"
-    profession = payload.profession.strip() or "professional"
-    focus = payload.focus.strip()
-    if not focus:
-        raise HTTPException(status_code=400, detail="Focus is required")
-
-    questions = await generate_clarify_questions(name, profession, focus, user_id=user["user_id"])
-    return ClarifyQuestionsResponse(questions=questions)
 
 
 @router.post(
@@ -280,7 +211,7 @@ async def update_onboarding_phase(
             log.warning(f"{LogTag.ONBOARDING} No document found for user", user_id=user_id)
             raise HTTPException(status_code=404, detail="User not found")
 
-        capture_context_event(AnalyticsEvents.ONBOARDING_STEP_COMPLETED, {"phase": phase})
+        capture_context_event(AnalyticsEvents.ONBOARDING_PHASE_COMPLETED, {"phase": phase})
         log.set_ns("onboarding", phase_updated=True)
 
         try:
@@ -371,12 +302,12 @@ async def update_user_preferences(
 
 
 async def _resolve_account_identity(
-    user_doc: UserDocument, onboarding: dict[str, Any]
+    user_doc: UserDocument, onboarding: OnboardingSubdocument
 ) -> tuple[int, str]:
     """The stored account number and join date, derived from ``created_at`` on
     the first read (both are backfilled together or not at all)."""
-    account_number = onboarding.get("account_number")
-    member_since = onboarding.get("member_since")
+    account_number = onboarding.account_number
+    member_since = onboarding.member_since
     if account_number and member_since:
         return account_number, member_since
 
@@ -414,17 +345,15 @@ async def _load_suggested_workflows(workflow_ids: list[str]) -> list[Personaliza
         return []
 
 
-async def _resolve_display_bio(onboarding: dict[str, Any], user_id: str) -> str:
+async def _resolve_display_bio(onboarding: OnboardingSubdocument, user_id: str) -> str:
     """The bio to show now. While extraction is still pending we only promise a
     bio if there is a Gmail connection to extract one from."""
-    bio_status = onboarding.get("bio_status", "pending")
+    bio_status = onboarding.bio_status or BioStatus.PENDING
 
-    if bio_status in ["processing", BioStatus.PROCESSING]:
+    if bio_status == BioStatus.PROCESSING:
         return _BIO_PROCESSING_MESSAGE
-    if bio_status not in ["pending", BioStatus.PENDING]:
-        # onboarding is dict[str, Any] on the document; user_bio is stored as str.
-        stored_bio: str = onboarding.get("user_bio", "")
-        return stored_bio
+    if bio_status != BioStatus.PENDING:
+        return onboarding.user_bio
 
     connection_status = await get_composio_service().check_connection_status(["gmail"], user_id)
     if connection_status.get("gmail", False):
@@ -494,39 +423,39 @@ async def get_onboarding_personalization(
         if not user_doc:
             raise HTTPException(status_code=404, detail="User not found")
 
-        onboarding = user_doc.onboarding or {}
-        phase = onboarding.get("phase", "initial")
+        onboarding = user_doc.onboarding or OnboardingSubdocument()
+        phase = onboarding.phase or OnboardingPhase.INITIAL
         log.info(
             f"{LogTag.ONBOARDING} User onboarding state",
             user_id=user_id,
             phase=phase,
-            bio_status=onboarding.get("bio_status"),
+            bio_status=onboarding.bio_status,
         )
 
         account_number, member_since = await _resolve_account_identity(user_doc, onboarding)
         display_bio = await _resolve_display_bio(onboarding, user_id)
-        workflows = await _load_suggested_workflows(onboarding.get("suggested_workflows", []))
+        workflows = await _load_suggested_workflows(onboarding.suggested_workflows)
         onboarding_todos = await _load_onboarding_todos(user_id)
 
-        raw_social_profiles = onboarding.get("social_profiles", [])
-        raw_triage_summary = onboarding.get("triage_summary")
+        raw_social_profiles = onboarding.social_profiles
+        raw_triage_summary = onboarding.triage_summary
 
         return PersonalizationResponse(
             phase=phase,
             has_personalization=phase in _PERSONALIZED_PHASES,
-            house=onboarding.get("house", "Bluehaven"),
-            personality_phrase=onboarding.get("personality_phrase", "Curious Adventurer"),
+            house=onboarding.house or "Bluehaven",
+            personality_phrase=onboarding.personality_phrase or "Curious Adventurer",
             user_bio=display_bio,
             account_number=account_number,
             member_since=member_since,
-            overlay_color=onboarding.get("overlay_color", "rgba(0,0,0,0)"),
-            overlay_opacity=onboarding.get("overlay_opacity", 40),
+            overlay_color=onboarding.overlay_color,
+            overlay_opacity=onboarding.overlay_opacity,
             suggested_workflows=workflows,
             name=user_doc.name or "User",
             holo_card_id=user_doc.id,
-            first_message_conversation_id=onboarding.get("first_message_conversation_id"),
-            first_message=onboarding.get("first_message"),
-            writing_style=_build_writing_style(onboarding.get("writing_style")),
+            first_message_conversation_id=onboarding.first_message_conversation_id,
+            first_message=onboarding.first_message,
+            writing_style=_build_writing_style(onboarding.writing_style),
             social_profiles=[
                 SocialProfile(platform=p.get("platform", ""), url=p.get("url", ""))
                 for p in raw_social_profiles
@@ -593,8 +522,12 @@ async def save_writing_style(
 
 @router.post(
     "/writing-style/regenerate-example",
-    responses={500: {"description": "Failed to regenerate writing style example"}},
+    responses={
+        402: {"description": "Subscription required"},
+        500: {"description": "Failed to regenerate writing style example"},
+    },
 )
+@tiered_rate_limit("onboarding_generation")
 async def regenerate_writing_style_example(
     request: WritingStyleRegenerateRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
@@ -602,6 +535,9 @@ async def regenerate_writing_style_example(
     """Generate a new example email from an edited writing style summary."""
     user_id: str = user["user_id"]
     log.set(user={"id": user_id}, onboarding={"operation": "regenerate_style_example"})
+    # /api/v1/onboarding is a free prefix, so this LLM route gates itself with
+    # the same fail-closed check the middleware runs everywhere else.
+    await require_active_subscription(user_id, feature="regenerate_writing_style_example")
     try:
         example = await regenerate_example_for_style(
             summary=request.edited_summary.strip(),

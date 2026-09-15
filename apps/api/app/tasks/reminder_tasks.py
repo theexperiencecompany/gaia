@@ -6,6 +6,7 @@ from typing import cast
 
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
+from app.decorators.entitlements import is_paid
 from app.models.chat_models import ConversationSource
 from app.models.reminder_models import (
     AgentType,
@@ -18,6 +19,11 @@ from app.services.notification_service import notification_service
 from app.services.user_service import get_user_by_id
 from app.utils.notification.sources import AIProactiveNotificationSource
 from shared.py.wide_events import log
+
+#: The surface name a paywalled reminder is attributed to in the funnel. Matches
+#: the snake_case surface naming the bot and onboarding gates pass (the HTTP
+#: middleware passes the request path instead, which is its surface).
+PAYWALL_FEATURE_REMINDER = "reminder"
 
 
 def _reminder_result_text(payload: StaticReminderPayload) -> str:
@@ -133,8 +139,44 @@ async def execute_reminder_by_agent(
     log.info("Executing reminder", reminder_id=reminder.id, agent=reminder.agent)
 
     if not reminder.id:
-        log.error("Reminder has no ID, skipping execution", agent=reminder.agent)
+        log.error(
+            "Reminder has no ID, skipping execution",
+            agent=reminder.agent,
+            user_id=reminder.user_id,
+        )
         raise ValueError(f"Reminder {reminder.id} has no ID, skipping execution.")
+
+    # Paid-only gate, at the single choke point every reminder fire passes
+    # through (scheduler tick and direct execution alike). It only SKIPS, for
+    # the same reason the workflow gate does (see the matching block in
+    # `workers/tasks/workflow_tasks.py`): skipping without writing leaves the
+    # reminder for `BaseSchedulerService.process_task_execution` to re-arm at
+    # its next occurrence, so a recurring reminder resumes by itself the moment
+    # the subscription is back.
+    #
+    # This used to write PAUSED. The write never survived the call that made
+    # it: process_task_execution sets SCHEDULED on a recurring reminder
+    # (_reschedule_recurring_task) and COMPLETED on a one-off the moment this
+    # returns, so the pause was overwritten on every path, nothing anywhere
+    # wrote ACTIVE back, and a "resume on resubscribe" step had no state to
+    # resume from.
+    if not await is_paid(reminder.user_id):
+        log.warning(
+            "Reminder skipped — subscription required",
+            reminder_id=reminder.id,
+            user_id=reminder.user_id,
+        )
+        # The same event every HTTP and bot paywall block fires. This gate does
+        # not go through `require_active_subscription` (it must skip, not
+        # raise), so without this the block is real and the funnel cannot see
+        # it: "how many users lost a reminder to the wall" would be
+        # unanswerable while every other surface answers it.
+        capture_event(
+            reminder.user_id,
+            AnalyticsEvents.PAYWALL_BLOCKED,
+            {"feature": PAYWALL_FEATURE_REMINDER},
+        )
+        return
 
     try:
         if reminder.agent == AgentType.STATIC:
@@ -152,6 +194,7 @@ async def execute_reminder_by_agent(
         log.error(
             "Failed to execute reminder",
             reminder_id=reminder.id,
+            user_id=reminder.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )

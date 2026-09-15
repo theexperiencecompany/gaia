@@ -41,6 +41,7 @@ CurrentUser = Annotated[dict, Depends(get_current_user)]
     "/token",
     responses={
         401: {"description": "Invalid or missing user id"},
+        402: {"description": "Subscription required"},
         500: {"description": "Token generation failed"},
     },
 )

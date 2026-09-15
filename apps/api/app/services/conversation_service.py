@@ -448,7 +448,6 @@ async def batch_sync_conversations(
                 description=document.description,
                 starred=document.starred,
                 is_system_generated=document.is_system_generated,
-                is_onboarding_conversation=document.is_onboarding_conversation,
                 system_purpose=document.system_purpose,
                 is_unread=document.is_unread,
                 createdAt=document.createdAt,

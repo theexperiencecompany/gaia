@@ -4,6 +4,10 @@ that replaces direct platform HTTP sends."""
 import json
 from unittest.mock import AsyncMock, patch
 
+from app.constants.outbound import (
+    OUTBOUND_TTL_SECONDS_DEFAULT,
+    OUTBOUND_TTL_SECONDS_GREETING,
+)
 from app.models.chat_models import ConversationSource
 from app.services import outbound_delivery as od
 
@@ -81,6 +85,51 @@ class TestPublishOutboundMessage:
         assert envelope["destination_id"] == "15551234567"
         assert envelope["text_parts"] == ["hi", "there"]
         assert envelope.get("text") is None
+
+    async def test_the_message_carries_a_broker_ttl(self) -> None:
+        """Every outbound message expires at the broker. Without the TTL a bot
+        that was down for a day comes back and floods the user with a day of
+        stale replies, each answering a moment that has passed."""
+        publisher = AsyncMock()
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={"whatsapp": {"platformUserId": "15551234567"}},
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            await od.publish_outbound_message(ConversationSource.WHATSAPP, "user-1", ["hi"])
+
+        assert (
+            publisher.publish_outbound.await_args.kwargs["expiration"]
+            == OUTBOUND_TTL_SECONDS_DEFAULT
+        )
+
+    async def test_a_callers_ttl_is_the_one_that_reaches_the_broker(self) -> None:
+        """``ttl_seconds`` exists so a caller can say "this is noise once the
+        moment has passed". Ignoring it silently gives that message the full
+        day-long default."""
+        publisher = AsyncMock()
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={"whatsapp": {"platformUserId": "15551234567"}},
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            await od.publish_outbound_message(
+                ConversationSource.WHATSAPP, "user-1", ["hi"], ttl_seconds=42
+            )
+
+        assert publisher.publish_outbound.await_args.kwargs["expiration"] == 42
 
     async def test_single_part_uses_plain_text_envelope(self) -> None:
         publisher = AsyncMock()
@@ -305,6 +354,12 @@ class TestPublishOutboundFile:
             "content_type": "application/pdf",
             "caption": "here you go",
         }
+        # A queued file expires like a queued message: the artifact it points at
+        # is cleaned up, so a late delivery hands the bot a dead reference.
+        assert (
+            publisher.publish_outbound.await_args.kwargs["expiration"]
+            == OUTBOUND_TTL_SECONDS_DEFAULT
+        )
 
 
 class TestNotifyAccountLinked:
@@ -329,6 +384,34 @@ class TestNotifyAccountLinked:
         # The friendly display name, not the raw enum value.
         assert "Your Telegram account is now linked to GAIA." in envelope["text"]
 
+    async def test_the_confirmation_goes_to_the_user_who_linked_on_the_greeting_ttl(
+        self,
+    ) -> None:
+        """Two things nothing else pins: the destination is resolved for the
+        user who just linked (any other id texts a stranger "you're connected"),
+        and the note expires on the short greeting TTL — a "you're connected"
+        that surfaces a day later is confusing noise, not a greeting."""
+        publisher = AsyncMock()
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={"telegram": {"platformUserId": "tg-123"}},
+            ) as linked,
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            await od.notify_account_linked("telegram", "user-1")
+
+        linked.assert_awaited_once_with("user-1")
+        assert (
+            publisher.publish_outbound.await_args.kwargs["expiration"]
+            == OUTBOUND_TTL_SECONDS_GREETING
+        )
+        assert OUTBOUND_TTL_SECONDS_GREETING < OUTBOUND_TTL_SECONDS_DEFAULT
+
     async def test_whatsapp_uses_cased_display_name(self) -> None:
         """WhatsApp's display name is ``WhatsApp``, not ``Whatsapp`` — a
         ``.capitalize()`` fallback would be observable."""
@@ -351,9 +434,9 @@ class TestNotifyAccountLinked:
         assert "Your WhatsApp account is now linked to GAIA." in envelope["text"]
         assert "Your Whatsapp account" not in envelope["text"]
 
-    async def test_imessage_fallback_uses_capitalized_name(self) -> None:
-        """iMessage has no entry in PLATFORM_DISPLAY_NAMES — the fallback
-        ``source.value.capitalize()`` must be used rather than ``None``."""
+    async def test_imessage_is_spelled_the_way_apple_spells_it(self) -> None:
+        """iMessage is the one platform whose display name is not a plain
+        capitalization, so the map must carry it rather than fall back."""
         publisher = AsyncMock()
         with (
             patch.object(
@@ -370,8 +453,8 @@ class TestNotifyAccountLinked:
 
         assert result is od.OutboundResult.PUBLISHED
         envelope = json.loads(publisher.publish_outbound.await_args.args[1])
-        assert "Your Imessage account is now linked to GAIA." in envelope["text"]
-        assert "Your None account" not in envelope["text"]
+        assert "Your iMessage account is now linked to GAIA." in envelope["text"]
+        assert "Your Imessage account" not in envelope["text"]
 
     async def test_a_non_bot_platform_is_skipped(self) -> None:
         with patch.object(

@@ -10,16 +10,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.models.support_models import SupportEmailNotification, SupportRequestType
 from app.services.email.models import EmailMessage
 from app.services.email.providers.resend_provider import ResendEmailProvider
 from app.services.email.service import render_email_template, send_email
+from tests.helpers import captured_wide_event
 
 SERVICE_MOD = "app.services.email.service"
 SENDERS_MOD = "app.services.email.senders"
 PROVIDER_MOD = "app.services.email.providers.resend_provider"
 
 SUPPORT_EMAIL = "support@heygaia.io"
+PRO_USER_ID = "507f1f77bcf86cd799439011"
 
 
 def _support_notification(**overrides: object) -> SupportEmailNotification:
@@ -265,7 +268,7 @@ class TestSendProSubscriptionEmail:
         ):
             from app.services.email.senders import send_pro_subscription_email
 
-            await send_pro_subscription_email("Alice", "alice@example.com")
+            await send_pro_subscription_email("Alice", "alice@example.com", user_id=PRO_USER_ID)
 
         message: EmailMessage = m_send.await_args.args[0]
         assert message.to == ["alice@example.com"]
@@ -274,6 +277,8 @@ class TestSendProSubscriptionEmail:
         assert message.html == "<h1>welcome pro</h1>"
 
     async def test_failure_propagates(self):
+        """The failure is recorded against the user ID — the field every
+        dashboard groups by — and carries no email address."""
         with (
             patch(
                 f"{SENDERS_MOD}.send_email",
@@ -284,5 +289,17 @@ class TestSendProSubscriptionEmail:
         ):
             from app.services.email.senders import send_pro_subscription_email
 
-            with pytest.raises(RuntimeError, match="down"):
-                await send_pro_subscription_email("Alice", "alice@example.com")
+            async with captured_wide_event() as event:
+                with pytest.raises(RuntimeError, match="down"):
+                    await send_pro_subscription_email(
+                        "Alice", "alice@example.com", user_id=PRO_USER_ID
+                    )
+
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.MAIL} Failed to send pro subscription email to",
+                "user": {"id": PRO_USER_ID},
+                "error": "down",
+                "error_type": "RuntimeError",
+            }
+        ]

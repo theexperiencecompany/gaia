@@ -23,7 +23,8 @@
  *
  * Env contract: CHANGED_FILES (see lib/explicit-file-list.mjs) scopes the
  * file-walking gates to a lane's changed files; empty means full scan.
- * `duplication` reads GITHUB_BASE_REF for its diff base (default master).
+ * `duplication` reads GAIA_PR_BASE, then GITHUB_BASE_REF, for its diff base
+ * (default master).
  */
 import { execFileSync, execSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -501,16 +502,18 @@ function cmdTypesLocation(argv) {
 // It is an estimate (jscpd's tokenizer differs from SonarCloud's), but it is the
 // only local/CI signal correlated with the gate. SonarCloud stays authoritative.
 //
-// Base branch is taken from GITHUB_BASE_REF (set automatically on GitHub Actions
-// pull requests); locally it defaults to master — the repo's only base branch.
+// Base branch is GAIA_PR_BASE (resolved from the API by `changes.sh base`),
+// falling back to GITHUB_BASE_REF and then to master — the repo's only trunk.
+// The order matters: on a stacked PR the event payload names the stack's trunk
+// rather than the PR's parent, which would charge this PR with every duplicate
+// line the PRs below it added. See the note at the top of changes.sh.
 // ---------------------------------------------------------------------------
 
 const DUPLICATION_THRESHOLD = 3;
 
 function cmdDuplication() {
-  const BASE = process.env.GITHUB_BASE_REF
-    ? `origin/${process.env.GITHUB_BASE_REF}`
-    : "origin/master";
+  const baseRef = process.env.GAIA_PR_BASE || process.env.GITHUB_BASE_REF;
+  const BASE = baseRef ? `origin/${baseRef}` : "origin/master";
 
   const sh = (cmd) =>
     execSync(cmd, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });

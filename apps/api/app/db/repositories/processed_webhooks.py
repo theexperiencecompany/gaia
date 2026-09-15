@@ -1,17 +1,19 @@
 """Repository for the ``processed_webhooks`` collection — webhook idempotency.
 
-Global, keyed by the business ``webhook_id``. A unique index on ``webhook_id``
-is the real once-only guarantee; ``mark_processed`` treats a duplicate as a no-op
-(the guarantee working). A 30-day TTL on ``processed_at`` reaps old records.
+Global, keyed by the business ``webhook_id``. The unique index on ``webhook_id``
+is the once-only guarantee: a delivery is *claimed* by inserting its record
+before any handler runs, so two deliveries of the same id (sequential or
+racing) can never both act. A 30-day TTL on ``processed_at`` reaps old records.
 """
 
-import contextlib
 from datetime import UTC, datetime
 
 from pymongo.errors import DuplicateKeyError
 
 from app.db.repositories.base import MongoRepository
 from app.models.payment_models import ProcessedWebhookDocument, ProcessedWebhookUpdate
+
+CLAIMED_STATUS = "processing"
 
 
 class ProcessedWebhooksRepository(
@@ -24,32 +26,32 @@ class ProcessedWebhooksRepository(
     identity_field = "webhook_id"
     cache_policy = None
 
-    async def is_processed(self, webhook_id: str) -> bool:
-        return await self._count({"webhook_id": webhook_id}) > 0
+    async def claim(self, webhook_id: str, *, event_type: str) -> bool:
+        """Take ownership of a delivery before handling it.
 
-    async def mark_processed(
-        self,
-        webhook_id: str,
-        *,
-        event_type: str,
-        status: str,
-        message: str | None = None,
-        payment_id: str | None = None,
-        subscription_id: str | None = None,
-    ) -> None:
-        """Record a webhook as processed. A duplicate ``webhook_id`` is a no-op —
-        the idempotency guarantee (unique index) working as intended."""
+        False means another delivery of the same id already owns it (or has
+        finished): the unique index decided, atomically, on the server.
+        """
         document = ProcessedWebhookDocument(
             webhook_id=webhook_id,
             event_type=event_type,
-            status=status,
-            message=message,
-            payment_id=payment_id,
-            subscription_id=subscription_id,
+            status=CLAIMED_STATUS,
             processed_at=datetime.now(UTC),
         )
-        with contextlib.suppress(DuplicateKeyError):
+        try:
             await self.create(document)
+        except DuplicateKeyError:
+            return False
+        return True
+
+    async def record_outcome(self, webhook_id: str, outcome: ProcessedWebhookUpdate) -> None:
+        """Write the handler's result onto the claim."""
+        await self.update(webhook_id, outcome)
+
+    async def release(self, webhook_id: str) -> None:
+        """Give a claim back after the handler failed, so the sender's retry
+        gets a clean run instead of an "already processed" skip."""
+        await self.delete(webhook_id)
 
 
 processed_webhook_repository = ProcessedWebhooksRepository()

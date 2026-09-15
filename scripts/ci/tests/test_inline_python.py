@@ -104,6 +104,12 @@ def test_the_mutation_shard_parses_a_real_group(tmp_path: Path) -> None:
             "HOME": str(tmp_path),
             "GROUP": group,
             "SHARD_LOG": str(tmp_path / "shard.log"),
+            # Without this the shard reports its deliberately bogus module into
+            # the CHECKOUT's verdict tree, where the lane's upload composite
+            # ships it and the quality gate reads it as a real failing lane:
+            # `mutation/app/does_not_exist.py` reached the gate of run
+            # 34586506166 from this very fixture.
+            "GAIA_VERDICT_DIR": str(tmp_path / "verdicts"),
         },
         capture_output=True,
         text=True,

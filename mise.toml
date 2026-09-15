@@ -385,6 +385,10 @@ run = "cd apps/api && uv run --group backend --group dev pytest -q --tb=short"
 description = "Run the real-infra tier (Postgres/Redis/Mongo/Chroma via docker compose) — opt-in"
 run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real tests/contracts tests/e2e/test_hil_barrier_e2e.py tests/e2e/test_hil_spawn_e2e.py --tb=short -q"
 
+[tasks."test:one"]
+description = "Run one or more API test files exactly as CI does, minus xdist: `mise test:one tests/unit/x.py [more...]` (keeps --strict-markers and the -m filter; `-o addopts=\"\"` silently drops both)"
+run = "cd apps/api && uv run pytest -p no:xdist -q {{arg(name=\"paths\", var=true)}}"
+
 [tasks."test:python:unit"]
 description = "Run Python unit tests only (no services, fast)"
 run = "cd apps/api && USE_REAL_SERVICES=0 uv run pytest tests/unit --tb=short -q"
@@ -662,13 +666,13 @@ run = "python3 tools/evlog_map --all"
 # ── Agent-legible gates ──────────────────────────────────────────────────────
 [tasks."ci:local"]
 description = "Run CI quality gates locally (same lanes/versions as GitHub Actions); --list shows all lanes"
-run = "python3 scripts/dev/gaia_verify.py"
+run = "uv run python scripts/dev/gaia_verify.py"
 
 
 [tasks."pr:comments"]
 description = "Fetch PR review threads read-only: resolution state, IDs for resolve/reply, next-step syntax"
-run = "python3 scripts/dev/pr_comments.py"
+run = "uv run python scripts/dev/pr_comments.py"
 
 [tasks."ci:remote"]
-description = "Merge-readiness dashboard for a PR's GitHub gates: checks, conflicts, reviews, unresolved threads (--watch to poll)"
-run = "python3 scripts/dev/ci_remote.py"
+description = "Why a PR is red: each failing lane's verdict artifact or error-anchored job log, plus conflicts, reviews, threads and the gh stack (--verbose/--json/--watch)"
+run = "uv run python scripts/dev/ci_remote.py"

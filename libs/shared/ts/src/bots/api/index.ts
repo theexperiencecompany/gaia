@@ -13,9 +13,10 @@ import type {
   BotWorkflowExecutionResponse,
   BotWorkflowListResponse,
   ChatRequest,
+  RedeemedLinkCode,
   SettingsResponse,
 } from "../types";
-import { getHttpStatus } from "../utils/logger";
+import { getErrorReason, getHttpStatus } from "../utils/logger";
 import { wideLog } from "../utils/wide-events";
 import {
   type ApprovalUpdateHandler,
@@ -31,11 +32,18 @@ import {
 
 export class GaiaApiError extends Error {
   status?: number;
+  /** The API's error body — a status says what failed, not why. */
+  reason: Record<string, unknown>;
 
-  constructor(message: string, status?: number) {
+  constructor(
+    message: string,
+    status?: number,
+    reason: Record<string, unknown> = {},
+  ) {
     super(message);
     this.name = "GaiaApiError";
     this.status = status;
+    this.reason = reason;
   }
 }
 
@@ -129,7 +137,11 @@ export class GaiaClient {
       if (error instanceof GaiaApiError) throw error;
       const message = error instanceof Error ? error.message : "Unknown error";
       const status = getHttpStatus(error);
-      throw new GaiaApiError(`API error: ${status || message}`, status);
+      throw new GaiaApiError(
+        `API error: ${status || message}`,
+        status,
+        getErrorReason(error),
+      );
     }
   }
 
@@ -150,7 +162,11 @@ export class GaiaClient {
 
       if (error instanceof GaiaApiError) throw error;
       const message = error instanceof Error ? error.message : "Unknown error";
-      throw new GaiaApiError(`API error: ${status || message}`, status);
+      throw new GaiaApiError(
+        `API error: ${status || message}`,
+        status,
+        getErrorReason(error),
+      );
     }
   }
 
@@ -615,6 +631,52 @@ export class GaiaClient {
       return {
         token: data.token,
         authUrl: data.auth_url,
+      };
+    });
+  }
+
+  /**
+   * Redeems a one-tap link code the web minted during onboarding.
+   *
+   * The reverse of {@link createLinkToken}: the code — not this request —
+   * decides which GAIA user gets linked. The API composes GAIA's first contact
+   * and delivers it itself on the outbound queue once the link completes, so
+   * the only thing that comes back is whether the link is in. Throws
+   * {@link GaiaApiError} with status 400 (expired or already used), 409 (handle
+   * linked to another account) or 429 (the platform needs a paid plan).
+   */
+  async redeemLinkCode(
+    platform: string,
+    platformUserId: string,
+    code: string,
+    profile?: { username?: string; displayName?: string },
+    firstMessage?: string,
+  ): Promise<RedeemedLinkCode> {
+    return this.request(async () => {
+      const { data } = await this.client.post(
+        "/api/v1/bot/redeem-link-code",
+        {
+          platform,
+          platform_user_id: platformUserId,
+          code,
+          ...(profile?.username && { username: profile.username }),
+          ...(profile?.displayName && { display_name: profile.displayName }),
+          // Absent, not empty: an empty string is "they sent only the code",
+          // and a blank turn in the thread is worse than no turn.
+          ...(firstMessage && { first_message: firstMessage }),
+        },
+        {
+          headers: {
+            "X-Bot-API-Key": this.apiKey,
+            "X-Bot-Platform": platform,
+            "X-Bot-Platform-User-Id": platformUserId,
+          },
+        },
+      );
+      return {
+        linked: data.linked,
+        delivered: data.delivered,
+        firstContact: data.first_contact,
       };
     });
   }

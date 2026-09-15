@@ -112,6 +112,50 @@ const ConversationDescriptionFrameSchema = z.object({
 });
 
 /**
+ * Live output of one `bash` tool run. Emitted top-level (not under
+ * `tool_data`) by `safe_emit` in `apps/api/app/agents/tools/coding/bash_tool.py`
+ * and passed straight through by `process_data_chunk`, which only unwraps tool
+ * data. One `starting` frame carries the command, then a `running` frame per
+ * stdout/stderr chunk, then one terminal `exited` / `error` frame — or a single
+ * `background_started` frame for a detached run. `session_id` is stamped on by
+ * `safe_emit`. Kept loose because the shape is per-status.
+ */
+const BashDataFrameSchema = z.object({
+  bash_data: z
+    .object({
+      id: z.string(),
+      status: z
+        .enum(["starting", "running", "exited", "error", "background_started"])
+        .optional(),
+      session_id: z.string().nullish(),
+      command: z.string().optional(),
+      cwd: z.string().optional(),
+      stream: z.enum(["stdout", "stderr"]).optional(),
+      chunk: z.string().optional(),
+      exit_code: z.number().nullish(),
+      pid: z.string().optional(),
+      log_path: z.string().optional(),
+    })
+    .loose(),
+});
+
+/**
+ * A workspace file the agent touched. Same top-level `safe_emit` path as
+ * `bash_data`, from the write/edit/read coding tools. Per-operation fields
+ * (`occurrences_replaced`, `lines_returned`, `mime_type`, …) differ, so the
+ * payload stays loose around the two keys every emitter sets.
+ */
+const FileDataFrameSchema = z.object({
+  file_data: z
+    .object({
+      operation: z.enum(["write", "edit", "read"]),
+      path: z.string(),
+      session_id: z.string().nullish(),
+    })
+    .loose(),
+});
+
+/**
  * End of one assistant message. `discarded` is true when that message turned
  * out to carry tool calls, which makes the text it streamed a handoff preamble
  * the consumer must take back rather than keep alongside the real reply.
@@ -155,4 +199,6 @@ export const ChatStreamFrameSchema = z.union([
   ConversationInitializedFrameSchema,
   ConversationDescriptionFrameSchema,
   MessageBoundaryFrameSchema,
+  BashDataFrameSchema,
+  FileDataFrameSchema,
 ]);

@@ -535,6 +535,34 @@ async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
 
 
 @pytest.fixture
+async def gated_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
+    """``client`` with the real ``EntitlementMiddleware`` in front of the app.
+
+    The test app strips every middleware, so a route's 402 contract cannot be
+    proved through ``client``: the deny-by-default gate lives in the middleware,
+    not in the route. This stacks the gate exactly as production does (auth
+    outside it, writing ``request.state.user``; the gate inside) around the
+    same app, so a test asserts what a FREE caller really gets.
+    """
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    from app.api.v1.middleware.entitlement import EntitlementMiddleware
+
+    class _AuthedState(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            request.state.user = FAKE_USER
+            return await call_next(request)
+
+    gated = _AuthedState(app=EntitlementMiddleware(app=test_app))
+    transport = ASGITransport(app=gated, raise_app_exceptions=False)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",  # NOSONAR
+    ) as ac:
+        yield ac
+
+
+@pytest.fixture
 async def unauthed_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
     """Client without auth — requests will get 401."""
     from app.api.v1.dependencies.oauth_dependencies import get_current_user
@@ -572,6 +600,47 @@ def pro_user() -> dict:
     tests patch that seam with ``pro_user["subscription"]``.
     """
     return PRO_USER.copy()
+
+
+@pytest.fixture
+def pro_plan() -> Iterator[MagicMock]:
+    """Make the paid-only gate see a PRO caller for the duration of a test.
+
+    Patches the single seam every gate reads — ``get_cached_plan_type`` — so it
+    covers the ``EntitlementMiddleware``, the imperative ``require_active_subscription``
+    decorator and the imperative ``is_paid`` helper at once.
+
+    Deliberately NOT autouse. The suite's default caller is FREE (the global
+    ``get_user_subscription_status`` patch reports a free plan), and a dozen
+    existing tests assert the 402 that falls out of that default. Flipping the
+    default to PRO would turn those green-for-the-wrong-reason.
+    """
+    from app.models.payment_models import PlanType
+
+    with patch(
+        "app.services.payments.payment_service.payment_service.get_cached_plan_type",
+        new_callable=AsyncMock,
+        return_value=PlanType.PRO,
+    ) as mocked:
+        yield mocked
+
+
+@pytest.fixture
+def free_plan() -> Iterator[MagicMock]:
+    """Pin the paid-only gate to a FREE caller — the explicit form of the default.
+
+    Use this rather than relying on the ambient default whenever a test is
+    *about* the paywall: it survives someone changing what the unpatched lookup
+    resolves to, and it never touches Redis.
+    """
+    from app.models.payment_models import PlanType
+
+    with patch(
+        "app.services.payments.payment_service.payment_service.get_cached_plan_type",
+        new_callable=AsyncMock,
+        return_value=PlanType.FREE,
+    ) as mocked:
+        yield mocked
 
 
 @pytest.fixture

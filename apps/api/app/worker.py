@@ -2,6 +2,10 @@ from typing import cast
 
 from arq import cron
 from arq.typing import WorkerCoroutine
+from arq.worker import func
+
+from app.constants.onboarding import INTELLIGENCE_TASK
+from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK
 
 # The worker runs the executor agent + Composio custom tools, so it needs the
 # same monkey-patches as the API process (main.py). Without this, custom tools
@@ -21,7 +25,6 @@ from app.workers.tasks import (
     generate_workflow_steps,
     process_gmail_emails_to_memory,
     process_onboarding_intelligence_task,
-    process_onboarding_workflows_task,
     process_reminder,
     process_workflow_generation_task,
     promote_usage_badges,
@@ -37,6 +40,7 @@ from app.workers.tasks.device_tasks import warm_device_servers
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
+from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
 from app.workers.tasks.tracked_todo_tasks import (
     execute_tracked_todo,
     safety_net_check_orphaned_todos,
@@ -57,8 +61,14 @@ _execute_workflow_by_id = arq_task(execute_workflow_by_id)
 _regenerate_workflow_steps = arq_task(regenerate_workflow_steps)
 _generate_workflow_steps = arq_task(generate_workflow_steps)
 _process_gmail_emails_to_memory = arq_task(process_gmail_emails_to_memory)
-_process_onboarding_intelligence_task = arq_task(process_onboarding_intelligence_task)
-_process_onboarding_workflows_task = arq_task(process_onboarding_workflows_task)
+# The job id is per user and doubles as the "one run at a time" claim
+# (`intelligence_job.personalization_job_id`); a kept result would make ARQ
+# refuse the next enqueue for an hour after a failed run, so keep none.
+_process_onboarding_intelligence_task = func(
+    arq_task(process_onboarding_intelligence_task),
+    name=INTELLIGENCE_TASK,
+    keep_result=0,
+)
 _cleanup_stuck_personalization = arq_task(cleanup_stuck_personalization)
 _backfill_active_users = arq_task(backfill_active_users)
 _backfill_user_memories = arq_task(backfill_user_memories)
@@ -76,6 +86,11 @@ _sweep_dormant_user_workflows = arq_task(sweep_dormant_user_workflows)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 _sweep_expired_memories = arq_task(sweep_expired_memories)
 _warm_device_servers = arq_task(warm_device_servers)
+# Named from the constant the webhook enqueues by, so the two cannot drift.
+_sync_workflows_for_subscription_state = func(
+    arq_task(sync_workflows_for_subscription_state),
+    name=SUBSCRIPTION_WORKFLOW_SYNC_TASK,
+)
 
 WorkerSettings.functions = [
     _sweep_hil_approvals,
@@ -89,7 +104,6 @@ WorkerSettings.functions = [
     _generate_workflow_steps,
     _process_gmail_emails_to_memory,
     _process_onboarding_intelligence_task,
-    _process_onboarding_workflows_task,
     _cleanup_stuck_personalization,
     _sweep_idle_sandboxes,
     _prune_inactive_sessions,
@@ -103,6 +117,7 @@ WorkerSettings.functions = [
     _sweep_abandoned_imessage_registrations,
     _sweep_expired_memories,
     _warm_device_servers,
+    _sync_workflows_for_subscription_state,
 ]
 
 WorkerSettings.cron_jobs = [

@@ -13,7 +13,7 @@ from app.constants.nurture import (
     NURTURE_MIN_DAYS_BETWEEN_EMAILS,
     NurtureStep,
 )
-from app.models.user_models import UserDocument
+from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.services.nurture.service import (
     _process_user,
     _select_step,
@@ -148,6 +148,26 @@ class TestSelectStep:
 
         assert step is not None and step.key == "step_b"
         mock_record.assert_awaited_once_with("u-1", "step_a", NOW, status="skipped")
+
+    async def test_onboarding_gated_step_selected_only_once_onboarding_completed(self) -> None:
+        """The gate is read off the user document, not assumed: the same
+        onboarding-gated step is held for a user who never finished onboarding
+        and selected for one who did."""
+        gated = _step(key="gated", day_offset=1, requires_onboarding=True)
+        with patch("app.services.nurture.service.NURTURE_STEPS", [gated]):
+            onboarded = UserDocument(
+                id="u-1",
+                email="u@example.com",
+                onboarding=OnboardingSubdocument(completed=True),
+            )
+            assert await _select_step(onboarded, 1, set(), NOW) == gated
+
+            unonboarded = UserDocument(
+                id="u-2",
+                email="u2@example.com",
+                onboarding=OnboardingSubdocument(completed=False),
+            )
+            assert await _select_step(unonboarded, 1, set(), NOW) is None
 
     async def test_returns_none_when_every_step_blocked(self) -> None:
         user = UserDocument(id="u-1", email="u@example.com")

@@ -7,6 +7,7 @@ dumps): provider ids and internal bookkeeping never reach the agent's workspace.
 
 from pydantic import BaseModel, Field
 
+from app.models.user_models import OnboardingNeed
 from app.schemas.usage import BudgetWindow, FeatureUsageSummary
 
 
@@ -41,10 +42,12 @@ class NotificationsProjection(BaseModel):
 
 
 class PreferencesProjection(BaseModel):
-    """``account/preferences.json`` — response style + home timezone."""
+    """``account/preferences.json`` — persona, response style + home timezone."""
 
     response_style: str | None = None
     timezone: str | None = None
+    profession: str | None = None
+    needs: list[OnboardingNeed] | None = None
 
 
 class CustomInstructionsProjection(BaseModel):

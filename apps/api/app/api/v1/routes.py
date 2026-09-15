@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
     approvals,
     blog,
     bot,
+    bot_links,
     calendar,
     chat,
     conversations,
@@ -89,5 +90,8 @@ router.include_router(usage.router, tags=["Usage"])
 router.include_router(tools.router, tags=["Tools"])
 router.include_router(models.router, tags=["Models"])
 router.include_router(bot.router, prefix="/bot", tags=["Bot"])
+# Same prefix as bot.router above: the platform-linking routes live in their
+# own module but are part of the same public /api/v1/bot surface.
+router.include_router(bot_links.router, prefix="/bot", tags=["Bot"])
 router.include_router(platform_auth.router, prefix="/platform-auth", tags=["Platform Auth"])
 router.include_router(platform_links.router, prefix="/platform-links", tags=["Platform Links"])

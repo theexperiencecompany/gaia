@@ -2,7 +2,8 @@
 Clean webhook models for Dodo Payments based on actual webhook format.
 """
 
-from enum import Enum
+from datetime import datetime
+from enum import Enum, StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -29,6 +30,23 @@ class DodoWebhookEventType(str, Enum):
     SUBSCRIPTION_ON_HOLD = "subscription.on_hold"
     SUBSCRIPTION_PLAN_CHANGED = "subscription.plan_changed"
 
+    # Events Dodo sends that GAIA acknowledges and ignores. They must parse:
+    # a legitimate event outside this enum failed validation and was recorded
+    # as a processing error instead of landing in the no-handler "ignored" path.
+    # subscription.updated carries field edits Dodo also reports through the
+    # status events above; GAIA acts on those and ignores this one.
+    SUBSCRIPTION_UPDATED = "subscription.updated"
+    REFUND_SUCCEEDED = "refund.succeeded"
+    REFUND_FAILED = "refund.failed"
+    DISPUTE_OPENED = "dispute.opened"
+    DISPUTE_EXPIRED = "dispute.expired"
+    DISPUTE_ACCEPTED = "dispute.accepted"
+    DISPUTE_CANCELLED = "dispute.cancelled"
+    DISPUTE_CHALLENGED = "dispute.challenged"
+    DISPUTE_WON = "dispute.won"
+    DISPUTE_LOST = "dispute.lost"
+    LICENSE_KEY_CREATED = "license_key.created"
+
 
 class DodoCustomerData(BaseModel):
     """Customer info from webhook."""
@@ -41,11 +59,13 @@ class DodoCustomerData(BaseModel):
 class DodoBillingData(BaseModel):
     """Billing address from webhook."""
 
-    city: str
+    # Only `country` is guaranteed by Dodo's schema; the rest are optional and
+    # routinely absent on a subscription read back from the API.
     country: str
-    state: str
-    street: str
-    zipcode: str
+    city: str | None = None
+    state: str | None = None
+    street: str | None = None
+    zipcode: str | None = None
 
 
 class DodoPaymentData(BaseModel):
@@ -108,13 +128,21 @@ class DodoWebhookEvent(BaseModel):
     """Dodo webhook event structure."""
 
     business_id: str
-    type: DodoWebhookEventType
+    #: A plain string, not the enum: Dodo adds event types without notice, and
+    #: an unlisted one must parse so it can be acknowledged and ignored rather
+    #: than rejected as a validation error the sender keeps retrying.
+    type: str
     timestamp: str
     data: dict[str, Any]
 
+    @property
+    def occurred_at(self) -> datetime:
+        """When Dodo says this happened — the ordering key for subscription state."""
+        return datetime.fromisoformat(self.timestamp)
+
     def get_payment_data(self) -> DodoPaymentData | None:
         """Extract payment data if payment event."""
-        if self.type.value.startswith("payment."):
+        if self.type.startswith("payment."):
             try:
                 return DodoPaymentData(**self.data)
             except ValidationError as exc:
@@ -131,7 +159,7 @@ class DodoWebhookEvent(BaseModel):
 
     def get_subscription_data(self) -> DodoSubscriptionData | None:
         """Extract subscription data if subscription event."""
-        if self.type.value.startswith("subscription."):
+        if self.type.startswith("subscription."):
             try:
                 return DodoSubscriptionData(**self.data)
             except ValidationError as exc:
@@ -147,11 +175,31 @@ class DodoWebhookEvent(BaseModel):
         return None
 
 
+class WebhookProcessingStatus(StrEnum):
+    """What GAIA did with a delivery, and what the sender is owed as a result.
+
+    ``PROCESSED`` and ``IGNORED`` are both final — the delivery is recorded
+    under its webhook id and acknowledged with a 200. ``FAILED`` is not: the
+    state change the event carried never landed and a retry can still land
+    it, so the claim is handed back and the sender is asked to retry.
+    ``ABANDONED`` is a failure no retry can fix (no GAIA user behind the
+    subscription, a row that never arrived in the time it had, a body that
+    does not validate): it is acknowledged so Dodo stops redelivering, the
+    claim is released so a human can redeliver it by hand once the cause is
+    fixed, and it is on the wide event at error level.
+    """
+
+    PROCESSED = "processed"
+    IGNORED = "ignored"
+    FAILED = "failed"
+    ABANDONED = "abandoned"
+
+
 class DodoWebhookProcessingResult(BaseModel):
     """Result of webhook processing."""
 
     event_type: str
-    status: str  # "processed", "ignored", "failed"
+    status: WebhookProcessingStatus
     message: str
     payment_id: str | None = None
     subscription_id: str | None = None

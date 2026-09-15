@@ -31,11 +31,17 @@ SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
 ACTIVE_PLANS_CACHE_KEY = "plans:active"
 ALL_PLANS_CACHE_KEY = "plans:all"
 PLANS_CACHE_KEYS = (ACTIVE_PLANS_CACHE_KEY, ALL_PLANS_CACHE_KEY)
+# Payment verification found none of the user's recorded checkout sessions
+# paid. The result page retries the verify eight times over about fifty
+# seconds (verifyPaymentWithRetry.ts); without this each retry re-asked Dodo
+# about every session. The TTL covers that window and nothing more — the row
+# the webhook creates is read before the cache on every verify, and minting a
+# new session drops the key.
+CHECKOUT_SCAN_MISS_CACHE_PREFIX = "checkout_scan_miss:"
+CHECKOUT_SCAN_MISS_TTL = 60
 # A minted Dodo checkout session, per user and billing cycle. Reused rather than
 # re-minted so a user who asks to upgrade twice — or hits a limit repeatedly —
 # doesn't leave a trail of abandoned sessions in Dodo.
-UPGRADE_LINK_CACHE_PREFIX = "upgrade_link:"
-UPGRADE_LINK_CACHE_TTL = ONE_HOUR_TTL
 # The tracked-todo summary injected into comms context. Deliberately short: the
 # list changes as the agent works, and a stale pin is worse than the lookup it
 # saves. Keyed by user alone, so only the unpinned summary may use it.
@@ -147,6 +153,16 @@ STATE_KEY_PREFIX = "oauth_state"
 CONNECT_LINK_PREFIX = "connect_link"
 PLATFORM_LINK_TOKEN_PREFIX = "platform_link_token"  # nosec B105
 PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL
+# One-tap onboarding linking, the opposite direction to the token above: the WEB
+# mints this code at the platform-pick step and the BOT redeems it on the user's
+# first contact. code -> {user_id, first_message}. Longer TTL than the token
+# because the user may sit on the platform-pick screen before tapping through.
+PLATFORM_LINK_CODE_PREFIX = "platform_link_code"  # nosec B105
+PLATFORM_LINK_CODE_TTL = THIRTY_MINUTES_TTL
+# Held for one redemption, not for the code's life: it makes a redemption
+# single-use while the record survives a refusal. The TTL is the recovery bound —
+# a redeemer that died mid-link frees the code again once it lapses.
+PLATFORM_LINK_CODE_CLAIM_TTL = FIVE_MINUTES_TTL
 # Desktop tool bridge — request ownership keys + per-request result channels.
 # A request key expiring means the desktop never answered; the result endpoint
 # rejects late POSTs whose key is gone.
@@ -166,6 +182,23 @@ DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
 # retrying agent is auto-denied instead of re-prompting the user for the same
 # action.
 HIL_DECLINED_PREFIX = "hil:declined:"
+# One workflow's "you're out of runs / out of budget" notice, keyed by
+# user+workflow. The wall it reports is a daily one, so it is the same true
+# statement for every occurrence until the reset — worth exactly one message,
+# not one per fire (a production thread ran to six in a row).
+WORKFLOW_LIMIT_NOTICE_PREFIX = "workflow:limit-notice:"
+WORKFLOW_LIMIT_NOTICE_TTL = ONE_DAY_TTL
+
+# One bot user's personalised Dodo upgrade link. Same shape as the workflow
+# notice above and a different subject: what is gated here is the MINT, not the
+# message. A lapsed user keeps typing, and every blocked turn used to cost a
+# get_plans call, a Dodo round-trip and a checkout_sessions insert for a link
+# nobody tapped. An hour, not a day: the window has to be short enough that a
+# user coming back later still gets a one-tap link, because a Dodo session is
+# single-use and re-handing out an old one is worse than not having it.
+BOT_UPGRADE_LINK_PREFIX = "bot:upgrade-link:"
+BOT_UPGRADE_LINK_TTL = ONE_HOUR_TTL
+
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 EXECUTOR_QUEUE_PREFIX = "executor:queue:"
@@ -191,6 +224,13 @@ VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
 # so a degraded pro user is told once per month, not once per turn.
 COST_BUDGET_NOTIFIED_KEY = "cost_budget_notified:{user_id}:{window}"
 
+# The onboarding question written ahead of time. Keyed by user plus a hash of
+# the answers it was written from, so re-answering Q1/Q2 with anything different
+# reads a key that was never written rather than a stale question. Two hours is
+# the gap between the answers being saved and completion being pressed, with
+# room for a wizard someone walked away from.
+FIRST_QUESTION_CACHE_PREFIX = "onboarding:first_question:"
+FIRST_QUESTION_CACHE_TTL = 2 * ONE_HOUR_TTL
 #: Prefix of the tiered rate limiter's per-user counters: ``{prefix}:{user_id}:{feature}:{period}:{window}``.
 #: Named so a dev tool can clear one user's counters without knowing the rest of the key.
 RATE_LIMIT_KEY_PREFIX = "rate_limit"

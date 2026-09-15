@@ -15,6 +15,13 @@ from app.models.image_models import ImageToTextResponse
 
 API = "/api/v1"
 
+# The `client` fixture's dependency override (`get_current_user` -> FAKE_USER)
+# is FastAPI DI, not the WorkOSAuthMiddleware-set request context that
+# the entitlement gate reads first — the test app strips
+# that middleware entirely. So a gate test has to set the context directly to
+# exercise the real resolution path, the same way production requests do.
+_GET_AUTHENTICATED_USER = "app.core.request_context.get_authenticated_user"
+
 
 def _image_data(**overrides) -> ImageData:
     base = {

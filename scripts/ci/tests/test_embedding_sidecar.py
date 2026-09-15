@@ -36,6 +36,12 @@ printf '%s\\n' "$*" >> "$REC/uv.log"
 exit 1
 """
 
+# A sidecar the kernel took down: nothing written, no exit code of its own.
+KILLED_STUB = """\
+#!/usr/bin/env bash
+kill -9 $$
+"""
+
 # argv is what the script matches on, so the holder's identity lives in the
 # path it is launched from.
 LISTENER_SRC = """\
@@ -68,11 +74,11 @@ def port() -> int:
     return free_port()
 
 
-def make_env(tmp_path: Path, port: int, **extra: str) -> dict[str, str]:
+def make_env(tmp_path: Path, port: int, uv_stub: str = UV_STUB, **extra: str) -> dict[str, str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     uv = bin_dir / "uv"
-    uv.write_text(UV_STUB)
+    uv.write_text(uv_stub)
     uv.chmod(0o755)
     env = {
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
@@ -86,10 +92,10 @@ def make_env(tmp_path: Path, port: int, **extra: str) -> dict[str, str]:
     return env
 
 
-def run(tmp_path: Path, port: int, *args: str, **extra: str):
+def run(tmp_path: Path, port: int, *args: str, uv_stub: str = UV_STUB, **extra: str):
     return subprocess.run(
         ["bash", str(SCRIPT), *args],
-        env=make_env(tmp_path, port, **extra),
+        env=make_env(tmp_path, port, uv_stub, **extra),
         capture_output=True,
         text=True,
         timeout=90,
@@ -166,7 +172,19 @@ def test_a_free_port_is_not_second_guessed(tmp_path: Path, port: int) -> None:
     assert "held by" not in proc.stderr
     assert "could not be identified" not in proc.stderr
     assert (tmp_path / "uv.log").exists()
-    assert "exited during startup" in proc.stderr
+    assert "exited during startup (exit status 1)" in proc.stderr
+
+
+def test_a_sidecar_killed_by_signal_says_which(tmp_path: Path, port: int) -> None:
+    """The log said only "Loaded memory embedding model" and the lane said only
+    "exited during startup" (run 34595538117): a process the kernel SIGKILLs
+    writes nothing, so the exit status is the one fact left, and the script
+    was discarding it. 137 is the OOM killer or a hygiene hook, not a bug in
+    the sidecar — the two are debugged in different places."""
+    proc = run(
+        tmp_path, port, "start", uv_stub=KILLED_STUB, GAIA_SIDECAR_LOG=str(tmp_path / "s.log")
+    )
+    assert "exited during startup (killed by SIGKILL" in proc.stderr
 
 
 def test_stop_reclaims_a_port_whose_pidfile_was_lost(tmp_path: Path, port: int) -> None:

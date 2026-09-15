@@ -6,9 +6,7 @@ from fastapi import Request
 
 from app.constants.log_tags import LogTag
 from app.constants.notifications import (
-    ALL_AUTO_INJECTED_CHANNELS,
     CHANNEL_TYPE_INAPP,
-    DEFAULT_CHANNEL_PREFERENCES,
 )
 from app.core.websocket_manager import websocket_manager
 from app.models.notification.notification_models import (
@@ -24,13 +22,13 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationView,
 )
+from app.services.delivery.chat_channel import resolve_chat_channel
 from app.utils.notification.actions import (
     ActionHandler,
     ApiCallActionHandler,
     ModalActionHandler,
     RedirectActionHandler,
 )
-from app.utils.notification.channel_preferences import fetch_channel_preferences
 from app.utils.notification.channels import (
     ChannelAdapter,
     DiscordChannelAdapter,
@@ -132,18 +130,10 @@ class NotificationOrchestrator:
                 task = self._deliver_via_channel(notification, adapter)
                 delivery_tasks.append(task)
 
-        # Auto-inject channels only when no explicit channels were requested.
-        # inapp is always available; telegram/discord respect user preferences.
+        # A notification that names no channel goes to the app and to the
+        # user's ONE preferred chat platform (their order, linked, enabled).
         if not explicitly_requested:
-            channel_prefs = await self._get_channel_prefs(notification.user_id)
-            for platform in ALL_AUTO_INJECTED_CHANNELS:
-                if platform != CHANNEL_TYPE_INAPP and not channel_prefs.get(platform, True):
-                    log.info(
-                        f"{LogTag.NOTIFICATION} Skipping delivery: disabled by preference",
-                        platform=platform,
-                        user_id=notification.user_id,
-                    )
-                    continue
+            for platform in await self._default_channels(notification.user_id):
                 adapter = self.channel_adapters.get(platform)
                 if adapter and adapter.can_handle(notification.original_request):
                     delivery_tasks.append(self._deliver_via_channel(notification, adapter))
@@ -209,28 +199,26 @@ class NotificationOrchestrator:
                 },
             )
 
-    async def _get_channel_prefs(self, user_id: str) -> dict[str, bool]:
-        """Fetch user's notification channel preferences from DB.
+    async def _default_channels(self, user_id: str) -> list[str]:
+        """In-app always; plus the one chat platform the user prefers, if any.
 
-        On a transient read failure, fall back to the SAME defaults a user with
-        no stored preference gets (``DEFAULT_CHANNEL_PREFERENCES`` — all enabled),
-        not "all disabled". An opt-out lives in a stored document; an unreadable
-        document means the preference is *unknown*, and treating unknown as
-        opted-out silently drops notifications the user asked for and makes
-        delivery non-deterministic across transient DB blips. Erring toward
-        delivery (one stray message during a rare outage) beats chronically
-        dropping reminders.
+        On a failed lookup the notification still lands in the app and the
+        failure is on the wide event: a stray platform message is not worth
+        guessing a platform the user may have switched off.
         """
         try:
-            return await fetch_channel_preferences(user_id)
+            channel = await resolve_chat_channel(user_id)
         except Exception as e:
             log.warning(
-                f"{LogTag.NOTIFICATION} Failed to fetch channel prefs, using defaults",
+                f"{LogTag.NOTIFICATION} Chat channel lookup failed, delivering in-app only",
                 user_id=user_id,
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            return dict(DEFAULT_CHANNEL_PREFERENCES)
+            return [CHANNEL_TYPE_INAPP]
+        if channel is None:
+            return [CHANNEL_TYPE_INAPP]
+        return [CHANNEL_TYPE_INAPP, channel.source.value]
 
     async def _deliver_via_channel(
         self, notification: NotificationRecord, adapter: ChannelAdapter[TContent]

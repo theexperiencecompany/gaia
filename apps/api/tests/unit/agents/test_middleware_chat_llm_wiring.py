@@ -18,6 +18,7 @@ from langchain_core.tools import BaseTool, tool
 
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
+from app.agents.middleware.empty_completion import EmptyCompletionRetryMiddleware
 from app.agents.middleware.factory import (
     CODING_TOOL_NAMES,
     SELF_OFFLOADING_TOOL_NAMES,
@@ -34,7 +35,6 @@ from app.agents.middleware.factory import (
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.media import MediaDescriptionMiddleware
-from app.agents.middleware.style_guard import StyleGuardMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.subagent_join import SubagentJoinMiddleware
 from app.agents.middleware.summarization import (
@@ -136,15 +136,13 @@ class TestCommsStackComposition:
     delegates instead of acting — so what is and is not in its stack is the
     contract, not an implementation detail."""
 
-    def test_the_style_guard_is_the_innermost_middleware(self) -> None:
-        """Position is load-bearing: innermost of the wrap_model_call chain means
-        it scores the response the model actually produced, not one an outer
-        middleware already substituted (the budget wall's stop text, for one, is
-        not the model's prose and must not be rewritten)."""
+    def test_the_empty_completion_retry_is_the_innermost_middleware(self) -> None:
+        """It has to see the raw completion: anything above it reads a reply the
+        retry may still be replacing."""
         stack = create_comms_middleware(chat_llm=_fake_llm())
 
-        assert isinstance(stack[-1], StyleGuardMiddleware)
-        assert sum(isinstance(mw, StyleGuardMiddleware) for mw in stack) == 1
+        assert isinstance(stack[-1], EmptyCompletionRetryMiddleware)
+        assert sum(isinstance(mw, EmptyCompletionRetryMiddleware) for mw in stack) == 1
 
     def test_comms_can_never_spawn_a_subagent(self) -> None:
         """Comms has no work tools by design — it hands everything to the
@@ -602,7 +600,9 @@ class TestCommsAndSubagentDelegation:
             WorkspaceArchivingSummarizationMiddleware,
             MediaDescriptionMiddleware,
             LoopGuardMiddleware,
-            StyleGuardMiddleware,
+            # Innermost: the empty-completion retry runs closest to the model,
+            # so the turn delivers the reply the user will actually get.
+            EmptyCompletionRetryMiddleware,
         ]
 
     def test_a_subagent_summarizes_its_own_history(self) -> None:

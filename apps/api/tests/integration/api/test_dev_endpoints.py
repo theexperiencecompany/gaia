@@ -354,6 +354,65 @@ class TestDevServiceLogic:
         assert first.id == second.id == str(oid)
         assert first.email == DEV_EMAIL
 
+    async def test_mint_passes_an_explicit_name_through_untouched(self):
+        """A caller-supplied name reaches the signup path verbatim."""
+        from app.services import dev_service
+
+        created: list[UserDocument] = []
+
+        async def capture_create(document: UserDocument) -> UserDocument:
+            stored = document.model_copy(update={"id": str(ObjectId())})
+            created.append(stored)
+            return stored
+
+        async def load_created(user_id: str) -> UserDocument:
+            return created[-1]
+
+        with (
+            patch.object(
+                dev_service.user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch.object(dev_service.user_repository, "create", side_effect=capture_create),
+            patch.object(dev_service.user_repository, "get", side_effect=load_created),
+        ):
+            user = await dev_service.mint_dev_user(DEV_EMAIL, name="Ada Lovelace")
+
+        assert created[0].name == "Ada Lovelace"
+        assert user.name == "Ada Lovelace"
+
+    async def test_mint_without_a_name_uses_the_signup_path_derivation(self):
+        """An unnamed mint gets the presentable name real signup derives — capitalised,
+        not the raw local part dev_service used to slice off the email itself."""
+        from app.services import dev_service
+
+        created: list[UserDocument] = []
+
+        async def capture_create(document: UserDocument) -> UserDocument:
+            stored = document.model_copy(update={"id": str(ObjectId())})
+            created.append(stored)
+            return stored
+
+        async def load_created(user_id: str) -> UserDocument:
+            return created[-1]
+
+        with (
+            patch.object(
+                dev_service.user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch.object(dev_service.user_repository, "create", side_effect=capture_create),
+            patch.object(dev_service.user_repository, "get", side_effect=load_created),
+        ):
+            user = await dev_service.mint_dev_user("ada.lovelace@gaia.local")
+
+        assert created[0].name == "Ada Lovelace"
+        assert user.name == "Ada Lovelace"
+
     async def test_seed_creates_expected_counts(self):
         """Seed calls the real create paths exactly N times each."""
         from app.services import dev_service
@@ -392,6 +451,16 @@ class TestDevServiceLogic:
         # Seeding marks onboarding complete via the gated repository method.
         assert mock_complete.await_args.args[0] == str(oid)
         assert mock_complete.await_args.kwargs["phase"] == dev_service.OnboardingPhase.COMPLETED
+        # The seeded preferences are the contract: a profession and a response style,
+        # with the Q2 need fields explicitly unset (seeding answers no questions for
+        # the user) so a seeded account cannot masquerade as one that picked needs.
+        assert mock_complete.await_args.kwargs["preferences"] == dev_service.OnboardingPreferences(
+            profession="Developer",
+            needs=None,
+            other_need=None,
+            response_style="casual",
+            custom_instructions=None,
+        )
 
     async def test_seed_rejects_unknown_platform_before_writing(self):
         """An invalid platform aborts with 400 and writes nothing."""

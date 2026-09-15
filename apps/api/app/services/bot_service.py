@@ -11,8 +11,12 @@ from fastapi import HTTPException
 from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversations import conversation_repository
+from app.decorators import enforce_daily_cost_budget, enforce_tiered_limit
+from app.models.bot_models import BotChatRequest
 from app.models.chat_models import ConversationModel, ConversationSource
+from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.bot_session_merge import apply_merge, plan_merge
 from app.services.conversation_service import create_conversation_service
 from shared.py.wide_events import log
@@ -267,3 +271,57 @@ class BotService:
             elif msg.type == "bot":
                 history.append({"role": "assistant", "content": msg.response or ""})
         return history
+
+
+async def build_bot_message_request(
+    body: BotChatRequest, conversation_id: str, user_id: str
+) -> MessageRequestWithHistory:
+    """Load conversation history and append the incoming turn, ready for the agent."""
+    raw_history = await BotService.load_conversation_history(conversation_id, user_id)
+    raw_history.append({"role": "user", "content": body.message})
+    history: list[MessageDict] = [
+        MessageDict(role=m["role"], content=m["content"]) for m in raw_history
+    ]
+    return MessageRequestWithHistory(
+        message=body.message,
+        conversation_id=conversation_id,
+        messages=history,
+        fileIds=body.file_ids or [],
+        fileData=body.file_data or [],
+    )
+
+
+async def charge_bot_turn(user_id: str, body: BotChatRequest) -> None:
+    """Charge quota/budget for one bot turn and record its submission event.
+
+    Mirrors what the web chat endpoint charges via ``@tiered_rate_limit``, done
+    manually since the caller here has no authenticated request to decorate.
+    """
+    # Can't be a decorator: the caller is resolved from a platform link, so
+    # there is no authenticated user when the decorator would run. Without
+    # this a free user had no message limit through a bot, and bot turns
+    # never reached `record_activity` — leaving them off the heatmap, streak
+    # and badge. `BotService.enforce_rate_limit` (called before this) stays:
+    # it is flat per-platform anti-spam (20/min, plan-blind), not the quota.
+    await enforce_tiered_limit(user_id, "chat_messages")
+    # Second half of what web chat charges: the tiered limit above caps how
+    # MANY messages, this caps how EXPENSIVE the day has been. Without it a
+    # bot user over budget got a stream that opened and died partway instead
+    # of a clean refusal before any work (`LLMAccountingMiddleware` still
+    # bounds cost mid-flight, but only after the work started).
+    await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
+    # Captured HERE, past every gate — same reason the web endpoint captures
+    # after its own: chat:message_submitted is the ground-truth volume
+    # metric, and a turn refused for plan or quota never reached the agent.
+    # Counting refusals as submissions would inflate bot volume by exactly
+    # the traffic of users who hit walls most. A refusal is its own event.
+    capture_event(
+        user_id,
+        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
+        {
+            # `source` is the canonical key: a ConversationSource value, the same
+            # key every other chat event reports its surface under.
+            "source": body.platform,
+            "has_files": bool(body.file_ids or body.file_data),
+        },
+    )

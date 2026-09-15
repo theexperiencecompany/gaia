@@ -13,6 +13,7 @@ Tests cover:
 - get_feature_info: known and unknown features
 """
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import ClassVar
 from unittest.mock import patch
@@ -25,6 +26,7 @@ from app.config.rate_limits import (
     RateLimitConfig,
     RateLimitPeriod,
     TieredRateLimits,
+    derive_pro_benefits,
     get_feature_info,
     get_feature_limits,
     get_limits_for_plan,
@@ -159,6 +161,8 @@ class TestFeatureLimits:
         "generate_image",
         "deep_research",
         "document_generation",
+        "onboarding_generation",
+        "platform_link_code",
         "web_search",
         "webpage_fetch",
         "download",
@@ -233,7 +237,11 @@ class TestFeatureLimits:
             assert limits.info.description, f"{key} has empty description"
 
     # Features intentionally restricted to paid-only (free limits are 0).
-    PAID_ONLY_FEATURES: ClassVar[set[str]] = {"voice_mode", "imessage_registration"}
+    PAID_ONLY_FEATURES: ClassVar[set[str]] = {
+        "voice_mode",
+        "imessage_registration",
+        "onboarding_generation",
+    }
 
     # Cost-walled features: no daily message-count wall on free (free.day == 0)
     # because the rolling daily COST budget is the real wall. The monthly count
@@ -573,3 +581,75 @@ class TestActivityPolicy:
         own automation keep them "active" forever (masking the dormancy sweep)
         and inflated the activity heatmap with runs nobody performed."""
         assert FEATURE_LIMITS["trigger_workflow_executions"].counts_as_activity is False
+
+
+def _tier(
+    free_day: int, free_month: int, pro_day: int, pro_month: int, title: str
+) -> TieredRateLimits:
+    return TieredRateLimits(
+        free=RateLimitConfig(day=free_day, month=free_month),
+        pro=RateLimitConfig(day=pro_day, month=pro_month),
+        info=FeatureInfo(title=title, description=title),
+    )
+
+
+# One feature per branch of derive_pro_benefits, so every section and its
+# ordering is observable: the hit feature, a Pro-only feature, a daily-uncapped
+# one, a cost-walled one, three multiplier candidates with distinct ratios, and
+# a feature nobody can use on either tier.
+_UPSELL_TABLE = {
+    "hit": _tier(10, 300, 100, 3_000, "Hit"),
+    "gated": _tier(0, 0, 5, 100, "Gated"),
+    "uncapped": _tier(5, 150, 0, 0, "Uncapped"),
+    "chat": _tier(0, 100, 0, 0, "Chat"),
+    "x2": _tier(10, 300, 20, 600, "Times two"),
+    "x5": _tier(10, 300, 50, 1_500, "Times five"),
+    "x3": _tier(10, 300, 30, 900, "Times three"),
+    # Exactly one Pro use a day: capped, so never "daily-uncapped", and a x1
+    # multiplier that max_other always cuts off.
+    "one": _tier(1, 30, 1, 30, "One"),
+    "dead": _tier(0, 0, 0, 0, "Dead"),
+}
+
+
+@pytest.mark.unit
+class TestDeriveProBenefits:
+    """The upsell bullets come from the same table that enforces the limits, so
+    the section order and the numbers in them are the contract."""
+
+    @pytest.fixture(autouse=True)
+    def upsell_table(self) -> Iterator[None]:
+        with patch("app.config.rate_limits.FEATURE_LIMITS", _UPSELL_TABLE):
+            yield
+
+    def test_sections_come_in_order_hit_pro_only_uncapped_then_multipliers(self) -> None:
+        assert derive_pro_benefits("hit") == [
+            {"title": "Hit", "detail": "100 per day instead of 10"},
+            {"title": "Gated", "detail": "included with Pro"},
+            {"title": "Uncapped", "detail": "unlimited daily use"},
+            {"title": "Chat", "detail": "unlimited daily messages"},
+            {"title": "Times five", "detail": "50 per day instead of 10"},
+            {"title": "Times three", "detail": "30 per day instead of 10"},
+            {"title": "Times two", "detail": "20 per day instead of 10"},
+        ]
+
+    def test_max_other_bounds_only_the_multiplier_section(self) -> None:
+        titles = [b["title"] for b in derive_pro_benefits("hit", max_other=1)]
+        assert titles == ["Hit", "Gated", "Uncapped", "Chat", "Times five"]
+
+    def test_the_hit_feature_is_not_repeated_where_it_would_also_qualify(self) -> None:
+        # "hit" is a x10 multiplier and "uncapped" is daily-uncapped: each must
+        # appear once, at the top, and never again in its natural section.
+        assert [b["title"] for b in derive_pro_benefits("hit")].count("Hit") == 1
+        titles = [b["title"] for b in derive_pro_benefits("uncapped")]
+        assert titles[0] == "Uncapped"
+        assert titles.count("Uncapped") == 1
+        # ...and "hit", no longer the hit feature, leads the multipliers at x10.
+        assert titles[1:4] == ["Gated", "Chat", "Hit"]
+
+    def test_an_unknown_hit_feature_adds_nothing_and_breaks_nothing(self) -> None:
+        titles = [b["title"] for b in derive_pro_benefits("no-such-feature")]
+        assert titles == ["Gated", "Uncapped", "Chat", "Hit", "Times five", "Times three"]
+
+    def test_a_feature_with_no_access_on_either_tier_is_never_advertised(self) -> None:
+        assert "Dead" not in {b["title"] for b in derive_pro_benefits("hit")}

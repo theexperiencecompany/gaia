@@ -5,11 +5,13 @@ from unittest.mock import patch
 
 import pytest
 
+from app.models.user_models import OnboardingPreferences, OnboardingSubdocument
 from app.utils.user_preferences_utils import (
     build_user_context_parts,
     format_profession_for_display,
     format_response_style_instruction,
     format_user_preferences_for_agent,
+    onboarding_preferences,
 )
 
 # ---------------------------------------------------------------------------
@@ -244,3 +246,51 @@ class TestFormatUserPreferencesForAgent:
         ):
             result = format_user_preferences_for_agent({"profession": "doctor"})
             assert result is None
+
+
+# ---------------------------------------------------------------------------
+# onboarding_preferences
+# ---------------------------------------------------------------------------
+
+
+class TestOnboardingPreferences:
+    """``UserDocument.onboarding`` is the typed subdocument, ``AuthenticatedUser.onboarding``
+    is still the raw Mongo dict — both shapes must read the same pair."""
+
+    def test_typed_subdocument_yields_only_the_stored_preference_keys(self) -> None:
+        onboarding = OnboardingSubdocument(
+            preferences=OnboardingPreferences(profession="doctor"),
+            writing_style={"summary": "terse"},
+        )
+
+        preferences, writing_style = onboarding_preferences(onboarding)
+
+        assert preferences == {"profession": "doctor"}
+        assert writing_style == {"summary": "terse"}
+
+    def test_typed_subdocument_without_preferences_reads_as_none(self) -> None:
+        onboarding = OnboardingSubdocument(writing_style={"summary": "terse"})
+
+        assert onboarding_preferences(onboarding) == (None, {"summary": "terse"})
+
+    def test_typed_subdocument_without_writing_style_reads_as_none(self) -> None:
+        onboarding = OnboardingSubdocument(preferences=OnboardingPreferences(profession="doctor"))
+
+        assert onboarding_preferences(onboarding) == ({"profession": "doctor"}, None)
+
+    def test_raw_dict_is_read_by_key(self) -> None:
+        onboarding: dict[str, Any] = {
+            "preferences": {"profession": "doctor", "response_style": None},
+            "writing_style": {"summary": "terse"},
+        }
+
+        assert onboarding_preferences(onboarding) == (
+            {"profession": "doctor", "response_style": None},
+            {"summary": "terse"},
+        )
+
+    @pytest.mark.parametrize("onboarding", [None, {}])
+    def test_missing_onboarding_reads_as_a_pair_of_none(
+        self, onboarding: dict[str, Any] | None
+    ) -> None:
+        assert onboarding_preferences(onboarding) == (None, None)

@@ -77,6 +77,20 @@ class PlatformLinkResult(BaseModel):
     is_new_link: bool
 
 
+class PlatformLinkCompletion(BaseModel):
+    """What ``complete_platform_link`` reports back to its callers.
+
+    ``first_contact_delivered`` is False only when a first contact was handed
+    over and the outbound queue did not take it. Nothing retries that publish,
+    so the caller has to hand the bubbles back to the bot that asked for the
+    link — otherwise the one message a new user is guaranteed to read is simply
+    lost. True when there was nothing to deliver.
+    """
+
+    link: PlatformLinkResult
+    first_contact_delivered: bool
+
+
 class LinkPlatformResponse(BaseModel):
     """Response model for linking a platform account."""
 
@@ -84,6 +98,30 @@ class LinkPlatformResponse(BaseModel):
     platform: str = Field(..., description="Platform name")
     platform_user_id: str | None = Field(None, description="Platform user ID")
     connected_at: str | None = Field(None, description="Connection timestamp")
+
+
+class MintPlatformLinkCodeResponse(BaseModel):
+    """A freshly minted one-tap linking code and everything built from it."""
+
+    code: str = Field(..., description="Single-use code the bot redeems on first contact")
+    first_message: str = Field(
+        ..., description="Opening message composed from the user's onboarding answers"
+    )
+    handoff_text: str = Field(
+        ...,
+        description=(
+            "first_message with ' #<code>' appended — the exact text a WhatsApp or "
+            "iMessage user sends. Used to build the iMessage sms: link, whose number "
+            "is only known after the phone is registered on Photon's pool."
+        ),
+    )
+    links: dict[str, str] = Field(
+        ...,
+        description=(
+            "Deep link per platform that carries the code. iMessage is absent by "
+            "construction — its number is assigned per user."
+        ),
+    )
 
 
 class PendingPlatformRegistrationDocument(MongoDocument):

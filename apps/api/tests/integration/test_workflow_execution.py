@@ -41,6 +41,7 @@ from app.services.workflow.execution_service import (
 )
 from app.services.workflow.generation_service import (
     WorkflowGenerationService,
+    WorkflowStepGenerationError,
     enrich_steps,
 )
 from app.services.workflow.queue_service import WorkflowQueueService
@@ -886,7 +887,7 @@ class TestGenerationServiceRetries:
     """Test the generation service regeneration logic."""
 
     async def test_generate_steps_raises_after_retries(self):
-        """generate_steps_with_llm raises RuntimeError after max retries."""
+        """generate_steps_with_llm raises a typed generation error after max retries."""
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects = MagicMock(return_value={})
         mock_registry.get_core_tools = MagicMock(return_value=[])
@@ -894,7 +895,7 @@ class TestGenerationServiceRetries:
         with (
             # Schema-invalid output on every attempt exhausts the regeneration loop.
             patch(
-                "app.services.workflow.generation_service.ainvoke_structured",
+                "app.services.workflow.generation_service._structured_one_shot",
                 new_callable=AsyncMock,
                 side_effect=OutputParserException("bad json"),
             ),
@@ -915,7 +916,9 @@ class TestGenerationServiceRetries:
                 [],
             ),
         ):
-            with pytest.raises(RuntimeError, match="failed"):
+            with pytest.raises(
+                WorkflowStepGenerationError, match=r"no usable steps after 2 attempts"
+            ):
                 await WorkflowGenerationService.generate_steps_with_llm(
                     prompt="Test prompt",
                     title="Test Workflow",

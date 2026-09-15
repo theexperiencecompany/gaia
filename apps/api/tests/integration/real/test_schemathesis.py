@@ -42,6 +42,7 @@ Run the full exploratory pass: ``SCHEMA_FUZZ_FULL=1`` sets
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 import os
 from pathlib import Path
@@ -56,9 +57,12 @@ import httpx
 from hypothesis import given, settings, strategies as st
 from pymongo import MongoClient
 import pytest
+from redis import Redis
 
+from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
 from app.db.repositories.plans import PlansRepository
+from app.db.repositories.subscriptions import SubscriptionsRepository
 from tests.helpers import pick_free_port
 
 pytestmark = [
@@ -186,22 +190,55 @@ def _seeded_startup_requirements(mongodb_url: str) -> Iterator[None]:
         client.close()
 
 
-@pytest.fixture(scope="session")
-def live_api_url(_seeded_startup_requirements: None) -> Iterator[str]:
-    """Boot the real API in a subprocess and wait until it serves /openapi.json.
+def _make_fuzz_user_pro(
+    mongodb_url: str, redis_url: str, user_id: str
+) -> tuple[MongoClient, object]:
+    """Give the fuzz user a real active subscription, and return it for cleanup.
 
-    The server's output goes to a file rather than ``subprocess.PIPE``: nothing
-    drains a pipe during the readiness poll, so once the app's startup logging
-    filled the 64 KiB pipe buffer the server would block mid-boot and never
-    bind — a hang that looks identical to a slow start. A file also means every
-    failure below can actually show what the server said.
+    Every gated route now 402s a non-PRO caller (``EntitlementMiddleware``), so a
+    free fuzz user turns the whole contract gate into a sweep of 402s that proves
+    nothing about the operations it claims to cover. 402 is deliberately NOT
+    accepted as a documented status instead: the point of the gate is to fuzz the
+    handlers, and a paywall response never reaches one.
+
+    Seeded rather than bypassed. The plan is resolved from the ``subscriptions``
+    collection (``subscription_repository.get_active_for_user`` — any active row
+    means PRO), so this is the same data a real subscriber has, and it exercises
+    the gate for real instead of switching it off. A test-only env override would
+    be a paywall bypass shipped in production code for the sake of a test.
     """
-    # This test owns a whole uvicorn process and must not compete with xdist
-    # workers for the runner's cores. pytest.ini's addopts carry `-n 4`, so the
-    # "isolated" CI step silently ran four workers — three of them paying the
-    # ~10s app import while the fourth tried to boot the server — and the boot
-    # timed out. Fail here, naming the cause, rather than 5 minutes later with
-    # a timeout that looks like a broken app.
+    client: MongoClient = MongoClient(mongodb_url)
+    now = datetime.now(UTC)
+    inserted = client[MONGO_DATABASE_NAME][SubscriptionsRepository.collection_name].insert_one(
+        {
+            "dodo_subscription_id": f"sub_schemathesis_{user_id}",
+            "user_id": user_id,
+            "status": "active",
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+    # The plan is Redis-cached for five minutes, so a FREE entry left by an
+    # earlier run against the same Redis would outlive this row and re-402 the
+    # whole fuzz. Dropped here, and again on teardown.
+    redis_client = Redis.from_url(redis_url)
+    try:
+        redis_client.delete(f"{SUBSCRIPTION_PLAN_CACHE_PREFIX}{user_id}")
+    finally:
+        redis_client.close()
+    return client, inserted.inserted_id
+
+
+def _fail_if_parallel() -> None:
+    """Refuse to run under xdist, naming the cause.
+
+    This test owns a whole uvicorn process and must not compete with xdist
+    workers for the runner's cores. pytest.ini's addopts carry ``-n 4``, so the
+    "isolated" CI step silently ran four workers — three of them paying the
+    ~10s app import while the fourth tried to boot the server — and the boot
+    timed out. Failing here beats a timeout 5 minutes later that looks like a
+    broken app.
+    """
     workers = int(os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1"))
     if workers > 1:
         pytest.fail(
@@ -210,10 +247,17 @@ def live_api_url(_seeded_startup_requirements: None) -> Iterator[str]:
             "or run it via `nx run api:test:schemathesis`."
         )
 
-    log_dir = Path(tempfile.mkdtemp(prefix="schemathesis-server-"))
-    log_path = log_dir / "server.log"
-    url = f"http://127.0.0.1:{PORT}"
 
+@contextmanager
+def _uvicorn_process(log_path: Path) -> Iterator[subprocess.Popen[bytes]]:
+    """Run the real app under uvicorn, terminated on the way out.
+
+    The server's output goes to a file rather than ``subprocess.PIPE``: nothing
+    drains a pipe during the readiness poll, so once the app's startup logging
+    filled the 64 KiB pipe buffer the server would block mid-boot and never
+    bind — a hang that looks identical to a slow start. A file also means every
+    failure here can actually show what the server said.
+    """
     with log_path.open("wb") as log_file:
         proc = subprocess.Popen(
             [
@@ -231,52 +275,97 @@ def live_api_url(_seeded_startup_requirements: None) -> Iterator[str]:
             stdout=log_file,
             stderr=subprocess.STDOUT,
         )
-        deadline = time.monotonic() + BOOT_TIMEOUT
         try:
-            while time.monotonic() < deadline:
-                if proc.poll() is not None:
-                    raise RuntimeError(
-                        f"API server exited early (code {proc.returncode}):\n{_tail(log_path)}"
-                    )
-                try:
-                    if httpx.get(f"{url}/openapi.json", timeout=PROBE_TIMEOUT).status_code == 200:
-                        break
-                except httpx.HTTPError:
-                    pass
-                time.sleep(0.5)
-            else:
-                raise RuntimeError(
-                    f"API server did not become ready in {BOOT_TIMEOUT:.0f}s "
-                    f"(raise SCHEMA_FUZZ_BOOT_TIMEOUT if the host is simply slow):"
-                    f"\n{_tail(log_path)}"
-                )
-
-            # The bypass authenticates every request as DEV_USER; that user must
-            # exist in Mongo (dev router is idempotent). Retry with backoff —
-            # the server being up is already proven by the readiness poll above.
-            mint_error: Exception | None = None
-            for attempt in range(3):
-                try:
-                    mint = httpx.post(
-                        f"{url}/api/v1/dev/users", json={"email": DEV_USER}, timeout=30
-                    )
-                    mint.raise_for_status()
-                    break
-                except (httpx.HTTPError, httpx.TimeoutException) as exc:
-                    mint_error = exc
-                    time.sleep(2 * (attempt + 1))
-            else:
-                raise RuntimeError(
-                    f"could not mint dev user after 3 attempts: {mint_error}\n{_tail(log_path)}"
-                )
-            yield url
+            yield proc
         finally:
             proc.send_signal(signal.SIGTERM)
             try:
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 proc.kill()
-            shutil.rmtree(log_dir, ignore_errors=True)
+
+
+def _wait_until_serving(proc: subprocess.Popen[bytes], url: str, log_path: Path) -> None:
+    """Poll ``/openapi.json`` until the server answers, or explain why it never did."""
+    deadline = time.monotonic() + BOOT_TIMEOUT
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            raise RuntimeError(
+                f"API server exited early (code {proc.returncode}):\n{_tail(log_path)}"
+            )
+        try:
+            if httpx.get(f"{url}/openapi.json", timeout=PROBE_TIMEOUT).status_code == 200:
+                return
+        except httpx.HTTPError:
+            pass
+        time.sleep(0.5)
+    raise RuntimeError(
+        f"API server did not become ready in {BOOT_TIMEOUT:.0f}s "
+        f"(raise SCHEMA_FUZZ_BOOT_TIMEOUT if the host is simply slow):"
+        f"\n{_tail(log_path)}"
+    )
+
+
+def _mint_dev_user(url: str, log_path: Path) -> str:
+    """Create the user the dev-auth bypass authenticates every request as.
+
+    The bypass authenticates every request as DEV_USER; that user must exist in
+    Mongo (the dev router is idempotent). Retries with backoff — the server
+    being up is already proven by the readiness poll.
+    """
+    mint_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            mint = httpx.post(f"{url}/api/v1/dev/users", json={"email": DEV_USER}, timeout=30)
+            mint.raise_for_status()
+            return str(mint.json()["id"])
+        except (httpx.HTTPError, httpx.TimeoutException) as exc:
+            mint_error = exc
+            time.sleep(2 * (attempt + 1))
+    raise RuntimeError(f"could not mint dev user after 3 attempts: {mint_error}\n{_tail(log_path)}")
+
+
+@contextmanager
+def _pro_subscription(mongodb_url: str, redis_url: str, fuzz_user_id: str) -> Iterator[None]:
+    """Give the fuzz user a Pro plan for the session, then take it back.
+
+    The API is paid-only, so a free fuzz user would 402 on most of the scoped
+    operations and the gate would assert nothing.
+    """
+    subscription_client, subscription_id = _make_fuzz_user_pro(mongodb_url, redis_url, fuzz_user_id)
+    try:
+        yield
+    finally:
+        subscription_client[MONGO_DATABASE_NAME][
+            SubscriptionsRepository.collection_name
+        ].delete_one({"_id": subscription_id})
+        subscription_client.close()
+        redis_client = Redis.from_url(redis_url)
+        try:
+            redis_client.delete(f"{SUBSCRIPTION_PLAN_CACHE_PREFIX}{fuzz_user_id}")
+        finally:
+            redis_client.close()
+
+
+@pytest.fixture(scope="session")
+def live_api_url(
+    _seeded_startup_requirements: None, mongodb_url: str, redis_url: str
+) -> Iterator[str]:
+    """Boot the real API in a subprocess and wait until it serves /openapi.json."""
+    _fail_if_parallel()
+
+    log_dir = Path(tempfile.mkdtemp(prefix="schemathesis-server-"))
+    log_path = log_dir / "server.log"
+    url = f"http://127.0.0.1:{PORT}"
+
+    try:
+        with _uvicorn_process(log_path) as proc:
+            _wait_until_serving(proc, url, log_path)
+            fuzz_user_id = _mint_dev_user(url, log_path)
+            with _pro_subscription(mongodb_url, redis_url, fuzz_user_id):
+                yield url
+    finally:
+        shutil.rmtree(log_dir, ignore_errors=True)
 
 
 @pytest.fixture(scope="session")

@@ -176,6 +176,21 @@ export function getHttpStatus(error: unknown): number | undefined {
 }
 
 /**
+ * The API's error body, flattened. `AppError` puts its fields at the top level,
+ * `HTTPException` nests them under `detail`; callers should not care which.
+ */
+export function getErrorReason(error: unknown): Record<string, unknown> {
+  const data = (error as { response?: { data?: unknown } } | null)?.response
+    ?.data;
+  if (typeof data !== "object" || data === null) return {};
+  const body = data as Record<string, unknown>;
+  const detail = body.detail;
+  return typeof detail === "object" && detail !== null
+    ? (detail as Record<string, unknown>)
+    : body;
+}
+
+/**
  * Describe a thrown value with the two flat scalars every GAIA surface uses:
  * `error_type` (the exception's class/name) and `error` (its message).
  *

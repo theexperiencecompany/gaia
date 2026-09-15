@@ -15,6 +15,7 @@ downstream task, and a set inside one request's task never leaks into another's.
 """
 
 from contextvars import ContextVar
+from typing import cast
 
 from app.models.user_models import AuthenticatedUser
 
@@ -31,3 +32,28 @@ def set_authenticated_user(user: AuthenticatedUser | None) -> None:
 def get_authenticated_user() -> AuthenticatedUser | None:
     """The authenticated user for this request, or ``None`` on a public route."""
     return _authenticated_user.get()
+
+
+def resolve_caller(args: tuple[object, ...], kwargs: dict[str, object]) -> AuthenticatedUser | None:
+    """Resolve the calling user for a decorator wrapping an endpoint handler.
+
+    Tries the request-scoped auth context first (the normal HTTP path, immune to
+    per-endpoint parameter naming — see the module docstring). Falls back to an
+    explicit ``user`` kwarg, or the first positional dict carrying ``user_id``,
+    for direct (non-HTTP) invocation such as bots resolving their own user.
+    Returns ``None`` when no caller can be resolved at all — a genuinely public
+    route, or one a caller failed to authenticate.
+    """
+    user = get_authenticated_user()
+    if user:
+        return user
+
+    user = cast(AuthenticatedUser | None, kwargs.get("user"))
+    if user:
+        return user
+
+    for arg in args:
+        if isinstance(arg, dict) and "user_id" in arg:
+            return cast(AuthenticatedUser, arg)
+
+    return None

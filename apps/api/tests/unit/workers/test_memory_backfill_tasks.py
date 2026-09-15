@@ -27,9 +27,11 @@ from app.models.user_models import UserDocument
 from app.workers.tasks.memory_backfill_tasks import (
     _conversation_date,
     _conversation_to_messages,
+    _notify_memory_ready,
     backfill_active_users,
     backfill_user_memories,
 )
+from tests.helpers import captured_wide_event
 
 MODULE = "app.workers.tasks.memory_backfill_tasks"
 
@@ -327,3 +329,33 @@ class TestBackfillUserMemories:
                 await backfill_user_memories({}, USER_ID)
 
         mocks["mark"].assert_not_awaited()
+
+
+class TestNotifyMemoryReady:
+    async def test_notification_redirects_to_the_memory_settings_page(self) -> None:
+        create = AsyncMock()
+        with patch(f"{MODULE}.notification_service.create_notification", create):
+            await _notify_memory_ready(USER_ID)
+
+        (request,) = create.await_args.args
+        assert request.user_id == USER_ID
+        assert request.metadata == {"source": "memory_backfill"}
+        (action,) = request.content.actions
+        redirect = action.config.redirect
+        assert redirect.url == "/settings/memory"
+        assert redirect.open_in_new_tab is False
+        assert redirect.close_notification is True
+
+    async def test_a_failed_notification_is_warned_not_raised(self) -> None:
+        create = AsyncMock(side_effect=RuntimeError("notification service down"))
+        with patch(f"{MODULE}.notification_service.create_notification", create):
+            async with captured_wide_event() as event:
+                await _notify_memory_ready(USER_ID)
+
+        assert event["warnings"] == [
+            {
+                "msg": "memory_backfill.notification_failed",
+                "user_id": USER_ID,
+                "error": "notification service down",
+            }
+        ]

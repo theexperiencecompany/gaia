@@ -39,10 +39,8 @@ from app.models.conversation_models import (
     ConversationSearchResults,
     ConversationSummary,
     ConversationUpdate,
-    OnboardingProbe,
     _ConversationIdRow,
     _MessageProjectionRow,
-    _OnboardingProbeRow,
     _SourceRow,
     _SystemGeneratedRow,
 )
@@ -55,7 +53,6 @@ _SUMMARY_PROJECTION: dict[str, object] = {
     "description": 1,
     "starred": 1,
     "is_system_generated": 1,
-    "is_onboarding_conversation": 1,
     "system_purpose": 1,
     "is_unread": 1,
     "source": 1,
@@ -112,12 +109,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def count_non_onboarding(self, user_id: str) -> int:
         """Real (non-onboarding) conversations for a user — the chat-usage signal.
 
-        Excludes both the onboarding walkthrough conversation and onboarding
-        demo conversations (either marker true = not real usage)."""
+        Excludes onboarding demo conversations."""
         return await self._count(
             {
                 "user_id": user_id,
-                "is_onboarding_conversation": {"$ne": True},
                 "is_onboarding_demo": {"$ne": True},
             }
         )
@@ -193,18 +188,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     },
                 }
             },
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
-        )
-        return matched > 0
-
-    async def mark_onboarding_conversation(self, conversation_id: str, *, user_id: str) -> bool:
-        """Flag a freshly seeded conversation as the onboarding demo. Matches the
-        legacy write, which does not advance ``updatedAt``."""
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id},
-            {"$set": {"is_onboarding_conversation": True}},
             scope=user_id,
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},
@@ -471,20 +454,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             _ConversationIdRow,
         )
         return None if row is None else row.conversation_id
-
-    async def get_onboarding_probe(self, conversation_id: str) -> OnboardingProbe | None:
-        """The onboarding-demo flag and message count for the system-prompt gate."""
-        row = await self._find_one_projected(
-            {"conversation_id": conversation_id},
-            {"is_onboarding_conversation": 1, "messages": 1},
-            _OnboardingProbeRow,
-        )
-        if row is None:
-            return None
-        return OnboardingProbe(
-            is_onboarding_conversation=row.is_onboarding_conversation,
-            message_count=len(row.messages),
-        )
 
     async def find_workflow_conversation(
         self, user_id: str, workflow_id: str

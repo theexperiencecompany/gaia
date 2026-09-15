@@ -36,7 +36,7 @@ nx run api:test:coverage
 
 The agent system uses two compiled LangGraph graphs registered via `GraphManager` / `ProviderRegistry`:
 
-- **`comms_agent`** — thin front-door agent. Statically bound to a small fixed tool set (no semantic retrieval): `call_executor` / `cancel_executor`, the memory tools, and the open-web tools `web_search_tool` / `fetch_webpages` (comms runs quick outside-world lookups itself; everything touching the user's own data or accounts still delegates via `call_executor`). Handles user-facing chat (streaming or silent).
+- **`comms_agent`** — thin front-door agent. Statically bound to a small fixed tool set (no semantic retrieval): `call_executor` / `cancel_executor`, the memory tools, the two discovery tools (`find_integration`, `search_public_workflows`) that read catalogues, and the open-web tools `web_search_tool` / `fetch_webpages` (comms runs quick outside-world lookups itself; everything touching the user's own data or accounts still delegates via `call_executor`). Connecting an integration is delegated to the executor, which owns the connect card. Handles user-facing chat (streaming or silent).
 - **`executor_agent`** — full-tool agent. Receives tasks from `comms_agent` via the `call_executor` tool. Has access to the entire tool registry retrieved from ChromaDB.
 
 Both graphs are built in `app/agents/core/graph_builder/build_graph.py` and registered during startup via `build_graphs()`.
@@ -154,6 +154,47 @@ async def create_todo(
 - Use correct status codes (`201` create, `204` delete, `404` not found).
 - Decorator serializer options still apply, e.g. `response_model_exclude_none=True` when the payload must omit unset optional fields instead of sending nulls.
 - A handler that genuinely cannot return a model — streaming, file download, redirect, a deliberately non-JSON body — returns the `Response` subclass and declares **no** `response_model`; a wrong schema is worse than no schema. To return a different body under a non-200 status, annotate the union and set the status on an injected `Response` (see `endpoints/health.py`) rather than reaching for `JSONResponse`.
+
+## Entitlements — Every New Route Is Paywalled Until You Say Otherwise
+
+GAIA is paid-only, and the gate is a middleware, not a decorator:
+`app/api/v1/middleware/entitlement.py` 402s **every authenticated HTTP request**
+whose caller is not on PRO. A route is free only if its path is named in
+`app/api/v1/middleware/entitlement_allowlist.py`.
+
+This is deny-by-default on purpose — the opt-in `@require_subscription()`
+decorator it replaced meant every new endpoint shipped free until somebody
+noticed. The cost is that the rule is invisible from the route file, the router
+and the OpenAPI schema:
+
+- **Adding an endpoint that must stay free** (a provider callback, a probe, a
+  surface a lapsed user still needs) means adding its prefix to
+  `FREE_PATH_PREFIXES` **with the reason, in that file and nowhere else**. A
+  prefix is a plain `startswith`, so it frees the whole subtree — keep it as
+  specific as the surface actually needs.
+- **An inexplicable 402 in local dev** on a route you just wrote is this, not
+  your auth. `tests/unit/middleware/test_entitlement_coverage.py` sweeps the
+  whole route table and will tell you which paths escaped or over-freed.
+- **The 402 body is a fixed wire contract** — `{code, message, checkout_url,
+  discount_code}`, narrowed in `libs/shared/ts/src/types/subscription.ts` and
+  parsed by the web interceptor and the mobile SSE client. `checkout_url` is
+  always `null`: the gate never mints a Dodo session, because it runs on every
+  request and an unpaid shell load would mint a pile of single-use links nobody
+  asked for. Clients mint on user intent, from
+  `POST /api/v1/payments/checkout-session`. The bots do not read this body at
+  all — the bot chat turn renders its own paywall notice with its own link
+  (`endpoints/bot.py::_bot_upgrade_url`).
+- **A plan read that fails is a 503, not a 402.** "We could not read your plan"
+  is not "you are not subscribed", and answering 402 there showed every paying
+  user a paywall during a Redis blip.
+- **Routes outside the middleware's reach gate themselves**, imperatively via
+  `require_active_subscription(user_id, feature=...)`: the bot router (excluded
+  from `WorkOSAuthMiddleware`, so there is no `request.state.user`) and the
+  allowlisted-but-spending `/api/v1/onboarding` LLM routes. Workers have no
+  request at all — the reminder and workflow executors gate at their own choke
+  points with `is_subscription_active` plus one `confirm_subscription_active`
+  fresh read, and they **skip**; deactivating anything belongs to the billing
+  webhook.
 
 ## Analytics (PostHog)
 
@@ -521,7 +562,7 @@ Tier summary (full table in `tests/CLAUDE.md`):
 - `tests/stress/` / `tests/meta/` — race/retry battles, import-fence invariants (own targets).
 - `tests/composio/`, `tests/model_onboarding/` — live-credential, opt-in, excluded by default.
 
-Never run a raw full `pytest` locally — use the nx targets (`nx test api`, `nx run api:test:*`); they pin the dirs, markers, and xdist settings.
+Never run a raw full `pytest` locally, and never with xdist: the default `addopts` carries `-n 4`, each worker imports the whole app, and parallel workers exhaust a laptop's memory fast. For a targeted run use `mise test:one <file> [more files]` from the repo root, or `mise run //:test:one …` from inside `apps/api` (pytest with `-p no:xdist` and `pytest.ini`'s real `addopts`; never `-o addopts=""`, which drops `--strict-markers` and lets an unregistered marker pass locally and fail collection in CI), one file at a time, files back to back in a single command; suites belong to CI or the nx targets (`nx test api`, `nx run api:test:*`), which pin the dirs, markers and xdist settings for the home-box runners.
 
 **Unmark the patch-away.** A caller mocking a service means that service's logic has never run — the mock is a permanent blind spot. When you see an endpoint test mocking a service it barely touches, or a service test mocking a repo call whose logic matters, prefer un-mocking: let the real component run against mocked seams one layer down. Same rule as "never mock the thing under test."
 

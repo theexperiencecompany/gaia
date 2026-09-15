@@ -120,6 +120,7 @@ out
 postman/
 
 .agents/plans/
+.agents/prod-convos/
 .agents/recording/
 .agents/sim/
 
@@ -189,6 +190,10 @@ apps/api/scripts/sidecar_benchmark/results/
 .mutation-*/
 mutants/
 verify-logs/
+# The mutation shard's replay artifact, written beside shard.log in the
+# workspace root (shard.log itself is covered by the *.log rule above). The
+# runner's checkout persists between jobs, so an untracked one would linger.
+shard.verdict.json
 
 # Piolium security-scanner artifacts (CodeQL DBs, run transcripts)
 piolium/

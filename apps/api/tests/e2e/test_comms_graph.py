@@ -1,11 +1,13 @@
 """The comms tier as a running graph.
 
 Comms is the front door and is deliberately the *narrowest* agent in the
-product: three things it can do (delegate to the executor, cancel that
-delegation, remember and recall), no tool retrieval at all, and every reply
+product: delegate to the executor, cancel that delegation, remember and recall,
+and the read-only discovery three (find an integration, search public workflow
+templates, draw the connect card). No tool retrieval at all, and every reply
 routed straight to the user. Its value comes from what it cannot do — a comms
 agent that could reach the executor's tools would act on the user's accounts
 without any of the delegation, approval, or streaming machinery in between.
+Nothing on this surface writes to the user's data.
 
 ``test_chat_stream.py`` covers what comms puts on the wire. This covers the
 graph: which tools exist, what happens to a call for one that does not, the
@@ -47,7 +49,18 @@ pytestmark = pytest.mark.e2e
 
 class TestCommsToolSurface:
     @pytest.mark.parametrize(
-        "tool", ["call_executor", "cancel_executor", "add_memory", "search_memory"]
+        "tool",
+        [
+            "call_executor",
+            "cancel_executor",
+            "add_memory",
+            "search_memory",
+            # The discovery pair. They read catalogues and never touch the
+            # user's data, so they widen the surface without making comms a
+            # worker tier.
+            "find_integration",
+            "search_public_workflows",
+        ],
     )
     async def test_the_comms_tools_are_bound_from_the_start(self, tool: str):
         """Comms retrieves nothing, so anything it can do it must already have."""
@@ -159,38 +172,6 @@ class TestReplyShape:
 
         assert run.final_text().replace(NEW_MESSAGE_BREAKER, "")
         assert "Empty response" in run.final_text()
-
-
-class TestStyleGuard:
-    """The comms tier scores its own draft and rewrites it once.
-
-    Proved here, through the compiled graph, rather than only against the
-    middleware in isolation: the guard sits inside ``wrap_model_call``, so
-    whether it actually runs depends on the middleware stack the graph builder
-    assembles and on the bridge that chains those wrappers. A unit test of the
-    middleware passes either way.
-    """
-
-    async def test_a_draft_carrying_ai_isms_is_regenerated_before_it_is_delivered(self):
-        dirty = "it's not a feature, it's a switching cost — want me to draft that?"
-        clean = "that's a switching cost. i can draft it."
-
-        async with comms_graph([AIMessage(content=dirty), AIMessage(content=clean)]) as graph:
-            run = await run_graph(graph, "why does it matter?")
-
-        assert run.final_text() == f"{clean}{NEW_MESSAGE_BREAKER}"
-        assert dirty not in run.final_text()
-
-    async def test_a_clean_draft_is_delivered_on_the_first_call(self):
-        """The guard must cost an already-clean reply nothing. The scripted
-        model cycles its responses, so a second call would deliver the WRONG
-        text here — which is exactly what makes this assertion falsifiable."""
-        async with comms_graph(
-            [AIMessage(content="that's a switching cost."), AIMessage(content="second call")]
-        ) as graph:
-            run = await run_graph(graph, "why does it matter?")
-
-        assert run.final_text() == f"that's a switching cost.{NEW_MESSAGE_BREAKER}"
 
 
 class TestEndOfTurnHooks:

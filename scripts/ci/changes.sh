@@ -2,6 +2,9 @@
 # changes.sh — what did this PR actually change? The one place a lane asks.
 #
 # Subcommands:
+#   base                     The branch this PR is REALLY based on. Resolved
+#                            once per run and handed to every lane as
+#                            $GAIA_PR_BASE. See the contract below.
 #   files <ext> [<ext> ...]  The changed files for a lane to scope to, filtered
 #                            to those extensions. See the contract below.
 #   py-source                Like `files py`, but drops the paths the Python
@@ -11,13 +14,23 @@
 #                            depends on? Writes build=true|false to
 #                            $GITHUB_OUTPUT.
 #
+# `base` — WHY THIS EXISTS. For a PR in a native GitHub stack, the
+# `pull_request` event payload carries the STACK'S TRUNK as base.ref, not the
+# PR's parent: measured 2026-09-11 on #1161/#1202/#1175, where `gh api pulls/N
+# .base.ref` returned the real parent for each while `github.base_ref` inside
+# every job said `master`, from the morning `gh stack link` onward. Every lane
+# here scopes to that value, so all three PRs linted, type-checked and mutated
+# the whole stack: #1175's plan mutated 119 modules for a one-module diff. The
+# API is the only source that tells the truth, so the run asks it ONCE and
+# hands the answer down as $GAIA_PR_BASE.
+#
 # `files` modes (signalled by a sentinel on the first line of stdout):
 #
-#   PUSH / FULL-SCAN MODE  ($GITHUB_BASE_REF is empty — i.e. not a PR)
+#   PUSH / FULL-SCAN MODE  (no base ref at all — i.e. not a PR)
 #     Prints the single line "__FULL__" and exits 0. Callers MUST treat this
 #     as "scan the whole repo with the lane's existing full command".
 #
-#   PR MODE  ($GITHUB_BASE_REF is set — pull_request event)
+#   PR MODE  (a base ref is set — pull_request event)
 #     Prints one path per line: files changed vs the PR base (merge-base diff),
 #     filtered to the requested extensions and to files that still exist on
 #     HEAD (added / copied / modified / renamed; deletions excluded). When the
@@ -41,13 +54,53 @@
 # `fetch-depth: 0`. The script fetches the base ref defensively as well.
 #
 # Env contract:
-#   files          GITHUB_BASE_REF, GITHUB_ACTIONS, NX_BASE (local fallback).
+#   base           PR_NUMBER (github.event.pull_request.number), GITHUB_REPOSITORY,
+#                  GITHUB_TOKEN (read-only `contents`/`pull-requests` is enough),
+#                  GITHUB_BASE_REF (the fallback), GITHUB_OUTPUT (optional).
+#   files          GAIA_PR_BASE, GITHUB_BASE_REF, GITHUB_ACTIONS, NX_BASE (local).
 #   py-source      as `files`; also reads pyproject.toml from the repo root.
-#   docker-inputs  BASE_BRANCH (github.base_ref), GITHUB_OUTPUT.
+#   docker-inputs  BASE_BRANCH (the RESOLVED base, not github.base_ref), GITHUB_OUTPUT.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
+
+# The branch this PR is really based on, printed bare (no `origin/` prefix) and
+# written to $GITHUB_OUTPUT as base_ref when that is set.
+#
+# API first, payload second, and the two are NOT interchangeable — see the note
+# at the top of this file. Empty output is a valid answer: it means "no PR", and
+# `files` turns that into the full-scan sentinel exactly as before.
+cmd_base() {
+
+  local resolved=""
+
+  if [[ -n "${PR_NUMBER:-}" ]]; then
+    # A failure here is announced, never swallowed. The fallback is today's
+    # (wrong, for a stacked PR) behaviour, so a silent one would restore the
+    # bug invisibly; failing the run outright on a GitHub API blip would red
+    # every PR instead, which is worse than a loud over-scoped lane.
+    if ! resolved="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .base.ref 2>&1)"; then
+      echo "::warning::changes.sh base: could not read the PR's base from the API (${resolved}) — falling back to the event payload, which names the STACK TRUNK for a stacked PR and will over-scope every lane"
+      resolved=""
+    fi
+  fi
+
+  if [[ -z "$resolved" ]]; then
+    resolved="${GITHUB_BASE_REF:-}"
+  fi
+
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    echo "base_ref=${resolved}" >> "$GITHUB_OUTPUT"
+  fi
+  printf '%s\n' "$resolved"
+}
+
+# The base every lane scopes to: the resolved one when the run has it, the raw
+# payload otherwise (a local run, or a lane that predates the resolver).
+_base_ref() {
+  printf '%s' "${GAIA_PR_BASE:-${GITHUB_BASE_REF:-}}"
+}
 
 cmd_files() {
 
@@ -60,20 +113,26 @@ cmd_files() {
   # skipping" — a vacuous green precisely when master needs scanning. Local runs
   # keep the fallback because there a diff against origin/master is exactly what
   # a pre-commit / local lane invocation wants.
-  if [[ -z "${GITHUB_BASE_REF:-}" ]]; then
+  #
+  # BASE, not GITHUB_BASE_REF: on a stacked PR the payload names the stack's
+  # trunk and only $GAIA_PR_BASE (resolved from the API by `base`) names the
+  # parent. Lanes that never see the variable keep the old behaviour exactly.
+  local BASE
+  BASE="$(_base_ref)"
+  if [[ -z "$BASE" ]]; then
     if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
       printf '%s\n' "$FULL_SENTINEL"
       exit 0
     fi
     # Fall back to NX_BASE (set by nrwl/nx-set-shas) or origin/master for local runs
     if [[ -n "${NX_BASE:-}" ]]; then
-      GITHUB_BASE_REF="${NX_BASE#origin/}"
+      BASE="${NX_BASE#origin/}"
     else
-      GITHUB_BASE_REF="master"
+      BASE="master"
     fi
   fi
   # Still empty (should not happen) → full scan
-  if [[ -z "${GITHUB_BASE_REF:-}" ]]; then
+  if [[ -z "$BASE" ]]; then
     printf '%s\n' "$FULL_SENTINEL"
     exit 0
   fi
@@ -110,7 +169,7 @@ cmd_files() {
   # `cancelled` lane and fails the quality gate). If the fetch dies, the diff
   # below falls back to whatever base ref is already local.
   timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
-    fetch --no-tags origin "$GITHUB_BASE_REF" 2>/dev/null || true
+    fetch --no-tags origin "$BASE" 2>/dev/null || true
 
   # `...HEAD` diffs against the merge-base of the base ref and HEAD — the same set
   # of files GitHub shows as "Files changed" in the PR. --diff-filter=ACMR drops
@@ -121,7 +180,7 @@ cmd_files() {
   # The existence guard is a full `if` on purpose: `[[ -f ]] && printf` leaves
   # the loop (and via pipefail, the whole script) with exit 1 when the LAST
   # path fails the test — turning one dead symlink into a hard lane failure.
-  git diff --name-only --diff-filter=ACMR "origin/${GITHUB_BASE_REF}...HEAD" \
+  git diff --name-only --diff-filter=ACMR "origin/${BASE}...HEAD" \
     | { grep -E "$ext_regex" || true; } \
     | while IFS= read -r f; do
         if [[ -f "$f" ]]; then
@@ -216,13 +275,14 @@ cmd_docker_inputs() {
 }
 
 usage() {
-  sed -n '2,13p' "$0" >&2
+  sed -n '2,16p' "$0" >&2
 }
 
 main() {
   local sub="${1:-}"
   shift || true
   case "$sub" in
+    base)          cmd_base "$@" ;;
     files)         cmd_files "$@" ;;
     py-source)     cmd_py_source "$@" ;;
     docker-inputs) cmd_docker_inputs "$@" ;;

@@ -64,7 +64,6 @@ class ConversationDocument(UserScopedDocument):
     is_unread: bool | None = False
     source: ConversationSource | None = None
     is_onboarding_demo: bool = False
-    is_onboarding_conversation: bool | None = None
     starred: bool | None = None
     messages: list[MessageModel] = Field(default_factory=list)
     # Conversation-level artifact registry: one entry per agent-written file,
@@ -100,7 +99,6 @@ class ConversationSummary(BaseModel):
     description: str | None = None
     starred: bool | None = None
     is_system_generated: bool | None = None
-    is_onboarding_conversation: bool | None = None
     system_purpose: SystemPurpose | None = None
     is_unread: bool | None = None
     source: ConversationSource | None = None
@@ -170,28 +168,6 @@ class _MessageProjectionRow(BaseModel):
     messages: list[MessageModel] = Field(default_factory=list)
 
 
-class _OnboardingProbeRow(BaseModel):
-    """Projection for the onboarding-demo prompt gate: the flag plus message list."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    is_onboarding_conversation: bool | None = None
-    messages: list[MessageModel] = Field(default_factory=list)
-
-    @field_validator("messages", mode="before")
-    @classmethod
-    def _normalize(cls, value: object) -> object:
-        return _normalize_messages(value)
-
-
-class OnboardingProbe(BaseModel):
-    """The onboarding-demo gate result: whether this is the demo conversation and
-    how many messages it holds."""
-
-    is_onboarding_conversation: bool | None = None
-    message_count: int = 0
-
-
 # ---------------------------------------------------------------------------
 # Conversation endpoint responses
 # ---------------------------------------------------------------------------
@@ -246,7 +222,6 @@ class ConversationSyncRow(BaseModel):
     description: str
     starred: bool | None = None
     is_system_generated: bool | None = None
-    is_onboarding_conversation: bool | None = None
     system_purpose: SystemPurpose | None = None
     is_unread: bool | None = None
     createdAt: str | None = None

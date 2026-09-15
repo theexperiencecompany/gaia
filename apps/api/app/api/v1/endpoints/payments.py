@@ -12,13 +12,15 @@ from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
 from app.models.payment_models import (
+    CreateCheckoutSessionRequest,
     CreateSubscriptionRequest,
     CreateSubscriptionResponse,
     PaymentVerificationResponse,
     PlanResponse,
     UserSubscriptionStatus,
+    VerifyPaymentRequest,
 )
-from app.models.webhook_models import DodoWebhookAckResponse
+from app.models.webhook_models import DodoWebhookAckResponse, WebhookProcessingStatus
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
@@ -76,9 +78,15 @@ async def create_subscription_endpoint(
         )
         capture_context_event(
             AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-            {"quantity": subscription_data.quantity},
+            {
+                "quantity": subscription_data.quantity,
+                "source": subscription_data.source,
+                "surface": "redirect",
+            },
         )
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         log.error(
             f"{LogTag.PAYMENT} Error creating subscription",
@@ -88,6 +96,47 @@ async def create_subscription_endpoint(
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to create subscription") from e
+
+
+@router.post("/checkout-session")
+@limiter.limit("5/minute")
+async def create_checkout_session_endpoint(
+    request: Request,  # noqa: ARG001 -- framework contract
+    payload: CreateCheckoutSessionRequest,
+    user_id: str = Depends(get_user_id),
+) -> CreateSubscriptionResponse:
+    """Mint the Dodo checkout session the embedded overlay opens.
+
+    Authenticated but deliberately not gated behind Pro — a user without a
+    subscription calling this is the whole point of the paid-only flow.
+    """
+    log.set(
+        user={"id": user_id},
+        payment={
+            "operation": "create_checkout_session",
+            "billing_cycle": payload.billing_cycle,
+            "source": payload.source,
+        },
+    )
+    pro_checkout = await payment_service.create_pro_checkout(
+        user_id, payload.billing_cycle, payload.source
+    )
+    log.set_ns("payment", session_id=pro_checkout.checkout.subscription_id)
+    log.audit(
+        "overlay checkout session created",
+        actor=user_id,
+        resource=pro_checkout.plan.dodo_product_id,
+        provider="dodo",
+    )
+    capture_context_event(
+        AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
+        {
+            "billing_cycle": payload.billing_cycle,
+            "source": payload.source,
+            "surface": "overlay",
+        },
+    )
+    return pro_checkout.checkout
 
 
 @router.post("/subscriptions/cancel", response_model=UserSubscriptionStatus)
@@ -132,6 +181,7 @@ async def cancel_subscription_endpoint(
 @limiter.limit("20/minute")
 async def verify_payment_endpoint(
     request: Request,  # noqa: ARG001 -- framework contract
+    body: VerifyPaymentRequest = VerifyPaymentRequest(),
     user_id: str = Depends(get_user_id),
 ) -> PaymentVerificationResponse:
     """Verify if user's payment has been completed."""
@@ -140,7 +190,9 @@ async def verify_payment_endpoint(
         payment={"operation": "verify_payment"},
     )
     try:
-        result = await payment_service.verify_payment_completion(user_id)
+        result = await payment_service.verify_payment_completion(
+            user_id, subscription_id=body.subscription_id
+        )
         log.audit("payment verification completed", actor=user_id, provider="dodo")
         return result
     except Exception as e:
@@ -206,9 +258,9 @@ async def handle_dodo_webhook(
             log.warning(f"{LogTag.PAYMENT} Invalid webhook signature", webhook_id=webhook_id)
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
-        # Raw provider payload: process_webhook validates it into DodoWebhookEvent and
-        # deliberately answers 200/"failed" for shapes it can't parse, so Dodo's retry
-        # policy stays driven by the processing result rather than a request rejection.
+        # Raw provider payload: process_webhook validates it into DodoWebhookEvent
+        # and answers with a processing result rather than raising, so the reply
+        # below is driven by what GAIA managed to do with the event.
         webhook_data: dict[str, Any] = json.loads(payload)
 
         log.set_ns("payment", event_type=webhook_data.get("type", "unknown"))
@@ -222,11 +274,39 @@ async def handle_dodo_webhook(
             event_type=result.event_type,
             processing_status=result.status,
         )
-        log.info(
-            f"{LogTag.PAYMENT} Webhook processed",
-            event_type=result.event_type,
-            processing_status=result.status,
-        )
+        if result.status == WebhookProcessingStatus.FAILED:
+            # The state change this event carried never landed, and the claim
+            # has been handed back. Acknowledging would tell Dodo the delivery
+            # is done and it would never resend — for subscription.active that
+            # is a user who paid and is never activated. Ask for the retry, and
+            # say so at the level the outcome deserves: a "webhook processed"
+            # line at info for a delivery that was refused is how a failure
+            # reads as a success on every dashboard that counts them.
+            log.error(
+                f"{LogTag.PAYMENT} Webhook not acknowledged; asking Dodo to redeliver",
+                event_type=result.event_type,
+                processing_status=result.status,
+                failure_reason=result.message,
+            )
+            raise HTTPException(status_code=503, detail=result.message)
+
+        if result.status == WebhookProcessingStatus.ABANDONED:
+            # Acknowledged, because a retry cannot land it — but at the level
+            # that gets it looked at: this is a paid user GAIA could not
+            # activate, or a billing change it could not record.
+            log.error(
+                f"{LogTag.PAYMENT} Webhook abandoned; the delivery cannot be completed by a retry",
+                event_type=result.event_type,
+                processing_status=result.status,
+                failure_reason=result.message,
+            )
+        else:
+            log.info(
+                f"{LogTag.PAYMENT} Webhook processed",
+                event_type=result.event_type,
+                processing_status=result.status,
+            )
+
         return DodoWebhookAckResponse(
             event_type=result.event_type,
             processing_status=result.status,

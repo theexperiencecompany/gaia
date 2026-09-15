@@ -173,7 +173,16 @@ cmd_start() {
     deadline=$((SECONDS + 180))
     until curl -sf "${URL}/health" > /dev/null 2>&1; do
       if ! kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-        tail -30 "$LOG"; ci_die "embedding sidecar exited during startup"
+        # The process is this shell's child, so `wait` still has its status.
+        # A kernel SIGKILL (137: the OOM killer or a hygiene hook) writes
+        # nothing to the log — the status is the only fact it leaves behind.
+        status=0; wait "$(cat "$PIDFILE")" || status=$?
+        if (( status > 128 )); then
+          how="killed by SIG$(kill -l "$((status - 128))" 2>/dev/null || echo "NAL $((status - 128))"), exit status ${status}"
+        else
+          how="exit status ${status}"
+        fi
+        tail -30 "$LOG"; ci_die "embedding sidecar exited during startup (${how})"
       fi
       if (( SECONDS >= deadline )); then
         tail -30 "$LOG"; ci_die "embedding sidecar not healthy after 180s"

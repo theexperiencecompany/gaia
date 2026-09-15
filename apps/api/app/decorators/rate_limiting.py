@@ -23,10 +23,9 @@ from app.config.rate_limits import (
     get_reset_time,
 )
 from app.constants.log_tags import LogTag
-from app.core.request_context import get_authenticated_user
+from app.core.request_context import resolve_caller
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
-from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.cost_budget import get_cost, is_daily_budget_exhausted
 from app.services.limit_upsell import LimitHitOrigin, current_limit_origin, schedule_limit_upsell
@@ -356,18 +355,10 @@ def tiered_rate_limit(
             # parameters. Matching on a kwarg named `user` — as this used to do —
             # meant an endpoint that named it `current_user`/`user_id`/`_user`
             # silently skipped rate limiting entirely.
-            user = get_authenticated_user()
-
+            user = resolve_caller(args, kwargs)
             if not user:
-                # Direct invocation outside the HTTP middleware stack (tests,
-                # internal callers) can still pass the auth dict explicitly.
-                user = cast(AuthenticatedUser | None, kwargs.get("user"))
-                for arg in args:
-                    if isinstance(arg, dict) and "user_id" in arg:
-                        user = cast(AuthenticatedUser, arg)
-                if not user:
-                    # Genuinely unauthenticated — a public route has nobody to bill.
-                    return await func(*args, **kwargs)
+                # Genuinely unauthenticated — a public route has nobody to bill.
+                return await func(*args, **kwargs)
 
             user_id = user.get("user_id")
             if not user_id:

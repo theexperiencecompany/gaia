@@ -45,7 +45,6 @@ from app.agents.middleware.runtime_adapter import (
     create_model_request,
     create_tool_call_request,
 )
-from app.agents.middleware.style_guard import StyleGuardMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
@@ -58,7 +57,6 @@ __all__ = [
     "LoopGuardMiddleware",
     "MediaDescriptionMiddleware",
     "MiddlewareExecutor",
-    "StyleGuardMiddleware",
     "SubagentMiddleware",
     "WorkspaceArchivingSummarizationMiddleware",
     "WorkspaceCompactionMiddleware",

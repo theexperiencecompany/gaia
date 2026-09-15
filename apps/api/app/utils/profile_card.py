@@ -173,8 +173,8 @@ async def generate_holo_card_content(
     if user is None:
         user = await user_repository.get(user_id)
     name = (user.name if user else None) or "User"
-    onboarding = (user.onboarding if user else None) or {}
-    profession = (onboarding.get("preferences") or {}).get("profession") or ""
+    preferences = user.onboarding.preferences if user and user.onboarding else None
+    profession = (preferences.profession if preferences else None) or ""
 
     if not context_summary.strip():
         default_bio = get_random_bio_for_profession(name, profession or "other")

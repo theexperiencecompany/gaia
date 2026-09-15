@@ -10,8 +10,16 @@ name: Quality Checks
 # (build.yml). `workflow_dispatch` additionally exposes the runner probe.
 
 on:
+  # No `branches:` filter — same reason as code-quality.yml, where the full note
+  # lives: the key matches the PR's BASE, so master-only left every stacked PR
+  # ungated while still showing a green tick.
+  #
+  # `edited` for the same reason, and again the note lives in code-quality.yml:
+  # a retarget fires no other event, and these lanes scope to `github.base_ref`
+  # too (`nx affected`, `changes.sh docker-inputs`, the test-impact map). The
+  # `select-runner` guard below drops the title/body edits.
   pull_request:
-    branches: [master]
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [master]
   workflow_dispatch:
@@ -56,6 +64,12 @@ jobs:
   # ── Runner selection (always runs on GH — no Tailscale needed) ─────────
   select-runner:
     name: Select runner
+    # Every job here is downstream of this one, so this condition is the
+    # workflow-level `if:` GitHub does not offer: an `edited` event that did
+    # not move the base changed no code, and `github.event.changes.base` is
+    # present only on a retarget (absent it is null, which casts to '' here).
+    # See the fuller note on the same guard in code-quality.yml.
+    if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -143,6 +157,10 @@ jobs:
       has_typescript: ${{ steps.affected.outputs.has_typescript }}
       python_projects: ${{ steps.affected.outputs.python_projects }}
       typescript_projects: ${{ steps.affected.outputs.typescript_projects }}
+      # The branch every lane below diffs against. Resolved here, once — see the
+      # note at the top of scripts/ci/changes.sh for why the event payload
+      # cannot be trusted for it on a stacked PR.
+      base_ref: ${{ steps.base.outputs.base_ref }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -154,6 +172,14 @@ jobs:
           # an already-full workspace is a ~1 s delta.
           fetch-depth: 0
           persist-credentials: false
+      # The PR's REAL base, from the API — the event payload names the stack's
+      # trunk for a PR in a native GitHub stack.
+      - name: Resolve the PR's base branch
+        id: base
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bash scripts/ci/changes.sh base
       - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
         with:
           main-branch-name: master
@@ -178,6 +204,14 @@ jobs:
           echo "has_typescript=$([[ -n "$TS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "Affected Python: $PY"
           echo "Affected TS: $TS"
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: detect
 
   # ── Probe the actual execution capability on the chosen runner ───────────
   # This proves fallback works: the job lands wherever select-runner decided,
@@ -217,6 +251,11 @@ jobs:
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_typescript == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -257,6 +296,14 @@ jobs:
           # so build.time still measures only the build. No-op off the box.
           bash scripts/ci/runner.sh with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream 2>&1 | tail -n 60' 2>&1 | tee "$RUNNER_TEMP/build.time"
           echo "Build: OK (parallel=$NX_PARALLEL)"
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: build
 
   # ── Test Python — four slices on four runner instances ───────────────────
   # One 16-worker run measured 183s; the box runs eleven `gaia-home` runner
@@ -271,6 +318,11 @@ jobs:
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_python == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 22
     permissions:
       contents: read
@@ -354,7 +406,10 @@ jobs:
           # The slice's paths and its ignores TOGETHER say what it runs; without
           # the ignores unit-b re-ran every unit-a file the diff touched.
           SLICE_IGNORE: ${{ matrix.slice.ignore }}
-          BASE_REF: ${{ github.base_ref }}
+          # The resolved base, not github.base_ref: the payload names the
+          # stack's trunk on a stacked PR, so selection would pick up every test
+          # the PRs below this one touched.
+          BASE_REF: ${{ needs.detect.outputs.base_ref }}
         run: python3 scripts/ci/test_impact.py select
       # --cov-fail-under=0: pyproject's fail_under=80 is the COMBINED gate,
       # enforced by the coverage job below; one slice alone cannot reach it.
@@ -447,6 +502,15 @@ jobs:
       - name: Stop the embedding sidecar
         if: always()
         run: bash scripts/ci/embedding-sidecar.sh stop
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: test-python-${{ matrix.slice.name }}
+          lane: test-python/${{ matrix.slice.name }}
 
   # ── Coverage gate — its own job, off the test lanes' critical path ────────
   #
@@ -463,6 +527,11 @@ jobs:
     # nothing would be entitled to read.
     if: needs.detect.outputs.has_python == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 8
     permissions:
       contents: read
@@ -497,13 +566,30 @@ jobs:
           name: coverage-xml
           path: apps/api/coverage.xml
           retention-days: 7
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: coverage
 
   # ── Test TypeScript — Nx parallel scales with cores ----------------------
   test-typescript:
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_typescript == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
-    timeout-minutes: 12
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    # 15, not 12, because the step below queues on the CPU governor: the acquire
+    # fails open only after GAIA_CPU_SLOTS_TIMEOUT (600s), so a job cap has to
+    # cover that wait PLUS the work, or a lane that was merely patient dies on
+    # the clock. Same shape as `build` above, which is 15 for the same reason.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -533,12 +619,30 @@ jobs:
         # writes output incrementally as tasks produce it, so nothing large is ever
         # pending at exit. It also drops the ::group:: wrapping, which matches
         # .github/CLAUDE.md: test steps leave failure output un-grouped.
+        #
+        # with-slots, like the `build` step: this lane sizes its own parallelism
+        # from nproc and then lands on the same physical cores as four mutation
+        # shards and four test-python slices, which is what cpu-slots.sh exists
+        # for. Unenrolled, it was the lane that paid — a jsdom render that takes
+        # 137 ms on an idle machine blew vitest's 5 s timeout on the box and
+        # failed the whole lane, then passed unchanged on the next run. A test
+        # timeout is a real failure signal; it must mean the code is slow, not
+        # that the neighbours were loud.
         shell: bash
         env:
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
+          NX_PARALLEL: ${{ steps.par.outputs.nx }}
         run: |
-          /usr/bin/time -v pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel=${{ steps.par.outputs.nx }} --output-style=stream 2>&1 | tee "$RUNNER_TEMP/tstest.time"
-          echo "TS tests: OK (parallel=${{ steps.par.outputs.nx }})"
+          bash scripts/ci/runner.sh with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream' 2>&1 | tee "$RUNNER_TEMP/tstest.time"
+          echo "TS tests: OK (parallel=$NX_PARALLEL)"
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: test-typescript
 
   # ── Docker image build — proves the api image still builds, and times it ──
   # On the home box this uses the persistent shared `gaia-ci` builder created
@@ -551,6 +655,11 @@ jobs:
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_python == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 40
     permissions:
       contents: read
@@ -572,7 +681,10 @@ jobs:
         id: inputs
         if: github.event_name == 'pull_request'
         env:
-          BASE_BRANCH: ${{ github.base_ref }}
+          # The resolved base, not github.base_ref — which on a stacked PR names
+          # the stack's trunk and rebuilds the image for inputs a PR below this
+          # one changed.
+          BASE_BRANCH: ${{ needs.detect.outputs.base_ref }}
         run: bash scripts/ci/changes.sh docker-inputs
       - name: Playwright pin matches uv.lock
         if: steps.inputs.outputs.build != 'false'
@@ -607,6 +719,14 @@ jobs:
       - name: Stop the persistent builder when idle (self-hosted)
         if: always() && runner.environment == 'self-hosted'
         run: pgrep -f 'docker buildx build' >/dev/null || docker buildx stop gaia-ci
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: docker-image
 
   # --- Test: harness tooling (runner-native, every run) ---------------------
   # Not gated on the affected lists. `tools/` belongs to no Nx project, so a
@@ -619,7 +739,17 @@ jobs:
     needs: [select-runner, detect, build, test-typescript]
     if: ${{ !cancelled() && needs.select-runner.result == 'success' }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
-    timeout-minutes: 10
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    # 15, measured: the lane went from 167 to 425 tests in one day (the verdict
+    # contract, mutation report/replay, ci:remote and workflow-invariant tests),
+    # and on the shared box its pytest alone takes ~5.5 min where a laptop takes
+    # ~1.8 — run 34586500580 was cancelled at 10:31 with nothing hung. The cap
+    # is for a hang, and a hang here is minutes, not a doubling of honest work.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -638,10 +768,18 @@ jobs:
         run: |
           trap 'echo "::error::repro: uv run --no-project --with pytest"' ERR
           echo "::group::pytest output"
-          uv run --no-project --with pytest --with defusedxml pytest tools/lints tools/llm-stub scripts/ci -q
+          uv run --no-project --with pytest --with defusedxml pytest tools/lints tools/llm-stub scripts/ci -q --durations=10
           echo "::endgroup::"
           echo "### Harness tooling tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Harness tooling tests: OK (tools/lints + tools/llm-stub + scripts/ci)"
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: test-harness-tools
 
   # --- Changelog sync check (always) --------------------------------------
   # GitHub-hosted on purpose: it pushes a branch and opens a PR, not compute.
@@ -649,7 +787,12 @@ jobs:
     needs: [detect, build, test-typescript]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    timeout-minutes: 8
     permissions:
       contents: write
       pull-requests: write
@@ -706,6 +849,11 @@ jobs:
     needs: [select-runner, detect, build, test-typescript]
     if: ${{ !cancelled() && needs.select-runner.result == 'success' }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -760,6 +908,14 @@ jobs:
           # keep advisory until that PR merges, then flip to exit-code:1.
           exit-code: "0"
           ignore-unfixed: false
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: trivy-scan
 
   # --- Regression-proof: changed tests must FAIL on base -------------------
   # FastAPI's lesson: run the PR's changed test files against origin/master
@@ -771,6 +927,11 @@ jobs:
     needs: [select-runner, detect, build, test-typescript]
     if: ${{ !cancelled() && needs.select-runner.result == 'success' && needs.detect.outputs.has_python == 'true' && github.event_name == 'pull_request' }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # The base every scoped step in this job diffs against. Job-level because a
+    # workflow-level `env:` cannot read `needs`, and every step here that calls
+    # changes.sh, nx affected or pytest.sh must agree on one answer.
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -781,9 +942,14 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/setup-python-test-env
+      # Against THIS PR's base, not master. Against master, a stacked PR is
+      # charged with every regression test the PRs below it added: this run
+      # reported "7 new regression tests" on #1175, which added none — and a
+      # test that must fail on master but passes on the parent (because the
+      # parent already contains its fix) fails the lane for being correct.
       - name: Changed test files must fail on base
         working-directory: apps/api
-        run: bash ../../scripts/ci/pytest.sh regression-proof origin/master
+        run: bash ../../scripts/ci/pytest.sh regression-proof "origin/${GAIA_PR_BASE:-master}"
       # setup-python-test-env brings up services + the embedding sidecar; on the
       # shared box that namespace must be released like every other lane does.
       - name: Release the test services
@@ -792,11 +958,25 @@ jobs:
       - name: Stop the embedding sidecar
         if: always()
         run: bash scripts/ci/embedding-sidecar.sh stop
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: regression-proof
 
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
     name: quality-gate
-    if: always()
+    # `always()`, with NO edit guard. Skipping alongside the DAG looked honest
+    # and was not: a skipped required check counts as PASSING, so a title edit
+    # after a RED run published a green verdict for the same head SHA. The
+    # verdict step below still must not run for that edit — with every lane
+    # skipped it would print "quality-gate: PASSED" having run nothing — so the
+    # two cases are split across two steps instead of skipping the job.
+    if: ${{ always() }}
     needs:
       - select-runner
       - detect
@@ -817,35 +997,56 @@ jobs:
       # static checks + dead-code live in code-quality.yml (its own gate)
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    permissions: {}
+    permissions:
+      contents: read
+      actions: read # read this head SHA's previous runs (mirror step below)
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Every gated job uploads `verdict-<job>` through the
+      # ./.github/actions/upload-verdict composite; merge-multiple lands them
+      # as the one verify-logs/verdicts tree `consolidate` reads.
+      - if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: verdict-*
+          # runner.temp, not the checkout: that is where every lane wrote and
+          # uploaded from, and it is per-job and wiped, so nothing a previous
+          # job left on a persistent self-hosted workspace can reach the gate.
+          path: ${{ runner.temp }}/verdicts
+          merge-multiple: true
       - name: Verdict
-        run: |
-          echo "Runner: ${{ needs.select-runner.outputs.runner }} (${{ needs.select-runner.outputs.runner_label }}, self_hosted=${{ needs.select-runner.outputs.is_self_hosted }})"
-          # select-runner is in the loop below: if it fails, every compute lane
-          # is skipped, and skipped counts as passing — the verdict would be
-          # green by accident.
-          printf "  %-16s %s\n" "select-runner:" "${{ needs.select-runner.result }}"
-          printf "  %-16s %s\n" "detect:" "${{ needs.detect.result }}"
-          printf "  %-16s %s\n" "probe:" "${{ needs.probe.result }}"
-          printf "  %-16s %s\n" "build:" "${{ needs.build.result }}"
-          printf "  %-16s %s\n" "test-python:" "${{ needs.test-python.result }}"
-          printf "  %-16s %s\n" "test-typescript:" "${{ needs.test-typescript.result }}"
-          printf "  %-16s %s\n" "coverage:" "${{ needs.coverage.result }}"
-          printf "  %-18s %s\n" "docker-image:" "${{ needs.docker-image.result }}"
-          printf "  %-18s %s\n" "test-harness-tools:" "${{ needs.test-harness-tools.result }}"
-          printf "  %-18s %s\n" "trivy-scan:" "${{ needs.trivy-scan.result }}"
-          printf "  %-18s %s\n" "regression-proof:" "${{ needs.regression-proof.result }}"
-          for r in "${{ needs.select-runner.result }}" "${{ needs.detect.result }}" "${{ needs.probe.result }}" "${{ needs.build.result }}" \
-                   "${{ needs.test-python.result }}" "${{ needs.coverage.result }}" "${{ needs.test-typescript.result }}" \
-                   "${{ needs.docker-image.result }}" "${{ needs.test-harness-tools.result }}" \
-                   "${{ needs.trivy-scan.result }}" "${{ needs.regression-proof.result }}"; do
-            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
-              echo "::error::Required job $r"
-              exit 1
-            fi
-          done
-          echo "quality-gate: PASSED"
+        if: ${{ github.event.action != 'edited' || github.event.changes.base != '' }}
+        env:
+          # ONE list: every lane the gate needs, each carrying its job result.
+          # consolidate needs both halves — the result is what tells a
+          # legitimately SKIPPED lane apart from one that ran and reported
+          # nothing, and that second case is the drift this contract exists to
+          # catch. select-runner is in the list on purpose: if it fails, every
+          # compute lane skips, and skipped counts as passing, so the gate
+          # would go green by accident. Results go through env rather than
+          # inline expansion, like every other gate here.
+          #
+          # `@result-only` marks the two lanes that CANNOT upload a verdict:
+          # the composite is a path in the checked-out tree, `probe` never
+          # checks out, and `select-runner` checks out the DEFAULT BRANCH on
+          # purpose (it handles a PAT and must not run PR-authored code, so a
+          # composite this branch adds is not in its tree). Both are still
+          # enforced on their job result — declared, not dropped.
+          EXPECT: >-
+            select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},build=${{ needs.build.result }},test-python=${{ needs.test-python.result }},coverage=${{ needs.coverage.result }},test-typescript=${{ needs.test-typescript.result }},docker-image=${{ needs.docker-image.result }},test-harness-tools=${{ needs.test-harness-tools.result }},trivy-scan=${{ needs.trivy-scan.result }},regression-proof=${{ needs.regression-proof.result }}
+        run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT"
+      # The other half of the `always()` above: a title or body edit ran no
+      # lane, so there is nothing to consolidate — but this check must still
+      # conclude, and it must conclude what the head SHA already earned. The
+      # head sha, not github.sha: a pull_request run's github.sha is the merge
+      # commit, while the check runs branch protection reads hang off the head.
+      - name: Repeat this commit's last completed gate verdict
+        if: ${{ github.event.action == 'edited' && github.event.changes.base == '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/verdict.py mirror-previous-gate --repo "$GITHUB_REPOSITORY" --sha "${{ github.event.pull_request.head.sha }}" --workflow main.yml --job quality-gate --run-id "$GITHUB_RUN_ID"
 
   # --- Docker phase, split so the long part runs parallel to the gate -------
   # build-images starts right after detect (master only) and builds/publishes

@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.db.mongodb.indexes import create_playbook_indexes
+from app.db.mongodb.indexes import create_payment_indexes, create_playbook_indexes
 from app.db.mongodb.mongodb import MongoDB, init_mongodb
 
 # ---------------------------------------------------------------------------
@@ -415,6 +415,36 @@ class TestCreatePlaybookIndexes:
         collection.create_index.assert_awaited_once_with(
             [("workflow_id", 1), ("user_id", 1)], unique=True
         )
+
+
+class TestCreatePaymentIndexes:
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_checkout_sessions_indexes_back_the_webhook_race_lookups(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        """A checkout session is looked up by its provider session_id (which must be
+        unique, so a replayed webhook cannot create a second row) and listed per user
+        newest-first."""
+        collections: dict[str, MagicMock] = {}
+
+        def collection_for(name: str) -> MagicMock:
+            if name not in collections:
+                collection = MagicMock()
+                collection.create_index = AsyncMock()
+                collections[name] = collection
+            return collections[name]
+
+        mock_get_collection.side_effect = collection_for
+
+        await create_payment_indexes()
+
+        assert "checkout_sessions" in collections
+        checkout_calls = collections["checkout_sessions"].create_index.await_args_list
+        assert [call.args for call in checkout_calls] == [
+            ("session_id",),
+            ([("user_id", 1), ("created_at", -1)],),
+        ]
+        assert [call.kwargs for call in checkout_calls] == [{"unique": True}, {}]
 
 
 class TestCreateAllIndexes:

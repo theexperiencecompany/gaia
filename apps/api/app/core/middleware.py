@@ -12,6 +12,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from workos import AsyncWorkOSClient
 
 from app.api.v1.middleware import (
+    EntitlementMiddleware,
     LoggingMiddleware,
     PostHogRequestContextMiddleware,
     ProfilingMiddleware,
@@ -81,6 +82,16 @@ def configure_middleware(app: FastAPI) -> None:
     # outside Logging, the cancellation killed the emit and the slowest
     # requests were the only ones with no canonical event.
     app.add_middleware(RequestTimeoutMiddleware)
+
+    # Paid-only gate — INSIDE CORS, and that is the whole point of its position.
+    # It runs late enough that WorkOSAuthMiddleware has already put the caller on
+    # request.state (which rides scope["state"], so it survives every layer in
+    # between), and early enough that no handler can spend money first. It must
+    # stay inside CORS: a 402 it returns short-circuits everything further out,
+    # so with the gate outside CORS the paywall response would carry no
+    # Access-Control-Allow-Origin and the browser would refuse to read the
+    # checkout link out of it — the paywall modal would never open.
+    app.add_middleware(EntitlementMiddleware)
 
     # CORS (inside Logging so preflight rejections are visible in Loki)
     app.add_middleware(

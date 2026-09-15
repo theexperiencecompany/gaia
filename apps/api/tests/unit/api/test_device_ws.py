@@ -42,6 +42,8 @@ async def _run_handler(ws, relay, enqueue, receive=None):
             ws_module, "verify_device_token", return_value={"device_id": "d1", "user_id": "u1"}
         ),
         patch.object(ws_module, "get_active_device", AsyncMock(return_value=object())),
+        # The connect-time paywall is covered by its own tests; these pin ordering for a Pro user.
+        patch.object(ws_module, "is_paid", AsyncMock(return_value=True)),
         patch.object(ws_module, "mark_online", AsyncMock()),
         patch.object(ws_module, "mark_offline", AsyncMock()),
         patch.object(ws_module, "device_connection_manager", _manager()),

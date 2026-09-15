@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionResult,
@@ -23,6 +24,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
+from app.services.delivery.chat_channel import ChatChannel
 from app.utils.notification.orchestrator import NotificationOrchestrator
 
 # ---------------------------------------------------------------------------
@@ -43,7 +45,13 @@ def _make_request(
         source=NotificationSourceEnum.AI_TODO_ADDED,
         type=NotificationType.INFO,
         priority=2,
-        channels=channels or [ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
+        # ``[]`` means "names no channel" (the orchestrator picks); ``None`` means
+        # the caller did not care, and gets one explicit in-app channel.
+        channels=(
+            channels
+            if channels is not None
+            else [ChannelConfig(channel_type="inapp", enabled=True, priority=1)]
+        ),
         content=NotificationContent(
             title="Test Notification",
             body="This is a test body",
@@ -361,15 +369,13 @@ class TestDeliverNotification:
 # ---------------------------------------------------------------------------
 
 
-class TestAutoInjectedChannels:
-    """Tests for auto-injection of channels when none are explicitly requested."""
+class TestDefaultChannels:
+    """A notification that names no channel goes in-app and to the ONE chat
+    platform the user prefers; never to every linked platform."""
 
-    async def test_auto_injects_channels_when_none_explicit(self) -> None:
-        """When request.channels is empty, auto-injected channels are used."""
-        storage = AsyncMock()
+    @staticmethod
+    def _orch_with_every_adapter_succeeding(storage: AsyncMock) -> NotificationOrchestrator:
         orch = NotificationOrchestrator(storage=storage)
-
-        # Make all adapters return success and can_handle=True
         for key in list(orch.channel_adapters.keys()):
             orch.channel_adapters[key] = _mock_channel_adapter(
                 channel_type=key,
@@ -381,120 +387,81 @@ class TestAutoInjectedChannels:
                     delivered_at=datetime.now(UTC),
                 ),
             )
+        return orch
 
-        request = _make_request(channels=[])  # No explicit channels
-        record = _make_record(request=request)
+    async def test_in_app_plus_the_preferred_platform_only(self) -> None:
+        storage = AsyncMock()
+        orch = self._orch_with_every_adapter_succeeding(storage)
+        record = _make_record(request=_make_request(channels=[]))
 
         with (
             patch("app.utils.notification.orchestrator.websocket_manager") as ws,
-            patch.object(
-                orch,
-                "_get_channel_prefs",
-                new_callable=AsyncMock,
-                return_value={"telegram": True, "discord": True},
-            ),
-        ):
-            ws.broadcast_to_user = AsyncMock()
-            await orch._deliver_notification(record)
-
-        # All three auto-injected channels should have been attempted
-        updates = storage.update_notification.call_args[0][1]
-        channel_types = [ch["channel_type"] for ch in updates["channels"]]
-        assert "inapp" in channel_types
-
-    async def test_disabled_preference_skips_channel(self) -> None:
-        """When a user has disabled telegram, it is not auto-injected."""
-        storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
-
-        for key in list(orch.channel_adapters.keys()):
-            orch.channel_adapters[key] = _mock_channel_adapter(
-                channel_type=key,
-                can_handle=True,
-                transform_return={"text": "test"},
-                deliver_return=ChannelDeliveryStatus(
-                    channel_type=key,
-                    status=NotificationStatus.DELIVERED,
-                    delivered_at=datetime.now(UTC),
+            patch(
+                "app.utils.notification.orchestrator.resolve_chat_channel",
+                AsyncMock(
+                    return_value=ChatChannel(
+                        source=ConversationSource.TELEGRAM, platform_user_id="tg-1"
+                    )
                 ),
-            )
+            ) as resolve,
+        ):
+            ws.broadcast_to_user = AsyncMock()
+            await orch._deliver_notification(record)
 
-        request = _make_request(channels=[])
-        record = _make_record(request=request)
+        resolve.assert_awaited_once_with(record.user_id)
+        updates = storage.update_notification.call_args[0][1]
+        assert sorted(ch["channel_type"] for ch in updates["channels"]) == ["inapp", "telegram"]
+
+    async def test_no_usable_platform_means_in_app_only(self) -> None:
+        storage = AsyncMock()
+        orch = self._orch_with_every_adapter_succeeding(storage)
+        record = _make_record(request=_make_request(channels=[]))
 
         with (
             patch("app.utils.notification.orchestrator.websocket_manager") as ws,
-            patch.object(
-                orch,
-                "_get_channel_prefs",
-                new_callable=AsyncMock,
-                return_value={"telegram": False, "discord": True},
+            patch(
+                "app.utils.notification.orchestrator.resolve_chat_channel",
+                AsyncMock(return_value=None),
             ),
         ):
             ws.broadcast_to_user = AsyncMock()
             await orch._deliver_notification(record)
 
         updates = storage.update_notification.call_args[0][1]
-        channel_types = [ch["channel_type"] for ch in updates["channels"]]
-        assert "telegram" not in channel_types
+        assert [ch["channel_type"] for ch in updates["channels"]] == ["inapp"]
 
-    async def test_no_auto_injection_when_explicit_channels_present(self) -> None:
-        """When explicit channels are requested, auto-injection is skipped."""
+    async def test_a_failed_lookup_is_in_app_only_and_on_the_wide_event(self) -> None:
+        orch = NotificationOrchestrator(storage=MagicMock())
+        with (
+            patch(
+                "app.utils.notification.orchestrator.resolve_chat_channel",
+                AsyncMock(side_effect=RuntimeError("db down")),
+            ),
+            patch("app.utils.notification.orchestrator.log") as log,
+        ):
+            assert await orch._default_channels("user-1") == ["inapp"]
+
+        log.warning.assert_called_once()
+        assert log.warning.call_args.kwargs["error_type"] == "RuntimeError"
+
+    async def test_explicit_channels_are_delivered_as_named_and_nothing_is_resolved(self) -> None:
         storage = AsyncMock()
         orch = NotificationOrchestrator(storage=storage)
-
         orch.channel_adapters["inapp"] = _mock_channel_adapter(
             channel_type="inapp", can_handle=True
         )
+        record = _make_record(request=_make_request(channels=[ChannelConfig(channel_type="inapp")]))
 
-        # Explicit channel list → no auto-injection
-        request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
-        record = _make_record(request=request)
-
-        with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
+        with (
+            patch("app.utils.notification.orchestrator.websocket_manager") as ws,
+            patch(
+                "app.utils.notification.orchestrator.resolve_chat_channel", AsyncMock()
+            ) as resolve,
+        ):
             ws.broadcast_to_user = AsyncMock()
-            # _get_channel_prefs should never be called
-            with patch.object(orch, "_get_channel_prefs", new_callable=AsyncMock) as prefs:
-                await orch._deliver_notification(record)
-                prefs.assert_not_awaited()
+            await orch._deliver_notification(record)
 
-
-# ---------------------------------------------------------------------------
-# _get_channel_prefs
-# ---------------------------------------------------------------------------
-
-
-class TestGetChannelPrefs:
-    """Tests for _get_channel_prefs error handling."""
-
-    async def test_returns_prefs_from_db(self) -> None:
-        """Happy path: delegates to fetch_channel_preferences."""
-        orch = NotificationOrchestrator(storage=MagicMock())
-        with patch(
-            "app.utils.notification.orchestrator.fetch_channel_preferences",
-            new_callable=AsyncMock,
-            return_value={"telegram": True, "discord": False},
-        ):
-            prefs = await orch._get_channel_prefs("user-1")
-            assert prefs == {"telegram": True, "discord": False}
-
-    async def test_returns_all_enabled_on_error(self) -> None:
-        """On DB failure, all channels default to enabled (DEFAULT_CHANNEL_PREFERENCES).
-
-        An unreadable preference document means the preference is *unknown*, not
-        opted-out.  Erring toward delivery (one stray message during a rare outage)
-        is safer than silently dropping notifications the user asked for.
-        """
-        orch = NotificationOrchestrator(storage=MagicMock())
-        with patch(
-            "app.utils.notification.orchestrator.fetch_channel_preferences",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("db down"),
-        ):
-            prefs = await orch._get_channel_prefs("user-1")
-            # Every key should be True (DEFAULT_CHANNEL_PREFERENCES — all enabled)
-            for val in prefs.values():
-                assert val is True
+        resolve.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

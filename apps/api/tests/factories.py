@@ -1,6 +1,7 @@
 """Test data factories for GAIA API tests."""
 
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 
@@ -103,3 +104,20 @@ def make_integration(provider: str, **overrides) -> dict:
     }
     defaults.update(overrides)
     return defaults
+
+
+def make_integration_config(
+    integration_id: str = "gmail",
+    name: str = "Gmail",
+    managed_by: str = "composio",
+    associated_triggers: list | None = None,
+    metadata_config: object | None = None,
+):
+    """Build a lightweight mock integration config object."""
+    config = MagicMock()
+    config.id = integration_id
+    config.name = name
+    config.managed_by = managed_by
+    config.associated_triggers = associated_triggers or []
+    config.metadata_config = metadata_config
+    return config

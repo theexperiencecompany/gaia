@@ -3,8 +3,10 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.constants.notifications import NOTIFICATION_CHANNEL_TYPES
 from app.models.notification.notification_models import (
     NotificationContentView,
+    NotificationListFilters,
     NotificationSourceEnum,
     NotificationStatus,
     NotificationType,
@@ -76,11 +78,29 @@ class TestGetNotifications:
 
         from app.agents.tools.notification_tool import get_notifications
 
-        result = await get_notifications.coroutine(config=_make_config())
+        result = await get_notifications.coroutine(
+            config=_make_config(),
+            status=NotificationStatus.READ,
+            notification_type=NotificationType.WARNING,
+            source=NotificationSourceEnum.AI_REMINDER,
+            limit=7,
+            offset=3,
+        )
 
         assert result["notifications"] == [n.model_dump(mode="json") for n in notifications]
         assert "error" not in result
-        mock_service.get_user_notifications.assert_awaited_once()
+        # Every filter the model passed reaches the service; a dropped one
+        # silently widens what the user is shown.
+        mock_service.get_user_notifications.assert_awaited_once_with(
+            FAKE_USER_ID,
+            filters=NotificationListFilters(
+                status=NotificationStatus.READ,
+                notification_type=NotificationType.WARNING,
+                source=NotificationSourceEnum.AI_REMINDER,
+                limit=7,
+                offset=3,
+            ),
+        )
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_user_id_from_config", return_value="")
@@ -210,10 +230,15 @@ class TestSearchNotifications:
         result = await search_notifications.coroutine(
             config=_make_config(),
             query="meeting",
+            status=NotificationStatus.READ,
         )
 
         assert len(result["notifications"]) == 1
         assert result["notifications"][0]["content"]["title"] == "Meeting reminder"
+        # The search scans one page of a hundred under the caller's status filter.
+        mock_service.get_user_notifications.assert_awaited_once_with(
+            FAKE_USER_ID, filters=NotificationListFilters(status=NotificationStatus.READ, limit=100)
+        )
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.notification_service")
@@ -493,3 +518,52 @@ class TestMarkNotificationsRead:
 
         assert result["success"] is False
         assert "service down" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# Tests: send_notification channel validation
+# ---------------------------------------------------------------------------
+
+
+class TestSendNotificationChannels:
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
+    async def test_no_channels_is_refused_and_lists_every_channel(
+        self,
+        mock_get_user: MagicMock,
+        mock_service: MagicMock,
+    ) -> None:
+        from app.agents.tools.notification_tool import send_notification
+
+        result = await send_notification.coroutine(
+            config=_make_config(), message="Build done", title="Build", channels=[]
+        )
+
+        assert result["success"] is False
+        assert result["error"].startswith(
+            f"channels is required: specify which channel(s) to notify "
+            f"({', '.join(NOTIFICATION_CHANNEL_TYPES)})."
+        )
+        mock_service.create_notification.assert_not_called()
+
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
+    async def test_unknown_channels_are_named_and_valid_ones_listed(
+        self,
+        mock_get_user: MagicMock,
+        mock_service: MagicMock,
+    ) -> None:
+        from app.agents.tools.notification_tool import send_notification
+
+        result = await send_notification.coroutine(
+            config=_make_config(),
+            message="Build done",
+            title="Build",
+            channels=["telegram", "pager", "imessage", "fax"],
+        )
+
+        assert result["success"] is False
+        unknown, valid = result["error"].split(" Valid channels: ")
+        assert unknown == "Unknown channel(s): pager, fax."
+        assert valid == f"{', '.join(NOTIFICATION_CHANNEL_TYPES)}."
+        mock_service.create_notification.assert_not_called()

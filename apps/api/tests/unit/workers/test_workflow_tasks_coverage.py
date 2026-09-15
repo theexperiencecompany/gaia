@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.user_models import UserDocument
 from app.services.limit_upsell import LimitHitOrigin, current_limit_origin
 from app.workers.tasks.workflow_tasks import _resolve_workflow_user, execute_workflow_by_id
 
@@ -36,10 +37,8 @@ def _workflow(user_id: str = "user-1", occurrence_count: int = 2) -> MagicMock:
     return wf
 
 
-def _user(completed: bool) -> MagicMock:
-    user = MagicMock()
-    user.onboarding = {"completed": completed}
-    return user
+def _user(completed: bool) -> UserDocument:
+    return UserDocument.model_validate({"onboarding": {"completed": completed}})
 
 
 async def _run_task(
@@ -57,6 +56,9 @@ async def _run_task(
     with (
         patch(f"{MODULE}.workflow_scheduler", scheduler),
         patch(f"{MODULE}.user_repository.get", user_get),
+        # The paid-only gate is defaulted to active by the workers-dir conftest's
+        # autouse _subscription_active_by_default fixture — these guard tests
+        # are about onboarding/budget, not that one.
         patch(
             f"{MODULE}.enforce_daily_cost_budget",
             new_callable=AsyncMock,

@@ -99,7 +99,7 @@ CLAUSES: tuple[Clause, ...] = (
     Clause(
         name="delegate_every_real_ask",
         source="comms",
-        starts_at="1. DELEGATE EVERY REAL ASK (except open-web lookups):",
+        starts_at="1. DELEGATE EVERY REAL ASK (except open-web lookups and catalogue reads):",
         ends_before="2. YOU ARE THE USER'S ONLY WINDOW:",
         governs="when a turn must go through call_executor instead of being answered directly",
         depends_on=(
@@ -168,7 +168,7 @@ CLAUSES: tuple[Clause, ...] = (
         name="no_invented_capabilities",
         source="comms",
         starts_at="11. NO INVENTED CAPABILITIES:",
-        ends_before="## Voice (Human WhatsApp Mode)",
+        ends_before="12. CONNECT MEANS A LINK:",
         governs="how a request outside GAIA's real abilities is declined",
         depends_on=("data/quality/refusals.yaml", "data/comms/honesty.yaml"),
     ),

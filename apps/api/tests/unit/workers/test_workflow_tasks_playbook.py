@@ -36,6 +36,7 @@ from app.models.playbook_models import (
     PlaybookRunStatus,
     ToolStep,
 )
+from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
     PlaybookDiscard,
@@ -70,8 +71,7 @@ MODULE = "app.workers.tasks.workflow_tasks"
 
 @pytest.fixture(autouse=True)
 def _onboarded_user():
-    user = MagicMock()
-    user.onboarding = {"completed": True}
+    user = UserDocument.model_validate({"onboarding": {"completed": True}})
     with patch(f"{MODULE}.user_repository.get", AsyncMock(return_value=user)):
         yield
 

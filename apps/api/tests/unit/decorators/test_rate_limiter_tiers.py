@@ -251,7 +251,7 @@ class TestRateLimitHitAnalytics:
         subscription = MagicMock(plan_type=PlanType.PRO)
         with (
             patch(
-                "app.decorators.rate_limiting.get_authenticated_user",
+                "app.core.request_context.get_authenticated_user",
                 return_value={"user_id": "user-1"},
             ),
             patch(
@@ -285,7 +285,7 @@ class TestRateLimitHitAnalytics:
         subscription = MagicMock(plan_type=PlanType.FREE)
         with (
             patch(
-                "app.decorators.rate_limiting.get_authenticated_user",
+                "app.core.request_context.get_authenticated_user",
                 return_value={"user_id": "user-1"},
             ),
             patch(

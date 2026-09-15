@@ -111,6 +111,22 @@ export interface AuthStatus {
   user_id?: string;
 }
 
+/**
+ * What `POST /bot/redeem-link-code` answers (`RedeemLinkCodeResponse` in
+ * `apps/api/app/models/bot_models.py`, which must change with this).
+ */
+export interface RedeemedLinkCode {
+  /** Whether the platform account is now linked. */
+  linked: boolean;
+  /**
+   * Whether GAIA's first contact is on its way on the outbound queue. When
+   * false the bot owes the user `firstContact` — nothing retries that publish.
+   */
+  delivered: boolean;
+  /** Ordered bubbles to send when `delivered` is false; empty otherwise. */
+  firstContact: string[];
+}
+
 export interface BotWorkflow {
   id: string;
   name: string;

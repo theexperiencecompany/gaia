@@ -15,12 +15,12 @@ lane without grepping the workflow first.
 | The service containers a suite talks to | `test-services.sh` | `up`, `prepare`, `reset`, `down`, `janitor` |
 | The embedding sidecar | `embedding-sidecar.sh` | `start`, `stop` |
 | Running the Python suite | `pytest.sh` | `slice`, `flake-gate`, `regression-proof` |
-| Is the suite strong enough | `mutation.sh` | `matrix`, `plan`, `shard`, `module`, `local` |
+| Is the suite strong enough | `mutation.sh` | `matrix`, `plan`, `shard`, `module`, `local`, `replay` |
 | Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch` |
 | What this PR changed | `changes.sh` | `files`, `py-source`, `docker-inputs` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `playwright-pin`, `alert-rule-tools`, `evlog` |
 | Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots` |
-| Turning a run's output into a verdict | `report.py` | `regression-proof-select`, `regression-proof-verdict`, `annotations`, `step-outcomes` |
+| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `step-outcomes`, `mirror-previous-gate` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
 | Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify` |
@@ -34,13 +34,30 @@ convention), `cpu-slots.sh` (the host CPU governor, below),
 `image-repos.sh` (the GHCR repo per image group), `explicit-file-list.mjs` (the
 `CHANGED_FILES` contract), `bots-facts.mjs` + `evlog-map-bots.mjs` (the bots
 observability scanner behind `checks.mjs evlog-map-bots`) and
-`mutation_matrix.py` (the AST detector behind `mutation.sh matrix`).
+`mutation_matrix.py` (the AST detector behind `mutation.sh matrix`),
+`mutation_gap.py` (the executable-line detector behind the no-covering-test
+verdict) and `mutation_report.py` (the grouped human report, the shard's
+`shard.verdict.json` replay artifact, and the `verdict.py emit` call that
+reports each mutated module to the gate — `mutation.sh replay` is the engine it
+drives).
 
-The last two live in `lib/` rather than inline because they are large bodies
-with their own tests and a second consumer: inlining the 1000-line bots scanner
+The mutation lane produces TWO artifacts on purpose. `shard.verdict.json` sits
+beside `shard.log` and carries every survivor with its mutant id, resolved line
+and full diff — the only thing `replay` can reproduce a survivor from, and
+deliberately NOT under `verify-logs/verdicts/`, because `verdict.py consolidate`
+reads every JSON in that tree as a lane verdict and indexes `doc["lane"]`: a
+foreign shape there does not degrade, it crashes the gate. The lane verdicts
+themselves are written only by `verdict.py emit`, one per module, lane
+`mutation/<module path>`.
+
+The bots scanner and the three `mutation_*.py` modules live in `lib/` rather
+than inline because they are large bodies with their own tests and a second
+consumer: inlining the 1000-line bots scanner
 would push `checks.mjs` past the 1200-line hard cap `checks.mjs file-sizes`
-itself enforces, and `mutation_matrix.py` is imported directly by
-`scripts/test/mutation-sweep.sh` and by `tests/test_mutation_matrix.py`. A
+itself enforces, `mutation_matrix.py` is imported directly by
+`scripts/test/mutation-sweep.sh` and by `tests/test_mutation_matrix.py`, and
+`mutation_report.py` is read back by `mutation.sh replay` long after the run
+that wrote it. A
 `lib/` module is never an entrypoint — every one of them is reached through its
 concept's script.
 
@@ -117,10 +134,140 @@ checkout and is sourced like `log.sh`; no `setup.sh` re-run is needed on the box
 - The log convention, via `lib/log.sh`: raw tool output inside
   `ci_group`/`ci_endgroup`, and the LAST line a one-line verdict (`ci_ok`).
   Test steps are the exception — a traceback must be readable uncollapsed.
+- A GATED lane says that same last line through the verdict contract instead:
+  `ci_verdict` / `ci_verdict_die`, which are one-line wrappers over
+  `verdict.py emit`. See "The verdict contract" below.
+
+## The verdict contract
+
+`verdict.py` was `report.py`: same concept, renamed when it grew the two
+subcommands that make the concept enforceable. It is the ONLY producer of a
+lane's verdict, and every gated lane goes through it.
+
+The measured problem: a lane's verdict was the last ~100 lines of a 20k-190k
+line log, which is unreadable until the whole run completes. Whether a lane
+emitted an `::error file=,line=` annotation at all was per-lane folklore —
+`python-static` did, `test-python` and `regression-proof` did not, so a red
+test slice showed nothing on the PR's Files tab. And the gate printed
+`failure` for a lane that had merely run out of clock, sending readers to hunt
+a finding nobody had written. Triaging one red lane cost a dozen commands.
+
+`verdict.py emit` writes all of it from one call — the JSON, the annotations,
+the step-summary block, the one-line human verdict — so a lane cannot ship
+three quarters of a verdict:
+
+```json
+{"lane": "test-python/unit-a", "status": "pass|fail|skip|timed_out|error",
+ "summary": "<one line a human reads first>",
+ "findings": [{"file": "<repo-relative>", "line": 1, "message": "…", "detail": "…"}],
+ "advice": ["<actionable sentence>"]}
+```
+
+Files land in `<dir>/<lane>.json`, where `<dir>` is `$GAIA_VERDICT_DIR` if set,
+else `$RUNNER_TEMP/verdicts` on a runner, else `verify-logs/verdicts` in a
+checkout (gitignored). **Never the checkout on CI**, and that is not a
+preference: a self-hosted workspace persists between jobs (`clean:` is false
+there), so verdicts left in the tree are uploaded by the NEXT job to land on
+that runner — stale lanes from another PR reaching a gate. A job also uploads a
+DIRECTORY, so anything else running in it that writes a verdict rides along:
+run 34586506166's gate table carried `mutation/app/does_not_exist.py`, a
+fixture path from an end-to-end test that `test-harness-tools` had just run.
+`RUNNER_TEMP` is per-job and GitHub wipes it, which fixes the first by
+construction; `verdict.py check-ownership`, which the composite runs BEFORE the
+upload, fixes the second by failing the step with `::error file=` at the stray
+file. A verdict belongs to a job when its lane is the job's `family` (default:
+its `lane`) or sits under `<family>/` — the mutation shards pass
+`family: mutation`, since mutation.sh writes per MODULE rather than per shard.
+
+**A script that needs that path reads `verdict.py dir`; it never re-derives it.**
+A bash `${GAIA_VERDICT_DIR:-$REPO_ROOT/verify-logs/verdicts}` looks equivalent
+and is not — it has no `RUNNER_TEMP` rung, so on a runner it names the checkout
+while the composite uploads from the runner's temp dir, and every verdict
+written through it misses the gate without a single error.
+
+A lane id may name a sub-unit — `test-python/unit-a`, `mutation/<module>` — and
+the slash is a real directory, so one matrix's shards write side by side.
+
+Every job in a `quality-gate` `needs:` list ends with the
+`./.github/actions/upload-verdict` composite under `if: always()`. It uploads
+`verdict-<job>`, and fills in a bare status-derived verdict for a lane that has
+not adopted the contract yet (`--only-if-missing`, which matches by lane id
+across the whole tree rather than by file name, so a lane that DID report keeps
+its own findings even when it named the file differently). Adopting a lane is
+therefore a strict improvement, not a prerequisite. The gate downloads every
+`verdict-*` and runs `verdict.py consolidate` with
+`--expect "<job>[@<family>]=<job result>,…"` covering exactly its `needs:` list.
+
+Two jobs CANNOT report, and say so: the composite is a path in the checked-out
+tree, so `probe` (no checkout at all) and `select-runner` (checks out the
+DEFAULT BRANCH on purpose — it handles a PAT and must not run PR-authored code,
+so a composite this branch adds is not in its tree) are declared
+`<job>@result-only=…`. They are still enforced on their job result; they just
+have no artifact to wait for. Declaring is the point — silence from an
+UNDECLARED lane stays a failure. The same constraint is why a composite must
+never read `matrix`, `needs`, `strategy` or `job`: it has none of those
+contexts, and the runner rejects the whole action at parse time on every job
+that uses it. Anything matrix-dependent is an input the caller fills. Both
+rules are enforced by `scripts/ci/tests/test_composite_actions.py`, which reads
+every `.github/actions/*/action.yml` — including expressions inside an input's
+`description`, which are template-parsed exactly like a step's and are how this
+first shipped broken.
+
+A lane may report as a FAMILY of sub-units — `test-python` as one verdict per
+slice (`test-python/unit-a`), `test-mutation` as one per mutated MODULE
+(`mutation/<module>`, plus `mutation/shard-<n>`) — and the family is satisfied
+by its members, because how many members exist is decided at runtime by the
+matrix or by `mutation.sh plan`. Where the job name and the family differ, the
+`--expect` entry says so: `test-mutation@mutation=${{ … }}`. A family with NO
+members is still `NO VERDICT`, reported under the job name.
+
+Satisfied by its members means ALL of them where the planner knows how many:
+`*<n>` carries that count into the entry
+(`test-mutation@mutation*${{ needs.test-mutation-plan.outputs.count }}`), and a
+member is a DIRECT child of the family — `mutation/shard-3`, not the many
+`mutation/<module>` lanes that shard writes. Without it a shard killed before
+its `if: always()` upload (the job cap, a superseded run) is spoken for by the
+shard beside it, and the modules it was carrying go unmutated behind a green
+gate. For the same reason the job RESULT is cross-checked against the verdicts
+rather than dropped once any of them turn up: a lane keeps running after it
+reports — releasing services, stopping the sidecar, uploading — and
+`emit --only-if-missing` stands down on a lane that already reported, so a step
+that reds the job AFTER the verdict is written leaves no other trace.
+
+Two rules make that enforceable rather than decorative:
+
+- **A lane that reports NOTHING is a failure.** `NO VERDICT` is how the gate
+  catches a lane that stopped running — which otherwise looks exactly like a
+  lane with no failures. `scripts/ci/tests/test_workflow_verdicts.py` is the
+  other half: it fails if any gated job loses its upload step, or if `--expect`
+  drifts from `needs`.
+- **The job result travels with the lane name.** It is the only way to tell the
+  two silences apart: a `skipped` lane (the `changes` job proved its language
+  untouched) runs no steps and CANNOT write a verdict, while a lane that ran
+  and wrote nothing has lost its reporting. Conflating them either reds every
+  TS-only PR or hides the bug the contract exists to catch.
+
+**The gate job itself may never be skipped.** Branch protection counts a
+skipped required check as PASSING, so the one event that runs no lanes — a
+title or body edit, which the DAG's `github.event.changes.base` guard drops —
+would otherwise republish the head SHA as green after a red run. The gate
+therefore runs `if: always()` and splits its two cases across two steps:
+`consolidate` for a run that had lanes, and `verdict.py mirror-previous-gate`
+for that edit, which reads the head SHA's most recent completed run of the same
+workflow through `gh api` and repeats its gate job's conclusion — failing loud
+when nothing has concluded yet.
+
+`timed_out` is its own status, not a flavour of `fail`, because the two need
+opposite reactions: a failure has a finding to open, a timeout has a diff to
+split or a cap to raise. The `upload-verdict` composite emits it when the job
+is CANCELLED, which is what exceeding `timeout-minutes` produces. A lane killed
+by a STEP-level cap surfaces as `error` ("failed before it could report") —
+the step outcome does not distinguish a cap from a crash, and guessing would be
+worse than saying so.
 
 The three non-bash entrypoints keep the same shape in their own language:
 `checks.mjs` and `release.mjs` dispatch on `process.argv[2]` into `cmd*`
-functions and exit 2 with the usage on an unknown subcommand; `report.py`
+functions and exit 2 with the usage on an unknown subcommand; `verdict.py`
 dispatches on `sys.argv[1]` into `cmd_<sub>` functions and returns 2 the same
 way. Nothing in any of them runs at import time.
 

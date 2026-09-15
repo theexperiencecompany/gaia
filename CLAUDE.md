@@ -282,6 +282,25 @@ Area-specific rules live in nested `CLAUDE.md` files that load automatically whe
 
 **Always spawn subagents wherever possible** — for research, exploration, or independent tasks, use the Agent tool with specialized subagents in parallel. Don't do sequentially what can be done concurrently.
 
+**One writer per working tree, and commit only between phases.** The commit
+hooks (`prek`) stash every unstaged change in the tree before running and
+restore them afterwards — that is how hooks see exactly the staged snapshot,
+and prek has no option to skip it. Under a live edit that rewind-and-reapply
+drops or duplicates hunks, and a whole-file `git checkout --` / `git restore` /
+`git stash` by any agent wipes every other agent's uncommitted work outright
+(both happened in one session: ~280 lines of workflow edits lost, three agents'
+changes gone from one file). So:
+
+- Agents that edit files run in their own worktree (`isolation: worktree` on
+  the Agent tool) and their work is merged back — or, if several must share
+  one checkout, they use targeted edits only and never a whole-file restore or
+  rewrite of a file another agent touches.
+- The orchestrator commits in a phase: only when every agent that edits the
+  tree has reported idle, never on the assumption that one is done. Confirm
+  with `ListAgents` (state `idle`) before any git command that touches the
+  working tree; a mid-commit `F821` that changes between hook runs means a file
+  is still moving.
+
 ### Deep Exploration
 
 When investigating a bug, feature, or unfamiliar area of the codebase:
@@ -313,6 +332,8 @@ When asked to find bugs or issues in the code, **only report problems that a rea
 
 ### Testing
 
+**Running tests locally: one file at a time, never with xdist.** The nx suite targets run with `-n 4`, and every xdist worker is a full import of the app with its own memory; a single agent running a few suites in parallel has taken a 24 GB laptop down. Always run `mise test:one <test file> [more files]` from the repo root (from anywhere else it is `mise run //:test:one …` — the task lives at the workspace root) — it is `uv run pytest -p no:xdist -q` with `pytest.ini`'s real `addopts` intact. Do **not** pass `-o addopts=""`: that drops `--strict-markers` and the `-m` deselection, so an unregistered marker or a `composio` test passes locally and fails collection in CI (this shipped). Run files back to back in one command rather than in separate concurrent calls, never start a second test, type-check or mutation process while one is running, and count subagents' tool runs as load. Full suites, mutation runs and the coverage lanes are CI's job (`mise ci:local` when you must, with `--only <lane>`).
+
 Tests are first-class: every new feature/refactor ships a test at the right tier; every bug ships a failing-then-passing test (see `apps/api/tests/CLAUDE.md` for which tier).
 
 **The bug loop — every bug ships a failing-then-passing test, no exceptions.** The moment a real issue is found (by you, by the user, in review, or in production), stop and run this loop before fixing anything:
@@ -327,7 +348,7 @@ A bug that ships without a failing-then-passing test is a bug that will come bac
 
 ### After Major Changes
 
-One-shot gate mirror: `mise ci:local` runs the same quality lanes CI runs (pinned versions, per-lane results, logs in `verify-logs/`). Iterate with `mise ci:local --only <lane,…>`, go full with `mise ci:local --all --with-heavy`, machine-readable via `--json`. Lane table: scripts/dev/verify-lanes.json — edit it in the same commit as any workflow lane change. For PR review state: `mise pr:comments` (read-only; unresolved threads + exact resolve/reply syntax). GitHub-side PR state (checks, conflicts, review decision, unresolved count): `mise ci:remote [branch]`, `--watch` to poll.
+One-shot gate mirror: `mise ci:local` runs the same quality lanes CI runs (pinned versions, per-lane results, logs in `verify-logs/`). Iterate with `mise ci:local --only <lane,…>`, go full with `mise ci:local --all --with-heavy`, machine-readable via `--json`. Lane table: scripts/dev/verify-lanes.json — edit it in the same commit as any workflow lane change. For PR review state: `mise pr:comments` (read-only; unresolved threads + exact resolve/reply syntax). When a PR is red, `mise ci:remote [branch|PR#]` is the only command you need: it prints the PR header (mergeable, review decision, unresolved threads, check counts), then for every non-green lane the failure itself — the lane's `verdict-*` artifact when it uploaded one (artifacts are readable while the run is still in progress; job logs are not), else the job log windowed on the last `##[error]` with timestamp prefixes and ANSI stripped — then the `gh stack`, warning when a PR's GitHub base differs from its stack parent. `--verbose` for full finding detail and passing lanes, `--json` to parse it, `--watch` to poll, `--no-stack` to skip the stack section.
 
 Always run type-check and lint for every affected layer before considering work complete:
 
@@ -387,6 +408,7 @@ Only use the `bd` CLI when the user explicitly asks for it. `bd` is a project-in
 - **`master` is the single base branch.** All feature branches are created from and merged into `master`. There is no `develop`. When comparing branches, analyzing diffs, or creating PRs, always use `master` as the base.
 - **NEVER merge pull requests.** Do not run `gh pr merge`, do not call any GitHub API merge endpoint, and do not take any action that merges a PR into any branch. PRs are merged by the team — not by Claude. This is an absolute rule with no exceptions.
 - Work is **not complete until `git push` succeeds.** Always push before ending a session.
+- **Stacked PRs are managed with `gh stack`, and only `gh stack` makes a stack.** Read `gh stack view --json` (never bare `gh stack view` — it opens a TUI) before assuming any PR's base; link with `gh stack link <pr> <pr> ...` bottom to top. A chain of `baseRefName`s and a hand-written "Stacked on #N" in a PR body is not a stack: GitHub shows no stack, and a PR left on `master` scopes every diff-driven gate to the whole stack (119 modules instead of 11, one CI round wasted). Retargeting a PR fires `edited`, which re-runs nothing — push a commit after restacking.
 - **Never use `git pull --rebase` or `git rebase` when pulling/merging `origin/master`.** Always use plain `git merge` — rebase inverts conflict markers (HEAD vs incoming) and causes confusion. Session close sequence (mandatory when code changed):
   ```bash
   git fetch origin
@@ -406,6 +428,13 @@ rm -f file             # NOT: rm file
 rm -rf directory       # NOT: rm -r directory
 ```
 
+`cd` is aliased to zoxide's `z` in the interactive shell, so in a non-interactive tool shell `cd <path>` fails with `command not found: z`. Use `builtin cd <path>`, or `git -C <path>` / `--project` flags and skip the `cd`.
+
+Two sources of noise that cost an agent context on every command:
+
+- **In a secondary worktree**, `mise` has not re-activated, so every `uv run` warns `VIRTUAL_ENV=... does not match the project environment path`. Prefix `env -u VIRTUAL_ENV` (or run through `mise -C <worktree> exec --`) and the line goes away.
+- **Any `python -c` that imports `app.*` boots settings** — Infisical plus ~20 startup lines. `LOG_LEVEL=ERROR` silences the lines (the "Missing configuration" entries are warnings, so `WARNING` is not enough); the secrets fetch itself still costs ~3s and is unavoidable.
+
 ## CI Parallelism & Caching — Rules
 
 Rules for GitHub Actions, Nx affected, and Cloudflare deploys. Follow exactly — CI is the gate.
@@ -423,7 +452,7 @@ Rules for GitHub Actions, Nx affected, and Cloudflare deploys. Follow exactly �
 - **Next.js cache key is minimal.** `restore-nextjs-cache` hashes only `pnpm-lock.yaml` + `next.config.*` + `open-next.config.ts` + `wrangler.jsonc`, never `apps/web/src/**`. Hashing sources thrashes the cache every commit.
 - **Emit timing summaries every lane.** Each job appends duration + cache hit/miss to `$GITHUB_STEP_SUMMARY` and uses `::group::` for install logs plus `::error file=,line=` / `::warning` annotations. No lane fails silently.
 - **Cloudflare deploys only via GitHub.** `deploy-web.yml` builds `pnpm --filter web cf:build`, uploads `apps/web/.open-next`, then deploys with `cloudflare/wrangler-action@v3` using `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` (minimal scope: Workers Scripts Write + R2 Write/Read + Routes Write). Workers Dashboard → Settings → Builds must stay Disconnected (`version_upload` only). PR previews deploy as `pr-<number>`; prod only on `refs/heads/master`.
-- **Heavy scans stay on the PR, bounded instead of deferred.** `trivy` (advisory, self-hosted DB on local disk), `pip-audit` and the mutation lane all run per PR — the home box absorbs them. Bound them by scope (`skip-dirs`, changed-module matrix, `max-parallel: 2`), never by moving them to a cron nobody reads.
+- **Heavy scans stay on the PR, bounded instead of deferred.** `trivy` (advisory, self-hosted DB on local disk), `pip-audit` and the mutation lane all run per PR — the home box absorbs them. Bound them by scope (`skip-dirs`, changed-module matrix, `max-parallel: 4`), never by moving them to a cron nobody reads.
 - **Verify with real workflow runs + charts.** After CI changes, trigger `gh workflow run <workflow> --ref <branch>` on the branch, collect `gh run list` timings, and publish before/after bars in the PR body (images on the `pr-assets` branch) or `.agents/ci-report.html` (gitignored) — never commit metrics files into the source tree. Never claim CI is faster without measured runs.
 
 ## CI Discrepancies & Conventions — What Was Fixed and How To Keep It Fixed
@@ -434,7 +463,8 @@ Audits of all 12 workflows + 4 composites (`audit-*.md` in `.agents/plans/`) fou
 
 - **Every external `uses:` is SHA-pinned with a trailing `# vX.Y.Z` comment.** Tags are mutable — a moved tag changes CI without a commit (supply-chain risk, zizmor `unpinned-uses` / `artipacked`).
 - Pinned examples: `docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0`, `astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0`, `pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10`, `gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0`, `amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1`.
-- **Also pin inside composites** — `setup-node-pnpm` (`pnpm/action-setup` is pinned, `actions/setup-node@v7` must also be pinned), `restore-nextjs-cache` (`actions/cache@v6`), `setup-python-test-env` (`actions/cache/restore@v6` / `save@v6`). A pinned workflow that calls an unpinned composite is still unpinned.
+- **Also pin inside composites** — `setup-node-pnpm` (`actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1`), `restore-nextjs-cache` (`actions/cache@v6`), `setup-python-test-env` (`actions/cache/restore@v6` / `save@v6`). A pinned workflow that calls an unpinned composite is still unpinned.
+- **`setup-node-pnpm` installs pnpm through corepack, not `pnpm/action-setup`.** The action bootstraps pnpm with `npm ci` against the registry, which stalled 4+ minutes on both the home box and GitHub-hosted runners (2026-09-04, four runs in one day) and tipped the 5-minute `changes` / `changelog-sync` jobs over cap before a single test ran — which is what the `timeout-minutes: 5 → 8` bumps in `code-quality.yml` and `main.yml` are also for. corepack fetches one tarball into `COREPACK_HOME` and reuses it. Do not "restore" `pnpm/action-setup` there. It is still used (and still SHA-pinned) in `desktop-release.yml` and `publish-cli.yml`, which do not run on that hot path.
 - Exception: **local composites** (`./.github/actions/*`) are referenced by path, not SHA — intentional, not a gap.
 - **How to bump:** resolve the SHA for the tag (`gh api repos/<owner>/<repo>/git/refs/tags/<tag>` or `git ls-remote`), update SHA + comment together. Renovate/Dependabot bumps SHA+comment atomically — do not bump comment alone.
 
@@ -481,9 +511,11 @@ Audits of all 12 workflows + 4 composites (`audit-*.md` in `.agents/plans/`) fou
 
 ### 8. Skipped / Non-Gated Lanes — Intentional, Not Forgotten
 
+- **`main.yml` and `code-quality.yml` carry NO `branches:` filter on `pull_request`.** That key matches the PR's **base**, so the old `branches: [master]` silently exempted every stacked PR: #1175 sat for three days with neither the test lanes nor the mutation gate having ever run, showing a green tick in the PR list because the only workflows that did run were the PR-title check and React Doctor. A stacked PR is the one that most needs the gate — its diff is what lands. Do not reintroduce the filter to save runner time; `push:` stays master-only, and the deploy/coverage jobs keep their own `github.ref == 'refs/heads/master'` guards, so nothing ships off a stacked branch.
+
 - **`main.yml: quality-gate` deliberately excludes `changelog-sync`.** That job auto-opens a fix PR (`fix/changelog-sync-<branch>`) when `docs/release-notes/` is stale — it is non-blocking by design and must not red the gate.
 - **`main.yml: trivy-scan` is in `quality-gate.needs`** even though it is advisory (`exit-code: "0"`): the gate catches a job that errors or is cancelled, not the findings. Keep it there when it flips to blocking.
-- **`code-quality.yml: quality-gate` enforces 20 lanes** (biome, deps, circular, file-size, types-location, components-per-file, duplicates, package-hygiene, type-check, python-static (ruff + custom lints + escape-hatch whys + xenon + interrogate + bandit + pip-audit, each step `continue-on-error` behind an aggregating verdict), python-mypy, observability, wide-event-conformance, dead-code, alert-rules, suppression-hygiene, gitleaks, semgrep, `test-mutation`). `test-mutation-plan` is the planner; `test-mutation` (sharded, `max-parallel: 2` — each shard takes nproc-2 CPUs on the home box; `MAX_SHARDS` in `scripts/ci/mutation.sh plan` must match — per-module `timeout-minutes: 25`) is the gated lane.
+- **`code-quality.yml: quality-gate` enforces 20 lanes** (biome, deps, circular, file-size, types-location, components-per-file, duplicates, package-hygiene, type-check, python-static (ruff + custom lints + escape-hatch whys + xenon + interrogate + bandit + pip-audit, each step `continue-on-error` behind an aggregating verdict), python-mypy, observability, wide-event-conformance, dead-code, alert-rules, suppression-hygiene, gitleaks, semgrep, `test-mutation`). `test-mutation-plan` is the planner; `test-mutation` (sharded, `max-parallel: 4` — each shard takes nproc-2 CPUs on the home box; `MAX_SHARDS` in `scripts/ci/mutation.sh plan` is **6**, deliberately above the wave size so a large diff runs as 4 + 2 rather than overfilling four shards; step `timeout-minutes: 30` under a job cap of 35) is the gated lane. Size the shard count by what one shard can finish, not by what one wave can start: a 110-module diff at 4 shards timed out with 25 of 28 modules done and every one clean — red on the clock, not on a survivor (run 34476365942).
 - **`build.yml: docker-grafana` is not a quality gate gate** — it publishes `gaia-grafana:latest` unconditionally; the Swarm deploy pins `grafana_image_tag` only when that lane succeeded. Do not add it to `main.yml:quality-gate`.
 - **`main.yml: trigger-build` is `always() && github.ref == 'refs/heads/master'`** — it does *not* require `quality-gate == success`. `always()` suppresses the implicit `success()` that would false-negative on skipped ancestors (e.g. `build` skips on Python-only changes); the gate's verdict is passed down as the `gate_result` input, so `deploy.sh plan` decides whether to deploy and a failed gate still fires the publish-without-deploy orphan alert instead of silently skipping. `build.yml` uses `cancel-in-progress: false` (deploys must queue, never cancel); `main.yml`/`code-quality.yml` use `cancel-in-progress: true` on `refs/heads/master` (5 rapid merges coalesce to 1 final verification via `nrwl/nx-set-shas` base = last successful master).
 

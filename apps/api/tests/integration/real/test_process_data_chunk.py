@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.core.stream_manager import StreamManager
-from app.services.chat.chunks import process_data_chunk as _process_data_chunk
+from app.services.chat.chunks import ChunkAccumulators, process_data_chunk as _process_data_chunk
 
 
 @pytest.mark.service
@@ -49,10 +49,9 @@ class TestProcessDataChunkReal:
             await _process_data_chunk(
                 stream_id,
                 chunk,
-                tool_data_acc,
-                tool_outputs,
-                todo_progress_accumulated,
-                follow_up_actions,
+                ChunkAccumulators(
+                    tool_data_acc, tool_outputs, todo_progress_accumulated, follow_up_actions
+                ),
             )
 
         assert len(tool_data_acc["tool_data"]) == 1
@@ -79,10 +78,9 @@ class TestProcessDataChunkReal:
             result_follow_up, _ = await _process_data_chunk(
                 stream_id,
                 chunk,
-                tool_data_acc,
-                tool_outputs,
-                todo_progress_accumulated,
-                follow_up_actions,
+                ChunkAccumulators(
+                    tool_data_acc, tool_outputs, todo_progress_accumulated, follow_up_actions
+                ),
             )
 
         assert result_follow_up == ["Draft email", "Schedule meeting"]
@@ -109,10 +107,9 @@ class TestProcessDataChunkReal:
             await _process_data_chunk(
                 stream_id,
                 chunk,
-                tool_data_acc,
-                tool_outputs,
-                todo_progress_accumulated,
-                follow_up_actions,
+                ChunkAccumulators(
+                    tool_data_acc, tool_outputs, todo_progress_accumulated, follow_up_actions
+                ),
             )
 
         assert tool_outputs["call_abc"] == "10 results found"

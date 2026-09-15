@@ -118,7 +118,7 @@ async def send_support_to_user_email(
         raise
 
 
-async def send_pro_subscription_email(user_name: str, user_email: str) -> None:
+async def send_pro_subscription_email(user_name: str, user_email: str, *, user_id: str) -> None:
     """Send welcome email to user who upgraded to Pro subscription."""
     try:
         html_content = render_email_template(
@@ -138,18 +138,20 @@ async def send_pro_subscription_email(user_name: str, user_email: str) -> None:
                 reply_to=CONTACT_EMAIL,
             )
         )
-        log.info(f"{LogTag.MAIL} Pro subscription welcome email sent to", user_email=user_email)
+        log.info(f"{LogTag.MAIL} Pro subscription welcome email sent to", user={"id": user_id})
     except Exception as e:
         log.error(
             f"{LogTag.MAIL} Failed to send pro subscription email to",
-            user_email=user_email,
+            user={"id": user_id},
             error=str(e),
             error_type=type(e).__name__,
         )
         raise
 
 
-async def send_welcome_email(user_email: str, user_name: str | None = None) -> None:
+async def send_welcome_email(
+    user_email: str, user_name: str | None = None, *, user_id: str
+) -> None:
     """Send welcome email to a new user."""
     try:
         html_content = render_email_template(
@@ -173,18 +175,20 @@ async def send_welcome_email(user_email: str, user_name: str | None = None) -> N
                 reply_to=CONTACT_EMAIL,
             )
         )
-        log.info(f"{LogTag.MAIL} Welcome email sent to", user_email=user_email)
+        log.info(f"{LogTag.MAIL} Welcome email sent to", user={"id": user_id})
     except Exception as e:
         log.error(
             f"{LogTag.MAIL} Failed to send welcome email to",
-            user_email=user_email,
+            user={"id": user_id},
             error=str(e),
             error_type=type(e).__name__,
         )
         raise
 
 
-async def add_marketing_contact(user_email: str, user_name: str | None = None) -> None:
+async def add_marketing_contact(
+    user_email: str, user_name: str | None = None, *, user_id: str
+) -> None:
     """Add a new user to the marketing audience, if the provider supports one.
 
     Best-effort: never raises, so signup succeeds even when the provider call fails.
@@ -194,15 +198,15 @@ async def add_marketing_contact(user_email: str, user_name: str | None = None) -
         if not isinstance(provider, MarketingContactsProvider):
             log.info(
                 f"{LogTag.MAIL} Email provider has no marketing audience; skipping contact",
-                user_email=user_email,
+                user={"id": user_id},
             )
             return
         await provider.add_contact(user_email, user_name)
-        log.info(f"{LogTag.MAIL} Contact added to marketing audience", user_email=user_email)
+        log.info(f"{LogTag.MAIL} Contact added to marketing audience", user={"id": user_id})
     except Exception as e:
         log.error(
             f"{LogTag.MAIL} Failed to add marketing contact for",
-            user_email=user_email,
+            user={"id": user_id},
             error=str(e),
             error_type=type(e).__name__,
         )
@@ -235,11 +239,11 @@ async def send_inactive_user_email(
                 headers=build_unsubscribe_headers(user_id),
             )
         )
-        log.info(f"{LogTag.MAIL} Inactive user email sent to", user_email=user_email)
+        log.info(f"{LogTag.MAIL} Inactive user email sent to", user={"id": user_id})
     except Exception as e:
         log.error(
             f"{LogTag.MAIL} Failed to send inactive user email to",
-            user_email=user_email,
+            user={"id": user_id},
             error=str(e),
             error_type=type(e).__name__,
         )

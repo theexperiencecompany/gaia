@@ -69,3 +69,26 @@ def test_a_non_pydantic_document_model_raises() -> None:
 def test_an_abstract_subclass_needs_no_classvars() -> None:
     class AbstractRepo(_BaseRepository, abstract=True):
         pass
+
+
+def test_a_filter_naming_one_id_reports_it_as_the_targeted_doc() -> None:
+    """``_apply_raw_update`` evicts this id when the write matches nothing."""
+    repo = _concrete()()
+
+    assert repo._filter_doc_id({"_id": "abc", "user_id": "u1"}) == "abc"
+
+
+def test_a_filter_that_names_no_id_targets_no_doc() -> None:
+    repo = _concrete()()
+
+    assert repo._filter_doc_id({"user_id": "u1"}) is None
+
+
+def test_an_operator_valued_id_targets_no_single_doc() -> None:
+    """``{"_id": {"$in": [...]}}`` matches a SET, so no one entity key may be
+    evicted for it — stringifying the operator dict would evict a key that
+    exists for nobody and leave every real cached entity stale."""
+    repo = _concrete()()
+
+    assert repo._filter_doc_id({"_id": {"$in": ["a", "b"]}}) is None
+    assert repo._filter_doc_id({"_id": {"$ne": "a"}}) is None

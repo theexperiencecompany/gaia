@@ -11,7 +11,11 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from app.constants.outbound import OUTBOUND_QUEUES
+from app.constants.outbound import (
+    OUTBOUND_QUEUES,
+    OUTBOUND_TTL_SECONDS_DEFAULT,
+    OUTBOUND_TTL_SECONDS_GREETING,
+)
 from app.db.rabbitmq import RabbitMQPublisher, get_rabbitmq_publisher
 from app.models.chat_models import ConversationSource
 from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope
@@ -87,9 +91,14 @@ async def publish_outbound_message(
     *,
     destination_override: str | None = None,
     is_channel: bool = False,
+    ttl_seconds: int = OUTBOUND_TTL_SECONDS_DEFAULT,
 ) -> OutboundResult:
     """Resolve ``user_id`` to its ``platform`` id and enqueue the ordered text
     parts as a SINGLE envelope.
+
+    ``ttl_seconds`` is how long the message may wait for a bot before it
+    dead-letters unsent; pass the greeting TTL for anything that is noise once
+    the moment has passed.
 
     ``destination_override`` + ``is_channel`` deliver to a specific channel/group
     (the conversation the message came from) instead of the user's DM; the flag
@@ -139,7 +148,9 @@ async def publish_outbound_message(
         )
 
     try:
-        await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
+        await publisher.publish_outbound(
+            queue_name, envelope.model_dump_json().encode(), expiration=ttl_seconds
+        )
     except Exception as e:
         log.error(
             "publish_outbound_message: publish failed",
@@ -165,6 +176,7 @@ PLATFORM_DISPLAY_NAMES: dict[ConversationSource, str] = {
     ConversationSource.DISCORD: "Discord",
     ConversationSource.SLACK: "Slack",
     ConversationSource.WHATSAPP: "WhatsApp",
+    ConversationSource.IMESSAGE: "iMessage",
 }
 
 
@@ -186,7 +198,9 @@ async def notify_account_linked(platform: str, user_id: str) -> OutboundResult:
         f"Your {display_name} account is now linked to GAIA. "
         "Send me a message or use `/help` to see everything I can do."
     )
-    return await publish_outbound_message(source, user_id, [text])
+    return await publish_outbound_message(
+        source, user_id, [text], ttl_seconds=OUTBOUND_TTL_SECONDS_GREETING
+    )
 
 
 async def publish_outbound_file(
@@ -222,7 +236,9 @@ async def publish_outbound_file(
         ),
     )
     try:
-        await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
+        await publisher.publish_outbound(
+            queue_name, envelope.model_dump_json().encode(), expiration=OUTBOUND_TTL_SECONDS_DEFAULT
+        )
     except Exception as e:
         log.error("publish_outbound_file: publish failed", platform=platform.value, error=str(e))
         return False

@@ -24,7 +24,10 @@ from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
 from app.helpers.integration_helpers import build_search_matcher
 from app.schemas.integrations.responses import IntegrationTool, MyIntegrationItem
-from app.services.integrations.community_service import list_community_integrations
+from app.services.integrations.integration_search import (
+    match_my_integrations,
+    match_public_integrations,
+)
 from app.services.integrations.my_integrations import (
     get_my_integrations as fetch_my_integrations,
 )
@@ -167,17 +170,7 @@ async def get_my_integrations(
     try:
         log.set(tool={"name": "get_my_integrations", "action": "list"})
         user_id = get_user_id(config)
-        mine = (await fetch_my_integrations(user_id)).integrations
-
-        matches = build_search_matcher(query)
-
-        def _match(item: MyIntegrationItem) -> bool:
-            return matches(f"{item.id} {item.name} {item.category} {item.description}".lower())
-
-        matched = [i for i in mine if i.available and _match(i)]
-        # Connected first: if the cap ever bites, what gets dropped is an
-        # integration the user has not set up, never one they can already use.
-        matched.sort(key=lambda i: i.status != "connected")
+        matched = await match_my_integrations(user_id, query)
         capped = matched[:MAX_MY_INTEGRATIONS_RESULTS]
         integrations = [
             {
@@ -225,13 +218,7 @@ async def search_integrations(
     try:
         log.set(tool={"name": "search_integrations", "action": "search_public"})
         user_id = get_user_id(config)
-        owned_ids = {i.id.lower() for i in (await fetch_my_integrations(user_id)).integrations}
-
-        # Over-fetch by the owned count, then cap after filtering: owned integrations
-        # ranking above the limit must not crowd out valid unowned matches.
-        community = await list_community_integrations(
-            search=query, limit=MAX_INTEGRATION_SEARCH_RESULTS + len(owned_ids)
-        )
+        owned_ids = {i.id for i in (await fetch_my_integrations(user_id)).integrations}
         results = [
             {
                 "id": c.integration_id,
@@ -241,9 +228,10 @@ async def search_integrations(
                 "connected": False,
                 "source": "public",
             }
-            for c in community.integrations
-            if c.integration_id.lower() not in owned_ids
-        ][:MAX_INTEGRATION_SEARCH_RESULTS]
+            for c in await match_public_integrations(
+                query, exclude_ids=owned_ids, limit=MAX_INTEGRATION_SEARCH_RESULTS
+            )
+        ]
         return success_response({"integrations": results, "query": query})
 
     except Exception as e:

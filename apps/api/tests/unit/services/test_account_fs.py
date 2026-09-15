@@ -20,6 +20,7 @@ import pytest
 
 from app.constants.account import ACCOUNT_DIR, ACCOUNT_LINKED_ACCOUNTS_DIRNAME
 from app.models.payment_models import PlanType
+from app.models.user_models import UserDocument
 from app.schemas.usage import FeatureUsageSummary, UsageBudget
 from app.services import account_fs
 from app.services.platform_link_service import Platform
@@ -56,6 +57,24 @@ _FEATURES = {
         }
     )
 }
+
+
+def _user(timezone: str | None = "UTC", **onboarding: object) -> UserDocument:
+    """A user exactly as ``user_repository.get`` yields one.
+
+    Built through ``UserDocument`` rather than a namespace so the typed
+    ``onboarding`` subdocument (and its lenient blob handling) is the same thing
+    the projection reads in production — a hand-rolled stand-in would let the
+    validation the real read performs go untested.
+    """
+    return UserDocument.model_validate(
+        {
+            "email": "a@b.com",
+            "name": "A",
+            "timezone": timezone,
+            "onboarding": onboarding or None,
+        }
+    )
 
 
 def _voice(voice_id: str = "v-1", name: str = "Rachel", starred: bool = False):
@@ -95,14 +114,8 @@ def sources():
     channel_preferences = AsyncMock(return_value={"email": True})
     users = SimpleNamespace(
         get=AsyncMock(
-            return_value=SimpleNamespace(
-                timezone="UTC",
-                onboarding={
-                    "preferences": {
-                        "response_style": "brief",
-                        "custom_instructions": "Be terse.",
-                    }
-                },
+            return_value=_user(
+                preferences={"response_style": "brief", "custom_instructions": "Be terse."}
             )
         )
     )
@@ -354,12 +367,63 @@ class TestProjectionBodies:
 
     async def test_preferences_body(self, sources) -> None:
         assert await _raw("preferences") == _serialized(
-            {"response_style": "brief", "timezone": "UTC"}
+            {
+                "response_style": "brief",
+                "timezone": "UTC",
+                "profession": None,
+                "needs": None,
+            }
         )
+
+    async def test_preferences_carry_the_onboarding_persona(self, sources) -> None:
+        """Profession and needs are what the agent reads to shape a turn — the
+        onboarding answers used to stop at Mongo and never reach it."""
+        with patch(
+            f"{MODULE}.user_repository",
+            get=AsyncMock(
+                return_value=_user(
+                    timezone="Asia/Kolkata",
+                    preferences={
+                        "response_style": "brief",
+                        "profession": "Founder",
+                        "needs": ["inbox", "calendar"],
+                    },
+                )
+            ),
+        ):
+            assert await _body("preferences") == {
+                "response_style": "brief",
+                "timezone": "Asia/Kolkata",
+                "profession": "Founder",
+                "needs": ["inbox", "calendar"],
+            }
+
+    async def test_preferences_drop_a_need_outside_the_allowed_keys(self, sources) -> None:
+        """A stored need the enum no longer defines must never reach the agent.
+
+        The typed ``onboarding`` subdocument drops it at the user read (a
+        historical row still has to load), so the projection ships without it
+        rather than skipping the group.
+        """
+        with patch(
+            f"{MODULE}.user_repository",
+            get=AsyncMock(return_value=_user(preferences={"needs": ["telepathy"]})),
+        ):
+            files, failed = await _build()
+            body = await _body("preferences")
+
+        assert f"{ACCOUNT_DIR}/preferences.json" not in failed
+        assert "preferences" in _ids(files)
+        assert body["needs"] == []
 
     async def test_preferences_without_a_user_has_no_timezone(self, sources) -> None:
         with patch(f"{MODULE}.user_repository", get=AsyncMock(return_value=None)):
-            assert await _body("preferences") == {"response_style": None, "timezone": None}
+            assert await _body("preferences") == {
+                "response_style": None,
+                "timezone": None,
+                "profession": None,
+                "needs": None,
+            }
 
     async def test_preferences_ignore_a_non_dict_preferences_blob(self, sources) -> None:
         """Mongo's ``onboarding.preferences`` is an untyped blob.
@@ -369,18 +433,26 @@ class TestProjectionBodies:
         """
         with patch(
             f"{MODULE}.user_repository",
-            get=AsyncMock(
-                return_value=SimpleNamespace(timezone="UTC", onboarding={"preferences": "brief"})
-            ),
+            get=AsyncMock(return_value=_user(preferences="brief")),
         ):
-            assert await _body("preferences") == {"response_style": None, "timezone": "UTC"}
+            assert await _body("preferences") == {
+                "response_style": None,
+                "timezone": "UTC",
+                "profession": None,
+                "needs": None,
+            }
 
     async def test_preferences_survive_a_missing_onboarding_document(self, sources) -> None:
         with patch(
             f"{MODULE}.user_repository",
-            get=AsyncMock(return_value=SimpleNamespace(timezone="UTC", onboarding=None)),
+            get=AsyncMock(return_value=_user()),
         ):
-            assert await _body("preferences") == {"response_style": None, "timezone": "UTC"}
+            assert await _body("preferences") == {
+                "response_style": None,
+                "timezone": "UTC",
+                "profession": None,
+                "needs": None,
+            }
 
     async def test_custom_instructions_body(self, sources) -> None:
         assert await _raw("custom-instructions") == _serialized({"instructions": "Be terse."})
@@ -388,11 +460,7 @@ class TestProjectionBodies:
     async def test_custom_instructions_are_null_when_unset(self, sources) -> None:
         with patch(
             f"{MODULE}.user_repository",
-            get=AsyncMock(
-                return_value=SimpleNamespace(
-                    timezone="UTC", onboarding={"preferences": {"response_style": "brief"}}
-                )
-            ),
+            get=AsyncMock(return_value=_user(preferences={"response_style": "brief"})),
         ):
             assert await _body("custom-instructions") == {"instructions": None}
 
