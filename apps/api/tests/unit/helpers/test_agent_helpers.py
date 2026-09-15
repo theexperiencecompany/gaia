@@ -205,6 +205,25 @@ class TestBuildAgentConfig:
         assert config["recursion_limit"] == AGENT_RECURSION_LIMIT
 
     @patch("app.helpers.agent_helpers.providers")
+    async def test_metadata_stamps_the_agent_label_for_the_ttft_callback(self, mock_providers):
+        """The TTFT callback attributes each streaming call by
+        LLM_LABEL_METADATA_KEY. build_agent_config must stamp this run's agent
+        tier as the default, or the graph's own streaming model calls (the ones
+        the metric exists to measure) land on agent="unknown"."""
+        from app.constants.llm import LLM_LABEL_METADATA_KEY
+
+        mock_providers.get.return_value = None
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor_agent",
+            ),
+        )
+        assert config["metadata"][LLM_LABEL_METADATA_KEY] == "executor_agent"
+
+    @patch("app.helpers.agent_helpers.providers")
     async def test_uses_home_profile_timezone(self, mock_providers):
         """The agent operates in the user's stored home zone (IANA, DST-aware)."""
         mock_providers.get.return_value = None

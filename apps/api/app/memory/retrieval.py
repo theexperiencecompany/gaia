@@ -21,6 +21,8 @@ import re
 import time
 from typing import cast
 
+import httpx
+
 from app.constants.memory import (
     ANN_CANDIDATES,
     CONFIDENT_COSINE,
@@ -208,11 +210,36 @@ async def recall_episodes(
     return hits[:limit]
 
 
+async def _embed_query_interactive(query: str) -> list[float] | None:
+    """Embed a recall query, or ``None`` when the sidecar failed fast.
+
+    Recall runs on the user's turn, so a slow/overloaded embedding sidecar must
+    degrade to the FTS leg alone (``None`` here) instead of holding — or failing
+    — the turn. A degraded order beats no memories; a handled fallback, not a
+    turn failure. Mirrors ``_rerank_scores`` for the rerank leg.
+    """
+    try:
+        return await embed_query(query, interactive=True)
+    except (httpx.HTTPError, TimeoutError) as exc:
+        log.warning(
+            "memory_embed_query_skipped",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        return None
+
+
 async def _ann_search(user_id: str, query: str, timings: dict[str, int]) -> list[tuple[str, float]]:
-    """Embed the query and run dense ANN over the user's latest memories."""
+    """Embed the query and run dense ANN over the user's latest memories.
+
+    Returns no ANN hits when the embedding sidecar failed fast, so recall
+    degrades to FTS-only rather than failing the turn.
+    """
     stage = time.perf_counter()
-    embedding = await embed_query(query)
+    embedding = await _embed_query_interactive(query)
     timings["embed_ms"] = _elapsed_ms(stage)
+    if embedding is None:
+        return []
 
     stage = time.perf_counter()
     hits = await chroma_store.query_similar(user_id, embedding, ANN_CANDIDATES, only_latest=True)
@@ -325,8 +352,7 @@ async def _rerank_and_boost(
     """
     if not candidates:
         return []
-    raw_scores = await rerank(query, [row.content for row in candidates])
-    rerank_norm = [_sigmoid(score) for score in raw_scores]
+    raw_scores = await _rerank_scores(query, [row.content for row in candidates])
     total = len(candidates)
     rank_fallback = [1.0 - (index / total) for index in range(total)]
     cosines = [ann_similarity.get(str(row.id)) for row in candidates]
@@ -341,23 +367,53 @@ async def _rerank_and_boost(
     now = datetime.now(UTC)
 
     scored: list[_ScoredCandidate] = []
-    for row, rr, rn, raw in zip(candidates, rerank_norm, retrieval_norm, raw_scores):
-        base = RERANK_BLEND_WEIGHT * rr + (1.0 - RERANK_BLEND_WEIGHT) * rn
+    for index, row in enumerate(candidates):
+        retrieval_score = retrieval_norm[index]
+        if raw_scores is not None:
+            raw = raw_scores[index]
+            relevance = _sigmoid(raw)
+            base = RERANK_BLEND_WEIGHT * relevance + (1.0 - RERANK_BLEND_WEIGHT) * retrieval_score
+            rerank_confident = raw >= CONFIDENT_RERANK_LOGIT
+        else:
+            # Sidecar failed fast on this turn: rank by dense+FTS retrieval alone
+            # rather than block the turn. A degraded order beats no memories.
+            relevance = retrieval_score
+            base = retrieval_score
+            rerank_confident = False
         scored.append(
             _ScoredCandidate(
                 row=row,
                 base=base,
-                relevance=rr,
+                relevance=relevance,
                 score=base * _recency_boost(row, now) * _importance_boost(row),
                 confident=(
                     ann_similarity.get(str(row.id), 0.0) >= CONFIDENT_COSINE
-                    or raw >= CONFIDENT_RERANK_LOGIT
+                    or rerank_confident
                     or str(row.id) in fts_ids
                 ),
             )
         )
     scored.sort(key=lambda item: item.score, reverse=True)
     return scored
+
+
+async def _rerank_scores(query: str, documents: list[str]) -> list[float] | None:
+    """Cross-encoder scores for recall, or ``None`` when the sidecar failed fast.
+
+    Recall runs on the user's turn, so a slow/overloaded sidecar must degrade to
+    retrieval-order ranking (``None`` here) instead of holding the turn — a
+    handled fallback, not a turn failure.
+    """
+    try:
+        return await rerank(query, documents, interactive=True)
+    except (httpx.HTTPError, TimeoutError) as exc:
+        log.warning(
+            "memory_rerank_skipped",
+            error=str(exc),
+            error_type=type(exc).__name__,
+            document_count=len(documents),
+        )
+        return None
 
 
 def _cap_weak_results(scored: list[_ScoredCandidate]) -> list[tuple[MemoryRecord, float]]:
@@ -479,13 +535,17 @@ async def recall_transcripts(
     suggested"), the compressed fact store may not hold it but the transcript
     chunk does.
     """
-    embedding = await embed_query(query)
+    embedding = await _embed_query_interactive(query)
+    if embedding is None:
+        return []
     return await chroma_store.query_conversation_chunks(user_id, embedding, limit)
 
 
 async def _episode_summary_search(user_id: str, query: str, limit: int) -> list[EpisodeHit]:
     """Semantic search over embedded day summaries."""
-    embedding = await embed_query(query)
+    embedding = await _embed_query_interactive(query)
+    if embedding is None:
+        return []
     hits = await chroma_store.query_episodes(user_id, embedding, limit)
     results: list[EpisodeHit] = []
     for episode_id, similarity in hits:

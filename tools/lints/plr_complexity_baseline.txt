@@ -55,7 +55,6 @@ apps/api/app/services/chat/chunks.py	PLR0913
 apps/api/app/services/chat/persistence.py	PLR0913
 apps/api/app/services/composio/proxy_client.py	PLR0913
 apps/api/app/services/hil/approvals_store.py	PLR0913
-apps/api/app/services/hil/bridge.py	PLR0913
 apps/api/app/services/integrations/integration_connection_service.py	PLR0911
 apps/api/app/services/integrations/integration_connection_service.py	PLR0913
 apps/api/app/services/mcp/langchain_adapter.py	PLR0912
@@ -117,7 +116,6 @@ apps/api/tests/unit/api/test_integrations_config_endpoint.py	PLR0913
 apps/api/tests/unit/memory/pg_store/test_memories.py	PLR0913
 apps/api/tests/unit/memory/test_ingestion.py	PLR0913
 apps/api/tests/unit/memory/test_management.py	PLR0913
-apps/api/tests/unit/memory/test_retrieval.py	PLR0913
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	PLR0913
 apps/api/tests/unit/utils/test_weather_utils.py	PLR0913
 apps/voice-agent/src/agent.py	PLR0913

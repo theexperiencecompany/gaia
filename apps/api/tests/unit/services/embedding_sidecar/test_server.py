@@ -290,7 +290,7 @@ class TestClientRetryContract:
         attributes it from both covering files."""
         calls: list[dict] = []
 
-        async def fake_post(path: str, payload: dict) -> dict:
+        async def fake_post(path: str, payload: dict, *, interactive: bool = False) -> dict:
             assert path == "/rerank"
             assert set(payload) == {"query", "documents"}
             calls.append({"q": payload["query"], "n": len(payload["documents"])})

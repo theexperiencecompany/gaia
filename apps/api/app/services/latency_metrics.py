@@ -351,6 +351,7 @@ def span() -> Iterator[Callable[[], float]]:
 
 
 def observe_chat_ttft(seconds: float, *, source: str, voice_mode: bool, status: str) -> None:
+    """Record time to first comms response text for a chat turn."""
     _observe(
         _CHAT_TTFT_SECONDS,
         seconds,
@@ -363,6 +364,7 @@ def observe_chat_ttft(seconds: float, *, source: str, voice_mode: bool, status: 
 def observe_chat_e2e_ack(
     seconds: float, *, source: str, voice_mode: bool, delegated: bool, status: str
 ) -> None:
+    """Record request-accepted to comms-ack-complete for a chat turn."""
     _observe(
         _CHAT_E2E_ACK_SECONDS,
         seconds,
@@ -376,6 +378,7 @@ def observe_chat_e2e_ack(
 def observe_chat_e2e_full(
     seconds: float, *, source: str, voice_mode: bool, delegated: bool, status: str
 ) -> None:
+    """Record request-accepted to stream-DONE for a chat turn."""
     _observe(
         _CHAT_E2E_FULL_SECONDS,
         seconds,
@@ -387,6 +390,7 @@ def observe_chat_e2e_full(
 
 
 def observe_chat_turn_total(*, source: str, delegated: bool, status: str) -> None:
+    """Increment the lifetime chat-turn counter."""
     _inc(
         _CHAT_TURN_TOTAL,
         source=source,
@@ -396,30 +400,37 @@ def observe_chat_turn_total(*, source: str, delegated: bool, status: str) -> Non
 
 
 def observe_llm_ttft(seconds: float, *, model: str, lane: str, agent: str) -> None:
+    """Record true provider time to first token for a streaming LLM call."""
     _observe(_LLM_TTFT_SECONDS, seconds, model=model, lane=lane, agent=agent)
 
 
 def observe_comms_graph(seconds: float, *, status: str) -> None:
+    """Record the comms graph streaming run duration."""
     _observe(_COMMS_GRAPH_SECONDS, seconds, status=status)
 
 
 def observe_context_assemble(seconds: float, *, stage: str) -> None:
+    """Record context assembly duration for one stage."""
     _observe(_CONTEXT_ASSEMBLE_SECONDS, seconds, stage=stage)
 
 
 def observe_executor_queue_wait(seconds: float, *, source: str, queued: bool) -> None:
+    """Record executor dispatch-to-run-start wait."""
     _observe(_EXECUTOR_QUEUE_WAIT_SECONDS, seconds, source=source, queued=_bool_label(queued))
 
 
 def observe_executor_ttft(seconds: float, *, queued: bool) -> None:
+    """Record executor dispatch to first tool-data frame."""
     _observe(_EXECUTOR_TTFT_SECONDS, seconds, queued=_bool_label(queued))
 
 
 def observe_executor_active(seconds: float, *, status: str) -> None:
+    """Record executor active run time, excluding HIL pause."""
     _observe(_EXECUTOR_ACTIVE_SECONDS, seconds, status=status)
 
 
 def observe_executor_e2e(seconds: float, *, status: str, queued: bool) -> None:
+    """Record executor dispatch to finalize."""
     _observe(
         _EXECUTOR_E2E_SECONDS,
         seconds,
@@ -429,48 +440,63 @@ def observe_executor_e2e(seconds: float, *, status: str, queued: bool) -> None:
 
 
 def observe_executor_run_total(*, status: str, queued: bool) -> None:
+    """Increment the lifetime executor-run counter."""
     _inc(_EXECUTOR_RUN_TOTAL, status=status, queued=_bool_label(queued))
 
 
 def observe_tool_call(seconds: float, *, tool_name: str, status: str) -> None:
+    """Record one tool call's duration and count it."""
     _observe(_TOOL_CALL_SECONDS, seconds, tool_name=tool_name, status=status)
     _inc(_TOOL_CALL_TOTAL, tool_name=tool_name, status=status)
 
 
 def observe_subagent_run(seconds: float, *, subagent_id: str, status: str) -> None:
+    """Record subagent active run time, excluding pause."""
     _observe(_SUBAGENT_RUN_SECONDS, seconds, subagent_id=subagent_id, status=status)
 
 
-def observe_hil_user_wait(seconds: float) -> None:
-    _observe(_HIL_USER_WAIT_SECONDS, seconds)
+def observe_hil_pause() -> None:
+    """Increment the lifetime HIL-pause counter."""
     _inc(_HIL_PAUSE_TOTAL)
 
 
+def observe_hil_user_wait(seconds: float) -> None:
+    """Record HIL approval decided_at minus created_at."""
+    _observe(_HIL_USER_WAIT_SECONDS, seconds)
+
+
 def observe_hil_dispatch_lag(seconds: float) -> None:
+    """Record HIL approval resumed_at minus decided_at."""
     _observe(_HIL_DISPATCH_LAG_SECONDS, seconds)
 
 
 def observe_delivery_narration(seconds: float, *, status: str) -> None:
+    """Record executor result narration duration."""
     _observe(_DELIVERY_NARRATION_SECONDS, seconds, status=status)
 
 
 def observe_delivery_persist(seconds: float, *, op: str) -> None:
+    """Record result persistence write duration for one op."""
     _observe(_DELIVERY_PERSIST_SECONDS, seconds, op=op)
 
 
 def observe_transport_redis_publish(seconds: float) -> None:
+    """Record Redis stream publish duration."""
     _observe(_TRANSPORT_REDIS_PUBLISH_SECONDS, seconds)
 
 
 def observe_sse_delivery(seconds: float, *, status: str) -> None:
+    """Record SSE subscribe-to-close delivery duration."""
     _observe(_SSE_DELIVERY_SECONDS, seconds, status=status)
 
 
 def observe_llm_call(seconds: float, *, model: str, agent: str) -> None:
+    """Record total provider LLM call duration."""
     _observe(_LLM_CALL_SECONDS, seconds, model=model, agent=agent)
 
 
 def observe_graph_node(seconds: float, *, node: str, agent: str) -> None:
+    """Record one graph node's duration."""
     _observe(_GRAPH_NODE_SECONDS, seconds, node=node, agent=agent)
 
 
@@ -491,6 +517,7 @@ __all__ = [
     "observe_executor_ttft",
     "observe_graph_node",
     "observe_hil_dispatch_lag",
+    "observe_hil_pause",
     "observe_hil_user_wait",
     "observe_llm_call",
     "observe_llm_ttft",

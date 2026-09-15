@@ -105,6 +105,28 @@ class TestPublishExactlyOnce:
         bridge["notify"].assert_not_awaited()
         assert bridge["session"].tool_events == []
 
+    async def test_a_new_pause_is_counted_exactly_once(self, bridge: dict) -> None:
+        # hil_pause_total counts genuine pauses; the pause is born here (gated on
+        # `created`), not at the later decision.
+        from prometheus_client import REGISTRY
+
+        bridge["upsert"].return_value = True
+        before = REGISTRY.get_sample_value("hil_pause_total", {}) or 0.0
+
+        await publish(bridge)
+
+        assert (REGISTRY.get_sample_value("hil_pause_total", {}) or 0.0) == before + 1
+
+    async def test_a_resume_replay_is_not_counted_as_a_pause(self, bridge: dict) -> None:
+        from prometheus_client import REGISTRY
+
+        bridge["upsert"].return_value = False
+        before = REGISTRY.get_sample_value("hil_pause_total", {}) or 0.0
+
+        await publish(bridge)
+
+        assert (REGISTRY.get_sample_value("hil_pause_total", {}) or 0.0) == before
+
 
 class TestDualDelivery:
     async def test_the_card_reaches_both_the_stream_and_the_persisted_turn(

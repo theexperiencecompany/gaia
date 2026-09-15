@@ -18,6 +18,7 @@ import pytest
 
 from app.memory import embeddings
 from app.memory.embeddings import chunk_texts
+from tests.helpers import captured_wide_event
 
 
 class TestChunkTexts:
@@ -84,7 +85,7 @@ class TestEmbedBatchSplitsRequests:
             observed.append((operation, backend, count))
             return await awaitable
 
-        async def fake_post(path: str, payload: dict) -> dict:
+        async def fake_post(path: str, payload: dict, *, interactive: bool = False) -> dict:
             if path == "/embed_query":
                 assert set(payload) == {"text"}
                 calls.append({"path": path, "text": payload["text"]})
@@ -430,3 +431,156 @@ class TestPooledClientThroughPublicApi:
         await closed.aclose()
         await embeddings.embed_query("three")
         assert len(made) == 2  # closed pools are replaced, not reused
+
+
+class TestInteractiveBudget:
+    """Recall on a user turn fails fast; ingestion keeps the durable budget."""
+
+    def test_call_budget_interactive_drops_retries_and_shortens_timeout(self) -> None:
+        assert embeddings._call_budget(interactive=True) == (
+            0,
+            embeddings.EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS,
+        )
+        assert embeddings._call_budget(interactive=False) == (
+            embeddings.EMBEDDING_SIDECAR_RETRIES,
+            embeddings.EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
+        )
+
+    async def test_interactive_call_uses_short_timeout(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[float] = []
+
+        class RecordingClient:
+            async def post(self, url: str, json: dict, timeout: float) -> httpx.Response:
+                seen.append(timeout)
+                return httpx.Response(
+                    200, json={"vector": [0.1]}, request=httpx.Request("POST", url)
+                )
+
+        monkeypatch.setattr(embeddings, "_get_http_client", RecordingClient)
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
+
+        await embeddings.embed_query("q", interactive=True)
+        await embeddings.embed_query("q", interactive=False)
+
+        assert seen == [
+            embeddings.EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS,
+            embeddings.EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
+        ]
+
+    async def test_interactive_503_fails_fast_without_retry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        attempts: list[httpx.Request] = []
+        sleeps: list[float] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempts.append(request)
+            return httpx.Response(503)
+
+        async def fake_sleep(delay: float) -> None:
+            sleeps.append(delay)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+        monkeypatch.setattr(
+            embeddings,
+            "_get_http_client",
+            lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await embeddings.rerank("q", ["doc"], interactive=True)
+
+        assert len(attempts) == 1  # no retry on the interactive path
+        assert sleeps == []
+
+    async def test_interactive_rerank_deadline_spans_all_chunks(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A large candidate set splits into several chunks; the interactive
+        # budget must bound the WHOLE rerank, not reset per chunk. Each chunk
+        # sleeps under the deadline, but two of them together exceed it.
+        monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS", 0.1)
+        monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_MAX_BATCH_TEXTS", 1)
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
+
+        async def slow_post(path: str, payload: dict, *, interactive: bool = False) -> dict:
+            await asyncio.sleep(0.06)
+            return {"scores": [0.0] * len(payload["documents"])}
+
+        monkeypatch.setattr(embeddings, "_sidecar_post", slow_post)
+
+        with pytest.raises(TimeoutError):
+            await embeddings.rerank("q", ["a", "b"], interactive=True)
+
+    async def test_background_rerank_keeps_the_durable_budget(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Background rerank (interactive=False) must retry a transient 503 —
+        # the opposite of the interactive path's fail-fast.
+        attempts: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempts.append(request)
+            return (
+                httpx.Response(503)
+                if len(attempts) == 1
+                else httpx.Response(200, json={"scores": [0.4]})
+            )
+
+        async def fake_sleep(delay: float) -> None:
+            pass
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+        monkeypatch.setattr(
+            embeddings,
+            "_get_http_client",
+            lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
+
+        scores = await embeddings.rerank("q", ["doc"], interactive=False)
+
+        assert scores == [0.4]
+        assert len(attempts) == 2  # retried, unlike the interactive path
+
+    async def test_embed_query_local_path_returns_the_model_vector(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # With no sidecar URL, embed_query runs the in-process model helper with
+        # the real query text.
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: None)
+        seen: dict[str, str] = {}
+
+        def fake_sync(text: str) -> list[float]:
+            seen["text"] = text
+            return [0.1, 0.2]
+
+        monkeypatch.setattr(embeddings, "_embed_query_sync", fake_sync)
+
+        assert await embeddings.embed_query("the query") == [0.1, 0.2]
+        assert seen["text"] == "the query"
+
+    async def test_embed_query_local_failure_is_annotated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A local-model failure is annotated with operation/backend/batch_size so
+        # it is queryable, then re-raised.
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: None)
+
+        def boom(text: str) -> list[float]:
+            raise RuntimeError("model down")
+
+        monkeypatch.setattr(embeddings, "_embed_query_sync", boom)
+
+        async with captured_wide_event() as event:
+            with pytest.raises(RuntimeError):
+                await embeddings.embed_query("the query")
+
+        (error,) = event["errors"]
+        assert error["msg"] == "memory_embedding_failed"
+        assert error["operation"] == "embed_query"
+        assert error["backend"] == "local"
+        assert error["batch_size"] == 1

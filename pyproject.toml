@@ -364,6 +364,7 @@ unfixable = [
 "apps/api/app/services/triggers/handlers/notion.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/handlers/slack.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/subscription_service.py" = ["PLR0913"]  # register_subscription's parameters are the subscription fields a caller must supply; grouping them into an object would hide the required inputs
+"apps/api/app/services/hil/bridge.py" = ["PLR0913"]  # publish_approval_request/publish_auto_approval/_approval_entry each take the distinct fields an approval carries (run identity, the gated call, its summary/integration). Bundling them into one object was tried and reverted: the card renderer consumes only a subset, so the object's other fields become unused assignments in the decision-redraw path that the mutation gate flags as unkillable. The flat arg list is the honest interface.
 "apps/api/app/services/workflow/service.py" = ["PLR0912", "PLR0915"]  # the flagged function predates this change; the triggers feature only renames the owner-ref parameter here
 "apps/api/tests/e2e/test_todo_trigger_dispatch_e2e.py" = ["PLR0913"]  # _seed_watch is a test helper whose keyword arguments mirror the subscription fields under test
 "apps/api/tests/unit/services/test_todo_service.py" = ["PLR0913"]  # test parameterization, not production complexity

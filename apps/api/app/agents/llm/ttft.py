@@ -43,13 +43,16 @@ class LLMTtftCallback(BaseCallbackHandler):
         metadata: dict[str, Any] | None = None,
         **_kwargs: Any,  # noqa: ANN401 -- LangChain BaseCallbackHandler contract
     ) -> None:
+        """Record the run's start time and its model/lane/agent labels."""
         meta = metadata or {}
         self._starts[str(run_id)] = (
             time.perf_counter(),
             str(meta.get("lane_model") or "unknown"),
             str(meta.get("lane_provider") or "unknown"),
-            # The CALL's label (stamped by ainvoke_llm), not the run's agent: one
-            # turn's callback list also carries its title/follow-up/memory calls.
+            # The CALL's label: build_agent_config stamps the run's agent tier as
+            # the default, and ainvoke_llm overrides it with a finer per-call
+            # label for the title/follow-up/memory calls that share one turn's
+            # callback list — so those side calls never pollute the tier's p95.
             str(meta.get(LLM_LABEL_METADATA_KEY) or "unknown"),
         )
 
@@ -63,6 +66,7 @@ class LLMTtftCallback(BaseCallbackHandler):
         tags: list[str] | None = None,  # noqa: ARG002 -- LangChain BaseCallbackHandler contract
         **_kwargs: Any,  # noqa: ANN401 -- LangChain BaseCallbackHandler contract
     ) -> None:
+        """Emit the TTFT sample on the first token of each run, once."""
         key = str(run_id)
         entry = self._starts.pop(key, None)
         if entry is None or key in self._observed:
@@ -80,6 +84,7 @@ class LLMTtftCallback(BaseCallbackHandler):
         tags: list[str] | None = None,  # noqa: ARG002 -- LangChain BaseCallbackHandler contract
         **_kwargs: Any,  # noqa: ANN401 -- LangChain BaseCallbackHandler contract
     ) -> None:
+        """Drop the run's tracking state once it completes."""
         self._starts.pop(str(run_id), None)
         self._observed.discard(str(run_id))
 
@@ -92,5 +97,6 @@ class LLMTtftCallback(BaseCallbackHandler):
         tags: list[str] | None = None,  # noqa: ARG002 -- LangChain BaseCallbackHandler contract
         **_kwargs: Any,  # noqa: ANN401 -- LangChain BaseCallbackHandler contract
     ) -> None:
+        """Drop the run's tracking state on failure, emitting no sample."""
         self._starts.pop(str(run_id), None)
         self._observed.discard(str(run_id))

@@ -42,6 +42,7 @@ from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryD
 from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
 from app.services.hil.notify import notify_approval_pending
 from app.services.hil.utils import GatedCall
+from app.services.latency_metrics import observe_hil_pause
 from app.utils.general_utils import clip_text
 from shared.py.wide_events import log, spawn_logged_task
 
@@ -85,6 +86,10 @@ async def publish_approval_request(
     if not created:
         return
 
+    # Counted here — the one place a genuine pause is born (gated on `created`,
+    # so a resume replay is a no-op) — not at the decision, where it would count
+    # decisions and miss still-pending pauses.
+    observe_hil_pause()
     log.set(hil={"approval_id": approval_id, "tool": tool_call.name, "stream_id": stream_id})
     await _publish_entry(
         stream_id,

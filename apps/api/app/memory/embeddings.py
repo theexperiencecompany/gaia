@@ -32,10 +32,12 @@ import httpx
 
 from app.constants.memory import (
     EMBEDDING_MODEL_NAME,
+    EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS,
     EMBEDDING_SIDECAR_MAX_BATCH_CHARS,
     EMBEDDING_SIDECAR_MAX_BATCH_TEXTS,
     EMBEDDING_SIDECAR_RETRIES,
     EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS,
+    EMBEDDING_SIDECAR_RETRYABLE_STATUS_CODES,
     EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
     EMBEDDING_SIDECAR_URL_ENV,
     MODEL_CACHE_DIR,
@@ -61,14 +63,20 @@ _T = TypeVar("_T")
 
 
 class EmbedQueryResponse(TypedDict):
+    """Sidecar ``/embed`` response for a single query."""
+
     vector: list[float]
 
 
 class EmbedBatchResponse(TypedDict):
+    """Sidecar ``/embed`` response for a batch of texts."""
+
     vectors: list[list[float]]
 
 
 class RerankResponse(TypedDict):
+    """Sidecar ``/rerank`` response: one score per candidate."""
+
     scores: list[float]
 
 
@@ -222,42 +230,64 @@ def _get_http_client() -> httpx.AsyncClient:
     return _http_client[1]
 
 
-async def _post_with_retry(client: httpx.AsyncClient, url: str, payload: dict) -> httpx.Response:
-    """POST until success, a non-retryable status, or the retry budget runs
-    out — with a short fixed backoff between attempts. A 503 means the sidecar
-    was overloaded right now (it already waited out its own slot budget) and a
-    connection error means it is mid-restart; dropping the memory operation
-    over either blip would lose data. Exhausted retries still fail loud."""
-    remaining = EMBEDDING_SIDECAR_RETRIES
-    while True:
+async def _post_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    payload: dict,
+    *,
+    retries: int = EMBEDDING_SIDECAR_RETRIES,
+    timeout: float = EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
+) -> httpx.Response:
+    """POST with a bounded retry budget and a fixed backoff between attempts.
+
+    A transient failure (retryable status or a mid-restart connection error) is
+    retried so a background memory save survives the blip; interactive recall
+    passes ``retries=0`` to fail fast into its retrieval-order fallback instead
+    of stacking backoffs onto the user's turn.
+    """
+    for _ in range(retries):
         try:
-            response = await client.post(url, json=payload)
+            response = await client.post(url, json=payload, timeout=timeout)
         except httpx.TransportError:
-            if remaining == 0:
-                raise
-            remaining -= 1
-            await asyncio.sleep(EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS)
-            continue
-        if response.status_code not in (429, 503):
-            return response
-        if remaining == 0:
-            return response
-        remaining -= 1
+            pass  # transient — fall through to the backoff and retry
+        else:
+            if response.status_code not in EMBEDDING_SIDECAR_RETRYABLE_STATUS_CODES:
+                return response
         await asyncio.sleep(EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS)
+    # Budget exhausted (or none): the final attempt is authoritative — its
+    # response (including a 503) is returned, or its connection error propagates.
+    return await client.post(url, json=payload, timeout=timeout)
 
 
-async def _sidecar_post(path: str, payload: dict) -> dict[str, Any]:
+def _call_budget(interactive: bool) -> tuple[int, float]:
+    """(retries, timeout_seconds) for a sidecar call by path criticality."""
+    if interactive:
+        return 0, EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS
+    return EMBEDDING_SIDECAR_RETRIES, EMBEDDING_SIDECAR_TIMEOUT_SECONDS
+
+
+async def _sidecar_post(path: str, payload: dict, *, interactive: bool = False) -> dict[str, Any]:
+    retries, timeout = _call_budget(interactive)
     client = _get_http_client()
-    response = await _post_with_retry(client, f"{_sidecar_url()}{path}", payload)
+    response = await _post_with_retry(
+        client, f"{_sidecar_url()}{path}", payload, retries=retries, timeout=timeout
+    )
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
 
 
-async def embed_query(text: str) -> list[float]:
-    """Embed a single query string (with the model's query instruction)."""
+async def embed_query(text: str, *, interactive: bool = False) -> list[float]:
+    """Embed a single query string (with the model's query instruction).
+
+    ``interactive=True`` (memory recall on a user turn) uses the fail-fast
+    budget; the default background budget is for ingestion.
+    """
     if _sidecar_url():
         result = await _observed(
-            "embed_query", "sidecar", 1, _sidecar_post("/embed_query", {"text": text})
+            "embed_query",
+            "sidecar",
+            1,
+            _sidecar_post("/embed_query", {"text": text}, interactive=interactive),
         )
         return cast(EmbedQueryResponse, result)["vector"]
     return await _observed("embed_query", "local", 1, asyncio.to_thread(_embed_query_sync, text))
@@ -271,7 +301,10 @@ async def _sidecar_embed(texts: list[str]) -> list[list[float]]:
         texts, EMBEDDING_SIDECAR_MAX_BATCH_TEXTS, EMBEDDING_SIDECAR_MAX_BATCH_CHARS
     ):
         result = await _observed(
-            "embed", "sidecar", len(chunk), _sidecar_post("/embed", {"texts": chunk})
+            "embed",
+            "sidecar",
+            len(chunk),
+            _sidecar_post("/embed", {"texts": chunk}),
         )
         vectors.extend(cast(EmbedBatchResponse, result)["vectors"])
     return vectors
@@ -286,23 +319,39 @@ async def embed_batch(texts: list[str]) -> list[list[float]]:
     return await _observed("embed", "local", len(texts), asyncio.to_thread(_embed_sync, texts))
 
 
-async def rerank(query: str, documents: list[str]) -> list[float]:
-    """Return relevance scores for documents, aligned with input order."""
+async def _sidecar_rerank(
+    query: str, documents: list[str], *, interactive: bool = False
+) -> list[float]:
+    """POST /rerank in bounded chunks, preserving document order."""
+    scores: list[float] = []
+    # The query is sent with every chunk, so it consumes char budget too.
+    char_budget = EMBEDDING_SIDECAR_MAX_BATCH_CHARS - len(query)
+    for chunk in chunk_texts(documents, EMBEDDING_SIDECAR_MAX_BATCH_TEXTS, char_budget):
+        result = await _observed(
+            "rerank",
+            "sidecar",
+            len(chunk),
+            _sidecar_post("/rerank", {"query": query, "documents": chunk}, interactive=interactive),
+        )
+        scores.extend(cast(RerankResponse, result)["scores"])
+    return scores
+
+
+async def rerank(query: str, documents: list[str], *, interactive: bool = False) -> list[float]:
+    """Return relevance scores for documents, aligned with input order.
+
+    ``interactive=True`` (recall on a user turn) uses the fail-fast per-request
+    budget AND one deadline across all chunks — a large candidate set splits into
+    several requests, so a per-chunk timeout alone would let the total exceed the
+    turn budget. On expiry it raises into the caller's retrieval-order fallback.
+    """
     if not documents:
         return []
     if _sidecar_url():
-        scores: list[float] = []
-        # The query is sent with every chunk, so it consumes char budget too.
-        char_budget = EMBEDDING_SIDECAR_MAX_BATCH_CHARS - len(query)
-        for chunk in chunk_texts(documents, EMBEDDING_SIDECAR_MAX_BATCH_TEXTS, char_budget):
-            result = await _observed(
-                "rerank",
-                "sidecar",
-                len(chunk),
-                _sidecar_post("/rerank", {"query": query, "documents": chunk}),
-            )
-            scores.extend(cast(RerankResponse, result)["scores"])
-        return scores
+        if interactive:
+            async with asyncio.timeout(EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS):
+                return await _sidecar_rerank(query, documents, interactive=True)
+        return await _sidecar_rerank(query, documents)
     return await _observed(
         "rerank", "local", len(documents), asyncio.to_thread(_rerank_sync, query, documents)
     )

@@ -52,6 +52,23 @@ def test_labelless_histograms_observe_directly():
     assert REGISTRY.get_sample_value("hil_user_wait_seconds_count", {}) == before + 1
 
 
+def test_hil_pause_total_counts_pauses_not_decisions():
+    """``hil_pause_total`` must fire when a pause is created, never on a
+    decision — a decision-counting increment would miss still-pending pauses and
+    silently mislabel the metric. ``observe_hil_user_wait`` (called per decision)
+    must leave the pause counter untouched."""
+    from prometheus_client import REGISTRY
+
+    from app.services import latency_metrics as m
+
+    before = REGISTRY.get_sample_value("hil_pause_total", {}) or 0.0
+    m.observe_hil_pause()
+    assert REGISTRY.get_sample_value("hil_pause_total", {}) == before + 1
+    # A decision must NOT bump the pause counter.
+    m.observe_hil_user_wait(1.0)
+    assert REGISTRY.get_sample_value("hil_pause_total", {}) == before + 1
+
+
 def test_tool_call_histogram_resolves_a_call_that_ran_to_the_timeout():
     """Tools run for minutes (the generic guard is 120s; handoff/subagent/executor
     calls are exempt from it entirely). A bucket ceiling below that folds every
