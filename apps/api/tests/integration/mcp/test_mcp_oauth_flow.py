@@ -18,7 +18,7 @@ from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 from pydantic import ValidationError
 import pytest
 
-from app.models.integration_models import IntegrationTool
+from app.models.integration_models import StoredIntegrationTool
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_client import MCPClient
 from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
@@ -78,37 +78,22 @@ def _make_mock_session(scalar_return=None) -> AsyncMock:
     return session
 
 
-def _make_as_metadata(
-    auth_endpoint: str = "https://auth.example.com/authorize",
-    token_endpoint: str = "https://auth.example.com/token",
-    registration_endpoint: str | None = "https://auth.example.com/register",
-    revocation_endpoint: str | None = "https://auth.example.com/revoke",
-    introspection_endpoint: str | None = "https://auth.example.com/introspect",
-    issuer: str = "https://auth.example.com",
-    code_challenge_methods_supported: list[str] | None = None,
-    scopes_supported: list[str] | None = None,
-    client_id_metadata_document_supported: bool = False,
-) -> OAuthMetadata:
-    """Build an RFC 8414 OAuthMetadata model for tests."""
-    return OAuthMetadata.model_validate(
-        {
-            "issuer": issuer,
-            "authorization_endpoint": auth_endpoint,
-            "token_endpoint": token_endpoint,
-            "registration_endpoint": registration_endpoint,
-            "revocation_endpoint": revocation_endpoint,
-            "introspection_endpoint": introspection_endpoint,
-            "code_challenge_methods_supported": (
-                ["S256"]
-                if code_challenge_methods_supported is None
-                else code_challenge_methods_supported
-            ),
-            "scopes_supported": (
-                ["read", "write"] if scopes_supported is None else scopes_supported
-            ),
-            "client_id_metadata_document_supported": client_id_metadata_document_supported,
-        }
-    )
+_AS_METADATA_DEFAULTS: dict[str, object] = {
+    "issuer": "https://auth.example.com",
+    "authorization_endpoint": "https://auth.example.com/authorize",
+    "token_endpoint": "https://auth.example.com/token",
+    "registration_endpoint": "https://auth.example.com/register",
+    "revocation_endpoint": "https://auth.example.com/revoke",
+    "introspection_endpoint": "https://auth.example.com/introspect",
+    "code_challenge_methods_supported": ["S256"],
+    "scopes_supported": ["read", "write"],
+    "client_id_metadata_document_supported": False,
+}
+
+
+def _make_as_metadata(**overrides: object) -> OAuthMetadata:
+    """Build an RFC 8414 OAuthMetadata model for tests; keywords are the model's fields."""
+    return OAuthMetadata.model_validate({**_AS_METADATA_DEFAULTS, **overrides})
 
 
 def _make_prm(
@@ -158,6 +143,22 @@ def _make_mcp_config(**overrides) -> MCPConfig:
     }
     defaults.update(overrides)
     return MCPConfig(**defaults)
+
+
+def _stub_tool(name: str, description: str) -> MagicMock:
+    tool = MagicMock()
+    tool.name = name
+    tool.description = description
+    tool.metadata = {}
+    return tool
+
+
+def _resolved_platform_integration(server_url: str) -> MagicMock:
+    resolved = MagicMock()
+    resolved.mcp_config = _make_mcp_config(server_url=server_url, requires_auth=False)
+    resolved.source = "platform"
+    resolved.custom_doc = None
+    return resolved
 
 
 def _make_httpx_response(
@@ -264,7 +265,7 @@ class TestOAuthDiscovery:
         mcp_config = _make_mcp_config()
 
         direct_metadata = _make_as_metadata(
-            auth_endpoint="https://mcp.example.com/authorize",
+            authorization_endpoint="https://mcp.example.com/authorize",
             token_endpoint="https://mcp.example.com/token",
             issuer="https://mcp.example.com",
             registration_endpoint=None,
@@ -949,7 +950,7 @@ class TestToolDiscovery:
         integration_id, stored_tools = mock_store.await_args.args
         assert integration_id == "tool-int"
         assert [t.name for t in stored_tools] == ["get_data", "post_data"]
-        assert all(isinstance(t, IntegrationTool) for t in stored_tools)
+        assert all(isinstance(t, StoredIntegrationTool) for t in stored_tools)
 
     def test_format_tools_strips_whitespace_and_filters_empty(self):
         """_format_tools strips whitespace and drops tools without names."""
@@ -979,7 +980,7 @@ class TestToolDiscovery:
         """get_integration_tools returns the repository's stored tools as dicts."""
         with patch(
             "app.services.mcp.mcp_tools_service.integration_repository.get_tools",
-            AsyncMock(return_value=[IntegrationTool(name="tool_a", description="Tool A")]),
+            AsyncMock(return_value=[StoredIntegrationTool(name="tool_a", description="Tool A")]),
         ):
             result = await get_integration_tools("my-int")
 
@@ -1060,7 +1061,7 @@ class TestErrorHandling:
     def test_validate_oauth_endpoints_rejects_http_endpoints(self):
         """validate_oauth_endpoints rejects HTTP endpoints on non-localhost."""
         as_metadata = _make_as_metadata(
-            auth_endpoint="http://remote.example.com/authorize",
+            authorization_endpoint="http://remote.example.com/authorize",
             token_endpoint="https://auth.example.com/token",
             registration_endpoint=None,
             revocation_endpoint=None,
@@ -1124,94 +1125,32 @@ class TestConcurrentConnectionIsolation:
         client.token_store.store_unauthenticated = AsyncMock()
         client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
 
-        tool_a = MagicMock()
-        tool_a.name = "tool_from_server_a"
-        tool_a.description = "Tool A"
-        tool_a.metadata = {}
-
-        tool_b = MagicMock()
-        tool_b.name = "tool_from_server_b"
-        tool_b.description = "Tool B"
-        tool_b.metadata = {}
-
-        resolved_a = MagicMock()
-        resolved_a.mcp_config = _make_mcp_config(
-            server_url="https://server-a.example.com", requires_auth=False
-        )
-        resolved_a.source = "platform"
-        resolved_a.custom_doc = None
-
-        resolved_b = MagicMock()
-        resolved_b.mcp_config = _make_mcp_config(
-            server_url="https://server-b.example.com", requires_auth=False
-        )
-        resolved_b.source = "platform"
-        resolved_b.custom_doc = None
-
-        resolve_map = {"int-a": resolved_a, "int-b": resolved_b}
-        adapter_tools_map = {"int-a": [tool_a], "int-b": [tool_b]}
-
-        def make_adapter_for(integration_id):
-            mock_adapter = MagicMock()
-            mock_adapter.create_tools = AsyncMock(return_value=adapter_tools_map[integration_id])
-            return mock_adapter
-
-        adapter_call_count = 0
+        tool_a = _stub_tool("tool_from_server_a", "Tool A")
+        tool_b = _stub_tool("tool_from_server_b", "Tool B")
+        resolve_map = {
+            "int-a": _resolved_platform_integration("https://server-a.example.com"),
+            "int-b": _resolved_platform_integration("https://server-b.example.com"),
+        }
 
         with (
             patch(
                 "app.services.mcp.mcp_client.IntegrationResolver.resolve",
                 new=AsyncMock(side_effect=lambda iid: resolve_map[iid]),
             ),
-            patch(
-                "app.services.mcp.mcp_client.BaseMCPClient",
-            ) as mock_base_cls,
-            patch(
-                "app.services.mcp.mcp_client.ResilientLangChainAdapter",
-            ) as mock_adapter_cls,
+            patch("app.services.mcp.mcp_client.BaseMCPClient") as mock_base_cls,
+            patch("app.services.mcp.mcp_client.ResilientLangChainAdapter") as mock_adapter_cls,
             patch(
                 "app.services.mcp.mcp_client.wrap_tools_with_null_filter",
                 side_effect=lambda tools, **kw: tools,
             ),
-            patch(
-                "app.services.mcp.mcp_client.store_mcp_tools",
-                new=AsyncMock(),
-            ),
-            patch(
-                "app.services.mcp.mcp_client.update_user_integration_status",
-                new=AsyncMock(),
-            ),
+            patch("app.services.mcp.mcp_client.store_mcp_tools", new=AsyncMock()),
+            patch("app.services.mcp.mcp_client.update_user_integration_status", new=AsyncMock()),
         ):
             mock_base_instance = MagicMock()
             mock_base_instance.create_session = AsyncMock()
             mock_base_instance.close_all_sessions = AsyncMock()
             mock_base_cls.return_value = mock_base_instance
 
-            # Track which integration gets which adapter
-            adapter_instances = []
-
-            def adapter_factory():
-                nonlocal adapter_call_count
-                adapter_call_count += 1
-                # Return tools based on call order
-                m = MagicMock()
-                adapter_instances.append(m)
-                return m
-
-            mock_adapter_cls.side_effect = lambda: adapter_factory()
-
-            # Set up adapter to return correct tools
-            def make_create_tools(idx):
-                async def create_tools(c):
-                    if idx == 0:
-                        return [tool_a]
-                    return [tool_b]
-
-                return create_tools
-
-            # Connect to server A
-            adapter_instances.clear()
-            adapter_call_count = 0
             mock_adapter_cls.side_effect = lambda: MagicMock(
                 create_tools=AsyncMock(return_value=[tool_a])
             )

@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.services.composio.proxy_client import ProxyRequest
 from app.utils.errors import AppError
 from app.utils.google_sheets_utils import (
     SHEETS_API_BASE,
@@ -222,11 +223,13 @@ class TestGetSheetIdByName:
         with patch(f"{MODULE}.proxy_request_sync", return_value={}) as proxy:
             get_sheet_id_by_name("sid", "Data", "u1")
 
-        kwargs = proxy.call_args.kwargs
-        assert kwargs["endpoint"] == f"{SHEETS_API_BASE}/sid"
-        assert kwargs["method"] == "GET"
-        assert kwargs["query"] == {"fields": "sheets.properties"}
-        assert kwargs["user_id"] == "u1"
+        assert proxy.call_args.args[0] == ProxyRequest(
+            user_id="u1",
+            toolkit="GOOGLESHEETS",
+            endpoint=f"{SHEETS_API_BASE}/sid",
+            method="GET",
+            query={"fields": "sheets.properties"},
+        )
 
     def test_sheet_zero_is_returned_not_treated_as_missing(self) -> None:
         # Sheet id 0 is falsy; returning None for it would send every chart to
@@ -293,9 +296,12 @@ class TestGetColumnIndexByHeader:
         with patch(f"{MODULE}.proxy_request_sync", return_value={}) as proxy:
             get_column_index_by_header("sid", "Data", "Revenue", "u1")
 
-        kwargs = proxy.call_args.kwargs
-        assert kwargs["endpoint"] == f"{SHEETS_API_BASE}/sid/values/Data!1:1"
-        assert kwargs["method"] == "GET"
+        assert proxy.call_args.args[0] == ProxyRequest(
+            user_id="u1",
+            toolkit="GOOGLESHEETS",
+            endpoint=f"{SHEETS_API_BASE}/sid/values/Data!1:1",
+            method="GET",
+        )
 
     def test_first_match_wins_for_duplicate_headers(self) -> None:
         with patch(f"{MODULE}.proxy_request_sync", return_value={"values": [["A", "B", "A"]]}):

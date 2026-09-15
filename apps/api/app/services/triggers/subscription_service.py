@@ -25,8 +25,8 @@ from app.models.trigger_subscription_models import (
     SubscriptionAction,
     SubscriptionCondition,
     SubscriptionResolution,
-    SubscriptionStatus,
     TriggerSubscription,
+    TriggerSubscriptionStatus,
 )
 from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.analytics_service import AnalyticsEvents, capture_event
@@ -300,7 +300,7 @@ async def pause_subscriptions_for_trigger_names(user_id: str, trigger_names: set
                 update=TodoUpdate(
                     labels=labels,
                     trigger_subscriptions=_with_status(
-                        todo.trigger_subscriptions, trigger_names, SubscriptionStatus.PAUSED
+                        todo.trigger_subscriptions, trigger_names, TriggerSubscriptionStatus.PAUSED
                     ),
                 ),
             )
@@ -374,7 +374,7 @@ async def _resync_one(
         refreshed.append(
             subscription.model_copy(
                 update={
-                    "status": SubscriptionStatus.ACTIVE,
+                    "status": TriggerSubscriptionStatus.ACTIVE,
                     # Account-level triggers return no ids — keep the empty list.
                     "composio_trigger_ids": new_ids or subscription.composio_trigger_ids,
                 }
@@ -388,7 +388,7 @@ async def _resync_one(
 def _with_status(
     subscriptions: list[TriggerSubscription],
     trigger_names: set[str],
-    status: SubscriptionStatus,
+    status: TriggerSubscriptionStatus,
 ) -> list[TriggerSubscription]:
     return [
         s.model_copy(update={"status": status}) if s.trigger_name in trigger_names else s

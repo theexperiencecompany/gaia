@@ -60,7 +60,7 @@ async def get_current_user(request: Request) -> AuthenticatedUser:  # NOSONAR py
         raise HTTPException(
             status_code=401,
             detail={
-                "error_code": NOT_AUTHENTICATED,
+                "code": NOT_AUTHENTICATED,
                 "message": "Authentication required",
             },
         )
@@ -69,7 +69,7 @@ async def get_current_user(request: Request) -> AuthenticatedUser:  # NOSONAR py
         raise HTTPException(
             status_code=401,
             detail={
-                "error_code": NOT_AUTHENTICATED,
+                "code": NOT_AUTHENTICATED,
                 "message": "User data missing",
             },
         )

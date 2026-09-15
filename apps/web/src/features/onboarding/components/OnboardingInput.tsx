@@ -22,6 +22,7 @@ import {
   NEEDS_MAX_SELECTION,
   needOptionsFor,
   needsHint,
+  type OnboardingNeed,
   OTHER_NEED,
   OTHER_NEED_MAX_LENGTH,
   OTHER_NEED_OPTION,
@@ -46,7 +47,7 @@ interface NeedsModeProps {
   mode: "needs";
   /** The Q1 answer; a listed role unlocks its two personalised chips. */
   profession: string | null;
-  selectedNeeds: string[];
+  selectedNeeds: OnboardingNeed[];
   otherNeed: string;
   /** Whether "Something else" is open. Owned by the onboarding state. */
   otherOpen: boolean;
@@ -127,7 +128,7 @@ function NeedsInput({
   onOtherNeedChange,
   onContinue,
 }: NeedsModeProps) {
-  const selected = new Set(selectedNeeds);
+  const selected = new Set<string>(selectedNeeds);
   const picksLeft = NEEDS_MAX_SELECTION - selected.size - (otherOpen ? 1 : 0);
   const rolePhrase = profession ? ROLE_PHRASES[profession] : undefined;
   const personalisedNote = (value: string) =>

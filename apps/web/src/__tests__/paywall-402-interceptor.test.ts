@@ -30,14 +30,12 @@ describe("402 subscription_required handling", () => {
     vi.clearAllMocks();
   });
 
-  it("extracts the subscription_required detail from a 402 body", () => {
+  it("extracts the subscription_required envelope from a 402 body", () => {
     const detail = getSubscriptionRequiredDetail({
-      detail: {
-        code: "subscription_required",
-        message: "Subscribe to keep chatting",
-        checkout_url: "https://checkout.example/session",
-        discount_code: "LAUNCH20",
-      },
+      code: "subscription_required",
+      message: "Subscribe to keep chatting",
+      checkout_url: "https://checkout.example/session",
+      discount_code: "LAUNCH20",
     });
 
     expect(detail).toEqual({
@@ -50,10 +48,10 @@ describe("402 subscription_required handling", () => {
 
   it("returns undefined for a body that isn't the subscription_required shape", () => {
     expect(
-      getSubscriptionRequiredDetail({ detail: "Not found" }),
+      getSubscriptionRequiredDetail({ message: "Not found" }),
     ).toBeUndefined();
     expect(
-      getSubscriptionRequiredDetail({ detail: { code: "other_code" } }),
+      getSubscriptionRequiredDetail({ code: "other_code", message: "no" }),
     ).toBeUndefined();
   });
 
@@ -62,12 +60,10 @@ describe("402 subscription_required handling", () => {
       response: {
         status: 402,
         data: {
-          detail: {
-            code: "subscription_required",
-            message: "Subscribe to keep chatting",
-            checkout_url: "https://checkout.example/session",
-            discount_code: "LAUNCH20",
-          },
+          code: "subscription_required",
+          message: "Subscribe to keep chatting",
+          checkout_url: "https://checkout.example/session",
+          discount_code: "LAUNCH20",
         },
       },
     } as unknown as Parameters<typeof processAxiosError>[0];
@@ -90,12 +86,10 @@ describe("402 subscription_required handling", () => {
       response: {
         status: 402,
         data: {
-          detail: {
-            code: "subscription_required",
-            message: "Subscribe to keep chatting",
-            checkout_url: null,
-            discount_code: null,
-          },
+          code: "subscription_required",
+          message: "Subscribe to keep chatting",
+          checkout_url: null,
+          discount_code: null,
         },
       },
     } as unknown as Parameters<typeof processAxiosError>[0];
@@ -109,7 +103,7 @@ describe("402 subscription_required handling", () => {
     const error = {
       response: {
         status: 402,
-        data: { detail: "Payment required" },
+        data: { message: "Payment required" },
       },
     } as unknown as Parameters<typeof processAxiosError>[0];
 
@@ -121,7 +115,7 @@ describe("402 subscription_required handling", () => {
     expect(error.handled).toBe(false);
   });
 
-  it("does not mark a malformed 402 body (no detail at all) as handled", () => {
+  it("does not mark a malformed 402 body (no envelope at all) as handled", () => {
     const error = {
       response: {
         status: 402,
@@ -156,12 +150,10 @@ describe("chatApi chat-stream 402 handling (onopen)", () => {
           await (capturedOnOpen as (r: Response) => Promise<void>)(
             new Response(
               JSON.stringify({
-                detail: {
-                  code: "subscription_required",
-                  message: "Subscribe to keep chatting",
-                  checkout_url: "https://checkout.example/session",
-                  discount_code: "LAUNCH20",
-                },
+                code: "subscription_required",
+                message: "Subscribe to keep chatting",
+                checkout_url: "https://checkout.example/session",
+                discount_code: "LAUNCH20",
               }),
               { status: 402 },
             ),

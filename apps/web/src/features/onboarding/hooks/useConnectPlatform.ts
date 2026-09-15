@@ -19,18 +19,10 @@ import { type Dispatch, useCallback, useEffect, useState } from "react";
 import type { PhoneLinkTarget } from "@/components/shared/PhoneLinkModal";
 import { BOT_AUTH_COMMAND, type BotPlatform } from "@/config/botPlatforms";
 import { BOT_LINKS } from "@/features/bots/constants";
-import { apiService } from "@/lib/api/service";
+import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
 import { type LinkCodeResponse, mintLinkCode } from "../api/onboardingApi";
 import type { Action } from "../state/types";
-
-interface PlatformConnectResponse {
-  auth_url?: string;
-  instructions?: string;
-  action_link?: string;
-  contact_number?: string;
-  auth_type: string;
-}
 
 interface UseConnectPlatformReturn {
   connect: (platform: BotPlatform) => void;
@@ -111,12 +103,12 @@ export function useConnectPlatform(
   const submitPhone = useCallback(
     (phone: string) => {
       setIsSubmittingPhone(true);
-      apiService
-        .post<PlatformConnectResponse>(
-          "/platform-links/imessage/connect",
-          { phone },
-          { silent: true },
-        )
+      api
+        .post("/api/v1/platform-links/{platform}/connect", {
+          path: { platform: "imessage" },
+          body: { phone },
+          silent: true,
+        })
         .then((data) => {
           if (!data.contact_number) {
             toast.error("iMessage isn't available right now. Try another way.");
@@ -133,7 +125,7 @@ export function useConnectPlatform(
                   data.contact_number,
                   linkCode.handoff_text,
                 )
-              : data.action_link,
+              : (data.action_link ?? undefined),
           });
         })
         .catch((error: unknown) => {

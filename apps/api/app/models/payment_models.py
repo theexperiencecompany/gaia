@@ -4,11 +4,11 @@ Payment and subscription related models for Dodo Payments integration.
 
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.repositories.base import MongoDocument, UserScopedDocument
+from app.schemas.common import ResponseModel
 
 
 class PlanType(str, Enum):
@@ -107,7 +107,7 @@ class CreateCheckoutSessionRequest(BaseModel):
 
 
 # Response Models
-class PlanResponse(BaseModel):
+class PlanResponse(ResponseModel):
     """Response model for subscription plan."""
 
     id: str = Field(..., description="Plan ID")
@@ -147,12 +147,12 @@ class ProCheckout(BaseModel):
     checkout: CreateSubscriptionResponse
 
 
-class UserSubscriptionStatus(BaseModel):
+class UserSubscriptionStatus(ResponseModel):
     """Response model for user subscription status."""
 
     user_id: str = Field(..., description="User ID")
-    current_plan: dict[str, Any] | None = Field(None, description="Current plan details")
-    subscription: dict[str, Any] | None = Field(None, description="Current subscription")
+    current_plan: PlanResponse | None = Field(None, description="Current plan details")
+    subscription: "SubscriptionDocument | None" = Field(None, description="Current subscription")
     is_subscribed: bool = Field(False, description="Whether user has an active subscription")
     days_remaining: int | None = Field(None, description="Days remaining in current period")
     can_upgrade: bool = Field(True, description="Whether user can upgrade")
@@ -216,6 +216,9 @@ class SubscriptionDocument(MongoDocument):
     product_id: str | None = None
     status: str = "pending"
     quantity: int | None = None
+    #: Dodo billing fields the web reads off the status endpoint.
+    currency: str | None = None
+    payment_frequency_interval: str | None = None
     recurring_pre_tax_amount: int | None = None
     cancel_at_next_billing_date: bool | None = None
     #: The ISO strings Dodo sends, stored verbatim (see ``SubscriptionUpdate``).

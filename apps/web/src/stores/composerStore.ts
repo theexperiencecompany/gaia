@@ -13,8 +13,8 @@ import type {
   SelectedWorkflowData,
   WorkflowSelectionOptions,
 } from "@/stores/composerStore.types";
-import type { FileData } from "@/types/shared/fileTypes";
-import type { SearchMode } from "@/types/shared/searchTypes";
+import type { AttachedFileData } from "@/types/shared/fileTypes";
+import type { ComposerMode } from "@/types/shared/searchTypes";
 
 interface ComposerState {
   // Text input state
@@ -27,13 +27,13 @@ interface ComposerState {
   inputText: string;
 
   // Mode and tool selection
-  selectedMode: Set<SearchMode>;
+  selectedMode: Set<ComposerMode>;
   selectedTool: string | null;
   selectedToolCategory: string | null;
 
   // File management
   uploadedFiles: UploadedFilePreview[];
-  uploadedFileData: FileData[];
+  uploadedFileData: AttachedFileData[];
 
   // UI state
   isSlashCommandDropdownOpen: boolean;
@@ -63,7 +63,7 @@ interface ComposerActions {
   clearInputText: () => void;
 
   // Mode and tool actions
-  setSelectedMode: (mode: Set<SearchMode>) => void;
+  setSelectedMode: (mode: Set<ComposerMode>) => void;
   setSelectedTool: (tool: string | null, category?: string | null) => void;
   setSelectedToolCategory: (category: string | null) => void;
   clearToolSelection: () => void;
@@ -73,8 +73,8 @@ interface ComposerActions {
   addUploadedFile: (file: UploadedFilePreview) => void;
   replaceUploadedFile: (tempId: string, file: UploadedFilePreview) => void;
   removeUploadedFile: (fileId: string) => void;
-  setUploadedFileData: (data: FileData[]) => void;
-  addUploadedFileData: (data: FileData) => void;
+  setUploadedFileData: (data: AttachedFileData[]) => void;
+  addUploadedFileData: (data: AttachedFileData) => void;
   removeUploadedFileData: (fileId: string) => void;
   clearAllFiles: () => void;
 

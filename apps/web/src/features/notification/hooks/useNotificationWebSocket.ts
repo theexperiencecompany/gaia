@@ -13,8 +13,8 @@ import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { batchSyncConversations } from "@/services/syncService";
 import type {
   NotificationAction,
-  NotificationRecord,
   NotificationUpdate,
+  NotificationView,
 } from "@/types/features/notificationTypes";
 import {
   ActionType,
@@ -30,7 +30,7 @@ interface WebSocketMessage {
     | "notification.all_read"
     | "ping"
     | "error";
-  notification?: NotificationRecord;
+  notification?: NotificationView;
   notification_id?: string;
   updates?: NotificationUpdate;
   channel_type?: string | null;
@@ -72,10 +72,7 @@ function buildRedirectAction(
   };
 }
 
-function showDeliveredToast(
-  notification: NotificationRecord,
-  router: AppRouter,
-) {
+function showDeliveredToast(notification: NotificationView, router: AppRouter) {
   if (!notification.content?.title) {
     toast.info("New notification", {
       description: "You have received a new notification",
@@ -96,7 +93,7 @@ function showDeliveredToast(
 }
 
 function handleDeliveredNotification(
-  notification: NotificationRecord,
+  notification: NotificationView,
   router: AppRouter,
   isOnboarding: boolean,
 ) {

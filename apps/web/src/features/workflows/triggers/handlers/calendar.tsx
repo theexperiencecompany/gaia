@@ -7,7 +7,7 @@
  */
 
 import type { RegisteredHandler } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 import type { CalendarConfig, CalendarTriggerData } from "./CalendarSettings";
 import { CalendarSettings } from "./CalendarSettings";
 
@@ -18,7 +18,7 @@ import { CalendarSettings } from "./CalendarSettings";
 export const calendarTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["calendar_event_created", "calendar_event_starting_soon"],
 
-  createDefaultConfig: (slug: string): TriggerConfig => {
+  createDefaultConfig: (slug: string): TriggerConfigDraft => {
     const baseTriggerData: CalendarTriggerData = {
       trigger_name: slug,
       calendar_ids: ["primary"],
@@ -34,7 +34,7 @@ export const calendarTriggerHandler: RegisteredHandler = {
       enabled: true,
       trigger_name: slug,
       trigger_data: baseTriggerData,
-    } as TriggerConfig;
+    };
   },
 
   SettingsComponent: CalendarSettings,

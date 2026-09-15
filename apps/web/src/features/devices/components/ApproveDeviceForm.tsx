@@ -52,7 +52,7 @@ export function ApproveDeviceForm() {
       const result = await devicesApi.approve(toApiPairingCode(digits));
       setApproved(result.name);
     } catch {
-      // apiService already surfaced the error toast
+      // The API client already surfaced the error toast
     } finally {
       setIsApproving(false);
     }

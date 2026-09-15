@@ -9,7 +9,7 @@ import type {
   CommunityWorkflow,
   IntegrationRef,
   PublicWorkflowStep,
-  TriggerConfig,
+  TriggerConfigDraft,
   Workflow,
 } from "@/types/features/workflowTypes";
 import type { ContentCreator } from "@/types/shared/contentTypes";
@@ -28,7 +28,12 @@ import WorkflowIcons from "./WorkflowIcons";
 import { getNextRunDisplay } from "./workflowCardHelpers";
 
 export type WorkflowVariant = "user" | "community" | "explore" | "suggestion";
-type ActionType = "run" | "create" | "insert-prompt" | "navigate" | "none";
+type WorkflowCardAction =
+  | "run"
+  | "create"
+  | "insert-prompt"
+  | "navigate"
+  | "none";
 
 interface UnifiedWorkflowCardProps {
   // Core data - accepts either full Workflow or simplified data
@@ -45,7 +50,7 @@ interface UnifiedWorkflowCardProps {
   /** Built-in workflow key — keeps "add" idempotent with the provisioner */
   systemWorkflowKey?: string | null;
   /** The trigger this card advertises, reproduced on add */
-  triggerConfig?: TriggerConfig;
+  triggerConfig?: TriggerConfigDraft;
   /** Author, for cards built from flat props rather than a workflow object */
   creator?: ContentCreator;
   totalExecutions?: number;
@@ -63,7 +68,7 @@ interface UnifiedWorkflowCardProps {
   showDescriptionAsTooltip?: boolean;
 
   // Action configuration
-  primaryAction?: ActionType;
+  primaryAction?: WorkflowCardAction;
   onCardClick?: () => void;
   onActionComplete?: () => void;
   /**
@@ -353,7 +358,7 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     communityWorkflow?.system_workflow_key ??
     undefined;
   const sourceTriggerConfig =
-    propTriggerConfig ?? communityWorkflow?.trigger_config;
+    propTriggerConfig ?? communityWorkflow?.trigger_config ?? undefined;
 
   return {
     title,
@@ -375,7 +380,7 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
 }
 
 // Helper function to determine default action based on variant
-function getDefaultAction(variant: WorkflowVariant): ActionType {
+function getDefaultAction(variant: WorkflowVariant): WorkflowCardAction {
   switch (variant) {
     case "user":
       return "run";
@@ -391,7 +396,7 @@ function getDefaultAction(variant: WorkflowVariant): ActionType {
 
 // Helper function to get button configuration
 function getButtonConfig(
-  action: ActionType,
+  action: WorkflowCardAction,
   customLabel?: string,
   propActionType?: "prompt" | "workflow",
 ): { label: string; variant: "primary" | "flat" } {

@@ -3,7 +3,7 @@ import { ActivityIndicator, Switch, View } from "react-native";
 import { AppIcon, FlashIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
-import type { Skill } from "../api/skills-api";
+import type { DiscoveredSkill, Skill } from "../api/skills-api";
 import { disableSkill, enableSkill } from "../api/skills-api";
 
 interface SkillCardProps {
@@ -68,8 +68,8 @@ export function SkillCard({ skill, onToggle }: SkillCardProps) {
     }
   };
 
-  const categoryColor = getCategoryColor(skill.category);
-  const categoryBg = getCategoryBg(skill.category);
+  const categoryColor = getCategoryColor(skill.target);
+  const categoryBg = getCategoryBg(skill.target);
 
   return (
     <View
@@ -136,7 +136,7 @@ export function SkillCard({ skill, onToggle }: SkillCardProps) {
                   fontWeight: "500",
                 }}
               >
-                {formatCategoryLabel(skill.category)}
+                {formatCategoryLabel(skill.target)}
               </Text>
             </View>
           </View>
@@ -168,6 +168,39 @@ export function SkillCard({ skill, onToggle }: SkillCardProps) {
           {skill.description}
         </Text>
       ) : null}
+    </View>
+  );
+}
+
+interface DiscoveredSkillCardProps {
+  skill: DiscoveredSkill;
+}
+
+/** A skill the discover endpoint previews from a repository — not installed, so nothing to toggle. */
+export function DiscoveredSkillCard({ skill }: DiscoveredSkillCardProps) {
+  const { fontSize, spacing } = useResponsive();
+  return (
+    <View
+      style={{
+        backgroundColor: "#1c1c1e",
+        borderRadius: 16,
+        padding: spacing.md,
+        gap: 4,
+      }}
+    >
+      <Text style={{ fontSize: fontSize.sm, fontWeight: "600", color: "#fff" }}>
+        {skill.name}
+      </Text>
+      <Text
+        style={{
+          fontSize: fontSize.xs,
+          color: "#8e8e93",
+          lineHeight: fontSize.xs * 1.5,
+        }}
+        numberOfLines={2}
+      >
+        {skill.description}
+      </Text>
     </View>
   );
 }

@@ -14,7 +14,7 @@ from typing import Any, Literal, TypedDict
 from composio_client import APIStatusError
 
 from app.constants.log_tags import LogTag
-from app.models.trigger_config import TriggerOption, TriggerOptionGroup
+from app.models.trigger_config import TriggerOption, TriggerOptionGroup, TriggerOptionsQuery
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.todos.signal_context import get_signal_matching_context
@@ -307,12 +307,7 @@ class TriggerHandler(ABC):
 
     async def get_config_options(
         self,
-        trigger_name: str,  # noqa: ARG002 -- framework contract
-        field_name: str,  # noqa: ARG002 -- framework contract
-        user_id: str,  # noqa: ARG002 -- framework contract
-        integration_id: str,  # noqa: ARG002 -- framework contract
-        parent_ids: list[str] | None = None,  # noqa: ARG002 -- framework contract
-        **_kwargs: str,
+        query: TriggerOptionsQuery,  # noqa: ARG002 -- framework contract
     ) -> Sequence[TriggerOption | TriggerOptionGroup]:
         """Get dynamic options for a trigger configuration field.
 
@@ -324,13 +319,6 @@ class TriggerHandler(ABC):
         ``Sequence`` (not ``list``) because ``list`` is invariant: handlers that
         only ever produce flat options override this returning
         ``list[TriggerOption]``.
-
-        Args:
-            trigger_name: The trigger slug (e.g., 'slack_new_message')
-            field_name: The config field name (e.g., 'channel_id')
-            user_id: The user ID
-            integration_id: The integration ID (e.g., 'slack')
-            parent_ids: Parent IDs for cascading options (e.g., workspace IDs)
 
         Returns:
             Flat options, or ``TriggerOptionGroup``s for cascading dropdowns.

@@ -1,5 +1,5 @@
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
-import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
+import { forwardRef, useImperativeHandle, useState } from "react";
 import { View } from "react-native";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import type {
@@ -57,102 +57,88 @@ export const TodoDetailSheet = forwardRef<
       close: () => setIsOpen(false),
     }));
 
-    const handleChange = useCallback(
-      (update: TodoUpdate) => {
-        if (!todo) return;
-        // optimistic local update so the sheet reflects changes immediately
-        // even if the parent list query has not refetched yet.
-        const localUpdate: Partial<Todo> = {
-          ...(update.title !== undefined ? { title: update.title } : {}),
-          ...(update.description !== undefined
-            ? { description: update.description }
-            : {}),
-          ...(update.priority !== undefined
-            ? { priority: update.priority }
-            : {}),
-          ...(update.due_date !== undefined
-            ? { due_date: update.due_date }
-            : {}),
-          ...(update.due_date_timezone !== undefined
-            ? { due_date_timezone: update.due_date_timezone }
-            : {}),
-          ...(update.project_id !== undefined
-            ? { project_id: update.project_id }
-            : {}),
-          ...(update.labels !== undefined ? { labels: update.labels } : {}),
-          ...(update.recurrence !== undefined
-            ? { recurrence: update.recurrence }
-            : {}),
-          ...(update.completed !== undefined
-            ? { completed: update.completed }
-            : {}),
-        };
-        setTodo({ ...todo, ...localUpdate } as Todo);
-        // Swallow recurrence-only failures silently — backend may not yet
-        // accept the field. Other failures are surfaced by the hook.
-        void onUpdate(todo.id, update).catch(() => {
-          /* silent rollback for not-yet-shipped endpoints */
-        });
-      },
-      [todo, onUpdate],
-    );
+    const handleChange = (update: TodoUpdate) => {
+      if (!todo) return;
+      // optimistic local update so the sheet reflects changes immediately
+      // even if the parent list query has not refetched yet.
+      const localUpdate: Partial<Todo> = {
+        ...(update.title != null ? { title: update.title } : {}),
+        ...(update.description !== undefined
+          ? { description: update.description }
+          : {}),
+        ...(update.priority != null ? { priority: update.priority } : {}),
+        ...(update.due_date !== undefined ? { due_date: update.due_date } : {}),
+        ...(update.due_date_timezone !== undefined
+          ? { due_date_timezone: update.due_date_timezone }
+          : {}),
+        ...(update.project_id !== undefined
+          ? { project_id: update.project_id }
+          : {}),
+        ...(update.labels != null ? { labels: update.labels } : {}),
+        ...(update.recurrence !== undefined
+          ? { recurrence: update.recurrence }
+          : {}),
+        ...(update.completed != null ? { completed: update.completed } : {}),
+      };
+      setTodo({ ...todo, ...localUpdate } as Todo);
+      // Swallow recurrence-only failures silently — backend may not yet
+      // accept the field. Other failures are surfaced by the hook.
+      void onUpdate(todo.id, update).catch(() => {
+        /* silent rollback for not-yet-shipped endpoints */
+      });
+    };
 
-    const handleAddSubtask = useCallback(
-      async (todoId: string, title: string) => {
-        await onAddSubtask(todoId, title);
-        setTodo((prev) =>
-          prev && prev.id === todoId
-            ? {
-                ...prev,
-                subtasks: [
-                  ...prev.subtasks,
-                  {
-                    id: `optimistic-${Date.now()}`,
-                    title,
-                    completed: false,
-                    created_at: new Date().toISOString(),
-                  } satisfies SubTask,
-                ],
-              }
-            : prev,
-        );
-      },
-      [onAddSubtask],
-    );
+    const handleAddSubtask = async (todoId: string, title: string) => {
+      await onAddSubtask(todoId, title);
+      setTodo((prev) =>
+        prev && prev.id === todoId
+          ? {
+              ...prev,
+              subtasks: [
+                ...prev.subtasks,
+                {
+                  id: `optimistic-${Date.now()}`,
+                  title,
+                  completed: false,
+                  created_at: new Date().toISOString(),
+                } satisfies SubTask,
+              ],
+            }
+          : prev,
+      );
+    };
 
-    const handleToggleSubtask = useCallback(
-      async (todoId: string, subtaskId: string, completed: boolean) => {
-        setTodo((prev) =>
-          prev && prev.id === todoId
-            ? {
-                ...prev,
-                subtasks: prev.subtasks.map((s) =>
-                  s.id === subtaskId ? { ...s, completed } : s,
-                ),
-              }
-            : prev,
-        );
-        await onToggleSubtask(todoId, subtaskId, completed);
-      },
-      [onToggleSubtask],
-    );
+    const handleToggleSubtask = async (
+      todoId: string,
+      subtaskId: string,
+      completed: boolean,
+    ) => {
+      setTodo((prev) =>
+        prev && prev.id === todoId
+          ? {
+              ...prev,
+              subtasks: prev.subtasks.map((s) =>
+                s.id === subtaskId ? { ...s, completed } : s,
+              ),
+            }
+          : prev,
+      );
+      await onToggleSubtask(todoId, subtaskId, completed);
+    };
 
-    const handleDeleteSubtask = useCallback(
-      async (todoId: string, subtaskId: string) => {
-        setTodo((prev) =>
-          prev && prev.id === todoId
-            ? {
-                ...prev,
-                subtasks: prev.subtasks.filter((s) => s.id !== subtaskId),
-              }
-            : prev,
-        );
-        await onDeleteSubtask(todoId, subtaskId);
-      },
-      [onDeleteSubtask],
-    );
+    const handleDeleteSubtask = async (todoId: string, subtaskId: string) => {
+      setTodo((prev) =>
+        prev && prev.id === todoId
+          ? {
+              ...prev,
+              subtasks: prev.subtasks.filter((s) => s.id !== subtaskId),
+            }
+          : prev,
+      );
+      await onDeleteSubtask(todoId, subtaskId);
+    };
 
-    const handleToggleComplete = useCallback(() => {
+    const handleToggleComplete = () => {
       if (!todo) return;
       const nextCompleted = !todo.completed;
       // Cascade rule: completing the parent cascades to subtasks. The
@@ -173,13 +159,13 @@ export const TodoDetailSheet = forwardRef<
       }).catch(() => {
         /* hook surfaces error */
       });
-    }, [todo, onUpdate]);
+    };
 
-    const handleDelete = useCallback(() => {
+    const handleDelete = () => {
       if (!todo) return;
       setIsOpen(false);
       onDelete?.(todo);
-    }, [todo, onDelete]);
+    };
 
     return (
       <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>

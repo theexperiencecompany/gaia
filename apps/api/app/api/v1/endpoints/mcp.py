@@ -5,6 +5,7 @@ Handles MCP OAuth callbacks and connection testing.
 Connection/disconnection is handled by the unified /integrations endpoints.
 """
 
+from dataclasses import dataclass
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -21,7 +22,14 @@ from app.schemas.mcp import MCPConnectionTestResponse
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
-from app.services.mcp.mcp_client import MCPClient, get_mcp_client
+from app.services.mcp.mcp_client import get_mcp_client
+from app.services.mcp.oauth_callback import (
+    ProviderError,
+    ScopeRetry,
+    complete_oauth,
+    resolve_provider_error,
+    sanitized_error_code,
+)
 from shared.py.wide_events import McpContext, log
 
 router = APIRouter()
@@ -129,68 +137,22 @@ async def test_mcp_connection(
         return MCPConnectionTestResponse(status="failed", error=str(e))
 
 
-def _oauth_failed_url(
-    frontend_url: str, redirect_path: str, integration_id: str, error: str
-) -> str:
-    return f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error={error}"
+@dataclass(frozen=True, kw_only=True)
+class _McpCallback:
+    """Where one OAuth callback came from and where it sends the browser next."""
 
+    integration_id: str
+    redirect_path: str
+    frontend_url: str
 
-def _oauth_connected_url(
-    frontend_url: str, redirect_path: str, integration_id: str, name: str
-) -> str:
-    return f"{frontend_url}{redirect_path}?id={integration_id}&status=connected&name={quote(name)}"
-
-
-def _map_provider_error_code(error: str) -> str:
-    if error == "server_error":
-        return "oauth_server_error"
-    if error not in [
-        "access_denied",
-        "invalid_request",
-        "unauthorized_client",
-        "unsupported_response_type",
-        "invalid_scope",
-        "temporarily_unavailable",
-    ]:
-        return "authorization_failed"
-    return error
-
-
-async def _try_scope_retry_url(
-    client: MCPClient,
-    integration_id: str,
-    error_description: str | None,
-    redirect_uri: str,
-    redirect_path: str,
-) -> str | None:
-    try:
-        return await client.build_scope_retry_url(
-            integration_id, error_description, redirect_uri, redirect_path
-        )
-    except Exception as retry_err:
-        log.warning(
-            f"{LogTag.MCP} Scope retry URL build failed",
-            integration_id=integration_id,
-            error_type=type(retry_err).__name__,
-        )
-        return None
-
-
-async def _clear_excluded_scopes_quietly(
-    client: MCPClient, integration_id: str, phase: str
-) -> None:
-    try:
-        await client.token_store.clear_excluded_scopes(integration_id)
-    except Exception as clear_err:
-        log.warning(
-            f"{LogTag.MCP} Failed to clear excluded scopes",
-            integration_id=integration_id,
-            error_type=type(clear_err).__name__,
-            phase=phase,
+    def failure(self, error: str) -> str:
+        return (
+            f"{self.frontend_url}{self.redirect_path}"
+            f"?id={self.integration_id}&status=failed&error={error}"
         )
 
 
-@router.get("/oauth/callback")
+@router.get("/oauth/callback", response_class=RedirectResponse)
 async def mcp_oauth_callback(
     state: str = Query(...),
     code: str | None = Query(None),  # Optional - may be missing if error
@@ -224,40 +186,30 @@ async def mcp_oauth_callback(
     client = await get_mcp_client(user_id=str(user_id))
     redirect_uri = f"{get_api_base_url()}/api/v1/mcp/oauth/callback"
 
-    # Handle OAuth error response from authorization server
+    callback = _McpCallback(
+        integration_id=integration_id,
+        redirect_path=redirect_path,
+        frontend_url=frontend_url,
+    )
     if error:
-        log.warning(
-            f"{LogTag.MCP} OAuth error returned by provider",
+        outcome = await resolve_provider_error(
+            client,
             integration_id=integration_id,
-            oauth_error=error,
-            oauth_error_description=error_description,
+            redirect_uri=redirect_uri,
+            redirect_path=redirect_path,
+            error=error,
+            error_description=error_description,
         )
-
-        # Some servers advertise scopes in their metadata that a dynamically
-        # registered client cannot request (e.g. agentmail's "user:org:read").
-        # Drop the rejected scope(s) and retry the authorization.
-        # Best-effort recovery — a Redis/discovery failure here must not turn the
-        # error response into a 500. Fall through to the normal error redirect.
-        if error == "invalid_scope":
-            retry_url = await _try_scope_retry_url(
-                client, integration_id, error_description, redirect_uri, redirect_path
-            )
-            if retry_url:
-                return RedirectResponse(url=retry_url)
-        await _clear_excluded_scopes_quietly(client, integration_id, "provider_error")
-
-        return RedirectResponse(
-            url=_oauth_failed_url(
-                frontend_url, redirect_path, integration_id, _map_provider_error_code(error)
-            )
-        )
+        match outcome:
+            case ScopeRetry(url=url):
+                return RedirectResponse(url=url)
+            case ProviderError(code=code):
+                return RedirectResponse(url=callback.failure(code))
 
     # Validate code is present (required for success case)
     if not code:
         log.error(f"{LogTag.MCP} OAuth callback missing code", integration_id=integration_id)
-        return RedirectResponse(
-            url=_oauth_failed_url(frontend_url, redirect_path, integration_id, "missing_code")
-        )
+        return RedirectResponse(url=callback.failure("missing_code"))
 
     # Resolve integration name for the frontend toast
     resolved = await IntegrationResolver.resolve(integration_id)
@@ -270,45 +222,14 @@ async def mcp_oauth_callback(
         user_id=user_id,
     )
     try:
-        # handle_oauth_callback now stores tokens, flips status to connected,
-        # and dispatches the full MCP connect (handshake + tools/list +
-        # schema conversion + Chroma indexing) as a background task. Returns
-        # immediately with an empty list — callback fires the redirect in
-        # ~1-2s instead of 8-29s.
-        await client.handle_oauth_callback(
+        await complete_oauth(
+            client,
+            user_id=str(user_id),
             integration_id=integration_id,
             code=code,
-            state=state_token,
+            state_token=state_token,
             redirect_uri=redirect_uri,
         )
-        # OAuth succeeded — clear any scope exclusions accumulated during retries.
-        # Best-effort: a Redis hiccup must not turn a successful connect into an
-        # error redirect (a stale exclusion entry expires on its own).
-        await _clear_excluded_scopes_quietly(client, integration_id, "oauth_success")
-
-        await invalidate_user_integration_caches(str(user_id))
-
-        log.audit("mcp integration connected via oauth", actor=user_id, resource=integration_id)
-        capture_context_event(
-            AnalyticsEvents.INTEGRATION_CONNECTED,
-            {
-                "integration_id": integration_id,
-                "connection_method": "oauth",
-            },
-        )
-
-        frontend_url = get_frontend_url()
-        log.set(outcome="connected")
-        log.set_ns("mcp", success=True)
-        log.info(
-            f"{LogTag.MCP} mcp_oauth_callback: OAuth complete; connect dispatched to background, redirecting now",
-            integration_id=integration_id,
-            user_id=user_id,
-        )
-        return RedirectResponse(
-            url=_oauth_connected_url(frontend_url, redirect_path, integration_id, integration_name)
-        )
-
     except Exception as e:
         log.set(outcome="failed")
         log.set_ns("mcp", success=False, error_type=type(e).__name__)
@@ -318,15 +239,16 @@ async def mcp_oauth_callback(
             user_id=user_id,
             error_type=type(e).__name__,
         )
-        frontend_url = get_frontend_url()
-        # Sanitize error - use generic codes instead of raw exception messages
-        error_code = "connection_failed"
-        if "state" in str(e).lower():
-            error_code = "invalid_state"
-        elif "token" in str(e).lower():
-            error_code = "token_exchange_failed"
-        elif "discovery" in str(e).lower():
-            error_code = "discovery_failed"
-        return RedirectResponse(
-            url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error={error_code}"
-        )
+        return RedirectResponse(url=callback.failure(sanitized_error_code(e)))
+
+    log.audit("mcp integration connected via oauth", actor=str(user_id), resource=integration_id)
+    log.set(outcome="connected")
+    log.set_ns("mcp", success=True)
+    log.info(
+        f"{LogTag.MCP} mcp_oauth_callback: OAuth complete; connect dispatched to background, redirecting now",
+        integration_id=integration_id,
+        user_id=user_id,
+    )
+    return RedirectResponse(
+        url=f"{frontend_url}{redirect_path}?id={integration_id}&status=connected&name={quote(integration_name)}"
+    )

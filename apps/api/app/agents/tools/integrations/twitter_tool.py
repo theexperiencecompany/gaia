@@ -29,7 +29,7 @@ from app.models.twitter_models import (
     ScheduleTweetInput,
     SearchUsersInput,
 )
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.templates.docstrings.twitter_tool_docs import (
     CUSTOM_BATCH_FOLLOW_DOC,
     CUSTOM_BATCH_UNFOLLOW_DOC,
@@ -292,10 +292,12 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
         try:
             data = (
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=TWITTER_TOOLKIT,
-                    endpoint=f"{TWITTER_API_BASE}/users/me",
-                    method="GET",
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=TWITTER_TOOLKIT,
+                        endpoint=f"{TWITTER_API_BASE}/users/me",
+                        method="GET",
+                    )
                 )
                 or {}
             )
@@ -433,11 +435,13 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
 
         me_data = (
             proxy_request_sync(
-                user_id=user_id,
-                toolkit=TWITTER_TOOLKIT,
-                endpoint=f"{TWITTER_API_BASE}/users/me",
-                method="GET",
-                query={"user.fields": "public_metrics,description,username"},
+                ProxyRequest(
+                    user_id=user_id,
+                    toolkit=TWITTER_TOOLKIT,
+                    endpoint=f"{TWITTER_API_BASE}/users/me",
+                    method="GET",
+                    query={"user.fields": "public_metrics,description,username"},
+                )
             )
             or {}
         ).get("data", {})
@@ -450,14 +454,16 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
             try:
                 tweets_data = (
                     proxy_request_sync(
-                        user_id=user_id,
-                        toolkit=TWITTER_TOOLKIT,
-                        endpoint=f"{TWITTER_API_BASE}/users/{twitter_user_id}/tweets",
-                        method="GET",
-                        query={
-                            "max_results": 5,
-                            "tweet.fields": "created_at,public_metrics",
-                        },
+                        ProxyRequest(
+                            user_id=user_id,
+                            toolkit=TWITTER_TOOLKIT,
+                            endpoint=f"{TWITTER_API_BASE}/users/{twitter_user_id}/tweets",
+                            method="GET",
+                            query={
+                                "max_results": 5,
+                                "tweet.fields": "created_at,public_metrics",
+                            },
+                        )
                     )
                     or {}
                 )

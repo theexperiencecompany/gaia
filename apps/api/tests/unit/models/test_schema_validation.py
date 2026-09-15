@@ -138,7 +138,9 @@ class TestSelectedWorkflowData:
             id="wf_1",
             title="My Workflow",
             description="Does things",
-            steps=[{"name": "step1", "action": "do"}],
+            steps=[
+                {"id": "step1", "title": "Do the thing", "description": "do", "category": "general"}
+            ],
         )
         assert w.id == "wf_1"
         assert len(w.steps) == 1

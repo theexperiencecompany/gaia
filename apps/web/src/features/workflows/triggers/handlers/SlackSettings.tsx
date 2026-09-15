@@ -14,11 +14,11 @@ import {
   TriggerSettingsCard,
 } from "../components/TriggerSettingsCard";
 import { TriggerToggleRow } from "../components/TriggerToggleRow";
-import { useTriggerOptions } from "../hooks/useTriggerOptions";
+import { isTriggerOption, useTriggerOptions } from "../hooks/useTriggerOptions";
 import type { TriggerSettingsProps } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 
-export interface SlackTriggerData {
+export type SlackTriggerData = {
   trigger_name: string;
   channel_ids?: string[];
   exclude_bot_messages?: boolean;
@@ -26,9 +26,9 @@ export interface SlackTriggerData {
   exclude_group_messages?: boolean;
   exclude_mpim_messages?: boolean;
   exclude_thread_replies?: boolean;
-}
+};
 
-export interface SlackConfig extends TriggerConfig {
+export interface SlackConfig extends TriggerConfigDraft {
   trigger_name?: string;
   trigger_data?: SlackTriggerData;
 }
@@ -45,7 +45,7 @@ export function SlackSettings({
   const isConnected =
     integrations.find((i) => i.id === integrationId)?.status === "connected";
 
-  const triggerName = config.trigger_name || config.type;
+  const triggerName = String(config.trigger_name || config.type);
   const isMessageTrigger = triggerName === "slack_new_message";
 
   // Fetch channel options for message trigger
@@ -100,7 +100,7 @@ export function SlackSettings({
         <TriggerSelectToggle
           label="Channels"
           selectProps={{
-            options: channelOptions || [],
+            options: (channelOptions ?? []).filter(isTriggerOption),
             selectedValues: selectedValues,
             onSelectionChange: (selectedIds: string[]) => {
               updateTriggerData({ channel_ids: selectedIds });

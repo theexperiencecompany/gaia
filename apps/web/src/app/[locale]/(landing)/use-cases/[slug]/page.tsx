@@ -114,7 +114,7 @@ export async function generateMetadata({
       integrations: workflow.steps?.map((s) => s.category) || [],
       categories: ["featured"],
       published_id: workflow.id,
-      creator: workflow.creator,
+      creator: workflow.creator ?? undefined,
     };
 
     return generateUseCaseMetadata(workflowAsUseCase);
@@ -223,6 +223,28 @@ async function resolveUseCase(slug: string): Promise<ResolvedUseCase> {
   }
 }
 
+type Resolved = Awaited<ReturnType<typeof resolveUseCase>>;
+
+/** The page's SEO facts, from whichever source resolved. */
+function displayFromResolved(
+  useCase: Resolved["useCase"],
+  communityWorkflow: Resolved["communityWorkflow"],
+) {
+  return {
+    title: useCase?.title ?? communityWorkflow?.title ?? "",
+    description: useCase?.description ?? communityWorkflow?.description ?? "",
+    action_type: "workflow" as const,
+    integrations:
+      useCase?.integrations ??
+      communityWorkflow?.steps?.map((s) => s.category) ??
+      [],
+    categories: useCase?.categories ?? ["featured"],
+    published_id: useCase?.published_id ?? communityWorkflow?.id ?? "",
+    creator: (useCase?.creator ?? communityWorkflow?.creator) || undefined,
+    steps: useCase?.steps ?? communityWorkflow?.steps,
+  };
+}
+
 export default async function UseCaseDetailPage({ params }: PageProps) {
   const { slug } = await params;
 
@@ -242,36 +264,14 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const displayTitle = useCase?.title ?? communityWorkflow?.title ?? "";
-  const displayDescription =
-    useCase?.description ?? communityWorkflow?.description ?? "";
-  const displayIntegrations =
-    useCase?.integrations ??
-    communityWorkflow?.steps?.map((s) => s.category) ??
-    [];
-  const displayCategories = useCase?.categories ?? ["featured"];
-  const displayPublishedId =
-    useCase?.published_id ?? communityWorkflow?.id ?? "";
-  const displayCreator = useCase?.creator ?? communityWorkflow?.creator;
-  const displaySteps = useCase?.steps ?? communityWorkflow?.steps;
-
-  const structuredData = generateUseCaseStructuredData({
-    title: displayTitle,
-    description: displayDescription,
-    slug,
-    action_type: "workflow",
-    integrations: displayIntegrations,
-    categories: displayCategories,
-    published_id: displayPublishedId,
-    creator: displayCreator,
-    steps: displaySteps,
-  });
+  const display = displayFromResolved(useCase, communityWorkflow);
+  const structuredData = generateUseCaseStructuredData({ ...display, slug });
 
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
     { name: "Use Cases", url: `${siteConfig.url}/use-cases` },
     {
-      name: displayTitle,
+      name: display.title,
       url: `${siteConfig.url}/use-cases/${slug}`,
     },
   ]);

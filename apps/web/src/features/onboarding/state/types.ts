@@ -1,3 +1,4 @@
+import type { OnboardingNeed } from "../constants";
 /**
  * Onboarding state shape and the discriminated union of actions the reducer
  * accepts. The reducer is the single mutation point; every effect/component
@@ -17,7 +18,7 @@ export interface OnboardingState {
   responses: Record<string, string>;
   questionIndex: number;
   draftProfession: string | null;
-  selectedNeeds: string[];
+  selectedNeeds: OnboardingNeed[];
   /** Q2 "Something else", in the user's words. Empty when not used. */
   otherNeed: string;
   /** Whether Q2's "Something else" field is open. Owned here, not by the
@@ -50,7 +51,7 @@ export interface OnboardingState {
 export type Action =
   | { type: "draftProfession"; value: string | null }
   | { type: "answer"; field: string; value: string }
-  | { type: "toggleNeed"; value: string }
+  | { type: "toggleNeed"; value: OnboardingNeed }
   | { type: "setOtherNeed"; value: string }
   | { type: "toggleOtherNeed" }
   | { type: "submitNeeds" }

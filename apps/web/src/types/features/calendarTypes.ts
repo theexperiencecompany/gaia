@@ -1,21 +1,13 @@
 // Recurrence types for calendar events
 export type RecurrenceFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 
-export interface RecurrenceRule {
-  frequency: RecurrenceFrequency;
-  interval?: number; // default: 1
-  count?: number;
-  until?: string; // ISO date string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS±HH:MM)
-  by_day?: string[]; // e.g., ["MO", "WE"]
-  by_month_day?: number[];
-  by_month?: number[];
-  exclude_dates?: string[]; // YYYY-MM-DD
-  include_dates?: string[]; // YYYY-MM-DD
-}
+import type {
+  EventCreateRequest,
+  GoogleCalendarEventResource,
+  RecurrenceData,
+} from "@shared/api/generated";
 
-export interface RecurrenceData {
-  rrule: RecurrenceRule;
-}
+export type { RecurrenceData, RecurrenceRule } from "@shared/api/generated";
 
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 
@@ -52,6 +44,19 @@ export interface BirthdayProperties {
   contact: string;
   type: "birthday";
 }
+
+/**
+ * The API forwards Google's event resource verbatim and declares only the
+ * fields it reads itself (`GoogleCalendarEventResource`); the rest of Google's
+ * schema is what this interface describes. This is the one place that says so.
+ */
+export const asGoogleCalendarEvents = (
+  events: GoogleCalendarEventResource[],
+): GoogleCalendarEvent[] => events as unknown as GoogleCalendarEvent[];
+
+export const asGoogleCalendarEvent = (
+  event: GoogleCalendarEventResource,
+): GoogleCalendarEvent => event as unknown as GoogleCalendarEvent;
 
 export interface GoogleCalendarEvent {
   kind: string;
@@ -132,19 +137,8 @@ export interface SingleTimeEvent extends BaseEvent {
 
 export type CalendarEvent = TimedEvent | SingleTimeEvent;
 
-export interface EventCreatePayload {
-  summary: string;
-  description: string;
-  is_all_day: boolean;
-  start?: string;
-  end?: string;
-  fixedTime?: boolean;
-  timezone?: string;
-  recurrence?: RecurrenceData;
-  calendar_id?: string;
-  attendees?: string[];
-  create_meeting_room?: boolean;
-}
+/** `POST /calendar/event` body. */
+export type EventCreatePayload = EventCreateRequest;
 
 // Calendar types for conversation messages
 export type CalendarOptions = {

@@ -1,5 +1,5 @@
 import type { TurnAccumulator } from "@shared/chat";
-import type { ToolDataEntry } from "@/config/registries/toolRegistry";
+import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { IMessage } from "@/lib/db/chatDb";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
@@ -56,7 +56,8 @@ export const buildTurnMessageRecord = (
   workflowId: meta.options.selectedWorkflow?.id ?? null,
   selectedWorkflow: meta.options.selectedWorkflow,
   selectedCalendarEvent: meta.options.selectedCalendarEvent,
-  tool_data: acc.toolData.length > 0 ? (acc.toolData as ToolDataEntry[]) : null,
+  tool_data:
+    acc.toolData.length > 0 ? (acc.toolData as TypedToolDataEntry[]) : null,
   follow_up_actions: acc.followUpActions,
   image_data: (acc.imageData as ImageData | null) ?? null,
   memory_data: (acc.extras.memory_data as MemoryData | undefined) ?? null,

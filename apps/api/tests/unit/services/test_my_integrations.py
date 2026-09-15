@@ -12,7 +12,7 @@ import pytest
 
 from app.models.integration_models import (
     IntegrationResponse,
-    IntegrationTool,
+    StoredIntegrationTool,
     UserIntegrationResponse,
     UserIntegrationsListResponse,
 )
@@ -60,7 +60,7 @@ def _integration_response(**overrides: object) -> IntegrationResponse:
         "source": "custom",
         "is_featured": False,
         "display_priority": 0,
-        "tools": [IntegrationTool(name="do")],
+        "tools": [StoredIntegrationTool(name="do")],
         "is_public": True,
         "created_by": USER_ID,
     }
@@ -158,7 +158,7 @@ class TestGetMyIntegrations:
                         integration_id="github",
                         name="GitHub",
                         source="platform",
-                        tools=[IntegrationTool(name="a"), IntegrationTool(name="b")],
+                        tools=[StoredIntegrationTool(name="a"), StoredIntegrationTool(name="b")],
                     ),
                 )
             ]

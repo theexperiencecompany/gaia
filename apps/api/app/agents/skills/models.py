@@ -16,6 +16,7 @@ import re
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from app.db.repositories.base import MongoDocument
+from app.schemas.common import ResponseModel
 
 
 class SkillSource(str, Enum):
@@ -106,7 +107,7 @@ class SkillMetadata(BaseModel):
         return _validate_skill_description(v)
 
 
-class Skill(MongoDocument):
+class Skill(MongoDocument, ResponseModel):
     """A skill tracked in MongoDB with a flat schema.
 
     All metadata fields (name, description, target, etc.) live at the
@@ -245,7 +246,7 @@ class SkillUpdateRequest(BaseModel):
     )
 
 
-class SkillListResponse(BaseModel):
+class SkillListResponse(ResponseModel):
     """Response for listing installed skills."""
 
     skills: list[Skill] = Field(default_factory=list)
@@ -260,7 +261,7 @@ class SkillToggleResponse(BaseModel):
     enabled: bool
 
 
-class SkillTarget(BaseModel):
+class SkillTarget(ResponseModel):
     """A place a skill can run: the executor, or a connected integration subagent.
 
     ``value`` is the subagent ``agent_name`` written to a skill's ``target``;
@@ -274,13 +275,13 @@ class SkillTarget(BaseModel):
     connected: bool = Field(default=True, description="Whether the target is available")
 
 
-class SkillTargetsResponse(BaseModel):
+class SkillTargetsResponse(ResponseModel):
     """Available skill targets for the current user."""
 
     targets: list[SkillTarget] = Field(default_factory=list)
 
 
-class DiscoveredSkillInfo(BaseModel):
+class DiscoveredSkillInfo(ResponseModel):
     """A skill found in a remote GitHub repository but not yet installed."""
 
     name: str = Field(..., description="Skill identifier from SKILL.md frontmatter")
@@ -290,7 +291,7 @@ class DiscoveredSkillInfo(BaseModel):
     subagent_id: str = Field(..., description="Target agent declared in the skill's frontmatter")
 
 
-class DiscoverSkillsResponse(BaseModel):
+class DiscoverSkillsResponse(ResponseModel):
     """Response for previewing the skills available in a GitHub repository."""
 
     repo: str = Field(..., description="Repository as requested (owner/repo or full URL)")
@@ -301,7 +302,7 @@ class DiscoverSkillsResponse(BaseModel):
     count: int = Field(default=0)
 
 
-class BuiltinSkillInfo(BaseModel):
+class BuiltinSkillInfo(ResponseModel):
     """A read-only built-in skill shipped with GAIA, for display in settings."""
 
     slug: str = Field(..., description="Skill directory slug")
@@ -317,7 +318,7 @@ class BuiltinSkillInfo(BaseModel):
     body: str = Field(default="", description="SKILL.md markdown body (for read-only preview)")
 
 
-class BuiltinSkillsResponse(BaseModel):
+class BuiltinSkillsResponse(ResponseModel):
     """Response for listing built-in skills."""
 
     skills: list[BuiltinSkillInfo] = Field(default_factory=list)

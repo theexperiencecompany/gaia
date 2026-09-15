@@ -22,8 +22,8 @@ vi.mock("@/features/onboarding/api/onboardingApi", () => ({
   mintLinkCode: () => mintLinkCode(),
 }));
 
-vi.mock("@/lib/api/service", () => ({
-  apiService: { post: (...args: unknown[]) => apiPost(...args) },
+vi.mock("@/lib/api/typed", () => ({
+  api: { post: (...args: unknown[]) => apiPost(...args) },
 }));
 
 vi.mock("@/lib/toast", () => ({

@@ -140,7 +140,7 @@ function CliOnboardingSteps({
       const result = await devicesApi.approve(toApiPairingCode(digits));
       setApprovedName(result.name);
     } catch {
-      // apiService already surfaced the error toast.
+      // The typed api client already surfaced the error toast.
     } finally {
       setIsApproving(false);
     }

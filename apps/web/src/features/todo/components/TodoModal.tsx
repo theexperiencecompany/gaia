@@ -23,6 +23,7 @@ import { usePlatform } from "@/hooks/ui/usePlatform";
 import {
   Priority,
   type Project,
+  type SubTask,
   type Todo,
   type TodoCreate,
   type TodoUpdate,
@@ -124,9 +125,9 @@ function useTodoModalForm({
   }, [mode, todo, initialProjectId]);
 
   const { formData, setFormData, loading, handleSubmit, updateField } =
-    useModalForm<TodoCreate>({
+    useModalForm<TodoFormData>({
       initialData,
-      onSubmit: async (data: TodoCreate) => {
+      onSubmit: async (data: TodoFormData) => {
         if (mode === "edit" && todo) {
           const updates = getChangedFields(todo, data);
 
@@ -255,6 +256,9 @@ interface TodoModalTriggerProps {
   buttonClassName: string;
   onOpen: () => void;
 }
+
+/** The modal's form state: a create request whose subtasks already carry ids (the manager mints them). */
+type TodoFormData = Omit<TodoCreate, "subtasks"> & { subtasks?: SubTask[] };
 
 function TodoModalTrigger({
   buttonText,
@@ -415,10 +419,10 @@ export default function TodoModal({
                 {/* Fields Row with Chips */}
                 <TodoFieldsRow
                   priority={formData.priority ?? Priority.NONE}
-                  projectId={formData.project_id}
+                  projectId={formData.project_id ?? undefined}
                   projects={projects}
-                  dueDate={formData.due_date}
-                  dueDateTimezone={formData.due_date_timezone}
+                  dueDate={formData.due_date ?? undefined}
+                  dueDateTimezone={formData.due_date_timezone ?? undefined}
                   labels={formData.labels ?? []}
                   onPriorityChange={(priority) =>
                     updateField("priority", priority)

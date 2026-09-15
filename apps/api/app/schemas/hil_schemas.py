@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.models.hil_models import HILMode, HILPreferences
+from app.schemas.common import ResponseModel
 
 
 class ApprovalDecisionRequest(BaseModel):
@@ -52,7 +53,7 @@ class BatchApprovalDecisionResponse(BaseModel):
     outcomes: list[BatchDecisionOutcome]
 
 
-class HILPreferencesResponse(HILPreferences):
+class HILPreferencesResponse(ResponseModel, HILPreferences):
     """A user's HIL preferences as returned by the preferences endpoints."""
 
 

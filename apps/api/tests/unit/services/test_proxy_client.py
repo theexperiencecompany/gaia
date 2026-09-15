@@ -10,6 +10,7 @@ import pytest
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.services.composio import proxy_client
 from app.services.composio.proxy_client import (
+    ProxyRequest,
     _build_parameters,
     _resolve_connected_account_id,
     invalidate_connected_account_cache,
@@ -17,6 +18,7 @@ from app.services.composio.proxy_client import (
     proxy_request_sync,
 )
 from app.utils.errors import AppError
+from shared.py.wide_events import log
 
 
 @pytest.fixture(autouse=True)
@@ -116,7 +118,7 @@ class TestResolveConnectedAccountId:
             with pytest.raises(AppError) as exc:
                 _resolve_connected_account_id("u1", "GMAIL")
         assert exc.value.status_code == 403
-        assert exc.value.meta["error_code"] == INTEGRATION_NOT_CONNECTED
+        assert exc.value.meta["code"] == INTEGRATION_NOT_CONNECTED
 
     def test_returns_active_account_id(self) -> None:
         composio = _make_composio(account_id="acc_xyz")
@@ -151,10 +153,12 @@ class TestProxyRequestSync:
         composio = _make_composio(proxy_data={"hello": "world"})
         with _patch_auth_config(), _patch_composio(composio):
             result = proxy_request_sync(
-                user_id="u1",
-                toolkit="GMAIL",
-                endpoint="https://gmail.googleapis.com/x",
-                method="GET",
+                ProxyRequest(
+                    user_id="u1",
+                    toolkit="GMAIL",
+                    endpoint="https://gmail.googleapis.com/x",
+                    method="GET",
+                )
             )
         assert result == {"hello": "world"}
         composio.tools.proxy.assert_called_once()
@@ -170,13 +174,15 @@ class TestProxyRequestSync:
         composio = _make_composio()
         with _patch_auth_config(), _patch_composio(composio):
             proxy_request_sync(
-                user_id="u1",
-                toolkit="GMAIL",
-                endpoint="/x",
-                method="POST",
-                body={"a": 1},
-                headers={"Content-Type": "application/json"},
-                query={"page": 2},
+                ProxyRequest(
+                    user_id="u1",
+                    toolkit="GMAIL",
+                    endpoint="/x",
+                    method="POST",
+                    body={"a": 1},
+                    headers={"Content-Type": "application/json"},
+                    query={"page": 2},
+                )
             )
         kwargs = composio.tools.proxy.call_args.kwargs
         assert kwargs["body"] == {"a": 1}
@@ -191,12 +197,14 @@ class TestProxyRequestSync:
         composio = _make_composio()
         with _patch_auth_config(), _patch_composio(composio):
             proxy_request_sync(
-                user_id="u1",
-                toolkit="GMAIL",
-                endpoint="/upload",
-                method="POST",
-                body={"ignored": True},
-                binary_body={"url": "https://x/y", "content_type": "image/png"},
+                ProxyRequest(
+                    user_id="u1",
+                    toolkit="GMAIL",
+                    endpoint="/upload",
+                    method="POST",
+                    body={"ignored": True},
+                    binary_body={"url": "https://x/y", "content_type": "image/png"},
+                )
             )
         kwargs = composio.tools.proxy.call_args.kwargs
         assert kwargs["binary_body"] == {
@@ -210,14 +218,95 @@ class TestProxyRequestSync:
         with _patch_auth_config(), _patch_composio(composio):
             with pytest.raises(AppError) as exc:
                 proxy_request_sync(
-                    user_id="u1",
-                    toolkit="GMAIL",
-                    endpoint="/x",
-                    method="GET",
+                    ProxyRequest(
+                        user_id="u1",
+                        toolkit="GMAIL",
+                        endpoint="/x",
+                        method="GET",
+                    )
                 )
         assert exc.value.status_code == 404
-        assert exc.value.meta["provider_status"] == 404
-        assert exc.value.meta["provider_response"] == {"err": "missing"}
+        assert exc.value.meta == {
+            "toolkit": "GMAIL",
+            "endpoint": "/x",
+            "method": "GET",
+            "provider_status": 404,
+            "provider_response": {"err": "missing"},
+        }
+
+    def test_provider_401_is_surfaced_as_403_with_the_not_connected_code(self) -> None:
+        # A rejected token means the *integration* needs reconnecting, not the
+        # GAIA session — the client routes on the 403 + code pair.
+        composio = _make_composio(proxy_status=401, proxy_data={"error": "invalid_grant"})
+        with _patch_auth_config(), _patch_composio(composio):
+            with pytest.raises(AppError) as exc:
+                proxy_request_sync(
+                    ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
+                )
+        assert exc.value.status_code == 403
+        assert exc.value.meta == {
+            "toolkit": "GMAIL",
+            "endpoint": "/x",
+            "method": "GET",
+            "provider_status": 401,
+            "provider_response": {"error": "invalid_grant"},
+            "code": INTEGRATION_NOT_CONNECTED,
+        }
+
+    def test_provider_401_evicts_only_that_users_toolkit_from_the_cache(self) -> None:
+        # Warm three cache entries, then get a 401 for (u1, GMAIL): the next
+        # call for that pair must re-resolve, while (u2, GMAIL) and (u1, NOTION)
+        # keep their cached account and never hit connected_accounts.list again.
+        composio = _make_composio()
+        with (
+            patch.object(proxy_client, "_toolkit_to_auth_config_id", return_value="ac_test"),
+            _patch_composio(composio),
+        ):
+            for user_id, toolkit in (("u1", "GMAIL"), ("u2", "GMAIL"), ("u1", "NOTION")):
+                _resolve_connected_account_id(user_id, toolkit)
+            assert composio.connected_accounts.list.call_count == 3
+
+            composio.tools.proxy.return_value.status = 401
+            with pytest.raises(AppError):
+                proxy_request_sync(
+                    ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
+                )
+
+            _resolve_connected_account_id("u2", "GMAIL")
+            _resolve_connected_account_id("u1", "NOTION")
+            assert composio.connected_accounts.list.call_count == 3
+            _resolve_connected_account_id("u1", "GMAIL")
+            assert composio.connected_accounts.list.call_count == 4
+
+    def test_sdk_failure_is_a_502_carrying_the_request_identity(self) -> None:
+        composio = _make_composio()
+        composio.tools.proxy.side_effect = ConnectionError("boom")
+        with _patch_auth_config(), _patch_composio(composio):
+            with pytest.raises(AppError) as exc:
+                proxy_request_sync(
+                    ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="POST")
+                )
+        assert exc.value.status_code == 502
+        assert exc.value.meta == {
+            "toolkit": "GMAIL",
+            "endpoint": "/x",
+            "method": "POST",
+            "exception": "boom",
+        }
+
+    def test_request_identity_is_recorded_on_the_wide_event(self) -> None:
+        log.reset()
+        composio = _make_composio()
+        with _patch_auth_config(), _patch_composio(composio):
+            proxy_request_sync(
+                ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
+            )
+        assert log.get()["composio_proxy"] == {
+            "toolkit": "GMAIL",
+            "endpoint": "/x",
+            "method": "GET",
+            "user_id": "u1",
+        }
 
 
 class TestProxyRequestAsync:
@@ -226,10 +315,12 @@ class TestProxyRequestAsync:
         composio = _make_composio(proxy_data={"async": True})
         with _patch_auth_config(), _patch_composio(composio):
             result = await proxy_request(
-                user_id="u1",
-                toolkit="GMAIL",
-                endpoint="/x",
-                method="GET",
+                ProxyRequest(
+                    user_id="u1",
+                    toolkit="GMAIL",
+                    endpoint="/x",
+                    method="GET",
+                )
             )
         assert result == {"async": True}
         composio.tools.proxy.assert_called_once()

@@ -17,7 +17,7 @@ import {
 } from "./schedule-builder";
 import { type TriggerMode, TriggerModeTabs } from "./trigger-mode-tabs";
 import {
-  type TriggerOption,
+  type TriggerPickerOption,
   TriggerPickerSheet,
   type TriggerPickerSheetRef,
 } from "./trigger-picker-sheet";
@@ -48,9 +48,8 @@ export function CreateWorkflowModal({
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>(
     DEFAULT_SCHEDULE_CONFIG,
   );
-  const [selectedTrigger, setSelectedTrigger] = useState<TriggerOption | null>(
-    null,
-  );
+  const [selectedTrigger, setSelectedTrigger] =
+    useState<TriggerPickerOption | null>(null);
   const [triggerConfig, setTriggerConfig] = useState<TriggerConfig | null>(
     null,
   );
@@ -121,11 +120,14 @@ export function CreateWorkflowModal({
     prompt.trim().length > 0 &&
     (mode !== "trigger" || selectedTrigger !== null);
 
-  const handleTriggerSelect = (trigger: TriggerOption) => {
+  const handleTriggerSelect = (trigger: TriggerPickerOption) => {
     setSelectedTrigger(trigger);
   };
 
-  const handleTriggerSave = (trigger: TriggerOption, config: TriggerConfig) => {
+  const handleTriggerSave = (
+    trigger: TriggerPickerOption,
+    config: TriggerConfig,
+  ) => {
     setSelectedTrigger(trigger);
     setTriggerConfig(config);
   };
@@ -390,7 +392,7 @@ function ManualPanel() {
 }
 
 interface TriggerPanelProps {
-  selected: TriggerOption | null;
+  selected: TriggerPickerOption | null;
   onPick: () => void;
 }
 

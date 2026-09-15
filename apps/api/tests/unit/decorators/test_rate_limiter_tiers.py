@@ -120,7 +120,7 @@ class TestTieredLimiterRealDecision:
 
         exc = exc_info.value
         assert exc.status_code == 429
-        assert exc.detail["error"] == "rate_limit_exceeded"
+        assert exc.detail["code"] == "rate_limit_exceeded"
         assert exc.detail["feature"] == "generate_image"
         assert exc.detail["reset_time"] == reset_time.isoformat()
         # FREE has nonzero daily limits for generate_image, so it is an

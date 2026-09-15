@@ -10,19 +10,15 @@ import {
   PlusSignIcon,
   Search01Icon,
 } from "@icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type {
-  MemoryEntry,
-  MemoryListResponse,
-} from "@/features/memory/api/types";
 import { AddMemoryModal } from "@/features/memory/components/AddMemoryModal";
 import { EditMemoryModal } from "@/features/memory/components/EditMemoryModal";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { MemoryRow } from "@/features/memory/components/MemoryRow";
-import { MEMORY_PAGE_SIZE } from "@/features/memory/constants";
 import { useMemoryActions } from "@/features/memory/hooks/useMemoryActions";
+import { useMemoryListData } from "@/features/memory/hooks/useMemoryListData";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { toast } from "@/lib/toast";
 
@@ -30,99 +26,51 @@ interface MemoryListProps {
   onChanged: () => void;
 }
 
+type Confirm = ReturnType<typeof useConfirmation>["confirm"];
+
+/** Two confirmations: the count, then the irreversibility. */
+async function confirmClearAll(confirm: Confirm, total: number) {
+  const confirmed = await confirm({
+    title: "Clear all memories",
+    message: `Permanently delete all ${total} memories? GAIA will forget everything it has learned about you.`,
+    confirmText: "Continue",
+    cancelText: "Cancel",
+    variant: "destructive",
+  });
+  if (!confirmed) return false;
+  return confirm({
+    title: "This cannot be undone",
+    message:
+      "Your folders, journal, and learned facts will be erased for good. Really clear everything?",
+    confirmText: "Clear everything",
+    cancelText: "Keep my memories",
+    variant: "destructive",
+  });
+}
+
 export function MemoryList({ onChanged }: MemoryListProps) {
-  const [page, setPage] = useState(1);
-  const [data, setData] = useState<MemoryListResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<MemoryEntry[] | null>(
-    null,
-  );
+  const list = useMemoryListData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const { confirm, confirmationProps } = useConfirmation();
 
-  const fetchPage = useCallback(async (pageToLoad: number) => {
-    setLoading(true);
-    try {
-      const response = await memoryApi.listMemories({
-        page: pageToLoad,
-        pageSize: MEMORY_PAGE_SIZE,
-      });
-      setData(response);
-    } catch {
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPage(page);
-  }, [fetchPage, page]);
-
-  // Debounced server-side search across all memories, not just the loaded page.
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setSearchResults(null);
-      return;
-    }
-    let active = true;
-    const handle = setTimeout(async () => {
-      try {
-        const result = await memoryApi.searchMemories(trimmed);
-        if (active) setSearchResults(result.memories);
-      } catch {
-        if (active) setSearchResults([]);
-      }
-    }, 250);
-    return () => {
-      active = false;
-      clearTimeout(handle);
-    };
-  }, [query]);
-
   const handleChanged = useCallback(() => {
-    fetchPage(page);
-    if (query.trim()) {
-      memoryApi
-        .searchMemories(query.trim())
-        .then((result) => setSearchResults(result.memories))
-        .catch(() => setSearchResults([]));
-    }
+    list.refresh();
     onChanged();
-  }, [fetchPage, page, onChanged, query]);
+  }, [list.refresh, onChanged]);
 
   const actions = useMemoryActions(handleChanged);
 
   const handleClearAll = useCallback(async () => {
-    const total = data?.total_count ?? 0;
-    const confirmed = await confirm({
-      title: "Clear all memories",
-      message: `Permanently delete all ${total} memories? GAIA will forget everything it has learned about you.`,
-      confirmText: "Continue",
-      cancelText: "Cancel",
-      variant: "destructive",
-    });
+    const confirmed = await confirmClearAll(confirm, list.totalCount);
     if (!confirmed) return;
-
-    const doubleConfirmed = await confirm({
-      title: "This cannot be undone",
-      message:
-        "Your folders, journal, and learned facts will be erased for good. Really clear everything?",
-      confirmText: "Clear everything",
-      cancelText: "Keep my memories",
-      variant: "destructive",
-    });
-    if (!doubleConfirmed) return;
 
     setIsClearing(true);
     try {
       const response = await memoryApi.deleteAllMemories();
       if (response.success) {
         toast.success(response.message || "All memories cleared");
-        setPage(1);
+        list.setPage(1);
         handleChanged();
       } else {
         toast.error(response.message || "Failed to clear memories");
@@ -132,12 +80,9 @@ export function MemoryList({ onChanged }: MemoryListProps) {
     } finally {
       setIsClearing(false);
     }
-  }, [confirm, data?.total_count, handleChanged]);
+  }, [confirm, list.totalCount, list.setPage, handleChanged]);
 
-  const isSearching = query.trim().length > 0;
-  const filtered = isSearching ? (searchResults ?? []) : (data?.memories ?? []);
-  const totalCount = data?.total_count ?? 0;
-  const totalPages = Math.max(1, Math.ceil(totalCount / MEMORY_PAGE_SIZE));
+  const { isSearching, memories, totalCount, totalPages, page } = list;
 
   return (
     <div className="space-y-3">
@@ -147,8 +92,8 @@ export function MemoryList({ onChanged }: MemoryListProps) {
           variant="flat"
           radius="lg"
           placeholder="Search memories"
-          value={query}
-          onValueChange={setQuery}
+          value={list.query}
+          onValueChange={list.setQuery}
           startContent={<Search01Icon className="size-4 text-zinc-500" />}
           className="max-w-xs"
           isClearable
@@ -177,13 +122,13 @@ export function MemoryList({ onChanged }: MemoryListProps) {
         </Button>
       </div>
 
-      {(isSearching && searchResults === null) || (!isSearching && loading) ? (
+      {list.loading ? (
         <div className="space-y-2">
           <Skeleton className="h-14 w-full rounded-2xl" />
           <Skeleton className="h-14 w-full rounded-2xl" />
           <Skeleton className="h-14 w-full rounded-2xl" />
         </div>
-      ) : filtered.length === 0 ? (
+      ) : memories.length === 0 ? (
         <MemoryEmptyState
           icon={AiBrain01Icon}
           title={
@@ -197,7 +142,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
         />
       ) : (
         <div className="overflow-hidden rounded-2xl bg-zinc-800 py-1">
-          {filtered.map((memory) => (
+          {memories.map((memory) => (
             <MemoryRow
               key={memory.id}
               memory={memory}
@@ -208,21 +153,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
                 // Pop the row immediately on success; the refetch then settles
                 // counts and pagination.
                 if (await actions.forgetMemory(target)) {
-                  setData((previous) =>
-                    previous
-                      ? {
-                          ...previous,
-                          memories: previous.memories.filter(
-                            (m) => m.id !== target.id,
-                          ),
-                          total_count: Math.max(previous.total_count - 1, 0),
-                        }
-                      : previous,
-                  );
-                  setSearchResults(
-                    (previous) =>
-                      previous?.filter((m) => m.id !== target.id) ?? previous,
-                  );
+                  list.removeLocally(target.id);
                 }
               }}
             />
@@ -242,7 +173,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
             className="rounded-xl"
             aria-label="Previous page"
             isDisabled={page <= 1}
-            onPress={() => setPage(page - 1)}
+            onPress={() => list.setPage(page - 1)}
           >
             <ArrowLeft01Icon className="size-4" />
           </Button>
@@ -253,7 +184,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
             className="rounded-xl"
             aria-label="Next page"
             isDisabled={page >= totalPages}
-            onPress={() => setPage(page + 1)}
+            onPress={() => list.setPage(page + 1)}
           >
             <ArrowRight01Icon className="size-4" />
           </Button>

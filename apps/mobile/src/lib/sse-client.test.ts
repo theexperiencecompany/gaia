@@ -11,12 +11,10 @@ import { describe, expect, it } from "vitest";
  */
 describe("parseSubscriptionRequiredBody", () => {
   const body = JSON.stringify({
-    detail: {
-      code: "subscription_required",
-      message: "GAIA is a paid product.",
-      checkout_url: "https://checkout.dodo.test/abc",
-      discount_code: "LAUNCH20",
-    },
+    code: "subscription_required",
+    message: "GAIA is a paid product.",
+    checkout_url: "https://checkout.dodo.test/abc",
+    discount_code: "LAUNCH20",
   });
 
   it("extracts the offer from a 402 response body", () => {
@@ -35,12 +33,10 @@ describe("parseSubscriptionRequiredBody", () => {
     // still stands, and the UI decides what to do about the missing link.
     const detail = parseSubscriptionRequiredBody(
       JSON.stringify({
-        detail: {
-          code: "subscription_required",
-          message: "GAIA is a paid product.",
-          checkout_url: null,
-          discount_code: null,
-        },
+        code: "subscription_required",
+        message: "GAIA is a paid product.",
+        checkout_url: null,
+        discount_code: null,
       }),
     );
 
@@ -50,12 +46,12 @@ describe("parseSubscriptionRequiredBody", () => {
   it("ignores a 402 body that is not the subscription_required shape", () => {
     expect(
       parseSubscriptionRequiredBody(
-        JSON.stringify({ detail: "Payment error" }),
+        JSON.stringify({ message: "Payment error" }),
       ),
     ).toBeUndefined();
     expect(
       parseSubscriptionRequiredBody(
-        JSON.stringify({ detail: { code: "something_else" } }),
+        JSON.stringify({ code: "something_else", message: "x" }),
       ),
     ).toBeUndefined();
   });

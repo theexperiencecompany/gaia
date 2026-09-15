@@ -497,7 +497,7 @@ class TestGmailConnectionErrors:
                 tool.invoke_trusted(user_id=USER, request_kwargs={})
 
         assert excinfo.value.status_code == 403
-        assert excinfo.value.meta["error_code"] == "INTEGRATION_NOT_CONNECTED"
+        assert excinfo.value.meta["code"] == "INTEGRATION_NOT_CONNECTED"
 
     def test_a_rejected_token_invalidates_the_cached_account(self, tools):
         """A provider 401 means Composio's stored token was rejected and its
@@ -516,7 +516,7 @@ class TestGmailConnectionErrors:
                 tool.invoke_trusted(user_id=USER, request_kwargs={})
 
         assert excinfo.value.status_code == 403
-        assert excinfo.value.meta["error_code"] == "INTEGRATION_NOT_CONNECTED"
+        assert excinfo.value.meta["code"] == "INTEGRATION_NOT_CONNECTED"
         assert (USER, "GMAIL") not in _connected_account_cache
 
     def test_the_gmail_proxy_resolves_the_gmail_auth_config(self, tools):

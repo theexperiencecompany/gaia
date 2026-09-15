@@ -11,6 +11,10 @@
 import { EventEmitter } from "node:events";
 import { hostname } from "node:os";
 import { join } from "node:path";
+import type {
+  ErrorEnvelope,
+  SelfPairResponse,
+} from "@gaia/shared/api/generated";
 import {
   type BridgeLogger,
   type BridgeStatus,
@@ -35,16 +39,6 @@ import { resolveLoginShellPath } from "./env";
 
 /** Backend REST prefix — the device endpoints live under `<origin>/api/v1`. */
 const API_PREFIX = "/api/v1";
-
-/** Shape of `POST /device/self-pair` — mirrors the backend `SelfPairResponse`.
- * The refresh token is a bearer credential for this device; it is minted here
- * in the main process and written straight to disk, never returned to the
- * renderer (R4). */
-interface SelfPairResponse {
-  device_id: string;
-  refresh_token: string;
-  name: string;
-}
 
 /** Thrown by start() when the device is not yet paired — pairing is task 2.2, so
  * until then start() has nothing to authenticate with. Typed so the IPC layer
@@ -312,6 +306,7 @@ export class BridgeHost {
     if (res.status === 401) throw new BridgeNotAuthenticatedError();
     if (!res.ok) throw new Error(await errorDetail(res));
 
+    // The refresh token is minted here and written straight to disk, never returned to the renderer (R4).
     const data = (await res.json()) as SelfPairResponse;
     saveCredentials({
       apiUrl,
@@ -494,8 +489,8 @@ function errorMessage(error: unknown): string {
  * when the body is JSON, otherwise the status line. */
 async function errorDetail(res: Response): Promise<string> {
   try {
-    const data = (await res.json()) as { detail?: string };
-    if (data.detail) return data.detail;
+    const envelope = (await res.json()) as ErrorEnvelope;
+    if (envelope.message) return envelope.message;
   } catch {
     // non-JSON body — fall through to the status line
   }

@@ -2,6 +2,10 @@ import {
   INTEGRATION_STATE_ORDER,
   integrationConnectionState,
 } from "@gaia/shared";
+import type { CreateCustomIntegrationResponse } from "@gaia/shared/api/generated";
+
+export type { CreateCustomIntegrationResponse } from "@gaia/shared/api/generated";
+
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { apiService } from "@/lib/api";
@@ -46,7 +50,7 @@ function toIntegration(item: MyIntegrationItem): Integration {
     iconUrl: item.iconUrl ?? undefined,
     isPublic: item.isPublic ?? undefined,
     createdBy: item.createdBy ?? undefined,
-    creator: item.creator,
+    creator: item.creator ?? undefined,
   };
 }
 
@@ -174,14 +178,6 @@ export interface ConnectionTestResult {
   toolsCount?: number;
   oauthUrl?: string;
   error?: string;
-}
-
-export interface CreateCustomIntegrationResponse {
-  status: string;
-  message: string;
-  integrationId: string;
-  name: string;
-  connection?: ConnectionTestResult;
 }
 
 export async function createCustomIntegration(

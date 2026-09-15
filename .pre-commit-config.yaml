@@ -12,7 +12,7 @@ repos:
       - id: check-merge-conflict
         priority: 0
       - id: check-added-large-files
-        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock|apps/web/public/.*|.*\.(png|jpg|jpeg|gif|webp|svg)|.*/i18n/.*\.json)$
+        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock|apps/api/openapi\.json|libs/shared/ts/src/api/generated/schema\.d\.ts|apps/web/public/.*|.*\.(png|jpg|jpeg|gif|webp|svg)|.*/i18n/.*\.json)$
         priority: 0
       - id: check-ast
         exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
@@ -46,6 +46,13 @@ repos:
         entry: bash -c 'pnpm openui:gen-prompt && git diff --exit-code apps/api/app/agents/prompts/openui_generated.txt'
         language: system
         files: '^(apps/web/src/config/openui/|scripts/openui/generate-prompt\.ts|apps/web/package\.json|pnpm-lock\.yaml)'
+        pass_filenames: false
+
+      - id: api-types
+        name: openapi.json + generated API types up to date
+        entry: bash -c 'mise run api:types && git add apps/api/openapi.json libs/shared/ts/src/api/generated/schema.d.ts'
+        language: system
+        files: '^(apps/api/app/.*\.py|apps/api/scripts/export_openapi\.py|apps/api/tests/offline_env\.py|scripts/ci/checks\.mjs|package\.json)$'
         pass_filenames: false
 
       - id: generate-changelog-pages

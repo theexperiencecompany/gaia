@@ -25,8 +25,8 @@ vi.mock("@/features/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isAuthenticated: true }),
 }));
 
-vi.mock("@/lib/api/service", () => ({
-  apiService: {
+vi.mock("@/lib/api/typed", () => ({
+  api: {
     post: (...args: unknown[]) => post(...args),
     get: (...args: unknown[]) => get(...args),
   },

@@ -24,7 +24,7 @@ from app.models.trigger_subscription_models import (
     ConditionOperator,
     SubscriptionAction,
     SubscriptionCondition,
-    SubscriptionStatus,
+    TriggerSubscriptionStatus,
 )
 from app.services.storage._vfs_common import folder_name
 from app.services.tracked_todo_service import tracked_todo_service
@@ -437,7 +437,9 @@ def _format_subscription_lines(doc: TodoDocument) -> list[str]:
             or "any event"
         )
         paused = (
-            " (PAUSED: integration disconnected)" if sub.status is SubscriptionStatus.PAUSED else ""
+            " (PAUSED: integration disconnected)"
+            if sub.status is TriggerSubscriptionStatus.PAUSED
+            else ""
         )
         lines.append(
             f"Watching {sub.trigger_name} -> {sub.action} when {conditions}"

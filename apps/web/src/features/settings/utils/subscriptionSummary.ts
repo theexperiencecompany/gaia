@@ -131,6 +131,8 @@ export function getSubscriptionSummary(
       ? "Cancelling"
       : getStatusText(subscription?.status || "unknown"),
     cancellationScheduled,
-    nextBillingLabel: getNextBillingLabel(subscription?.next_billing_date),
+    nextBillingLabel: getNextBillingLabel(
+      subscription?.next_billing_date ?? undefined,
+    ),
   };
 }

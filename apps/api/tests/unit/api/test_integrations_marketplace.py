@@ -92,7 +92,7 @@ class TestListMarketplaceIntegrations:
             resp = await client.get(BASE)
 
         assert resp.status_code == 500
-        assert resp.json()["detail"] == "Failed to fetch integrations"
+        assert resp.json()["message"] == "Failed to fetch integrations"
 
 
 class TestGetMarketplaceIntegration:
@@ -125,7 +125,7 @@ class TestGetMarketplaceIntegration:
             resp = await client.get(f"{BASE}/missing")
 
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Integration not found"
+        assert resp.json()["message"] == "Integration not found"
 
     @pytest.mark.asyncio
     async def test_service_error_returns_500(self, client: AsyncClient) -> None:
@@ -138,4 +138,4 @@ class TestGetMarketplaceIntegration:
             resp = await client.get(f"{BASE}/i1")
 
         assert resp.status_code == 500
-        assert resp.json() == {"error": "internal_server_error"}
+        assert resp.json() == {"message": "Internal server error", "code": "internal_server_error"}

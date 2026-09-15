@@ -37,7 +37,9 @@ export function usePopupCheckout(): PopupCheckout {
         billing_cycle: "monthly",
         source: "paywall_modal",
       });
-      openExternal(session.payment_link);
+      openExternal(
+        session.payment_link ?? `${window.location.origin}${PRICING_PATH}`,
+      );
     } catch {
       openExternal(`${window.location.origin}${PRICING_PATH}`);
     } finally {

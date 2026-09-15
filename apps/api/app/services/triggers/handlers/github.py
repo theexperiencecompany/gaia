@@ -17,7 +17,7 @@ from app.models.composio_schemas import (
     GitHubPullRequestEventPayload,
     GitHubStarAddedEventPayload,
 )
-from app.models.trigger_config import TriggerOption
+from app.models.trigger_config import TriggerOption, TriggerOptionsQuery
 from app.models.trigger_configs import (
     GitHubCommitEventConfig,
     GitHubIssueAddedConfig,
@@ -63,26 +63,16 @@ class GitHubTriggerHandler(TriggerHandler):
     def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
-    async def get_config_options(
-        self,
-        trigger_name: str,  # noqa: ARG002 -- framework contract
-        field_name: str,  # noqa: ARG002 -- framework contract
-        user_id: str,
-        integration_id: str,
-        parent_ids: list[str] | None = None,  # noqa: ARG002 -- framework contract
-        **kwargs: str,
-    ) -> list[TriggerOption]:
+    async def get_config_options(self, query: TriggerOptionsQuery) -> list[TriggerOption]:
         """Get dynamic options for GitHub trigger config fields."""
         composio_service = get_composio_service()
 
-        # Get pagination params if provided
-        page = int(kwargs.get("page", 1))
-        search_query = kwargs.get("search", "").strip()
+        search_query = query.search.strip()
 
         # Use LangChain wrapper pattern
         tool = composio_service.get_tool(
             "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
-            user_id=user_id,
+            user_id=query.user_id,
         )
         if not tool:
             log.error(f"{LogTag.TRIGGER} GitHub list repositories tool not found")
@@ -91,7 +81,7 @@ class GitHubTriggerHandler(TriggerHandler):
         # Invoke tool with typed input
         params = GitHubListRepositoriesInput(
             per_page=100,
-            page=page,
+            page=query.page,
             before=None,
             direction=None,
             raw_response=False,
@@ -108,8 +98,8 @@ class GitHubTriggerHandler(TriggerHandler):
             log.error(
                 f"{LogTag.TRIGGER} GitHub API error",
                 error=result["error"],
-                user_id=user_id,
-                integration_id=integration_id,
+                user_id=query.user_id,
+                integration_id=query.integration_id,
             )
             return []
 

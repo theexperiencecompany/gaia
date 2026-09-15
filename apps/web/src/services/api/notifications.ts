@@ -1,3 +1,4 @@
+import type { NotificationResponse_MarkAllReadSummary_ } from "@shared/api/generated";
 import type { NotificationPlatform } from "@/features/notification/constants";
 import { apiauth } from "@/lib/api/client";
 import {
@@ -168,13 +169,14 @@ export class NotificationsAPI {
    */
   static async markAllAsRead(
     channelType?: string,
-  ): Promise<NotificationResponse> {
+  ): Promise<NotificationResponse_MarkAllReadSummary_> {
     const params = channelType
       ? `?channel_type=${encodeURIComponent(channelType)}`
       : "";
-    const response = await apiauth.post<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/mark-all-read${params}`,
-    );
+    const response =
+      await apiauth.post<NotificationResponse_MarkAllReadSummary_>(
+        `${NotificationsAPI.BASE_URL}/mark-all-read${params}`,
+      );
     return response.data;
   }
 

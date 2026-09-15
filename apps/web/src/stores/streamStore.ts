@@ -7,7 +7,7 @@ import {
   getRelevantThinkingMessage,
 } from "@/utils/playfulThinking";
 
-export interface ToolInfo {
+export interface ActiveToolInfo {
   toolName?: string;
   toolCategory?: string;
   integrationName?: string;
@@ -41,7 +41,7 @@ export interface TurnUiState {
   composerLocked: boolean;
   loadingText: string;
   loadingTextKey: number;
-  toolInfo?: ToolInfo;
+  toolInfo?: ActiveToolInfo;
 }
 
 /** Loading UI owned by non-turn flows (voice agent, file upload). */
@@ -49,7 +49,7 @@ interface AuxLoadingState {
   active: boolean;
   text: string;
   key: number;
-  toolInfo?: ToolInfo;
+  toolInfo?: ActiveToolInfo;
 }
 
 interface StreamState {
@@ -72,12 +72,16 @@ interface StreamActions {
   setSessionLoadingText: (
     key: string,
     text: string,
-    toolInfo?: ToolInfo,
+    toolInfo?: ActiveToolInfo,
   ) => void;
   resetSessionLoadingText: (key: string) => void;
   /** The user decided this conversation's open approval gate. */
   clearAwaitingApproval: (key: string) => void;
-  setAuxLoading: (active: boolean, text?: string, toolInfo?: ToolInfo) => void;
+  setAuxLoading: (
+    active: boolean,
+    text?: string,
+    toolInfo?: ActiveToolInfo,
+  ) => void;
   /** Overwrite a session from an external snapshot (desktop popup mirror). */
   mirrorSession: (key: string, session: TurnUiState | null) => void;
   beginPendingSave: () => void;
@@ -349,7 +353,7 @@ export const useActiveLoading = (): {
   isLoading: boolean;
   loadingText: string;
   loadingTextKey: number;
-  toolInfo?: ToolInfo;
+  toolInfo?: ActiveToolInfo;
   awaitingApproval: boolean;
 } => {
   const turn = useActiveTurn();

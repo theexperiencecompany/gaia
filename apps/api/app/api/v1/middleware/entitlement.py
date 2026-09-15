@@ -24,6 +24,7 @@ from app.decorators.entitlements import (
     SubscriptionRequiredException,
     require_active_subscription,
 )
+from app.schemas.errors import ErrorEnvelope, error_response
 from shared.py.wide_events import log
 
 #: Body of the 503 an unanswerable plan read returns. Deliberately says nothing
@@ -93,11 +94,11 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
         """Render the exact body the app's HTTPException handler would emit.
 
         The web's axios interceptor and the chat-stream client both match on
-        ``detail.code == "subscription_required"``; wrapping ``detail`` the same
-        way the generic handler does keeps that contract byte-identical whether
-        a 402 comes from here or from an imperative in-handler gate.
+        ``code == "subscription_required"``; rendering the same envelope the
+        generic handler does keeps that contract byte-identical whether a 402
+        comes from here or from an imperative in-handler gate.
         """
-        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+        return error_response(exc.status_code, ErrorEnvelope.from_http_exception(exc))
 
     @staticmethod
     def _entitlement_unavailable() -> JSONResponse:
@@ -107,8 +108,8 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
         gate runs before ``call_next``, so nothing was executed and a retry is
         safe on every method, not just the idempotent ones.
         """
-        return JSONResponse(
-            status_code=503,
-            content={"detail": ENTITLEMENT_UNAVAILABLE_MESSAGE},
+        return error_response(
+            503,
+            ErrorEnvelope(message=ENTITLEMENT_UNAVAILABLE_MESSAGE, code="entitlement_unavailable"),
             headers={"Retry-After": str(ENTITLEMENT_RETRY_AFTER_SECONDS)},
         )

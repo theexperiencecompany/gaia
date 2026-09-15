@@ -270,7 +270,7 @@ function Stats({
       if (!isInWindow(d, window)) continue;
       // Only set when the snapshot actually carries a day period — an entry
       // without one must not clobber a real earlier value with 0.
-      const day = e.features[primary]?.periods.day;
+      const day = e.features[primary]?.periods?.day;
       if (day?.used !== undefined) byDom.set(d.getUTCDate(), day.used);
     }
     if (!byDom.size) return empty;
@@ -423,7 +423,7 @@ function cumulativeByDay(
   for (const e of history) {
     const d = new Date(e.date);
     if (!isInWindow(d, window)) continue;
-    const used = e.features[primary]?.periods.month?.used;
+    const used = e.features[primary]?.periods?.month?.used;
     if (used !== undefined) byDom.set(d.getUTCDate(), used);
   }
   return byDom;

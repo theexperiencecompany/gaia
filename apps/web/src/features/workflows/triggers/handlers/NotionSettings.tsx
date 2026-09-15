@@ -18,15 +18,15 @@ import {
 import type { OptionItem } from "../components/types";
 import { useTriggerOptions } from "../hooks/useTriggerOptions";
 import type { TriggerSettingsProps } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 
-export interface NotionTriggerData {
+export type NotionTriggerData = {
   trigger_name: string;
   database_ids?: string[];
   page_ids?: string[];
-}
+};
 
-export interface NotionConfig extends TriggerConfig {
+export interface NotionConfig extends TriggerConfigDraft {
   trigger_name?: string;
   trigger_data?: NotionTriggerData;
 }

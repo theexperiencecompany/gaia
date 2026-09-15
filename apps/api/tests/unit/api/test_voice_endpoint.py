@@ -150,7 +150,7 @@ class TestGetVoiceToken:
         mock_get_voice.return_value = None
         resp = await client.get(VOICE_BASE + "/token")
         assert resp.status_code == 500
-        assert "Failed to generate voice token" in resp.json()["detail"]
+        assert "Failed to generate voice token" in resp.json()["message"]
 
     async def test_requires_auth(self, unauthed_client: AsyncClient):
         resp = await unauthed_client.get(VOICE_BASE + "/token")
@@ -174,7 +174,7 @@ class TestVoicePaidOnlyGate:
         resp = await gated_client.get(VOICE_BASE + "/token")
 
         assert resp.status_code == 402
-        assert resp.json()["detail"]["code"] == "subscription_required"
+        assert resp.json()["code"] == "subscription_required"
         mock_get_voice.assert_not_called()
 
     @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)

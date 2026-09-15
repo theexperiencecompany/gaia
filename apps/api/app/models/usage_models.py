@@ -4,6 +4,7 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.repositories.base import UserScopedDocument
+from app.schemas.common import ResponseModel
 
 
 class UsagePeriod(str, Enum):
@@ -60,14 +61,14 @@ class HistoryUsagePeriod(BaseModel):
     percentage: float
 
 
-class HistoryFeatureUsage(BaseModel):
+class HistoryFeatureUsage(ResponseModel):
     """Snapshot usage for one feature across its rate-limited periods."""
 
     title: str
     periods: dict[str, HistoryUsagePeriod] = Field(default_factory=dict)
 
 
-class UsageHistoryEntry(BaseModel):
+class UsageHistoryEntry(ResponseModel):
     """One item in the ``GET /usage/history`` response list."""
 
     date: str

@@ -5,7 +5,6 @@ import { CircleArrowUpRightIcon } from "@icons";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
-import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 import { integrationsApi } from "../api/integrationsApi";
 
 // Distinct keys for the sidebar loading placeholders (also serve as React keys).
@@ -80,7 +79,7 @@ export function IntegrationRelatedWorkflows({
     );
   }
 
-  const workflows = (data?.workflows ?? []) as CommunityWorkflow[];
+  const workflows = data?.workflows ?? [];
   if (workflows.length === 0) return null;
 
   if (variant === "section") {

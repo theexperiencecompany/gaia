@@ -3,58 +3,44 @@
  * Provides functions to interact with the workflow backend API.
  */
 
-import { buildQueryString } from "@shared/api";
-import { apiService } from "@/lib/api/service";
+import type { GenerateWorkflowPromptRequest } from "@shared/api/generated";
+import { api } from "@/lib/api/typed";
 import type {
   CommunityWorkflow,
-  CommunityWorkflowsResponse,
   CreateWorkflowRequest,
-  TriggerSchema,
   Workflow,
   WorkflowExecutionRequest,
-  WorkflowExecutionResponse,
-  WorkflowListResponse,
-  WorkflowResponse,
 } from "@/types/features/workflowTypes";
-import type { WorkflowExecutionsResponse } from "../types/workflowExecutionTypes";
 
 // Re-export types for convenience
 export type { CommunityWorkflow, CreateWorkflowRequest, Workflow };
 
+export interface TriggerOptionsQuery {
+  parentValues?: string[];
+  page?: number;
+  search?: string;
+}
+
 export const workflowApi = {
   // Create a new workflow
-  createWorkflow: async (
-    request: CreateWorkflowRequest,
-  ): Promise<WorkflowResponse> => {
-    return apiService.post<WorkflowResponse>("/workflows", request, {
+  createWorkflow: (request: CreateWorkflowRequest) =>
+    api.post("/api/v1/workflows", {
+      body: request,
       silent: true, // useWorkflowCreation hook handles error display
-    });
-  },
+    }),
 
-  // List workflows with filtering
-  listWorkflows: async (params?: {
-    activated?: boolean;
-    source?: string;
-    limit?: number;
-    skip?: number;
-  }): Promise<WorkflowListResponse> => {
-    return apiService.get<WorkflowListResponse>(
-      `/workflows${buildQueryString(params)}`,
-    );
-  },
+  // List the user's workflows
+  listWorkflows: () => api.get("/api/v1/workflows"),
 
   // Get a specific workflow
-  getWorkflow: async (
-    workflowId: string,
-    options?: { silent?: boolean },
-  ): Promise<WorkflowResponse> => {
-    return apiService.get<WorkflowResponse>(`/workflows/${workflowId}`, {
+  getWorkflow: (workflowId: string, options?: { silent?: boolean }) =>
+    api.get("/api/v1/workflows/{workflow_id}", {
+      path: { workflow_id: workflowId },
       silent: options?.silent,
-    });
-  },
+    }),
 
   // Update a workflow
-  updateWorkflow: async (
+  updateWorkflow: (
     workflowId: string,
     updates: {
       title?: string;
@@ -67,259 +53,171 @@ export const workflowApi = {
       notify_on_completion?: boolean;
       integration_ids?: string[];
     },
-  ): Promise<WorkflowResponse> => {
-    return apiService.put<WorkflowResponse>(
-      `/workflows/${workflowId}`,
-      updates,
-      {
-        successMessage: "Workflow updated successfully",
-        errorMessage: "Failed to update workflow",
-      },
-    );
-  },
+  ) =>
+    api.put("/api/v1/workflows/{workflow_id}", {
+      path: { workflow_id: workflowId },
+      body: updates,
+      successMessage: "Workflow updated successfully",
+      errorMessage: "Failed to update workflow",
+    }),
 
   // Delete a workflow
-  deleteWorkflow: async (workflowId: string): Promise<{ message: string }> => {
-    return apiService.delete<{ message: string }>(`/workflows/${workflowId}`, {
+  deleteWorkflow: (workflowId: string) =>
+    api.delete("/api/v1/workflows/{workflow_id}", {
+      path: { workflow_id: workflowId },
       successMessage: "Workflow deleted successfully",
       errorMessage: "Failed to delete workflow",
-    });
-  },
+    }),
 
   // Activate a workflow
-  activateWorkflow: async (workflowId: string): Promise<WorkflowResponse> => {
-    return apiService.post<WorkflowResponse>(
-      `/workflows/${workflowId}/activate`,
-      {},
-      {
-        successMessage: "Workflow activated successfully",
-        errorMessage: "Failed to activate workflow",
-      },
-    );
-  },
+  activateWorkflow: (workflowId: string) =>
+    api.post("/api/v1/workflows/{workflow_id}/activate", {
+      path: { workflow_id: workflowId },
+      successMessage: "Workflow activated successfully",
+      errorMessage: "Failed to activate workflow",
+    }),
 
   // Deactivate a workflow
-  deactivateWorkflow: async (workflowId: string): Promise<WorkflowResponse> => {
-    return apiService.post<WorkflowResponse>(
-      `/workflows/${workflowId}/deactivate`,
-      {},
-      {
-        successMessage: "Workflow deactivated successfully",
-        errorMessage: "Failed to deactivate workflow",
-      },
-    );
-  },
+  deactivateWorkflow: (workflowId: string) =>
+    api.post("/api/v1/workflows/{workflow_id}/deactivate", {
+      path: { workflow_id: workflowId },
+      successMessage: "Workflow deactivated successfully",
+      errorMessage: "Failed to deactivate workflow",
+    }),
 
   // Regenerate workflow steps
-  regenerateWorkflowSteps: async (
+  regenerateWorkflowSteps: (
     workflowId: string,
     options?: {
       instruction?: string;
       force_different_tools?: boolean;
       integration_ids?: string[];
     },
-  ): Promise<WorkflowResponse> => {
-    return apiService.post<WorkflowResponse>(
-      `/workflows/${workflowId}/regenerate-steps`,
-      {
+  ) =>
+    api.post("/api/v1/workflows/{workflow_id}/regenerate-steps", {
+      path: { workflow_id: workflowId },
+      body: {
         instruction: options?.instruction || "Generate workflow steps",
         force_different_tools: options?.force_different_tools ?? true,
         integration_ids: options?.integration_ids,
       },
-      {
-        errorMessage: "Failed to regenerate workflow steps",
-      },
-    );
-  },
+      errorMessage: "Failed to regenerate workflow steps",
+    }),
 
   // Execute a workflow
-  executeWorkflow: async (
-    workflowId: string,
-    request?: WorkflowExecutionRequest,
-  ): Promise<WorkflowExecutionResponse> => {
-    return apiService.post<WorkflowExecutionResponse>(
-      `/workflows/${workflowId}/execute`,
-      request || {},
-      {
-        successMessage: "Workflow execution started",
-        errorMessage: "Failed to execute workflow",
-      },
-    );
-  },
+  executeWorkflow: (workflowId: string, request?: WorkflowExecutionRequest) =>
+    api.post("/api/v1/workflows/{workflow_id}/execute", {
+      path: { workflow_id: workflowId },
+      body: request || {},
+      successMessage: "Workflow execution started",
+      errorMessage: "Failed to execute workflow",
+    }),
 
   // Get workflow execution history
-  getWorkflowExecutions: async (
+  getWorkflowExecutions: (
     workflowId: string,
     limit: number = 10,
     offset: number = 0,
-  ): Promise<WorkflowExecutionsResponse> => {
-    return apiService.get<WorkflowExecutionsResponse>(
-      `/workflows/${workflowId}/executions?limit=${limit}&offset=${offset}`,
-      {
-        silent: true,
-      },
-    );
-  },
+  ) =>
+    api.get("/api/v1/workflows/{workflow_id}/executions", {
+      path: { workflow_id: workflowId },
+      query: { limit, offset },
+      silent: true,
+    }),
 
   // Create workflow from todo (migration helper)
-  createWorkflowFromTodo: async (
+  createWorkflowFromTodo: (
     todoId: string,
     todoTitle: string,
     todoDescription?: string,
-  ): Promise<{ workflow: Workflow; message: string }> => {
-    return apiService.post<{ workflow: Workflow; message: string }>(
-      "/workflows/from-todo",
-      {
+  ) =>
+    api.post("/api/v1/workflows/from-todo", {
+      body: {
         todo_id: todoId,
         todo_title: todoTitle,
         todo_description: todoDescription,
       },
-      {
-        successMessage: "Workflow created from todo successfully",
-        errorMessage: "Failed to create workflow from todo",
-      },
-    );
-  },
+      successMessage: "Workflow created from todo successfully",
+      errorMessage: "Failed to create workflow from todo",
+    }),
 
   // Publish workflow to community
-  publishWorkflow: async (
-    workflowId: string,
-  ): Promise<{ message: string; workflow_id: string; slug?: string }> => {
-    return apiService.post<{
-      message: string;
-      workflow_id: string;
-      slug?: string;
-    }>(
-      `/workflows/${workflowId}/publish`,
-      {},
-      {
-        successMessage: "Workflow published to community",
-        errorMessage: "Failed to publish workflow",
-      },
-    );
-  },
+  publishWorkflow: (workflowId: string) =>
+    api.post("/api/v1/workflows/{workflow_id}/publish", {
+      path: { workflow_id: workflowId },
+      successMessage: "Workflow published to community",
+      errorMessage: "Failed to publish workflow",
+    }),
 
   // Unpublish workflow from community
-  unpublishWorkflow: async (
-    workflowId: string,
-  ): Promise<{ message: string }> => {
-    return apiService.post<{ message: string }>(
-      `/workflows/${workflowId}/unpublish`,
-      {},
-      {
-        successMessage: "Workflow unpublished from community",
-        errorMessage: "Failed to unpublish workflow",
-      },
-    );
-  },
+  unpublishWorkflow: (workflowId: string) =>
+    api.post("/api/v1/workflows/{workflow_id}/unpublish", {
+      path: { workflow_id: workflowId },
+      successMessage: "Workflow unpublished from community",
+      errorMessage: "Failed to unpublish workflow",
+    }),
 
   // Get explore workflows for discover section
-  getExploreWorkflows: async (
-    limit: number = 25,
-    offset: number = 0,
-  ): Promise<CommunityWorkflowsResponse> => {
-    return apiService.get<CommunityWorkflowsResponse>(
-      `/workflows/explore?limit=${limit}&offset=${offset}`,
-      {
-        errorMessage: "Failed to fetch explore workflows",
-      },
-    );
-  },
+  getExploreWorkflows: (limit: number = 25, offset: number = 0) =>
+    api.get("/api/v1/workflows/explore", {
+      query: { limit, offset },
+      errorMessage: "Failed to fetch explore workflows",
+    }),
 
   // Get public workflows from community
-  getCommunityWorkflows: async (
-    limit: number = 20,
-    offset: number = 0,
-  ): Promise<CommunityWorkflowsResponse> => {
-    return apiService.get<CommunityWorkflowsResponse>(
-      `/workflows/community?limit=${limit}&offset=${offset}`,
-      {
-        errorMessage: "Failed to fetch community workflows",
-      },
-    );
-  },
+  getCommunityWorkflows: (limit: number = 20, offset: number = 0) =>
+    api.get("/api/v1/workflows/community", {
+      query: { limit, offset },
+      errorMessage: "Failed to fetch community workflows",
+    }),
 
   // Get a public workflow without authentication (for server-side rendering)
-  getPublicWorkflow: async (workflowId: string): Promise<WorkflowResponse> => {
-    return apiService.get<WorkflowResponse>(`/workflows/public/${workflowId}`, {
+  getPublicWorkflow: (workflowId: string) =>
+    api.get("/api/v1/workflows/public/{workflow_ref}", {
+      path: { workflow_ref: workflowId },
       errorMessage: "Failed to fetch public workflow",
-    });
-  },
+    }),
 
   // Generate or improve workflow instructions using AI
-  generatePrompt: async (params: {
-    title?: string;
-    description?: string;
-    trigger_config?: Record<string, unknown>;
-    existing_prompt?: string;
-    integration_ids?: string[];
-  }): Promise<{
-    prompt: string;
-    suggested_trigger?: {
-      type: "manual" | "schedule" | "integration";
-      cron_expression?: string;
-      trigger_name?: string;
-    };
-  }> => {
-    return apiService.post<{
-      prompt: string;
-      suggested_trigger?: {
-        type: "manual" | "schedule" | "integration";
-        cron_expression?: string;
-        trigger_name?: string;
-      };
-    }>("/workflows/generate-prompt", params, { silent: true });
-  },
+  generatePrompt: (params: GenerateWorkflowPromptRequest) =>
+    api.post("/api/v1/workflows/generate-prompt", {
+      body: params,
+      silent: true,
+    }),
 
   // Reset a system workflow to its default definition
-  resetToDefault: async (
-    workflowId: string,
-  ): Promise<{ success: boolean; message: string }> => {
-    return apiService.post<{ success: boolean; message: string }>(
-      `/workflows/${workflowId}/reset-to-default`,
-      {},
-      {
-        successMessage: "Workflow reset to default",
-        errorMessage: "Failed to reset workflow",
-      },
-    );
-  },
+  resetToDefault: (workflowId: string) =>
+    api.post("/api/v1/workflows/{workflow_id}/reset-to-default", {
+      path: { workflow_id: workflowId },
+      successMessage: "Workflow reset to default",
+      errorMessage: "Failed to reset workflow",
+    }),
 
   // silent: non-critical metadata; UI falls back to the slug, never toast.
-  getTriggerSchemas: async (): Promise<TriggerSchema[]> => {
-    return apiService.get<TriggerSchema[]>("/triggers/schema", {
-      silent: true,
-    });
-  },
+  getTriggerSchemas: () => api.get("/api/v1/triggers/schema", { silent: true }),
 
-  // Get dynamic options for trigger configuration field
+  // Get dynamic options for trigger configuration field; `parentValues` are
+  // the ids of the parent selection for cascading fields (sheets of a
+  // spreadsheet), sent comma-separated as the route reads them. `page` and
+  // `search` are honoured by the handlers that page/filter (GitHub repos).
   getTriggerOptions: async (
     integrationId: string,
     triggerSlug: string,
     fieldName: string,
-    queryParams?: Record<string, string | number | boolean>,
-  ): Promise<{ value: string; label: string }[]> => {
-    const params = new URLSearchParams({
-      integration_id: integrationId,
-      trigger_slug: triggerSlug,
-      field_name: fieldName,
-    });
-
-    if (queryParams) {
-      Object.entries(queryParams).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          params.append(key, String(value));
-        }
-      });
-    }
-
-    const response = await apiService.get<{
-      options: { value: string; label: string }[];
-    }>(`/triggers/options?${params.toString()}`, {
+    { parentValues, page, search }: TriggerOptionsQuery = {},
+  ) => {
+    const response = await api.get("/api/v1/triggers/options", {
+      query: {
+        integration_id: integrationId,
+        trigger_slug: triggerSlug,
+        field_name: fieldName,
+        parent_values: parentValues?.join(","),
+        page,
+        search,
+      },
       errorMessage: "Failed to fetch trigger options",
       silent: true, // Fail silently if options not available
     });
-
-    return response.options || [];
+    return response.options;
   },
 };

@@ -9,7 +9,7 @@ enabled in notification settings. Every proactive send path resolves its
 platform here and nowhere else; the web app always gets the message as well.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from app.constants.notifications import DEFAULT_CHAT_CHANNEL_PRIORITY
@@ -49,9 +49,9 @@ async def get_chat_channel_priority(user_id: str) -> list[str]:
     return resolve_channel_priority(user.chat_channel_priority if user else None)
 
 
-async def set_chat_channel_priority(user_id: str, priority: list[str]) -> None:
+async def set_chat_channel_priority(user_id: str, priority: Sequence[str]) -> None:
     """Store a new order and report the change (platform names only, no content)."""
-    await user_repository.set_chat_channel_priority(user_id, priority)
+    await user_repository.set_chat_channel_priority(user_id, list(priority))
     capture_event(
         user_id,
         AnalyticsEvents.SETTINGS_CHAT_CHANNEL_PRIORITY_UPDATED,

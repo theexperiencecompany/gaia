@@ -23,6 +23,7 @@ from app.models.linkedin_models import (
     ReactToPostInput,
 )
 from app.services.composio.proxy_client import (
+    ProxyRequest,
     proxy_request_full_sync,
     proxy_request_sync,
 )
@@ -150,12 +151,14 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
             post_data["content"] = content
 
         response = proxy_request_full_sync(
-            user_id=user_id,
-            toolkit=LINKEDIN_TOOLKIT,
-            endpoint=f"{LINKEDIN_REST_BASE}/posts",
-            method="POST",
-            body=post_data,
-            headers=_REST_HEADERS,
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=LINKEDIN_TOOLKIT,
+                endpoint=f"{LINKEDIN_REST_BASE}/posts",
+                method="POST",
+                body=post_data,
+                headers=_REST_HEADERS,
+            )
         )
 
         post_id = response.get("headers", {}).get("x-restli-id", "")
@@ -192,12 +195,14 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
             comment_data["parentComment"] = request.parent_comment_urn
 
         response = proxy_request_full_sync(
-            user_id=user_id,
-            toolkit=LINKEDIN_TOOLKIT,
-            endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/comments",
-            method="POST",
-            body=comment_data,
-            headers=_REST_HEADERS,
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=LINKEDIN_TOOLKIT,
+                endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/comments",
+                method="POST",
+                body=comment_data,
+                headers=_REST_HEADERS,
+            )
         )
 
         body = response.get("data") or {}
@@ -225,12 +230,14 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
 
         result = (
             proxy_request_sync(
-                user_id=user_id,
-                toolkit=LINKEDIN_TOOLKIT,
-                endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/comments",
-                method="GET",
-                query={"count": request.count, "start": request.start},
-                headers=_REST_HEADERS,
+                ProxyRequest(
+                    user_id=user_id,
+                    toolkit=LINKEDIN_TOOLKIT,
+                    endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/comments",
+                    method="GET",
+                    query={"count": request.count, "start": request.start},
+                    headers=_REST_HEADERS,
+                )
             )
             or {}
         )
@@ -270,12 +277,14 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
         encoded_urn = request.post_urn.replace(":", "%3A")
 
         proxy_request_sync(
-            user_id=user_id,
-            toolkit=LINKEDIN_TOOLKIT,
-            endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/likes",
-            method="POST",
-            body={"actor": author_urn, "reactionType": request.reaction_type},
-            headers=_REST_HEADERS,
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=LINKEDIN_TOOLKIT,
+                endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/likes",
+                method="POST",
+                body={"actor": author_urn, "reactionType": request.reaction_type},
+                headers=_REST_HEADERS,
+            )
         )
 
         return {
@@ -300,13 +309,15 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
         encoded_author_urn = author_urn.replace(":", "%3A")
 
         proxy_request_sync(
-            user_id=user_id,
-            toolkit=LINKEDIN_TOOLKIT,
-            endpoint=(
-                f"{LINKEDIN_REST_BASE}/socialActions/{encoded_post_urn}/likes/{encoded_author_urn}"
-            ),
-            method="DELETE",
-            headers=_REST_HEADERS,
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=LINKEDIN_TOOLKIT,
+                endpoint=(
+                    f"{LINKEDIN_REST_BASE}/socialActions/{encoded_post_urn}/likes/{encoded_author_urn}"
+                ),
+                method="DELETE",
+                headers=_REST_HEADERS,
+            )
         )
 
         return {
@@ -328,12 +339,14 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
 
         result = (
             proxy_request_sync(
-                user_id=user_id,
-                toolkit=LINKEDIN_TOOLKIT,
-                endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/likes",
-                method="GET",
-                query={"count": request.count},
-                headers=_REST_HEADERS,
+                ProxyRequest(
+                    user_id=user_id,
+                    toolkit=LINKEDIN_TOOLKIT,
+                    endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/likes",
+                    method="GET",
+                    query={"count": request.count},
+                    headers=_REST_HEADERS,
+                )
             )
             or {}
         )
@@ -372,10 +385,12 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
 
         data = (
             proxy_request_sync(
-                user_id=user_id,
-                toolkit=LINKEDIN_TOOLKIT,
-                endpoint=f"{LINKEDIN_API_BASE}/userinfo",
-                method="GET",
+                ProxyRequest(
+                    user_id=user_id,
+                    toolkit=LINKEDIN_TOOLKIT,
+                    endpoint=f"{LINKEDIN_API_BASE}/userinfo",
+                    method="GET",
+                )
             )
             or {}
         )
@@ -389,15 +404,17 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
                 encoded_urn = person_urn.replace(":", "%3A")
                 posts_data = (
                     proxy_request_sync(
-                        user_id=user_id,
-                        toolkit=LINKEDIN_TOOLKIT,
-                        endpoint=f"{LINKEDIN_API_BASE}/ugcPosts",
-                        method="GET",
-                        query={
-                            "q": "authors",
-                            "authors": f"List({encoded_urn})",
-                            "count": 5,
-                        },
+                        ProxyRequest(
+                            user_id=user_id,
+                            toolkit=LINKEDIN_TOOLKIT,
+                            endpoint=f"{LINKEDIN_API_BASE}/ugcPosts",
+                            method="GET",
+                            query={
+                                "q": "authors",
+                                "authors": f"List({encoded_urn})",
+                                "count": 5,
+                            },
+                        )
                     )
                     or {}
                 )

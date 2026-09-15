@@ -3,6 +3,7 @@ import {
   type ConversationSyncItem,
   chatApi,
   type SyncedConversation,
+  toClientMessages,
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
@@ -13,6 +14,7 @@ import {
   shouldBlockSyncForConversation,
 } from "@/stores/streamStore";
 import type { MessageType } from "@/types/features/convoTypes";
+import { fromRegistryEntries } from "@/types/features/toolDataTypes";
 
 // When a remote message overwrites an existing local one, carry forward a
 // non-empty local tool_data if the remote copy lacks it. Executor tool cards are
@@ -162,7 +164,9 @@ const identifyStaleConversations = (
       continue;
     }
 
-    const remoteUpdated = toTimestamp(remote.updatedAt ?? remote.createdAt);
+    const remoteUpdated = toTimestamp(
+      remote.updatedAt ?? remote.createdAt ?? undefined,
+    );
     const localUpdated = localUpdatedAt.getTime();
 
     if (remoteUpdated > localUpdated) {
@@ -312,8 +316,11 @@ export const batchSyncConversations = async (): Promise<void> => {
     await Promise.allSettled(
       freshConversations.map(async (conversation) => {
         const conversationId = conversation.conversation_id;
-        const messages = conversation.messages ?? [];
-        const artifacts = conversation.artifacts ?? [];
+        const messages = toClientMessages(conversation.messages);
+        const artifacts = fromRegistryEntries(
+          conversation.artifacts,
+          conversationId,
+        );
 
         // Skip syncing if streaming or pending save (e.g., after abort)
         if (shouldBlockSyncForConversation(conversationId)) return;
@@ -321,16 +328,16 @@ export const batchSyncConversations = async (): Promise<void> => {
         const mappedConversation: IConversation = {
           id: conversationId,
           title: conversation.description || "Untitled conversation",
-          description: conversation.description,
+          description: conversation.description ?? "",
           starred: conversation.starred ?? false,
           isSystemGenerated: conversation.is_system_generated ?? false,
           systemPurpose: conversation.system_purpose ?? null,
           isUnread: conversation.is_unread ?? false,
           artifacts,
-          createdAt: new Date(conversation.createdAt),
+          createdAt: new Date(conversation.createdAt ?? 0),
           updatedAt: conversation.updatedAt
             ? new Date(conversation.updatedAt)
-            : new Date(conversation.createdAt),
+            : new Date(conversation.createdAt ?? 0),
         };
 
         // Refresh the runtime lookup map from the server-authoritative registry.
@@ -373,23 +380,23 @@ export const applySyncedConversation = async (
     return;
   }
 
-  const messages = conversation.messages ?? [];
-  const artifacts = conversation.artifacts ?? [];
+  const messages = toClientMessages(conversation.messages);
+  const artifacts = fromRegistryEntries(conversation.artifacts, conversationId);
 
   // Map conversation to IndexedDB format
   const mappedConversation: IConversation = {
     id: conversationId,
     title: conversation.description || "Untitled conversation",
-    description: conversation.description,
+    description: conversation.description ?? "",
     starred: conversation.starred ?? false,
     isSystemGenerated: conversation.is_system_generated ?? false,
     systemPurpose: conversation.system_purpose ?? null,
     isUnread: conversation.is_unread ?? false,
     artifacts,
-    createdAt: new Date(conversation.createdAt),
+    createdAt: new Date(conversation.createdAt ?? 0),
     updatedAt: conversation.updatedAt
       ? new Date(conversation.updatedAt)
-      : new Date(conversation.createdAt),
+      : new Date(conversation.createdAt ?? 0),
   };
 
   // Refresh the runtime lookup map from the server-authoritative registry. The

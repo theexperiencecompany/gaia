@@ -370,8 +370,7 @@ class TestLogout:
         with patch("app.api.v1.endpoints.user.track_logout") as mock_track:
             response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 200
-        data = response.json()
-        assert "logout_url" in data
+        assert response.json()["logout_url"] == "https://auth.example.com/logout"
         mock_track.assert_called_once_with(user_id="507f1f77bcf86cd799439011")
 
     @patch("app.api.v1.endpoints.user.workos")

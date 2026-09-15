@@ -9,8 +9,8 @@ from app.db.repositories.users import user_repository
 from app.models.integration_models import (
     Integration,
     IntegrationResponse,
-    IntegrationTool,
     MarketplaceResponse,
+    StoredIntegrationTool,
 )
 from app.models.oauth_models import OAuthIntegration
 from app.services.integrations.integration_resolver import IntegrationResolver
@@ -56,7 +56,7 @@ async def get_all_integrations(
         )
         if stored_tools:
             response.tools = [
-                IntegrationTool(name=t["name"], description=t.get("description"))
+                StoredIntegrationTool(name=t["name"], description=t.get("description"))
                 for t in stored_tools
             ]
 
@@ -104,7 +104,8 @@ def assemble_integration_response(
 
     if stored_tools and not response.tools:
         response.tools = [
-            IntegrationTool(name=t["name"], description=t.get("description")) for t in stored_tools
+            StoredIntegrationTool(name=t["name"], description=t.get("description"))
+            for t in stored_tools
         ]
 
     if creator_doc:

@@ -7,7 +7,7 @@ from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from shared.py.wide_events import log
 
 INSTAGRAM_API_BASE = "https://graph.instagram.com/v18.0"
@@ -32,16 +32,18 @@ def register_instagram_custom_tools(composio: Composio) -> list[str]:
 
         me = (
             proxy_request_sync(
-                user_id=user_id,
-                toolkit=INSTAGRAM_TOOLKIT,
-                endpoint=f"{INSTAGRAM_API_BASE}/me",
-                method="GET",
-                query={
-                    "fields": (
-                        "id,name,username,account_type,media_count,"
-                        "followers_count,follows_count,biography"
-                    ),
-                },
+                ProxyRequest(
+                    user_id=user_id,
+                    toolkit=INSTAGRAM_TOOLKIT,
+                    endpoint=f"{INSTAGRAM_API_BASE}/me",
+                    method="GET",
+                    query={
+                        "fields": (
+                            "id,name,username,account_type,media_count,"
+                            "followers_count,follows_count,biography"
+                        ),
+                    },
+                )
             )
             or {}
         )
@@ -50,16 +52,18 @@ def register_instagram_custom_tools(composio: Composio) -> list[str]:
         try:
             media_data = (
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=INSTAGRAM_TOOLKIT,
-                    endpoint=f"{INSTAGRAM_API_BASE}/me/media",
-                    method="GET",
-                    query={
-                        "limit": "5",
-                        "fields": (
-                            "id,caption,media_type,timestamp,like_count,comments_count,permalink"
-                        ),
-                    },
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=INSTAGRAM_TOOLKIT,
+                        endpoint=f"{INSTAGRAM_API_BASE}/me/media",
+                        method="GET",
+                        query={
+                            "limit": "5",
+                            "fields": (
+                                "id,caption,media_type,timestamp,like_count,comments_count,permalink"
+                            ),
+                        },
+                    )
                 )
                 or {}
             )

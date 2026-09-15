@@ -141,18 +141,10 @@ export function useEmailComposition(): UseEmailCompositionReturn {
           clarityOption,
         });
 
-        if (response.content) {
-          const parsedContent = JSON.parse(response.content);
-          if (parsedContent.subject && parsedContent.body) {
-            const formattedBody = marked(
-              parsedContent.body.replace(/\n/g, "<br />"),
-            );
-            if (editor) editor.commands.setContent(formattedBody);
-            setSubject(parsedContent.subject);
-          } else {
-            setError("Invalid response format from server");
-            toast.error("Invalid response format from server");
-          }
+        if (response.subject && response.body) {
+          const formattedBody = marked(response.body.replace(/\n/g, "<br />"));
+          if (editor) editor.commands.setContent(formattedBody);
+          setSubject(response.subject);
         } else {
           setError("Invalid response format from server");
           toast.error("Invalid response format from server");

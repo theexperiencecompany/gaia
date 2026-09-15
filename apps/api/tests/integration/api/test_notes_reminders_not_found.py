@@ -44,7 +44,7 @@ class TestNotesNotFound:
         with patch("app.api.v1.endpoints.notes.get_note", _not_found("Note not found")):
             response = await test_client.get("/api/v1/notes/does-not-exist")
         assert response.status_code == 404, response.text
-        assert response.json()["detail"] == "Note not found"
+        assert response.json()["message"] == "Note not found"
 
     async def test_update_missing_note_returns_404(self, test_client) -> None:
         with patch("app.api.v1.endpoints.notes.update_note", _not_found("Note not found")):
@@ -53,13 +53,13 @@ class TestNotesNotFound:
                 json={"content": "x", "plaintext": "x"},
             )
         assert response.status_code == 404, response.text
-        assert response.json()["detail"] == "Note not found"
+        assert response.json()["message"] == "Note not found"
 
     async def test_delete_missing_note_returns_404(self, test_client) -> None:
         with patch("app.api.v1.endpoints.notes.delete_note", _not_found("Note not found")):
             response = await test_client.delete("/api/v1/notes/does-not-exist")
         assert response.status_code == 404, response.text
-        assert response.json()["detail"] == "Note not found"
+        assert response.json()["message"] == "Note not found"
 
 
 @pytest.mark.integration
@@ -73,4 +73,4 @@ class TestRemindersNotFound:
         ):
             response = await test_client.get("/api/v1/reminders/does-not-exist")
         assert response.status_code == 404, response.text
-        assert "not found" in response.json()["detail"].lower()
+        assert "not found" in response.json()["message"].lower()

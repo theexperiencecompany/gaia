@@ -5,11 +5,16 @@ and POST /connect/{integration_id}.  Service layer is mocked;
 only HTTP status codes, response shapes, and error handling are verified.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from collections.abc import Iterator
+from contextlib import contextmanager
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from fastapi import FastAPI
 from httpx import AsyncClient
 
+from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.models.user_models import UserDocument
+from app.schemas.integrations.responses import ConnectIntegrationResponse
 from app.services.analytics_service import AnalyticsEvents
 
 API = "/api/v1/integrations"
@@ -49,8 +54,6 @@ def _resolved(
     source: str = "platform",
     requires_auth: bool = False,
     provider: str | None = None,
-    available: bool = True,
-    server_url: str | None = "https://mcp.example.com",
 ) -> MagicMock:
     mock = MagicMock()
     mock.managed_by = managed_by
@@ -59,7 +62,7 @@ def _resolved(
     mock.requires_auth = requires_auth
     if source == "platform":
         pi = MagicMock()
-        pi.available = available
+        pi.available = True
         pi.provider = provider
         mock.platform_integration = pi
     else:
@@ -67,7 +70,7 @@ def _resolved(
     if managed_by == "mcp":
         mock.mcp_config = MagicMock()
         mock.mcp_config.requires_auth = requires_auth
-        mock.mcp_config.server_url = server_url
+        mock.mcp_config.server_url = "https://mcp.example.com"
     else:
         mock.mcp_config = None
     return mock
@@ -172,104 +175,278 @@ class TestDisconnectIntegration:
 # ===========================================================================
 
 
+_MODULE = "app.api.v1.endpoints.integrations.config"
+_VALID_UID = "507f1f77bcf86cd799439011"
+_USER_EMAIL = "test@example.com"
+
+
+def _connected(integration_id: str, name: str = "TestInt") -> ConnectIntegrationResponse:
+    return ConnectIntegrationResponse(
+        status="connected", integration_id=integration_id, name=name, tools_count=3
+    )
+
+
+def _redirect(integration_id: str, name: str) -> ConnectIntegrationResponse:
+    return ConnectIntegrationResponse(
+        status="redirect",
+        integration_id=integration_id,
+        name=name,
+        redirect_url="https://oauth.example.com",
+    )
+
+
+def _error_body(integration_id: str, name: str, error: str) -> dict:
+    return {
+        "status": "error",
+        "integrationId": integration_id,
+        "name": name,
+        "message": None,
+        "toolsCount": None,
+        "redirectUrl": None,
+        "error": error,
+    }
+
+
+@contextmanager
+def _current_user(test_app: FastAPI, user: dict) -> Iterator[None]:
+    """Serve ``user`` from ``get_current_user`` for the duration of the block."""
+    original = test_app.dependency_overrides.get(get_current_user)
+    test_app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        yield
+    finally:
+        if original is None:
+            test_app.dependency_overrides.pop(get_current_user, None)
+        else:
+            test_app.dependency_overrides[get_current_user] = original
+
+
 class TestConnectIntegration:
     async def test_connect_mcp_success(self, client: AsyncClient) -> None:
-        from app.schemas.integrations.responses import ConnectIntegrationResponse
-
         resolved = _resolved(managed_by="mcp")
-        mock_result = ConnectIntegrationResponse(
-            status="connected",
-            integration_id="test-mcp",
-            name="TestInt",
-            tools_count=3,
-        )
         with (
             patch(
-                "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+                f"{_MODULE}.IntegrationResolver.resolve",
                 new_callable=AsyncMock,
                 return_value=resolved,
             ),
             patch(
-                "app.api.v1.endpoints.integrations.config.connect_mcp_integration",
+                f"{_MODULE}.connect_mcp_integration",
                 new_callable=AsyncMock,
-                return_value=mock_result,
-            ),
-            patch("app.api.v1.endpoints.integrations.config.capture_context_event") as mock_capture,
+                return_value=_connected("test-mcp"),
+            ) as mock_connect,
+            patch(f"{_MODULE}.capture_context_event") as mock_capture,
+            patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await client.post(
                 f"{API}/connect/test-mcp",
                 json={"redirect_path": "/integrations"},
             )
         assert resp.status_code == 200
-        assert resp.json()["status"] == "connected"
+        assert resp.json() == {
+            "status": "connected",
+            "integrationId": "test-mcp",
+            "name": "TestInt",
+            "message": None,
+            "toolsCount": 3,
+            "redirectUrl": None,
+            "error": None,
+        }
+        mock_connect.assert_awaited_once_with(
+            user_id=_VALID_UID,
+            integration_id="test-mcp",
+            integration_name="TestInt",
+            requires_auth=False,
+            redirect_path="/integrations",
+            server_url="https://mcp.example.com",
+            is_platform=True,
+            bearer_token=None,
+        )
         mock_capture.assert_called_once_with(
             AnalyticsEvents.INTEGRATION_CONNECTED,
             {"integration_id": "test-mcp", "managed_by": "mcp"},
         )
-
-    async def test_connect_composio_success(self, client: AsyncClient) -> None:
-        from app.schemas.integrations.responses import ConnectIntegrationResponse
-
-        resolved = _resolved(managed_by="composio", provider="GITHUB")
-        mock_result = ConnectIntegrationResponse(
-            status="redirect",
-            integration_id="github",
-            name="GitHub",
-            redirect_url="https://oauth.example.com",
+        mock_log.set.assert_any_call(
+            integration_name="TestInt",
+            integration={
+                "id": "test-mcp",
+                "managed_by": "mcp",
+                "auth_type": "none",
+                "provider": "test-mcp",
+            },
         )
+        mock_log.set.assert_any_call(outcome="success")
+
+    async def test_connect_custom_mcp_with_bearer_token(self, client: AsyncClient) -> None:
+        """A user-added OAuth MCP server: not a platform integration, and the
+        bearer token and redirect path travel through to the connect."""
+        resolved = _resolved(managed_by="mcp", source="custom", requires_auth=True)
         with (
             patch(
-                "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+                f"{_MODULE}.IntegrationResolver.resolve",
                 new_callable=AsyncMock,
                 return_value=resolved,
             ),
             patch(
-                "app.api.v1.endpoints.integrations.config.connect_composio_integration",
+                f"{_MODULE}.connect_mcp_integration",
                 new_callable=AsyncMock,
-                return_value=mock_result,
+                return_value=_redirect("my-mcp", "TestInt"),
+            ) as mock_connect,
+            patch(f"{_MODULE}.capture_context_event") as mock_capture,
+            patch(f"{_MODULE}.log") as mock_log,
+        ):
+            resp = await client.post(
+                f"{API}/connect/my-mcp",
+                json={"redirect_path": "/settings", "bearer_token": "tok-1"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "redirect"
+        mock_connect.assert_awaited_once_with(
+            user_id=_VALID_UID,
+            integration_id="my-mcp",
+            integration_name="TestInt",
+            requires_auth=True,
+            redirect_path="/settings",
+            server_url="https://mcp.example.com",
+            is_platform=False,
+            bearer_token="tok-1",
+        )
+        # OAuth-managed connects complete at their callback, not here.
+        mock_capture.assert_not_called()
+        mock_log.set.assert_any_call(
+            integration_name="TestInt",
+            integration={
+                "id": "my-mcp",
+                "managed_by": "mcp",
+                "auth_type": "oauth2",
+                "provider": "my-mcp",
+            },
+        )
+
+    async def test_connect_composio_success(self, client: AsyncClient) -> None:
+        resolved = _resolved(managed_by="composio", name="GitHub", provider="GITHUB")
+        with (
+            patch(
+                f"{_MODULE}.IntegrationResolver.resolve",
+                new_callable=AsyncMock,
+                return_value=resolved,
             ),
-            patch("app.api.v1.endpoints.integrations.config.capture_context_event") as mock_capture,
+            patch(
+                f"{_MODULE}.connect_composio_integration",
+                new_callable=AsyncMock,
+                return_value=_redirect("github", "GitHub"),
+            ) as mock_connect,
+            patch(f"{_MODULE}.capture_context_event") as mock_capture,
+            patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await client.post(
                 f"{API}/connect/github",
                 json={"redirect_path": "/integrations"},
             )
         assert resp.status_code == 200
-        assert resp.json()["status"] == "redirect"
+        assert resp.json() == {
+            "status": "redirect",
+            "integrationId": "github",
+            "name": "GitHub",
+            "message": None,
+            "toolsCount": None,
+            "redirectUrl": "https://oauth.example.com",
+            "error": None,
+        }
+        mock_connect.assert_awaited_once_with(
+            user_id=_VALID_UID,
+            integration_id="github",
+            integration_name="GitHub",
+            provider="GITHUB",
+            redirect_path="/integrations",
+        )
         # OAuth-managed connects complete at their callback, not here.
         mock_capture.assert_not_called()
+        mock_log.set.assert_any_call(
+            integration_name="GitHub",
+            integration={
+                "id": "github",
+                "managed_by": "composio",
+                "auth_type": "oauth2",
+                "provider": "GITHUB",
+            },
+        )
+        mock_log.set.assert_any_call(outcome="success")
 
     async def test_connect_self_success(self, client: AsyncClient) -> None:
-        from app.schemas.integrations.responses import ConnectIntegrationResponse
-
-        resolved = _resolved(managed_by="self", provider="GCAL")
-        mock_result = ConnectIntegrationResponse(
-            status="redirect",
-            integration_id="gcal",
-            name="Google Calendar",
-            redirect_url="https://oauth.google.com",
-        )
+        resolved = _resolved(managed_by="self", name="Google Calendar", provider="GCAL")
         with (
             patch(
-                "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+                f"{_MODULE}.IntegrationResolver.resolve",
                 new_callable=AsyncMock,
                 return_value=resolved,
             ),
             patch(
-                "app.api.v1.endpoints.integrations.config.connect_self_integration",
+                f"{_MODULE}.connect_self_integration",
                 new_callable=AsyncMock,
-                return_value=mock_result,
-            ),
+                return_value=_redirect("gcal", "Google Calendar"),
+            ) as mock_connect,
+            patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await client.post(
                 f"{API}/connect/gcal",
                 json={"redirect_path": "/integrations"},
             )
         assert resp.status_code == 200
+        assert resp.json()["status"] == "redirect"
+        mock_connect.assert_awaited_once_with(
+            user_id=_VALID_UID,
+            user_email=_USER_EMAIL,
+            integration_id="gcal",
+            integration_name="Google Calendar",
+            provider="GCAL",
+            redirect_path="/integrations",
+        )
+        mock_log.set.assert_any_call(
+            integration_name="Google Calendar",
+            integration={
+                "id": "gcal",
+                "managed_by": "self",
+                "auth_type": "oauth2",
+                "provider": "GCAL",
+            },
+        )
+        mock_log.set.assert_any_call(outcome="success")
+
+    async def test_connect_self_without_an_email_sends_an_empty_one(
+        self, test_app: FastAPI, client: AsyncClient
+    ) -> None:
+        resolved = _resolved(managed_by="self", name="Google Calendar", provider="GCAL")
+        with (
+            _current_user(test_app, {"user_id": _VALID_UID}),
+            patch(
+                f"{_MODULE}.IntegrationResolver.resolve",
+                new_callable=AsyncMock,
+                return_value=resolved,
+            ),
+            patch(
+                f"{_MODULE}.connect_self_integration",
+                new_callable=AsyncMock,
+                return_value=_redirect("gcal", "Google Calendar"),
+            ) as mock_connect,
+        ):
+            resp = await client.post(
+                f"{API}/connect/gcal",
+                json={"redirect_path": "/integrations"},
+            )
+        assert resp.status_code == 200
+        mock_connect.assert_awaited_once_with(
+            user_id=_VALID_UID,
+            user_email="",
+            integration_id="gcal",
+            integration_name="Google Calendar",
+            provider="GCAL",
+            redirect_path="/integrations",
+        )
 
     async def test_connect_not_found(self, client: AsyncClient) -> None:
         with patch(
-            "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+            f"{_MODULE}.IntegrationResolver.resolve",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -278,66 +455,101 @@ class TestConnectIntegration:
                 json={"redirect_path": "/integrations"},
             )
         assert resp.status_code == 404
+        assert resp.json() == {"message": "Integration nonexistent not found"}
 
     async def test_connect_unavailable_platform(self, client: AsyncClient) -> None:
-        resolved = _resolved(managed_by="mcp", available=False)
-        with patch(
-            "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
-            new_callable=AsyncMock,
-            return_value=resolved,
+        resolved = _resolved(managed_by="mcp")
+        resolved.platform_integration.available = False
+        with (
+            patch(
+                f"{_MODULE}.IntegrationResolver.resolve",
+                new_callable=AsyncMock,
+                return_value=resolved,
+            ),
+            patch(f"{_MODULE}.connect_mcp_integration", new_callable=AsyncMock) as mock_connect,
         ):
             resp = await client.post(
                 f"{API}/connect/unavailable",
                 json={"redirect_path": "/integrations"},
             )
         assert resp.status_code == 200
-        assert resp.json()["status"] == "error"
-        assert "not available" in resp.json()["error"]
+        assert resp.json() == _error_body(
+            "unavailable", "TestInt", "Integration unavailable is not available yet"
+        )
+        mock_connect.assert_not_awaited()
 
     async def test_connect_composio_no_provider(self, client: AsyncClient) -> None:
-        """HTTPException(400) raised inside try is caught by outer except
-        Exception handler, so response is 200 with status='error'."""
-        resolved = _resolved(managed_by="composio", provider=None)
-        with patch(
-            "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
-            new_callable=AsyncMock,
-            return_value=resolved,
+        """The 400 raised for a provider-less platform row is caught by the
+        connect's error boundary, so it surfaces as a 200 ``error`` result."""
+        resolved = _resolved(managed_by="composio", name="GitHub", provider=None)
+        with (
+            patch(
+                f"{_MODULE}.IntegrationResolver.resolve",
+                new_callable=AsyncMock,
+                return_value=resolved,
+            ),
+            patch(
+                f"{_MODULE}.connect_composio_integration", new_callable=AsyncMock
+            ) as mock_connect,
+            patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await client.post(
                 f"{API}/connect/noprov",
                 json={"redirect_path": "/integrations"},
             )
         assert resp.status_code == 200
-        assert resp.json()["status"] == "error"
+        assert resp.json() == _error_body("noprov", "GitHub", "400: Provider not configured")
+        mock_connect.assert_not_awaited()
+        mock_log.set.assert_any_call(integration={"id": "noprov", "status": "error"})
+        assert call(outcome="success") not in mock_log.set.call_args_list
 
     async def test_connect_self_no_provider(self, client: AsyncClient) -> None:
-        resolved = _resolved(managed_by="self", provider=None)
-        with patch(
-            "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
-            new_callable=AsyncMock,
-            return_value=resolved,
+        resolved = _resolved(managed_by="self", name="Google Calendar", provider=None)
+        with (
+            patch(
+                f"{_MODULE}.IntegrationResolver.resolve",
+                new_callable=AsyncMock,
+                return_value=resolved,
+            ),
+            patch(f"{_MODULE}.connect_self_integration", new_callable=AsyncMock) as mock_connect,
         ):
             resp = await client.post(
                 f"{API}/connect/noprov",
                 json={"redirect_path": "/integrations"},
             )
         assert resp.status_code == 200
-        assert resp.json()["status"] == "error"
+        assert resp.json() == _error_body(
+            "noprov", "Google Calendar", "400: Provider not configured"
+        )
+        mock_connect.assert_not_awaited()
 
     async def test_connect_unsupported_type(self, client: AsyncClient) -> None:
-        resolved = _resolved(managed_by="unknown")
-        with patch(
-            "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
-            new_callable=AsyncMock,
-            return_value=resolved,
+        resolved = _resolved(managed_by="unknown", source="custom")
+        with (
+            patch(
+                f"{_MODULE}.IntegrationResolver.resolve",
+                new_callable=AsyncMock,
+                return_value=resolved,
+            ),
+            patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await client.post(
                 f"{API}/connect/weird",
                 json={"redirect_path": "/integrations"},
             )
         assert resp.status_code == 200
-        assert resp.json()["status"] == "error"
-        assert "Unsupported" in resp.json()["error"]
+        assert resp.json() == _error_body(
+            "weird", "TestInt", "Unsupported integration type: unknown"
+        )
+        mock_log.set.assert_any_call(
+            integration_name="TestInt",
+            integration={
+                "id": "weird",
+                "managed_by": "unknown",
+                "auth_type": None,
+                "provider": "weird",
+            },
+        )
 
     async def test_connect_service_exception(self, client: AsyncClient) -> None:
         """When the connect function itself raises, endpoint returns error
@@ -345,24 +557,27 @@ class TestConnectIntegration:
         resolved = _resolved(managed_by="mcp")
         with (
             patch(
-                "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+                f"{_MODULE}.IntegrationResolver.resolve",
                 new_callable=AsyncMock,
                 return_value=resolved,
             ),
             patch(
-                "app.api.v1.endpoints.integrations.config.connect_mcp_integration",
+                f"{_MODULE}.connect_mcp_integration",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("conn failed"),
             ),
+            patch(f"{_MODULE}.capture_context_event") as mock_capture,
+            patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await client.post(
                 f"{API}/connect/test-mcp",
                 json={"redirect_path": "/integrations"},
             )
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "error"
-        assert "conn failed" in data["error"]
+        assert resp.json() == _error_body("test-mcp", "TestInt", "conn failed")
+        mock_capture.assert_not_called()
+        mock_log.set.assert_any_call(integration={"id": "test-mcp", "status": "error"})
+        assert call(outcome="success") not in mock_log.set.call_args_list
 
     async def test_connect_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(
@@ -370,10 +585,6 @@ class TestConnectIntegration:
             json={"redirect_path": "/integrations"},
         )
         assert resp.status_code == 401
-
-
-_MODULE = "app.api.v1.endpoints.integrations.config"
-_VALID_UID = "507f1f77bcf86cd799439011"
 
 
 class TestConnectLinkEndpoint:

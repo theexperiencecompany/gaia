@@ -46,6 +46,7 @@ from app.models.mail_models import (
     UnstarEmailsResponse,
     UntrashEmailsResponse,
 )
+from app.schemas.errors import error_responses
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.mail.email_importance_service import (
     get_bulk_email_importance_summaries as get_bulk_importance_summaries_service,
@@ -353,7 +354,7 @@ async def send_email_route(
 @router.post(
     "/gmail/send-json",
     summary="Send an email using JSON payload",
-    responses={500: {"description": "Gmail rejected the send, or the send failed upstream"}},
+    responses=error_responses({500: "Gmail rejected the send, or the send failed upstream"}),
 )
 @tiered_rate_limit("mail_actions")
 async def send_email_json(

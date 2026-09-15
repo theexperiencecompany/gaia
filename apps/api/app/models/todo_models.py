@@ -8,6 +8,7 @@ from app.constants.general import MAX_PAGE_NUMBER
 from app.db.repositories.base import UserScopedDocument
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.models.workflow_models import WorkflowWithIntegrations
+from app.schemas.common import ResponseModel
 
 
 class Priority(str, Enum):
@@ -17,8 +18,10 @@ class Priority(str, Enum):
     NONE = "none"  # no color
 
 
-class SubTask(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class SubTask(ResponseModel):
+    model_config = ConfigDict(
+        from_attributes=True, json_schema_serialization_defaults_required=True
+    )
 
     id: str = Field(default="", description="Unique identifier for the subtask")
     title: str = Field(..., description="Title of the subtask")
@@ -107,7 +110,7 @@ class TodoUpdateRequest(BaseModel):
 
 
 # For responses with ID and user_id
-class TodoResponse(TodoBase):
+class TodoResponse(TodoBase, ResponseModel):
     """Complete todo response with all fields"""
 
     id: str = Field(..., description="Unique identifier")
@@ -201,7 +204,7 @@ class SubtaskUpdateRequest(BaseModel):
 
 
 # Pagination and stats
-class PaginationMeta(BaseModel):
+class PaginationMeta(ResponseModel):
     total: int = Field(..., description="Total number of items")
     page: int = Field(..., description="Current page (1-based)")
     per_page: int = Field(..., description="Items per page")
@@ -228,7 +231,7 @@ class TodoStats(BaseModel):
     labels: list[TodoLabelCount] | None = None
 
 
-class TodoListResponse(BaseModel):
+class TodoListResponse(ResponseModel):
     data: list[TodoResponse]
     meta: PaginationMeta
     stats: TodoStats | None = None
@@ -449,7 +452,7 @@ class ProjectWithCount(ProjectDocument):
     todo_count: int = 0
 
 
-class TodoCounts(BaseModel):
+class TodoCounts(ResponseModel):
     """Dashboard/sidebar counts for a user's todos."""
 
     inbox: int = 0

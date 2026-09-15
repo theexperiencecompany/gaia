@@ -117,7 +117,7 @@ class SubscriptionAction(StrEnum):
     UNBLOCK = "unblock"
 
 
-class SubscriptionStatus(StrEnum):
+class TriggerSubscriptionStatus(StrEnum):
     ACTIVE = "active"
     # Set when the integration behind the subscription loses its connection.
     PAUSED = "paused"
@@ -189,7 +189,7 @@ class TriggerSubscription(BaseModel):
             "with the user's original config instead of resetting to defaults."
         ),
     )
-    status: SubscriptionStatus = SubscriptionStatus.ACTIVE
+    status: TriggerSubscriptionStatus = TriggerSubscriptionStatus.ACTIVE
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")

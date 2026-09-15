@@ -662,14 +662,12 @@ describe("a stream that fails before it starts", () => {
       response: {
         status: 429,
         data: {
-          detail: {
-            error: "rate_limit_exceeded",
-            feature: "chat_messages",
-            message:
-              "You've used today's AI usage allowance. Upgrade to Pro for higher limits.",
-            plan_required: "pro",
-            current_plan: "free",
-          },
+          code: "rate_limit_exceeded",
+          feature: "chat_messages",
+          message:
+            "You've used today's AI usage allowance. Upgrade to Pro for higher limits.",
+          plan_required: "pro",
+          current_plan: "free",
         },
       },
     },

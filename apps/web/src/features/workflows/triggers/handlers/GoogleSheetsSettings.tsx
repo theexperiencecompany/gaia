@@ -20,19 +20,19 @@ import {
 } from "../components/TriggerSettingsCard";
 import { useTriggerOptions } from "../hooks/useTriggerOptions";
 import type { TriggerSettingsProps } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 
 // =============================================================================
 // TYPE DEFINITIONS
 // =============================================================================
 
-interface GoogleSheetsTriggerData {
+type GoogleSheetsTriggerData = {
   trigger_name: string;
   spreadsheet_ids?: string[];
   sheet_names?: string[];
-}
+};
 
-export interface GoogleSheetsConfig extends TriggerConfig {
+export interface GoogleSheetsConfig extends TriggerConfigDraft {
   trigger_name?: string;
   trigger_data?: GoogleSheetsTriggerData;
 }
@@ -121,9 +121,7 @@ export function GoogleSheetsSettings({
       isConnected &&
       !!triggerSlug &&
       spreadsheetIds.length > 0,
-    spreadsheetIds.length > 0
-      ? { parent_values: spreadsheetIds.join(",") }
-      : undefined,
+    spreadsheetIds.length > 0 ? spreadsheetIds : undefined,
   );
 
   // ============ DERIVED DATA ============

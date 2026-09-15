@@ -1,9 +1,11 @@
-from typing import Annotated, Any
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 from typing_extensions import TypedDict
 
 from app.constants.chat import MAX_MESSAGE_LENGTH
+from app.models.calendar_models import GoogleCalendarEventDateTime
+from app.models.workflow_models import WorkflowStep
 from app.services.storage import SAFE_PATH_ID_PATTERN
 
 SafePathId = Annotated[str, StringConstraints(pattern=SAFE_PATH_ID_PATTERN)]
@@ -41,7 +43,7 @@ class SelectedWorkflowData(BaseModel):
     title: str
     description: str
     prompt: str | None = None
-    steps: list[dict[str, Any]]
+    steps: list[WorkflowStep]
 
 
 class SelectedCalendarEventData(BaseModel):
@@ -50,8 +52,8 @@ class SelectedCalendarEventData(BaseModel):
     id: str
     summary: str
     description: str
-    start: dict[str, str | None]
-    end: dict[str, str | None]
+    start: GoogleCalendarEventDateTime
+    end: GoogleCalendarEventDateTime
     calendarId: str | None = None
     calendarTitle: str | None = None
     backgroundColor: str | None = None
@@ -63,7 +65,7 @@ class ReplyToMessageData(BaseModel):
 
     id: str
     content: str
-    role: str
+    role: Literal["user", "assistant"]
 
 
 class MessageRequestWithHistory(BaseModel):

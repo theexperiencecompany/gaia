@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.agents.workspace.paths import detect_content_type
@@ -19,6 +19,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.db.repositories.conversations import conversation_repository
 from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
+from app.schemas.errors import error_responses
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.storage import (
     ArtifactInfo,
@@ -141,11 +142,14 @@ async def list_session_artifacts(
 
 @router.get(
     "/{conv_id}/artifacts/{path:path}",
-    responses={
-        400: {"description": "Invalid path"},
-        404: {"description": "File not found"},
-        503: {"description": "Workspace storage offline"},
-    },
+    response_class=FileResponse,
+    responses=error_responses(
+        {
+            400: "Invalid path",
+            404: "File not found",
+            503: "Workspace storage offline",
+        }
+    ),
 )
 @tiered_rate_limit("session_files")
 async def get_artifact_file(
@@ -179,11 +183,14 @@ async def list_uploads(
 
 @router.get(
     "/{conv_id}/uploads/{path:path}",
-    responses={
-        400: {"description": "Invalid path"},
-        404: {"description": "File not found"},
-        503: {"description": "Workspace storage offline"},
-    },
+    response_class=FileResponse,
+    responses=error_responses(
+        {
+            400: "Invalid path",
+            404: "File not found",
+            503: "Workspace storage offline",
+        }
+    ),
 )
 @tiered_rate_limit("session_files")
 async def get_upload_file(
@@ -199,18 +206,20 @@ async def get_upload_file(
 @router.post(
     "/{conv_id}/pin",
     status_code=status.HTTP_201_CREATED,
-    responses={
-        400: {"description": "Invalid path"},
-        404: {"description": "Artifact not found"},
-        503: {"description": "Workspace storage offline"},
-    },
+    responses=error_responses(
+        {
+            400: "Invalid path",
+            404: "Artifact not found",
+            503: "Workspace storage offline",
+        }
+    ),
 )
 @tiered_rate_limit("session_files")
 async def pin_artifact(
     conv_id: str,
     payload: PinRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-) -> JSONResponse:
+) -> PinResponse:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "pin"})
     await _assert_owns(user_id, conv_id)
@@ -225,7 +234,4 @@ async def pin_artifact(
     except JuiceFSUnavailable as e:
         raise HTTPException(status_code=503, detail="Workspace storage offline") from e
     capture_context_event(AnalyticsEvents.SESSION_ARTIFACT_PINNED)
-    return JSONResponse(
-        status_code=status.HTTP_201_CREATED,
-        content=PinResponse(pinned_path=pinned_path).model_dump(),
-    )
+    return PinResponse(pinned_path=pinned_path)

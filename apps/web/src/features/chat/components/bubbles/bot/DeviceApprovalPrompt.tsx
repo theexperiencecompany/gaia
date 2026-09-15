@@ -28,7 +28,7 @@ export function DeviceApprovalPrompt({
       const result = await devicesApi.approve(code);
       setApprovedName(result.name);
     } catch {
-      // apiService already surfaced the error toast.
+      // The typed api client already surfaced the error toast.
     } finally {
       setIsApproving(false);
     }

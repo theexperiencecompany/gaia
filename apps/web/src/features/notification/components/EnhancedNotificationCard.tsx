@@ -7,35 +7,32 @@ import {
   CheckmarkBadge01Icon,
   CheckmarkCircle02Icon,
   LinkSquare02Icon,
-  Timer02Icon,
 } from "@icons";
 import { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { Button } from "@/components/ui/button";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
-  type ActionType,
   type ModalConfig,
-  type NotificationRecord,
+  type NotificationAction,
   NotificationStatus,
+  type NotificationView,
 } from "@/types/features/notificationTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 
 interface EnhancedNotificationCardProps {
-  notification: NotificationRecord;
+  notification: NotificationView;
   onMarkAsRead?: (id: string) => Promise<void>;
   onModalOpen?: (config: ModalConfig) => void;
   onRefresh?: () => void;
 }
 
-function getActionIcon(actionType: ActionType) {
+function getActionIcon(actionType: NotificationAction["type"]) {
   switch (actionType) {
     case "redirect":
       return <LinkSquare02Icon className="h-3 w-3" strokeWidth={2.5} />;
     case "api_call":
       return <CheckmarkCircle02Icon className="h-3 w-3" strokeWidth={2.5} />;
-    case "workflow":
-      return <Timer02Icon className="h-3 w-3" strokeWidth={2.5} />;
     case "modal":
       return <AlertCircleIcon className="h-3 w-3" strokeWidth={2.5} />;
     default:

@@ -27,6 +27,7 @@ from app.models.bot_models import (
 )
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.user_models import AuthenticatedUser
+from app.schemas.errors import error_responses
 from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
 from app.services.onboarding.first_contact import build_first_contact
@@ -130,11 +131,13 @@ async def create_link_token(
     status_code=200,
     summary="Redeem Platform Link Code",
     description="Link a platform account using a one-tap code minted by the web at onboarding.",
-    responses={
-        400: {"description": "Code expired or already used"},
-        409: {"description": "Platform account linked to another GAIA user"},
-        429: {"description": "Platform requires a plan the user does not have"},
-    },
+    responses=error_responses(
+        {
+            400: "Code expired or already used",
+            409: "Platform account linked to another GAIA user",
+            429: "Platform requires a plan the user does not have",
+        }
+    ),
 )
 async def redeem_link_code(request: Request, body: RedeemLinkCodeRequest) -> RedeemLinkCodeResponse:
     """Consume a web-minted code and link the platform account that presented it.

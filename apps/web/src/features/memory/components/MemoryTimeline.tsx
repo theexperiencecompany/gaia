@@ -9,10 +9,10 @@ import {
   BookOpen01Icon,
   Calendar01Icon,
 } from "@icons";
+import type { MemoryEpisode } from "@shared/api/generated";
 import { addDays, format, isToday, parseISO, subDays } from "date-fns";
 import { type ReactNode, useEffect, useState } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type { MemoryEpisode } from "@/features/memory/api/types";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { JOURNAL_RANGE_DAYS } from "@/features/memory/constants";
 

@@ -3,7 +3,7 @@
 import { useRoomContext, useTranscriptions } from "@livekit/components-react";
 import type { TextStreamReader } from "livekit-client";
 import { useCallback, useEffect, useRef } from "react";
-import type { ToolDataEntry } from "@/config/registries/toolRegistry";
+import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import {
   LK_CHAT_TOPIC,
   VOICE_STREAM_TOPIC,
@@ -18,7 +18,7 @@ import { useVoiceModeActions } from "@/stores/voiceModeStore";
 interface VoiceBotTurn {
   localId: string;
   response: string;
-  tool_data: ToolDataEntry[];
+  tool_data: TypedToolDataEntry[];
   follow_up_actions: string[];
   loading: boolean;
   createdAt: Date;
@@ -69,9 +69,9 @@ function isNonRenderingEvent(event: Record<string, unknown>): boolean {
 // the turn changed.
 function appendToolDataEntry(
   turn: VoiceBotTurn,
-  entry: ToolDataEntry,
+  entry: TypedToolDataEntry,
 ): boolean {
-  if (entry.tool_name === ("tool_output" as ToolDataEntry["tool_name"])) {
+  if (entry.tool_name === ("tool_output" as TypedToolDataEntry["tool_name"])) {
     return false;
   }
   turn.tool_data = [...turn.tool_data, entry];
@@ -263,7 +263,10 @@ export function useVoiceMessages(
         turn.response += event.response;
         changed = true;
       } else if (event.tool_data && typeof event.tool_data === "object") {
-        changed = appendToolDataEntry(turn, event.tool_data as ToolDataEntry);
+        changed = appendToolDataEntry(
+          turn,
+          event.tool_data as TypedToolDataEntry,
+        );
       } else if (
         event.follow_up_actions &&
         Array.isArray(event.follow_up_actions)

@@ -7,7 +7,7 @@
  * returns. `useFetchUser` (mounted once, in `GlobalAuth`) drives the fetch;
  * every other reader joins the same cache entry through `useCurrentUser`, and
  * every writer that receives a fresh server payload writes it back with
- * `setCurrentUser` / `patchCurrentUser`. There is deliberately no store
+ * `patchCurrentUser`. There is deliberately no store
  * mirroring this data — instant paint across reloads comes from the query
  * cache persister (see `layouts/QueryProvider.tsx`), not a second copy.
  */
@@ -48,7 +48,6 @@ const UNKNOWN_USER: CurrentUser = Object.freeze({
   profilePicture: "",
   timezone: undefined,
   onboarding: undefined,
-  selected_model: undefined,
 });
 
 /** The raw query, for the few callers that need status/error, not just data. */
@@ -104,14 +103,6 @@ export const useCurrentUserIsFresh = (): boolean => {
   const hydrated = useIsHydrated();
   const { isSuccess, dataUpdatedAt } = useCurrentUserQuery();
   return hydrated && isSuccess && isFetchedThisSession(dataUpdatedAt);
-};
-
-/** Replace the cached user with a full server payload. */
-export const setCurrentUser = (
-  queryClient: QueryClient,
-  info: UserInfo,
-): void => {
-  queryClient.setQueryData(CURRENT_USER_QUERY_KEY, info);
 };
 
 /**

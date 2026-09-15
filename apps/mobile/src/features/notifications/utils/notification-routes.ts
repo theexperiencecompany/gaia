@@ -16,10 +16,10 @@ export function getNotificationRoute(
 ): string | null {
   // 1. Check for an explicit redirect action first.
   const redirectAction = notification.content.actions?.find(
-    (action) => action.type === "redirect" && action.config.redirect?.url,
+    (action) => action.type === "redirect" && action.config?.redirect?.url,
   );
-  if (redirectAction?.config.redirect?.url) {
-    const url = redirectAction.config.redirect.url;
+  const url = redirectAction?.config?.redirect?.url;
+  if (url) {
     if (url.startsWith("/")) {
       return url;
     }
@@ -62,7 +62,7 @@ export function getNotificationRoute(
  */
 function extractWorkflowId(notification: InAppNotification): string | null {
   for (const action of notification.content.actions ?? []) {
-    const redirectUrl = action.config.redirect?.url ?? "";
+    const redirectUrl = action.config?.redirect?.url ?? "";
     const match = redirectUrl.match(/workflows\/([^/?#]+)/);
     if (match?.[1]) {
       return match[1];

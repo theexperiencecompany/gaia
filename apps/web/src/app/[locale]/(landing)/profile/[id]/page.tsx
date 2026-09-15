@@ -63,10 +63,10 @@ export default function ProfilePage() {
 
   const displayData: HoloCardDisplayData | null = holoCardData
     ? {
-        house: holoCardData.house,
-        name: holoCardData.name,
-        personality_phrase: holoCardData.personality_phrase,
-        user_bio: holoCardData.user_bio,
+        house: holoCardData.house ?? "",
+        name: holoCardData.name ?? "",
+        personality_phrase: holoCardData.personality_phrase ?? "",
+        user_bio: holoCardData.user_bio ?? "",
         account_number: `#${holoCardData.account_number}`,
         member_since: holoCardData.member_since,
         overlay_color: holoCardData.overlay_color || "rgba(0,0,0,0)",

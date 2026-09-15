@@ -43,6 +43,22 @@
       "command": "node scripts/ci/checks.mjs types-location --enforce"
     },
     {
+      "name": "api-schema",
+      "scope": "^apps/api/.*\\.py$|^apps/api/openapi\\.json$|^libs/shared/ts/src/api/generated/|^scripts/ci/checks\\.mjs$|^package\\.json$",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": ["uv", "node"],
+      "command": "node scripts/ci/checks.mjs api-schema"
+    },
+    {
+      "name": "api-schema-types",
+      "scope": "\\.(ts|tsx)$|^apps/api/openapi\\.json$|^config/api-schema-baseline\\.json$",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": ["node"],
+      "command": "node scripts/ci/checks.mjs api-schema-types"
+    },
+    {
       "name": "components-per-file",
       "scope": "\\.tsx$",
       "heavy": false,

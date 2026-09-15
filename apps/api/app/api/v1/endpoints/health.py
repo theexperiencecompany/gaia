@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from app.models.health_models import DegradedHealthResponse, HealthResponse
 from app.utils.general_utils import get_project_info
 
-router = APIRouter()
+router = APIRouter(tags=["Health"])
 
 EVENT_LOOP_LAG_THRESHOLD_MS = 2000  # 2 seconds
 
@@ -34,11 +34,13 @@ _DEGRADED_RESPONSE_SCHEMA: dict[int | str, dict[str, Any]] = {
 }
 
 
-@router.get("/", responses=_DEGRADED_RESPONSE_SCHEMA)
-@router.get("/ping", responses=_DEGRADED_RESPONSE_SCHEMA)
+# One documented operation; the other paths are probe aliases kept out of the
+# schema so they do not each mint a duplicate operation id.
+@router.get("/", responses=_DEGRADED_RESPONSE_SCHEMA, include_in_schema=False)
+@router.get("/ping", responses=_DEGRADED_RESPONSE_SCHEMA, include_in_schema=False)
 @router.get("/health", responses=_DEGRADED_RESPONSE_SCHEMA)
-@router.get("/api/v1/", responses=_DEGRADED_RESPONSE_SCHEMA)
-@router.get("/api/v1/ping", responses=_DEGRADED_RESPONSE_SCHEMA)
+@router.get("/api/v1/", responses=_DEGRADED_RESPONSE_SCHEMA, include_in_schema=False)
+@router.get("/api/v1/ping", responses=_DEGRADED_RESPONSE_SCHEMA, include_in_schema=False)
 async def health_check(response: Response) -> HealthResponse | DegradedHealthResponse:
     """Report API liveness, build identity, and current event-loop responsiveness."""
     from app.config.settings import (  # noqa: PLC0415 -- importing this module must not pay settings init; the cost moves to first request

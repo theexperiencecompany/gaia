@@ -17,7 +17,7 @@ import type {
   BotWorkflow,
   PlatformName,
 } from "../types";
-import { getHttpStatus } from "./logger";
+import { getErrorReason, getHttpStatus } from "./logger";
 import { isTableRow, isTableSeparator } from "./text";
 import { wideLog } from "./wide-events";
 
@@ -548,22 +548,13 @@ Type /help <command> for details.`,
 /**
  * The user-facing message the API sent with an error response, if it sent one.
  *
- * FastAPI puts it under `detail`: a bare string for a plain `HTTPException`
- * (the bots' flat anti-spam limiter), or an object carrying `message` for the
- * rate-limit family — `RateLimitExceededException` composes copy naming the
- * wall that was hit ("You've used today's AI usage allowance. Upgrade to Pro
- * for higher limits."), which is the only place that distinction exists.
+ * Every non-2xx body is the flat error envelope, and its `message` is the
+ * copy to show: `RateLimitExceededException` composes copy naming the wall
+ * that was hit ("You've used today's AI usage allowance. Upgrade to Pro for
+ * higher limits."), which is the only place that distinction exists.
  */
 function serverMessage(error: unknown): string | null {
-  const data = (error as { response?: { data?: unknown } } | null)?.response
-    ?.data;
-  if (typeof data !== "object" || data === null) return null;
-  const { detail, message } = data as { detail?: unknown; message?: unknown };
-  const candidate =
-    typeof detail === "string"
-      ? detail
-      : ((detail as { message?: unknown } | null | undefined)?.message ??
-        message);
+  const candidate = getErrorReason(error).message;
   return typeof candidate === "string" && candidate.trim()
     ? candidate.trim()
     : null;

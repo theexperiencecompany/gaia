@@ -1,5 +1,5 @@
+import type { MemoryDocType } from "@shared/api/generated";
 import type { GraphThemeColors } from "@supermemory/memory-graph";
-import type { MemoryDocType } from "@/features/memory/api/types";
 
 export const MEMORY_PAGE_SIZE = 20;
 

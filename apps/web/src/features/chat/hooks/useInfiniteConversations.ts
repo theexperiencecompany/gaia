@@ -43,16 +43,16 @@ export const useInfiniteConversations = () => {
           (conv: Conversation) => ({
             id: conv.conversation_id,
             title: conv.description || "Untitled conversation",
-            description: conv.description,
+            description: conv.description ?? "",
             userId: conv.user_id,
             starred: conv.starred ?? false,
             isSystemGenerated: conv.is_system_generated ?? false,
             systemPurpose: conv.system_purpose ?? null,
             isUnread: conv.is_unread ?? false,
-            createdAt: new Date(conv.createdAt),
+            createdAt: new Date(conv.createdAt ?? 0),
             updatedAt: conv.updatedAt
               ? new Date(conv.updatedAt)
-              : new Date(conv.createdAt),
+              : new Date(conv.createdAt ?? 0),
           }),
         );
 

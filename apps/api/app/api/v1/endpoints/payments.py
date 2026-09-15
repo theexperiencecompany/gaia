@@ -154,8 +154,10 @@ async def cancel_subscription_endpoint(
         result = await payment_service.cancel_subscription(user_id)
         log.set(
             payment={
-                "subscription_id": (result.subscription or {}).get("dodo_subscription_id"),
-                "status": result.subscription.get("status") if result.subscription else None,
+                "subscription_id": result.subscription.dodo_subscription_id
+                if result.subscription
+                else None,
+                "status": result.subscription.status if result.subscription else None,
             }
         )
         log.audit(

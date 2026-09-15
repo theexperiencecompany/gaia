@@ -9,7 +9,7 @@ from difflib import SequenceMatcher
 from typing import Any
 
 from app.constants.log_tags import LogTag
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from shared.py.wide_events import log
 
 LINEAR_GRAPHQL_ENDPOINT = "https://api.linear.app/graphql"
@@ -63,11 +63,13 @@ def graphql_request(
         payload["variables"] = variables
 
     result = proxy_request_sync(
-        user_id=user_id,
-        toolkit=LINEAR_TOOLKIT,
-        endpoint=LINEAR_GRAPHQL_ENDPOINT,
-        method="POST",
-        body=payload,
+        ProxyRequest(
+            user_id=user_id,
+            toolkit=LINEAR_TOOLKIT,
+            endpoint=LINEAR_GRAPHQL_ENDPOINT,
+            method="POST",
+            body=payload,
+        )
     )
 
     if isinstance(result, dict) and "errors" in result:

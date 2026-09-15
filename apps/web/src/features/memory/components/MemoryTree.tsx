@@ -3,11 +3,11 @@
 import { Skeleton } from "@heroui/skeleton";
 import { Spinner } from "@heroui/spinner";
 import { Folder01Icon } from "@icons";
+import type { MemoryEntry, MemoryTreeNode } from "@shared/api/generated";
 import { useCallback, useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { ChevronRight } from "@/components/shared/icons";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type { MemoryEntry, MemoryTreeNode } from "@/features/memory/api/types";
 import { EditMemoryModal } from "@/features/memory/components/EditMemoryModal";
 import { MemoryRow } from "@/features/memory/components/MemoryRow";
 import { useMemoryActions } from "@/features/memory/hooks/useMemoryActions";

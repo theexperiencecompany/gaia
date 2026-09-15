@@ -16,7 +16,7 @@ from app.models.composio_schemas import (
     NotionPageCreatedPayload,
     NotionPagePropertiesUpdatedPayload,
 )
-from app.models.trigger_config import TriggerOption
+from app.models.trigger_config import TriggerOption, TriggerOptionsQuery
 from app.models.trigger_configs import (
     NotionNewPageInDbConfig,
     NotionPageContentUpdatedConfig,
@@ -62,37 +62,29 @@ class NotionTriggerHandler(TriggerHandler):
     def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
-    async def get_config_options(
-        self,
-        trigger_name: str,  # noqa: ARG002 -- framework contract
-        field_name: str,
-        user_id: str,
-        integration_id: str,
-        parent_ids: list[str] | None = None,  # noqa: ARG002 -- framework contract
-        **kwargs: str,
-    ) -> list[TriggerOption]:
+    async def get_config_options(self, query: TriggerOptionsQuery) -> list[TriggerOption]:
         """Get dynamic options for Notion trigger config fields."""
         try:
             composio_service = get_composio_service()
 
             # Use NOTION_FETCH_DATA tool
-            tool = composio_service.get_tool("NOTION_FETCH_DATA", user_id=user_id)
+            tool = composio_service.get_tool("NOTION_FETCH_DATA", user_id=query.user_id)
             if not tool:
                 log.error(f"{LogTag.TRIGGER} Notion FETCH_DATA tool not found")
                 return []
 
             # Determine fetch_type based on field_name
             fetch_type: Literal["pages", "databases", "all"]
-            if field_name == "database_id":
+            if query.field_name == "database_id":
                 fetch_type = "databases"
-            elif field_name == "page_id":
+            elif query.field_name == "page_id":
                 fetch_type = "pages"
             else:
                 log.warning(
                     f"{LogTag.TRIGGER} Unknown Notion field, fetching all",
-                    field_name=field_name,
-                    user_id=user_id,
-                    integration_id=integration_id,
+                    field_name=query.field_name,
+                    user_id=query.user_id,
+                    integration_id=query.integration_id,
                 )
                 fetch_type = "all"
 
@@ -100,7 +92,7 @@ class NotionTriggerHandler(TriggerHandler):
             input_model = NotionFetchDataInput(
                 fetch_type=fetch_type,
                 page_size=100,
-                query=kwargs.get("search"),
+                query=query.search or None,
             )
 
             log.debug(
@@ -114,8 +106,8 @@ class NotionTriggerHandler(TriggerHandler):
                 log.error(
                     f"{LogTag.TRIGGER} Notion API error",
                     error=result["error"],
-                    user_id=user_id,
-                    integration_id=integration_id,
+                    user_id=query.user_id,
+                    integration_id=query.integration_id,
                 )
                 return []
 
@@ -134,18 +126,18 @@ class NotionTriggerHandler(TriggerHandler):
             log.info(
                 f"{LogTag.TRIGGER} Returning Notion options",
                 options_count=len(options),
-                field_name=field_name,
+                field_name=query.field_name,
             )
             return options
 
         except Exception as e:
             log.error(
                 f"{LogTag.TRIGGER} Failed to get Notion options for",
-                field_name=field_name,
+                field_name=query.field_name,
                 error=str(e),
                 error_type=type(e).__name__,
-                user_id=user_id,
-                integration_id=integration_id,
+                user_id=query.user_id,
+                integration_id=query.integration_id,
             )
             return []
 

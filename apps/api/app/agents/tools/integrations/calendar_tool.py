@@ -36,7 +36,7 @@ from app.models.calendar_models import (
 )
 from app.models.common_models import GatherContextInput
 from app.services import calendar_service, user_service
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.templates.docstrings.calendar_tool_docs import (
     CUSTOM_ADD_RECURRENCE as CUSTOM_ADD_RECURRENCE_DOC,
     CUSTOM_CREATE_EVENT as CUSTOM_CREATE_EVENT_DOC,
@@ -390,10 +390,14 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         for event_ref in request.events:
             try:
                 event = proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=CALENDAR_TOOLKIT,
-                    endpoint=calendar_events_endpoint(event_ref.calendar_id, event_ref.event_id),
-                    method="GET",
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=CALENDAR_TOOLKIT,
+                        endpoint=calendar_events_endpoint(
+                            event_ref.calendar_id, event_ref.event_id
+                        ),
+                        method="GET",
+                    )
                 )
                 results.append(
                     {
@@ -440,11 +444,15 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         for event_ref in request.events:
             try:
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=CALENDAR_TOOLKIT,
-                    endpoint=calendar_events_endpoint(event_ref.calendar_id, event_ref.event_id),
-                    method="DELETE",
-                    query={"sendUpdates": request.send_updates},
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=CALENDAR_TOOLKIT,
+                        endpoint=calendar_events_endpoint(
+                            event_ref.calendar_id, event_ref.event_id
+                        ),
+                        method="DELETE",
+                        query={"sendUpdates": request.send_updates},
+                    )
                 )
                 deleted.append(
                     {
@@ -497,12 +505,14 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
             body["attendees"] = [{"email": email} for email in request.attendees]
 
         event = proxy_request_sync(
-            user_id=user_id,
-            toolkit=CALENDAR_TOOLKIT,
-            endpoint=calendar_events_endpoint(request.calendar_id, request.event_id),
-            method="PATCH",
-            body=body,
-            query={"sendUpdates": request.send_updates},
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=CALENDAR_TOOLKIT,
+                endpoint=calendar_events_endpoint(request.calendar_id, request.event_id),
+                method="PATCH",
+                body=body,
+                query={"sendUpdates": request.send_updates},
+            )
         )
 
         return {"event": event}
@@ -520,10 +530,12 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         endpoint = calendar_events_endpoint(request.calendar_id, request.event_id)
 
         event = proxy_request_sync(
-            user_id=user_id,
-            toolkit=CALENDAR_TOOLKIT,
-            endpoint=endpoint,
-            method="GET",
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=CALENDAR_TOOLKIT,
+                endpoint=endpoint,
+                method="GET",
+            )
         )
 
         rrule_parts = [f"FREQ={request.frequency}"]
@@ -541,11 +553,13 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         event["recurrence"] = [rrule]
 
         updated = proxy_request_sync(
-            user_id=user_id,
-            toolkit=CALENDAR_TOOLKIT,
-            endpoint=endpoint,
-            method="PUT",
-            body=event,
+            ProxyRequest(
+                user_id=user_id,
+                toolkit=CALENDAR_TOOLKIT,
+                endpoint=endpoint,
+                method="PUT",
+                body=event,
+            )
         )
 
         return {
@@ -627,12 +641,14 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     query["conferenceDataVersion"] = "1"
 
                 created_event = proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=CALENDAR_TOOLKIT,
-                    endpoint=calendar_events_endpoint(event.calendar_id),
-                    method="POST",
-                    body=body,
-                    query=query,
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=CALENDAR_TOOLKIT,
+                        endpoint=calendar_events_endpoint(event.calendar_id),
+                        method="POST",
+                        body=body,
+                        query=query,
+                    )
                 )
                 created_events.append(
                     {

@@ -14,8 +14,14 @@ from app.constants.email import (
     EMAIL_PROFILE_CACHE_KEY_TEMPLATE,
     GOOGLE_CONTACTS_SOURCE_NAME,
     GRAVATAR_SOURCE_NAME,
+    OTHER_CONTACTS_READ_MASK,
+    OTHER_CONTACTS_SEARCH_ENDPOINT,
+    PEOPLE_GET_ENDPOINT_TEMPLATE,
+    PEOPLE_SEARCH_ENDPOINT,
+    PEOPLE_SEARCH_READ_MASK,
 )
 from app.models.search_models import URLResponse
+from app.services.composio.proxy_client import ProxyRequest
 from app.services.email_profile_service import (
     _domain_favicon_profile,
     _merge_profiles,
@@ -46,8 +52,8 @@ def _search_result(person: dict) -> dict:
 
 
 def _proxy_side_effect(search_payload: dict, get_payload: dict):
-    async def fake_proxy_request(**kwargs: object) -> dict:
-        endpoint = kwargs["endpoint"]
+    async def fake_proxy_request(request: ProxyRequest) -> dict:
+        endpoint = request.endpoint
         if "search" in str(endpoint):
             return search_payload
         return get_payload
@@ -118,6 +124,64 @@ class TestFetchEmailProfile:
         assert value["title"] == "Alice Example"
         assert ttl == 24 * 60 * 60
 
+    async def test_searches_both_people_surfaces_through_the_users_gmail_proxy(self, mock_http):
+        """Saved contacts and other-contacts are each one GET through the user's
+        Gmail connection; the request shape is the People API contract."""
+        mock_http.proxy.side_effect = _proxy_side_effect(_search_result(_person()), {})
+
+        await fetch_email_profile(USER_ID, EMAIL)
+
+        search_requests = [
+            call.args[0]
+            for call in mock_http.proxy.await_args_list
+            if call.args[0].endpoint in (PEOPLE_SEARCH_ENDPOINT, OTHER_CONTACTS_SEARCH_ENDPOINT)
+        ]
+        assert sorted(search_requests, key=lambda r: r.endpoint) == [
+            ProxyRequest(
+                user_id=USER_ID,
+                toolkit="GMAIL",
+                method="GET",
+                endpoint=OTHER_CONTACTS_SEARCH_ENDPOINT,
+                query={"query": EMAIL, "readMask": OTHER_CONTACTS_READ_MASK},
+            ),
+            ProxyRequest(
+                user_id=USER_ID,
+                toolkit="GMAIL",
+                method="GET",
+                endpoint=PEOPLE_SEARCH_ENDPOINT,
+                query={"query": EMAIL, "readMask": PEOPLE_SEARCH_READ_MASK},
+            ),
+        ]
+
+    async def test_full_photo_list_is_fetched_with_people_get_for_the_matched_contact(
+        self, mock_http
+    ):
+        mock_http.proxy.side_effect = _proxy_side_effect(
+            _search_result(_person(resourceName="people/c123")), {}
+        )
+
+        await fetch_email_profile(USER_ID, EMAIL)
+
+        get_requests = [
+            call.args[0]
+            for call in mock_http.proxy.await_args_list
+            if call.args[0].endpoint not in (PEOPLE_SEARCH_ENDPOINT, OTHER_CONTACTS_SEARCH_ENDPOINT)
+        ]
+        # Both search surfaces match the same person, so each fetches its photos.
+        assert (
+            get_requests
+            == [
+                ProxyRequest(
+                    user_id=USER_ID,
+                    toolkit="GMAIL",
+                    method="GET",
+                    endpoint=PEOPLE_GET_ENDPOINT_TEMPLATE.format(resource_name="people/c123"),
+                    query={"personFields": "photos"},
+                )
+            ]
+            * 2
+        )
+
     async def test_freemail_domain_never_gets_domain_favicon(self, mock_http):
         mock_http.proxy.return_value = {}
         mock_http.gravatar.return_value = None
@@ -158,7 +222,7 @@ class TestFetchEmailProfile:
         warm up (empty query) and retry before giving up."""
         calls = {"n": 0}
 
-        async def fake_proxy_request(**kwargs: object) -> dict:
+        async def fake_proxy_request(request: ProxyRequest) -> dict:
             calls["n"] += 1
             if calls["n"] <= 2:
                 return {"results": []}

@@ -254,7 +254,7 @@ export function EmailPreviewModal({
       formData.append("subject", subject);
       formData.append("body", body);
 
-      // The apiService.post will handle success/error toasts automatically
+      // The API client handles success/error toasts automatically
       // based on the successMessage and errorMessage options in the API
       await EmailsAPI.sendEmail(formData);
 
@@ -275,7 +275,7 @@ export function EmailPreviewModal({
       onClose();
     } catch (error) {
       console.error("Failed to send email:", error);
-      // Error toast is already shown by apiService.post
+      // Error toast is already shown by the API client
     } finally {
       setIsSending(false);
     }

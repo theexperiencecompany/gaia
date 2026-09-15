@@ -1,12 +1,9 @@
+import type { MemoryEntry, MemoryGraphResponse } from "@shared/api/generated";
 import type {
   GraphApiDocument,
   GraphApiMemory,
   MemoryRelation,
 } from "@supermemory/memory-graph";
-import type {
-  MemoryEntry,
-  MemoryGraphResponse,
-} from "@/features/memory/api/types";
 
 const UNFILED_FOLDER_LABEL = "Unfiled";
 const FOLDER_DOC_PREFIX = "folder:";

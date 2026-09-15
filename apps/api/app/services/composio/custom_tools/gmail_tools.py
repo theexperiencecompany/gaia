@@ -63,7 +63,7 @@ from app.services.composio.custom_tools.gmail_constants import (
     OFFLOAD_PREVIEW_SIZE,
     TIMEFRAME_DEFAULT_MAX,
 )
-from app.services.composio.proxy_client import ProxyMethod, proxy_request_sync
+from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request_sync
 from app.services.contact_service import build_contact_index
 from app.services.storage.juicefs import write_session_file_sync
 from app.utils.errors import AppError
@@ -98,12 +98,14 @@ def _gmail_proxy(
     it) before reading a single field off it.
     """
     return proxy_request_sync(
-        user_id=user_id,
-        toolkit=GMAIL_TOOLKIT,
-        endpoint=endpoint,
-        method=method,
-        body=body,
-        query=query,
+        ProxyRequest(
+            user_id=user_id,
+            toolkit=GMAIL_TOOLKIT,
+            endpoint=endpoint,
+            method=method,
+            body=body,
+            query=query,
+        )
     )
 
 

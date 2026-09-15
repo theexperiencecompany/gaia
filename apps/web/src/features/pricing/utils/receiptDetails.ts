@@ -56,6 +56,6 @@ export function buildReceiptDetails(
     subscriptionRef: subscription?.dodo_subscription_id ?? null,
     purchasedAt:
       subscription?.previous_billing_date ?? subscription?.created_at ?? null,
-    quantity: subscription?.quantity,
+    quantity: subscription?.quantity ?? undefined,
   };
 }

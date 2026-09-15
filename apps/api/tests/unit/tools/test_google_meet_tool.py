@@ -7,12 +7,15 @@ proxy's responses — the user profile passthrough, the meeting extraction
 paths. This is the module the mutation lane derived for this tool.
 """
 
+import datetime
 from unittest.mock import patch
 
 import pytest
+import time_machine
 
 from app.agents.tools.integrations.google_meet_tool import register_google_meet_custom_tools
 from app.models.common_models import GatherContextInput
+from app.services.composio.proxy_client import ProxyRequest
 
 MODULE = "app.agents.tools.integrations.google_meet_tool"
 
@@ -82,6 +85,38 @@ def test_returns_profile_and_upcoming_meets_with_meet_links() -> None:
         }
     ]
     assert result["upcoming_meet_count"] == 1
+
+
+def test_sends_userinfo_and_calendar_requests_through_the_proxy() -> None:
+    tool = _capture_tool()
+    frozen = datetime.datetime(2026, 8, 8, 9, 30, 15, tzinfo=datetime.UTC)
+    with (
+        time_machine.travel(frozen, tick=False),
+        patch(f"{MODULE}.proxy_request_sync", side_effect=[_USERINFO, _CALENDAR]) as proxy,
+    ):
+        tool(GatherContextInput(), None, AUTH_CREDS)
+
+    assert [c.args[0] for c in proxy.call_args_list] == [
+        ProxyRequest(
+            user_id="user_test_123",
+            toolkit="GOOGLEMEET",
+            endpoint="https://www.googleapis.com/oauth2/v3/userinfo",
+            method="GET",
+        ),
+        ProxyRequest(
+            user_id="user_test_123",
+            toolkit="GOOGLEMEET",
+            endpoint="https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            method="GET",
+            query={
+                "timeMin": "2026-08-08T09:30:15Z",
+                "maxResults": 5,
+                "singleEvents": "true",
+                "orderBy": "startTime",
+                "fields": "items(id,summary,start,end,conferenceData,htmlLink)",
+            },
+        ),
+    ]
 
 
 def test_missing_user_id_raises() -> None:

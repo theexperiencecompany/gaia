@@ -51,7 +51,7 @@ export async function runLogin(
       poll = await pollPairing(apiUrl, started.device_code);
     } catch (e) {
       // A transient network/HTTP blip mid-window must not abort pairing —
-      // keep polling until the deadline. Only denied/expired/timeout stop us.
+      // keep polling until the deadline. Only expired/timeout stop us.
       bridgeLogger().error(
         `[gaia bridge] poll failed, retrying: ${e instanceof Error ? e.message : e}`,
       );
@@ -66,7 +66,7 @@ export async function runLogin(
       listener.onStatus?.(`\nPaired as "${name}".\n`);
       return;
     }
-    if (poll.status === "denied" || poll.status === "expired") {
+    if (poll.status === "expired") {
       throw new Error(`pairing ${poll.status}`);
     }
   }

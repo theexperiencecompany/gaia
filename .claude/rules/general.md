@@ -10,6 +10,7 @@ Before writing any utility, type, hook, service, or model, grep the codebase for
 - Shared TypeScript logic belongs in `libs/shared/ts/src/` — consumed as `@gaia/shared`
 - If you find the same logic in two places while working, consolidate before adding more
 - Duplicated code that diverges silently is worse than no abstraction at all
+- **API request/response types come ONLY from `@gaia/shared/api/generated`** — every Pydantic model under its own name (`import type { TodoResponse } from "@gaia/shared/api/generated"`), plus `paths`/`operations` and the `ErrorEnvelope`. Never hand-write a TypeScript type that mirrors a Pydantic model — it is a copy that drifts the moment the model changes. The types are generated from `apps/api/openapi.json` by `mise api:types` (a prek hook runs it when `apps/api` Python changes); CI's `api-schema` lane regenerates and fails on drift, and `checks.mjs api-schema-types` fails any `.ts`/`.tsx` that declares an `interface`/`type` named after a schema component — the only allowed forms are the re-export `export type { X } from "…/generated"` and the alias `export type Y = X` that names a generated type for a feature's consumers. Two API models may not share a class name: the export refuses it instead of letting FastAPI mangle one into `app__models__…`.
 
 ### Libraries Over Hand-Rolling
 

@@ -1,3 +1,5 @@
+export type { TodoCounts } from "@gaia/shared/api/generated";
+
 import type { SubTask } from "@gaia/shared/types";
 import { Priority } from "@gaia/shared/types";
 
@@ -21,14 +23,6 @@ export interface TodoCreate {
   priority?: Priority;
   project_id?: string;
   subtasks?: SubTask[];
-}
-
-export interface TodoCounts {
-  inbox: number;
-  today: number;
-  upcoming: number;
-  completed: number;
-  overdue: number;
 }
 
 export type FilterTab =

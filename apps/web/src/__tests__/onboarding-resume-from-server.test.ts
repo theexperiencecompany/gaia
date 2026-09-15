@@ -14,7 +14,11 @@ import { useReducer } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { OnboardingData } from "@/features/auth/api/authApi";
-import { FIELD_NAMES, questions } from "@/features/onboarding/constants";
+import {
+  FIELD_NAMES,
+  type OnboardingNeed,
+  questions,
+} from "@/features/onboarding/constants";
 import { useOnboardingPersistence } from "@/features/onboarding/effects/useOnboardingPersistence";
 import { draftFromServerPreferences } from "@/features/onboarding/state/derive";
 import { initialState } from "@/features/onboarding/state/initial";
@@ -23,13 +27,21 @@ import { reducer } from "@/features/onboarding/state/reducer";
 
 const USER = "user_alice";
 
-const answeredOnServer: OnboardingData = {
+/** An onboarding block as `GET /user/me` reports it, still in progress. */
+const onboardingBlock = (
+  preferences: OnboardingData["preferences"],
+): OnboardingData => ({
   completed: false,
-  preferences: {
-    profession: "founder",
-    needs: ["inbox", "reminders"],
-  },
-};
+  completed_at: null,
+  phase: null,
+  first_message_conversation_id: null,
+  preferences,
+});
+
+const answeredOnServer = onboardingBlock({
+  profession: "founder",
+  needs: ["inbox", "reminders"],
+});
 
 function renderWizard(onboarding: OnboardingData | undefined) {
   return renderHook(() => {
@@ -57,7 +69,7 @@ describe("a device with no draft resumes from the account's answers", () => {
   });
 
   it("still starts at question one for an account that has answered nothing", () => {
-    const { result } = renderWizard({ completed: false, preferences: {} });
+    const { result } = renderWizard(onboardingBlock({}));
 
     expect(result.current.questionIndex).toBe(0);
   });
@@ -76,19 +88,22 @@ describe("a device with no draft resumes from the account's answers", () => {
   });
 
   it("drops a need the API no longer accepts", () => {
-    const draft = draftFromServerPreferences({
-      completed: false,
-      preferences: { profession: "founder", needs: ["inbox", "astrology"] },
-    });
+    // A value the enum dropped can still sit on a stored document.
+    const staleNeed = "astrology" as OnboardingNeed;
+    const draft = draftFromServerPreferences(
+      onboardingBlock({ profession: "founder", needs: ["inbox", staleNeed] }),
+    );
 
     expect(draft?.selectedNeeds).toEqual(["inbox"]);
   });
 
   it("reopens the 'Something else' field the answers were typed into", () => {
-    const draft = draftFromServerPreferences({
-      completed: false,
-      preferences: { profession: "founder", other_need: "chasing invoices" },
-    });
+    const draft = draftFromServerPreferences(
+      onboardingBlock({
+        profession: "founder",
+        other_need: "chasing invoices",
+      }),
+    );
 
     expect(draft?.otherNeed).toBe("chasing invoices");
     expect(draft?.otherNeedOpen).toBe(true);

@@ -1,12 +1,10 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
 
-import { apiService } from "@/lib/api/service";
-import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
-
-interface CalendarEventsResponse {
-  events: GoogleCalendarEvent[];
-  nextPageToken?: string;
-}
+import { api } from "@/lib/api/typed";
+import {
+  asGoogleCalendarEvents,
+  type GoogleCalendarEvent,
+} from "@/types/features/calendarTypes";
 
 /**
  * React Query hook for fetching upcoming calendar events with 5-minute caching
@@ -25,14 +23,16 @@ export const useUpcomingEventsQuery = (
   return useQuery({
     queryKey: ["upcoming-events", maxResults, startDate, endDate],
     queryFn: async (): Promise<GoogleCalendarEvent[]> => {
-      const response = await apiService.get<CalendarEventsResponse>(
-        `/calendar/events?max_results=${maxResults}&start_date=${startDate}&end_date=${endDate}`,
-        {
-          errorMessage: "Failed to fetch calendar events",
-          silent: true,
+      const response = await api.get("/api/v1/calendar/events", {
+        query: {
+          max_results: maxResults,
+          start_date: startDate,
+          end_date: endDate,
         },
-      );
-      return response.events || [];
+        errorMessage: "Failed to fetch calendar events",
+        silent: true,
+      });
+      return asGoogleCalendarEvents(response.events);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes - data stays fresh
     gcTime: 10 * 60 * 1000, // 10 minutes - cache persistence

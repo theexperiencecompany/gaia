@@ -5,6 +5,15 @@
 // Core message types
 // ---------------------------------------------------------------------------
 
+import type { RecurrenceData, ToolDataEntry } from "../api/generated";
+
+export type {
+  RecurrenceData,
+  RecurrenceRule,
+  ReplyToMessageData,
+  ToolDataEntry,
+} from "../api/generated";
+
 export interface ApiFileData {
   fileId: string;
   fileName?: string;
@@ -18,12 +27,6 @@ export interface ApiToolData {
   data: Record<string, unknown>;
   timestamp?: string | null;
   tool_category?: string;
-}
-
-export interface ReplyToMessageData {
-  id: string;
-  content: string;
-  role: "user" | "assistant";
 }
 
 export interface Conversation {
@@ -253,22 +256,6 @@ export interface PeopleSearchData {
 // ---------------------------------------------------------------------------
 // Calendar
 // ---------------------------------------------------------------------------
-
-export interface RecurrenceRule {
-  frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
-  interval?: number;
-  count?: number;
-  until?: string;
-  by_day?: string[];
-  by_month_day?: number[];
-  by_month?: number[];
-  exclude_dates?: string[];
-  include_dates?: string[];
-}
-
-export interface RecurrenceData {
-  rrule: RecurrenceRule;
-}
 
 export interface CalendarEventDateTime {
   date?: string;
@@ -871,13 +858,6 @@ export interface ToolDataMap {
   memory_data: SharedMemoryData;
   todo_progress: TodoProgressData;
   chart_data: GenericToolData[];
-}
-
-export interface ToolDataEntry {
-  tool_name: ToolName | string;
-  tool_category?: string;
-  data: ToolDataMap[ToolName] | unknown;
-  timestamp?: string | null;
 }
 
 export function isKnownTool(name: string): name is ToolName {

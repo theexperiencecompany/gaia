@@ -31,7 +31,10 @@ from app.services.integrations.integration_connection_service import (
     disconnect_integration,
     initiate_integration_connection,
 )
-from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.integrations.integration_resolver import (
+    IntegrationResolver,
+    ResolvedIntegration,
+)
 from app.services.integrations.my_integrations import (
     get_integration_tools,
     get_my_integrations,
@@ -119,6 +122,65 @@ async def disconnect_integration_endpoint(
         raise HTTPException(status_code=500, detail="Failed to disconnect integration") from e
 
 
+def _require_provider(resolved: ResolvedIntegration) -> str:
+    provider = resolved.platform_integration.provider if resolved.platform_integration else None
+    if not provider:
+        raise HTTPException(status_code=400, detail="Provider not configured")
+    return provider
+
+
+async def _connect_by_manager(
+    resolved: ResolvedIntegration,
+    integration_id: str,
+    request: ConnectIntegrationRequest,
+    user: AuthenticatedUser,
+) -> ConnectIntegrationResponse:
+    """Hand the connect to the manager that owns the integration."""
+    user_id = str(user.get("user_id"))
+    if resolved.managed_by == "mcp":
+        result = await connect_mcp_integration(
+            user_id=user_id,
+            integration_id=integration_id,
+            integration_name=resolved.name,
+            requires_auth=resolved.requires_auth,
+            redirect_path=request.redirect_path,
+            server_url=resolved.mcp_config.server_url if resolved.mcp_config else None,
+            is_platform=resolved.source == "platform",
+            bearer_token=request.bearer_token,
+        )
+        # OAuth-managed connects complete at their callback; only a direct
+        # (no-auth / bearer) connect finishes here.
+        if result.status == "connected":
+            capture_context_event(
+                AnalyticsEvents.INTEGRATION_CONNECTED,
+                {"integration_id": integration_id, "managed_by": resolved.managed_by},
+            )
+        return result
+    if resolved.managed_by == "composio":
+        return await connect_composio_integration(
+            user_id=user_id,
+            integration_id=integration_id,
+            integration_name=resolved.name,
+            provider=_require_provider(resolved),
+            redirect_path=request.redirect_path,
+        )
+    if resolved.managed_by == "self":
+        return await connect_self_integration(
+            user_id=user_id,
+            user_email=user.get("email", ""),
+            integration_id=integration_id,
+            integration_name=resolved.name,
+            provider=_require_provider(resolved),
+            redirect_path=request.redirect_path,
+        )
+    return ConnectIntegrationResponse(
+        status="error",
+        integration_id=integration_id,
+        name=resolved.name,
+        error=f"Unsupported integration type: {resolved.managed_by}",
+    )
+
+
 @router.post("/connect/{integration_id}", response_model=ConnectIntegrationResponse)
 async def connect_integration_endpoint(
     integration_id: str,
@@ -140,95 +202,35 @@ async def connect_integration_endpoint(
     if not resolved:
         raise HTTPException(status_code=404, detail=f"Integration {integration_id} not found")
 
-    if resolved.source == "platform" and resolved.platform_integration:
-        if not resolved.platform_integration.available:
-            return ConnectIntegrationResponse(
-                status="error",
-                integration_id=integration_id,
-                name=resolved.name,
-                error=f"Integration {integration_id} is not available yet",
-            )
-
-    try:
-        auth_type: str | None = None
-        if resolved.mcp_config:
-            auth_type = "oauth2" if resolved.mcp_config.requires_auth else "none"
-        elif resolved.managed_by in ("composio", "self"):
-            auth_type = "oauth2"
-
-        provider: str | None = (
-            resolved.platform_integration.provider if resolved.platform_integration else None
-        )
-
-        log.set(
-            integration_name=resolved.name,
-            integration={
-                "id": integration_id,
-                "managed_by": resolved.managed_by,
-                "auth_type": auth_type,
-                "provider": provider or integration_id,
-            },
-        )
-        if resolved.managed_by == "mcp":
-            result = await connect_mcp_integration(
-                user_id=str(user_id),
-                integration_id=integration_id,
-                integration_name=resolved.name,
-                requires_auth=resolved.requires_auth,
-                redirect_path=request.redirect_path,
-                server_url=resolved.mcp_config.server_url if resolved.mcp_config else None,
-                is_platform=resolved.source == "platform",
-                bearer_token=request.bearer_token,
-            )
-            log.set(outcome="success")
-            # OAuth-managed connects complete at their callback; only a direct
-            # (no-auth / bearer) connect finishes here.
-            if result.status == "connected":
-                capture_context_event(
-                    AnalyticsEvents.INTEGRATION_CONNECTED,
-                    {
-                        "integration_id": integration_id,
-                        "managed_by": resolved.managed_by,
-                    },
-                )
-            return result
-        if resolved.managed_by == "composio":
-            provider = (
-                resolved.platform_integration.provider if resolved.platform_integration else None
-            )
-            if not provider:
-                raise HTTPException(status_code=400, detail="Provider not configured")
-            result = await connect_composio_integration(
-                user_id=str(user_id),
-                integration_id=integration_id,
-                integration_name=resolved.name,
-                provider=provider,
-                redirect_path=request.redirect_path,
-            )
-            log.set(outcome="success")
-            return result
-        if resolved.managed_by == "self":
-            provider = (
-                resolved.platform_integration.provider if resolved.platform_integration else None
-            )
-            if not provider:
-                raise HTTPException(status_code=400, detail="Provider not configured")
-            result = await connect_self_integration(
-                user_id=str(user_id),
-                user_email=user.get("email", ""),
-                integration_id=integration_id,
-                integration_name=resolved.name,
-                provider=provider,
-                redirect_path=request.redirect_path,
-            )
-            log.set(outcome="success")
-            return result
+    if (
+        resolved.source == "platform"
+        and resolved.platform_integration
+        and not resolved.platform_integration.available
+    ):
         return ConnectIntegrationResponse(
             status="error",
             integration_id=integration_id,
             name=resolved.name,
-            error=f"Unsupported integration type: {resolved.managed_by}",
+            error=f"Integration {integration_id} is not available yet",
         )
+
+    auth_type: str | None = None
+    if resolved.mcp_config:
+        auth_type = "oauth2" if resolved.mcp_config.requires_auth else "none"
+    elif resolved.managed_by in ("composio", "self"):
+        auth_type = "oauth2"
+    provider = resolved.platform_integration.provider if resolved.platform_integration else None
+    log.set(
+        integration_name=resolved.name,
+        integration={
+            "id": integration_id,
+            "managed_by": resolved.managed_by,
+            "auth_type": auth_type,
+            "provider": provider or integration_id,
+        },
+    )
+    try:
+        result = await _connect_by_manager(resolved, integration_id, request, user)
     except Exception as e:
         log.error(
             f"{LogTag.INTEGRATION} Failed to connect integration",
@@ -244,6 +246,8 @@ async def connect_integration_endpoint(
             name=resolved.name,
             error=str(e),
         )
+    log.set(outcome="success")
+    return result
 
 
 def _connect_link_error(reason: str) -> RedirectResponse:
@@ -256,7 +260,7 @@ def _connect_link_error(reason: str) -> RedirectResponse:
     return RedirectResponse(url=f"{base}/integrations?connect_error={reason}")
 
 
-@router.get("/connect-link")
+@router.get("/connect-link", response_class=RedirectResponse)
 @limiter.limit("10/minute")
 async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse:  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
     """Login-free entry point for bot / non-UI users.

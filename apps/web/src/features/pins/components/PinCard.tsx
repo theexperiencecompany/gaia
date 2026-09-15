@@ -1,17 +1,8 @@
 import Link from "next/link";
 import type React from "react";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import type { PinCardProps } from "@/types/features/pinTypes";
 import { parseDate } from "@/utils/date/dateUtils";
-
-interface PinCardProps {
-  message: {
-    message_id: string;
-    response: string;
-    date: string | Date;
-    type: string;
-  };
-  conversation_id: string;
-}
 
 export const PinCard: React.FC<PinCardProps> = ({
   message,
@@ -52,7 +43,7 @@ export const PinCard: React.FC<PinCardProps> = ({
         className="mt-auto text-xs text-foreground-500"
         suppressHydrationWarning
       >
-        {parseDate(message.date as string)}
+        {message.date ? parseDate(message.date) : null}
       </div>
     </Link>
   );

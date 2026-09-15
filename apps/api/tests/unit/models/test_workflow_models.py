@@ -9,10 +9,14 @@ from datetime import UTC, datetime
 
 from app.models.workflow_models import (
     PlaybookDiscard,
+    PublicWorkflowRow,
+    PublicWorkflowStep,
     TriggerConfig,
     TriggerType,
     WorkflowDocument,
+    WorkflowStep,
     WorkflowUpdate,
+    public_workflow_steps,
 )
 
 BASE = datetime(2025, 1, 1, 0, 0, tzinfo=UTC)  # midnight UTC
@@ -121,3 +125,32 @@ class TestThePlaybookDiscardAWorkflowRemembers:
         assert update.model_dump(exclude_unset=True) == {
             "last_playbook_discard": self.DISCARD.model_dump()
         }
+
+
+class TestPublicWorkflowSteps:
+    def _row(self, *steps: WorkflowStep) -> PublicWorkflowRow:
+        return PublicWorkflowRow(
+            id="wf_1",
+            user_id="u_1",
+            title="Daily agenda",
+            steps=list(steps),
+            trigger_config=TriggerConfig(type=TriggerType.MANUAL),
+        )
+
+    def test_a_categorised_step_keeps_its_category(self) -> None:
+        row = self._row(
+            WorkflowStep(id="s1", title="Fetch mail", category="gmail", description="Read inbox")
+        )
+
+        assert public_workflow_steps(row) == [
+            PublicWorkflowStep(
+                id="s1", title="Fetch mail", description="Read inbox", category="gmail"
+            )
+        ]
+
+    def test_an_uncategorised_step_reads_as_general(self) -> None:
+        row = self._row(WorkflowStep(id="s1", title="Summarise", category="", description="Digest"))
+
+        assert public_workflow_steps(row) == [
+            PublicWorkflowStep(id="s1", title="Summarise", description="Digest", category="general")
+        ]

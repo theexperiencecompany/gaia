@@ -24,7 +24,7 @@ const handledPaywall = () =>
     handled: true,
     response: {
       status: 402,
-      data: { detail: { code: "subscription_required", message: "Subscribe" } },
+      data: { code: "subscription_required", message: "Subscribe" },
     },
   });
 
@@ -32,7 +32,7 @@ const handledPaywall = () =>
  *  recognise, or a request made from a page that mounts no interceptor. */
 const unhandledPaywall = () =>
   Object.assign(new Error("Request failed with status code 402"), {
-    response: { status: 402, data: { detail: "Wallet balance too low" } },
+    response: { status: 402, data: { message: "Wallet balance too low" } },
   });
 
 describe("apiService error toasts", () => {

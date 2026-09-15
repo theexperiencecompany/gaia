@@ -176,18 +176,14 @@ export function getHttpStatus(error: unknown): number | undefined {
 }
 
 /**
- * The API's error body, flattened. `AppError` puts its fields at the top level,
- * `HTTPException` nests them under `detail`; callers should not care which.
+ * The API's error body — the flat `{ message, code, ... }` envelope every
+ * non-2xx response carries — or `{}` when the response had no JSON body.
  */
 export function getErrorReason(error: unknown): Record<string, unknown> {
   const data = (error as { response?: { data?: unknown } } | null)?.response
     ?.data;
   if (typeof data !== "object" || data === null) return {};
-  const body = data as Record<string, unknown>;
-  const detail = body.detail;
-  return typeof detail === "object" && detail !== null
-    ? (detail as Record<string, unknown>)
-    : body;
+  return data as Record<string, unknown>;
 }
 
 /**

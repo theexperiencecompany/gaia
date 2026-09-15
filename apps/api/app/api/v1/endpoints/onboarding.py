@@ -42,6 +42,7 @@ from app.models.user_models import (
     OnboardingSubdocument,
     UserDocument,
 )
+from app.schemas.errors import error_responses
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.composio.composio_service import get_composio_service
@@ -128,7 +129,7 @@ async def complete_user_onboarding(
 
 @router.post(
     "/reset",
-    responses={500: {"description": "Failed to reset onboarding"}},
+    responses=error_responses({500: "Failed to reset onboarding"}),
 )
 async def reset_user_onboarding(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
@@ -493,7 +494,7 @@ class WritingStyleRegenerateRequest(BaseModel):
 
 @router.post(
     "/writing-style",
-    responses={500: {"description": "Failed to save writing style"}},
+    responses=error_responses({500: "Failed to save writing style"}),
 )
 async def save_writing_style(
     request: WritingStyleEditRequest,
@@ -522,10 +523,12 @@ async def save_writing_style(
 
 @router.post(
     "/writing-style/regenerate-example",
-    responses={
-        402: {"description": "Subscription required"},
-        500: {"description": "Failed to regenerate writing style example"},
-    },
+    responses=error_responses(
+        {
+            402: "Subscription required",
+            500: "Failed to regenerate writing style example",
+        }
+    ),
 )
 @tiered_rate_limit("onboarding_generation")
 async def regenerate_writing_style_example(
@@ -567,7 +570,7 @@ class SocialProfilesConfirmRequest(BaseModel):
 
 @router.post(
     "/social-profiles",
-    responses={500: {"description": "Failed to save social profiles"}},
+    responses=error_responses({500: "Failed to save social profiles"}),
 )
 async def confirm_social_profiles(
     request: SocialProfilesConfirmRequest,

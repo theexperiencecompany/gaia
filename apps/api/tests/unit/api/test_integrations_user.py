@@ -163,5 +163,5 @@ class TestRemoveIntegrationFromWorkspace:
             resp = await client.delete(f"{BASE}/missing")
 
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Integration not found in workspace"
+        assert resp.json()["message"] == "Integration not found in workspace"
         mock_capture.assert_not_called()

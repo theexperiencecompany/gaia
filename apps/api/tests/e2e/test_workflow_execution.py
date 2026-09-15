@@ -640,17 +640,17 @@ class TestWorkflowExecutionFailurePropagation:
         async def _run_steps(request, conversation_id, user, options=None):
             tool_data: list[dict[str, object]] = []
             for step in request.selectedWorkflow.steps:
-                if step["title"] == failing_step_title:
+                if step.title == failing_step_title:
                     raise RuntimeError(
-                        f"Step '{step['title']}' failed: Gmail API returned 503 Service Unavailable"
+                        f"Step '{step.title}' failed: Gmail API returned 503 Service Unavailable"
                     )
-                completed.append(step["title"])
+                completed.append(step.title)
                 tool_data.append(
                     {
                         "tool_name": "tool_calls_data",
                         "data": {
-                            "tool_name": step["title"],
-                            "inputs": {"step_id": step["id"]},
+                            "tool_name": step.title,
+                            "inputs": {"step_id": step.id},
                             "output": "ok",
                         },
                     }

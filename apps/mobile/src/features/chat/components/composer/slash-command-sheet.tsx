@@ -330,7 +330,7 @@ export const SlashCommandSheet = forwardRef<
       if (!map[tool.category]) {
         map[tool.category] = {
           displayName: tool.display_name,
-          iconUrl: tool.icon_url,
+          iconUrl: tool.icon_url ?? undefined,
         };
       }
     });

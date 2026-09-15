@@ -16,7 +16,12 @@ from app.helpers.integration_helpers import (
     generate_integration_slug,
     parse_integration_slug,
 )
-from app.models.workflow_models import PublicWorkflowsResponse
+from app.models.workflow_models import (
+    PublicWorkflowCard,
+    PublicWorkflowsResponse,
+    public_workflow_steps,
+)
+from app.schemas.errors import error_responses
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     AddIntegrationResponse,
@@ -31,6 +36,7 @@ from app.services.integrations.integration_connection_service import (
 )
 from app.services.integrations.user_integrations import add_user_integration
 from app.services.mcp.mcp_tools_service import get_integration_tools
+from app.services.workflow.service import ensure_public_workflow_slug
 from app.utils.creator import format_creator
 from shared.py.wide_events import log
 
@@ -282,9 +288,11 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
 
 @router.get(
     "/public/{identifier}/workflows",
-    responses={
-        500: {"description": "Failed to fetch related workflows"},
-    },
+    responses=error_responses(
+        {
+            500: "Failed to fetch related workflows",
+        }
+    ),
 )
 async def get_related_workflows(
     identifier: str,
@@ -307,30 +315,22 @@ async def get_related_workflows(
         )
         total = await workflow_repository.count_public_by_step_category(identifier)
 
-        formatted_workflows = []
         for row in rows:
-            normalized_steps = [
-                {
-                    "id": step.id,
-                    "title": step.title,
-                    "description": step.description,
-                    "category": step.category or "general",
-                }
-                for step in row.steps
-            ]
-            formatted_workflows.append(
-                {
-                    "id": row.id,
-                    "title": row.title,
-                    "description": row.description,
-                    "slug": row.slug,
-                    "prompt": row.prompt,
-                    "steps": normalized_steps,
-                    "total_executions": row.total_executions,
-                    "created_at": row.created_at,
-                    "creator": format_creator(row),
-                }
+            await ensure_public_workflow_slug(row)
+        formatted_workflows = [
+            PublicWorkflowCard(
+                id=row.id,
+                title=row.title,
+                description=row.description,
+                slug=row.slug,
+                prompt=row.prompt,
+                steps=public_workflow_steps(row),
+                total_executions=row.total_executions,
+                created_at=row.created_at,
+                creator=format_creator(row),
             )
+            for row in rows
+        ]
 
         log.set(result_count=len(formatted_workflows))
         log.set(outcome="success")

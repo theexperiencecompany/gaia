@@ -20,16 +20,16 @@ import {
 } from "../components/TriggerSettingsCard";
 import { TriggerToggleRow } from "../components/TriggerToggleRow";
 import type { TriggerSettingsProps } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 
-export interface CalendarTriggerData {
+export type CalendarTriggerData = {
   trigger_name: string;
   calendar_ids: string[];
   minutes_before_start?: number;
   include_all_day?: boolean;
-}
+};
 
-export interface CalendarConfig extends TriggerConfig {
+export interface CalendarConfig extends TriggerConfigDraft {
   trigger_name?: string;
   trigger_data?: CalendarTriggerData;
 }

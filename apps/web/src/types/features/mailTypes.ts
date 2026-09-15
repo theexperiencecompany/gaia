@@ -1,3 +1,14 @@
+import type { GmailMessageSummary } from "@shared/api/generated";
+
+/**
+ * The API forwards each Gmail message with its raw keys alongside the derived
+ * ones it declares (`GmailMessageSummary`); `payload` and the rest are Gmail's
+ * own schema, which this interface describes. The one place that says so.
+ */
+export const asEmailData = (
+  messages: GmailMessageSummary[] | Record<string, unknown>[],
+): EmailData[] => messages as unknown as EmailData[];
+
 export interface EmailData {
   id: string;
   from: string;
@@ -6,7 +17,6 @@ export interface EmailData {
   snippet?: string;
   body?: string;
   labelIds?: string[];
-  headers: Record<string, string>;
   payload: EmailPayload;
   summary?: string;
   threadId?: string; // Thread ID for grouping related messages
@@ -84,14 +94,6 @@ export interface EmailImportanceSummary {
   intent: string;
   analyzed_at: string;
   content_preview: string;
-}
-
-export interface EmailSummariesResponse {
-  status: string;
-  emails: EmailImportanceSummary[];
-  count: number;
-  filtered_by_importance?: boolean;
-  searched_labels?: string[];
 }
 
 export type EmailFetchData = {

@@ -20,7 +20,7 @@ const toEnhancedTool = (tool: ToolInfo): EnhancedToolInfo => ({
   name: tool.name,
   category: tool.category,
   displayName: tool.display_name,
-  iconUrl: tool.icon_url,
+  iconUrl: tool.icon_url ?? undefined,
   isLocked: tool.locked,
 });
 

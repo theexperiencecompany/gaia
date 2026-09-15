@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.agents import TOOL_RESULT_NOTE_SEPARATOR
 from app.db.repositories.base import MongoDocument
+from app.schemas.common import ResponseModel
 
 #: How much of a tool's result is kept on the record. Enough to tell the next run
 #: what came back (ids, a count, a cursor) without storing message bodies — the
@@ -281,7 +282,7 @@ class RecordedCall(BaseModel):
     replayed: bool = False
 
 
-class WorkflowExecution(BaseModel):
+class WorkflowExecution(ResponseModel):
     """A single workflow execution record."""
 
     execution_id: str = Field(description="Unique execution identifier")
@@ -313,7 +314,7 @@ class WorkflowExecution(BaseModel):
     trace: list[RecordedCall] = Field(default_factory=list)
 
 
-class WorkflowExecutionsResponse(BaseModel):
+class WorkflowExecutionsResponse(ResponseModel):
     """Response for workflow executions list endpoint."""
 
     executions: list[WorkflowExecution] = Field(

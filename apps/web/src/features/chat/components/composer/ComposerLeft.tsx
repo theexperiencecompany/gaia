@@ -12,18 +12,18 @@ import {
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { useIsInitialResponseStreaming } from "@/stores/streamStore";
-import type { SearchMode } from "@/types/shared/searchTypes";
+import type { ComposerMode } from "@/types/shared/searchTypes";
 
 interface SearchbarLeftDropdownProps {
-  selectedMode: Set<SearchMode>;
+  selectedMode: Set<ComposerMode>;
   openFilePicker: () => void;
-  handleSelectionChange: (mode: SearchMode) => void;
+  handleSelectionChange: (mode: ComposerMode) => void;
   onOpenSlashCommandDropdown?: () => void;
   isSlashCommandDropdownOpen?: boolean;
 }
 
 interface DropdownItemConfig {
-  id: SearchMode;
+  id: ComposerMode;
   label: string;
   icon: React.ReactNode;
   action?: () => void;
@@ -136,7 +136,8 @@ export default function ComposerLeft({
                     is_mode: item.isMode,
                   });
                   // setLoadingText(item.loadingText ?? "");
-                  if (item.isMode) handleSelectionChange(item.id as SearchMode);
+                  if (item.isMode)
+                    handleSelectionChange(item.id as ComposerMode);
                   else if (item.action) item.action();
                 }}
                 className={cn(

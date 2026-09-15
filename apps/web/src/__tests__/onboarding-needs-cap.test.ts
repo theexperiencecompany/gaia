@@ -5,14 +5,23 @@
 
 import { describe, expect, it } from "vitest";
 
-import { NEEDS_MAX_SELECTION } from "@/features/onboarding/constants";
+import {
+  NEEDS_MAX_SELECTION,
+  type OnboardingNeed,
+} from "@/features/onboarding/constants";
 import { initialState } from "@/features/onboarding/state/initial";
 import { reducer } from "@/features/onboarding/state/reducer";
 
 describe("Q2 pick cap", () => {
   it("ignores a pick past the cap and still allows un-picking", () => {
     let state = initialState;
-    for (const value of ["inbox", "calendar", "mornings", "reminders"]) {
+    const picks: OnboardingNeed[] = [
+      "inbox",
+      "calendar",
+      "mornings",
+      "reminders",
+    ];
+    for (const value of picks) {
       state = reducer(state, { type: "toggleNeed", value });
     }
     expect(state.selectedNeeds).toEqual(["inbox", "calendar", "mornings"]);

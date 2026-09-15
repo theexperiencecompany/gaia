@@ -8,6 +8,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.constants.log_tags import LogTag
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.integration_instructions_models import InstructionsEditor
+from app.schemas.errors import error_responses
 from app.schemas.integrations.requests import (
     AddUserIntegrationRequest,
     UpdateIntegrationInstructionsRequest,
@@ -131,7 +132,7 @@ async def remove_integration_from_workspace(
 
 @router.get(
     "/{integration_id}/instructions",
-    responses={500: {"description": "Failed to fetch integration instructions"}},
+    responses=error_responses({500: "Failed to fetch integration instructions"}),
 )
 async def get_integration_instructions(
     integration_id: str,
@@ -178,11 +179,13 @@ async def get_integration_instructions(
 
 @router.put(
     "/{integration_id}/instructions",
-    responses={
-        400: {"description": "Invalid integration_id"},
-        404: {"description": "Integration not found in workspace"},
-        500: {"description": "Failed to update integration instructions"},
-    },
+    responses=error_responses(
+        {
+            400: "Invalid integration_id",
+            404: "Integration not found in workspace",
+            500: "Failed to update integration instructions",
+        }
+    ),
 )
 async def update_integration_instructions(
     integration_id: str,

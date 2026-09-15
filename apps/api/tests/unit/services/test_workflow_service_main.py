@@ -40,6 +40,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.exceptions import OutputParserException
+from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.models.scheduler_models import ScheduledTaskStatus
@@ -75,6 +76,7 @@ from app.services.workflow.queue_service import WorkflowQueueService
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.services.workflow.service import (
     WorkflowService,
+    ensure_public_workflow_slug,
     generate_unique_workflow_slug,
 )
 from app.services.workflow.trigger_service import TriggerService
@@ -266,6 +268,52 @@ class TestGenerateUniqueWorkflowSlug:
         mock_conflict.return_value = _make_workflow_doc()
         with pytest.raises(RuntimeError, match="unique slug"):
             await generate_unique_workflow_slug("My Workflow")
+
+
+class TestEnsurePublicWorkflowSlug:
+    """A row on any public list leaves with a slug, or the backfill raises."""
+
+    @pytest.mark.regression
+    @patch(f"{_REPO}.backfill_public_slug", new_callable=AsyncMock)
+    @patch(
+        "app.services.workflow.service.generate_unique_workflow_slug",
+        new_callable=AsyncMock,
+        return_value="explore-row",
+    )
+    async def test_explore_only_row_is_backfilled(self, _mock_generate, mock_backfill):
+        row = _make_workflow_doc(is_public=False, is_explore=True, slug=None)
+        mock_backfill.return_value = _make_workflow_doc(slug="explore-row")
+
+        await ensure_public_workflow_slug(row)
+
+        assert row.slug == "explore-row"
+        assert mock_backfill.await_args.args == (row.id, "explore-row")
+
+    @patch(f"{_REPO}.backfill_public_slug", new_callable=AsyncMock)
+    async def test_private_row_is_left_alone(self, mock_backfill):
+        row = _make_workflow_doc(is_public=False, is_explore=False, slug=None)
+
+        await ensure_public_workflow_slug(row)
+
+        assert row.slug is None
+        mock_backfill.assert_not_awaited()
+
+    @pytest.mark.regression
+    @patch(
+        f"{_REPO}.backfill_public_slug",
+        new_callable=AsyncMock,
+        side_effect=DuplicateKeyError("slug"),
+    )
+    @patch(
+        "app.services.workflow.service.generate_unique_workflow_slug",
+        new_callable=AsyncMock,
+        return_value="taken",
+    )
+    async def test_exhausted_retries_raise(self, _mock_generate, _mock_backfill):
+        row = _make_workflow_doc(is_public=True, slug=None)
+
+        with pytest.raises(RuntimeError, match="backfill a slug"):
+            await ensure_public_workflow_slug(row)
 
 
 # ===========================================================================

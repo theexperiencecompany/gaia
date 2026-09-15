@@ -1,17 +1,10 @@
 import { apiauth } from "@/lib/api/client";
-import { apiService } from "@/lib/api/service";
+import { api } from "@/lib/api/typed";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(
   /\/$/,
   "",
 );
-
-export interface ArtifactInfo {
-  path: string;
-  size_bytes: number;
-  mtime: number;
-  content_type: string | null;
-}
 
 function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
@@ -55,12 +48,14 @@ export function resolveArtifactSrc(
  */
 export const sessionFilesApi = {
   listArtifacts: (conversationId: string) =>
-    apiService.get<ArtifactInfo[]>(`/sessions/${conversationId}/artifacts`, {
+    api.get("/api/v1/sessions/{conv_id}/artifacts", {
+      path: { conv_id: conversationId },
       silent: true,
     }),
 
   listUploads: (conversationId: string) =>
-    apiService.get<ArtifactInfo[]>(`/sessions/${conversationId}/uploads`, {
+    api.get("/api/v1/sessions/{conv_id}/uploads", {
+      path: { conv_id: conversationId },
       silent: true,
     }),
 
@@ -82,8 +77,8 @@ export const sessionFilesApi = {
   },
 
   pin: (conversationId: string, path: string, targetName?: string) =>
-    apiService.post(`/sessions/${conversationId}/pin`, {
-      path,
-      target_name: targetName,
+    api.post("/api/v1/sessions/{conv_id}/pin", {
+      path: { conv_id: conversationId },
+      body: { path, target_name: targetName },
     }),
 };

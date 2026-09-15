@@ -885,14 +885,16 @@ class TestFetchEmailsForOnboardingPins:
         mock_search.return_value = GmailMessagesResponse(messages=batch)
         into: list[dict] = []
         result = await fetch_emails_for_onboarding(USER_ID, max_total=2, into=into)
-        assert into == batch
+        assert [message["id"] for message in into] == [message["id"] for message in batch]
         assert result is into
 
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     async def test_on_batch_receives_running_count_and_latest_sender(
         self, mock_search: AsyncMock
     ) -> None:
-        mock_search.return_value = GmailMessagesResponse(messages=[{"from": "Alice <alice@x.com>"}])
+        mock_search.return_value = GmailMessagesResponse(
+            messages=[{"id": "a1", "from": "Alice <alice@x.com>"}]
+        )
         seen: list[tuple[int, str | None]] = []
 
         async def on_batch(count: int, sender: str | None) -> None:

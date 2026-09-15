@@ -8,9 +8,9 @@ from fastapi import (
     Form,
     HTTPException,
     Request,
+    Response,
     UploadFile,
 )
-from fastapi.responses import JSONResponse
 from workos import WorkOSClient
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
@@ -22,6 +22,7 @@ from app.models.chat_channel_models import ChannelPriorityList
 from app.models.user_models import (
     AuthenticatedUser,
     AuthenticatedUserResponse,
+    LogoutResponse,
     OnboardingSubdocument,
     PublicHoloCardResponse,
     UpdateHoloCardColorsResponse,
@@ -344,8 +345,9 @@ async def update_holo_card_colors(
 @router.post("/logout")
 async def logout(
     request: Request,
+    response: Response,
     user: AuthenticatedUser = Depends(get_current_user),
-) -> JSONResponse:
+) -> LogoutResponse:
     """
     Logout user and return logout URL for frontend redirection.
     """
@@ -386,9 +388,6 @@ async def logout(
 
         log.audit("logged out", actor=user_id)
 
-        # Create response with logout URL
-        response = JSONResponse(content={"logout_url": logout_url})
-
         # Clear the session cookie
         response.delete_cookie(
             WOS_SESSION_COOKIE,
@@ -399,7 +398,7 @@ async def logout(
         )
 
         log.set(outcome="success")
-        return response
+        return LogoutResponse(logout_url=logout_url)
 
     except Exception as e:
         log.error(
@@ -418,7 +417,11 @@ async def read_chat_channel_priority(
 ) -> ChannelPriorityList:
     """The order GAIA picks the one platform it texts on."""
     log.set(user={"id": user_id}, operation="read_chat_channel_priority")
-    return ChannelPriorityList(priority=await get_chat_channel_priority(user_id))
+    # Validated, not cast: the stored strings are checked against the ChatChannel
+    # set the same way a request body is.
+    return ChannelPriorityList.model_validate(
+        {"priority": await get_chat_channel_priority(user_id)}
+    )
 
 
 @router.patch("/chat-channel-priority")

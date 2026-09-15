@@ -26,8 +26,8 @@ from app.models.todo_models import (
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
     SubscriptionResolution,
-    SubscriptionStatus,
     TriggerSubscription,
+    TriggerSubscriptionStatus,
 )
 from tests.contracts.base_contract import UserScopedRepositoryContract
 
@@ -322,7 +322,7 @@ class TestTodosRepository(UserScopedRepositoryContract):
         paused = _subscription(
             resolution=SubscriptionResolution.TRIGGER_ID,
             composio_trigger_ids=["ti_1"],
-            status=SubscriptionStatus.PAUSED,
+            status=TriggerSubscriptionStatus.PAUSED,
         )
         await repo.create(make_doc(user_id="u", title="live", trigger_subscriptions=[live]))
         await repo.create(
@@ -381,7 +381,7 @@ class TestTodosRepository(UserScopedRepositoryContract):
         stored = await repo.get(doc.id, user_id="u")
         written = stored.trigger_subscriptions[0]
         assert written.id == subscription.id
-        assert written.status is SubscriptionStatus.ACTIVE
+        assert written.status is TriggerSubscriptionStatus.ACTIVE
         assert written.created_at is not None
 
     async def test_a_trigger_id_subscription_written_by_update_is_findable(self, repo, make_doc):
@@ -412,7 +412,7 @@ class TestTodosRepository(UserScopedRepositoryContract):
         paused = _subscription(
             resolution=SubscriptionResolution.TRIGGER_ID,
             composio_trigger_ids=["ti_1"],
-            status=SubscriptionStatus.PAUSED,
+            status=TriggerSubscriptionStatus.PAUSED,
         )
         await repo.create(make_doc(user_id="u", trigger_subscriptions=[paused]))
 

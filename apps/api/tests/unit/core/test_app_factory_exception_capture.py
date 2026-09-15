@@ -86,7 +86,7 @@ async def test_unhandled_exception_is_attributed_to_the_authenticated_user(
         response = await client.get("/boom")
 
     assert response.status_code == 500
-    assert response.json() == {"error": "internal_server_error"}
+    assert response.json() == {"message": "Internal server error", "code": "internal_server_error"}
     posthog_client.capture_exception.assert_called_once()
     args, kwargs = posthog_client.capture_exception.call_args
     assert isinstance(args[0], RuntimeError)
@@ -127,5 +127,5 @@ async def test_unavailable_posthog_provider_still_returns_the_json_500(
         response = await client.get("/boom")
 
     assert response.status_code == 500
-    assert response.json() == {"error": "internal_server_error"}
+    assert response.json() == {"message": "Internal server error", "code": "internal_server_error"}
     posthog_client.capture_exception.assert_not_called()

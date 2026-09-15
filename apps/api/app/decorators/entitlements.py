@@ -35,11 +35,12 @@ class SubscriptionRequiredDetail(TypedDict):
 class SubscriptionRequiredException(HTTPException):
     """402 raised when a non-PRO user hits a paid-only surface.
 
-    Wire contract is fixed (the frontend is built against it): ``detail`` is
-    ``{code, message, checkout_url, discount_code}``. No dedicated exception
-    handler is registered for this — like ``RateLimitExceededException``, it
-    rides the app's generic ``StarletteHTTPException`` handler, which emits
-    ``{"detail": exc.detail}`` unchanged.
+    Wire contract is fixed (the frontend is built against it): the body is the
+    error envelope ``{code, message, checkout_url, discount_code}``. No
+    dedicated exception handler is registered for this — like
+    ``RateLimitExceededException``, it rides the app's generic
+    ``StarletteHTTPException`` handler, which flattens ``detail`` onto the
+    envelope.
 
     ``checkout_url`` is always ``None``: a Dodo session is minted on user
     intent, not on refusal. See ``require_active_subscription``. The key stays

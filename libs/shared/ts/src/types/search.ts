@@ -1,4 +1,4 @@
-export type SearchMode = "messages" | "conversations" | "notes" | "all";
+export type SearchScope = "messages" | "conversations" | "notes" | "all";
 
 export interface SearchConversationResult {
   conversation_id: string;
@@ -20,7 +20,7 @@ export interface SearchNoteResult {
 }
 
 export interface SearchResult {
-  type: SearchMode;
+  type: SearchScope;
   data: SearchConversationResult | SearchMessageResult | SearchNoteResult;
 }
 
@@ -29,7 +29,7 @@ export interface SearchParams {
   limit?: number;
   offset?: number;
   conversationId?: string;
-  type?: SearchMode;
+  type?: SearchScope;
 }
 
 export interface SearchResponse {

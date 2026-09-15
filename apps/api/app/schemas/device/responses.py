@@ -1,12 +1,14 @@
 """Response schemas for the device bridge."""
 
 from datetime import datetime
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from pydantic import BaseModel
 
+from app.schemas.common import ResponseModel
 
-class StartPairingResponse(BaseModel):
+
+class StartPairingResponse(ResponseModel):
     """Returned to the daemon after it starts pairing."""
 
     device_code: str
@@ -16,19 +18,19 @@ class StartPairingResponse(BaseModel):
     interval: int
 
 
-class PollPairingResponse(BaseModel):
+class PollPairingResponse(ResponseModel):
     """Result of a pairing poll.
 
-    ``status`` is ``pending`` (keep polling), ``approved`` (``refresh_token`` set),
-    or ``denied`` / ``expired`` (stop).
+    ``status`` is ``pending`` (keep polling), ``approved`` (``device_id`` and
+    ``refresh_token`` set) or ``expired`` (stop).
     """
 
-    status: str
+    status: Literal["pending", "approved", "expired"]
     device_id: str | None = None
     refresh_token: str | None = None
 
 
-class DeviceTokenResponse(BaseModel):
+class DeviceTokenResponse(ResponseModel):
     """Short-lived connect JWT plus the rotated refresh credential."""
 
     access_token: str

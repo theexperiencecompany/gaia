@@ -638,19 +638,17 @@ describe("formatBotError", () => {
 
   it("prefers the server's message over the generic throttle line", () => {
     // Every 429 used to render "you're sending messages too fast", which is
-    // wrong for the budget wall — waiting does not fix it. FastAPI nests the
-    // real copy under `detail` for the rate-limit family.
+    // wrong for the budget wall — waiting does not fix it. The envelope's
+    // `message` carries the real copy for the rate-limit family.
     const err = {
       response: {
         status: 429,
         data: {
-          detail: {
-            error: "rate_limit_exceeded",
-            feature: "chat_messages",
-            message:
-              "You've used today's AI usage allowance. Upgrade to Pro for higher limits.",
-            plan_required: "pro",
-          },
+          code: "rate_limit_exceeded",
+          feature: "chat_messages",
+          message:
+            "You've used today's AI usage allowance. Upgrade to Pro for higher limits.",
+          plan_required: "pro",
         },
       },
     };
@@ -660,13 +658,13 @@ describe("formatBotError", () => {
     expect(result).not.toContain("too fast");
   });
 
-  it("uses a plain-string 429 detail as-is", () => {
+  it("uses a plain 429 message as-is", () => {
     // The bot's flat anti-spam limiter raises HTTPException with a bare string.
     const err = {
       response: {
         status: 429,
         data: {
-          detail:
+          message:
             "Rate limit exceeded. Please wait before sending more messages.",
         },
       },

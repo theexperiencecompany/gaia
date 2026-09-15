@@ -5,6 +5,7 @@ from fastapi import UploadFile
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.repositories.base import UserScopedDocument
+from app.schemas.common import ResponseModel
 
 
 class EmailRequest(BaseModel):
@@ -220,12 +221,44 @@ class GmailMessageResource(BaseModel):
     id: str
 
 
+class GmailMessageSummary(ResponseModel):
+    """One message as ``transform_gmail_message`` shapes it for the web client.
+
+    The declared fields are the derived ones every consumer reads; the raw
+    Gmail/Composio keys ride along via ``extra="allow"`` exactly as before.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    id: str
+    thread_id: str = Field(default="", alias="threadId")
+    sender: str = Field(default="", alias="from")
+    to: str = ""
+    cc: str = ""
+    reply_to: str = Field(default="", alias="replyTo")
+    subject: str = ""
+    time: str = ""
+    snippet: str = ""
+    body: str = ""
+    is_thread: bool = Field(default=False, alias="isThread")
+    is_unread: bool = False
+    label_ids: list[str] = Field(default_factory=list, alias="labelIds")
+
+
 class GmailMessagesResponse(BaseModel):
     """Response for ``GET /gmail/messages`` and ``GET /gmail/search``, and the return
     shape of ``search_messages``, which the routes forward unchanged."""
 
-    messages: list[dict[str, Any]]
+    messages: list[GmailMessageSummary]
     next_page_token: str | None = Field(default=None, serialization_alias="nextPageToken")
+
+    def raw_messages(self) -> list[dict[str, Any]]:
+        """The messages as the dicts ``transform_gmail_message`` produced.
+
+        The memory pipeline (``email_processor``, ``process_email_content``) still
+        reads Gmail messages by key; this is its one conversion point.
+        """
+        return [message.model_dump(by_alias=True) for message in self.messages]
 
 
 class GmailLabelsResult(BaseModel):

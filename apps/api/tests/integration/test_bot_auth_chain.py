@@ -525,7 +525,7 @@ class TestBotEndpointAuthStatus:
         )
 
         assert response.status_code == 400
-        assert "Invalid platform" in response.json()["detail"]
+        assert "Invalid platform" in response.json()["message"]
 
     async def test_auth_status_without_api_key_rejected(self, bot_client) -> None:
         """GET /bot/auth-status without X-Bot-API-Key returns 401."""
@@ -663,7 +663,7 @@ class TestBotEndpointResetSession:
             )
 
         assert response.status_code == 401
-        assert "not authenticated" in response.json()["detail"].lower()
+        assert "not authenticated" in response.json()["message"].lower()
 
 
 @pytest.mark.integration
@@ -678,7 +678,7 @@ class TestBotEndpointUnlink:
         )
 
         assert response.status_code == 400
-        assert "Missing platform headers" in response.json()["detail"]
+        assert "Missing platform headers" in response.json()["message"]
 
     async def test_unlink_invalid_platform_returns_400(self, bot_client) -> None:
         """POST /bot/unlink with invalid platform returns 400."""
@@ -692,7 +692,7 @@ class TestBotEndpointUnlink:
         )
 
         assert response.status_code == 400
-        assert "Invalid platform" in response.json()["detail"]
+        assert "Invalid platform" in response.json()["message"]
 
     async def test_unlink_not_linked_returns_404(self, bot_client) -> None:
         """POST /bot/unlink for unlinked user returns 404."""
@@ -712,7 +712,7 @@ class TestBotEndpointUnlink:
             )
 
         assert response.status_code == 404
-        assert "not linked" in response.json()["detail"].lower()
+        assert "not linked" in response.json()["message"].lower()
 
 
 @pytest.mark.integration

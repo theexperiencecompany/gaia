@@ -8,12 +8,12 @@ import SelectedWorkflowIndicator from "@/features/chat/components/composer/Selec
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useChatBubbleUser } from "@/features/chat/hooks/useChatBubbleUser";
 import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
-import type { FileData } from "@/types/shared/fileTypes";
+import type { AttachedFileData } from "@/types/shared/fileTypes";
 
 import ChatBubbleFilePreview from "./ChatBubbleFilePreview";
 import { ChatBubbleUserFooter } from "./ChatBubbleUserFooter";
 
-const DEFAULT_FILE_DATA: FileData[] = [];
+const DEFAULT_FILE_DATA: AttachedFileData[] = [];
 
 function scrollToMessage(messageId: string) {
   const messageElement = document.getElementById(messageId);
@@ -27,7 +27,7 @@ function scrollToMessage(messageId: string) {
 }
 
 interface BubbleIndicatorsProps {
-  fileData: FileData[];
+  fileData: AttachedFileData[];
   selectedTool: ChatBubbleUserProps["selectedTool"];
   toolCategory: ChatBubbleUserProps["toolCategory"];
   selectedWorkflow: ChatBubbleUserProps["selectedWorkflow"];

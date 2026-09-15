@@ -32,8 +32,8 @@ from app.models.integration_models import (
     CreateCustomIntegrationRequest,
     Integration,
     IntegrationResponse,
-    IntegrationTool,
     IntegrationWithCreator,
+    StoredIntegrationTool,
     UpdateCustomIntegrationRequest,
     UserIntegrationDocument,
     UserIntegrationsListResponse,
@@ -1024,7 +1024,7 @@ class TestCheckUserHasIntegration:
 CAPABILITIES_MODULE = "app.agents.core.integration_capabilities"
 
 
-def _integration_response(integration_id: str, name: str, tools: list[IntegrationTool]):
+def _integration_response(integration_id: str, name: str, tools: list[StoredIntegrationTool]):
     return IntegrationResponse(
         integration_id=integration_id,
         name=name,
@@ -1071,7 +1071,9 @@ class TestCapabilitiesPayloadAndArguments:
             if integration_id != "github":
                 return None
             return _integration_response(
-                "github", "GitHub", [IntegrationTool(name="create_issue", description="Create")]
+                "github",
+                "GitHub",
+                [StoredIntegrationTool(name="create_issue", description="Create")],
             )
 
         with (
@@ -1110,7 +1112,9 @@ class TestCapabilitiesPayloadAndArguments:
                 f"{CAPABILITIES_MODULE}.get_integration_details",
                 AsyncMock(
                     return_value=_integration_response(
-                        "github", "GitHub", [IntegrationTool(name="create_issue", description=None)]
+                        "github",
+                        "GitHub",
+                        [StoredIntegrationTool(name="create_issue", description=None)],
                     )
                 ),
             ),
@@ -1129,7 +1133,9 @@ class TestCapabilitiesPayloadAndArguments:
             if integration_id == "deleted":
                 return None
             return _integration_response(
-                "github", "GitHub", [IntegrationTool(name="create_issue", description="Create")]
+                "github",
+                "GitHub",
+                [StoredIntegrationTool(name="create_issue", description="Create")],
             )
 
         with (
@@ -1178,7 +1184,7 @@ class TestGetUserIntegrationCapabilities:
 
         mock_connected.return_value = {"github"}
 
-        int_tool = IntegrationTool(name="create_issue", description="Create an issue")
+        int_tool = StoredIntegrationTool(name="create_issue", description="Create an issue")
         mock_details.return_value = IntegrationResponse(
             integration_id="github",
             name="GitHub",

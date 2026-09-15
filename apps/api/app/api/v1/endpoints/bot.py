@@ -35,6 +35,7 @@ from app.models.bot_models import (
 )
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
+from app.schemas.errors import error_responses
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.audio_transcription_service import (
     MAX_AUDIO_BYTES,
@@ -544,6 +545,7 @@ async def _bot_stream_from_redis(
 @router.post(
     "/chat-stream",
     status_code=200,
+    response_class=StreamingResponse,
     summary="Streaming Bot Chat",
     description="Stream a chat response as Server-Sent Events.",
 )
@@ -865,13 +867,15 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
         "Transcribe a short audio clip (e.g. WhatsApp voice note) to text. "
         "Requires the bot to be authenticated as a linked platform user."
     ),
-    responses={
-        401: {"description": "Account not linked."},
-        402: {"description": "Subscription required."},
-        413: {"description": "Audio exceeds the maximum allowed size."},
-        415: {"description": "Unsupported audio format."},
-        502: {"description": "Transcription provider failed."},
-    },
+    responses=error_responses(
+        {
+            401: "Account not linked.",
+            402: "Subscription required.",
+            413: "Audio exceeds the maximum allowed size.",
+            415: "Unsupported audio format.",
+            502: "Transcription provider failed.",
+        }
+    ),
 )
 @tiered_rate_limit("audio_transcription")
 async def transcribe_bot_audio(

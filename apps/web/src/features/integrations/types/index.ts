@@ -7,11 +7,22 @@
  * from `../types`.
  */
 
+import type {
+  CommunityIntegrationItem,
+  CommunityListResponse,
+  IntegrationContent,
+  IntegrationInstructionsResponse,
+} from "@shared/api/generated";
+
+export type {
+  CreateCustomIntegrationRequest,
+  CreateCustomIntegrationResponse,
+  IntegrationContent,
+} from "@shared/api/generated";
+
 export type {
   IntegrationConnectionData,
   IntegrationStatusRecord as IntegrationStatus,
-  IntegrationToolsResponse,
-  MyIntegrationsResponse,
 } from "@shared/types";
 
 /**
@@ -30,12 +41,7 @@ export type IntegrationCategoryValue =
   | "capabilities"
   | "other";
 
-export interface IntegrationInstructions {
-  integrationId: string;
-  content: string;
-  updatedBy: "user" | "agent";
-  updatedAt: string | null;
-}
+export type IntegrationInstructions = IntegrationInstructionsResponse;
 
 export interface Integration {
   id: string;
@@ -64,39 +70,10 @@ export interface Integration {
   slug: string;
 }
 
-export interface CreateCustomIntegrationRequest {
-  name: string;
-  description?: string;
-  category?: string;
-  server_url: string;
-  requires_auth?: boolean;
-  auth_type?: "none" | "oauth" | "bearer";
-  is_public?: boolean;
-  bearer_token?: string;
-}
-
-/**
- * Result of connection testing after creating a custom integration
- * Matches backend CustomIntegrationConnectionResult
- */
-export interface ConnectionTestResult {
-  status: "connected" | "requires_oauth" | "failed" | "created";
-  toolsCount?: number;
-  oauthUrl?: string;
-  error?: string;
-}
-
 /**
  * Response from create custom integration endpoint
  * Matches backend CreateCustomIntegrationResponse
  */
-export interface CreateCustomIntegrationResponse {
-  status: string;
-  message: string;
-  integrationId: string;
-  name: string;
-  connection?: ConnectionTestResult;
-}
 
 /**
  * Suggested public integration from search
@@ -124,47 +101,12 @@ export interface IntegrationListStreamData {
  * Community/Public Marketplace Types
  */
 
-export interface IntegrationHowItWorksStep {
-  title: string;
-  body: string;
-}
-
-export interface IntegrationFAQ {
-  question: string;
-  answer: string;
-}
-
-export interface IntegrationContent {
-  useCases: string[];
-  howItWorks: IntegrationHowItWorksStep[];
-  faqs: IntegrationFAQ[];
-}
-
-export interface CommunityIntegrationCreator {
-  name: string | null;
-  picture: string | null;
-}
-
-export interface CommunityIntegration {
-  integrationId: string;
-  slug: string;
-  name: string;
-  description: string;
-  category: string;
-  iconUrl: string | null;
-  cloneCount: number;
-  toolCount: number;
-  tools: Array<{ name: string; description: string | null }>;
-  publishedAt: string | null;
-  creator: CommunityIntegrationCreator | null;
+/** A marketplace card; `source` is set client-side to tell native from community. */
+export type CommunityIntegration = CommunityIntegrationItem & {
   source?: "platform" | "custom";
-}
+};
 
-export interface CommunityIntegrationsResponse {
-  integrations: CommunityIntegration[];
-  total: number;
-  hasMore: boolean;
-}
+export type CommunityIntegrationsResponse = CommunityListResponse;
 
 export interface PublicIntegrationResponse extends CommunityIntegration {
   mcpConfig?: {

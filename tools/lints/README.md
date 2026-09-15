@@ -286,6 +286,13 @@ violation now and delete its line from the baseline.
 diff every other lane uses. On a push/full scan (no PR base ref), there is no
 notion of "touched" — grandfathered violations stay quiet, same as before.
 
+**Deferral:** a baseline line may carry a third tab-separated field,
+`deferred-until=YYYY-MM-DD; <reason>`. While the date is in the future a
+touched file's known violation emits a `::warning` annotation naming the
+deferral instead of failing; once the date has passed it fails with
+"deferral expired — fix or renew with a reason". The reason is reviewed like
+any other diff, and `--update` preserves the field.
+
 ---
 
 ## no-silent-fallback

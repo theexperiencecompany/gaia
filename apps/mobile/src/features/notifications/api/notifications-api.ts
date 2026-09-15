@@ -1,21 +1,14 @@
+import type {
+  PushTokenRequest,
+  PushTokenResponse,
+} from "@gaia/shared/api/generated";
 import { apiService } from "@/lib/api";
-
-interface RegisterDeviceTokenPayload {
-  token: string;
-  platform: "ios" | "android";
-  device_id?: string;
-}
-
-interface RegisterDeviceTokenResponse {
-  success: boolean;
-  message: string;
-}
 
 export const notificationsApi = {
   registerDeviceToken: async (
-    payload: RegisterDeviceTokenPayload,
-  ): Promise<RegisterDeviceTokenResponse> => {
-    return apiService.post<RegisterDeviceTokenResponse>(
+    payload: PushTokenRequest,
+  ): Promise<PushTokenResponse> => {
+    return apiService.post<PushTokenResponse>(
       "/notifications/register-device",
       payload,
     );

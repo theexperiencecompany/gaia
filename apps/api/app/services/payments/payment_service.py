@@ -569,8 +569,8 @@ class DodoPaymentService:
 
         return UserSubscriptionStatus(
             user_id=user_id,
-            current_plan=plan.model_dump() if plan else None,
-            subscription=subscription.model_dump(mode="json"),
+            current_plan=plan,
+            subscription=subscription,
             is_subscribed=True,
             days_remaining=None,
             can_upgrade=True,

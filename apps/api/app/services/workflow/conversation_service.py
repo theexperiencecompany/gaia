@@ -100,15 +100,7 @@ def build_selected_workflow_data(workflow: Workflow) -> SelectedWorkflowData:
         title=workflow.title,
         description=workflow.description,
         prompt=workflow.prompt,
-        steps=[
-            {
-                "id": step.id,
-                "title": step.title,
-                "description": step.description,
-                "category": step.category,
-            }
-            for step in workflow.steps
-        ],
+        steps=list(workflow.steps),
     )
 
 

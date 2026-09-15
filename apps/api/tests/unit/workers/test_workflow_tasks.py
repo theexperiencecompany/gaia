@@ -18,7 +18,7 @@ from app.models.notification.notification_models import (
 )
 from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import RecordedCall
-from app.models.workflow_models import TriggerType
+from app.models.workflow_models import TriggerType, WorkflowStep
 from app.services.analytics_service import AnalyticsEvents
 from app.services.workflow.conversation_service import build_selected_workflow_data
 from app.services.workflow.execution_service import (
@@ -77,9 +77,7 @@ def _make_workflow(
     wf.title = title
     wf.description = "A test workflow"
     wf.prompt = "Run the standup"
-    wf.steps = steps or [
-        MagicMock(id="s1", title="Step 1", description="Do it", category="general")
-    ]
+    wf.steps = steps or [WorkflowStep(id="s1", title="Step 1", description="Do it")]
     wf.is_todo_workflow = is_todo_workflow
     wf.source_todo_id = source_todo_id
     wf.model_dump = MagicMock(return_value={"id": wf.id, "title": wf.title})
@@ -909,8 +907,8 @@ class TestExecuteWorkflowAsChat:
         wf.description = "Daily morning workflow"
         wf.prompt = "Run the morning briefing"
         wf.steps = [
-            MagicMock(id="s1", title="Step 1", description="Check mail", category="comms"),
-            MagicMock(id="s2", title="Step 2", description="Weather", category="info"),
+            WorkflowStep(id="s1", title="Step 1", description="Check mail", category="comms"),
+            WorkflowStep(id="s2", title="Step 2", description="Weather", category="info"),
         ]
         return wf
 
@@ -1128,7 +1126,7 @@ class TestExecuteWorkflowAsChat:
         assert request_arg.selectedWorkflow.id == workflow.id
         assert request_arg.message == f"Execute workflow: {workflow.title}"
         # Both steps must be present
-        step_ids = [s["id"] for s in request_arg.selectedWorkflow.steps]
+        step_ids = [s.id for s in request_arg.selectedWorkflow.steps]
         assert "s1" in step_ids
         assert "s2" in step_ids
 
@@ -2285,8 +2283,10 @@ class TestTheWorkflowCardBothRunPathsAttach:
         wf.description = "Daily morning workflow"
         wf.prompt = "Run the morning briefing"
         wf.steps = [
-            MagicMock(id="s1", title="Step 1", description="Check mail", category="comms"),
-            MagicMock(id="s2", title="Step 2", description="Draft the digest", category="general"),
+            WorkflowStep(id="s1", title="Step 1", description="Check mail", category="comms"),
+            WorkflowStep(
+                id="s2", title="Step 2", description="Draft the digest", category="general"
+            ),
         ]
         return wf
 
@@ -2341,7 +2341,9 @@ class TestTheChatRunsTriggerTurnIsBuiltExactly:
         wf.description = "Daily morning workflow"
         wf.prompt = "Run the morning briefing"
         wf.notify_on_completion = True
-        wf.steps = [MagicMock(id="s1", title="Step 1", description="Check mail", category="comms")]
+        wf.steps = [
+            WorkflowStep(id="s1", title="Step 1", description="Check mail", category="comms")
+        ]
         return wf
 
     async def _run(self, workflow, add_messages, reset_threads, log_seam):

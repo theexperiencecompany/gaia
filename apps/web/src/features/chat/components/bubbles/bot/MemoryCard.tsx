@@ -12,11 +12,11 @@ import {
   Folder01Icon,
   Search01Icon,
 } from "@icons";
+import type { MemoryEntry } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 import type { MemoryData } from "@/config/registries/toolRegistry";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
-import type { MemoryEntry } from "@/features/memory/api/types";
 import { CORE_DOCUMENTS } from "@/features/memory/constants";
 
 interface MemoryCardProps {

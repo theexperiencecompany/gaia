@@ -8,6 +8,10 @@
  */
 
 // Base types and interfaces
+import type { TriggerConfig } from "@shared/api/generated";
+
+export type { TriggerConfig } from "@shared/api/generated";
+
 export type { TriggerSchema } from "./base";
 
 // =============================================================================
@@ -24,12 +28,23 @@ export type { TriggerSchema } from "./base";
  * - Backend as source of truth for validation
  * - Spreading/merging config objects freely
  */
-export interface TriggerConfig {
+
+/**
+ * The editor's in-progress trigger config. `trigger_data` is the provider's
+ * fields with `trigger_name` still a plain slug string — the discriminated
+ * union the API validates only holds once the user has finished picking.
+ */
+export type TriggerConfigDraft = Omit<
+  TriggerConfig,
+  "type" | "trigger_data"
+> & {
   type: string;
-  enabled: boolean;
-  // Allow any additional trigger-specific properties
-  [key: string]: unknown;
-}
+  trigger_data?: ({ trigger_name: string } & Record<string, unknown>) | null;
+} & Record<string, unknown>;
+
+/** The one boundary between the editor's draft and the wire: the API validates it. */
+export const toTriggerConfig = (draft: TriggerConfigDraft): TriggerConfig =>
+  draft as TriggerConfig;
 
 // =============================================================================
 // HELPER TYPE GUARDS (for handler-specific logic)
@@ -38,7 +53,7 @@ export interface TriggerConfig {
 /**
  * Check if trigger is an integration type (calendar, email, app, etc.).
  */
-export const isIntegrationTrigger = (config: TriggerConfig): boolean => {
+export const isIntegrationTrigger = (config: TriggerConfigDraft): boolean => {
   return config.type === "integration";
 };
 
@@ -50,13 +65,11 @@ export const isIntegrationTrigger = (config: TriggerConfig): boolean => {
  * Integration trigger configuration with required trigger_name.
  * This is the proper type for all Composio-based triggers.
  */
-export interface IntegrationTriggerConfig extends TriggerConfig {
+export interface IntegrationTriggerConfig extends TriggerConfigDraft {
   type: "integration";
   trigger_name: string;
-  trigger_data?: Record<string, unknown>;
   integration_id?: string;
   trigger_slug?: string;
-  composio_trigger_ids?: string[];
 }
 
 /**
@@ -64,7 +77,7 @@ export interface IntegrationTriggerConfig extends TriggerConfig {
  * This should be used to validate that integration triggers are properly configured.
  */
 export const hasValidTriggerName = (
-  config: TriggerConfig,
+  config: TriggerConfigDraft,
 ): config is IntegrationTriggerConfig => {
   if (config.type !== "integration") return false;
   const triggerName = (config as IntegrationTriggerConfig).trigger_name;

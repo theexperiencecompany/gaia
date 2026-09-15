@@ -3,12 +3,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Dispatch } from "react";
 import { useCallback, useMemo, useState } from "react";
-
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
+import { toTriggerConfig } from "@/features/workflows/triggers/types";
 import { useRouter } from "@/i18n/navigation";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -257,7 +257,7 @@ export function useWorkflowModalActions({
       prompt: data.prompt,
       icon: data.icon ?? undefined,
       icon_color: data.icon_color ?? undefined,
-      trigger_config: data.trigger_config,
+      trigger_config: toTriggerConfig(data.trigger_config),
       // When predefined steps are supplied (from a community/featured
       // workflow), forward them so the backend reuses them instead of
       // regenerating a fresh plan.
@@ -386,9 +386,7 @@ export function useWorkflowModalActions({
         prompt: data.prompt,
         icon: data.icon,
         icon_color: data.icon_color,
-        trigger_config: {
-          ...data.trigger_config,
-        },
+        trigger_config: toTriggerConfig(data.trigger_config),
         notify_on_completion: data.notify_on_completion,
         integration_ids: selectedIntegrationSlugs,
       };

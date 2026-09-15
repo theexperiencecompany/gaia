@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, NotRequired, Union
+from typing import Any, NotRequired
 
 from pydantic import BaseModel
 from typing_extensions import TypedDict
@@ -35,7 +35,10 @@ class ToolDataEntry(TypedDict):
     """
 
     tool_name: str
-    data: Union[dict[str, Any], list[Any], str, int, float, bool]
+    # Any on purpose (see above): it is JSON the tool owns, and the generated
+    # TypeScript reads it as `unknown` — the honest type for every consumer to
+    # narrow from.
+    data: Any
     # Optional: emitters always stamp it, but legacy stored entries predate the
     # field, so a read must tolerate its absence rather than fail validation.
     timestamp: NotRequired[str | None]

@@ -19,14 +19,13 @@ import { NOTIFICATION_PAGE_SIZE } from "@/features/notification/constants";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
-  type MarkAllReadSummary,
-  type NotificationRecord,
   NotificationStatus,
+  type NotificationView,
   type UseNotificationsOptions,
 } from "@/types/features/notificationTypes";
 
 interface UseNotificationsReturn {
-  notifications: NotificationRecord[];
+  notifications: NotificationView[];
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -41,8 +40,8 @@ interface UseNotificationsReturn {
    * page. Callers gating "is there anything to mark read" must OR this in
    * rather than trust `unreadCount === 0` alone. */
   hasMoreUnseen: boolean;
-  addNotification: (notification: NotificationRecord) => void;
-  updateNotification: (notification: NotificationRecord) => void;
+  addNotification: (notification: NotificationView) => void;
+  updateNotification: (notification: NotificationView) => void;
 }
 
 // `offset` is deliberately not accepted by the hook: the UI does not page. The
@@ -60,7 +59,7 @@ const CANONICAL_FILTERS: UseNotificationsOptions = {
   limit: NOTIFICATION_PAGE_SIZE,
 };
 
-const EMPTY: NotificationRecord[] = [];
+const EMPTY: NotificationView[] = [];
 
 /**
  * Mark every cached DELIVERED notification read, optionally only those sent on
@@ -170,9 +169,8 @@ export function useNotifications(
       return { snapshot };
     },
     onSuccess: (response) => {
-      const summary = response.data as MarkAllReadSummary | undefined;
       toast.success(
-        `Marked ${summary?.updated_count ?? 0} notifications as read`,
+        `Marked ${response.data?.updated_count ?? 0} notifications as read`,
       );
     },
     onError: (error, _channelType, context) => {
@@ -263,13 +261,13 @@ export function useNotifications(
   );
 
   const addNotification = useCallback(
-    (notification: NotificationRecord) =>
+    (notification: NotificationView) =>
       prependNotification(queryClient, notification),
     [queryClient],
   );
 
   const updateNotification = useCallback(
-    (notification: NotificationRecord) =>
+    (notification: NotificationView) =>
       upsertNotification(queryClient, notification),
     [queryClient],
   );

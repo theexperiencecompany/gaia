@@ -28,9 +28,9 @@ from app.models.notification.notification_models import (
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
-    SubscriptionStatus,
     TriggerOrigin,
     TriggerSubscription,
+    TriggerSubscriptionStatus,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.notification_service import notification_service
@@ -116,7 +116,7 @@ async def _fire_if_matching(
     # subscriptions register no instance and match on user + trigger name alone.
     if subscription.composio_trigger_ids and trigger_id not in subscription.composio_trigger_ids:
         return False
-    if subscription.status is not SubscriptionStatus.ACTIVE:
+    if subscription.status is not TriggerSubscriptionStatus.ACTIVE:
         return False
     if not conditions_match(trigger_name, subscription.conditions, payload, subscription.match):
         return False

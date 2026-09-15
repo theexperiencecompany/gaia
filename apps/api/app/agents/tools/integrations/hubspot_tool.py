@@ -7,7 +7,7 @@ from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from shared.py.wide_events import log
 
 HUBSPOT_TOOLKIT = "HUBSPOT"
@@ -36,15 +36,17 @@ def register_hubspot_custom_tools(composio: Composio) -> list[str]:
         try:
             data = (
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=HUBSPOT_TOOLKIT,
-                    endpoint="https://api.hubapi.com/crm/v3/objects/contacts",
-                    method="GET",
-                    query={
-                        "limit": 10,
-                        "properties": "firstname,lastname,email,hs_lead_status",
-                        "sort": "-createdate",
-                    },
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=HUBSPOT_TOOLKIT,
+                        endpoint="https://api.hubapi.com/crm/v3/objects/contacts",
+                        method="GET",
+                        query={
+                            "limit": 10,
+                            "properties": "firstname,lastname,email,hs_lead_status",
+                            "sort": "-createdate",
+                        },
+                    )
                 )
                 or {}
             )
@@ -56,15 +58,17 @@ def register_hubspot_custom_tools(composio: Composio) -> list[str]:
         try:
             data = (
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=HUBSPOT_TOOLKIT,
-                    endpoint="https://api.hubapi.com/crm/v3/objects/deals",
-                    method="GET",
-                    query={
-                        "limit": 10,
-                        "properties": "dealname,amount,dealstage,closedate",
-                        "sort": "-createdate",
-                    },
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=HUBSPOT_TOOLKIT,
+                        endpoint="https://api.hubapi.com/crm/v3/objects/deals",
+                        method="GET",
+                        query={
+                            "limit": 10,
+                            "properties": "dealname,amount,dealstage,closedate",
+                            "sort": "-createdate",
+                        },
+                    )
                 )
                 or {}
             )

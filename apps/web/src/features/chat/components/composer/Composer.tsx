@@ -25,7 +25,7 @@ import {
   useInputText,
   useReplyToMessage,
 } from "@/stores/composerStore";
-import type { SearchMode } from "@/types/shared/searchTypes";
+import type { ComposerMode } from "@/types/shared/searchTypes";
 
 import ComposerInput, { type ComposerInputRef } from "./ComposerInput";
 import ComposerToolbar from "./ComposerToolbar";
@@ -119,7 +119,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
     if (files.length > 0) attachFiles(files);
   };
 
-  const handleSelectionChange = (mode: SearchMode) => {
+  const handleSelectionChange = (mode: ComposerMode) => {
     if (currentMode === mode) setSelectedMode(new Set([null]));
     else setSelectedMode(new Set([mode]));
     // Clear selected tool when mode changes

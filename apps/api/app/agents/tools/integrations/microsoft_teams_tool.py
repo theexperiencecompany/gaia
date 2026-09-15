@@ -7,7 +7,7 @@ from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from shared.py.wide_events import log
 
 TEAMS_TOOLKIT = "MICROSOFT_TEAMS"
@@ -37,11 +37,13 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
         try:
             me = (
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=TEAMS_TOOLKIT,
-                    endpoint=f"{GRAPH_API_BASE}/me",
-                    method="GET",
-                    query={"$select": "id,displayName,mail,userPrincipalName"},
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=TEAMS_TOOLKIT,
+                        endpoint=f"{GRAPH_API_BASE}/me",
+                        method="GET",
+                        query={"$select": "id,displayName,mail,userPrincipalName"},
+                    )
                 )
                 or {}
             )
@@ -57,11 +59,13 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
         try:
             data = (
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=TEAMS_TOOLKIT,
-                    endpoint=f"{GRAPH_API_BASE}/me/joinedTeams",
-                    method="GET",
-                    query={"$select": "id,displayName,description"},
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=TEAMS_TOOLKIT,
+                        endpoint=f"{GRAPH_API_BASE}/me/joinedTeams",
+                        method="GET",
+                        query={"$select": "id,displayName,description"},
+                    )
                 )
                 or {}
             )
@@ -81,11 +85,13 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
         try:
             data = (
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=TEAMS_TOOLKIT,
-                    endpoint=f"{GRAPH_API_BASE}/me/chats",
-                    method="GET",
-                    query={"$expand": "lastMessagePreview", "$top": 10},
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=TEAMS_TOOLKIT,
+                        endpoint=f"{GRAPH_API_BASE}/me/chats",
+                        method="GET",
+                        query={"$expand": "lastMessagePreview", "$top": 10},
+                    )
                 )
                 or {}
             )

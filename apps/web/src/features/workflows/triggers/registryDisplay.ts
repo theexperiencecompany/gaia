@@ -9,7 +9,7 @@
  * `getDisplayInfo` output changes, update the corresponding entry here.
  */
 
-import type { TriggerConfig } from "./types";
+import type { TriggerConfigDraft } from "./types";
 
 export interface TriggerDisplayInfo {
   label: string;
@@ -18,7 +18,7 @@ export interface TriggerDisplayInfo {
 
 interface TriggerDisplayEntry {
   triggerSlugs: string[];
-  getDisplayInfo: (config: TriggerConfig) => TriggerDisplayInfo;
+  getDisplayInfo: (config: TriggerConfigDraft) => TriggerDisplayInfo;
 }
 
 // =============================================================================
@@ -199,7 +199,7 @@ for (const entry of displayEntries) {
 
 export function getTriggerDisplayInfoBySlug(
   slug: string,
-  config: TriggerConfig,
+  config: TriggerConfigDraft,
 ): TriggerDisplayInfo | undefined {
   const entry = slugToDisplayEntry.get(slug);
   if (!entry) return undefined;

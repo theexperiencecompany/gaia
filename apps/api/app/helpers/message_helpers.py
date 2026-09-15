@@ -160,7 +160,7 @@ async def format_workflow_execution_message(
     else:
         # Fallback to passed data
         steps_text = "\n".join(
-            f"{i}. **{step['title']}** (Category: {step['category']})\n   Description: {step['description']}"
+            f"{i}. **{step.title}** (Category: {step.category})\n   Description: {step.description}"
             for i, step in enumerate(selected_workflow.steps, 1)
         )
         workflow_title = selected_workflow.title
@@ -241,9 +241,9 @@ def format_calendar_event_context(
 
     # Format time
     if event.isAllDay:
-        time = f"All day on {event.start.get('date', 'Unknown date')}"
+        time = f"All day on {event.start.date or 'Unknown date'}"
     else:
-        time = f"{event.start.get('dateTime', 'Unknown')} to {event.end.get('dateTime', 'Unknown')}"
+        time = f"{event.start.dateTime or 'Unknown'} to {event.end.dateTime or 'Unknown'}"
 
     # Build context
     context = f"""**CALENDAR EVENT:** {event.summary}

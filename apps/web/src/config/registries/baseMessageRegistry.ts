@@ -8,7 +8,7 @@ import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
-import type { FileData } from "@/types/shared/fileTypes";
+import type { AttachedFileData } from "@/types/shared/fileTypes";
 
 import { TOOLS_MESSAGE_SCHEMA } from "./toolRegistry";
 
@@ -24,7 +24,7 @@ export const BASE_MESSAGE_SCHEMA = {
   date: undefined as string | undefined,
   pinned: undefined as boolean | undefined,
   fileIds: undefined as string[] | undefined,
-  fileData: undefined as FileData[] | undefined,
+  fileData: undefined as AttachedFileData[] | undefined,
   selectedTool: undefined as string | null | undefined,
   toolCategory: undefined as string | null | undefined,
   selectedWorkflow: undefined as WorkflowData | null | undefined,

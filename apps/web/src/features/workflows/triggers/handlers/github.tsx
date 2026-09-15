@@ -5,7 +5,7 @@
  */
 
 import type { RegisteredHandler } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 import type { GitHubConfig } from "./GitHubSettings";
 import { GitHubSettings } from "./GitHubSettings";
 
@@ -17,7 +17,7 @@ export const githubTriggerHandler: RegisteredHandler = {
     "github_issue_added",
   ],
 
-  createDefaultConfig: (slug: string): TriggerConfig => ({
+  createDefaultConfig: (slug: string): TriggerConfigDraft => ({
     type: "integration",
     enabled: true,
     trigger_name: slug,

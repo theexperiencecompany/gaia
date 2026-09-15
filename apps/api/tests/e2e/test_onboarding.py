@@ -58,6 +58,7 @@ from app.constants.onboarding import (
     HOLO_CONVERSATION_ID_FIELD,
     INTELLIGENCE_TASK,
 )
+from app.models.mail_models import GmailMessagesResponse, GmailMessageSummary
 from app.models.oauth_models import OAuthIntegration
 from app.models.onboarding_models import (
     EmailSummary,
@@ -336,6 +337,7 @@ def _gmail_message(idx: int) -> dict[str, Any]:
 def _sent_email(idx: int) -> dict[str, Any]:
     """A sent message long enough to survive the writing-style sampler's filters."""
     return {
+        "id": f"sent-{idx}",
         "subject": f"Re: thread {idx}",
         "body": "Thanks for the update — I'll take a look today and come back to you.",
     }
@@ -528,10 +530,10 @@ def _enter_external_service_patches(stack: ExitStack, externals: _Externals) -> 
             raise RuntimeError(f"model refused: {label}")
         return _structured_result(schema)
 
-    async def _search_messages(**_: Any) -> Any:
-        result = AsyncMock()
-        result.messages = externals.sent_emails
-        return result
+    async def _search_messages(**_: Any) -> GmailMessagesResponse:
+        return GmailMessagesResponse(
+            messages=[GmailMessageSummary.model_validate(m) for m in externals.sent_emails]
+        )
 
     for patcher in (
         # --- composio ----------------------------------------------------

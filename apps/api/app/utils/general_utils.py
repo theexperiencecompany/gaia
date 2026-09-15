@@ -88,41 +88,46 @@ def transform_gmail_message(msg: dict[str, Any]) -> dict[str, Any]:
                 return str(m["internalDate"])
         return ""
 
+    # Composio documents every header field as nullable and omits ``messageText``
+    # under ``verbose=false``; the derived keys are always strings so the result
+    # validates as ``GmailMessageSummary`` whatever the provider left null.
     def transform_composio(m: dict[str, Any]) -> dict[str, Any]:
-        labels = m.get("labelIds", [])
+        labels = m.get("labelIds") or []
         return {
             **m,
-            "id": m.get("messageId", ""),
-            "threadId": m.get("threadId", ""),
+            "id": m.get("messageId") or "",
+            "threadId": m.get("threadId") or "",
             "from": get_sender(m),
-            "to": m.get("to", ""),
-            "cc": m.get("cc", ""),
-            "replyTo": m.get("replyTo", ""),
-            "subject": m.get("subject", ""),
+            "to": m.get("to") or "",
+            "cc": m.get("cc") or "",
+            "replyTo": m.get("replyTo") or "",
+            "subject": m.get("subject") or "",
             "time": get_time(m),
-            "snippet": m.get("snippet", m.get("messageText", "")),
-            "body": m.get("body", m.get("messageText", "")),
+            "snippet": m.get("snippet") or m.get("messageText") or "",
+            "body": m.get("body") or m.get("messageText") or "",
             "isThread": bool(m.get("threadId") and len(labels) > 0),
             "is_unread": "UNREAD" in labels,
+            "labelIds": labels,
         }
 
     def transform_gmail_api(m: dict[str, Any]) -> dict[str, Any]:
         headers = {h["name"]: h["value"] for h in m.get("payload", {}).get("headers", [])}
-        labels = m.get("labelIds", [])
+        labels = m.get("labelIds") or []
         return {
             **m,
-            "id": m.get("id", ""),
-            "threadId": m.get("threadId", ""),
-            "from": headers.get("From", ""),
-            "to": headers.get("To", ""),
-            "cc": headers.get("Cc", ""),
-            "replyTo": headers.get("Reply-To", ""),
-            "subject": headers.get("Subject", ""),
+            "id": m.get("id") or "",
+            "threadId": m.get("threadId") or "",
+            "from": headers.get("From") or "",
+            "to": headers.get("To") or "",
+            "cc": headers.get("Cc") or "",
+            "replyTo": headers.get("Reply-To") or "",
+            "subject": headers.get("Subject") or "",
             "time": get_time(m),
-            "snippet": m.get("snippet", ""),
+            "snippet": m.get("snippet") or "",
             "body": decode_message_body(m),
             "isThread": bool(m.get("threadId") and len(labels) > 0),
             "is_unread": "UNREAD" in labels,
+            "labelIds": labels,
         }
 
     # Detect and transform
@@ -131,8 +136,8 @@ def transform_gmail_message(msg: dict[str, Any]) -> dict[str, Any]:
     return transform_gmail_api(msg)
 
 
-def decode_message_body(msg: dict[str, Any]) -> str | None:
-    """Decode the message body from a Gmail API message."""
+def decode_message_body(msg: dict[str, Any]) -> str:
+    """Decode the message body from a Gmail API message; empty when it carries none."""
     payload = msg.get("payload", {})
     parts = payload.get("parts", [])
 
@@ -143,7 +148,7 @@ def decode_message_body(msg: dict[str, Any]) -> str | None:
             return base64.urlsafe_b64decode(body_data.replace("-", "+").replace("_", "/")).decode(
                 "utf-8", errors="ignore"
             )
-        return None
+        return ""
 
     # For multipart messages, prioritize HTML over plain text
     html_body = None
@@ -164,7 +169,7 @@ def decode_message_body(msg: dict[str, Any]) -> str | None:
                 plain_body = decoded_content
 
     # Return HTML if available (frontend expects HTML), otherwise plain text
-    return html_body or plain_body
+    return html_body or plain_body or ""
 
 
 class ProjectInfo(TypedDict):

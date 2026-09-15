@@ -12,6 +12,7 @@ the test stays green — which is exactly what the mutation lane caught here. Th
 body IS the contract: the agent reads these files.
 """
 
+from datetime import UTC, datetime
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -19,7 +20,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants.account import ACCOUNT_DIR, ACCOUNT_LINKED_ACCOUNTS_DIRNAME
-from app.models.payment_models import PlanType
+from app.models.payment_models import PlanDuration, PlanResponse, PlanType, SubscriptionDocument
 from app.models.user_models import UserDocument
 from app.schemas.usage import FeatureUsageSummary, UsageBudget
 from app.services import account_fs
@@ -81,19 +82,49 @@ def _voice(voice_id: str = "v-1", name: str = "Rachel", starred: bool = False):
     return SimpleNamespace(voice_id=voice_id, name=name, starred=starred)
 
 
+_NOW = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def _plan(overrides: dict[str, object] | None) -> PlanResponse | None:
+    """A Pro plan with the given fields overridden; ``{}`` means no plan at all."""
+    if overrides == {}:
+        return None
+    fields: dict[str, object] = {
+        "id": "plan_pro",
+        "dodo_product_id": "pdt_pro",
+        "name": "Pro",
+        "amount": 15,
+        "currency": "$",
+        "duration": PlanDuration.MONTHLY,
+        "is_active": True,
+        "created_at": _NOW,
+        "updated_at": _NOW,
+    }
+    fields.update(overrides or {})
+    return PlanResponse(**fields)
+
+
+def _subscription(overrides: dict[str, object] | None) -> SubscriptionDocument | None:
+    if overrides == {}:
+        return None
+    fields: dict[str, object] = {
+        "dodo_subscription_id": "sub_1",
+        "user_id": "user-42",
+        "status": "active",
+    }
+    fields.update(overrides or {})
+    return SubscriptionDocument(**fields)
+
+
 def _subscription_status(
     plan_type: PlanType | None = PlanType.PRO,
-    current_plan: dict | None = None,
-    subscription: dict | None = None,
+    current_plan: dict[str, object] | None = None,
+    subscription: dict[str, object] | None = None,
 ):
     return SimpleNamespace(
         plan_type=plan_type,
-        current_plan=(
-            {"name": "Pro", "amount": 15, "currency": "$", "duration": "month"}
-            if current_plan is None
-            else current_plan
-        ),
-        subscription={"status": "active"} if subscription is None else subscription,
+        current_plan=_plan(current_plan),
+        subscription=_subscription(subscription),
     )
 
 
@@ -280,22 +311,14 @@ class TestProjectionBodies:
     async def test_subscription_without_an_amount_has_no_price(self, sources) -> None:
         with patch(
             f"{MODULE}.payment_service.get_user_subscription_status",
-            new=AsyncMock(return_value=_subscription_status(current_plan={"name": "Trial"})),
+            new=AsyncMock(
+                return_value=_subscription_status(current_plan={"name": "Trial", "amount": 0})
+            ),
         ):
             body = await _body("subscription")
 
         assert body["price"] is None
         assert body["plan_name"] == "Trial"
-
-    async def test_subscription_price_omits_a_missing_currency_and_duration(self, sources) -> None:
-        """The price string is assembled from three optional plan fields."""
-        with patch(
-            f"{MODULE}.payment_service.get_user_subscription_status",
-            new=AsyncMock(return_value=_subscription_status(current_plan={"amount": 9})),
-        ):
-            body = await _body("subscription")
-
-        assert body["price"] == "9 / period"
 
     async def test_subscription_falls_back_to_free_when_the_provider_has_no_plan(
         self, sources

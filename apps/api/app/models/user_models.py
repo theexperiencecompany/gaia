@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.db.repositories.base import MongoDocument
 from app.models.first_steps_models import FirstStepsState
+from app.schemas.common import ResponseModel
 from app.utils.timezone import is_valid_timezone
 
 # Shared field doc for the `message` field on the success/message response models.
@@ -318,7 +319,13 @@ class OnboardingRequest(BaseModel):
         return v
 
 
-class OnboardingResponse(BaseModel):
+class LogoutResponse(ResponseModel):
+    """``POST /user/logout``: where the client sends the browser next."""
+
+    logout_url: str | None = Field(None, description="Identity-provider logout URL to redirect to")
+
+
+class OnboardingResponse(ResponseModel):
     success: bool = Field(..., description="Whether onboarding was successful")
     message: str = Field(..., description=_RESPONSE_MESSAGE_DESC)
     user: dict[str, Any] | None = Field(None, description="Updated user data")

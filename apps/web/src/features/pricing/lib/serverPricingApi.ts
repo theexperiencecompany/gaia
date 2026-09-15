@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getErrorMessage } from "@/lib/api/errors";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 import type { Plan } from "../api/pricingApi";
@@ -28,7 +29,7 @@ export async function getPlansServer(activeOnly = true): Promise<Plan[]> {
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      const message = error.response?.data?.detail || error.message;
+      const message = getErrorMessage(error.response?.data) || error.message;
       throw new Error(`Failed to fetch plans from backend: ${message}`);
     }
     throw error;

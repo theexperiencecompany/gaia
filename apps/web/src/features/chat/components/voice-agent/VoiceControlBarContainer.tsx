@@ -416,6 +416,11 @@ export function VoiceControlBarContainer({
           preConnectBuffer: true,
         }),
         connectionDetailsRef.current().then((connectionDetails) => {
+          if (!connectionDetails.serverUrl) {
+            throw new Error(
+              "Voice session token came back without a LiveKit server URL",
+            );
+          }
           room.connect(
             connectionDetails.serverUrl,
             connectionDetails.participantToken,

@@ -10,6 +10,7 @@ from app.models.integration_models import (
     IntegrationWithCreator,
     UserIntegrationDocument,
 )
+from app.models.workflow_models import PublicWorkflowRow
 from app.services.analytics_service import AnalyticsEvents
 
 # Base URL for integration public endpoints
@@ -196,7 +197,7 @@ class TestGetPublicIntegration:
             resp = await client.get(f"{BASE}/public/bad")
 
         assert resp.status_code == 500
-        assert "Failed to fetch integration" in resp.json()["detail"]
+        assert "Failed to fetch integration" in resp.json()["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -583,4 +584,114 @@ class TestSearchIntegrations:
             resp = await client.get(f"{BASE}/search", params={"q": "test"})
 
         assert resp.status_code == 500
-        assert "Failed to search" in resp.json()["detail"]
+        assert "Failed to search" in resp.json()["message"]
+
+
+# ---------------------------------------------------------------------------
+# GET /integrations/public/{identifier}/workflows
+# ---------------------------------------------------------------------------
+
+
+def _workflow_row(**overrides: object) -> PublicWorkflowRow:
+    data: dict[str, object] = {
+        "id": "wf_digest",
+        "user_id": "creator_1",
+        "created_by": "creator_1",
+        "title": "Inbox digest",
+        "description": "Summarise unread mail",
+        "slug": "inbox-digest",
+        "is_public": True,
+        "prompt": "Summarise my unread mail",
+        "steps": [{"id": "s1", "title": "Read inbox", "description": "d", "category": "gmail"}],
+        "trigger_config": {"type": "manual"},
+        "total_executions": 7,
+        "created_at": "2026-01-02T03:04:05+00:00",
+        "creator_info": [{"name": "Ada"}],
+    }
+    data.update(overrides)
+    return PublicWorkflowRow.model_validate(data)
+
+
+class TestGetRelatedWorkflows:
+    """Tests for GET /integrations/public/{identifier}/workflows."""
+
+    @pytest.mark.asyncio
+    async def test_rows_are_rendered_as_marketplace_cards_with_the_total(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(f"{_PUBLIC}.workflow_repository") as mock_repo:
+            mock_repo.find_public_by_step_category = AsyncMock(return_value=[_workflow_row()])
+            mock_repo.count_public_by_step_category = AsyncMock(return_value=3)
+            resp = await client.get(f"{BASE}/public/gmail/workflows")
+
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "workflows": [
+                {
+                    "id": "wf_digest",
+                    "title": "Inbox digest",
+                    "description": "Summarise unread mail",
+                    "slug": "inbox-digest",
+                    "prompt": "Summarise my unread mail",
+                    "icon": None,
+                    "icon_color": None,
+                    "system_workflow_key": None,
+                    "source_integration": None,
+                    "trigger_config": None,
+                    "steps": [
+                        {"id": "s1", "title": "Read inbox", "description": "d", "category": "gmail"}
+                    ],
+                    "created_at": "2026-01-02T03:04:05Z",
+                    "creator": {"id": "creator_1", "name": "Ada", "avatar": None},
+                    "categories": None,
+                    "total_executions": 7,
+                }
+            ],
+            "total": 3,
+        }
+
+    @pytest.mark.asyncio
+    async def test_identifier_and_normalised_paging_reach_the_repository(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(f"{_PUBLIC}.workflow_repository") as mock_repo:
+            mock_repo.find_public_by_step_category = AsyncMock(return_value=[])
+            mock_repo.count_public_by_step_category = AsyncMock(return_value=0)
+            resp = await client.get(
+                f"{BASE}/public/gmail/workflows", params={"limit": 500, "offset": -4}
+            )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"workflows": [], "total": 0}
+        mock_repo.find_public_by_step_category.assert_awaited_once_with("gmail", limit=50, offset=0)
+        mock_repo.count_public_by_step_category.assert_awaited_once_with("gmail")
+
+    @pytest.mark.asyncio
+    async def test_a_legacy_row_without_a_slug_is_backfilled_before_rendering(
+        self, client: AsyncClient
+    ) -> None:
+        async def backfill(row: PublicWorkflowRow) -> None:
+            row.slug = "inbox-digest-backfilled"
+
+        with (
+            patch(f"{_PUBLIC}.workflow_repository") as mock_repo,
+            patch(f"{_PUBLIC}.ensure_public_workflow_slug", side_effect=backfill) as ensure,
+        ):
+            mock_repo.find_public_by_step_category = AsyncMock(
+                return_value=[_workflow_row(slug=None)]
+            )
+            mock_repo.count_public_by_step_category = AsyncMock(return_value=1)
+            resp = await client.get(f"{BASE}/public/gmail/workflows")
+
+        assert resp.status_code == 200
+        assert resp.json()["workflows"][0]["slug"] == "inbox-digest-backfilled"
+        assert ensure.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
+        with patch(f"{_PUBLIC}.workflow_repository") as mock_repo:
+            mock_repo.find_public_by_step_category = AsyncMock(side_effect=RuntimeError("db down"))
+            resp = await client.get(f"{BASE}/public/gmail/workflows")
+
+        assert resp.status_code == 500
+        assert "Failed to fetch related workflows" in resp.json()["message"]

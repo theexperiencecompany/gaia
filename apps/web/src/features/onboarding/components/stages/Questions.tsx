@@ -9,7 +9,7 @@
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useCallback } from "react";
-import { FIELD_NAMES, questions } from "../../constants";
+import { FIELD_NAMES, isKnownNeed, questions } from "../../constants";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import { usePaceDone } from "../../hooks/useTypedLines";
 import { canSubmitNeeds, isAtNeedsCap } from "../../state/derive";
@@ -43,7 +43,9 @@ export function QuestionsReply({ state, dispatch }: QuestionsProps) {
   }, [dispatch, draftProfession]);
 
   const handleToggleNeed = useCallback(
-    (value: string) => dispatch({ type: "toggleNeed", value }),
+    (value: string) => {
+      if (isKnownNeed(value)) dispatch({ type: "toggleNeed", value });
+    },
     [dispatch],
   );
 

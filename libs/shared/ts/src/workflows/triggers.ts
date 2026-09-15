@@ -1,3 +1,7 @@
+import type { TriggerConfig } from "../api/generated";
+
+export type { TriggerConfig } from "../api/generated";
+
 /**
  * Framework-agnostic trigger helpers shared between web and mobile.
  *
@@ -177,9 +181,10 @@ export function getSchemaFieldEntries(
   }));
 }
 
-export function buildDefaultTriggerConfig(slug: string): {
-  type: string;
-  enabled: boolean;
-} {
-  return { type: slug, enabled: true };
+/** The config a freshly picked trigger starts from: built-ins are their own type, everything else is an integration trigger named by its slug. */
+export function buildDefaultTriggerConfig(slug: string): TriggerConfig {
+  if (slug === "manual" || slug === "schedule") {
+    return { type: slug, enabled: true };
+  }
+  return { type: "integration", enabled: true, trigger_name: slug };
 }

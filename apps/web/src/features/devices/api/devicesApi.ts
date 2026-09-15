@@ -1,19 +1,17 @@
-import { apiService } from "@/lib/api/service";
-import type { ApproveDeviceResponse, DeviceListResponse } from "../types";
+import { api } from "@/lib/api/typed";
 
 export const devicesApi = {
-  list: () =>
-    apiService.get<DeviceListResponse>("/device/list", { silent: true }),
+  list: () => api.get("/api/v1/device/list", { silent: true }),
 
   approve: (userCode: string) =>
-    apiService.post<ApproveDeviceResponse>(
-      "/device/pair/approve",
-      { user_code: userCode },
-      { errorMessage: "Could not approve this device" },
-    ),
+    api.post("/api/v1/device/pair/approve", {
+      body: { user_code: userCode },
+      errorMessage: "Could not approve this device",
+    }),
 
   revoke: (deviceId: string) =>
-    apiService.delete(`/device/${deviceId}`, {
+    api.delete("/api/v1/device/{device_id}", {
+      path: { device_id: deviceId },
       successMessage: "Device revoked",
       errorMessage: "Could not revoke device",
     }),

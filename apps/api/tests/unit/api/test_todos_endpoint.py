@@ -361,5 +361,5 @@ class TestTodoCanvas:
             resp = await client.get("/api/v1/todos/todo-1/canvas")
 
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Todo not found"
+        assert resp.json()["message"] == "Todo not found"
         get.assert_awaited_once_with("todo-1", user_id="507f1f77bcf86cd799439011")

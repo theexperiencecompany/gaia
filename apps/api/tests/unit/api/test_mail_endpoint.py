@@ -1341,7 +1341,7 @@ class TestSendEmailRouteContract:
             data={"to": "a@x.com", "subject": "Hi", "body": "Body"},
         )
         assert response.status_code == 500
-        assert response.json()["detail"] == "quota exceeded"
+        assert response.json()["message"] == "quota exceeded"
 
 
 # ---------------------------------------------------------------------------
@@ -1395,7 +1395,7 @@ class TestSendEmailJsonContract:
             json={"to": ["a@t.com"], "subject": "S", "body": "B"},
         )
         assert response.status_code == 500
-        assert response.json()["detail"] == "invalid recipient"
+        assert response.json()["message"] == "invalid recipient"
 
 
 # ---------------------------------------------------------------------------

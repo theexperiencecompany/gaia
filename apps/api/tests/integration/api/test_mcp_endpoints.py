@@ -291,7 +291,7 @@ class TestMCPOAuthCallbackEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.mcp.invalidate_user_integration_caches",
+        "app.services.mcp.oauth_callback.invalidate_user_integration_caches",
         new_callable=AsyncMock,
     )
     @patch(
@@ -482,7 +482,7 @@ class TestMCPOAuthCallbackEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.mcp.invalidate_user_integration_caches",
+        "app.services.mcp.oauth_callback.invalidate_user_integration_caches",
         new_callable=AsyncMock,
     )
     @patch(

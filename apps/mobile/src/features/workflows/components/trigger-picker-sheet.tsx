@@ -44,7 +44,7 @@ import { DynamicTriggerForm } from "./dynamic-trigger-form";
 // Public types kept for backwards-compat with create/edit modals
 // ---------------------------------------------------------------------------
 
-export interface TriggerOption {
+export interface TriggerPickerOption {
   id: string;
   label: string;
   description: string;
@@ -59,8 +59,8 @@ export interface TriggerPickerSheetRef {
 }
 
 interface TriggerPickerSheetProps {
-  onSelect: (trigger: TriggerOption) => void;
-  onSaveConfig?: (trigger: TriggerOption, config: TriggerConfig) => void;
+  onSelect: (trigger: TriggerPickerOption) => void;
+  onSaveConfig?: (trigger: TriggerPickerOption, config: TriggerConfig) => void;
 }
 
 // ---------------------------------------------------------------------------

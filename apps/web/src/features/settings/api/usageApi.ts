@@ -1,11 +1,9 @@
-import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
-import { apiauth } from "@/lib/api/client";
+import type { UsageHistoryEntry } from "@shared/api/generated";
 
-export interface UsageHistoryEntry {
-  date: string;
-  plan_type: string;
-  features: Record<string, Pick<FeatureUsage, "title" | "periods">>;
-}
+export type { UsageHistoryEntry } from "@shared/api/generated";
+
+import type { UsageActivity, UsageSummary } from "@shared/types";
+import { apiauth } from "@/lib/api/client";
 
 class UsageApiService {
   async getUsageSummary(): Promise<UsageSummary> {

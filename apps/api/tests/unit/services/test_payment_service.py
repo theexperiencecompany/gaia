@@ -1689,8 +1689,9 @@ class TestGetUserSubscriptionStatus:
         assert status.can_upgrade is True
         assert status.can_downgrade is True
         assert status.current_plan is not None
-        assert status.subscription["dodo_subscription_id"] == "sub_xyz789"
-        assert status.subscription["status"] == "active"
+        assert status.subscription is not None
+        assert status.subscription.dodo_subscription_id == "sub_xyz789"
+        assert status.subscription.status == "active"
 
     async def test_active_subscription_no_matching_plan(
         self,

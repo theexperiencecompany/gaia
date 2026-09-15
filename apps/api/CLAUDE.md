@@ -155,6 +155,17 @@ async def create_todo(
 - Decorator serializer options still apply, e.g. `response_model_exclude_none=True` when the payload must omit unset optional fields instead of sending nulls.
 - A handler that genuinely cannot return a model — streaming, file download, redirect, a deliberately non-JSON body — returns the `Response` subclass and declares **no** `response_model`; a wrong schema is worse than no schema. To return a different body under a non-200 status, annotate the union and set the status on an injected `Response` (see `endpoints/health.py`) rather than reaching for `JSONResponse`.
 
+### The API contract — what the generated TypeScript types are built from
+
+The OpenAPI document is a build output (`apps/api/openapi.json`, written by `mise api:types`), and every TypeScript consumer types its requests against what is generated from it. Three rules keep that contract honest, and `tests/meta/test_route_contract.py` is the ratchet that fails a route breaking any of them:
+
+- **Every documented route declares its response body** — a Pydantic model (or dataclass) as the return annotation, a `Response` subclass for streams/files/redirects, or `204` with `-> None`. No `Any`, no bare `dict`; `dict[str, X]` is fine. Response-only models extend `ResponseModel` (`app/schemas/common.py`): a defaulted field is always serialized, and that base marks it required in the output schema so the generated TypeScript key is not optional (the memory models are the pattern).
+- **Every model has a unique class name** — the TypeScript consumer imports it under exactly that name (`import type { TodoResponse } from "@gaia/shared/api/generated"`), so `scripts/export_openapi.py` refuses two models that share one (FastAPI would otherwise mangle both into `app__models__…`). A model used both as a request body and a response body exports as `NameInput` / `NameOutput`.
+- **Every router is mounted with `tags=[...]`**, because the operation id is `<router_tag>_<function_name>` (`app/core/openapi.py`), not FastAPI's path-derived default: moving a route must not rename the client type generated from it. Ids must be unique — an alias path served by the same handler is `include_in_schema=False`.
+- **Errors are `ErrorEnvelope`** (`app/schemas/errors.py`): every non-2xx body — `AppError`, `HTTPException` (string or structured `detail`), validation, the crash handler, the middlewares — renders `{message, code?, why?, fix?, errors?, ...context}` through `error_response`, and every router mount declares it for 4xx/5xx/422 via `ERROR_RESPONSES`. Put the machine-readable value in `code`; nothing nests under `detail` any more.
+
+After changing a route or a model, run `mise api:types` and commit both artifacts (the prek hook does it on commit); the CI `api-schema` lane regenerates and fails on drift.
+
 ## Entitlements — Every New Route Is Paywalled Until You Say Otherwise
 
 GAIA is paid-only, and the gate is a middleware, not a decorator:

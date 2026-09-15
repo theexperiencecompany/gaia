@@ -14,6 +14,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
 from app.api.v1.middleware.agent_auth import create_agent_token
 from app.config.settings import settings
 from app.decorators import tiered_rate_limit
+from app.schemas.errors import error_responses
 from app.schemas.voice_schemas import (
     StarredVoicesResponse,
     StarVoiceRequest,
@@ -39,11 +40,13 @@ CurrentUser = Annotated[dict, Depends(get_current_user)]
 
 @router.get(
     "/token",
-    responses={
-        401: {"description": "Invalid or missing user id"},
-        402: {"description": "Subscription required"},
-        500: {"description": "Token generation failed"},
-    },
+    responses=error_responses(
+        {
+            401: "Invalid or missing user id",
+            402: "Subscription required",
+            500: "Token generation failed",
+        }
+    ),
 )
 @tiered_rate_limit("voice_mode")
 async def get_token(

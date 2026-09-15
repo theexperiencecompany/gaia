@@ -5,9 +5,9 @@ import { Cancel01Icon } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { apiService } from "@/lib/api/service";
+import { api } from "@/lib/api/typed";
 import { useNotificationBannerStore } from "@/stores/notificationBannerStore";
-import type { PlatformLink } from "@/types/platform";
+import type { PlatformLinks } from "@/types/platform";
 import {
   NOTIFICATION_PLATFORM_ICONS,
   NOTIFICATION_PLATFORM_LABELS,
@@ -24,17 +24,12 @@ export function NotificationConnectBanner({
   const router = useRouter();
   const isDismissed = useNotificationBannerStore((s) => s.isDismissed);
   const dismiss = useNotificationBannerStore((s) => s.dismiss);
-  const [platformLinks, setPlatformLinks] = useState<
-    Record<string, PlatformLink | null>
-  >({});
+  const [platformLinks, setPlatformLinks] = useState<PlatformLinks>({});
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    apiService
-      .get<{ platform_links: Record<string, PlatformLink | null> }>(
-        "/platform-links",
-        { silent: true },
-      )
+    api
+      .get("/api/v1/platform-links", { silent: true })
       .then((data) => {
         setPlatformLinks(data.platform_links || {});
       })

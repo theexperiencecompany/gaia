@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, patch
 
-from app.models.integration_models import IntegrationTool, IntegrationToolsRecord
+from app.models.integration_models import IntegrationToolsRecord, StoredIntegrationTool
 from app.services.mcp import mcp_tools_service
 
 _MOD = "app.services.mcp.mcp_tools_service"
@@ -123,7 +123,7 @@ class TestGetIntegrationTools:
     async def test_dumps_to_dicts(self):
         with patch(f"{_MOD}.integration_repository") as mock_repo:
             mock_repo.get_tools = AsyncMock(
-                return_value=[IntegrationTool(name="t1", description="d1")]
+                return_value=[StoredIntegrationTool(name="t1", description="d1")]
             )
             result = await mcp_tools_service.get_integration_tools("int1")
 
@@ -147,7 +147,7 @@ class TestGetAllMcpTools:
             integration_id="int1",
             name="Integration 1",
             icon_url="https://ex.com/icon.png",
-            tools=[IntegrationTool(name="t1", description="d")],
+            tools=[StoredIntegrationTool(name="t1", description="d")],
         )
         with (
             patch(f"{_MOD}.get_cache", new_callable=AsyncMock, return_value=None),

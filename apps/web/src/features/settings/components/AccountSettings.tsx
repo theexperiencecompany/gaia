@@ -14,7 +14,7 @@ import type React from "react";
 import { useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import {
-  setCurrentUser,
+  patchCurrentUser,
   useCurrentUser,
 } from "@/features/auth/hooks/useCurrentUser";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
@@ -42,7 +42,7 @@ export default function AccountSection({
 
       const response = await authApi.updateName(editedName);
 
-      setCurrentUser(queryClient, response);
+      patchCurrentUser(queryClient, { name: response.name });
 
       setIsEditing(false);
       toast.success("Name updated!", { id: "update-name" });
@@ -67,7 +67,7 @@ export default function AccountSection({
 
       const response = await authApi.updateProfile(formData);
 
-      setCurrentUser(queryClient, response);
+      patchCurrentUser(queryClient, { picture: response.picture });
     } catch (error) {
       console.error("Profile picture update error:", error);
     } finally {

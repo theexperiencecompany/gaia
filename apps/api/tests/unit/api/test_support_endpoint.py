@@ -126,7 +126,7 @@ class TestSubmitSupportRequest:
         )
 
         assert resp.status_code == 400
-        assert resp.json()["detail"] == "Invalid request type. Must be one of: support, feature"
+        assert resp.json()["message"] == "Invalid request type. Must be one of: support, feature"
 
     async def test_submit_with_attachments_passes_exact_kwargs_to_service(
         self, client: AsyncClient
@@ -180,7 +180,7 @@ class TestSubmitSupportRequest:
             )
 
         assert resp.status_code == 500
-        assert resp.json()["detail"] == "Failed to submit support request: cloudinary down"
+        assert resp.json()["message"] == "Failed to submit support request: cloudinary down"
 
     async def test_attachments_endpoint_requires_user_id_and_email(self, test_app: FastAPI) -> None:
         """Missing user_id OR email each yield 401 with the exact detail string."""
@@ -203,7 +203,7 @@ class TestSubmitSupportRequest:
                     test_app.dependency_overrides[get_current_user] = original
 
             assert resp.status_code == 401
-            assert resp.json()["detail"] == "User authentication required"
+            assert resp.json()["message"] == "User authentication required"
 
 
 class TestSubmitSupportRequestLogPins:

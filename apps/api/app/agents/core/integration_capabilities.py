@@ -11,7 +11,7 @@ from typing import Any
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.cache import ONE_DAY_TTL
 from app.decorators.caching import Cacheable
-from app.models.integration_models import IntegrationTool
+from app.models.integration_models import StoredIntegrationTool
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_connected_integration_ids
 
@@ -62,7 +62,7 @@ async def get_user_integration_capabilities(user_id: str) -> dict[str, Any]:
 
         # Extract tool names and descriptions
         tools_info = []
-        integration_tool: IntegrationTool
+        integration_tool: StoredIntegrationTool
         for integration_tool in integration.tools:
             tool_names_set.add(integration_tool.name)
             tools_info.append(

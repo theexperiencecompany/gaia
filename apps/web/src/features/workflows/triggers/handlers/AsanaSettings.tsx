@@ -16,15 +16,15 @@ import {
   TriggerSettingsCard,
 } from "../components/TriggerSettingsCard";
 import type { TriggerSettingsProps } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 
-interface AsanaTriggerData {
+type AsanaTriggerData = {
   trigger_name: string;
   project_gid?: string;
   workspace_id?: string;
-}
+};
 
-interface AsanaConfig extends TriggerConfig {
+interface AsanaConfig extends TriggerConfigDraft {
   trigger_name?: string;
   trigger_data?: AsanaTriggerData;
 }

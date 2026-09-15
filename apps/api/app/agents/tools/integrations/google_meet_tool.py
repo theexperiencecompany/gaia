@@ -8,7 +8,7 @@ from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from shared.py.wide_events import log
 
 GOOGLE_MEET_TOOLKIT = "GOOGLEMEET"
@@ -34,10 +34,12 @@ def register_google_meet_custom_tools(composio: Composio) -> list[str]:
         try:
             me = (
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=GOOGLE_MEET_TOOLKIT,
-                    endpoint="https://www.googleapis.com/oauth2/v3/userinfo",
-                    method="GET",
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=GOOGLE_MEET_TOOLKIT,
+                        endpoint="https://www.googleapis.com/oauth2/v3/userinfo",
+                        method="GET",
+                    )
                 )
                 or {}
             )
@@ -55,17 +57,19 @@ def register_google_meet_custom_tools(composio: Composio) -> list[str]:
         try:
             events_data = (
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=GOOGLE_MEET_TOOLKIT,
-                    endpoint="https://www.googleapis.com/calendar/v3/calendars/primary/events",
-                    method="GET",
-                    query={
-                        "timeMin": now,
-                        "maxResults": 5,
-                        "singleEvents": "true",
-                        "orderBy": "startTime",
-                        "fields": "items(id,summary,start,end,conferenceData,htmlLink)",
-                    },
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=GOOGLE_MEET_TOOLKIT,
+                        endpoint="https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                        method="GET",
+                        query={
+                            "timeMin": now,
+                            "maxResults": 5,
+                            "singleEvents": "true",
+                            "orderBy": "startTime",
+                            "fields": "items(id,summary,start,end,conferenceData,htmlLink)",
+                        },
+                    )
                 )
                 or {}
             )

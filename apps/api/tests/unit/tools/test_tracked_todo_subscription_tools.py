@@ -33,8 +33,8 @@ from app.models.trigger_subscription_models import (
     SubscriptionAction,
     SubscriptionCondition,
     SubscriptionResolution,
-    SubscriptionStatus,
     TriggerSubscription,
+    TriggerSubscriptionStatus,
 )
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS
 from app.services.triggers.subscription_service import (
@@ -410,7 +410,7 @@ class TestSubscriptionsAreVisibleOnTheTodo:
         assert "when any event" in _format_tracked_todo_full(doc, datetime.now(UTC))
 
     def test_a_paused_watch_says_the_integration_is_disconnected(self) -> None:
-        doc = _todo(trigger_subscriptions=[_subscription(status=SubscriptionStatus.PAUSED)])
+        doc = _todo(trigger_subscriptions=[_subscription(status=TriggerSubscriptionStatus.PAUSED)])
 
         assert "PAUSED" in _format_tracked_todo_full(doc, datetime.now(UTC))
 
@@ -454,7 +454,7 @@ class TestFormatSubscriptionLines:
         )
 
     def test_a_paused_watch_ends_with_the_disconnected_marker(self) -> None:
-        sub = _subscription(status=SubscriptionStatus.PAUSED)
+        sub = _subscription(status=TriggerSubscriptionStatus.PAUSED)
         (line,) = _format_subscription_lines(_todo(trigger_subscriptions=[sub]))
 
         assert line.endswith(" (PAUSED: integration disconnected)")

@@ -1,23 +1,11 @@
-export const FIRST_STEP_KEYS = [
-  "say_hi",
-  "connect_integration",
-  "link_platform",
-  "create_workflow",
-] as const;
+import type { FirstStepKey } from "@shared/api/generated";
 
-export type FirstStepKey = (typeof FIRST_STEP_KEYS)[number];
+export type { FirstStepKey, FirstStepsResponse } from "@shared/api/generated";
 
 /** One activation step; `done` is derived server-side and never set by the UI. */
 export interface FirstStepStatus {
   key: FirstStepKey;
   done: boolean;
-}
-
-export interface FirstStepsResponse {
-  steps: FirstStepStatus[];
-  /** Whether the user collapsed the checklist to its header. Persisted, so it
-   * survives a reload and follows the user across devices. */
-  collapsed: boolean;
 }
 
 export type FirstStepsSurface = "dashboard" | "widget";

@@ -263,7 +263,7 @@ class TestTransformGmailMessage:
         result = transform_gmail_message(msg)
         assert result["from"] == ""
         assert result["to"] == ""
-        assert result["body"] is None  # decode_message_body returns None
+        assert result["body"] == ""
 
     def test_gmail_api_format_no_time_fields_returns_empty(self) -> None:
         msg: dict[str, Any] = {
@@ -308,6 +308,186 @@ class TestTransformGmailMessage:
         result = transform_gmail_message(msg)
         assert result["historyId"] == "12345"
 
+    @pytest.mark.regression
+    def test_composio_null_fields_become_empty_strings(self) -> None:
+        """Composio documents every header field as nullable; the derived keys stay
+        strings so the result validates as ``GmailMessageSummary``."""
+        msg: dict[str, Any] = {
+            "messageId": "msg-1",
+            "messageText": "body",
+            "threadId": None,
+            "to": None,
+            "cc": None,
+            "replyTo": None,
+            "subject": None,
+            "snippet": None,
+            "labelIds": None,
+        }
+        result = transform_gmail_message(msg)
+        assert result["threadId"] == ""
+        assert result["to"] == ""
+        assert result["cc"] == ""
+        assert result["replyTo"] == ""
+        assert result["subject"] == ""
+        assert result["snippet"] == "body"
+        assert result["labelIds"] == []
+        assert result["isThread"] is False
+        assert result["is_unread"] is False
+
+    @pytest.mark.regression
+    def test_gmail_api_null_fields_become_empty_strings(self) -> None:
+        msg: dict[str, Any] = {
+            "id": None,
+            "threadId": None,
+            "snippet": None,
+            "labelIds": None,
+            "payload": {"headers": [{"name": "From", "value": None}]},
+        }
+        result = transform_gmail_message(msg)
+        assert result["id"] == ""
+        assert result["threadId"] == ""
+        assert result["from"] == ""
+        assert result["snippet"] == ""
+        assert result["body"] == ""
+        assert result["labelIds"] == []
+
+    def test_composio_populated_fields_produce_exact_dict(self) -> None:
+        msg: dict[str, Any] = {
+            "messageId": "msg-9",
+            "messageText": "fallback text",
+            "threadId": "thread-9",
+            "from": "alice@example.com",
+            "to": "bob@example.com",
+            "cc": "carol@example.com",
+            "replyTo": "reply@example.com",
+            "subject": "Subject",
+            "date": "2024-01-15 10:00",
+            "snippet": "Snippet",
+            "body": "<p>Body</p>",
+            "labelIds": ["INBOX", "UNREAD"],
+        }
+        result = transform_gmail_message(msg)
+        assert result == {
+            **msg,
+            "id": "msg-9",
+            "threadId": "thread-9",
+            "from": "alice@example.com",
+            "to": "bob@example.com",
+            "cc": "carol@example.com",
+            "replyTo": "reply@example.com",
+            "subject": "Subject",
+            "time": "2024-01-15 10:00",
+            "snippet": "Snippet",
+            "body": "<p>Body</p>",
+            "isThread": True,
+            "is_unread": True,
+            "labelIds": ["INBOX", "UNREAD"],
+        }
+
+    def test_composio_all_null_fields_produce_exact_dict(self) -> None:
+        msg: dict[str, Any] = {
+            "messageId": None,
+            "messageText": None,
+            "threadId": None,
+            "from": None,
+            "sender": None,
+            "to": None,
+            "cc": None,
+            "replyTo": None,
+            "subject": None,
+            "snippet": None,
+            "body": None,
+            "labelIds": None,
+        }
+        result = transform_gmail_message(msg)
+        assert result == {
+            **msg,
+            "id": "",
+            "threadId": "",
+            "from": "",
+            "to": "",
+            "cc": "",
+            "replyTo": "",
+            "subject": "",
+            "time": "",
+            "snippet": "",
+            "body": "",
+            "isThread": False,
+            "is_unread": False,
+            "labelIds": [],
+        }
+
+    def test_gmail_api_populated_headers_produce_exact_dict(self) -> None:
+        msg: dict[str, Any] = {
+            "id": "gm-1",
+            "threadId": "gt-1",
+            "snippet": "Snippet",
+            "labelIds": ["INBOX"],
+            "internalDate": "abc",
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "alice@example.com"},
+                    {"name": "To", "value": "bob@example.com"},
+                    {"name": "Cc", "value": "carol@example.com"},
+                    {"name": "Reply-To", "value": "reply@example.com"},
+                    {"name": "Subject", "value": "Subject"},
+                ],
+                "body": {"data": base64.urlsafe_b64encode(b"Body").decode()},
+            },
+        }
+        result = transform_gmail_message(msg)
+        assert result == {
+            **msg,
+            "id": "gm-1",
+            "threadId": "gt-1",
+            "from": "alice@example.com",
+            "to": "bob@example.com",
+            "cc": "carol@example.com",
+            "replyTo": "reply@example.com",
+            "subject": "Subject",
+            "time": "abc",
+            "snippet": "Snippet",
+            "body": "Body",
+            "isThread": True,
+            "is_unread": False,
+            "labelIds": ["INBOX"],
+        }
+
+    def test_gmail_api_null_headers_produce_exact_dict(self) -> None:
+        msg: dict[str, Any] = {
+            "id": None,
+            "threadId": None,
+            "snippet": None,
+            "labelIds": None,
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": None},
+                    {"name": "To", "value": None},
+                    {"name": "Cc", "value": None},
+                    {"name": "Reply-To", "value": None},
+                    {"name": "Subject", "value": None},
+                ],
+                "body": {"data": None},
+            },
+        }
+        result = transform_gmail_message(msg)
+        assert result == {
+            **msg,
+            "id": "",
+            "threadId": "",
+            "from": "",
+            "to": "",
+            "cc": "",
+            "replyTo": "",
+            "subject": "",
+            "time": "",
+            "snippet": "",
+            "body": "",
+            "isThread": False,
+            "is_unread": False,
+            "labelIds": [],
+        }
+
     def test_composio_date_field_takes_priority(self) -> None:
         msg: dict[str, Any] = {
             "messageId": "id1",
@@ -340,24 +520,24 @@ class TestDecodeMessageBody:
         result = decode_message_body(msg)
         assert result == text
 
-    def test_single_part_no_data_returns_none(self) -> None:
+    def test_single_part_no_data_returns_empty(self) -> None:
         msg: dict[str, Any] = {
             "payload": {
                 "body": {"data": ""},
             }
         }
         result = decode_message_body(msg)
-        assert result is None
+        assert result == ""
 
-    def test_single_part_no_body_key_returns_none(self) -> None:
+    def test_single_part_no_body_key_returns_empty(self) -> None:
         msg: dict[str, Any] = {"payload": {}}
         result = decode_message_body(msg)
-        assert result is None
+        assert result == ""
 
-    def test_no_payload_returns_none(self) -> None:
+    def test_no_payload_returns_empty(self) -> None:
         msg: dict[str, Any] = {}
         result = decode_message_body(msg)
-        assert result is None
+        assert result == ""
 
     def test_multipart_html_and_plain_prefers_html(self) -> None:
         html = "<h1>Hello</h1>"
@@ -413,7 +593,7 @@ class TestDecodeMessageBody:
         result = decode_message_body(msg)
         assert result == html
 
-    def test_multipart_no_data_in_parts_returns_none(self) -> None:
+    def test_multipart_no_data_in_parts_returns_empty(self) -> None:
         msg: dict[str, Any] = {
             "payload": {
                 "parts": [
@@ -429,7 +609,7 @@ class TestDecodeMessageBody:
             }
         }
         result = decode_message_body(msg)
-        assert result is None
+        assert result == ""
 
     def test_multipart_empty_parts_list_falls_to_single_part_path(self) -> None:
         # Empty parts list → treated as single-part → checks payload.body.data
@@ -440,7 +620,7 @@ class TestDecodeMessageBody:
             }
         }
         result = decode_message_body(msg)
-        assert result is None
+        assert result == ""
 
     def test_multipart_unknown_mime_type_ignored(self) -> None:
         data = "attachment data"
@@ -456,8 +636,8 @@ class TestDecodeMessageBody:
             }
         }
         result = decode_message_body(msg)
-        # Neither html_body nor plain_body set → returns None
-        assert result is None
+        # Neither html_body nor plain_body set → empty body
+        assert result == ""
 
     def test_decodes_standard_base64_with_plus_and_slash(self) -> None:
         # The function replaces - with + and _ with / before decoding.

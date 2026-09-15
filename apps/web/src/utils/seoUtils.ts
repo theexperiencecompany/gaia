@@ -7,7 +7,7 @@ import type {
   Person,
   WithContext,
 } from "schema-dts";
-import type { BlogPost } from "@/lib/blog";
+import type { BlogContentPost } from "@/lib/blog";
 import { siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
 
@@ -44,7 +44,7 @@ function extractDescription(markdown: string, maxLength: number = 160): string {
 /**
  * Generates metadata for a blog post
  */
-export function generateBlogMetadata(blog: BlogPost): Metadata {
+export function generateBlogMetadata(blog: BlogContentPost): Metadata {
   const description = extractDescription(blog.content);
   const canonicalUrl = `/blog/${blog.slug}`;
   const imageUrl = blog.image || "/og-image.webp";

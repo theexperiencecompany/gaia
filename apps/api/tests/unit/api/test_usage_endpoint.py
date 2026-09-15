@@ -217,7 +217,7 @@ class TestGetUsageHistory:
             response = await client.get(HISTORY_URL, params={"feature_key": "nonexistent"})
 
         assert response.status_code == 400
-        assert "Unknown feature" in response.json()["detail"]
+        assert "Unknown feature" in response.json()["message"]
 
     async def test_get_history_days_below_min_returns_422(self, client: AsyncClient):
         response = await client.get(HISTORY_URL, params={"days": 0})
@@ -290,4 +290,4 @@ class TestGetUsageActivity:
             response = await client.get(ACTIVITY_URL)
 
         assert response.status_code == 500
-        assert response.json()["detail"] == "Failed to get usage activity"
+        assert response.json()["message"] == "Failed to get usage activity"

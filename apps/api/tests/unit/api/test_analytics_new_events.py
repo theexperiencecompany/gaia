@@ -195,7 +195,7 @@ class TestDeviceRevoke:
         ):
             resp = await client.delete("/api/v1/device/dev-1")
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Device not found"
+        assert resp.json()["message"] == "Device not found"
         mock_capture.assert_not_called()
 
     async def test_pair_approve_captures_with_user_id(self, client: AsyncClient) -> None:
@@ -1107,7 +1107,7 @@ class TestTodoNewEvents:
                 "/api/v1/todos/bulk/move", json={"todo_ids": ["t1"], "project_id": "p1"}
             )
         assert resp.status_code == 400
-        assert resp.json()["detail"] == "no such project"
+        assert resp.json()["message"] == "no such project"
         mock_capture.assert_not_called()
 
     async def test_project_create_captures(self, client: AsyncClient) -> None:
@@ -1160,7 +1160,7 @@ class TestTodoNewEvents:
         ):
             resp = await client.put("/api/v1/projects/p1", json={"name": "x"})
         assert resp.status_code == 400
-        assert resp.json()["detail"] == "Cannot update the default Inbox project"
+        assert resp.json()["message"] == "Cannot update the default Inbox project"
         mock_capture.assert_not_called()
 
     async def test_project_update_missing_maps_to_404(self, client: AsyncClient) -> None:
@@ -1174,7 +1174,7 @@ class TestTodoNewEvents:
         ):
             resp = await client.put("/api/v1/projects/p1", json={"name": "x"})
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Project not found"
+        assert resp.json()["message"] == "Project not found"
         mock_capture.assert_not_called()
 
     async def test_project_delete_captures(self, client: AsyncClient) -> None:
@@ -1198,7 +1198,7 @@ class TestTodoNewEvents:
         ):
             resp = await client.delete("/api/v1/projects/p1")
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Project not found"
+        assert resp.json()["message"] == "Project not found"
         mock_capture.assert_not_called()
 
     def _doc(self, **overrides: object) -> TodoDocument:
@@ -1457,174 +1457,3 @@ class TestPostHogIdentityBinding:
 
         assert resp.status_code == 200
         mock_identify.assert_not_called()
-
-
-class TestMcpOauthHelpers:
-    """Direct unit tests for the ``mcp_oauth_callback`` helpers extracted to
-    satisfy the PLR complexity ratchet — every branch and kwarg pinned."""
-
-    async def test_clear_success_awaits_store(self) -> None:
-        from app.api.v1.endpoints.mcp import _clear_excluded_scopes_quietly
-
-        client = MagicMock()
-        client.token_store.clear_excluded_scopes = AsyncMock()
-        with patch("app.api.v1.endpoints.mcp.log") as mock_log:
-            assert await _clear_excluded_scopes_quietly(client, "gh", "oauth_success") is None
-        client.token_store.clear_excluded_scopes.assert_awaited_once_with("gh")
-        mock_log.warning.assert_not_called()
-
-    async def test_clear_failure_warns_with_context_and_swallows(self) -> None:
-        from app.api.v1.endpoints.mcp import _clear_excluded_scopes_quietly
-        from app.constants.log_tags import LogTag
-
-        client = MagicMock()
-        client.token_store.clear_excluded_scopes = AsyncMock(side_effect=RuntimeError("redis down"))
-        with patch("app.api.v1.endpoints.mcp.log") as mock_log:
-            assert await _clear_excluded_scopes_quietly(client, "gh", "provider_error") is None
-        mock_log.warning.assert_called_once_with(
-            f"{LogTag.MCP} Failed to clear excluded scopes",
-            integration_id="gh",
-            error_type="RuntimeError",
-            phase="provider_error",
-        )
-
-    async def test_scope_retry_returns_url(self) -> None:
-        from app.api.v1.endpoints.mcp import _try_scope_retry_url
-
-        client = MagicMock()
-        client.build_scope_retry_url = AsyncMock(return_value="https://retry")
-        result = await _try_scope_retry_url(client, "gh", "bad scope", "https://cb", "/i")
-        assert result == "https://retry"
-        client.build_scope_retry_url.assert_awaited_once_with("gh", "bad scope", "https://cb", "/i")
-
-    async def test_scope_retry_failure_returns_none(self) -> None:
-        from app.api.v1.endpoints.mcp import _try_scope_retry_url
-        from app.constants.log_tags import LogTag
-
-        client = MagicMock()
-        client.build_scope_retry_url = AsyncMock(side_effect=Exception("redis down"))
-        with patch("app.api.v1.endpoints.mcp.log") as mock_log:
-            assert await _try_scope_retry_url(client, "gh", "bad scope", "https://cb", "/i") is None
-        mock_log.warning.assert_called_once_with(
-            f"{LogTag.MCP} Scope retry URL build failed",
-            integration_id="gh",
-            error_type="Exception",
-        )
-
-    def test_map_provider_error_code(self) -> None:
-        from app.api.v1.endpoints.mcp import _map_provider_error_code
-
-        assert _map_provider_error_code("server_error") == "oauth_server_error"
-        for code in [
-            "access_denied",
-            "invalid_request",
-            "unauthorized_client",
-            "unsupported_response_type",
-            "invalid_scope",
-            "temporarily_unavailable",
-        ]:
-            assert _map_provider_error_code(code) == code
-        assert _map_provider_error_code("something_new") == "authorization_failed"
-
-    def test_redirect_urls(self) -> None:
-        from app.api.v1.endpoints.mcp import _oauth_connected_url, _oauth_failed_url
-
-        assert (
-            _oauth_failed_url("https://app", "/i", "gh", "missing_code")
-            == "https://app/i?id=gh&status=failed&error=missing_code"
-        )
-        assert (
-            _oauth_connected_url("https://app", "/i", "gh", "a b")
-            == "https://app/i?id=gh&status=connected&name=a%20b"
-        )
-
-    async def test_invalid_scope_error_retries_to_retry_url(self, client: AsyncClient) -> None:
-        probe_client = AsyncMock()
-        probe_client.build_scope_retry_url.return_value = "https://retry-url"
-        with (
-            patch(
-                "app.api.v1.endpoints.mcp.get_mcp_client",
-                new_callable=AsyncMock,
-                return_value=probe_client,
-            ),
-            patch("app.api.v1.endpoints.mcp.get_api_base_url", return_value="http://api"),
-            patch("app.api.v1.endpoints.mcp.get_frontend_url", return_value="http://frontend"),
-            patch("app.api.v1.endpoints.mcp.capture_context_event"),
-        ):
-            resp = await client.get(
-                "/api/v1/mcp/oauth/callback",
-                params={
-                    "state": "tok:gh:/integrations",
-                    "error": "invalid_scope",
-                    "error_description": "Scope 'user:org:read' rejected",
-                },
-                follow_redirects=False,
-            )
-        assert resp.status_code in (302, 307)
-        assert resp.headers["location"] == "https://retry-url"
-        probe_client.build_scope_retry_url.assert_awaited_once_with(
-            "gh",
-            "Scope 'user:org:read' rejected",
-            "http://api/api/v1/mcp/oauth/callback",
-            "/integrations",
-        )
-
-    async def test_provider_error_clears_scopes_and_redirects_failed(
-        self, client: AsyncClient
-    ) -> None:
-        from app.constants.log_tags import LogTag
-
-        mcp_client = AsyncMock()
-        with (
-            patch(
-                "app.api.v1.endpoints.mcp.get_mcp_client",
-                new_callable=AsyncMock,
-                return_value=mcp_client,
-            ),
-            patch(
-                "app.api.v1.endpoints.mcp._clear_excluded_scopes_quietly",
-                new_callable=AsyncMock,
-            ) as mock_clear,
-            patch("app.api.v1.endpoints.mcp.log") as mock_log,
-            patch("app.api.v1.endpoints.mcp.get_frontend_url", return_value="http://frontend"),
-            patch("app.api.v1.endpoints.mcp.capture_context_event"),
-        ):
-            resp = await client.get(
-                "/api/v1/mcp/oauth/callback",
-                params={"state": "tok:gh:/integrations", "error": "access_denied"},
-                follow_redirects=False,
-            )
-        assert resp.status_code in (302, 307)
-        assert (
-            resp.headers["location"]
-            == "http://frontend/integrations?id=gh&status=failed&error=access_denied"
-        )
-        mock_clear.assert_awaited_once_with(mcp_client, "gh", "provider_error")
-        mock_log.warning.assert_called_once_with(
-            f"{LogTag.MCP} OAuth error returned by provider",
-            integration_id="gh",
-            oauth_error="access_denied",
-            oauth_error_description=None,
-        )
-
-    async def test_missing_code_redirects_failed(self, client: AsyncClient) -> None:
-        mcp_client = AsyncMock()
-        with (
-            patch(
-                "app.api.v1.endpoints.mcp.get_mcp_client",
-                new_callable=AsyncMock,
-                return_value=mcp_client,
-            ),
-            patch("app.api.v1.endpoints.mcp.get_frontend_url", return_value="http://frontend"),
-            patch("app.api.v1.endpoints.mcp.capture_context_event"),
-        ):
-            resp = await client.get(
-                "/api/v1/mcp/oauth/callback",
-                params={"state": "tok:gh:/integrations"},
-                follow_redirects=False,
-            )
-        assert resp.status_code in (302, 307)
-        assert (
-            resp.headers["location"]
-            == "http://frontend/integrations?id=gh&status=failed&error=missing_code"
-        )

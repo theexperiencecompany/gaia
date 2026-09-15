@@ -4,13 +4,14 @@ import { StarAward01Icon, WorkflowCircle03Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Link from "next/link";
-import { useCallback, useRef, useState } from "react";
+import { useState } from "react";
 import { ChevronUp } from "@/components/shared/icons";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
-import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import type { UseCase } from "@/types/features/workflowTypes";
+import { useScrollContainer } from "../hooks/useScrollContainer";
+import { useUseCaseCategories } from "../hooks/useUseCaseCategories";
 
 // Smoothly scroll the given scroll region (or window) back to the top.
 function scrollToTop(
@@ -88,20 +89,6 @@ function filterUseCases(
 
 // Unique step categories, in order — one pass (dedupe via Set) instead of a
 // map→filter chain.
-function uniqueStepCategories(
-  steps: Array<{ category: string }> | undefined | null,
-): string[] {
-  const seen = new Set<string>();
-  const categories: string[] = [];
-  for (const step of steps ?? []) {
-    if (!seen.has(step.category)) {
-      seen.add(step.category);
-      categories.push(step.category);
-    }
-  }
-  return categories;
-}
-
 // Static class strings per column count — Tailwind only emits classes it can
 // find literally in the source, so these can't be built by interpolation.
 const COLUMN_CLASSES: Record<number, string> = {
@@ -226,102 +213,23 @@ export default function UseCaseSection({
     !hideUserWorkflows,
   );
 
-  // Fetch explore workflows from centralized store (skip if provided via props)
-  const { workflows: storeExploreWorkflows } = useExploreWorkflows(
-    !propExploreWorkflows || propExploreWorkflows.length === 0,
-  );
+  const { exploreWorkflows, allCategories } = useUseCaseCategories({
+    exploreWorkflows: propExploreWorkflows,
+    hideAllCategory,
+    hideUserWorkflows,
+  });
 
-  // Convert store workflows to UseCase format
-  const convertedExploreWorkflows: UseCase[] = storeExploreWorkflows.map(
-    (w) => ({
-      title: w.title,
-      description: w.description,
-      action_type: "workflow" as const,
-      icon: w.icon,
-      icon_color: w.icon_color,
-      system_workflow_key: w.system_workflow_key,
-      source_integration: w.source_integration,
-      trigger_config: w.trigger_config,
-      integrations: uniqueStepCategories(w.steps),
-      categories: w.categories || ["featured"],
-      published_id: w.id,
-      slug: w.slug ?? undefined,
-      steps: w.steps,
-      creator: w.creator,
-      total_executions: w.total_executions || 0,
-    }),
-  );
-
-  // Use provided explore workflows or converted store workflows
-  const exploreWorkflows =
-    propExploreWorkflows && propExploreWorkflows.length > 0
-      ? propExploreWorkflows
-      : convertedExploreWorkflows;
-
-  // Generate categories dynamically from the actual data
-  const dynamicCategories = Array.from(
-    new Set(exploreWorkflows.flatMap((uc) => uc.categories || [])),
-  ).toSorted();
-
-  const allCategories = [
-    ...(hideAllCategory ? [] : ["all"]),
-    "featured",
-    ...(hideUserWorkflows ? [] : ["workflows"]),
-    ...dynamicCategories.filter((cat) => cat !== "featured"),
-  ];
-
-  // Cache the scroll container to avoid repeated DOM traversals.
-  // When `scroller` prop is provided (including null), skip traversal entirely.
-  const scrollContainerCache = useRef<HTMLElement | null | undefined>(
-    undefined,
-  );
-
-  const getScrollContainer = useCallback((): HTMLElement | null => {
-    // Explicit prop provided — use it directly (null means window/no container)
-    if (scroller !== undefined) return scroller;
-
-    // Return cached result if already resolved
-    if (scrollContainerCache.current !== undefined) {
-      return scrollContainerCache.current;
-    }
-
-    // Walk up the DOM once and cache the result
-    let current = dummySectionRef.current?.parentElement;
-    while (current) {
-      const styles = window.getComputedStyle(current);
-      if (styles.overflowY === "auto" || styles.overflowY === "scroll") {
-        scrollContainerCache.current = current;
-        return current;
-      }
-      current = current.parentElement;
-    }
-    scrollContainerCache.current = null;
-    return null;
-  }, [dummySectionRef, scroller]);
+  const getScrollContainer = useScrollContainer(dummySectionRef, scroller);
 
   const filteredUseCases = filterUseCases(exploreWorkflows, selectedCategory);
 
   const handleCategoryClick = (category: string) => {
-    const wasSelected = selectedCategory === category;
     const scrollContainer = getScrollContainer();
     const useWindowScroll = scrollContainer === null;
 
-    if (wasSelected) {
-      // Unselecting: for featured, go back to default, for others scroll to top and reset to featured
-      if (category === "featured") {
-        // If featured is clicked again, briefly unselect then reselect to show visual feedback
-        setSelectedCategory(null);
-        setTimeout(() => setSelectedCategory("featured"), 100);
-      } else {
-        // For other categories, unselect and go back to featured as default
-        setSelectedCategory("featured");
-        scrollToTop(scrollContainer, useWindowScroll);
-      }
-    } else {
-      // Selecting: only scroll if we need to bring the section into view
+    if (selectedCategory !== category) {
       setSelectedCategory(category);
-
-      // Small delay to let state update
+      // Small delay to let state update, then bring the section into view
       setTimeout(() => {
         if (!dummySectionRef.current) return;
         scrollSectionIntoView(
@@ -331,7 +239,17 @@ export default function UseCaseSection({
           category,
         );
       }, 50);
+      return;
     }
+    if (category === "featured") {
+      // Featured clicked again: briefly unselect then reselect for feedback
+      setSelectedCategory(null);
+      setTimeout(() => setSelectedCategory("featured"), 100);
+      return;
+    }
+    // Any other category unselects back to featured, at the top
+    setSelectedCategory("featured");
+    scrollToTop(scrollContainer, useWindowScroll);
   };
 
   return (

@@ -37,9 +37,9 @@ from app.models.trigger_subscription_models import (
     SubscriptionAction,
     SubscriptionCondition,
     SubscriptionResolution,
-    SubscriptionStatus,
     TriggerOrigin,
     TriggerSubscription,
+    TriggerSubscriptionStatus,
 )
 from app.services.triggers.subscription_dispatch import dispatch_to_subscribed_todos
 
@@ -243,7 +243,7 @@ class TestTriggerDispatchAgainstRealInfra:
         paused = (
             todos[0]
             .trigger_subscriptions[0]
-            .model_copy(update={"status": SubscriptionStatus.PAUSED})
+            .model_copy(update={"status": TriggerSubscriptionStatus.PAUSED})
         )
         await todo_repository.update(
             todos[0].id, user_id=_new_user, update=TodoUpdate(trigger_subscriptions=[paused])

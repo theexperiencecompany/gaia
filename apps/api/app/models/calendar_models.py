@@ -1,19 +1,23 @@
 from datetime import datetime
 import re
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    GetJsonSchemaHandler,
     SerializerFunctionWrapHandler,
     ValidationInfo,
     field_validator,
     model_serializer,
     model_validator,
 )
+from pydantic.json_schema import JsonSchemaValue
+from pydantic_core import CoreSchema
 
 from app.db.repositories.base import MongoDocument
+from app.schemas.common import ResponseModel
 
 
 class CalendarPreferencesUpdateRequest(BaseModel):
@@ -38,6 +42,20 @@ class GooglePassthroughModel(BaseModel):
     def _drop_unset_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         dumped = handler(self)
         return {key: value for key, value in dumped.items() if key in self.model_fields_set}
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls, core_schema: CoreSchema, handler: GetJsonSchemaHandler
+    ) -> JsonSchemaValue:
+        """The declared fields plus ``additionalProperties`` — not the serializer's ``dict``.
+
+        The wrap serializer above only narrows *which* keys are emitted; without
+        this, Pydantic documents the output as its bare ``dict`` return type and
+        every generated client type loses the fields GAIA declares.
+        """
+        without_serializer = dict(core_schema)
+        without_serializer.pop("serialization", None)
+        return handler(cast(CoreSchema, without_serializer))
 
 
 class GoogleCalendarEventDateTime(GooglePassthroughModel):
@@ -92,13 +110,16 @@ class GoogleCalendarListEntry(GooglePassthroughModel):
     """One entry of Google's ``calendarList.list`` payload, forwarded to the client
     verbatim.
 
-    Only ``id`` and ``summary`` are declared — the fields the service reads.
-    Everything else (``description``, ``backgroundColor``, ``primary``, ...) rides
-    through as extras and is projected into ``CalendarSummary`` where it is needed.
+    Declared: the fields the service and the web calendar picker read. Everything
+    else Google sends rides through as extras and is projected into
+    ``CalendarSummary`` where it is needed.
     """
 
     id: str
     summary: str | None = None
+    description: str | None = None
+    backgroundColor: str | None = None
+    primary: bool | None = None
 
 
 class CalendarSummary(BaseModel):
@@ -111,7 +132,7 @@ class CalendarSummary(BaseModel):
     backgroundColor: str | None = None
 
 
-class CalendarListResponse(BaseModel):
+class CalendarListResponse(ResponseModel):
     """Response for ``GET /calendar/list`` — Google's ``calendarList.list`` payload.
 
     ``extra="allow"`` keeps the envelope keys Google sends alongside ``items``
@@ -731,9 +752,12 @@ class BaseCalendarEvent(BaseModel):
 class EventCreateRequest(BaseCalendarEvent):
     """Model for calendar event creation for service layer."""
 
-    # Direct time fields for service operations
-    start: str = Field(..., title="Start time in ISO format or date for all-day events")
-    end: str = Field(..., title="End time in ISO format or date for all-day events")
+    # Direct time fields for service operations. Optional on the wire: an
+    # all-day event may omit them and the service picks its bounds (a missing
+    # start is today, a missing end is the day after); a timed event without
+    # them is rejected by the service, not the schema.
+    start: str | None = Field(None, title="Start time in ISO format or date for all-day events")
+    end: str | None = Field(None, title="End time in ISO format or date for all-day events")
     timezone: str | None = Field(
         None, title="Timezone for the event (e.g., 'America/Los_Angeles', 'UTC')"
     )
@@ -741,7 +765,9 @@ class EventCreateRequest(BaseCalendarEvent):
     # Validate that start and end times are in ISO format or date format
     @field_validator("start", "end")
     @classmethod
-    def validate_time_format(cls, v: str, info: ValidationInfo) -> str:
+    def validate_time_format(cls, v: str | None, info: ValidationInfo) -> str | None:
+        if v is None:
+            return None
         field_name = info.field_name
 
         try:

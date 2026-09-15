@@ -189,7 +189,7 @@ class TestUserIntegrationEndpoints:
         )
 
         assert response.status_code == 400
-        assert "already added" in response.json()["detail"]
+        assert "already added" in response.json()["message"]
 
     @patch(
         "app.api.v1.endpoints.integrations.user.add_user_integration_service",
@@ -220,7 +220,7 @@ class TestUserIntegrationEndpoints:
         )
 
         assert response.status_code == 500
-        assert "Failed to add integration" in response.json()["detail"]
+        assert "Failed to add integration" in response.json()["message"]
 
     async def test_add_integration_requires_auth(self, unauthenticated_client):
         """POST without auth should return 401."""
@@ -285,7 +285,7 @@ class TestUserIntegrationEndpoints:
         response = await test_client.delete(f"{_BASE}/nonexistent")
 
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"].lower()
+        assert "not found" in response.json()["message"].lower()
 
     @patch(
         "app.api.v1.endpoints.integrations.user.remove_user_integration",
@@ -298,7 +298,7 @@ class TestUserIntegrationEndpoints:
         response = await test_client.delete(f"{_BASE}/gmail")
 
         assert response.status_code == 500
-        assert "Failed to remove integration" in response.json()["detail"]
+        assert "Failed to remove integration" in response.json()["message"]
 
     async def test_remove_integration_requires_auth(self, unauthenticated_client):
         """DELETE without auth should return 401."""
@@ -386,7 +386,7 @@ class TestIntegrationEndpointLogic:
         response = await test_client.post(_BASE, json={"integration_id": "gmail"})
 
         assert response.status_code == 400
-        detail = response.json()["detail"]
+        detail = response.json()["message"]
         assert "already" in detail.lower()
 
     @patch(
@@ -405,7 +405,7 @@ class TestIntegrationEndpointLogic:
         response = await test_client.delete(f"{_BASE}/does-not-exist")
 
         assert response.status_code == 404
-        detail = response.json()["detail"].lower()
+        detail = response.json()["message"].lower()
         assert "not found" in detail
 
     @patch(

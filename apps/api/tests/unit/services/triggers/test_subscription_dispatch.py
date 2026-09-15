@@ -23,9 +23,9 @@ from app.models.trigger_subscription_models import (
     SubscriptionAction,
     SubscriptionCondition,
     SubscriptionResolution,
-    SubscriptionStatus,
     TriggerOrigin,
     TriggerSubscription,
+    TriggerSubscriptionStatus,
 )
 from app.services.triggers.subscription_dispatch import (
     dispatch_to_subscribed_todos,
@@ -259,7 +259,7 @@ class TestGating:
 
     async def test_a_paused_subscription_does_not_fire(self, deps) -> None:
         deps.repo.find_active_by_user_and_trigger.return_value = [
-            _todo(trigger_subscriptions=[_subscription(status=SubscriptionStatus.PAUSED)])
+            _todo(trigger_subscriptions=[_subscription(status=TriggerSubscriptionStatus.PAUSED)])
         ]
 
         assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {}) == 0

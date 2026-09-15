@@ -20,6 +20,8 @@ from app.api.v1.middleware.auth import (
     WorkOSAuthMiddleware,
     get_current_user,
 )
+from app.constants.auth import DEV_USER_MISSING_HINT
+from app.constants.error_codes import NOT_AUTHENTICATED
 from app.models.user_models import UserDocument
 from tests.helpers import captured_wide_event
 
@@ -714,3 +716,26 @@ class TestPostHogRequestContextIdentity:
 
         assert TestClient(app).get("/notes").status_code == 200
         assert seen["distinct_id"] == GAIA_USER_ID
+
+
+class TestDevBypassWithoutAMongoUser:
+    """A bypass target with no Mongo user fails loud, as the one envelope."""
+
+    def test_the_401_names_the_target_and_how_to_mint_it(self, monkeypatch) -> None:
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", "dev@example.com")
+        app = _build_test_app()
+        with patch(
+            "app.api.v1.middleware.auth.resolve_dev_bypass_user",
+            new_callable=AsyncMock,
+            return_value=("ghost@example.com", None),
+        ):
+            resp = TestClient(app).get("/api/v1/protected")
+
+        assert resp.status_code == 401
+        assert resp.json() == {
+            "message": f"No GAIA user exists for 'ghost@example.com' — {DEV_USER_MISSING_HINT}",
+            "code": NOT_AUTHENTICATED,
+        }

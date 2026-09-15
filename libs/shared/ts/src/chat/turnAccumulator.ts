@@ -1,5 +1,10 @@
+import type { ImageData } from "../api/generated";
+
+export type { ImageData } from "../api/generated";
+
 import { NEW_MESSAGE_BREAK_TOKEN } from "../utils/messageBreakUtils";
 import { upsertApprovalToolData } from "./approvals";
+
 import type {
   ChatStreamEvent,
   StreamToolDataEntry,
@@ -43,7 +48,7 @@ export interface TurnAccumulator {
   messageBreakPending: boolean;
   toolData: StreamToolDataEntry[];
   followUpActions: string[] | null;
-  imageData: { url: string; prompt?: string } | null;
+  imageData: ImageData | null;
   generatingImage: boolean;
   todoProgress: Record<string, TodoProgressSnapshot> | null;
   /** Untyped passthrough payload fields (e.g. memory_data) merged onto the message. */
@@ -351,10 +356,11 @@ const applyTodoProgress = (
   };
 };
 
-const isImageDataPayload = (
-  value: unknown,
-): value is { url: string; prompt?: string } =>
-  typeof value === "object" && value !== null && "url" in value;
+const isImageDataPayload = (value: unknown): value is ImageData =>
+  typeof value === "object" &&
+  value !== null &&
+  "url" in value &&
+  "prompt" in value;
 
 // Untyped passthrough frames (image tool statuses, memory data, …) that reach
 // the parser as `unknown`. Image generation gets first-class accumulator state;
@@ -367,7 +373,7 @@ const applyUnknownPayload = (
     return {
       ...acc,
       generatingImage: true,
-      imageData: { url: "" },
+      imageData: { url: "", prompt: "" },
       responseText: "",
     };
   }

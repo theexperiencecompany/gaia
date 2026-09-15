@@ -31,7 +31,7 @@ from app.models.account_models import (
     VoiceCatalogProjection,
     VoiceSelectedProjection,
 )
-from app.models.payment_models import PlanType
+from app.models.payment_models import PlanDuration, PlanType
 from app.services._vfs_scheduler import make_scheduler
 from app.services.payments.payment_service import payment_service
 from app.services.platform_link_service import Platform, PlatformLinkService
@@ -148,19 +148,22 @@ async def _safe_linked_files(
         return [], stale
 
 
+_PERIOD_LABEL = {PlanDuration.MONTHLY: "month", PlanDuration.YEARLY: "year"}
+
+
 async def _subscription_body(user_id: str) -> str:
     status = await payment_service.get_user_subscription_status(user_id)
     plan_type = (status.plan_type or PlanType.FREE).value
-    plan = status.current_plan or {}
-    subscription = status.subscription or {}
+    plan = status.current_plan
+    subscription = status.subscription
     projection = SubscriptionProjection(
         plan_type=plan_type,
-        plan_name=plan.get("name"),
+        plan_name=plan.name if plan else None,
         price=None
-        if not plan.get("amount")
-        else f"{plan.get('currency', '')} {plan['amount']} / {plan.get('duration', 'period')}".strip(),
-        status=subscription.get("status"),
-        cancel_scheduled=bool(subscription.get("cancel_at_next_billing_date")),
+        if plan is None or not plan.amount
+        else f"{plan.currency} {plan.amount} / {_PERIOD_LABEL[plan.duration]}",
+        status=subscription.status if subscription else None,
+        cancel_scheduled=bool(subscription and subscription.cancel_at_next_billing_date),
     )
     return projection.model_dump_json(indent=2) + "\n"
 

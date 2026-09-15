@@ -2,7 +2,6 @@
 Clean and lean workflow models for GAIA workflow system.
 """
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -13,7 +12,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    SerializeAsAny,
     field_serializer,
     field_validator,
     model_validator,
@@ -22,6 +20,7 @@ from pydantic import (
 from app.db.repositories.base import MongoDocument
 from app.models.scheduler_models import BaseScheduledTask, ScheduledTaskStatus
 from app.models.trigger_configs import TriggerConfigData
+from app.schemas.common import ResponseModel
 from app.utils.cron_utils import get_next_run_time, validate_cron_expression
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
@@ -72,7 +71,7 @@ class IntegrationRef(BaseModel):
     name: str
 
 
-class WorkflowStep(BaseModel):
+class WorkflowStep(ResponseModel):
     """A single step in a workflow."""
 
     id: str = Field(default="", description="Unique identifier for the step")
@@ -191,11 +190,11 @@ class WorkflowCreator(TypedDict):
     avatar: str | None
 
 
-class Workflow(BaseScheduledTask):
+class Workflow(BaseScheduledTask, ResponseModel):
     """Main workflow model extending BaseScheduledTask for scheduling capabilities."""
 
     # Override ID generation for workflows - always generate ID
-    id: str | None = Field(
+    id: str = Field(
         default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}",
         description="Unique identifier",
     )
@@ -259,6 +258,10 @@ class Workflow(BaseScheduledTask):
     is_public: bool = Field(
         default=False,
         description="Whether this workflow is published to the community marketplace",
+    )
+    is_explore: bool = Field(
+        default=False,
+        description="Whether this is a curated explore card (seeded, listed ahead of community)",
     )
     slug: str | None = Field(
         default=None,
@@ -522,22 +525,25 @@ class UpdateWorkflowRequest(BaseModel):
         return stripped or None
 
 
-class WorkflowResponse(BaseModel):
+def as_read_view(workflow: Workflow) -> WorkflowWithIntegrations:
+    """The wire shape of a workflow: a write path's plain ``Workflow`` widened
+    to the read view (its computed integration fields empty)."""
+    if isinstance(workflow, WorkflowWithIntegrations):
+        return workflow
+    return WorkflowWithIntegrations.model_validate(workflow.model_dump())
+
+
+class WorkflowResponse(ResponseModel):
     """Response model for workflow operations."""
 
-    # SerializeAsAny so a WorkflowWithIntegrations (from read paths) serializes
-    # its extra integration fields; plain Workflow instances still validate.
-    workflow: SerializeAsAny[Workflow]
+    workflow: WorkflowWithIntegrations
     message: str = Field(description="Success or status message")
 
 
-class WorkflowListResponse(BaseModel):
+class WorkflowListResponse(ResponseModel):
     """Response model for listing workflows."""
 
-    # Sequence (not list) because list is invariant: the read path hands us
-    # list[WorkflowWithIntegrations]. SerializeAsAny keeps the subclass's extra
-    # integration fields in the payload while still accepting a plain Workflow.
-    workflows: Sequence[SerializeAsAny[Workflow]]
+    workflows: list[WorkflowWithIntegrations]
 
 
 class WorkflowExecutionRequest(BaseModel):
@@ -582,19 +588,63 @@ class RegenerateStepsRequest(BaseModel):
     )
 
 
-class PublicWorkflowsResponse(BaseModel):
+class PublicWorkflowStep(ResponseModel):
+    """The step summary a marketplace card shows: what it does, not how."""
+
+    id: str
+    title: str
+    description: str
+    category: str
+
+
+class PublicWorkflowCard(ResponseModel):
+    """One marketplace card, as the community, explore and related lists emit it.
+
+    The three lists share this shape; ``categories`` and ``total_executions``
+    are set only where the list has them (explore, related) and are null on the
+    others, so a consumer never has to guess which list a card came from.
+    """
+
+    id: str
+    title: str
+    description: str
+    slug: str
+    prompt: str
+    icon: str | None = None
+    icon_color: str | None = None
+    # Present only on the built-in cards: lets the client dedupe against a
+    # workflow the user was already provisioned, and name the integration that
+    # sets it up automatically.
+    system_workflow_key: str | None = None
+    source_integration: str | None = None
+    # The card advertises "Daily at 8am" / "on new email", so adding it has to
+    # reproduce that trigger — without this the client can only guess, and every
+    # added workflow silently became manual.
+    trigger_config: TriggerConfig | None = None
+    steps: list[PublicWorkflowStep]
+    created_at: datetime
+    creator: WorkflowCreator
+    categories: list[str] | None = None
+    total_executions: int | None = None
+
+
+def public_workflow_steps(row: "PublicWorkflowRow") -> list[PublicWorkflowStep]:
+    """The card's step summaries; an uncategorised step reads as ``general``."""
+    return [
+        PublicWorkflowStep(
+            id=step.id,
+            title=step.title,
+            description=step.description,
+            category=step.category or "general",
+        )
+        for step in row.steps
+    ]
+
+
+class PublicWorkflowsResponse(ResponseModel):
     """Response model for listing public workflows."""
 
-    # Deliberately left as untyped card dicts. Three endpoints build these — the
-    # community and explore lists here plus /public/{id}/workflows in
-    # integrations/public.py — and each emits a different key set (explore adds
-    # categories + total_executions, related adds total_executions). Modelling
-    # them as a card base + subclasses means every construction site must hand
-    # over a model instead of a dict, or Pydantic silently drops the subclass-only
-    # keys from the payload; that reaches outside this flow's files and changes
-    # what a frontend consumer receives if it is done partially (Type Safety
-    # item 14). Typed together with that endpoint, not before.
-    workflows: list[dict[str, Any]] = Field(
+    workflows: list[PublicWorkflowCard] = Field(
         description="List of public workflows with creator info"
     )
     total: int = Field(description="Total number of public workflows")

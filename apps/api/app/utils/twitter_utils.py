@@ -7,7 +7,7 @@ attaches the user's OAuth token server-side; callers only supply `user_id`.
 from typing import Any
 
 from app.constants.log_tags import LogTag
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -24,12 +24,14 @@ def _proxy(
     query: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     response: dict[str, Any] | None = proxy_request_sync(
-        user_id=user_id,
-        toolkit=TWITTER_TOOLKIT,
-        endpoint=endpoint,
-        method=method,  # type: ignore[arg-type]  # proxy accepts any HTTP verb literal; twitter caller passes one narrowed per endpoint
-        body=body,
-        query=query,
+        ProxyRequest(
+            user_id=user_id,
+            toolkit=TWITTER_TOOLKIT,
+            endpoint=endpoint,
+            method=method,  # type: ignore[arg-type]  # proxy accepts any HTTP verb literal; twitter caller passes one narrowed per endpoint
+            body=body,
+            query=query,
+        )
     )
     return response
 

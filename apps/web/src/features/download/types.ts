@@ -1,9 +1,6 @@
-export interface DesktopReleaseAsset {
-  name: string;
-  download_url: string;
-  size: number;
-  content_type: string | null;
-}
+import type { DesktopReleaseAsset } from "@shared/api/generated";
+
+export type { DesktopReleaseAsset } from "@shared/api/generated";
 
 export interface DesktopRelease {
   tag: string;
