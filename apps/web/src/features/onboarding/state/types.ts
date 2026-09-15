@@ -5,100 +5,62 @@
  * remembers and how it can change.
  */
 
-import type { ClarifyAnswer, ClarifyQuestion } from "../types";
-import type { OnboardingStage, PersonalizationData } from "../types/websocket";
-
 export type Stage =
   | "questions"
-  | "focus"
-  | "clarify"
-  | "integrationSelect"
-  | "processing"
-  | "revealWriting"
-  | "revealTodos"
-  | "workflows"
-  | "platforms"
+  | "payment"
+  | "paidReveal"
+  | "platformPick"
   | "chat";
 
 export interface OnboardingState {
+  /** Answers keyed by `FIELD_NAMES`. Q2 lives in `selectedNeeds`, not here. */
   responses: Record<string, string>;
   questionIndex: number;
-  draftText: string;
   draftProfession: string | null;
+  selectedNeeds: string[];
+  /** Q2 "Something else", in the user's words. Empty when not used. */
+  otherNeed: string;
+  /** Whether Q2's "Something else" field is open. Owned here, not by the
+   * chip row: the open field counts against the pick cap even before it
+   * carries words, and the cap is the reducer's to enforce. */
+  otherNeedOpen: boolean;
+  /**
+   * Whether Q1 + Q2 have reached the server (`PATCH /onboarding/preferences`).
+   * The link-code mint composes its opener from those two fields server-side,
+   * so nothing may mint until this is true.
+   */
+  preferencesPersisted: boolean;
 
-  server: PersonalizationData | null;
-
-  progressByStage: Partial<Record<OnboardingStage, string>>;
-  completedStages: Set<OnboardingStage>;
-
-  ackedWritingStyle: boolean;
-  ackedTodos: boolean;
-
-  workflowsConfirmed: boolean;
+  paidRevealAcked: boolean;
   platformsConfirmed: boolean;
   connectedPlatform: string | null;
 
-  todoExecutionMessage: string | null;
-  todoExecutionConvoId: string | null;
-  todoExecutionStarted: boolean;
-  todoExecutionTodo: {
-    id: string;
-    title: string;
-    sourceEmail: { sender: string; subject: string } | null;
-  } | null;
-
   isRestarting: boolean;
 
-  integrationSelectDone: boolean;
-  selectedIntegrations: string[];
+  /** Whether this user has already watched the intro. Persisted like the rest
+   * of the wizard's progress, so it never replays on reload. `null` until the
+   * client has read storage — server and first client render agree on null. */
+  introSeen: boolean | null;
 
-  clarifyQuestions: ClarifyQuestion[] | null;
-  clarifyAnswers: Record<string, ClarifyAnswer>;
-  clarifyActiveTab: string | null;
-  clarifyCustomDrafts: Record<string, string>;
-  clarifyOtherSelected: Record<string, boolean>;
-  clarifySubmitted: boolean;
+  /** Which user's cache the reducer holds; `null` until the first load.
+   * Derived nowhere else, so the persistence hook needs no state of its own. */
+  hydratedFor: string | null;
 }
 
 export type Action =
-  | { type: "draftText"; value: string }
   | { type: "draftProfession"; value: string | null }
   | { type: "answer"; field: string; value: string }
-  | { type: "serverSnapshot"; data: PersonalizationData }
-  | {
-      type: "serverPatch";
-      patch: Partial<PersonalizationData>;
-    }
-  | { type: "progress"; stage: OnboardingStage; message: string }
-  | { type: "stageComplete"; stage: OnboardingStage }
-  | { type: "ackWriting" }
-  | { type: "ackTodos" }
-  | { type: "confirmWorkflows" }
+  | { type: "toggleNeed"; value: string }
+  | { type: "setOtherNeed"; value: string }
+  | { type: "toggleOtherNeed" }
+  | { type: "submitNeeds" }
+  | { type: "preferencesPersisted" }
+  | { type: "ackPaidReveal" }
   | { type: "platformConnected"; platform: string }
   | { type: "skipPlatforms" }
-  | {
-      type: "executeTodo";
-      message: string;
-      convoId: string;
-      todo: {
-        id: string;
-        title: string;
-        sourceEmail: { sender: string; subject: string } | null;
-      };
-    }
-  | { type: "clearTodoExecutionMessage" }
-  | { type: "ackTodoDemo" }
+  | { type: "introSeen" }
   | { type: "restartStart" }
   | { type: "restartDone" }
   | { type: "hydrate"; partial: Partial<OnboardingState> }
-  | { type: "reset" }
-  | { type: "clarifyLoaded"; questions: ClarifyQuestion[] }
-  | { type: "clarifySelectOption"; questionId: string; value: string }
-  | { type: "clarifyOtherSelect"; questionId: string }
-  | { type: "clarifyCustomDraft"; questionId: string; value: string }
-  | { type: "clarifyCustomCommit"; questionId: string }
-  | { type: "clarifySkip"; questionId: string }
-  | { type: "clarifyTab"; questionId: string }
-  | { type: "clarifySubmit" }
-  | { type: "integrationSelectUpdate"; integrations: string[] }
-  | { type: "integrationSelectConfirm" };
+  | { type: "hydrated"; userId: string }
+  | { type: "reset" };

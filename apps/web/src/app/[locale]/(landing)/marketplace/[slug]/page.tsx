@@ -355,7 +355,7 @@ export default async function IntegrationPage({ params }: Props) {
     },
     {
       question: `Is the ${integration.name} integration free?`,
-      answer: `Yes. GAIA offers a generous free tier that includes access to community integrations like ${integration.name}. You can connect ${integration.name}, run automations, and use all available tools at no cost. Paid plans unlock higher usage limits and advanced workflow features.`,
+      answer: `Community integrations like ${integration.name} are included with every GAIA plan at no extra charge — connect it, run automations, and use all available tools as part of your subscription. Paid plans unlock higher usage limits and advanced workflow features.`,
     },
     {
       question: `What can GAIA do with ${integration.name}?`,

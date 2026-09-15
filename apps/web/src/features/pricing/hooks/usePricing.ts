@@ -3,13 +3,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 
 import { type Plan, pricingApi } from "../api/pricingApi";
 
 export const usePricing = (initialPlans: Plan[] = []) => {
   const [error, setError] = useState<string | null>(null);
-  const user = useUser();
+  const user = useCurrentUser();
 
   // Get all plans (no authentication required)
   const {
@@ -35,27 +35,30 @@ export const usePricing = (initialPlans: Plan[] = []) => {
     queryKey: ["subscription-status"],
     queryFn: () => pricingApi.getSubscriptionStatus(),
     staleTime: 1 * 60 * 1000, // 1 minute
-    enabled: !!user, // Only fetch when user is logged in
+    enabled: !!user.userId, // Only fetch once the persisted user store has a real id
     retry: false, // Don't retry on auth failures
   });
 
   // Verify payment status
-  const verifyPayment = useCallback(async () => {
-    try {
-      setError(null);
-      const result = await pricingApi.verifyPayment();
+  const verifyPayment = useCallback(
+    async (subscriptionId?: string | null) => {
+      try {
+        setError(null);
+        const result = await pricingApi.verifyPayment(subscriptionId);
 
-      // Refetch subscription status after verification
-      await refetchSubscription();
+        // Refetch subscription status after verification
+        await refetchSubscription();
 
-      return result;
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Payment verification failed";
-      setError(errorMessage);
-      throw err;
-    }
-  }, [refetchSubscription]);
+        return result;
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Payment verification failed";
+        setError(errorMessage);
+        throw err;
+      }
+    },
+    [refetchSubscription],
+  );
 
   // Get plan by ID
   const getPlanById = useCallback(
@@ -95,31 +98,30 @@ export const usePricing = (initialPlans: Plan[] = []) => {
 
 // Separate hook for just subscription status (for backward compatibility)
 export const useUserSubscriptionStatus = () => {
-  const user = useUser();
+  const user = useCurrentUser();
 
   return useQuery({
     queryKey: ["subscription-status"],
     queryFn: () => pricingApi.getSubscriptionStatus(),
     staleTime: 1 * 60 * 1000, // 1 minute
-    enabled: !!user, // Only fetch when user is logged in
+    enabled: !!user.userId, // Only fetch once the persisted user store has a real id
     retry: false, // Don't retry on auth failures
   });
 };
 
 /**
- * Whether to surface an "Upgrade to Pro" CTA. True only once the API has
- * confirmed the user is on the free plan; while the status is loading
- * (`undefined`) or the user is subscribed it is false, so upgrade prompts never
- * flash before the subscription status resolves. Use this everywhere an upgrade
- * CTA is gated instead of testing `is_subscribed` truthiness (which defaults to
- * showing the prompt while the query is pending).
+ * Whether the subscription plan is not yet definitively known: the persisted
+ * user store hasn't rehydrated with a real id yet, or the (consequently
+ * disabled, or still-pending) `["subscription-status"]` query hasn't
+ * produced data yet. Deliberately keyed off `data === undefined`, never off
+ * `isLoading` — in TanStack Query v5 a disabled query reports
+ * `isLoading === false` even though it has never fetched, which would
+ * otherwise read as "answered" when it is really "unasked". See
+ * `useIsPaid` for the invariant this backs: never treat "unknown" as
+ * "free"/"not paid".
  */
-export const useShouldPromptUpgrade = (): boolean => {
-  const { data, isError, isLoading } = useUserSubscriptionStatus();
-  // A failed status request must not hide upgrade paths for the session:
-  // fail open so a transient error still surfaces the upgrade flow. Loading
-  // stays fail-closed so CTAs never flash before the status resolves.
-  if (isError) return true;
-  if (isLoading || !data) return false;
-  return data.is_subscribed === false;
-};
+export function useIsSubscriptionStatusUnknown(): boolean {
+  const user = useCurrentUser();
+  const { data } = useUserSubscriptionStatus();
+  return !user.userId || data === undefined;
+}

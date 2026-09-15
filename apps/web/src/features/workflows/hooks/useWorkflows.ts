@@ -1,45 +1,32 @@
-import { useEffect } from "react";
-import type { Workflow } from "../api/workflowApi";
-import { useWorkflowsStore } from "../stores/workflowsStore";
+import { useQuery } from "@tanstack/react-query";
+
+import { workflowKeys } from "../api/queryKeys";
+import { type Workflow, workflowApi } from "../api/workflowApi";
+
+/** How long the workflow list stays fresh before a remount refetches it. */
+const WORKFLOWS_STALE_TIME = 60 * 1000;
 
 interface UseWorkflowsReturn {
   workflows: Workflow[];
   isLoading: boolean;
   error: string | null;
-  refetch: () => Promise<void>;
-  addWorkflow: (workflow: Workflow) => void;
-  updateWorkflow: (workflowId: string, updates: Partial<Workflow>) => void;
-  removeWorkflow: (workflowId: string) => void;
-  clearError: () => void;
+  refetch: () => Promise<unknown>;
 }
 
-export const useWorkflows = (autoFetch: boolean = true): UseWorkflowsReturn => {
-  // Get state and actions from Zustand store (shared across all consumers)
-  const {
-    workflows,
-    isLoading,
-    error,
-    fetchWorkflows,
-    addWorkflow,
-    updateWorkflow,
-    removeWorkflow,
-    clearError,
-  } = useWorkflowsStore();
+const EMPTY_WORKFLOWS: Workflow[] = [];
 
-  // Auto-fetch on mount if enabled
-  // fetchWorkflows is stable (defined in Zustand store, not recreated)
-  useEffect(() => {
-    if (autoFetch) fetchWorkflows();
-  }, [autoFetch, fetchWorkflows]);
+export const useWorkflows = (enabled: boolean = true): UseWorkflowsReturn => {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: workflowKeys.list(),
+    queryFn: async () => (await workflowApi.listWorkflows()).workflows,
+    staleTime: WORKFLOWS_STALE_TIME,
+    enabled,
+  });
 
   return {
-    workflows,
+    workflows: data ?? EMPTY_WORKFLOWS,
     isLoading,
-    error,
-    refetch: fetchWorkflows,
-    addWorkflow,
-    updateWorkflow,
-    removeWorkflow,
-    clearError,
+    error: error ? error.message : null,
+    refetch,
   };
 };

@@ -18,9 +18,25 @@ export interface Plan {
   updated_at: string;
 }
 
+/** Where in the product a checkout was started. Mirrors `CheckoutSource` in
+ *  `app/models/payment_models.py`; the server emits it as a property on
+ *  `payment:checkout_started`, so a new surface adds a member on both sides. */
+export type CheckoutSource =
+  | "paywall_modal"
+  | "pricing_card"
+  | "payment_retry"
+  | "checkout_resume"
+  | "onboarding";
+
 export interface CreateSubscriptionRequest {
   product_id: string;
   discount_code?: string;
+  source?: CheckoutSource;
+}
+
+export interface CreateCheckoutSessionRequest {
+  billing_cycle: "monthly" | "yearly";
+  source: CheckoutSource;
 }
 
 export interface CreateSubscriptionResponse {
@@ -71,6 +87,10 @@ export interface UserSubscriptionStatus {
   has_subscription?: boolean;
   plan_type?: "free" | "pro";
   status?: string;
+  /** Whether this user has ever had a subscription, in any status — separates a
+   *  lapsed subscriber from one who has never paid, which the paywall copy
+   *  keys on. */
+  has_ever_subscribed?: boolean;
 }
 
 // Helper function for consistent error handling
@@ -123,12 +143,31 @@ class PricingApi {
     }
   }
 
-  // Verify payment completion after redirect
-  async verifyPayment(): Promise<PaymentVerificationResponse> {
+  // Mint the Dodo checkout session the embedded overlay opens. The server
+  // resolves the Pro plan for the cycle, so no product id crosses the wire.
+  async createCheckoutSession(
+    data: CreateCheckoutSessionRequest,
+  ): Promise<CreateSubscriptionResponse> {
+    try {
+      return await apiService.post<CreateSubscriptionResponse>(
+        "/payments/checkout-session",
+        data,
+      );
+    } catch (error) {
+      return handleApiError(error, "Create checkout session");
+    }
+  }
+
+  // Verify payment completion after redirect. `subscriptionId` (from the Dodo
+  // return URL) lets the server reconcile against Dodo when the webhook that
+  // would have created the row never arrived.
+  async verifyPayment(
+    subscriptionId?: string | null,
+  ): Promise<PaymentVerificationResponse> {
     try {
       return await apiService.post<PaymentVerificationResponse>(
         "/payments/verify-payment",
-        {},
+        subscriptionId ? { subscription_id: subscriptionId } : {},
       );
     } catch (error) {
       return handleApiError(error, "Verify payment");

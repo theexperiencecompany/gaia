@@ -17,7 +17,6 @@ import { useTodoWorkflowGlobalListener } from "@/features/todo/hooks/useTodoWork
 import useAxiosInterceptor from "@/hooks/api/useAxiosInterceptor";
 import GlobalAuth from "@/hooks/providers/GlobalAuth";
 import GlobalInterceptor from "@/hooks/providers/GlobalInterceptor";
-import QueryProvider from "@/layouts/QueryProvider";
 import { useWebSocketConnection } from "@/lib/websocket/useWebSocketConnection";
 
 const GlobalIntegrationModal = dynamic(
@@ -29,13 +28,13 @@ const GlobalIntegrationModal = dynamic(
 );
 
 export default function ProvidersLayout({ children }: { children: ReactNode }) {
-  // Populate the notification store on app load
-  useNotifications({ limit: 100 });
-
   // Initialize global WebSocket connection
   useWebSocketConnection();
 
-  // Subscribe to notification events — updates the shared store directly
+  // Warm the notification query cache on app load
+  useNotifications({ limit: 100 });
+
+  // Subscribe to notification events — writes the shared query cache
   useNotificationWebSocket();
 
   // Subscribe to background executor completion messages — inserts new
@@ -61,20 +60,18 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
       {/* Keep Toaster outside LazyMotion: sileo uses motion.* internally. */}
       <Toaster position="top-right" />
       <LazyMotionProvider>
-        <QueryProvider>
-          {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
-          <Suspense fallback={<></>}>
-            <GlobalAuth />
-          </Suspense>
-          <GlobalInterceptor />
-          <GlobalIntegrationModal />
-          <ElectronRouteGuard>
-            <KeyboardShortcutsProvider>
-              {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
-              <Suspense fallback={<></>}>{children}</Suspense>
-            </KeyboardShortcutsProvider>
-          </ElectronRouteGuard>
-        </QueryProvider>
+        {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
+        <Suspense fallback={<></>}>
+          <GlobalAuth />
+        </Suspense>
+        <GlobalInterceptor />
+        <GlobalIntegrationModal />
+        <ElectronRouteGuard>
+          <KeyboardShortcutsProvider>
+            {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
+            <Suspense fallback={<></>}>{children}</Suspense>
+          </KeyboardShortcutsProvider>
+        </ElectronRouteGuard>
       </LazyMotionProvider>
     </>
   );

@@ -1,11 +1,16 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import {
+  prependNotification,
+  upsertNotification,
+} from "@/features/notification/api/notificationCache";
+import { markDeliveredAsReadInCache } from "@/features/notification/hooks/useNotifications";
 import { toast } from "@/lib/toast";
 import { isSafeInternalPath } from "@/lib/url-safety";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { batchSyncConversations } from "@/services/syncService";
-import { useNotificationStore } from "@/stores/notificationStore";
 import type {
   NotificationAction,
   NotificationRecord,
@@ -13,7 +18,6 @@ import type {
 } from "@/types/features/notificationTypes";
 import {
   ActionType,
-  NotificationStatus,
   NotificationType,
 } from "@/types/features/notificationTypes";
 
@@ -112,10 +116,11 @@ function handleDeliveredNotification(
 }
 
 export function useNotificationWebSocket() {
-  const user = useUser();
+  const user = useCurrentUser();
   const isAuthenticated = !!user?.email;
-  const { addNotification, updateNotification, setNotifications } =
-    useNotificationStore();
+  // Live pushes are written straight into the query cache the lists read —
+  // same keys, no parallel store to drift out of sync.
+  const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
   // Ref keeps handleMessage stable so the ws listener isn't re-registered.
@@ -130,7 +135,7 @@ export function useNotificationWebSocket() {
       switch (message.type) {
         case "notification.delivered":
           if (message.notification) {
-            addNotification(message.notification);
+            prependNotification(queryClient, message.notification);
             const isOnboarding =
               pathnameRef.current?.includes("/onboarding") ?? false;
             handleDeliveredNotification(
@@ -143,31 +148,14 @@ export function useNotificationWebSocket() {
 
         case "notification.updated":
           if (message.notification) {
-            updateNotification(message.notification);
+            upsertNotification(queryClient, message.notification);
           }
           break;
 
-        case "notification.all_read": {
-          const channelType = message.channel_type;
-          const prev = useNotificationStore.getState().notifications;
-          setNotifications(
-            prev.map((n) => {
-              if (n.status !== NotificationStatus.DELIVERED) return n;
-              if (
-                channelType &&
-                !n.channels?.some((c) => c.channel_type === channelType)
-              ) {
-                return n;
-              }
-              return {
-                ...n,
-                status: NotificationStatus.READ,
-                read_at: new Date().toISOString(),
-              };
-            }),
-          );
+        case "notification.all_read":
+          // Another tab/device marked everything read — mirror it in the cache.
+          markDeliveredAsReadInCache(queryClient, message.channel_type);
           break;
-        }
 
         case "error":
           console.error("WebSocket error message:", message.message);
@@ -177,7 +165,7 @@ export function useNotificationWebSocket() {
           console.warn("Unknown notification message type:", message.type);
       }
     },
-    [addNotification, updateNotification, setNotifications, router],
+    [queryClient, router],
   );
 
   const handleError = useCallback((error: Error) => {

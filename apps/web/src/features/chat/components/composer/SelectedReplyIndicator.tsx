@@ -7,7 +7,7 @@ import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef } from "react";
 import { useComposerUI } from "@/stores/composerStore";
-import type { ReplyToMessageData } from "@/stores/replyToMessageStore";
+import type { ReplyToMessageData } from "@/stores/composerStore.types";
 
 interface SelectedReplyIndicatorProps {
   replyToMessage: ReplyToMessageData | null;

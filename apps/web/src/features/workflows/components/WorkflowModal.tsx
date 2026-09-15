@@ -2,10 +2,14 @@
 
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import {
+  initialWorkflowModalUiState,
+  workflowModalUiReducer,
+} from "@/features/workflows/components/workflow-modal/modalState";
 import { useWorkflowModalActions } from "@/features/workflows/components/workflow-modal/useWorkflowModalActions";
 import { useWorkflowSaveGate } from "@/features/workflows/components/workflow-modal/useWorkflowSaveGate";
 import WorkflowLoadingState from "@/features/workflows/components/workflow-modal/WorkflowLoadingState";
@@ -21,7 +25,6 @@ import {
   workflowFormSchema,
   workflowToFormData,
 } from "../schemas/workflowFormSchema";
-import { useWorkflowModalStore } from "../stores/workflowModalStore";
 import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
 import { createDefaultTriggerConfig } from "../triggers/registry";
 import { findTriggerSchema } from "../triggers/utils";
@@ -137,19 +140,11 @@ export default function WorkflowModal({
   // Fetch trigger schemas for slug normalization
   const { data: triggerSchemas } = useTriggerSchemas();
 
-  // Zustand UI state read for rendering
-  const {
-    creationPhase,
-    isGeneratingSteps,
-    isRegeneratingSteps,
-    isTogglingActivation,
-    regenerationError,
-    isActivated,
-    setCreationPhase,
-    setIsActivated,
-    setRegenerationError,
-    resetToForm,
-  } = useWorkflowModalStore();
+  // Modal-local UI state (phase, loading flags, activation)
+  const [ui, dispatch] = useReducer(
+    workflowModalUiReducer,
+    initialWorkflowModalUiState,
+  );
 
   // React Hook Form setup
   const form = useForm<WorkflowFormData>({
@@ -189,6 +184,8 @@ export default function WorkflowModal({
     onWorkflowSaved,
     onWorkflowDeleted,
     handleClose,
+    ui,
+    dispatch,
   });
 
   // Defer the form reset until after the modal's exit animation finishes —
@@ -208,20 +205,18 @@ export default function WorkflowModal({
 
   // Reset the creation phase to a clean "form" when the modal OPENS (false ->
   // true transition only), so each session starts fresh without flashing the
-  // previous session's success/error screen during the close animation. The ref
-  // guard is essential: resetToForm/clearCreationError identities are unstable,
-  // so without it this synchronous reset re-runs every render and infinite-loops.
+  // previous session's success/error screen during the close animation.
   const wasOpenRef = useRef(false);
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
       console.debug("[workflow:modal] opened -> resetting creation phase", {
         mode,
       });
-      resetToForm();
+      dispatch({ type: "resetToForm" });
       actions.clearCreationError();
     }
     wasOpenRef.current = isOpen;
-  }, [isOpen, resetToForm, actions.clearCreationError, mode]);
+  }, [isOpen, actions.clearCreationError, mode]);
 
   // Sync the local working copy from the prop only when a DIFFERENT workflow is
   // passed (modal opens / switches workflow). A background list refetch (e.g.
@@ -243,33 +238,25 @@ export default function WorkflowModal({
       const formValues = workflowToFormData(currentWorkflow);
       resetFormValues(formValues);
       // Initialize activation state from current workflow
-      setIsActivated(currentWorkflow.activated);
+      dispatch({ type: "activated", value: currentWorkflow.activated });
       // Reset to form phase for edit mode
-      setCreationPhase("form");
+      dispatch({ type: "phase", phase: "form" });
       return;
     }
 
     // Handle draft data from AI-generated workflow
     if (mode === "create" && draftData) {
       resetFormValues(buildDraftFormValues(draftData, triggerSchemas));
-      setIsActivated(true);
-      setCreationPhase("form");
+      dispatch({ type: "activated", value: true });
+      dispatch({ type: "phase", phase: "form" });
       return;
     }
 
     // Reset to default for create mode
     resetFormValues(getDefaultFormValues());
-    setIsActivated(true);
-    setCreationPhase("form");
-  }, [
-    mode,
-    currentWorkflow,
-    draftData,
-    triggerSchemas,
-    resetFormValues,
-    setIsActivated,
-    setCreationPhase,
-  ]);
+    dispatch({ type: "activated", value: true });
+    dispatch({ type: "phase", phase: "form" });
+  }, [mode, currentWorkflow, draftData, triggerSchemas, resetFormValues]);
 
   // Save-readiness rules (change detection + disabled state)
   const { isSaveDisabled } = useWorkflowSaveGate({
@@ -285,12 +272,12 @@ export default function WorkflowModal({
   useHotkeys(
     "escape",
     () => {
-      if (isOpen && creationPhase === "form") {
+      if (isOpen && ui.creationPhase === "form") {
         handleClose();
       }
     },
-    { enableOnFormTags: true, enabled: isOpen && creationPhase === "form" },
-    [isOpen, creationPhase],
+    { enableOnFormTags: true, enabled: isOpen && ui.creationPhase === "form" },
+    [isOpen, ui.creationPhase],
   );
 
   // Keyboard shortcut: Mod+Enter to save
@@ -299,7 +286,7 @@ export default function WorkflowModal({
     () => {
       if (
         isOpen &&
-        creationPhase === "form" &&
+        ui.creationPhase === "form" &&
         mode !== "preview" &&
         !isSaveDisabled()
       ) {
@@ -308,9 +295,9 @@ export default function WorkflowModal({
     },
     {
       enableOnFormTags: true,
-      enabled: isOpen && creationPhase === "form" && mode !== "preview",
+      enabled: isOpen && ui.creationPhase === "form" && mode !== "preview",
     },
-    [isOpen, creationPhase, isSaveDisabled, mode],
+    [isOpen, ui.creationPhase, isSaveDisabled, mode],
   );
 
   const getButtonText = () => {
@@ -342,7 +329,7 @@ export default function WorkflowModal({
       >
         <ModalContent>
           <ModalBody className="flex min-h-0 flex-col gap-0 p-0">
-            {creationPhase === "form" ? (
+            {ui.creationPhase === "form" ? (
               <WorkflowModalFormView
                 mode={mode}
                 formData={formData}
@@ -352,8 +339,8 @@ export default function WorkflowModal({
                 currentWorkflow={currentWorkflow}
                 existingWorkflow={existingWorkflow ?? null}
                 activation={{
-                  isActive: isActivated,
-                  isToggling: isTogglingActivation,
+                  isActive: ui.isActivated,
+                  isToggling: ui.isTogglingActivation,
                 }}
                 missingIntegrations={actions.missingIntegrations}
                 connectingId={actions.connectingId}
@@ -366,14 +353,16 @@ export default function WorkflowModal({
                 onResetToDefault={actions.handleResetToDefault}
                 steps={{
                   hasPredefined: hasPredefinedSteps,
-                  isGenerating: isGeneratingSteps,
-                  isRegenerating: isRegeneratingSteps,
+                  isGenerating: ui.isGeneratingSteps,
+                  isRegenerating: ui.isRegeneratingSteps,
                 }}
                 predefinedSteps={predefinedSteps}
-                regenerationError={regenerationError}
+                regenerationError={ui.regenerationError}
                 onRegenerateWithReason={actions.handleRegenerateWithReason}
                 onInitialGeneration={actions.handleInitialGeneration}
-                onClearError={() => setRegenerationError(null)}
+                onClearError={() =>
+                  dispatch({ type: "regenerationError", message: null })
+                }
                 modifierKeyName={modifierKeyName}
                 buttonText={getButtonText()}
                 save={{
@@ -387,12 +376,12 @@ export default function WorkflowModal({
             ) : (
               <div className="px-6 py-4">
                 <WorkflowLoadingState
-                  phase={creationPhase}
+                  phase={ui.creationPhase}
                   mode={mode}
                   error={actions.creationError}
                   workflow={currentWorkflow}
                   onClose={handleClose}
-                  onRetry={() => setCreationPhase("form")}
+                  onRetry={() => dispatch({ type: "phase", phase: "form" })}
                 />
               </div>
             )}

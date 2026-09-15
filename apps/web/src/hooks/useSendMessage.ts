@@ -1,19 +1,16 @@
 import { useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 
-import type { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
 import { turnManager } from "@/features/chat/stream/turnManager";
 import type { TurnOptions } from "@/features/chat/stream/types";
 import { setUserProperties } from "@/lib/analytics";
 import { db, type IMessage } from "@/lib/db/chatDb";
-import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
-import {
-  type ReplyToMessageData,
-  useReplyToMessageStore,
-} from "@/stores/replyToMessageStore";
-import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
+import type {
+  ReplyToMessageData,
+  SelectedCalendarEventData,
+} from "@/stores/composerStore.types";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
@@ -48,9 +45,6 @@ const resolveSendContext = (
   overrides?: SendMessageOverrides,
 ): ResolvedSendContext | null => {
   const composerState = useComposerStore.getState();
-  const workflowState = useWorkflowSelectionStore.getState();
-  const calendarEventState = useCalendarEventSelectionStore.getState();
-  const replyState = useReplyToMessageStore.getState();
 
   const files = (overrides?.files ??
     composerState.uploadedFileData ??
@@ -62,13 +56,13 @@ const resolveSendContext = (
     composerState.selectedToolCategory ??
     null;
   const selectedWorkflow =
-    overrides?.selectedWorkflow ?? workflowState.selectedWorkflow ?? null;
+    overrides?.selectedWorkflow ?? composerState.selectedWorkflow ?? null;
   const selectedCalendarEvent =
     overrides?.selectedCalendarEvent ??
-    calendarEventState.selectedCalendarEvent ??
+    composerState.selectedCalendarEvent ??
     null;
   const replyToMessage =
-    overrides?.replyToMessage ?? replyState.replyToMessage ?? null;
+    overrides?.replyToMessage ?? composerState.replyToMessage ?? null;
 
   const trimmedContent = content.trim();
   const hasValidContent =

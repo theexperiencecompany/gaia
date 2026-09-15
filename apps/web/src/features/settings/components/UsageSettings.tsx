@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
-import { usePricingModalStore } from "@/stores/pricingModalStore";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 import {
   useUsageActivity,
@@ -12,7 +12,7 @@ import {
 import { UsageView } from "./usage/UsageView";
 
 export default function UsageSettings() {
-  const openPricingModal = usePricingModalStore((s) => s.openModal);
+  const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
   const { data: summary, isLoading, refetch } = useUsageSummary();
   const { data: history } = useUsageHistory(30);
   const { data: activity } = useUsageActivity(365);
@@ -28,7 +28,12 @@ export default function UsageSettings() {
       summary={summary}
       history={history ?? []}
       activity={activity}
-      onUpgrade={openPricingModal}
+      onUpgrade={() =>
+        openUpgradeModal(undefined, {
+          dismissible: true,
+          source: "settings_usage",
+        })
+      }
     />
   );
 }

@@ -1,12 +1,12 @@
-import type { OnboardingData } from "@/stores/userStore";
+import type { OnboardingData } from "@/features/auth/api/authApi";
 
 type PreferencesPatch = Partial<NonNullable<OnboardingData["preferences"]>>;
 
 /**
- * Build the userStore update that mirrors a saved onboarding-preferences patch.
- * The backend PATCHes only the fields each surface sends (field-level merge), so
- * the store must merge the patch into the existing preferences rather than
- * replace them — keeping fields owned by other settings surfaces intact.
+ * Build the current-user patch that mirrors a saved onboarding-preferences
+ * update. The backend PATCHes only the fields each surface sends (field-level
+ * merge), so the cached user must merge the patch into the existing
+ * preferences rather than replace them — keeping fields owned by other settings surfaces intact.
  */
 export const mergedOnboardingUpdate = (
   onboarding: OnboardingData | undefined,

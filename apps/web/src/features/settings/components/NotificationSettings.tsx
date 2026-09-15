@@ -9,6 +9,7 @@ import {
   NOTIFICATION_PLATFORMS,
   type NotificationPlatform,
 } from "@/features/notification/constants";
+import { ChatChannelSettings } from "@/features/settings/components/ChatChannelSettings";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -70,8 +71,13 @@ export default function NotificationSettings() {
     }
   };
 
+  const linkedPlatforms = NOTIFICATION_PLATFORMS.filter(
+    (platform) => !!platformLinks[platform]?.platformUserId,
+  );
+
   return (
     <SettingsPage>
+      {!loading && <ChatChannelSettings linkedPlatforms={linkedPlatforms} />}
       <SettingsSection description="Choose where to receive GAIA notifications.">
         {NOTIFICATION_PLATFORMS.map((platform) => {
           const label = NOTIFICATION_PLATFORM_LABELS[platform];

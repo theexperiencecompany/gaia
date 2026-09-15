@@ -11,6 +11,9 @@ export interface IntegrationCategory {
   label: string;
 }
 
+/** Category key meaning "no category filter" — the default selection. */
+export const ALL_CATEGORIES = "all";
+
 /**
  * Category the backend stamps on device-hosted MCP server integrations
  * (mirrors DEVICE_CATEGORY in apps/api/app/constants/device_bridge.py). Kept
@@ -23,7 +26,7 @@ export const DEVICE_INTEGRATION_CATEGORY = "device";
  * Browse taxonomy for the marketplace filter chips.
  */
 export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
-  { key: "all", label: "All" },
+  { key: ALL_CATEGORIES, label: "All" },
   { key: "productivity", label: "Productivity" },
   { key: "communication", label: "Communication" },
   { key: "developer", label: "Developer" },

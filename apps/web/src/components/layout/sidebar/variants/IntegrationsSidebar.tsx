@@ -5,18 +5,16 @@ import { Kbd } from "@heroui/kbd";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Tooltip } from "@heroui/tooltip";
 import { InternetIcon, PuzzleIcon } from "@icons";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
-import { useIntegrationModalStore } from "@/stores/integrationModalStore";
-import { useRightSidebar } from "@/stores/rightSidebarStore";
+import { useIntegrationModalActions } from "@/stores/uiStore";
 
 export default function IntegrationsSidebar() {
-  const openIntegrationModal = useIntegrationModalStore(
-    (state) => state.openModal,
-  );
+  const { openIntegrationModal } = useIntegrationModalActions();
   const {
     integrations,
     connectIntegration,
@@ -26,110 +24,37 @@ export default function IntegrationsSidebar() {
     unpublishIntegration,
   } = useIntegrations();
 
-  const setRightSidebarContent = useRightSidebar((state) => state.setContent);
-  const openRightSidebar = useRightSidebar((state) => state.open);
-  const closeRightSidebar = useRightSidebar((state) => state.close);
-  const isSidebarOpen = useRightSidebar((state) => state.isOpen);
-
   // Track which integration is currently shown in the right sidebar
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<
     string | null
   >(null);
 
-  // Store callbacks in refs to avoid triggering useEffect on every render
-  // These callbacks from useIntegrations() are not memoized and change on every render
-  const callbacksRef = useRef({
-    connectIntegration,
-    disconnectIntegration,
-    deleteCustomIntegration,
-    publishIntegration,
-    unpublishIntegration,
-    closeRightSidebar,
-    setRightSidebarContent,
-  });
+  const clearSelection = useCallback(() => setSelectedIntegrationId(null), []);
 
-  // Keep refs up to date
-  useEffect(() => {
-    callbacksRef.current = {
-      connectIntegration,
-      disconnectIntegration,
-      deleteCustomIntegration,
-      publishIntegration,
-      unpublishIntegration,
-      closeRightSidebar,
-      setRightSidebarContent,
-    };
-  }, [
-    connectIntegration,
-    disconnectIntegration,
-    deleteCustomIntegration,
-    publishIntegration,
-    unpublishIntegration,
-    closeRightSidebar,
-    setRightSidebarContent,
-  ]);
-
-  // Update sidebar content when integrations change (e.g., after publish/unpublish)
-  useEffect(() => {
-    if (!selectedIntegrationId || !isSidebarOpen) return;
-
-    const selectedIntegration = integrations.find(
-      (i) => i.id === selectedIntegrationId,
-    );
-
-    if (!selectedIntegration) return;
-
-    const handleDisconnect = async (id: string) => {
-      await callbacksRef.current.disconnectIntegration(id);
-      setTimeout(() => callbacksRef.current.closeRightSidebar(), 500);
-      setSelectedIntegrationId(null);
-    };
-
-    const handleDelete = async (id: string) => {
-      await callbacksRef.current.deleteCustomIntegration(id);
-      setTimeout(() => callbacksRef.current.closeRightSidebar(), 500);
-      setSelectedIntegrationId(null);
-    };
-
-    const handlePublish = async (id: string) => {
-      await callbacksRef.current.publishIntegration(id);
-    };
-
-    const handleUnpublish = async (id: string) => {
-      await callbacksRef.current.unpublishIntegration(id);
-    };
-
-    const isCustomIntegration = selectedIntegration.source === "custom";
-
-    callbacksRef.current.setRightSidebarContent(
-      <IntegrationSidebar
-        integration={selectedIntegration}
-        onConnect={callbacksRef.current.connectIntegration}
-        onDisconnect={handleDisconnect}
-        onDelete={isCustomIntegration ? handleDelete : undefined}
-        onPublish={isCustomIntegration ? handlePublish : undefined}
-        onUnpublish={isCustomIntegration ? handleUnpublish : undefined}
-        category={selectedIntegration.name}
-      />,
-    );
-  }, [selectedIntegrationId, integrations, isSidebarOpen]);
-
-  // Clear selected integration when sidebar closes
-  useEffect(() => {
-    return useRightSidebar.subscribe((state, prevState) => {
-      if (prevState.isOpen && !state.isOpen && selectedIntegrationId) {
-        setSelectedIntegrationId(null);
-      }
-    });
-  }, [selectedIntegrationId]);
-
-  const handleIntegrationClick = useCallback(
-    (integration: Integration) => {
-      setSelectedIntegrationId(integration.id);
-      openRightSidebar("sidebar");
-    },
-    [openRightSidebar],
+  const selectedIntegration = useMemo(
+    () => integrations.find((i) => i.id === selectedIntegrationId) ?? null,
+    [integrations, selectedIntegrationId],
   );
+
+  const handleDisconnect = useCallback(
+    async (id: string) => {
+      await disconnectIntegration(id);
+      setSelectedIntegrationId(null);
+    },
+    [disconnectIntegration],
+  );
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      await deleteCustomIntegration(id);
+      setSelectedIntegrationId(null);
+    },
+    [deleteCustomIntegration],
+  );
+
+  const handleIntegrationClick = useCallback((integration: Integration) => {
+    setSelectedIntegrationId(integration.id);
+  }, []);
 
   const renderIntegrationItem = useCallback(
     (integration: Integration) => {
@@ -177,8 +102,23 @@ export default function IntegrationsSidebar() {
     [handleIntegrationClick],
   );
 
+  const isCustomIntegration = selectedIntegration?.source === "custom";
+
   return (
     <div className="flex flex-col space-y-3">
+      {selectedIntegration && (
+        <RightSidebarPanel mode="sidebar" onClose={clearSelection}>
+          <IntegrationSidebar
+            integration={selectedIntegration}
+            onConnect={connectIntegration}
+            onDisconnect={handleDisconnect}
+            onDelete={isCustomIntegration ? handleDelete : undefined}
+            onPublish={isCustomIntegration ? publishIntegration : undefined}
+            onUnpublish={isCustomIntegration ? unpublishIntegration : undefined}
+            category={selectedIntegration.name}
+          />
+        </RightSidebarPanel>
+      )}
       <Tooltip
         content={
           <span className="flex items-center gap-2">

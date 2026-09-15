@@ -1,36 +1,17 @@
 /**
- * Presentational transcript renderer. Given a Q&A `messages` list and an
- * optional `processingChecklist` slot, paints alternating bot/user chat
- * bubbles and — when supplied — appends the checklist beneath the last
- * bot bubble. No state, no effects.
+ * Presentational transcript renderer. Given a Q&A `messages` list, paints
+ * alternating bot/user chat bubbles. No state, no effects.
  */
 
+import { NEW_MESSAGE_BREAK_TOKEN } from "@shared/utils";
 import * as m from "motion/react-m";
-import { memo, type ReactNode } from "react";
-
-import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
+import { memo } from "react";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
-
-import {
-  BOT_BUBBLE_DEFAULTS,
-  USER_BUBBLE_DEFAULTS,
-} from "../constants/bubbleDefaults";
+import { USER_BUBBLE_DEFAULTS } from "../constants/bubbleDefaults";
 import { EASE_OUT_QUART } from "../constants/motion";
+import { questionRevealKey } from "../state/paceStore";
 import type { Message } from "../types";
-
-function OnboardingBotBubble({
-  text,
-  children,
-}: {
-  text: string;
-  children?: ReactNode;
-}) {
-  return (
-    <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={text}>
-      {children}
-    </ChatBubbleBot>
-  );
-}
+import { OnboardingBotBubbles } from "./OnboardingBotBubbles";
 
 function OnboardingUserBubble({ text }: { text: string }) {
   return <ChatBubbleUser {...USER_BUBBLE_DEFAULTS} text={text} />;
@@ -38,59 +19,40 @@ function OnboardingUserBubble({ text }: { text: string }) {
 
 interface OnboardingMessagesProps {
   messages: Message[];
-  messagesEndRef?: React.RefObject<HTMLDivElement | null>;
-  processingChecklist?: ReactNode;
 }
 
-function OnboardingMessagesImpl({
-  messages,
-  messagesEndRef,
-  processingChecklist,
-}: OnboardingMessagesProps) {
+function OnboardingMessagesImpl({ messages }: OnboardingMessagesProps) {
   return (
     <>
-      {messages.map((message, index) => {
-        const isLastBot =
-          message.type === "bot" && index === messages.length - 1;
-        return (
-          <m.div
-            key={message.id}
-            className="mb-4"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{
-              duration: 0.4,
-              ease: EASE_OUT_QUART,
-              delay: index * 0.05,
-            }}
-          >
-            {message.type === "bot" ? (
-              <OnboardingBotBubble text={message.content}>
-                {isLastBot && processingChecklist && (
-                  <m.div
-                    className="ml-10.75"
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{
-                      duration: 0.5,
-                      ease: "easeOut",
-                      delay: 0.3,
-                    }}
-                  >
-                    {processingChecklist}
-                  </m.div>
-                )}
-              </OnboardingBotBubble>
-            ) : (
-              <div className="flex items-end justify-end gap-0">
-                <OnboardingUserBubble text={message.content} />
-              </div>
-            )}
-          </m.div>
-        );
-      })}
-
-      {messagesEndRef && <div ref={messagesEndRef} />}
+      {messages.map((message, index) => (
+        <m.div
+          key={message.id}
+          className="mb-4"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{
+            duration: 0.4,
+            ease: EASE_OUT_QUART,
+            delay: index * 0.05,
+          }}
+        >
+          {message.type === "bot" ? (
+            // The question being asked right now is paced out like a person
+            // typing; answered turns are history and render at once. Both go
+            // through the same component so answering a question never
+            // remounts (and so replays) the bubbles already on screen.
+            <OnboardingBotBubbles
+              lines={message.content.split(NEW_MESSAGE_BREAK_TOKEN)}
+              revealKey={questionRevealKey(message.id)}
+              instant={index !== messages.length - 1}
+            />
+          ) : (
+            <div className="flex items-end justify-end gap-0">
+              <OnboardingUserBubble text={message.content} />
+            </div>
+          )}
+        </m.div>
+      ))}
     </>
   );
 }

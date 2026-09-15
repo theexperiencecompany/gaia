@@ -9,6 +9,18 @@ const CHAR_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 const APPLE_EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 const SCENE_1_TEXT = "Welcome to GAIA";
+const SCENE_1_WORDS = SCENE_1_TEXT.split(" ");
+/** Where each word starts in the character stagger, spaces included, so the
+ *  reveal still reads left to right across word boundaries. */
+const SCENE_1_CHAR_OFFSETS = SCENE_1_WORDS.reduce<number[]>(
+  (offsets, _word, i) => {
+    offsets.push(
+      i === 0 ? 0 : offsets[i - 1] + SCENE_1_WORDS[i - 1].length + 1,
+    );
+    return offsets;
+  },
+  [],
+);
 const CHAR_DURATION = 0.9;
 const CHAR_STAGGER = 0.025;
 const SCENE_1_HOLD = 0.45;
@@ -151,26 +163,37 @@ export function OnboardingIntro({ onComplete }: OnboardingIntroProps) {
           {scene === 1 && (
             <m.h1
               key="scene-1"
-              className="m-0 flex flex-wrap items-center justify-center"
+              className="m-0 flex flex-wrap items-center justify-center gap-x-[0.25em]"
               style={{ fontSize: "clamp(48px, 9vw, 120px)" }}
               exit={{ opacity: 0, filter: "blur(6px)" }}
               transition={{ duration: SCENE_1_OUT, ease: EASE_OUT_QUART }}
             >
-              {SCENE_1_TEXT.split("").map((char, i) => (
-                <m.span
-                  // biome-ignore lint/suspicious/noArrayIndexKey: char positions are stable
-                  key={i}
-                  className="inline-block whitespace-pre"
-                  initial={{ opacity: 0, y: 16, filter: "blur(9px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  transition={{
-                    duration: CHAR_DURATION,
-                    delay: i * CHAR_STAGGER,
-                    ease: CHAR_EASE,
-                  }}
-                >
-                  {char === " " ? " " : char}
-                </m.span>
+              {/* Characters animate one by one, but each word is one unbreakable
+                  flex item: a phone-width line wraps between words, never
+                  between the "t" and the "o" of "to". */}
+              {SCENE_1_WORDS.map((word, wordIndex) => (
+                <span key={word} className="inline-flex whitespace-nowrap">
+                  {word.split("").map((char, charIndex) => {
+                    const charPosition =
+                      SCENE_1_CHAR_OFFSETS[wordIndex] + charIndex;
+                    return (
+                      <m.span
+                        // biome-ignore lint/suspicious/noArrayIndexKey: char positions are stable
+                        key={charIndex}
+                        className="inline-block"
+                        initial={{ opacity: 0, y: 16, filter: "blur(9px)" }}
+                        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                        transition={{
+                          duration: CHAR_DURATION,
+                          delay: charPosition * CHAR_STAGGER,
+                          ease: CHAR_EASE,
+                        }}
+                      >
+                        {char}
+                      </m.span>
+                    );
+                  })}
+                </span>
               ))}
             </m.h1>
           )}

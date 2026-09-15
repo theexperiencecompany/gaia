@@ -18,7 +18,9 @@
 
 import { getUserTimezone } from "@shared/api/timezone";
 
-import { useUserStore } from "@/stores/userStore";
+import type { UserInfo } from "@/features/auth/api/authApi";
+import { CURRENT_USER_QUERY_KEY } from "@/features/auth/hooks/useCurrentUser";
+import { getQueryClient } from "@/lib/queryClient";
 
 declare const timezoneBrand: unique symbol;
 
@@ -60,7 +62,9 @@ export const getBrowserTimezone = (): Timezone =>
  * and yields to the live browser zone — mirrors the backend resolver's heal.
  */
 export const getUserHomeTimezone = (): Timezone => {
-  const profile = useUserStore.getState().timezone?.trim();
+  const profile = getQueryClient()
+    .getQueryData<UserInfo>(CURRENT_USER_QUERY_KEY)
+    ?.timezone?.trim();
   if (profile && profile.toUpperCase() !== "UTC" && isValidTimezone(profile)) {
     return profile;
   }

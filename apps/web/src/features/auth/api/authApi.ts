@@ -1,21 +1,33 @@
 import { apiService } from "@/lib/api/service";
 
+/**
+ * The onboarding block as the API returns it — on `GET /oauth/me` and on the
+ * onboarding endpoints. This declaration is the only one: the user store and
+ * the personalization payload both borrow their fields from here rather than
+ * restating them.
+ */
+export interface OnboardingData {
+  completed: boolean;
+  completed_at?: string;
+  phase?: string;
+  /** The "Getting started" conversation the server seeds on completion. */
+  first_message_conversation_id?: string;
+  /** The seeded "Getting started" conversation the wizard hands off into. */
+  getting_started_conversation_id?: string;
+  preferences?: {
+    profession?: string;
+    response_style?: string;
+    custom_instructions?: string;
+  };
+}
+
 export interface UserInfo {
   user_id: string;
   name: string;
   email: string;
   picture: string;
   timezone?: string;
-  onboarding?: {
-    completed: boolean;
-    completed_at?: string;
-    phase?: string;
-    preferences?: {
-      profession?: string;
-      response_style?: string;
-      custom_instructions?: string;
-    };
-  };
+  onboarding?: OnboardingData;
   selected_model?: string;
 }
 
@@ -85,18 +97,10 @@ export const authApi = {
 
   // Complete onboarding
   completeOnboarding: async (onboardingData: {
-    name: string;
     profession: string;
+    needs: string[];
+    other_need?: string;
     timezone?: string;
-    focus?: string;
-    clarify_answers?: {
-      id: string;
-      kind: string;
-      question: string;
-      value: string | null;
-    }[];
-    selected_integrations?: string[];
-    defer_workflows?: boolean;
   }): Promise<{ success: boolean; message: string; user?: UserInfo }> => {
     return apiService.post("/onboarding", onboardingData, {
       silent: true,

@@ -3,7 +3,7 @@ import { EventEmitter } from "events";
 
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
-import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
+import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type {
   ArtifactData,
@@ -20,7 +20,6 @@ export interface IConversation {
   userId?: string;
   starred?: boolean;
   isSystemGenerated?: boolean;
-  isOnboardingConversation?: boolean;
   systemPurpose?: SystemPurpose | null;
   isUnread?: boolean;
   source?: string; // ConversationSource from backend (web, telegram, discord, etc.)

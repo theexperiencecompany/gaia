@@ -15,7 +15,7 @@ import React, {
 } from "react";
 import { getLinkByLabel } from "@/config/appConfig";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
-import { useShouldPromptUpgrade } from "@/features/pricing/hooks/usePricing";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
@@ -165,7 +165,7 @@ function MenuSectionsList({
 export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   const router = useRouter();
   const { modifierKeyName } = usePlatform();
-  const shouldPromptUpgrade = useShouldPromptUpgrade();
+  const { isPaid, isUnknown } = useIsPaid();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -323,9 +323,11 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     for (const section of MENU_SECTIONS) {
       const items: CommandMenuItem[] = [];
       for (const item of section.items) {
-        // Only surface an upgrade CTA once the API confirms the user is on the
-        // free plan — never while the subscription status is still loading.
-        if (item.hideWhenSubscribed && !shouldPromptUpgrade) {
+        // Filter out the "upgrade" item once we know the user is paid, and
+        // also while the plan status is still unknown — showing an upgrade
+        // prompt is exactly the free-tier UI a paying user reloading mid-
+        // fetch must never see.
+        if (item.hideWhenSubscribed && (isUnknown || isPaid)) {
           continue;
         }
         // Filter by search
@@ -342,7 +344,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
       }
     }
     return sections;
-  }, [search, shouldPromptUpgrade, buildMenuItem]);
+  }, [search, isUnknown, isPaid, buildMenuItem]);
 
   return (
     <AnimatePresence>

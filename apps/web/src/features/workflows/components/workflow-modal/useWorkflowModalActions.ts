@@ -1,15 +1,20 @@
 "use client";
 
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { Dispatch } from "react";
 import { useCallback, useMemo, useState } from "react";
 
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { useRouter } from "@/i18n/navigation";
 import { toast } from "@/lib/toast";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
 
+import { workflowKeys } from "../../api/queryKeys";
 import { type Workflow, workflowApi } from "../../api/workflowApi";
 import { REGENERATION_REASONS } from "../../constants/regeneration";
 import {
@@ -17,11 +22,10 @@ import {
   workflowFormSchema,
   workflowToFormData,
 } from "../../schemas/workflowFormSchema";
-import { useWorkflowModalStore } from "../../stores/workflowModalStore";
-import { useWorkflowsStore } from "../../stores/workflowsStore";
 import { findTriggerSchema } from "../../triggers/utils";
 import { mentionedIntegrationIds } from "../../utils/integrationMentions";
 import { missingIntegrationsMessage } from "../shared/workflowCardHelpers";
+import type { WorkflowModalUiAction, WorkflowModalUiState } from "./modalState";
 
 interface UseWorkflowModalActionsParams {
   mode: "create" | "edit" | "preview";
@@ -40,6 +44,13 @@ interface UseWorkflowModalActionsParams {
   onWorkflowSaved?: (workflowId: string) => void;
   onWorkflowDeleted?: (workflowId: string) => void;
   handleClose: () => void;
+  /**
+   * Modal UI state and its dispatch, owned by WorkflowModal's useReducer.
+   * No action reads `ui` today; it is part of the params so an action that
+   * needs the current phase does not have to re-plumb it.
+   */
+  ui: WorkflowModalUiState;
+  dispatch: Dispatch<WorkflowModalUiAction>;
 }
 
 /**
@@ -61,6 +72,7 @@ export function useWorkflowModalActions({
   onWorkflowSaved,
   onWorkflowDeleted,
   handleClose,
+  dispatch,
 }: UseWorkflowModalActionsParams) {
   const router = useRouter();
 
@@ -73,26 +85,76 @@ export function useWorkflowModalActions({
 
   const { selectWorkflow } = useWorkflowSelection();
 
-  // Workflows store actions for optimistic updates
-  const {
-    addWorkflow: addToStore,
-    updateWorkflow: updateInStore,
-    removeWorkflow: removeFromStore,
-    fetchWorkflows,
-    invalidateCache,
-  } = useWorkflowsStore();
+  // Optimistic writes go into the same query key useWorkflows() reads.
+  const queryClient = useQueryClient();
 
-  // Zustand UI state written by the actions below
-  const {
-    setCreationPhase,
-    setIsRegeneratingSteps,
-    setRegenerationError,
-    setIsActivated,
-    setIsTogglingActivation,
-  } = useWorkflowModalStore();
+  const patchWorkflowInCache = useCallback(
+    (workflowId: string, updates: Partial<Workflow>) => {
+      queryClient.setQueryData<Workflow[]>(workflowKeys.list(), (workflows) =>
+        workflows?.map((workflow) =>
+          workflow.id === workflowId ? { ...workflow, ...updates } : workflow,
+        ),
+      );
+    },
+    [queryClient],
+  );
+
+  const invalidateWorkflows = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: workflowKeys.all }),
+    [queryClient],
+  );
+
+  const snapshotWorkflows = useCallback(async () => {
+    await queryClient.cancelQueries({ queryKey: workflowKeys.list() });
+    return queryClient.getQueryData<Workflow[]>(workflowKeys.list());
+  }, [queryClient]);
+
+  const rollbackWorkflows = useCallback(
+    (previous: Workflow[] | undefined) => {
+      if (previous) queryClient.setQueryData(workflowKeys.list(), previous);
+    },
+    [queryClient],
+  );
+
+  const activationMutation = useMutation({
+    mutationFn: ({
+      workflowId,
+      activated,
+    }: {
+      workflowId: string;
+      activated: boolean;
+    }) =>
+      activated
+        ? workflowApi.activateWorkflow(workflowId)
+        : workflowApi.deactivateWorkflow(workflowId),
+    onMutate: async ({ workflowId, activated }) => {
+      const previous = await snapshotWorkflows();
+      patchWorkflowInCache(workflowId, { activated });
+      return { previous };
+    },
+    onError: (_error, _variables, context) =>
+      rollbackWorkflows(context?.previous),
+    onSettled: () => invalidateWorkflows(),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (workflowId: string) => workflowApi.deleteWorkflow(workflowId),
+    onMutate: async (workflowId) => {
+      const previous = await snapshotWorkflows();
+      queryClient.setQueryData<Workflow[]>(workflowKeys.list(), (workflows) =>
+        workflows?.filter((workflow) => workflow.id !== workflowId),
+      );
+      return { previous };
+    },
+    onError: (_error, _workflowId, context) =>
+      rollbackWorkflows(context?.previous),
+    onSettled: () => invalidateWorkflows(),
+  });
 
   const { integrations, connectIntegration } = useIntegrations();
   const [connectingId, setConnectingId] = useState<string | null>(null);
+  const { isPaid, isUnknown: isSubscriptionStatusUnknown } = useIsPaid();
+  const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
 
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -173,18 +235,18 @@ export function useWorkflowModalActions({
   // Create a brand-new workflow (optionally with predefined community steps).
   const handleCreate = async (data: WorkflowFormData) => {
     console.debug("[workflow:create] phase -> creating");
-    setCreationPhase("creating");
+    dispatch({ type: "phase", phase: "creating" });
 
     // Validate the trigger config before sending
     try {
       const validationResult = workflowFormSchema.safeParse(data);
       if (!validationResult.success) {
-        setCreationPhase("error");
+        dispatch({ type: "phase", phase: "error" });
         return;
       }
     } catch (validationError) {
       console.error("Form validation error:", validationError);
-      setCreationPhase("error");
+      dispatch({ type: "phase", phase: "error" });
       return;
     }
 
@@ -223,7 +285,7 @@ export function useWorkflowModalActions({
     });
 
     if (!result.success || !result.workflow) {
-      setCreationPhase("error");
+      dispatch({ type: "phase", phase: "error" });
       return;
     }
 
@@ -232,7 +294,7 @@ export function useWorkflowModalActions({
     // Update currentWorkflow with the newly created workflow
     setCurrentWorkflow(createdWorkflow);
     console.debug("[workflow:create] phase -> success");
-    setCreationPhase("success");
+    dispatch({ type: "phase", phase: "success" });
 
     // Show success toast
     toast.success("Workflow created successfully!", {
@@ -240,13 +302,15 @@ export function useWorkflowModalActions({
       duration: 3000,
     });
 
-    // Optimistic update: add to store immediately for instant UI feedback
-    addToStore(createdWorkflow);
+    // Optimistic update: show it in the list immediately
+    queryClient.setQueryData<Workflow[]>(
+      workflowKeys.list(),
+      (workflows = []) => [createdWorkflow, ...workflows],
+    );
 
     // Notify parent callbacks if provided (for backwards compatibility)
     if (onWorkflowSaved) onWorkflowSaved(createdWorkflow.id);
-    invalidateCache();
-    await fetchWorkflows();
+    await invalidateWorkflows();
 
     // In createAndSend mode, selectWorkflow navigates to /c and unmounts
     // this page (and modal). Closing here would push back to /workflows
@@ -267,8 +331,8 @@ export function useWorkflowModalActions({
         id: workflow.id,
       },
     );
-    setIsRegeneratingSteps(true);
-    setRegenerationError(null);
+    dispatch({ type: "regenerating", value: true });
+    dispatch({ type: "regenerationError", message: null });
     try {
       const regenResult = await workflowApi.regenerateWorkflowSteps(
         workflow.id,
@@ -287,10 +351,10 @@ export function useWorkflowModalActions({
           id: workflow.id,
           steps: regenResult.workflow.steps?.length ?? 0,
         });
-        // Commit the new steps locally AND to the store so the upcoming
-        // fetchWorkflows() refetch can't briefly resurface the old steps.
+        // Commit the new steps locally AND to the cache so the upcoming
+        // refetch can't briefly resurface the old steps.
         setCurrentWorkflow(regenResult.workflow);
-        updateInStore(workflow.id, regenResult.workflow);
+        patchWorkflowInCache(workflow.id, regenResult.workflow);
         toast.success("Workflow updated", {
           description: `${regenResult.workflow.steps?.length || 0} steps regenerated`,
           duration: 3000,
@@ -302,12 +366,12 @@ export function useWorkflowModalActions({
         regenError instanceof Error
           ? regenError.message
           : "Failed to regenerate steps";
-      setRegenerationError(message);
+      dispatch({ type: "regenerationError", message });
       toast.error("Saved, but failed to regenerate steps", {
         description: message,
       });
     } finally {
-      setIsRegeneratingSteps(false);
+      dispatch({ type: "regenerating", value: false });
     }
   };
 
@@ -352,9 +416,9 @@ export function useWorkflowModalActions({
 
       if (updatedWorkflow?.workflow) {
         setCurrentWorkflow(updatedWorkflow.workflow);
-        updateInStore(currentWorkflow.id, updatedWorkflow.workflow);
+        patchWorkflowInCache(currentWorkflow.id, updatedWorkflow.workflow);
       } else {
-        updateInStore(currentWorkflow.id, updateRequest);
+        patchWorkflowInCache(currentWorkflow.id, updateRequest);
       }
 
       if (stepRelevantChanged) {
@@ -365,8 +429,7 @@ export function useWorkflowModalActions({
 
       if (onWorkflowSaved) onWorkflowSaved(currentWorkflow.id);
 
-      invalidateCache();
-      await fetchWorkflows();
+      await invalidateWorkflows();
     } catch (error) {
       console.error("Failed to update workflow:", error);
       toast.error("Failed to update workflow", {
@@ -407,13 +470,10 @@ export function useWorkflowModalActions({
     if (!(mode === "edit" && existingWorkflow)) return;
     setIsDeleting(true);
     try {
-      await workflowApi.deleteWorkflow(existingWorkflow.id);
-      removeFromStore(existingWorkflow.id);
+      await deleteMutation.mutateAsync(existingWorkflow.id);
 
       if (onWorkflowDeleted) onWorkflowDeleted(existingWorkflow.id);
 
-      invalidateCache();
-      await fetchWorkflows();
       setIsDeleteConfirmOpen(false);
       handleClose();
     } catch (error) {
@@ -434,6 +494,22 @@ export function useWorkflowModalActions({
   const handleActivationToggle = async (newActivated: boolean) => {
     if (mode !== "edit" || !currentWorkflow) return;
 
+    // GAIA is paid-only: a free user can't enable a workflow. Show the
+    // upsell toast and open the paywall — never call activateWorkflow. While
+    // the subscription-status is still unknown, let the toggle proceed (the
+    // backend is the backstop) rather than gating on a not-yet-resolved
+    // "false".
+    if (newActivated && !isSubscriptionStatusUnknown && !isPaid) {
+      toast.info("Workflows require GAIA Pro", {
+        action: {
+          label: "Upgrade",
+          onClick: () =>
+            openUpgradeModal(undefined, { source: "workflow_activation" }),
+        },
+      });
+      return;
+    }
+
     // Block enabling a workflow whose trigger/steps need unconnected
     // integrations — it could never actually run.
     if (newActivated && missingIntegrations.length > 0) {
@@ -443,27 +519,23 @@ export function useWorkflowModalActions({
       return;
     }
 
-    setIsTogglingActivation(true);
+    dispatch({ type: "togglingActivation", value: true });
     try {
-      if (newActivated) {
-        await workflowApi.activateWorkflow(currentWorkflow.id);
-      } else {
-        await workflowApi.deactivateWorkflow(currentWorkflow.id);
-      }
+      await activationMutation.mutateAsync({
+        workflowId: currentWorkflow.id,
+        activated: newActivated,
+      });
 
       // Update currentWorkflow activation state
       setCurrentWorkflow({
         ...currentWorkflow,
         activated: newActivated,
       });
-      setIsActivated(newActivated);
-      updateInStore(currentWorkflow.id, { activated: newActivated });
-      invalidateCache();
-      await fetchWorkflows();
+      dispatch({ type: "activated", value: newActivated });
     } catch (error) {
       console.error("Failed to toggle workflow activation:", error);
     } finally {
-      setIsTogglingActivation(false);
+      dispatch({ type: "togglingActivation", value: false });
     }
   };
 
@@ -474,8 +546,8 @@ export function useWorkflowModalActions({
   ) => {
     if (mode !== "edit" || !currentWorkflow) return;
 
-    setIsRegeneratingSteps(true);
-    setRegenerationError(null);
+    dispatch({ type: "regenerating", value: true });
+    dispatch({ type: "regenerationError", message: null });
 
     try {
       const result = await workflowApi.regenerateWorkflowSteps(
@@ -501,18 +573,17 @@ export function useWorkflowModalActions({
       }
 
       if (onWorkflowSaved) onWorkflowSaved(currentWorkflow.id);
-      invalidateCache();
-      await fetchWorkflows();
+      await invalidateWorkflows();
 
-      setIsRegeneratingSteps(false);
+      dispatch({ type: "regenerating", value: false });
     } catch (error) {
       console.error("Failed to regenerate workflow steps:", error);
       const errorMessage =
         error instanceof Error
           ? error.message
           : "Failed to regenerate workflow steps";
-      setRegenerationError(errorMessage);
-      setIsRegeneratingSteps(false);
+      dispatch({ type: "regenerationError", message: errorMessage });
+      dispatch({ type: "regenerating", value: false });
     }
   };
 
@@ -528,8 +599,7 @@ export function useWorkflowModalActions({
         setCurrentWorkflow({ ...currentWorkflow, is_public: true, slug });
         if (slug) router.push(`/use-cases/${slug}`);
       }
-      invalidateCache();
-      await fetchWorkflows();
+      await invalidateWorkflows();
     } catch (error) {
       console.error("Error publishing/unpublishing workflow:", error);
     }
@@ -565,8 +635,7 @@ export function useWorkflowModalActions({
     if (!existingWorkflow?.id) return;
     try {
       await workflowApi.resetToDefault(existingWorkflow.id);
-      invalidateCache();
-      await fetchWorkflows();
+      await invalidateWorkflows();
       handleClose();
     } catch (error) {
       toast.error("Failed to reset workflow", {

@@ -30,7 +30,7 @@ function generateFAQs(
     },
     {
       question: `Is the ${name} integration free?`,
-      answer: `Yes. GAIA offers a generous free tier that includes access to community integrations like ${name}. You can connect ${name}, run automations, and use all available tools at no cost. Paid plans unlock higher usage limits, priority processing, and advanced workflow features. Visit the GAIA pricing page for full details.`,
+      answer: `Community integrations like ${name} are included with every GAIA plan at no extra charge — connect it, run automations, and use all available tools as part of your subscription. Paid plans unlock higher usage limits, priority processing, and advanced workflow features. Visit the GAIA pricing page for full details.`,
     },
     {
       question: `What can GAIA do with ${name}?`,

@@ -1,10 +1,11 @@
 import { useEffect } from "react";
 import { create } from "zustand";
-
-import type { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
 import type { IConversation, IMessage } from "@/lib/db/chatDb";
 import { db, dbEventEmitter } from "@/lib/db/chatDb";
-import type { ReplyToMessageData } from "@/stores/replyToMessageStore";
+import type {
+  ReplyToMessageData,
+  SelectedCalendarEventData,
+} from "@/stores/composerStore.types";
 import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";

@@ -14,7 +14,7 @@ import {
 import { AlertCircleIcon, TaskAddIcon } from "@icons";
 import { format } from "date-fns";
 import { useEffect, useMemo } from "react";
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useModalForm } from "@/hooks/ui/useModalForm";
@@ -343,7 +343,7 @@ export default function TodoModal({
   buttonText = "Add Task",
   buttonClassName = "w-full justify-start text-sm text-primary",
 }: TodoModalProps) {
-  const user = useUser();
+  const user = useCurrentUser();
   const { isMac, modifierKeyName } = usePlatform();
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
   const { projects, createTodo, updateTodo } = useTodoData({ autoLoad: false });

@@ -57,3 +57,21 @@ export function isSafeInternalPath(url: string): boolean {
     return false;
   }
 }
+
+/**
+ * True when `href` stays inside this app: a same-origin path, or an absolute
+ * URL on `appOrigin` (the API links to `/integrations` with its FRONTEND_URL,
+ * so the absolute form is the common one). Such links belong in the same
+ * tab: opening the app beside itself leaves the user with two sessions of
+ * one chat. An empty `appOrigin` (server render) treats only paths as
+ * internal.
+ */
+export function isAppLink(href: string, appOrigin: string): boolean {
+  if (isSafeInternalPath(href)) return true;
+  if (!appOrigin) return false;
+  try {
+    return new URL(href).origin === appOrigin;
+  } catch {
+    return false;
+  }
+}

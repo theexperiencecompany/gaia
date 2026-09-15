@@ -3,7 +3,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import * as m from "motion/react-m";
 import { useEffect, useState } from "react";
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import { useClearPaywallWhenPaid } from "@/features/pricing/hooks/useClearPaywallWhenPaid";
 import { useElectron } from "@/hooks/useElectron";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useChatStore, useChatStoreSync } from "@/stores/chatStore";
@@ -27,12 +28,17 @@ export default function AssistantPopup() {
   // entrance animation on an already-mounted panel.
   const [activationCount, setActivationCount] = useState(0);
   const queryClient = useQueryClient();
-  const user = useUser();
+  const user = useCurrentUser();
   const isAuthenticated = Boolean(user?.email);
 
   useChatStoreSync();
   usePopupChatPublisher();
   usePopupEscapeDismiss();
+  // This window is where the 402 landed and where the paid-only wall lives,
+  // so it is where the wall has to come down: the feed window only mirrors
+  // what this one publishes, and the checkout that lifts it finishes over in
+  // the user's browser.
+  useClearPaywallWhenPaid();
 
   // Outside Electron (browser dev), show the panel immediately.
   useEffect(() => {

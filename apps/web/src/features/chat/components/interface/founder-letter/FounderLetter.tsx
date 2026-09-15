@@ -1,43 +1,25 @@
 "use client";
 
 import { Modal, ModalContent } from "@heroui/modal";
-import {
-  CancelIcon,
-  CheckmarkCircle02Icon,
-  CircleArrowRight02Icon,
-  Copy01Icon,
-} from "@icons";
-import { useReducedMotion } from "motion/react";
-import * as m from "motion/react-m";
-import Image from "next/image";
-import { type CSSProperties, useCallback, useEffect, useState } from "react";
+import { CancelIcon } from "@icons";
+import type { CSSProperties } from "react";
 
-import { RaisedButton } from "@/components/ui/raised-button";
-import { isOfferLive } from "@/config/offer";
+import { useFounderLetter } from "@/features/chat/hooks/useFounderLetter";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { toast } from "@/lib/toast";
-import { usePricingModalStore } from "@/stores/pricingModalStore";
-import { useUserStore } from "@/stores/userStore";
 
 import {
   BODY_FONT,
-  DISCOUNT_CODE,
-  DISCOUNT_PERCENT,
-  DISCOUNT_TERMS,
-  DISCOUNT_YEARLY_NOTE,
   INK,
   INK_SOFT,
-  LETTER_DISMISSED_KEY,
-  LETTER_OPENED_KEY,
   LETTER_PARAGRAPHS,
   MEETING_CTA,
   MEETING_SENTENCE,
   MEETING_URL,
-  OFFER_LEAD,
-  SALUTATION_FALLBACK,
   SIGNATURE_NAME,
   SIGNATURE_ROLE,
 } from "./content";
+import { LetterEnvelope } from "./LetterEnvelope";
+import { LetterOffer } from "./LetterOffer";
 import { Signature } from "./Signature";
 
 /**
@@ -89,14 +71,6 @@ const LETTER_MOTION = {
     },
   },
 };
-
-/** The offer button reads as ink on paper: RaisedButton's flat black treatment. */
-const CTA_BLACK = "#000000";
-
-/** The sealed envelope the letter arrives in: the artwork file as it is. */
-const ENVELOPE_IMAGE = "/images/icons/sealed-envelope.webp";
-const ENVELOPE_WIDTH = 1536;
-const ENVELOPE_HEIGHT = 1024;
 
 /**
  * The paper: a sheet torn out by hand, ragged on all four edges.
@@ -255,147 +229,31 @@ interface FounderLetterProps {
 }
 
 export function FounderLetter({ hidden = false }: FounderLetterProps) {
-  const [isLetterOpen, setIsLetterOpen] = useState(false);
-  // Both read in an effect, not in render, so server and client markup match.
-  const [dismissed, setDismissed] = useState(false);
-  const [hasOpened, setHasOpened] = useState(false);
-  // An expired code fails loudly at Dodo's checkout, so the letter stops
-  // offering it rather than sending readers into a 500.
-  const [offerLive, setOfferLive] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const userName = useUserStore((s) => s.name);
-  const openPricingModal = usePricingModalStore((s) => s.openModal);
-  const reduceMotion = useReducedMotion();
-
-  const firstName = userName.trim().split(" ")[0] || SALUTATION_FALLBACK;
-
-  useEffect(() => {
-    const isDismissed = !!window.localStorage.getItem(LETTER_DISMISSED_KEY);
-    setDismissed(isDismissed);
-    setHasOpened(!!window.localStorage.getItem(LETTER_OPENED_KEY));
-    setOfferLive(isOfferLive());
-    // The denominator for every other event in this funnel: without it, an
-    // open rate has no base to divide by.
-    if (!isDismissed) {
-      trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_SHOWN, {
-        discount_code: DISCOUNT_CODE,
-      });
-    }
-  }, []);
-
-  const openLetter = useCallback(() => {
-    const firstOpen = !window.localStorage.getItem(LETTER_OPENED_KEY);
-    window.localStorage.setItem(LETTER_OPENED_KEY, "1");
-    setHasOpened(true);
-    setIsLetterOpen(true);
-    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_OPENED, {
-      first_open: firstOpen,
-      discount_code: DISCOUNT_CODE,
-      discount_percent: DISCOUNT_PERCENT,
-    });
-  }, []);
-
-  // Dismissing hides the envelope for good on this device.
-  const dismissLetter = useCallback(() => {
-    window.localStorage.setItem(LETTER_DISMISSED_KEY, "1");
-    setDismissed(true);
-    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_DISMISSED, {
-      discount_code: DISCOUNT_CODE,
-    });
-  }, []);
-
-  const closeLetter = useCallback(() => setIsLetterOpen(false), []);
-
-  // Voice mode hides the letter. Hiding it is derived, not an effect: the
-  // early return below stops rendering while `hidden`, which takes an open
-  // modal with it — otherwise the body scroll would stay locked with nothing
-  // on screen to explain why.
-  // Voice mode hiding the letter must CLOSE it for good (master's documented
-  // intent): once `hidden`, clear the open flag via render-time adjustment so
-  // exiting voice mode doesn't resurrect the modal. Render-phase setState is
-  // React's sanctioned pattern here — no adjustment effect needed.
-  if (hidden && isLetterOpen) {
-    setIsLetterOpen(false);
-  }
-  const isOpen = isLetterOpen && !hidden;
-
-  const copyCode = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(DISCOUNT_CODE);
-    } catch {
-      // Clipboard API can be unavailable (permissions, non-secure context);
-      // fall back to the legacy path so the code still reaches the user.
-      const textarea = document.createElement("textarea");
-      textarea.value = DISCOUNT_CODE;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      textarea.remove();
-    }
-    setCopied(true);
-    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_CODE_COPIED, {
-      discount_code: DISCOUNT_CODE,
-    });
-    toast.success(`Code ${DISCOUNT_CODE} copied, it's yours`);
-    window.setTimeout(() => setCopied(false), 2000);
-  }, []);
+  const {
+    firstName,
+    dismissed,
+    hasOpened,
+    offerLive,
+    copied,
+    isOpen,
+    reduceMotion,
+    openLetter,
+    dismissLetter,
+    closeLetter,
+    copyCode,
+    claimOffer,
+  } = useFounderLetter(hidden);
 
   if (hidden || dismissed) return null;
 
   return (
     <>
-      {/* A folded letter, waiting in the bottom-right corner above the composer. */}
-      <div className="fixed right-4 bottom-24 z-40 flex flex-col items-end gap-1">
-        <m.button
-          type="button"
-          onClick={openLetter}
-          aria-label="A letter from Aryan Randeriya"
-          title="A letter from Aryan"
-          className="isolate cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#00bbff]"
-          initial={false}
-          whileHover={reduceMotion ? undefined : { scale: 1.06 }}
-          whileTap={reduceMotion ? undefined : { scale: 0.94 }}
-          // A jump, not a float: two hops, then it sits still long enough to
-          // stop being noise.
-          // It jumps for attention until it has been read, then settles.
-          animate={
-            reduceMotion || hasOpened ? undefined : { y: [0, -16, 0, -7, 0] }
-          }
-          transition={
-            reduceMotion || hasOpened
-              ? undefined
-              : {
-                  y: {
-                    duration: 1.1,
-                    times: [0, 0.28, 0.52, 0.72, 0.9],
-                    ease: "easeOut",
-                    repeat: Number.POSITIVE_INFINITY,
-                    repeatDelay: 2.6,
-                  },
-                }
-          }
-        >
-          <Image
-            src={ENVELOPE_IMAGE}
-            alt=""
-            width={ENVELOPE_WIDTH}
-            height={ENVELOPE_HEIGHT}
-            priority
-            className="block w-20 rotate-[-3deg]"
-          />
-        </m.button>
-        {hasOpened && (
-          <button
-            type="button"
-            onClick={dismissLetter}
-            className="cursor-pointer pr-1 text-[11px] font-normal text-zinc-400 outline-none transition-colors hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-[#00bbff]"
-          >
-            Don't show again
-          </button>
-        )}
-      </div>
+      <LetterEnvelope
+        hasOpened={hasOpened}
+        reduceMotion={reduceMotion}
+        onOpen={openLetter}
+        onDismiss={dismissLetter}
+      />
 
       {/* HeroUI owns the dialog semantics: focus trap, Escape, scroll lock and
           focus restoration to the envelope. The paper is its own surface, so
@@ -452,66 +310,12 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                 ))}
               </div>
 
-              {/* The offer, seamless and inline, while the code still works */}
               {offerLive && (
-                <div className="mt-3 space-y-2">
-                  <p
-                    style={{
-                      fontSize: "var(--letter-body)",
-                      lineHeight: "var(--letter-body-lh)",
-                    }}
-                  >
-                    {OFFER_LEAD} Take{" "}
-                    <strong className="font-bold">
-                      {DISCOUNT_PERCENT}% off
-                    </strong>{" "}
-                    with{" "}
-                    <button
-                      type="button"
-                      onClick={copyCode}
-                      aria-label={`Copy the discount code ${DISCOUNT_CODE}`}
-                      title={copied ? "Copied" : "Copy code"}
-                      className="mx-0.5 inline-flex translate-y-[-1px] cursor-pointer items-center gap-1 rounded px-1 align-middle font-bold outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
-                      style={{ color: INK }}
-                    >
-                      {DISCOUNT_CODE}
-                      {copied ? (
-                        <CheckmarkCircle02Icon className="h-3.5 w-3.5" />
-                      ) : (
-                        <Copy01Icon className="h-3 w-3" />
-                      )}
-                    </button>
-                    at checkout. {DISCOUNT_YEARLY_NOTE}
-                  </p>
-                  <RaisedButton
-                    color={CTA_BLACK}
-                    size="sm"
-                    className="mt-1 px-4 font-semibold"
-                    onClick={() => {
-                      trackEvent(
-                        ANALYTICS_EVENTS.FOUNDER_LETTER_DISCOUNT_CTA_CLICKED,
-                        {
-                          discount_code: DISCOUNT_CODE,
-                          discount_percent: DISCOUNT_PERCENT,
-                        },
-                      );
-                      openPricingModal({
-                        discountCode: DISCOUNT_CODE,
-                        discountPercent: DISCOUNT_PERCENT,
-                      });
-                      closeLetter();
-                    }}
-                  >
-                    Claim {DISCOUNT_PERCENT}% off
-                    <CircleArrowRight02Icon className="h-4 w-4" />
-                  </RaisedButton>
-                  <p
-                    className="opacity-60"
-                    style={{ fontSize: "calc(var(--letter-small) * 0.92)" }}
-                  >
-                    {DISCOUNT_TERMS}
-                  </p>
-                </div>
+                <LetterOffer
+                  copied={copied}
+                  onCopyCode={copyCode}
+                  onClaim={claimOffer}
+                />
               )}
 
               {/* Meeting */}

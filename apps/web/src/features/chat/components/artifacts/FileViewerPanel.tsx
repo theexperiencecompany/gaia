@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState, type WheelEvent } from "react";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
-import { useRightSidebar } from "@/stores/rightSidebarStore";
+import { useCloseRightSidebar } from "@/stores/layoutStore";
 
 interface FileViewerPanelProps {
   conversationId: string;
@@ -269,7 +269,7 @@ export default function FileViewerPanel({
     error,
   } = useArtifactText(conversationId, path, inlineBody, !isImage && !isPdf);
   const [copied, setCopied] = useState(false);
-  const closeSidebar = useRightSidebar((state) => state.close);
+  const closeSidebar = useCloseRightSidebar();
 
   const isPreviewable = PREVIEWABLE_CONTENT_TYPES.has(contentType) || isImage;
 

@@ -12,7 +12,7 @@ import { useParams } from "next/navigation";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { toast } from "@/lib/toast";
 import { syncSingleConversation } from "@/services/syncService";
-import { useReplyToMessage } from "@/stores/replyToMessageStore";
+import { useReplyToMessage } from "@/stores/composerStore";
 
 interface ChatBubbleActionsProps {
   loading: boolean;

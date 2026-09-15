@@ -12,7 +12,10 @@ import { MOTION_COMPOSER_CTA } from "../constants/motion";
 
 export function ComposerCTA({ children }: { children: ReactNode }) {
   return (
-    <m.div className="flex justify-center pb-6" {...MOTION_COMPOSER_CTA}>
+    <m.div
+      className="flex justify-center pb-16 sm:pb-6"
+      {...MOTION_COMPOSER_CTA}
+    >
       {children}
     </m.div>
   );

@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useElectron } from "@/hooks/useElectron";
 import { usePathname } from "@/i18n/navigation";
 
@@ -22,7 +22,7 @@ interface ElectronRouteGuardProps {
 export function ElectronRouteGuard({ children }: ElectronRouteGuardProps) {
   const { isElectron, signalReady } = useElectron();
   const pathname = usePathname();
-  const user = useUser();
+  const user = useCurrentUser();
   const signaledReadyRef = useRef(false);
   const [isUserCheckComplete, setIsUserCheckComplete] = useState(false);
 
@@ -37,7 +37,7 @@ export function ElectronRouteGuard({ children }: ElectronRouteGuardProps) {
     signalReady();
   }, [signalReady]);
 
-  // Track when user check is complete — `useUser()` reads a persisted store
+  // Track when user check is complete — `useCurrentUser()` reads a persisted store
   // that rehydrates synchronously on the client, so one pass after mount in
   // Electron is enough before we commit to a redirect decision.
   useEffect(() => {

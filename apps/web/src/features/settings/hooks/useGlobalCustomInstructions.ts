@@ -1,6 +1,10 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
-import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
+import {
+  patchCurrentUser,
+  useCurrentUser,
+} from "@/features/auth/hooks/useCurrentUser";
 import { mergedOnboardingUpdate } from "@/features/settings/utils/onboardingPreferences";
 import { toast } from "@/lib/toast";
 
@@ -10,13 +14,13 @@ const SAVE_DEBOUNCE_MS = 1000;
  * The user-level custom instructions included in every conversation.
  *
  * The backend replaces the whole onboarding preferences object on save, so
- * the payload always carries profession/response_style from the store, and a
- * successful save writes the result back to the store to keep the
- * Preferences page consistent.
+ * the payload always carries profession/response_style from the cached user,
+ * and a successful save writes the result back into that cache entry to keep
+ * the Preferences page consistent.
  */
 export const useGlobalCustomInstructions = () => {
-  const user = useUser();
-  const { updateUser } = useUserActions();
+  const user = useCurrentUser();
+  const queryClient = useQueryClient();
 
   const stored = user.onboarding?.preferences?.custom_instructions || "";
   const [value, setValue] = useState(stored);
@@ -46,7 +50,8 @@ export const useGlobalCustomInstructions = () => {
           custom_instructions: trimmed === "" ? null : next,
         });
         if (!response.success) throw new Error(response.message);
-        updateUser(
+        patchCurrentUser(
+          queryClient,
           mergedOnboardingUpdate(user.onboarding, {
             custom_instructions: trimmed === "" ? undefined : next,
           }),
@@ -59,7 +64,7 @@ export const useGlobalCustomInstructions = () => {
         setIsSaving(false);
       }
     },
-    [user.onboarding, updateUser],
+    [user.onboarding, queryClient],
   );
 
   const onChange = useCallback(

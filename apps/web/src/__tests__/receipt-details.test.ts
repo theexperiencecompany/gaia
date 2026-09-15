@@ -51,7 +51,7 @@ describe("buildReceiptDetails", () => {
     const details = buildReceiptDetails(status({}), proMonthly);
 
     expect(details).toEqual({
-      planName: "Pro",
+      planName: "GAIA",
       amount: 3000,
       currency: "USD",
       billingPeriod: "monthly",
@@ -88,7 +88,7 @@ describe("buildReceiptDetails", () => {
     // Charged amount/currency win over the catalog price: the receipt must
     // show what Dodo actually billed.
     expect(details).toEqual({
-      planName: "Pro",
+      planName: "GAIA",
       amount: 297948,
       currency: "INR",
       billingPeriod: "monthly",
@@ -128,7 +128,7 @@ describe("buildReceiptDetails", () => {
       proMonthly,
     );
 
-    expect(details.planName).toBe("Pro");
+    expect(details.planName).toBe("GAIA");
     expect(details.billingPeriod).toBe("monthly");
     expect(details.subscriptionRef).toBe("sub_0NmJsZG5B0qv7BmHWd8mk");
   });

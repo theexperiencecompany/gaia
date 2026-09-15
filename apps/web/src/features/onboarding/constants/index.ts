@@ -1,57 +1,134 @@
-import type { ProfessionOption, Question } from "../types";
+import type { Question } from "../types";
+import {
+  needOptions,
+  OTHER_NEED,
+  professionOptions,
+  roleNeedOptions,
+} from "./options";
+import type { TypedNeedOption } from "./options.types";
 
-export const HOLO_CARD_HEIGHT = 470;
-export const HOLO_CARD_WIDTH = 330;
+export { needOptions, OTHER_NEED, professionOptions } from "./options";
 
-export const professionOptions: ProfessionOption[] = [
-  { label: "Student", value: "student" },
-  { label: "Teacher", value: "teacher" },
-  { label: "Engineer", value: "engineer" },
-  { label: "Developer", value: "developer" },
-  { label: "Designer", value: "designer" },
-  { label: "Manager", value: "manager" },
-  { label: "Consultant", value: "consultant" },
-  { label: "Entrepreneur", value: "entrepreneur" },
-  { label: "Researcher", value: "researcher" },
-  { label: "Writer", value: "writer" },
-  { label: "Artist", value: "artist" },
-  { label: "Doctor", value: "doctor" },
-  { label: "Lawyer", value: "lawyer" },
-  { label: "Accountant", value: "accountant" },
-  { label: "Sales", value: "sales" },
-  { label: "Marketing", value: "marketing" },
-  { label: "Analyst", value: "analyst" },
-  { label: "Freelancer", value: "freelancer" },
-  { label: "Retired", value: "retired" },
-  { label: "Other", value: "other" },
+/** How the role reads inside "Personalised for you, since you're …". */
+export const ROLE_PHRASES: Record<string, string> = {
+  founder: "a founder",
+  executive: "an executive",
+  sales: "in sales",
+  product: "in product",
+  creative: "a creative",
+  engineering: "an engineer",
+  marketing: "in marketing",
+  finance: "in finance",
+  student: "a student",
+};
+
+const allNeedOptions: readonly TypedNeedOption[] = [
+  ...needOptions,
+  ...Object.values(roleNeedOptions).flat(),
 ];
 
+function isRole(
+  profession: string,
+): profession is keyof typeof roleNeedOptions {
+  return profession in roleNeedOptions;
+}
+
+/** The Q2 grid for a Q1 answer: the role's two pains first, then the shared six. */
+export function needOptionsFor(
+  profession: string | null,
+): readonly TypedNeedOption[] {
+  const role =
+    profession && isRole(profession) ? roleNeedOptions[profession] : undefined;
+  return role ? [...role, ...needOptions] : needOptions;
+}
+
+export function isRoleNeed(value: string): boolean {
+  return (
+    !needOptions.some((option) => option.value === value) && isKnownNeed(value)
+  );
+}
+
+export function isKnownNeed(value: string): boolean {
+  return allNeedOptions.some((option) => option.value === value);
+}
+
+export function needLabel(value: string): string | undefined {
+  return allNeedOptions.find((option) => option.value === value)?.label;
+}
+
+/** Under the Q2 grid: how many picks are left, then, once they are spent,
+ * that the picks set up the first thing and are not a ceiling. */
+export function needsHint(picksLeft: number): string {
+  if (picksLeft > 0) return `${picksLeft} left`;
+  return "Don't worry, you can hand me more later.";
+}
+
+/** The catch-all chip; picking it opens a free-text field whose value replaces
+ * this marker as the draft. Anything not in `professionOptions` is a typed job. */
+export const OTHER_PROFESSION = "other";
+
+export function isListedProfession(value: string): boolean {
+  return (
+    value !== OTHER_PROFESSION &&
+    professionOptions.some((option) => option.value === value)
+  );
+}
+
+export const OTHER_NEED_OPTION: TypedNeedOption = {
+  value: OTHER_NEED,
+  label: "Something else",
+};
+
+export const NEEDS_MIN_SELECTION = 1;
+/** Mirrors `NEEDS_MAX_SELECTION` in apps/api user_models.py: the API 422s a
+ * third need. "Something else" counts as a pick, so the field closes the grid. */
+export const NEEDS_MAX_SELECTION = 3;
+
+/** Mirror `OnboardingPreferences` in apps/api user_models.py: the profession
+ * validator caps at 80 and `OTHER_NEED_MAX_LENGTH` at 120; longer text 422s.
+ * 80, not 50, because Q1 asks "What do you do?" and people answer in a
+ * sentence — "I'm a founder and designer building a startup" is already 46. */
+export const PROFESSION_MAX_LENGTH = 80;
+export const OTHER_NEED_MAX_LENGTH = 120;
+
+/** Query key Dodo's return URL carries back into the wizard after checkout.
+ * Mirrors ONBOARDING_CHECKOUT_RETURN_PATH in apps/api payment_models.py. */
+export const CHECKOUT_RETURNED_PARAM = "checkout";
+
 export const FIELD_NAMES = {
-  NAME: "name",
   PROFESSION: "profession",
-  GMAIL: "gmail",
-  FOCUS: "focus",
+  NEEDS: "needs",
 } as const;
+
+/** "Founder, got it." for a listed job; a typed or skipped one gets a plain ack. */
+function professionAck(responses: Record<string, string>): string {
+  const picked = responses[FIELD_NAMES.PROFESSION];
+  const listed = picked && isListedProfession(picked);
+  const label = listed
+    ? professionOptions.find((option) => option.value === picked)?.label
+    : undefined;
+  return label ? `${label.split(" / ")[0]}, got it.` : "Got it.";
+}
 
 export const questions: Question[] = [
   {
     id: "1",
-    question: "Hey! I'm GAIA. What should I call you?",
-    placeholder: "Enter your name...",
-    fieldName: FIELD_NAMES.NAME,
-  },
-  {
-    id: "2",
-    question:
-      "What do you do? This helps me handle your emails, calendar, and tasks the right way.",
-    placeholder: "e.g., Software Developer, Student, Designer...",
+    lines: (_responses, { firstName }) => [
+      firstName
+        ? `Hey ${firstName}! I'm GAIA. Nice to meet you.`
+        : "Hey! I'm GAIA. Nice to meet you.",
+      "Think about everything you did yesterday. Email, calendar, meetings, sure, that's the obvious stuff.",
+      "But also the research, the chasing people, the spreadsheet, the booking, that one thing you do every week and hate. I do all of that. Not you.",
+      "So, what do you do for work?",
+    ],
     fieldName: FIELD_NAMES.PROFESSION,
   },
   {
-    id: "3",
-    question:
-      "Last thing. Connect your Gmail and I'll go through your inbox, find what matters, and set up your first action items.",
-    placeholder: "",
-    fieldName: FIELD_NAMES.GMAIL,
+    id: "2",
+    lines: (responses) => [
+      professionAck(responses),
+      "What do you want off your plate first? Pick up to three.",
+    ],
+    fieldName: FIELD_NAMES.NEEDS,
   },
 ];

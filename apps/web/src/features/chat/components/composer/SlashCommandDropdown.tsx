@@ -100,9 +100,10 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
           <div className="flex items-center gap-2 p-2">
             {/* Icon */}
             <div className="shrink-0">
+              {/* Same shape as the tool-call thread: tinted background, 21px glyph. */}
               {getToolCategoryIcon(
                 match.tool.category,
-                { showBackground: false, size: 24 },
+                { width: 21, height: 21 },
                 categoryDisplayMap[match.tool.category]?.iconUrl,
               )}
             </div>

@@ -7,14 +7,12 @@ import { filterEmptyMessagePairs } from "@/features/chat/utils/messageContentUti
 
 interface UseChatLayoutReturn {
   hasMessages: boolean;
-  isWelcomeConversation: boolean;
   chatRef: React.RefObject<HTMLDivElement | null>;
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   fileUploadRef: React.RefObject<{
     attachFiles: (files: File[]) => Promise<void>;
   } | null>;
-  appendToInputRef: React.RefObject<((text: string) => void) | null>;
   router: ReturnType<typeof useRouter>;
   convoIdParam: string;
 }
@@ -31,8 +29,6 @@ export const useChatLayout = (): UseChatLayoutReturn => {
   const fileUploadRef = useRef<{
     attachFiles: (files: File[]) => Promise<void>;
   } | null>(null);
-  const appendToInputRef = useRef<((text: string) => void) | null>(null);
-
   // Find the current conversation
   const conversation = useMemo(() => {
     return conversations.find(
@@ -57,17 +53,12 @@ export const useChatLayout = (): UseChatLayoutReturn => {
     conversation?.system_purpose,
   ]);
 
-  const isWelcomeConversation =
-    conversation?.is_onboarding_conversation === true;
-
   return {
     hasMessages,
-    isWelcomeConversation,
     chatRef,
     dummySectionRef,
     inputRef,
     fileUploadRef,
-    appendToInputRef,
     router,
     convoIdParam,
   };

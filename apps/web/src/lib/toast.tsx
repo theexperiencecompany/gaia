@@ -81,6 +81,7 @@ function ToastControls({
     <div className={twoUp ? "mt-2 grid grid-cols-2 gap-2" : "mt-2"}>
       {action ? (
         <Button
+          as="div"
           size="sm"
           variant="flat"
           fullWidth
@@ -92,6 +93,7 @@ function ToastControls({
       ) : null}
       {showDismiss ? (
         <Button
+          as="div"
           size="sm"
           variant="flat"
           fullWidth

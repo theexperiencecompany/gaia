@@ -86,18 +86,11 @@ if (typeof window !== "undefined") {
       }
     }
 
-    // PostHog (any environment where the project token is set)
+    // PostHog (any environment where the project token is set). A missing
+    // token is the normal local setup, not an error: analytics stays off and
+    // nothing is logged, the same way Sentry above is skipped without a DSN.
     const posthogProjectToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
-    if (!posthogProjectToken) {
-      if (process.env.NODE_ENV === "development") {
-        console.error(
-          new Error(
-            "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN is configured",
-          ),
-        );
-      }
-      return;
-    }
+    if (!posthogProjectToken) return;
 
     try {
       const { default: posthog } = await import("posthog-js");
@@ -120,6 +113,13 @@ if (typeof window !== "undefined") {
         // Sentry filters above so both sinks stay in agreement.
         before_send: filterExceptionBeforeSend,
       });
+
+      // Anything captured while this init was still queued at idle was
+      // buffered rather than dropped — replay it now, in order. Imported
+      // dynamically so the analytics module (and posthog-js with it) stays
+      // off the critical rendering path.
+      const { flushPendingAnalytics } = await import("@/lib/analytics");
+      flushPendingAnalytics();
     } catch {
       // Analytics should never break the app.
     }

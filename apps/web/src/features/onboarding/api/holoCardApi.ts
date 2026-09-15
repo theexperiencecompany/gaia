@@ -1,4 +1,4 @@
-import type { PersonalizationData } from "@/features/onboarding/types/websocket";
+import type { PersonalizationData } from "@/features/onboarding/types/personalization";
 import { api } from "@/lib/api/client";
 import { apiService } from "@/lib/api/service";
 

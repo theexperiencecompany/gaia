@@ -4,17 +4,19 @@ import type React from "react";
 
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import {
   useComposerFiles,
   useComposerIsUploading,
   useComposerModeSelection,
+  useComposerStore,
   useComposerTextActions,
   useComposerUI,
   useInputText,
+  useReplyToMessage,
 } from "@/stores/composerStore";
-import { useReplyToMessage } from "@/stores/replyToMessageStore";
-import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 interface UseComposerSubmitParams {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -46,7 +48,9 @@ export function useComposerSubmit({
   const { selectedCalendarEvent, clearSelectedCalendarEvent } =
     useCalendarEventSelection();
   const { replyToMessage, clearReplyToMessage } = useReplyToMessage();
-  const { autoSend } = useWorkflowSelectionStore();
+  const autoSend = useComposerStore((state) => state.workflowAutoSend);
+  const { isPaid, isUnknown: isSubscriptionStatusUnknown } = useIsPaid();
+  const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
 
   const sendMessage = useSendMessage();
 
@@ -68,6 +72,18 @@ export function useComposerSubmit({
       !selectedWorkflow &&
       !selectedCalendarEvent
     ) {
+      return;
+    }
+
+    // GAIA is paid-only: a free user can't send. Open the paywall instead of
+    // sending — the composer itself stays typable, only the send is blocked.
+    // While the subscription-status is still unknown (e.g. a cold cache right
+    // after a hard refresh, or the user store still rehydrating) let the send
+    // proceed — the backend's 402 on chat-stream is the backstop — rather
+    // than trapping a paying user behind the paywall on a not-yet-resolved
+    // "false".
+    if (!isSubscriptionStatusUnknown && !isPaid) {
+      openUpgradeModal(undefined, { source: "composer_submit" });
       return;
     }
     // Note: Loading state is now set in useSendMessage AFTER user message is persisted

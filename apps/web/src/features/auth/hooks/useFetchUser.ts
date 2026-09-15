@@ -1,15 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RedirectType, redirect, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { authApi } from "@/features/auth/api/authApi";
+import { PUBLIC_PAGES, SESSION_RESUMED_KEY } from "@/features/auth/constants";
 import {
-  ONBOARDING_PROCESSING_PHASES,
-  PUBLIC_PAGES,
-  SESSION_RESUMED_KEY,
-} from "@/features/auth/constants";
-import { useUserActions } from "@/features/auth/hooks/useUser";
+  clearCurrentUser,
+  currentUserQueryOptions,
+} from "@/features/auth/hooks/useCurrentUser";
 import { readPendingCheckout } from "@/features/pricing/lib/pendingCheckout";
 import { usePathname } from "@/i18n/navigation";
 import {
@@ -24,31 +22,24 @@ import {
 let hasTrackedOAuthLogin = false;
 
 const useFetchUser = () => {
-  const { setUser, clearUser } = useUserActions();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const currentPath = usePathname();
   const hasIdentified = useRef(false);
+  const hasClearedOnError = useRef(false);
 
+  // The one place the current-user query is driven. Every other reader joins
+  // the same cache entry through `useCurrentUser` — the cache *is* the state,
+  // so nothing is copied out of it. The entry is persisted for instant paint,
+  // so this driver always re-validates on mount: one server round-trip per
+  // page load, exactly as before, while every other reader stays fresh-only.
   const { data, error } = useQuery({
-    queryKey: ["current-user"],
-    queryFn: () => authApi.fetchUserInfo(),
-    staleTime: Infinity, // mutations update Zustand directly, so this only needs to fetch once per session
-    retry: false, // auth failures shouldn't be retried
+    ...currentUserQueryOptions,
+    refetchOnMount: "always",
   });
 
-  // Sync fetched data into Zustand store and run one-time side effects
   useEffect(() => {
     if (!data) return;
-
-    setUser({
-      userId: data.user_id,
-      name: data.name,
-      email: data.email,
-      profilePicture: data.picture,
-      timezone: data.timezone,
-      onboarding: data.onboarding,
-      selected_model: data.selected_model,
-    });
 
     // Identify the persisted client session with the stable backend user ID.
     if (data.user_id && !hasIdentified.current) {
@@ -60,7 +51,7 @@ const useFetchUser = () => {
       });
       hasIdentified.current = true;
     }
-  }, [data, setUser]);
+  }, [data]);
 
   // Track session resume once, independent from store-syncing.
   useEffect(() => {
@@ -100,9 +91,6 @@ const useFetchUser = () => {
 
     // A pending checkout takes priority; useCheckoutResume redirects to Dodo.
     const needsOnboarding = !data.onboarding?.completed;
-    const phase = data.onboarding?.phase;
-    const isStillProcessing =
-      !!phase && ONBOARDING_PROCESSING_PHASES.has(phase);
 
     if (needsOnboarding && currentPath !== "/onboarding") {
       redirect("/onboarding", RedirectType.push);
@@ -110,21 +98,23 @@ const useFetchUser = () => {
 
     if (
       !needsOnboarding &&
-      !isStillProcessing &&
       (currentPath === "/onboarding" || PUBLIC_PAGES.includes(currentPath))
     ) {
       redirect("/c", RedirectType.push);
     }
   }
 
-  // Clear user state on auth failure
+  // Clear user state on auth failure, dropping it from the persisted cache too.
+  // Guarded by a ref: removing the query makes this observer refetch, so an
+  // unguarded effect would remove it again on the next failure, in a loop.
   useEffect(() => {
-    if (!error) return;
+    if (!error || hasClearedOnError.current) return;
+    hasClearedOnError.current = true;
     console.error("Error fetching user info:", error);
-    clearUser();
+    clearCurrentUser(queryClient);
     resetUser();
     hasIdentified.current = false;
-  }, [error, clearUser]);
+  }, [error, queryClient]);
 };
 
 export default useFetchUser;

@@ -37,7 +37,7 @@ export default function GetStartedButton({
 
       {small_text && (
         <div className="text-xs font-light text-black">
-          No credit card required. Free forever plan included.
+          Secure payment · Cancel anytime.
         </div>
       )}
     </div>

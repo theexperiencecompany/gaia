@@ -1,7 +1,6 @@
 /**
  * Curated task prompts for the new-chat empty state, tagged by profession
- * archetype (the same 5-archetype bucketing the onboarding platform preview
- * uses). Selection guarantees at least one archetype-specific prompt when the
+ * archetype (five buckets over the ten onboarding professions). Selection guarantees at least one archetype-specific prompt when the
  * pool has one, and at least one zero-setup prompt so a fresh account with no
  * integrations always has a tap that pays off immediately.
  *
@@ -31,8 +30,36 @@ import {
   ZapIcon,
 } from "@icons";
 import type { ComponentType } from "react";
-import { getArchetype } from "@/features/onboarding/constants/platformPreviewMessages";
-import type { ProfessionArchetype } from "@/features/onboarding/constants/platformPreviewMessages.types";
+
+/**
+ * Prompts are written per work archetype, not per profession: the ten
+ * profession values from onboarding collapse into five voices here.
+ */
+type ProfessionArchetype =
+  | "builder"
+  | "operator"
+  | "founder"
+  | "scholar"
+  | "default";
+
+const PROFESSION_ARCHETYPES: Record<string, ProfessionArchetype> = {
+  engineering: "builder",
+  product: "builder",
+  executive: "operator",
+  sales: "operator",
+  marketing: "operator",
+  finance: "operator",
+  founder: "founder",
+  student: "scholar",
+  creative: "default",
+  other: "default",
+};
+
+function getArchetype(profession: string | undefined): ProfessionArchetype {
+  return (
+    (profession && PROFESSION_ARCHETYPES[profession.toLowerCase()]) || "default"
+  );
+}
 
 export interface StarterPrompt {
   prompt: string;

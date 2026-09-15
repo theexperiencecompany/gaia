@@ -324,8 +324,6 @@ export const batchSyncConversations = async (): Promise<void> => {
           description: conversation.description,
           starred: conversation.starred ?? false,
           isSystemGenerated: conversation.is_system_generated ?? false,
-          isOnboardingConversation:
-            conversation.is_onboarding_conversation ?? false,
           systemPurpose: conversation.system_purpose ?? null,
           isUnread: conversation.is_unread ?? false,
           artifacts,
@@ -385,7 +383,6 @@ export const applySyncedConversation = async (
     description: conversation.description,
     starred: conversation.starred ?? false,
     isSystemGenerated: conversation.is_system_generated ?? false,
-    isOnboardingConversation: conversation.is_onboarding_conversation ?? false,
     systemPurpose: conversation.system_purpose ?? null,
     isUnread: conversation.is_unread ?? false,
     artifacts,

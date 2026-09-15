@@ -2,7 +2,10 @@
  * Full-screen layout wrapper for the onboarding page. Three regions: top
  * progress bar, scrollable content (caller-supplied children), and an
  * optional pinned composer at the bottom. Auto-scrolls the content region
- * to bottom whenever stage- or content-bearing state changes.
+ * to bottom whenever stage- or content-bearing state changes, and again as
+ * the content itself grows: chips arrive staggered after the state change,
+ * so a scroll taken at the change alone leaves the last row of a tall stage
+ * under the composer on a phone.
  */
 
 "use client";
@@ -10,6 +13,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
+import { useIsMobile } from "@/hooks/ui/useMobile";
 import { getProgress, PROGRESS_TOTAL_STEPS } from "../state/derive";
 import type { OnboardingState, Stage } from "../state/types";
 import { DevSkipOnboarding } from "./DevSkipOnboarding";
@@ -35,25 +39,13 @@ interface OnboardingShellProps {
 }
 
 function getContentFingerprint(state: OnboardingState, stage: Stage): string {
-  const b = state.server;
-  const progress = Object.values(state.progressByStage).join("");
   return [
     stage,
     state.questionIndex,
-    progress,
-    state.completedStages.size,
-    state.ackedWritingStyle ? 1 : 0,
-    state.ackedTodos ? 1 : 0,
-    state.workflowsConfirmed ? 1 : 0,
+    state.selectedNeeds.length,
+    state.paidRevealAcked ? 1 : 0,
     state.platformsConfirmed ? 1 : 0,
     state.connectedPlatform ?? "",
-    b?.writing_style?.style_summary ?? "",
-    b?.onboarding_todos?.length ?? 0,
-    b?.suggested_workflows?.length ?? 0,
-    b?.first_message_conversation_id ?? "",
-    state.todoExecutionMessage ?? "",
-    Object.keys(state.clarifyAnswers).length,
-    state.clarifySubmitted ? 1 : 0,
   ].join("|");
 }
 
@@ -68,6 +60,7 @@ export function OnboardingShell({
   composer,
 }: OnboardingShellProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const progressStep = getProgress(state, stage);
@@ -90,12 +83,22 @@ export function OnboardingShell({
     return () => obs.disconnect();
   }, [hasComposer, stage]);
 
+  // On a desktop the column keeps its bottom in view as a stage grows. On a
+  // phone that same scroll yanks the page every time a bubble lands, so the
+  // user scrolls themselves there.
+  const isMobile = useIsMobile();
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [fingerprint, composerHeight]);
+    if (isMobile) return;
+    const scroller = scrollRef.current;
+    const content = contentRef.current;
+    if (!scroller || !content) return;
+    const toBottom = () =>
+      scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+    toBottom();
+    const obs = new ResizeObserver(toBottom);
+    obs.observe(content);
+    return () => obs.disconnect();
+  }, [fingerprint, composerHeight, isMobile]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-primary-bg backdrop-blur-2xl">
@@ -115,9 +118,10 @@ export function OnboardingShell({
 
       <div
         ref={scrollRef}
-        className="relative z-10 flex-1 overflow-y-auto px-4 pt-20"
+        className="relative z-10 flex-1 overflow-y-auto px-4 pt-20 sm:pt-36"
       >
         <div
+          ref={contentRef}
           className="relative mx-auto w-full max-w-3xl"
           style={{
             paddingBottom:
@@ -138,11 +142,7 @@ export function OnboardingShell({
       {composer && (
         <div
           ref={composerRef}
-          className={
-            stage === "clarify"
-              ? "fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-xl pb-3"
-              : "fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-lg pb-3"
-          }
+          className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-lg pb-3"
         >
           {composer}
         </div>

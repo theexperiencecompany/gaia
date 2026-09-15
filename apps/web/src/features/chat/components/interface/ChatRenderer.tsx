@@ -15,6 +15,7 @@ import {
   useState,
 } from "react";
 import { MessageScrollerItem } from "@/components/ui/message-scroller";
+import { SystemPurpose } from "@/features/chat/api/chatApi";
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
@@ -22,7 +23,6 @@ import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUs
 import GeneratedImageSheet from "@/features/chat/components/image/GeneratedImageSheet";
 import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIndicator";
 import MemoryModal from "@/features/chat/components/memory/MemoryModal";
-import { WelcomeChat } from "@/features/chat/components/welcome/WelcomeChat";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { useMessageHighlight } from "@/features/chat/hooks/useMessageHighlight";
@@ -303,10 +303,6 @@ export default function ChatRenderer({
     );
   }, [conversations, convoIdParam]);
 
-  // Read off the conversation, not userStore, to avoid a stale-rehydrate race.
-  const isWelcomeConversation =
-    conversation?.is_onboarding_conversation === true;
-
   // Handle retry callback. `retryMessage` gets a new identity on most renders
   // (its deps chain up to an unstable `sendMessage`), so we read it through a
   // ref to keep `handleRetry` — and therefore messagePropsOptions and the whole
@@ -449,8 +445,12 @@ export default function ChatRenderer({
         onClose={() => setOpenMemoryModal(false)}
       />
       <SearchedImageDialog />
-      <CreatedByGAIABanner show={conversation?.is_system_generated === true} />
-      {isWelcomeConversation && <WelcomeChat />}
+      <CreatedByGAIABanner
+        show={
+          conversation?.is_system_generated === true &&
+          conversation.system_purpose !== SystemPurpose.GETTING_STARTED
+        }
+      />
       {messagesWithDeduplicatedToolCalls?.map(
         (message: MessageType, index: number) => {
           // Consecutive bot bubble grouping (iMessage-style):

@@ -4,7 +4,7 @@
  * Extends the tools message schema to produce the full message shape.
  */
 
-import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
+import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";

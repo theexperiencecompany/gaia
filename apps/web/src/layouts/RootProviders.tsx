@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 
 import { gaiaOpenUITheme } from "@/config/openui/theme";
 import { HeroUIProvider } from "@/layouts/HeroUIProvider";
+import QueryProvider from "@/layouts/QueryProvider";
 
 const LoginModal = dynamic(
   () => import("@/features/auth/components/LoginModal"),
@@ -19,7 +20,11 @@ const LoginModal = dynamic(
  * Root-level client providers shared by every route under [locale].
  *
  * HeroUIProvider lives here so HeroUI components work in any route group
- * without each subtree re-mounting it. LoginModal also lives here — it's
+ * without each subtree re-mounting it. QueryProvider lives here because the
+ * query cache is app-global state: the signed-in user is a cache entry
+ * (`useCurrentUser`) read by every route group and by hooks that render
+ * above the route-group layouts, so the provider has to sit above all of
+ * them. LoginModal also lives here — it's
  * a singleton driven by a Zustand store, so one mount is enough for the
  * whole app; lazy-loaded so it stays out of the initial bundle.
  *
@@ -30,13 +35,15 @@ const LoginModal = dynamic(
 export default function RootProviders({ children }: { children: ReactNode }) {
   return (
     <HeroUIProvider>
-      {/* OpenUI (`@openuidev/react-ui`) components render inside chat and the
-          dev playground; ThemeProvider injects the GAIA-mapped `--openui-*`
-          tokens and provides the theme context they require. */}
-      <ThemeProvider mode="dark" darkTheme={gaiaOpenUITheme}>
-        {children}
-      </ThemeProvider>
-      <LoginModal />
+      <QueryProvider>
+        {/* OpenUI (`@openuidev/react-ui`) components render inside chat and the
+            dev playground; ThemeProvider injects the GAIA-mapped `--openui-*`
+            tokens and provides the theme context they require. */}
+        <ThemeProvider mode="dark" darkTheme={gaiaOpenUITheme}>
+          {children}
+        </ThemeProvider>
+        <LoginModal />
+      </QueryProvider>
     </HeroUIProvider>
   );
 }

@@ -1,6 +1,8 @@
 "use client";
 
-import MapLibreGL, { type MarkerOptions, type PopupOptions } from "maplibre-gl";
+// maplibre-gl 6 dropped the default export; the namespace import is the same
+// object under both, and every use below is namespaced (types and constructors).
+import * as MapLibreGL from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Cancel01Icon } from "@icons";
 import {
@@ -454,7 +456,7 @@ type MapMarkerProps = {
   onDrag?: (lngLat: { lng: number; lat: number }) => void;
   /** Callback when marker drag ends (requires draggable: true) */
   onDragEnd?: (lngLat: { lng: number; lat: number }) => void;
-} & Omit<MarkerOptions, "element">;
+} & Omit<MapLibreGL.MarkerOptions, "element">;
 
 function MapMarker({
   longitude,
@@ -661,7 +663,7 @@ type MarkerPopupProps = {
   className?: string;
   /** Show a close button in the popup (default: false) */
   closeButton?: boolean;
-} & Omit<PopupOptions, "className" | "closeButton">;
+} & Omit<MapLibreGL.PopupOptions, "className" | "closeButton">;
 
 function MarkerPopup({
   children,
@@ -728,7 +730,7 @@ type MarkerTooltipProps = {
   children: ReactNode;
   /** Additional CSS classes for the tooltip container */
   className?: string;
-} & Omit<PopupOptions, "className" | "closeButton" | "closeOnClick">;
+} & Omit<MapLibreGL.PopupOptions, "className" | "closeButton" | "closeOnClick">;
 
 function MarkerTooltip({
   children,
@@ -853,7 +855,7 @@ type MapPopupProps = {
   className?: string;
   /** Show a close button in the popup (default: false) */
   closeButton?: boolean;
-} & Omit<PopupOptions, "className" | "closeButton">;
+} & Omit<MapLibreGL.PopupOptions, "className" | "closeButton">;
 
 function MapPopup({
   longitude,
@@ -1175,13 +1177,18 @@ const GEOJSON_DEFAULT_COLORS = {
 
 // Apply every entry of a paint spec to a layer. Fill and line layers share this
 // loop, so it lives here rather than being duplicated inside the sync effect.
+type PaintPropertyName = Parameters<MapLibreGL.Map["setPaintProperty"]>[1];
+
 function applyPaintProperties(
   map: MapLibreGL.Map,
   layerId: string,
   paint: MapFillPaint | MapLinePaint,
 ): void {
   for (const [key, value] of Object.entries(paint)) {
-    map.setPaintProperty(layerId, key, value as never);
+    // `Object.entries` widens the key to `string`, which maplibre-gl 6 no longer
+    // accepts here. Every key of a fill/line paint spec is a paint property name
+    // by construction, so the narrowing is sound rather than a claim about data.
+    map.setPaintProperty(layerId, key as PaintPropertyName, value as never);
   }
 }
 

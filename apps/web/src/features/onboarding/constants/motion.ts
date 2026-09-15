@@ -16,12 +16,6 @@ export const MOTION_FADE_UP = {
   transition: { duration: 0.4, ease: EASE_OUT_QUART } satisfies Transition,
 } as const;
 
-export const MOTION_FADE_UP_LARGE = {
-  initial: { opacity: 0, y: 15 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.4, ease: EASE_OUT_QUART } satisfies Transition,
-} as const;
-
 export const MOTION_COMPOSER_CTA = {
   initial: { opacity: 0, y: 8 },
   animate: { opacity: 1, y: 0 },
@@ -30,10 +24,4 @@ export const MOTION_COMPOSER_CTA = {
     duration: 0.35,
     ease: EASE_OUT_QUART,
   } satisfies Transition,
-} as const;
-
-export const MOTION_STREAM_MESSAGE = {
-  initial: { opacity: 0, y: 10 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.3, ease: EASE_OUT_QUART } satisfies Transition,
 } as const;

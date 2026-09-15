@@ -2,15 +2,15 @@ import { Button } from "@heroui/button";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import {
   pickStarterPrompts,
   type StarterPrompt,
 } from "@/features/chat/components/interface/sections/starterPrompts";
 import { useAppendToInput } from "@/stores/composerStore";
-import { useUserStore } from "@/stores/userStore";
 
 export const ChatSuggestions: React.FC = () => {
-  const profession = useUserStore((s) => s.onboarding?.preferences?.profession);
+  const profession = useCurrentUser().onboarding?.preferences?.profession;
   const appendToInput = useAppendToInput();
   // Picked post-mount: Math.random during render made server and client
   // disagree on every load (hydration mismatch → discarded server tree).

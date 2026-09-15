@@ -7,12 +7,23 @@ import {
   DEFAULT_DEV_EXECUTOR_MODEL,
 } from "@/features/chat/constants/devModels";
 import { stripLocalePrefix } from "@/i18n/config";
+import type {
+  ReplyToMessageData,
+  SelectedCalendarEventData,
+  SelectedWorkflowData,
+  WorkflowSelectionOptions,
+} from "@/stores/composerStore.types";
 import type { FileData } from "@/types/shared/fileTypes";
 import type { SearchMode } from "@/types/shared/searchTypes";
 
 interface ComposerState {
   // Text input state
   pendingPrompt: string | null;
+  /**
+   * Send `pendingPrompt` as the user's turn on arrival instead of dropping it
+   * into the composer. Onboarding's web path uses this so the first message
+   * shows up as a real user bubble with GAIA's streamed reply under it.
+   */
   inputText: string;
 
   // Mode and tool selection
@@ -26,6 +37,15 @@ interface ComposerState {
 
   // UI state
   isSlashCommandDropdownOpen: boolean;
+
+  // Selections attached to the next message
+  selectedWorkflow: SelectedWorkflowData | null;
+  workflowAutoSend: boolean;
+  selectedCalendarEvent: SelectedCalendarEventData | null;
+
+  // Reply-to-message selection (never persisted: a reload must not restore a
+  // reply target the user has forgotten about)
+  replyToMessage: ReplyToMessageData | null;
 
   // DEV-ONLY model selection (chat-header selector; only used in development)
   useDefaultModels: boolean;
@@ -61,6 +81,19 @@ interface ComposerActions {
   // UI actions
   setIsSlashCommandDropdownOpen: (open: boolean) => void;
 
+  // Selection actions
+  selectWorkflow: (
+    workflow: SelectedWorkflowData,
+    options?: WorkflowSelectionOptions,
+  ) => void;
+  clearSelectedWorkflow: () => void;
+  selectCalendarEvent: (event: SelectedCalendarEventData) => void;
+  clearSelectedCalendarEvent: () => void;
+
+  // Reply-to-message actions
+  setReplyToMessage: (message: ReplyToMessageData | null) => void;
+  clearReplyToMessage: () => void;
+
   // DEV-ONLY model selection actions
   setUseDefaultModels: (use: boolean) => void;
   setCommsModel: (model: string) => void;
@@ -89,10 +122,73 @@ const initialState: ComposerState = {
   // UI state
   isSlashCommandDropdownOpen: false,
 
+  // Selections attached to the next message
+  selectedWorkflow: null,
+  workflowAutoSend: false,
+  selectedCalendarEvent: null,
+
+  // Reply-to-message selection
+  replyToMessage: null,
+
   // DEV-ONLY model selection
   useDefaultModels: true,
   commsModel: DEFAULT_DEV_COMMS_MODEL,
   executorModel: DEFAULT_DEV_EXECUTOR_MODEL,
+};
+
+/**
+ * 1: the two selection stores were folded into this one.
+ * 2: selections are no longer persisted (see `partializeComposer`).
+ */
+const COMPOSER_STORAGE_VERSION = 2;
+
+/** Keys of the standalone selection stores this slice replaced. */
+const LEGACY_SELECTION_KEYS = [
+  "workflow-selection-storage",
+  "calendar-event-selection-storage",
+] as const;
+
+const forgetLegacySelections = (): void => {
+  for (const key of LEGACY_SELECTION_KEYS) {
+    globalThis.localStorage?.removeItem(key);
+  }
+};
+
+/**
+ * Only the draft survives a reload. A workflow or calendar selection that
+ * outlives the session can auto-send something the user never meant to.
+ */
+const partializeComposer = (state: ComposerStore) => ({
+  inputText: state.inputText,
+  pendingPrompt: state.pendingPrompt,
+  useDefaultModels: state.useDefaultModels,
+  commsModel: state.commsModel,
+  executorModel: state.executorModel,
+});
+
+type PersistedComposerState = ReturnType<typeof partializeComposer>;
+
+/** Version 1 also persisted the selections; they must not be restored. */
+type PersistedComposerStateV1 = PersistedComposerState &
+  Pick<
+    ComposerState,
+    "selectedWorkflow" | "workflowAutoSend" | "selectedCalendarEvent"
+  >;
+
+export const migrateComposerState = (
+  persisted: unknown,
+  version: number,
+): PersistedComposerState => {
+  if (version >= COMPOSER_STORAGE_VERSION) {
+    return persisted as PersistedComposerState;
+  }
+  const {
+    selectedWorkflow: _workflow,
+    workflowAutoSend: _autoSend,
+    selectedCalendarEvent: _event,
+    ...draft
+  } = persisted as PersistedComposerStateV1;
+  return draft;
 };
 
 export const useComposerStore = create<ComposerStore>()(
@@ -234,6 +330,41 @@ export const useComposerStore = create<ComposerStore>()(
             "setIsSlashCommandDropdownOpen",
           ),
 
+        // Selection actions
+        selectWorkflow: (selectedWorkflow, options) =>
+          set(
+            {
+              selectedWorkflow,
+              workflowAutoSend: options?.autoSend ?? false,
+            },
+            false,
+            "selectWorkflow",
+          ),
+
+        clearSelectedWorkflow: () =>
+          set(
+            { selectedWorkflow: null, workflowAutoSend: false },
+            false,
+            "clearSelectedWorkflow",
+          ),
+
+        selectCalendarEvent: (selectedCalendarEvent) =>
+          set({ selectedCalendarEvent }, false, "selectCalendarEvent"),
+
+        clearSelectedCalendarEvent: () =>
+          set(
+            { selectedCalendarEvent: null },
+            false,
+            "clearSelectedCalendarEvent",
+          ),
+
+        // Reply-to-message actions
+        setReplyToMessage: (replyToMessage) =>
+          set({ replyToMessage }, false, "setReplyToMessage"),
+
+        clearReplyToMessage: () =>
+          set({ replyToMessage: null }, false, "clearReplyToMessage"),
+
         // DEV-ONLY model selection actions
         setUseDefaultModels: (useDefaultModels) =>
           set({ useDefaultModels }, false, "setUseDefaultModels"),
@@ -249,13 +380,15 @@ export const useComposerStore = create<ComposerStore>()(
       }),
       {
         name: "composer-storage",
-        partialize: (state) => ({
-          inputText: state.inputText,
-          pendingPrompt: state.pendingPrompt,
-          useDefaultModels: state.useDefaultModels,
-          commsModel: state.commsModel,
-          executorModel: state.executorModel,
-        }),
+        version: COMPOSER_STORAGE_VERSION,
+        partialize: partializeComposer,
+        migrate: migrateComposerState,
+        // Runs inside hydration, before the store binding exists, so it must
+        // not reach for `useComposerStore`.
+        merge: (persisted, current) => {
+          forgetLegacySelections();
+          return { ...current, ...(persisted as Partial<ComposerStore>) };
+        },
       },
     ),
     { name: "composer-store" },
@@ -333,5 +466,33 @@ export const useComposerModelSelection = () =>
       setUseDefaultModels: state.setUseDefaultModels,
       setCommsModel: state.setCommsModel,
       setExecutorModel: state.setExecutorModel,
+    })),
+  );
+
+export const useReplyToMessage = () =>
+  useComposerStore(
+    useShallow((state) => ({
+      replyToMessage: state.replyToMessage,
+      setReplyToMessage: state.setReplyToMessage,
+      clearReplyToMessage: state.clearReplyToMessage,
+    })),
+  );
+
+export const useSelectedWorkflow = () =>
+  useComposerStore(
+    useShallow((state) => ({
+      selectedWorkflow: state.selectedWorkflow,
+      workflowAutoSend: state.workflowAutoSend,
+      selectWorkflow: state.selectWorkflow,
+      clearSelectedWorkflow: state.clearSelectedWorkflow,
+    })),
+  );
+
+export const useSelectedCalendarEvent = () =>
+  useComposerStore(
+    useShallow((state) => ({
+      selectedCalendarEvent: state.selectedCalendarEvent,
+      selectCalendarEvent: state.selectCalendarEvent,
+      clearSelectedCalendarEvent: state.clearSelectedCalendarEvent,
     })),
   );

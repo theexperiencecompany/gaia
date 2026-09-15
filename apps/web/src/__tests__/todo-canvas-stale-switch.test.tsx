@@ -24,8 +24,8 @@ import { Priority, type Todo } from "@/types/features/todoTypes";
  * on every open; reintroduce the cache guard and this fails.
  */
 
-vi.mock("@/features/auth/hooks/useUser", () => ({
-  useUser: () => undefined,
+vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
+  useCurrentUser: () => undefined,
 }));
 
 // Siblings pull in workflow fetches / selects that are irrelevant here.

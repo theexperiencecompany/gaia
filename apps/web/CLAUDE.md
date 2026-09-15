@@ -104,9 +104,9 @@ Zustand (v5). Stores live in `src/stores/` and are named `use<Name>Store`.
 Two patterns in use:
 
 1. **Simple store** — `create<State>()(...)` with plain setters.
-2. **Persisted store** — wraps with `persist` + `devtools` middleware (e.g. `userStore`, keyed to `localStorage`).
+2. **Persisted store** — wraps with `persist` + `devtools` middleware (e.g. `composerStore`, keyed to `localStorage`).
 
-Export named selectors from the store file (e.g. `useUserProfile`) using `useShallow` for object selectors to avoid unnecessary re-renders.
+Export named selectors from the store file (e.g. `useLayoutSidebar`) using `useShallow` for object selectors to avoid unnecessary re-renders.
 
 Patterns that are not tool-enforced but required:
 

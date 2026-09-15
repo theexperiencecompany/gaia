@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import type { PaywallSource } from "@/lib/analytics";
 import type { IMessage } from "@/lib/db/chatDb";
 import { type OptimisticMessage, useChatStore } from "@/stores/chatStore";
 import {
@@ -8,6 +9,8 @@ import {
   type TurnUiState,
   useStreamStore,
 } from "@/stores/streamStore";
+import type { UpgradeOffer } from "@/stores/upgradeModal.types";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 /**
  * Cross-window chat state sync for the desktop assistant popup.
@@ -31,6 +34,16 @@ interface PopupChatState {
   turn: TurnUiState | null;
   /** Auxiliary (voice/upload) loading, mirrored as-is. */
   auxLoading: { text: string; toolInfo?: ToolInfo } | null;
+  /**
+   * Whether the paid-only wall is up, and the offer behind it. The composer
+   * window is where a 402 lands (it owns sending), but it is a 420x48 pill
+   * with nowhere to render the block — so the state crosses to the feed
+   * window, which is content-sized, and surfaces there instead.
+   */
+  paywallOpen: boolean;
+  paywallOffer: UpgradeOffer | null;
+  /** Mirrored, never invented here: this window renders someone else's wall. */
+  paywallSource: PaywallSource | null;
 }
 
 /** Consumer → publisher request for the current snapshot. */
@@ -46,9 +59,13 @@ const PUBLISH_THROTTLE_MS = 50;
 function snapshot(): PopupChatState {
   const chat = useChatStore.getState();
   const stream = useStreamStore.getState();
+  const paywall = useUpgradeModalStore.getState();
   const id = chat.activeConversationId;
   const key = id ?? stream.pendingNewConversationKey;
   return {
+    paywallOpen: paywall.open,
+    paywallOffer: paywall.offer,
+    paywallSource: paywall.source,
     type: "state",
     activeConversationId: id,
     messages: id ? (chat.messagesByConversation[id] ?? []) : [],
@@ -82,6 +99,7 @@ export function usePopupChatPublisher(): void {
 
     const unsubChat = useChatStore.subscribe(schedule);
     const unsubStream = useStreamStore.subscribe(schedule);
+    const unsubPaywall = useUpgradeModalStore.subscribe(schedule);
     channel.onmessage = (event: MessageEvent<PopupChatMessage>) => {
       if (event.data?.type === "hello") publish();
     };
@@ -92,6 +110,7 @@ export function usePopupChatPublisher(): void {
       clearTimeout(timer);
       unsubChat();
       unsubStream();
+      unsubPaywall();
       channel.close();
     };
   }, []);
@@ -112,6 +131,16 @@ export function usePopupChatConsumer(): void {
 
       const chat = useChatStore.getState();
       const stream = useStreamStore.getState();
+      const paywall = useUpgradeModalStore.getState();
+      // Only on change — the snapshots arrive ~20x/sec and openModal would
+      // otherwise rewrite the store (and spam devtools) on every one.
+      if (data.paywallOpen !== paywall.open) {
+        if (data.paywallOpen)
+          paywall.openModal(data.paywallOffer ?? undefined, {
+            source: data.paywallSource ?? "desktop_popup_mirror",
+          });
+        else paywall.closeModal({ force: true });
+      }
       chat.setActiveConversationId(data.activeConversationId);
       if (data.activeConversationId) {
         chat.setMessagesForConversation(

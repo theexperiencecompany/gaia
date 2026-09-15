@@ -1,9 +1,11 @@
+import { formatPlanName } from "@gaia/shared";
 import { Button, Card, Spinner } from "heroui-native";
 import { useEffect, useState } from "react";
 import { Alert, Linking, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import type { UsageSummary } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
+import { PRICING_URL } from "@/lib/constants";
 import { useResponsive } from "@/lib/responsive";
 
 const C = {
@@ -112,19 +114,17 @@ export function SubscriptionSection() {
   }
 
   const isPro = summary.plan_type !== "free";
-  const planLabel = summary.plan_type
-    ? summary.plan_type.charAt(0).toUpperCase() + summary.plan_type.slice(1)
-    : "Free";
 
-  // Gather message usage from features if available
+  // Gather message usage from features if available. Only meaningful for a
+  // subscriber: there is no free allowance to meter any more.
   const messageFeature = Object.values(summary.features).find((f) =>
     f.title.toLowerCase().includes("message"),
   );
-  const dayPeriod = messageFeature?.periods.day;
+  const dayPeriod = isPro ? messageFeature?.periods.day : undefined;
 
   const handleCta = async () => {
     try {
-      await Linking.openURL("https://gaia.app/pricing");
+      await Linking.openURL(PRICING_URL);
     } catch {
       Alert.alert("Error", "Could not open link.");
     }
@@ -156,7 +156,9 @@ export function SubscriptionSection() {
                 color: C.text,
               }}
             >
-              {planLabel} Plan
+              {isPro
+                ? `${formatPlanName(summary.plan_type)} Plan`
+                : "No subscription"}
             </Text>
             <View
               style={{
@@ -175,7 +177,7 @@ export function SubscriptionSection() {
                   color: isPro ? C.primary : C.textMuted,
                 }}
               >
-                {isPro ? "ACTIVE" : "FREE TIER"}
+                {isPro ? "ACTIVE" : "INACTIVE"}
               </Text>
             </View>
           </View>
@@ -183,7 +185,7 @@ export function SubscriptionSection() {
           <Text style={{ fontSize: fontSize.sm, color: C.textMuted }}>
             {isPro
               ? "Full access to all GAIA features"
-              : "Limited usage — upgrade for higher limits"}
+              : "GAIA is paid-only — subscribe to start using it"}
           </Text>
         </Card.Body>
       </Card>
@@ -219,7 +221,7 @@ export function SubscriptionSection() {
         className={isPro ? "bg-white/10" : "bg-primary"}
       >
         <Button.Label>
-          {isPro ? "Manage Subscription" : "Upgrade to Pro"}
+          {isPro ? "Manage Subscription" : "Subscribe to Pro"}
         </Button.Label>
       </Button>
     </ScrollView>

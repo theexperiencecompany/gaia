@@ -1,21 +1,17 @@
-import { Button } from "@heroui/button";
-import { RedoIcon } from "@icons";
 import Image from "next/image";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useUser } from "@/features/auth/hooks/useUser";
 import SelectedCalendarEventIndicator from "@/features/chat/components/composer/SelectedCalendarEventIndicator";
 import SelectedReplyIndicator from "@/features/chat/components/composer/SelectedReplyIndicator";
 import SelectedToolIndicator from "@/features/chat/components/composer/SelectedToolIndicator";
 import SelectedWorkflowIndicator from "@/features/chat/components/composer/SelectedWorkflowIndicator";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
-import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
+import { useChatBubbleUser } from "@/features/chat/hooks/useChatBubbleUser";
 import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
 import type { FileData } from "@/types/shared/fileTypes";
-import { parseDate } from "@/utils/date/dateUtils";
 
-import ChatBubble_Actions from "../actions/ChatBubble_Actions";
 import ChatBubbleFilePreview from "./ChatBubbleFilePreview";
+import { ChatBubbleUserFooter } from "./ChatBubbleUserFooter";
 
 const DEFAULT_FILE_DATA: FileData[] = [];
 
@@ -28,25 +24,6 @@ function scrollToMessage(messageId: string) {
   setTimeout(() => {
     messageElement.style.scale = "1";
   }, 300);
-}
-
-function resolveUserBubbleStyles(
-  isEmojiOnly: boolean,
-  emojiCount: number,
-  fullWidth: boolean,
-): { bubbleClassName: string; textClassName: string } {
-  let bubbleClassName = "imessage-bubble imessage-from-me";
-  let textClassName = `flex ${fullWidth ? "max-w-full" : "max-w-[30vw]"} text-wrap whitespace-pre-wrap select-text`;
-
-  if (isEmojiOnly) {
-    if (emojiCount === 1) {
-      bubbleClassName = "select-none"; // No bubble background
-      textClassName += " text-5xl leading-none";
-    } else if (emojiCount === 2) textClassName += " text-4xl";
-    else if (emojiCount === 3) textClassName += " text-3xl";
-  }
-
-  return { bubbleClassName, textClassName };
 }
 
 interface BubbleIndicatorsProps {
@@ -127,27 +104,17 @@ export default function ChatBubbleUser({
   hideAvatar?: boolean;
   fullWidth?: boolean;
 }) {
-  const hasContent =
-    !!text ||
-    fileData.length > 0 ||
-    !!selectedTool ||
-    !!selectedWorkflow ||
-    !!selectedCalendarEvent;
-
-  const user = useUser();
+  const { hasContent, user, isEmojiOnly, bubbleClassName, textClassName } =
+    useChatBubbleUser({
+      text,
+      fileData,
+      selectedTool,
+      selectedWorkflow,
+      selectedCalendarEvent,
+      fullWidth,
+    });
 
   if (!hasContent) return null;
-
-  // Calculate emoji state
-  const isEmojiOnly = isOnlyEmojis(text);
-  const emojiCount = isEmojiOnly ? getEmojiCount(text) : 0;
-
-  // Determine styles based on emoji count
-  const { bubbleClassName, textClassName } = resolveUserBubbleStyles(
-    isEmojiOnly,
-    emojiCount,
-    fullWidth,
-  );
 
   return (
     <div
@@ -205,69 +172,17 @@ export default function ChatBubbleUser({
           )}
         </div>
 
-        {/* Queued: show a persistent "Queued" label, no date or actions. */}
-        {!disableActions && queued && (
-          <div
-            className={`flex flex-col items-end gap-1 ${hideAvatar ? "pr-1" : "pr-13"} pb-1`}
-          >
-            <span className="text-xs text-zinc-400 select-none">Queued</span>
-          </div>
-        )}
-
-        {/* Undelivered: a persistent label + retry, not the hover-only actions
-            row — a send that never landed must be visible without hovering. */}
-        {!disableActions && !queued && failed && (
-          <div
-            className={`flex items-center gap-2 ${hideAvatar ? "pr-1" : "pr-13"} pb-1`}
-          >
-            <span className="text-xs text-zinc-400 select-none">
-              Not delivered
-            </span>
-            {onRetry && (
-              <Button
-                className="h-7 min-w-0 px-2 text-xs"
-                isDisabled={isRetrying}
-                onPress={onRetry}
-                radius="full"
-                size="sm"
-                startContent={
-                  <div className={isRetrying ? "animate-spin" : ""}>
-                    <RedoIcon height={13} width={13} />
-                  </div>
-                }
-                variant="flat"
-              >
-                Retry
-              </Button>
-            )}
-          </div>
-        )}
-
-        {/* Actions row below bubble, aligned under content (not avatar) */}
-        {!disableActions && !queued && !failed && (
-          <div
-            className={`flex flex-col items-end gap-1 ${hideAvatar ? "pr-1" : "pr-13"} pb-1 opacity-0 transition-all group-hover:opacity-100`}
-          >
-            {date && (
-              <span
-                className="flex flex-col text-xs text-zinc-400 select-text"
-                suppressHydrationWarning
-              >
-                {parseDate(date)}
-              </span>
-            )}
-            {text && (
-              <ChatBubble_Actions
-                loading={false}
-                text={text}
-                message_id={message_id}
-                messageRole="user"
-                onRetry={onRetry}
-                isRetrying={isRetrying}
-              />
-            )}
-          </div>
-        )}
+        <ChatBubbleUserFooter
+          text={text}
+          date={date}
+          message_id={message_id}
+          queued={queued}
+          failed={failed}
+          onRetry={onRetry}
+          isRetrying={isRetrying}
+          disableActions={disableActions}
+          hideAvatar={hideAvatar}
+        />
       </div>
     </div>
   );

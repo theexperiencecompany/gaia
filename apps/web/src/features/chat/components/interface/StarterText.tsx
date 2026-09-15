@@ -1,10 +1,10 @@
 import { getCompleteTimeBasedGreeting } from "@shared/utils";
 import Image from "next/image";
 import { useMemo } from "react";
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 
 export default function StarterText() {
-  const user = useUser();
+  const user = useCurrentUser();
 
   const greeting = useMemo(() => {
     return getCompleteTimeBasedGreeting(user?.name);
@@ -19,6 +19,7 @@ export default function StarterText() {
             src="/images/logos/logo.webp"
             width={40}
             height={40}
+            className="hidden sm:block"
           />
           <span
             suppressHydrationWarning

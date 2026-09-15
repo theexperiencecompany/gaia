@@ -21,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useEmailComposition } from "@/features/mail/hooks/useEmailComposition";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
@@ -93,7 +93,7 @@ function AiOptionDropdown({
 }
 
 export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
-  const user = useUser();
+  const user = useCurrentUser();
 
   useEffect(() => {
     if (open) {

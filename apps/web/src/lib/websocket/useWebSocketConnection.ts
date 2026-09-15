@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 
 /**
@@ -10,7 +10,7 @@ import { wsManager } from "@/lib/websocket/WebSocketManager";
  * Should be called once at the app level (ProvidersLayout)
  */
 export function useWebSocketConnection() {
-  const user = useUser();
+  const user = useCurrentUser();
 
   // Keep user email in a ref so the visibility handler always sees the latest
   // value without needing to re-subscribe the event listener

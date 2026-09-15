@@ -86,7 +86,7 @@ const ACTION_ITEMS: MenuItemConfig[] = [
   },
   {
     id: "upgrade_to_pro",
-    label: "Upgrade to Pro",
+    label: "Subscribe to GAIA Pro",
     icon: <CircleArrowUp02Icon width={18} height={18} color="#00bbff" />,
     path: "/pricing",
     hideWhenSubscribed: true,

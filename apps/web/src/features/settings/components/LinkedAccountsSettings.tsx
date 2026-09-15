@@ -5,24 +5,21 @@ import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import {
+  PhoneLinkModal,
+  type PhoneLinkTarget,
+} from "@/components/shared/PhoneLinkModal";
+import {
   BOT_AUTH_COMMAND,
   BOT_PLATFORM_ICONS,
   BOT_PLATFORM_LABELS,
 } from "@/config/botPlatforms";
-import {
-  useShouldPromptUpgrade,
-  useUserSubscriptionStatus,
-} from "@/features/pricing/hooks/usePricing";
-import {
-  PhoneLinkModal,
-  type PhoneLinkTarget,
-} from "@/features/settings/components/PhoneLinkModal";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
-import { usePricingModalStore } from "@/stores/pricingModalStore";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 import type { PlatformLink } from "@/types/platform";
 
 interface PlatformConfig {
@@ -99,9 +96,8 @@ export default function LinkedAccountsSettings() {
   // starting over) invalidates that request, so a late reply cannot drop the
   // previous attempt's number into the session the user is now in.
   const connectAttemptRef = useRef(0);
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
-  const shouldPromptUpgrade = useShouldPromptUpgrade();
-  const openPricingModal = usePricingModalStore((s) => s.openModal);
+  const { isPaid, isUnknown } = useIsPaid();
+  const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
 
   const clearPollTimer = () => {
     if (pollTimerRef.current) {
@@ -137,8 +133,15 @@ export default function LinkedAccountsSettings() {
   };
 
   const startConnect = (platform: PlatformConfig) => {
-    if (platform.premium && !subscriptionStatus?.is_subscribed) {
-      openPricingModal();
+    // While the subscription status is still unknown, let the connect
+    // attempt proceed instead of paywalling — the backend enforces the
+    // premium gate server-side, so a brief permissive window here is safe,
+    // but blocking a paying customer's connect attempt is not.
+    if (platform.premium && !isUnknown && !isPaid) {
+      openUpgradeModal(undefined, {
+        dismissible: true,
+        source: "settings_linked_accounts",
+      });
       return;
     }
     if (platform.requiresPhone) {
@@ -279,7 +282,7 @@ export default function LinkedAccountsSettings() {
               }
             >
               <div className="flex items-center gap-3">
-                {platform.premium && shouldPromptUpgrade && (
+                {platform.premium && !isUnknown && !isPaid && (
                   <Chip size="sm" variant="flat" color="warning">
                     Pro
                   </Chip>

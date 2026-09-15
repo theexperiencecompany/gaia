@@ -3,15 +3,14 @@
 import Fuse from "fuse.js";
 import { useMemo } from "react";
 
-import { useIntegrationsStore } from "@/stores/integrationsStore";
+import { ALL_CATEGORIES } from "../constants/categories";
 import type { Integration } from "../types";
 
-export function useIntegrationSearch(integrations: Integration[]) {
-  const searchQuery = useIntegrationsStore((state) => state.searchQuery);
-  const selectedCategory = useIntegrationsStore(
-    (state) => state.selectedCategory,
-  );
-
+export function useIntegrationSearch(
+  integrations: Integration[],
+  searchQuery: string,
+  selectedCategory: string,
+) {
   const fuse = useMemo(
     () =>
       new Fuse(integrations, {
@@ -32,7 +31,7 @@ export function useIntegrationSearch(integrations: Integration[]) {
   const filteredIntegrations = useMemo(() => {
     let results = integrations;
 
-    if (selectedCategory !== "all") {
+    if (selectedCategory !== ALL_CATEGORIES) {
       if (selectedCategory === "created_by_you") {
         results = results.filter((i) => i.createdBy);
       } else {

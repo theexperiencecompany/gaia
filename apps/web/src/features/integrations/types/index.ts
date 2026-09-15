@@ -176,3 +176,16 @@ export interface PublicIntegrationResponse extends CommunityIntegration {
   authType?: "oauth" | "bearer" | "none" | null;
   content?: IntegrationContent | null;
 }
+
+/** One button in the seeded Getting-started thread's connect row. An entry
+ * with an `integration_id` shows that app's icon; the last one is the
+ * integrations page itself. `href` is an in-app path, opened in the same tab. */
+export interface ConnectOption {
+  integration_id?: string;
+  label: string;
+  href: string;
+}
+
+export interface ConnectOptionsData {
+  options: ConnectOption[];
+}

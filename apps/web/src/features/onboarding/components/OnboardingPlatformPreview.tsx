@@ -32,20 +32,20 @@ import {
   type PlatformPreviewPlatform,
 } from "../constants/platformPreviewMessages";
 
-const DWELL_MS = 1800;
+// How long a finished demo stays on screen before the next platform takes
+// over: long enough to read the last reply, not just to notice it landed.
+const DWELL_MS = 4000;
 
 interface OnboardingPlatformPreviewProps {
   profession: string | undefined;
   hoveredPlatform: PlatformPreviewPlatform | null;
-  userName: string | undefined;
-  userAvatar: string | undefined;
+  userFirstName: string | undefined;
 }
 
 export function OnboardingPlatformPreview({
   profession,
   hoveredPlatform,
-  userName,
-  userAvatar,
+  userFirstName,
 }: OnboardingPlatformPreviewProps) {
   const [rotatingPlatform, setRotatingPlatform] =
     useState<PlatformPreviewPlatform>(PLATFORM_PREVIEW_ORDER[0]);
@@ -55,10 +55,9 @@ export function OnboardingPlatformPreview({
   const script = useMemo(
     () =>
       getPlatformScript(profession, activePlatform, {
-        name: userName,
-        avatar: userAvatar,
+        firstName: userFirstName,
       }),
-    [profession, activePlatform, userName, userAvatar],
+    [profession, activePlatform, userFirstName],
   );
 
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -93,10 +92,8 @@ export function OnboardingPlatformPreview({
   }, [hoveredPlatform, script]);
 
   return (
-    <div
-      className="ml-10.75 flex flex-col rounded-3xl bg-zinc-900 p-2.5"
-      style={{ width: 500, minWidth: 500, maxWidth: 500 }}
-    >
+    // Full width on a phone, 500px beside the avatar column from `sm` up.
+    <div className="flex w-full max-w-[500px] flex-col rounded-3xl bg-zinc-900 p-2.5 sm:ml-10.75">
       <div className="mb-1.5 flex h-6 shrink-0 items-center gap-2 px-1">
         <AnimatePresence mode="wait" initial={false}>
           <m.div
@@ -123,7 +120,9 @@ export function OnboardingPlatformPreview({
       </div>
       <div
         ref={scrollHostRef}
-        className="relative shrink-0 overflow-hidden rounded-2xl"
+        // The demo thread hugs its edges on the landing phone; in this wider
+        // card the bubbles need air, so pad the thread here only.
+        className="relative shrink-0 overflow-hidden rounded-2xl [&_.chat-demo-thread]:px-5 [&_.chat-demo-thread]:pt-3 [&_.chat-demo-thread]:pb-4"
         style={{ height: 280, minHeight: 280, maxHeight: 280 }}
       >
         {!hasLoaded && <Skeleton className="absolute inset-0 rounded-2xl" />}

@@ -53,6 +53,19 @@ const posthogAssetsHost = posthogHost.replace(
 );
 
 const nextConfig = {
+  // Dev only (ignored by production builds): Next 15+ refuses to serve its own
+  // /_next/* assets to any origin but localhost, so opening the dev server from
+  // a phone on the LAN or over Tailscale got HTML with 403 scripts and never
+  // hydrated. These are the private ranges a developer's devices sit on.
+  allowedDevOrigins: [
+    "192.168.*.*",
+    "10.*.*.*",
+    "172.*.*.*",
+    "100.*.*.*",
+    "*.local",
+    "*.ts.net",
+    "*.*.ts.net",
+  ],
   // Next's dev-server dedup locks on distDir, refusing a second `next dev` for
   // the same directory. A dedicated dist dir (agents driving the app while a
   // human dev server runs) lifts that without touching the default build.

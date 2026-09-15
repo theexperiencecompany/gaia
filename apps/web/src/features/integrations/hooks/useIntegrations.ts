@@ -21,6 +21,8 @@ export interface UseIntegrationsReturn {
   // Data
   integrations: Integration[];
   isLoading: boolean;
+  /** No catalogue yet (first paint, or the fetch has not started): show placeholders. */
+  isPending: boolean;
   error: Error | null;
 
   // Helpers
@@ -60,6 +62,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   const {
     data: myIntegrationsData,
     isLoading,
+    isPending,
     error,
   } = useQuery({
     queryKey: integrationKeys.me,
@@ -266,6 +269,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   return {
     integrations,
     isLoading,
+    isPending,
     error: error as Error | null,
     getIntegrationStatus,
     connectIntegration,

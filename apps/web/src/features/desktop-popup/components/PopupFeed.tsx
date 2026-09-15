@@ -9,6 +9,7 @@ import {
   useMessageScrollerScrollable,
 } from "@/components/ui/message-scroller";
 import ChatRenderer from "@/features/chat/components/interface/ChatRenderer";
+import PopupPaywallNotice from "./PopupPaywallNotice";
 import "../desktop-popup.css";
 
 /** Default BlurStack stops already read bottom-heavy — reuse for the
@@ -62,6 +63,7 @@ export default function PopupFeed() {
               className="gap-3 p-8"
             >
               <ChatRenderer compact />
+              <PopupPaywallNotice />
             </MessageScrollerContent>
           </MessageScrollerViewport>
         </MessageScroller>

@@ -68,7 +68,9 @@ export function ReceiptPrinterOutput({
   return (
     <div
       className={cn(
-        "relative z-50 -mt-4 h-[32rem] w-[calc(80%+3rem)] max-w-full overflow-hidden px-6",
+        // Height follows the paper: a fixed track left a band of empty space
+        // under short receipts. overflow-hidden still clips the feed-in.
+        "relative z-50 -mt-4 max-h-[32rem] w-[calc(80%+3rem)] max-w-full overflow-hidden px-6",
         className,
       )}
       {...props}

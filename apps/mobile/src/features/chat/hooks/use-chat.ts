@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { chatDb } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chat-store";
+import { usePaywallStore } from "@/stores/paywall-store";
 import { chatApi, fetchChatStream, type Message } from "../api/chat-api";
 import { chatKeys, useConversationQuery } from "../api/queries";
 import type { AttachmentFile } from "../components/composer/attachment-preview";
@@ -290,6 +291,10 @@ export function useChat(
         isStreaming: true,
         conversationId: storeKey,
       });
+      // Clear any previous wall: if the user has since subscribed this send
+      // succeeds, and leaving the old notice up would say otherwise. A still
+      // unsubscribed user gets another 402 and the wall comes straight back.
+      usePaywallStore.getState().clearBlock();
       turnAccumulatorRef.current = createTurnAccumulator();
       streamIdRef.current = null;
 
@@ -500,6 +505,19 @@ export function useChat(
                 .getState()
                 .updateLastAssistantMessage(activeConvIdRef.current!, {
                   error: "Connection lost before the response finished.",
+                });
+              settle("error");
+            },
+            onSubscriptionRequired: (detail) => {
+              // Not a failure to retry — the account simply isn't subscribed.
+              // The wall (with the checkout link) renders above the composer;
+              // the assistant bubble just says why it stopped, with no retry
+              // affordance, so the two don't compete for the user's attention.
+              usePaywallStore.getState().setBlocked(detail);
+              useChatStore
+                .getState()
+                .updateLastAssistantMessage(activeConvIdRef.current!, {
+                  error: detail.message,
                 });
               settle("error");
             },

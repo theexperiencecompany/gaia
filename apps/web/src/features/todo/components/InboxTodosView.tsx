@@ -11,13 +11,13 @@ import {
   TaskDailyIcon,
 } from "@icons";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import { TodoSidebar } from "@/components/layout/sidebar/right-variants/TodoSidebar";
 import type { CardAction } from "@/features/chat/components/interface/BaseCardView";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import TodoItem from "@/features/todo/components/TodoItem";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useAppendToInput } from "@/stores/composerStore";
-import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useTodoStore } from "@/stores/todoStore";
 import type { Todo, TodoUpdate } from "@/types/features/todoTypes";
 
@@ -28,9 +28,6 @@ interface InboxTodosViewProps {
 const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null);
   const appendToInput = useAppendToInput();
-
-  const openWithContent = useRightSidebar((state) => state.openWithContent);
-  const closeRightSidebar = useRightSidebar((state) => state.close);
 
   // initialLoading is true only before the very first fetch completes.
   // After that it stays false even on background refetches — avoids skeleton flash on navigation.
@@ -64,18 +61,15 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
     [],
   );
 
-  const handleTodoDelete = useCallback(
-    async (todoId: string) => {
-      try {
-        await deleteTodoRef.current(todoId);
-        setSelectedTodoId(null);
-        closeRightSidebar();
-      } catch (error) {
-        console.error("Failed to delete todo:", error);
-      }
-    },
-    [closeRightSidebar],
-  );
+  const handleTodoDelete = useCallback(async (todoId: string) => {
+    try {
+      await deleteTodoRef.current(todoId);
+      // Clearing the selection unmounts the panel, which closes the sidebar.
+      setSelectedTodoId(null);
+    } catch (error) {
+      console.error("Failed to delete todo:", error);
+    }
+  }, []);
 
   const handleRefresh = useCallback(() => {
     refresh();
@@ -90,33 +84,7 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
     [selectedTodoId, todos],
   );
 
-  const sidebarContent = useMemo(() => {
-    if (!selectedTodo) return null;
-    return (
-      <TodoSidebar
-        todo={selectedTodo}
-        onUpdate={handleTodoUpdate}
-        onDelete={handleTodoDelete}
-        projects={projects}
-      />
-    );
-  }, [selectedTodo, handleTodoUpdate, handleTodoDelete, projects]);
-
-  // Open sidebar when a todo is selected
-  useEffect(() => {
-    if (sidebarContent) {
-      openWithContent(sidebarContent, "sheet");
-    }
-  }, [sidebarContent, openWithContent]);
-
-  // Clear local selection when sidebar is closed externally (X button)
-  useEffect(() => {
-    return useRightSidebar.subscribe((state, prevState) => {
-      if (prevState.isOpen && !state.isOpen && selectedTodoId) {
-        setSelectedTodoId(null);
-      }
-    });
-  }, [selectedTodoId]);
+  const clearSelection = useCallback(() => setSelectedTodoId(null), []);
 
   const handleTodoClick = useCallback((todo: Todo) => {
     setSelectedTodoId(todo.id);
@@ -196,38 +164,50 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
   );
 
   return (
-    <BaseCardView
-      title="Inbox Todos"
-      icon={<CheckmarkCircle02Icon className="h-6 w-6 text-zinc-500" />}
-      isFetching={loading}
-      isEmpty={isEmpty}
-      emptyMessage="No todos in your inbox"
-      errorMessage="Failed to load todos"
-      onRefresh={handleRefresh}
-      path="/todos"
-      actions={actions}
-    >
-      {initialLoading ? (
-        <div className="flex h-full items-center justify-center">
-          <div className="animate-spin">
-            <Loading02Icon className="h-8 w-8 text-zinc-500" />
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-0">
-          {displayTodos.map((todo: Todo) => (
-            <TodoItem
-              key={todo.id}
-              todo={todo}
-              projects={projects}
-              isSelected={selectedTodoId === todo.id}
-              onUpdate={handleTodoUpdate}
-              onClick={handleTodoClick}
-            />
-          ))}
-        </div>
+    <>
+      {selectedTodo && (
+        <RightSidebarPanel mode="sheet" onClose={clearSelection}>
+          <TodoSidebar
+            todo={selectedTodo}
+            onUpdate={handleTodoUpdate}
+            onDelete={handleTodoDelete}
+            projects={projects}
+          />
+        </RightSidebarPanel>
       )}
-    </BaseCardView>
+      <BaseCardView
+        title="Inbox Todos"
+        icon={<CheckmarkCircle02Icon className="h-6 w-6 text-zinc-500" />}
+        isFetching={loading}
+        isEmpty={isEmpty}
+        emptyMessage="No todos in your inbox"
+        errorMessage="Failed to load todos"
+        onRefresh={handleRefresh}
+        path="/todos"
+        actions={actions}
+      >
+        {initialLoading ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="animate-spin">
+              <Loading02Icon className="h-8 w-8 text-zinc-500" />
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-0">
+            {displayTodos.map((todo: Todo) => (
+              <TodoItem
+                key={todo.id}
+                todo={todo}
+                projects={projects}
+                isSelected={selectedTodoId === todo.id}
+                onUpdate={handleTodoUpdate}
+                onClick={handleTodoClick}
+              />
+            ))}
+          </div>
+        )}
+      </BaseCardView>
+    </>
   );
 });
 

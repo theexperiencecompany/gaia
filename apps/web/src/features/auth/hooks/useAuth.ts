@@ -1,4 +1,4 @@
-import { useUserStore } from "@/stores/userStore";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useLoginModalActions } from "./useLoginModal";
 
 /**
@@ -20,7 +20,7 @@ import { useLoginModalActions } from "./useLoginModal";
  * ```
  */
 export function useAuth() {
-  const userEmail = useUserStore((state) => state.email);
+  const { email: userEmail } = useCurrentUser();
   const isAuthenticated = Boolean(userEmail);
   const { openModal: openLoginModal } = useLoginModalActions();
 

@@ -122,6 +122,10 @@ async function request<T = unknown>(
       });
     }
 
+    // A 402 the interceptor recognised is already `handled` — it opened the
+    // paywall, and a "subscribe" toast on top of it would be noise. One it
+    // deliberately left unhandled (a body that is not the subscription_required
+    // shape) belongs here, or the user's click does nothing at all.
     if (!options.silent && !handledByInterceptor && !isAuthError) {
       // Try to extract error message from various response formats, falling
       // back to a method-specific default.

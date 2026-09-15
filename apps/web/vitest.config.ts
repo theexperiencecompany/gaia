@@ -13,6 +13,7 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     globals: true,
     environment: "node",
+    setupFiles: ["./vitest.setup.ts"],
     reporters: ["verbose"],
     // Component modules transitively import the api client, which validates
     // this at module load. The contract tests make no real requests.

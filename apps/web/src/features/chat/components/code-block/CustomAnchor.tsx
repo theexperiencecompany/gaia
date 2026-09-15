@@ -7,6 +7,8 @@ import {
   usePrefetchUrlMetadata,
   useUrlMetadata,
 } from "@/features/chat/hooks/useUrlMetadata";
+import { useWindowOrigin } from "@/hooks/ui/useWindowOrigin";
+import { isAppLink } from "@/lib/url-safety";
 import { cn } from "@/lib/utils";
 
 // Link chip styling. The bot bubble is dark (bg-zinc-800), so the brand-blue
@@ -33,6 +35,9 @@ const isEmailHref = (href: string) => {
 
 const displayHref = (href: string) =>
   href.replace(/^(https?:\/\/|mailto:)/, "");
+
+/** `undefined` keeps the link in this tab; `_blank` opens it beside the app. */
+type LinkTarget = "_blank" | undefined;
 
 interface UrlMetadata {
   title: string | null;
@@ -151,6 +156,7 @@ interface WebsitePreviewProps {
   imageLoading: boolean;
   onImageLoad: () => void;
   onImageError: (url: string) => void;
+  target: LinkTarget;
 }
 
 function WebsitePreview({
@@ -161,6 +167,7 @@ function WebsitePreview({
   imageLoading,
   onImageLoad,
   onImageError,
+  target,
 }: WebsitePreviewProps) {
   return (
     <div className="flex w-full flex-col gap-2">
@@ -233,7 +240,7 @@ function WebsitePreview({
         className="truncate text-xs text-primary hover:underline"
         href={href}
         rel="noopener noreferrer"
-        target="_blank"
+        target={target}
       >
         {displayHref(href)}
       </a>
@@ -251,6 +258,7 @@ function buildTooltipContent(
   imageLoading: boolean,
   onImageLoad: () => void,
   onImageError: (url: string) => void,
+  target: LinkTarget,
 ): ReactNode {
   if (isEmailHref(href)) {
     if (isLoading) return <EmailPreviewSkeleton />;
@@ -279,6 +287,7 @@ function buildTooltipContent(
         imageLoading={imageLoading}
         onImageLoad={onImageLoad}
         onImageError={onImageError}
+        target={target}
       />
     );
   }
@@ -299,6 +308,7 @@ const CustomAnchor = memo(
   }) => {
     const elementRef = useRef<HTMLAnchorElement>(null);
     const [isInView, setIsInView] = useState(false);
+    const appOrigin = useWindowOrigin();
     const [imageLoading, setImageLoading] = useState(true);
 
     // Only fetch when element is in view
@@ -355,6 +365,9 @@ const CustomAnchor = memo(
 
     if (!href) return null;
 
+    // Links into this app stay in this tab; everything else opens beside it.
+    const target = isAppLink(href, appOrigin) ? undefined : "_blank";
+
     const tooltipContent = buildTooltipContent(
       href,
       isLoading,
@@ -365,6 +378,7 @@ const CustomAnchor = memo(
       imageLoading,
       () => setImageLoading(false),
       handleImageError,
+      target,
     );
 
     return (
@@ -381,7 +395,7 @@ const CustomAnchor = memo(
             lightBackground ? LIGHT_BUBBLE_LINK : DARK_BUBBLE_LINK,
           )}
           rel="noopener noreferrer"
-          target="_blank"
+          target={target}
           onMouseEnter={handleMouseEnter}
         >
           {!isStreaming &&
