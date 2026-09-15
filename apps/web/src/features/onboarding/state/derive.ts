@@ -16,6 +16,8 @@ import type { OnboardingData } from "@/features/auth/api/authApi";
  */
 
 import {
+  FIELD_NAMES,
+  isKnownNeed,
   NEEDS_MAX_SELECTION,
   NEEDS_MIN_SELECTION,
   questions,
@@ -44,15 +46,33 @@ export function canSubmitNeeds(s: OnboardingState): boolean {
 }
 
 /**
- * Whether the account has the answers the wizard's "preferences persisted"
- * flag claims. `GET /user/me` reports an unset onboarding as
- * `preferences: {}`, never as a missing field, so presence of the object
- * says nothing; a recorded profession is the first thing the wizard saves.
+ * The answers the account already gave, as a wizard draft — what a browser
+ * with no cache of its own resumes from. Without it a second device (or a
+ * cleared one) re-asks Q1 and Q2 of someone who has answered them, and
+ * overwrites the stored answers with the new ones.
+ *
+ * `null` means the account has answered nothing yet, which is also the signal
+ * that a local draft claiming `preferencesPersisted` is stale. `GET /user/me`
+ * reports an unset onboarding as `preferences: {}`, never as a missing field,
+ * so presence of the object says nothing; a recorded profession is the first
+ * thing the wizard saves.
  */
-export function serverHasRecordedPreferences(
+export function draftFromServerPreferences(
   onboarding: OnboardingData | undefined,
-): boolean {
-  return Boolean(onboarding?.preferences?.profession);
+): Partial<OnboardingState> | null {
+  const preferences = onboarding?.preferences;
+  if (!preferences?.profession) return null;
+
+  const otherNeed = preferences.other_need ?? "";
+  return {
+    responses: { [FIELD_NAMES.PROFESSION]: preferences.profession },
+    questionIndex: questions.length,
+    // A need the API no longer accepts must not come back as a chip.
+    selectedNeeds: (preferences.needs ?? []).filter(isKnownNeed),
+    otherNeed,
+    otherNeedOpen: otherNeed !== "",
+    preferencesPersisted: true,
+  };
 }
 
 export function getStage(s: OnboardingState, isPaid: boolean): Stage {

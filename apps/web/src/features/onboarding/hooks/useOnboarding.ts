@@ -11,7 +11,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useReducer } from "react";
+import { useCallback, useMemo, useReducer } from "react";
 
 import type { UserInfo } from "@/features/auth/api/authApi";
 import {
@@ -29,7 +29,7 @@ import { useOnboardingAnalytics } from "../effects/useOnboardingAnalytics";
 import { useOnboardingPersistence } from "../effects/useOnboardingPersistence";
 import { useOnboardingPreferences } from "../effects/useOnboardingPreferences";
 import { useOnboardingSubmission } from "../effects/useOnboardingSubmission";
-import { getStage, serverHasRecordedPreferences } from "../state/derive";
+import { draftFromServerPreferences, getStage } from "../state/derive";
 import { initialState } from "../state/initial";
 import { usePaceStore } from "../state/paceStore";
 import {
@@ -60,9 +60,15 @@ export function useOnboarding(): UseOnboardingReturn {
   const { isPaid } = useIsPaid();
   const stage = getStage(state, isPaid);
 
+  // Stable per user record: the hydrate effect takes it as a dependency.
+  const serverDraft = useMemo(
+    () => draftFromServerPreferences(onboarding),
+    [onboarding],
+  );
+
   const hydrated = useOnboardingPersistence(
     userIsFresh ? userId : "",
-    serverHasRecordedPreferences(onboarding),
+    serverDraft,
     state,
     dispatch,
   );

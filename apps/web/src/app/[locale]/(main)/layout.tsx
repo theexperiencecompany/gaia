@@ -36,6 +36,14 @@ const CommandMenu = nextDynamic(
   { ssr: false },
 );
 
+const FirstStepsWidget = nextDynamic(
+  () =>
+    import("@/features/first-steps").then((m) => ({
+      default: m.FirstStepsWidget,
+    })),
+  { ssr: false },
+);
+
 const WhatsNewModal = nextDynamic(
   () =>
     import("@/features/whats-new/components/WhatsNewModal").then((m) => ({
@@ -198,6 +206,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
 
             {/* What's New Modal */}
             <WhatsNewModal />
+
+            {/* Activation checklist; hides itself on /onboarding and /dashboard */}
+            <FirstStepsWidget />
 
             {/* Global Command Menu */}
             <CommandMenu

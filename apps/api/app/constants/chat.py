@@ -15,6 +15,10 @@ UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS = 4000
 # normal traffic never gets near this.
 MAX_MESSAGE_LENGTH = 50_000
 
+# ``MessageModel.type`` of a message the human wrote (the other value is
+# ``"bot"``). Named so a stored-message query and the writers agree on the literal.
+USER_MESSAGE_TYPE = "user"
+
 # Shown when a turn dies and the provider exception carries no message of its
 # own. Names the exception type so a support report still identifies the failure.
 GENERIC_TURN_ERROR = "Something went wrong while generating this response ({error_type})."

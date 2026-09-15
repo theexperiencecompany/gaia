@@ -18,7 +18,7 @@ const readPendingCheckout = vi.fn();
 
 vi.mock("next/navigation", () => ({
   redirect: (...args: unknown[]) => redirect(...args),
-  RedirectType: { push: "push" },
+  RedirectType: { push: "push", replace: "replace" },
 }));
 
 vi.mock("@/i18n/navigation", () => ({
@@ -57,7 +57,7 @@ describe("useOnboardingGuard", () => {
 
     renderHook(() => useOnboardingGuard());
 
-    expect(redirect).toHaveBeenCalledWith("/c/conv-123", "push");
+    expect(redirect).toHaveBeenCalledWith("/c/conv-123", "replace");
   });
 
   it("falls back to the chat home when no conversation was seeded", () => {
@@ -65,7 +65,7 @@ describe("useOnboardingGuard", () => {
 
     renderHook(() => useOnboardingGuard());
 
-    expect(redirect).toHaveBeenCalledWith("/c", "push");
+    expect(redirect).toHaveBeenCalledWith("/c", "replace");
   });
 
   it("still sends an unfinished user back to onboarding", () => {
@@ -77,7 +77,7 @@ describe("useOnboardingGuard", () => {
 
     renderHook(() => useOnboardingGuard());
 
-    expect(redirect).toHaveBeenCalledWith("/onboarding", "push");
+    expect(redirect).toHaveBeenCalledWith("/onboarding", "replace");
   });
 
   it("does not redirect while a checkout is pending", () => {

@@ -5,8 +5,8 @@ import { CancelIcon } from "@icons";
 import type { CSSProperties } from "react";
 
 import { useFounderLetter } from "@/features/chat/hooks/useFounderLetter";
+import { useFirstSteps } from "@/features/first-steps";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-
 import {
   BODY_FONT,
   INK,
@@ -243,8 +243,14 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
     copyCode,
     claimOffer,
   } = useFounderLetter(hidden);
+  // The expanded activation checklist floats in this exact corner at the same
+  // z-index, and overlapped the envelope. One owner at a time: the checklist
+  // wins while it is open, the envelope returns once it is collapsed or done.
+  const { isVisible: checklistOpen, collapsed: checklistCollapsed } =
+    useFirstSteps();
 
-  if (hidden || dismissed) return null;
+  if (hidden || dismissed || (checklistOpen && !checklistCollapsed))
+    return null;
 
   return (
     <>

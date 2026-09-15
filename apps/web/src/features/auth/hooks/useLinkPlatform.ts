@@ -12,20 +12,31 @@ import {
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
+import { getErrorFix, getErrorMessage } from "@/utils/interceptorUtils";
 
-function resolveError(err: unknown): string {
-  const status = (err as { response?: { status?: number } })?.response?.status;
-  const detail = (err as { response?: { data?: { detail?: string } } })
-    ?.response?.data?.detail;
-
-  if (status === 409) return detail || "This account is already linked.";
+/** Copy for a failure the backend did not describe itself. */
+function fallbackMessage(status: number | undefined): string {
+  if (status === 409) return "This account is already linked.";
   if (status === 400) {
-    return (
-      detail ||
-      "Invalid or expired link. Please request a new one from the bot."
-    );
+    return "Invalid or expired link. Please request a new one from the bot.";
   }
   return "Failed to link account. Please try again.";
+}
+
+/**
+ * The backend's own words for a failed link, read through the shared
+ * extractor: `AppError` serialises `{ message, why, fix }` at the top level of
+ * the body, so a hand-rolled `data.detail` read finds nothing and every
+ * failure degrades to generic copy. The `fix` is appended because it is the
+ * half that tells the user what to do next.
+ */
+function resolveError(err: unknown): string {
+  const response = (err as { response?: { status?: number; data?: unknown } })
+    ?.response;
+  const message =
+    getErrorMessage(response?.data) ?? fallbackMessage(response?.status);
+  const fix = getErrorFix(response?.data);
+  return fix ? `${message} ${fix}` : message;
 }
 
 /** Celebrate a successful link with a quick confetti burst. */

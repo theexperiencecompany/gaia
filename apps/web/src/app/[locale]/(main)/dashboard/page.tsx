@@ -19,7 +19,7 @@ function DashboardComposer() {
   const router = useRouter();
 
   return (
-    <div className="relative w-1/2 mb-10">
+    <div className="relative mb-10 w-full px-4 sm:w-1/2 sm:px-0">
       {/* Visual-only — inert so nothing is interactive */}
       <div
         className="pointer-events-none [&_.searchbar_container]:pt-0 px-4"

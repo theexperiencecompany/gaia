@@ -15,8 +15,9 @@ export const useOnboardingGuard = () => {
   if (!user.email || user.onboarding === undefined) return;
 
   // Resolved during render (not in an effect) so a guarded page never paints
-  // before redirecting; `redirect` performs the same client-side navigation
-  // router.push did.
+  // before redirecting. It replaces rather than pushes, like every other
+  // guard: a pushed redirect leaves the page the user was bounced off in
+  // history, so Back returns to it and is bounced straight out again.
   const isOnboardingCompleted = user.onboarding?.completed;
 
   if (pathname === "/onboarding") {
@@ -30,11 +31,11 @@ export const useOnboardingGuard = () => {
         user.onboarding?.getting_started_conversation_id;
       redirect(
         seededConversationId ? `/c/${seededConversationId}` : "/c",
-        RedirectType.push,
+        RedirectType.replace,
       );
     }
   } else if (!isOnboardingCompleted) {
     // If not on onboarding page but onboarding is not completed, redirect to onboarding
-    redirect("/onboarding", RedirectType.push);
+    redirect("/onboarding", RedirectType.replace);
   }
 };

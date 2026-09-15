@@ -24,6 +24,7 @@ from datetime import datetime
 
 from bson import ObjectId
 
+from app.constants.chat import USER_MESSAGE_TYPE
 from app.db.repositories.base import UserScopedRepository
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
@@ -146,6 +147,24 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                         {"updatedAt": {"$gte": since}},
                         {"createdAt": {"$gte": since.isoformat()}},
                     ],
+                }
+            )
+            > 0
+        )
+
+    async def has_sent_message(self, user_id: str) -> bool:
+        """Whether the user has ever sent a message, from any surface.
+
+        Workflow-execution threads also carry ``user`` messages (the workflow's
+        own prompt), so system-generated conversations are excluded — the
+        signal is a human typing, not an automation running.
+        """
+        return (
+            await self._count(
+                {
+                    "user_id": user_id,
+                    "is_system_generated": {"$ne": True},
+                    "messages.type": USER_MESSAGE_TYPE,
                 }
             )
             > 0

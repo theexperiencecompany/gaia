@@ -30,6 +30,10 @@ from app.constants.cache import (
     REPO_GLOBAL_SCOPE,
     USER_CACHE_PREFIX,
 )
+from app.constants.first_steps import (
+    FIRST_STEPS_COLLAPSED_AT_FIELD,
+    FIRST_STEPS_COLLAPSED_FIELD,
+)
 from app.constants.log_tags import LogTag
 from app.constants.onboarding import (
     GETTING_STARTED_CONVERSATION_ID_FIELD,
@@ -605,6 +609,21 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             },
             scope=REPO_GLOBAL_SCOPE,
         )
+
+    async def set_first_steps_collapsed(self, user_id: str, collapsed: bool) -> bool:
+        """Persist the checklist's collapse; returns whether the user existed (for a 404)."""
+        updated = await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {
+                "$set": {
+                    FIRST_STEPS_COLLAPSED_FIELD: collapsed,
+                    FIRST_STEPS_COLLAPSED_AT_FIELD: datetime.now(UTC) if collapsed else None,
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+        return updated is not None
 
     async def mark_memory_backfilled(self, user_id: str) -> None:
         """Stamp the memory-backfill marker so the daily cron won't re-select the user."""

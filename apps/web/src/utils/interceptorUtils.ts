@@ -18,11 +18,32 @@ interface ErrorHandlerDependencies {
   router: AppRouterInstance;
 }
 
+const getDetail = (data: unknown): unknown =>
+  data && typeof data === "object" && "detail" in data
+    ? (data as { detail: unknown }).detail
+    : undefined;
+
+/**
+ * Reads one string field of a structured backend error. `AppError` serialises
+ * `{ message, why, fix }` at the top level of the body, while FastAPI's own
+ * `HTTPException` nests the same shape under `detail` — both are read here so
+ * callers never have to know which handler produced the response.
+ */
+const readErrorString = (data: unknown, key: string): string | undefined => {
+  const detail = getDetail(data);
+  if (detail && typeof detail === "object" && key in detail) {
+    const value = (detail as Record<string, unknown>)[key];
+    if (typeof value === "string") return value;
+  }
+  if (data && typeof data === "object" && key in data) {
+    const value = (data as Record<string, unknown>)[key];
+    if (typeof value === "string") return value;
+  }
+  return undefined;
+};
+
 const getErrorCode = (data: unknown): string | undefined => {
-  const detail =
-    data && typeof data === "object" && "detail" in data
-      ? (data as { detail: unknown }).detail
-      : undefined;
+  const detail = getDetail(data);
   if (detail && typeof detail === "object" && "error_code" in detail)
     return (detail as { error_code?: string }).error_code;
   return undefined;
@@ -35,21 +56,18 @@ const getErrorCode = (data: unknown): string | undefined => {
  * object `detail` from rendering as the literal "[object Object]".
  */
 export const getErrorMessage = (data: unknown): string | undefined => {
-  const detail =
-    data && typeof data === "object" && "detail" in data
-      ? (data as { detail: unknown }).detail
-      : undefined;
+  const detail = getDetail(data);
   if (typeof detail === "string") return detail;
-  if (detail && typeof detail === "object" && "message" in detail) {
-    const message = (detail as { message?: unknown }).message;
-    if (typeof message === "string") return message;
-  }
-  if (data && typeof data === "object" && "message" in data) {
-    const message = (data as { message?: unknown }).message;
-    if (typeof message === "string") return message;
-  }
-  return undefined;
+  return readErrorString(data, "message");
 };
+
+/**
+ * The remediation hint a structured backend error carries alongside its
+ * message ("Ask the bot for a fresh link."). Worth rendering: it is the half
+ * of the error that tells the user what to do next.
+ */
+export const getErrorFix = (data: unknown): string | undefined =>
+  readErrorString(data, "fix");
 
 /**
  * Surfaces API error UI for app-shell requests. Only mounted inside the (main)
@@ -112,10 +130,7 @@ const handleForbiddenError = (
   errorData: unknown,
   router: AppRouterInstance,
 ): void => {
-  const detail =
-    errorData && typeof errorData === "object" && "detail" in errorData
-      ? (errorData as { detail: unknown }).detail
-      : undefined;
+  const detail = getDetail(errorData);
 
   if (
     typeof detail === "object" &&
@@ -197,10 +212,7 @@ const handleSubscriptionRequiredError = (errorData: unknown): boolean => {
  * Shared by the axios interceptor and the chat-stream client.
  */
 export const handleRateLimitError = (errorData: unknown): boolean => {
-  const rateLimitData =
-    errorData && typeof errorData === "object" && "detail" in errorData
-      ? (errorData as { detail: unknown }).detail
-      : undefined;
+  const rateLimitData = getDetail(errorData);
 
   if (
     typeof rateLimitData !== "object" ||

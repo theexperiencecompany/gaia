@@ -1,4 +1,5 @@
-"""Hermetic unit tests for ``ConversationRepository``'s in-place message writes.
+"""Hermetic unit tests for ``ConversationRepository``'s in-place message writes
+and its activation-signal count.
 
 The real-Mongo proof of these methods lives in
 ``tests/contracts/test_conversations_repository.py``; this tier pins the exact
@@ -34,6 +35,7 @@ def collection() -> Iterator[MagicMock]:
     """The mocked Mongo collection every repository write lands on."""
     mock = MagicMock()
     mock.update_one = AsyncMock(return_value=MagicMock(matched_count=1, upserted_id=None))
+    mock.count_documents = AsyncMock(return_value=0)
     with patch(
         "app.db.repositories.base.get_async_collection", return_value=mock
     ) as get_collection:
@@ -55,6 +57,12 @@ def _update_call(collection: MagicMock) -> tuple[dict[str, Any], dict[str, Any],
 
 def _matched(collection: MagicMock, count: int) -> None:
     collection.update_one.return_value = MagicMock(matched_count=count, upserted_id=None)
+
+
+def _count_filter(collection: MagicMock) -> dict[str, Any]:
+    """The single ``count_documents`` call's filter."""
+    collection.count_documents.assert_awaited_once()
+    return collection.count_documents.await_args.args[0]
 
 
 class TestSetMessageResponse:
@@ -316,3 +324,38 @@ class TestSettlementWritesRefreshTheCache:
 
         delete_cache.assert_not_awaited()
         bump_generation.assert_not_awaited()
+
+
+class TestHasSentMessage:
+    """``has_sent_message`` — the activation checklist's "say hi" signal.
+
+    The service tier mocks this method away entirely, so the predicate it hands
+    Mongo is only visible here. Every clause is load-bearing: drop the
+    ``is_system_generated`` guard and a workflow execution's own prompt vouches
+    for a user who never typed anything, and drop the ``messages.type`` clause
+    and an empty conversation counts as a sent message.
+    """
+
+    async def test_counts_only_human_threads_that_carry_a_user_message(
+        self, repo: ConversationRepository, collection: MagicMock
+    ) -> None:
+        await repo.has_sent_message(USER_ID)
+
+        assert _count_filter(collection) == {
+            "user_id": USER_ID,
+            "is_system_generated": {"$ne": True},
+            "messages.type": "user",
+        }
+        assert collection.get_collection.call_args.args == ("conversations",)
+
+    async def test_reports_false_when_nothing_matches(
+        self, repo: ConversationRepository, collection: MagicMock
+    ) -> None:
+        assert await repo.has_sent_message(USER_ID) is False
+
+    async def test_a_single_match_is_enough(
+        self, repo: ConversationRepository, collection: MagicMock
+    ) -> None:
+        collection.count_documents.return_value = 1
+
+        assert await repo.has_sent_message(USER_ID) is True

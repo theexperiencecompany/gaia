@@ -213,6 +213,8 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/support/requests",
         "/api/v1/support/requests/my",
         "/api/v1/support/requests/with-attachments",
+        "/api/v1/user/first-steps",
+        "/api/v1/user/first-steps/collapse",
         "/api/v1/user/holo-card/card_id",
         "/api/v1/user/holo-card/colors",
         "/api/v1/user/logout",
@@ -245,6 +247,28 @@ async def test_llm_spend_under_a_free_prefix_keeps_its_own_gate(gated_client: As
             json={"edited_summary": "short and warm", "profession": "founder"},
         )
     assert response.status_code == 402
+
+
+@pytest.mark.usefixtures("free_caller")
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("GET", "/api/v1/user/first-steps"), ("POST", "/api/v1/user/first-steps/collapse")],
+)
+async def test_the_activation_checklist_never_raises_the_paywall(
+    gated_client: AsyncClient, method: str, path: str
+) -> None:
+    """The checklist is a read of the caller's own activation state, not a paid surface.
+
+    The widget is mounted app-wide and refetches on every route change, so a
+    402 here is not a quiet failure — the web interceptor opens the
+    non-dismissible paywall on it. Entitlement is cached for up to five
+    minutes, which means the user this fires at first is the one who *just
+    paid*: the checkout succeeds, the next navigation 402s on the stale plan,
+    and they are told to pay again.
+    """
+    response = await gated_client.request(method, path, json={"collapsed": True})
+
+    assert response.status_code != 402
 
 
 @pytest.mark.parametrize(("method", "path"), PRO_SAMPLE)

@@ -16,6 +16,10 @@ export interface OnboardingData {
   getting_started_conversation_id?: string;
   preferences?: {
     profession?: string;
+    /** Onboarding Q2, as stored: the jobs the user handed GAIA. */
+    needs?: string[];
+    /** Onboarding Q2's "Something else", verbatim. */
+    other_need?: string;
     response_style?: string;
     custom_instructions?: string;
   };

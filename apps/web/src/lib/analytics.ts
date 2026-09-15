@@ -104,6 +104,11 @@ export const ANALYTICS_EVENTS = {
   // Feature discovery events
   FEATURE_DISCOVERED: "feature:discovered",
 
+  // A row of the activation checklist was clicked. Client-only: completion
+  // and dismissal are derived/owned by the server, but the click that sent
+  // the user off to do the step never reaches it.
+  FIRST_STEPS_STEP_CLICKED: "first_steps:step_clicked",
+
   WORKFLOW_CARD_NAVIGATE: "workflow_card:navigate",
   USE_CASES_PROMPT_INSERTED: "use_cases:prompt_inserted",
 

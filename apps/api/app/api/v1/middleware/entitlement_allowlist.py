@@ -39,6 +39,11 @@ FREE_PATH_PREFIXES: tuple[str, ...] = (
     "/api/v1/user/timezone",  # the wall and receipts render in the user's zone
     "/api/v1/user/holo-card",  # public card lookup by id, plus the owner's colour
     #                             pick: a profile chore like name and timezone
+    "/api/v1/user/first-steps",  # the activation checklist (read + its collapse
+    #                               toggle) is the user's own state, and the
+    #                               widget refetches on every route change — a
+    #                               402 during the entitlement cache window
+    #                               shows a just-paid user the paywall
     "/api/v1/user/logout",  # a lapsed user must be able to leave
     "/api/v1/oauth",  # login redirects + provider callbacks (no session yet)
     "/api/v1/dev/",  # dev-only identity router; mounted only in development

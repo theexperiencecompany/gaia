@@ -23,14 +23,17 @@ import type { Action, OnboardingState } from "../state/types";
  * Which user is loaded lives in the reducer (`state.hydratedFor`), so this
  * hook holds no state of its own.
  *
- * The server outranks the cache. A draft that claims the preferences were
- * persisted while the account has none is a leftover from before a reset
- * (the dev reset script, an admin unset); rehydrating it would skip every
- * stage and re-complete onboarding on the first paint. It is dropped.
+ * The server outranks the cache in both directions. A draft that claims the
+ * preferences were persisted while the account has none is a leftover from
+ * before a reset (the dev reset script, an admin unset); rehydrating it would
+ * skip every stage and re-complete onboarding on the first paint, so it is
+ * dropped. And where there is no draft at all — a second device, a cleared
+ * browser — the answers the account already gave stand in for one, instead of
+ * the wizard re-asking Q1 and Q2 and overwriting them.
  */
 export function useOnboardingPersistence(
   userId: string,
-  serverHasPreferences: boolean,
+  serverDraft: Partial<OnboardingState> | null,
   state: OnboardingState,
   dispatch: Dispatch<Action>,
 ): boolean {
@@ -42,10 +45,13 @@ export function useOnboardingPersistence(
   useEffect(() => {
     if (!userId || hydratedFor === userId) return;
     let partial = loadPersisted(userId);
-    if (partial?.preferencesPersisted && !serverHasPreferences) {
+    if (partial?.preferencesPersisted && !serverDraft) {
       clearPersisted(userId);
       partial = null;
     }
+    // This device's own progress outranks the server's copy of the answers:
+    // it is the more recent of the two, and it holds the later stages.
+    partial = partial ?? serverDraft;
     if (hydratedFor !== null) dispatch({ type: "reset" });
     // The intro flag resolves on the same beat, cache or no cache: until it
     // does it is `null`, and the page renders neither the intro nor the flow.
@@ -55,7 +61,7 @@ export function useOnboardingPersistence(
     });
     dispatch({ type: "hydrated", userId });
     awaitingHydratedStateRef.current = true;
-  }, [userId, serverHasPreferences, hydratedFor, dispatch]);
+  }, [userId, serverDraft, hydratedFor, dispatch]);
 
   useEffect(() => {
     if (hydratedFor !== userId) return;
