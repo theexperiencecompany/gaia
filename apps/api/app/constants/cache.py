@@ -36,11 +36,6 @@ PLANS_CACHE_KEYS = (ACTIVE_PLANS_CACHE_KEY, ALL_PLANS_CACHE_KEY)
 # doesn't leave a trail of abandoned sessions in Dodo.
 UPGRADE_LINK_CACHE_PREFIX = "upgrade_link:"
 UPGRADE_LINK_CACHE_TTL = ONE_HOUR_TTL
-# The tracked-todo summary injected into comms context. Deliberately short: the
-# list changes as the agent works, and a stale pin is worse than the lookup it
-# saves. Keyed by user alone, so only the unpinned summary may use it.
-TRACKED_TODOS_SUMMARY_CACHE_KEY = "tracked_todos:summary:{user_id}"
-TRACKED_TODOS_SUMMARY_CACHE_TTL = 60
 OAUTH_STATE_TTL = TEN_MINUTES_TTL
 OAUTH_DISCOVERY_TTL = ONE_DAY_TTL
 MCP_TOOLS_CACHE_TTL = ONE_DAY_TTL
@@ -89,6 +84,13 @@ NOTE_CACHE_PREFIX = "note"
 TODO_CACHE_PREFIX = "todo"
 PROJECT_CACHE_PREFIX = "project"
 USER_CACHE_PREFIX = "user"
+# A user's device manifest — the paired devices and the servers they expose, as
+# the connected-devices context section renders them. Its keys are generation
+# scoped (see ``CachePolicy``): every structural device/server write bumps the
+# user's generation, which orphans the old query key so a read that stored after
+# the write can never be served. Mutable status (online, sync state, last-seen)
+# is deliberately NOT part of it, so it never goes stale.
+DEVICE_MANIFEST_CACHE_PREFIX = "device_manifest"
 # Redis SET NX EX gate that debounces UserRepository.touch_last_active.
 LAST_ACTIVE_GATE_PREFIX = "last_active_gate"
 

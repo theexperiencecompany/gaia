@@ -18,6 +18,7 @@ import uuid
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants.cache import DEVICE_MANIFEST_CACHE_PREFIX, ONE_DAY_TTL
 from app.constants.device_bridge import (
     DEVICE_CATEGORY,
     DEVICE_CODE_BYTES,
@@ -39,6 +40,7 @@ from app.constants.device_bridge import (
 from app.constants.log_tags import LogTag
 from app.db.postgresql import get_db_session
 from app.db.redis import get_and_delete_cache, get_cache, redis_cache, set_cache
+from app.db.repositories.cache import CachePolicy, bump_generation, read_generation
 from app.db.repositories.integrations import integration_repository
 from app.helpers.integration_helpers import dedup_server_url_key
 from app.helpers.mcp_helpers import get_frontend_url
@@ -50,6 +52,7 @@ from app.models.device import (
 )
 from app.models.integration_models import Integration
 from app.models.mcp_config import MCPConfig
+from app.schemas.device.manifest import DeviceManifestEntry
 from app.schemas.device.responses import PollPairingResponse, StartPairingResponse
 from app.services.device.bridge import request_revoke, send_down
 from app.services.device.device_auth import (
@@ -195,6 +198,7 @@ async def _create_device(
             )
         session.add(device)
         await session.commit()
+    await _invalidate_device_manifest(user_id)
     return device_id, refresh_token
 
 
@@ -326,6 +330,7 @@ async def rotate_refresh_token(refresh_token: str) -> tuple[str, str, str]:
                 # Same teardown as an explicit revoke: otherwise the device drops
                 # out of the ACTIVE-only list with its integrations left dangling
                 # and any live tunnel stays up until the connect JWT expires.
+                await _invalidate_device_manifest(replayed_user_id)
                 await _teardown_revoked_device(replayed_user_id, replayed_id, integration_ids)
                 log.warning(
                     f"{LogTag.API} Device refresh-token reuse detected — revoking device",
@@ -401,6 +406,7 @@ async def register_device_server(
             existing.status = DeviceServerStatus.CONNECTED
             existing.error_message = None
             await session.commit()
+            await _invalidate_device_manifest(user_id)
             await session.refresh(existing)
             await _ensure_server_integration(user_id, existing)
             return existing
@@ -417,6 +423,7 @@ async def register_device_server(
         )
         session.add(server)
         await session.commit()
+        await _invalidate_device_manifest(user_id)
         await session.refresh(server)
 
     await _create_server_integration(user_id, device_id, server_key, display_name, integration_id)
@@ -540,6 +547,7 @@ async def deregister_device_server(
         await session.delete(server)
         await session.commit()
 
+    await _invalidate_device_manifest(user_id)
     await _remove_server_cloud_mirror(user_id, integration_id)
     if notify_device:
         await _send_server_remove(device_id, server_key)
@@ -562,9 +570,11 @@ async def deregister_device_server_for_integration(
         if server is None:
             return False
         device_id, server_key = server.device_id, server.server_key
+        server_user_id = server.user_id
         await session.delete(server)
         await session.commit()
 
+    await _invalidate_device_manifest(server_user_id)
     if notify_device:
         await _send_server_remove(device_id, server_key)
     return True
@@ -583,6 +593,56 @@ async def reconcile_device_servers(user_id: str, device_id: str, reported_keys: 
             device={"operation": "reconcile_servers", "device_id": device_id},
             pruned=len(stale),
         )
+
+
+#: Generation scoped so a write orphans the previous manifest key instead of
+#: deleting it: a read that computed before the write and stores after it lands
+#: under the old generation and is never served. The TTL bounds orphaned keys; it
+#: is not the invalidation mechanism.
+_DEVICE_MANIFEST_POLICY = CachePolicy(prefix=DEVICE_MANIFEST_CACHE_PREFIX, query_ttl=ONE_DAY_TTL)
+
+
+async def get_device_manifest(user_id: str) -> list[DeviceManifestEntry]:
+    """The user's active devices and the servers they expose, cached per user.
+
+    Keys are generation scoped: ``_invalidate_device_manifest`` bumps the user's
+    generation on every structural device/server write, orphaning the old entry.
+    ``build_connected_devices_manifest`` reads this once per turn instead of
+    paying two Postgres queries.
+    """
+    policy = _DEVICE_MANIFEST_POLICY
+    generation = await read_generation(policy, user_id)
+    key: str | None = None
+    if generation is not None:
+        key = policy.query_key(user_id, generation, "manifest", "v1")
+        cached = await get_cache(key, model=list[DeviceManifestEntry])
+        if cached is not None:
+            return cached
+    manifest = await _compute_device_manifest(user_id)
+    if key is not None:
+        await set_cache(key, manifest, ttl=policy.query_ttl, model=list[DeviceManifestEntry])
+    return manifest
+
+
+async def _compute_device_manifest(user_id: str) -> list[DeviceManifestEntry]:
+    devices = await list_devices(user_id)
+    if not devices:
+        return []
+    servers_by_device = await list_device_servers([device.id for device in devices])
+    return [
+        DeviceManifestEntry(
+            id=device.id,
+            name=device.name,
+            platform=device.platform,
+            servers=[server.display_name for server in servers_by_device.get(device.id, [])],
+        )
+        for device in devices
+    ]
+
+
+async def _invalidate_device_manifest(user_id: str) -> None:
+    """Orphan ``user_id``'s cached device manifest after a structural write."""
+    await bump_generation(_DEVICE_MANIFEST_POLICY, user_id)
 
 
 async def list_devices(user_id: str) -> list[Device]:
@@ -698,6 +758,7 @@ async def revoke_device(user_id: str, device_id: str) -> bool:
         integration_ids = await _device_server_integration_ids(session, device_id)
         await session.commit()
 
+    await _invalidate_device_manifest(user_id)
     await _teardown_revoked_device(user_id, device_id, integration_ids)
     log.set(device={"operation": "revoke", "device_id": device_id}, user={"id": user_id})
     return True

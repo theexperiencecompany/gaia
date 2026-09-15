@@ -29,9 +29,8 @@ from app.models.todo_models import TodoDocument
 def user() -> str:
     """A user nobody has cached anything for.
 
-    Both sections under test sit behind a per-user cache — the manifest under
-    ``@Cacheable``, the todo summary under its own Redis key — and these tests
-    mock the store one layer BELOW that. A fixed id would make the result
+    The integrations manifest sits behind a per-user ``@Cacheable`` and these
+    tests mock the store one layer BELOW that. A fixed id would make the result
     depend on whatever Redis happened to be holding, which is how this file
     passed once and then failed against the same code.
     """
@@ -150,23 +149,23 @@ class TestTrackedTodosSummary:
 
         assert block == ""
 
-    async def test_a_pinned_view_bypasses_the_cache(self, user: str) -> None:
-        """The pin is per-run-binding, but the cache is keyed by user alone —
-        so serving a pinned view from it would show one run's bound todo on
-        every other turn for that user until the TTL expired."""
-        cached = AsyncMock(return_value="STALE SUMMARY")
-
-        with (
-            self._todos(self._todo("t1", "Fresh todo", user)),
-            patch("app.agents.context.fetchers._cached_tracked_todos_summary", cached),
-        ):
-            pinned = await _section("tracked_todos").fetch(
-                SectionContext(tier=AgentTier.COMMS, user_id=user, active_todo_id="t1")
+    async def test_the_summary_reads_the_current_list_each_turn(self, user: str) -> None:
+        """No user-keyed string cache sits over the summary: a turn renders from
+        the active list it is given (which the repository invalidates on every
+        write), so a changed list is reflected immediately rather than after a TTL."""
+        with self._todos(self._todo("t1", "First state", user)):
+            first = await _section("tracked_todos").fetch(
+                SectionContext(tier=AgentTier.COMMS, user_id=user)
+            )
+        with self._todos(self._todo("t2", "Second state", user)):
+            second = await _section("tracked_todos").fetch(
+                SectionContext(tier=AgentTier.COMMS, user_id=user)
             )
 
-        assert "Fresh todo" in pinned
-        assert "STALE SUMMARY" not in pinned
-        cached.assert_not_awaited()
+        assert "First state" in first
+        assert "Second state" not in first
+        assert "Second state" in second
+        assert "First state" not in second
 
     async def test_the_summary_is_a_volatile_section(self) -> None:
         """It changes as the agent works, so it must not sit in the prefix."""

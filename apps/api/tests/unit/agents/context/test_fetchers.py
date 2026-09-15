@@ -7,6 +7,8 @@ is absent — that precondition lives with the read rather than at the call site
 so no caller can forget it.
 """
 
+import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -14,6 +16,7 @@ import pytest
 from tests._harness.context_sources import knowledge, memory
 from tests.helpers import captured_wide_event
 
+from app.agents.context import fetchers
 from app.agents.context.fetchers import (
     _dedupe_by_provider,
     _split_core_context,
@@ -37,6 +40,8 @@ from app.agents.context.text import (
 )
 from app.agents.context.tiers import AgentTier
 from app.agents.workspace.paths import session_dir
+from app.constants.todos import GAIA_TRACKED_LABEL
+from app.db.repositories.todos import todo_repository
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
@@ -374,35 +379,22 @@ class TestDedupeByProvider:
 
 @pytest.mark.unit
 class TestTrackedTodosBlock:
-    async def test_renders_the_cached_summary(self) -> None:
-        """The cache is keyed by user alone, so the requesting user's id is what
-        has to reach it — a lookup under anything else reads another entry."""
-
-        async def _summary_for(user_id: str) -> str:
-            return "Tracked: ship the refactor" if user_id == "user1" else "another user's todos"
-
-        with patch("app.agents.context.fetchers._cached_tracked_todos_summary", _summary_for):
-            assert await build_tracked_todos_block(ctx()) == "Tracked: ship the refactor"
-
-    async def test_a_pinned_view_bypasses_the_cache(self) -> None:
-        """Caching the pinned form would surface one run's bound todo on every
-        other turn for that user until the TTL expired — the cache key is the
-        user alone."""
-        cached = AsyncMock(return_value="cached summary")
-        with (
-            patch("app.agents.context.fetchers._cached_tracked_todos_summary", cached),
-            patch(
-                "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
-                AsyncMock(return_value="pinned summary"),
-            ),
+    async def test_the_requesting_user_and_bound_todo_reach_the_summary(self) -> None:
+        """The summary is read for this user and this run's binding is passed
+        through so the service can pin it — a dropped id pins nothing."""
+        summary = AsyncMock(return_value="Tracked: ship the refactor")
+        with patch(
+            "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
+            summary,
         ):
-            assert await build_tracked_todos_block(ctx(active_todo_id="todo-7")) == "pinned summary"
+            block = await build_tracked_todos_block(ctx(user_id="user-7", active_todo_id="todo-7"))
 
-        cached.assert_not_awaited()
+        assert block == "Tracked: ship the refactor"
+        summary.assert_awaited_once_with("user-7", active_todo_id="todo-7")
 
     async def test_failure_yields_no_block(self) -> None:
         with patch(
-            "app.agents.context.fetchers._cached_tracked_todos_summary",
+            "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ):
             assert await build_tracked_todos_block(ctx()) == ""
@@ -413,6 +405,196 @@ class TestTrackedTodosBlock:
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ):
             assert await build_tracked_todos_block(ctx(active_todo_id="todo-7")) == ""
+
+
+def _tracked_doc(todo_id: str, title: str) -> TodoDocument:
+    now = datetime.now(UTC)
+    return TodoDocument(
+        id=todo_id,
+        user_id="user1",
+        title=title,
+        labels=[GAIA_TRACKED_LABEL],
+        created_at=now - timedelta(days=2),
+        updated_at=now - timedelta(hours=1),
+    )
+
+
+@pytest.fixture
+def repo_reads() -> AsyncMock:
+    """The repository's Mongo read, with the ``cached_query`` cache seams faked.
+
+    The active-tracked finder is generation-cached; these fakes stand in for the
+    two Redis round trips (generation + query store) so the real decorator runs
+    without Redis. Returns the ``_find`` spy — its await count is the Mongo reads.
+    """
+    find = AsyncMock(return_value=[])
+    generation = {"value": 1}
+    store: dict[str, object] = {}
+
+    async def _read_generation(_policy: object, _scope: str) -> int:
+        return generation["value"]
+
+    async def _get(key: str, model: object = None) -> object:
+        return store.get(key)
+
+    async def _set(key: str, value: object, ttl: int = 0, model: object = None) -> None:
+        store[key] = value
+
+    async def _bump(_policy: object, _scope: str) -> None:
+        generation["value"] += 1
+
+    with (
+        patch.object(todo_repository, "_find", find),
+        patch("app.db.repositories.base.read_generation", _read_generation),
+        patch("app.db.repositories.base.get_cache", _get),
+        patch("app.db.repositories.base.set_cache", _set),
+        patch("app.db.repositories.base.bump_generation", _bump),
+    ):
+        yield find
+
+
+@pytest.mark.unit
+class TestTrackedTodosListIsTheCachedRead:
+    """The active-tracked docs list is cached at the repository layer, so a bound
+    turn reads Mongo once per generation instead of once per assembly — and the
+    bound todo is still pinned in memory after the (possibly cached) fetch.
+    """
+
+    async def test_two_bound_turns_read_mongo_once_and_still_pin(
+        self, repo_reads: AsyncMock
+    ) -> None:
+        repo_reads.return_value = [
+            _tracked_doc("todo-2", "Second"),
+            _tracked_doc("todo-7", "Bound"),
+        ]
+
+        first = await build_tracked_todos_block(ctx(active_todo_id="todo-7"))
+        second = await build_tracked_todos_block(ctx(active_todo_id="todo-7"))
+
+        assert repo_reads.await_count == 1
+        assert first == second
+        lines = second.split("\n")
+        assert lines[0] == "ACTIVE TRACKED TODOS:"
+        assert lines[1].startswith('  ⭐ ACTIVE "Bound"')
+
+    async def test_a_write_bumps_the_generation_and_the_next_turn_requeries(
+        self, repo_reads: AsyncMock
+    ) -> None:
+        repo_reads.return_value = [_tracked_doc("todo-7", "Bound")]
+
+        await build_tracked_todos_block(ctx(active_todo_id="todo-7"))
+        await build_tracked_todos_block(ctx(active_todo_id="todo-7"))  # cached — no Mongo
+        assert repo_reads.await_count == 1
+
+        await todo_repository._invalidate("user1")  # what every todo write does
+        await build_tracked_todos_block(ctx(active_todo_id="todo-7"))
+
+        assert repo_reads.await_count == 2
+
+
+async def _never_finishes() -> str:
+    await asyncio.sleep(3600)
+    return ""
+
+
+@pytest.mark.unit
+class TestCoreContextSingleFlight:
+    """The two core-memory sections run in the same ``asyncio.gather``, so they
+    share one in-flight core fetch instead of racing two; a task bound to a dead
+    loop is never awaited cross-loop.
+    """
+
+    async def test_both_core_sections_share_one_fetch(self) -> None:
+        calls = 0
+
+        async def _core(user_id: str) -> str:
+            nonlocal calls
+            calls += 1
+            await asyncio.sleep(0.05)
+            return f"Docs.\n\n{AGENDA_HEADING}\n- ship it\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed"
+
+        with patch("app.memory.engine.memory_engine.get_core_context", _core):
+            core_block, agenda_block = await asyncio.gather(
+                build_core_memory_block(ctx()), build_agenda_and_activity_block(ctx())
+            )
+
+        assert calls == 1
+        assert core_block == f"{CORE_MEMORY_HEADER}\nDocs."
+        assert agenda_block == (
+            f"{AGENDA_HEADING}\n- ship it\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed"
+        )
+
+    async def test_different_users_do_not_share_a_fetch(self) -> None:
+        """Keyed by user, not just by loop: an entry keyed on the loop alone would
+        hand one user's core context to another running at the same time."""
+        seen: list[str] = []
+
+        async def _core(user_id: str) -> str:
+            seen.append(user_id)
+            await asyncio.sleep(0.05)
+            return f"docs-for-{user_id}"
+
+        with patch("app.memory.engine.memory_engine.get_core_context", _core):
+            block_a, block_b = await asyncio.gather(
+                build_core_memory_block(ctx(user_id="user-a")),
+                build_core_memory_block(ctx(user_id="user-b")),
+            )
+
+        assert sorted(seen) == ["user-a", "user-b"]
+        assert "docs-for-user-a" in block_a
+        assert "docs-for-user-b" in block_b
+
+    async def test_sequential_assemblies_each_read_afresh(self) -> None:
+        """No TTL is smuggled in: once the in-flight fetch resolves it is gone, so
+        the next assembly reads the core again rather than serving a stale one."""
+        calls = 0
+
+        async def _core(user_id: str) -> str:
+            nonlocal calls
+            calls += 1
+            return "Docs."
+
+        with patch("app.memory.engine.memory_engine.get_core_context", _core):
+            await build_core_memory_block(ctx())
+            await build_core_memory_block(ctx())
+
+        assert calls == 2
+
+    async def test_the_inflight_entry_is_evicted_on_completion(self) -> None:
+        """Eviction is what bounds the registry — a leak would retain every user's
+        core context in memory forever."""
+
+        async def _core(user_id: str) -> str:
+            return "Docs."
+
+        with patch("app.memory.engine.memory_engine.get_core_context", _core):
+            await build_core_memory_block(ctx())
+
+        assert fetchers._inflight_core == {}
+
+    def test_a_task_from_a_previous_loop_is_never_awaited(self) -> None:
+        """Event loops are per-test (and per reload); a pending task left by a dead
+        loop must be ignored, not awaited cross-loop. Keying by the running loop is
+        what makes the current loop start its own fetch."""
+        other_loop = asyncio.new_event_loop()
+        stale = other_loop.create_task(_never_finishes())
+        fetchers._inflight_core[(other_loop, "user1")] = stale
+        fetched: list[str] = []
+
+        async def _core(user_id: str) -> str:
+            fetched.append(user_id)
+            return "Docs."
+
+        try:
+            with patch("app.memory.engine.memory_engine.get_core_context", _core):
+                block = asyncio.run(build_core_memory_block(ctx()))
+            assert fetched == ["user1"]
+            assert block == f"{CORE_MEMORY_HEADER}\nDocs."
+        finally:
+            fetchers._inflight_core.pop((other_loop, "user1"), None)
+            stale.cancel()
+            other_loop.run_until_complete(asyncio.sleep(0))
+            other_loop.close()
 
 
 @pytest.mark.unit
@@ -556,7 +738,7 @@ class TestASectionDeclinesWhenItsContextIsAbsent:
 
     async def test_no_user_means_no_tracked_todos(self) -> None:
         with patch(
-            "app.agents.context.fetchers._cached_tracked_todos_summary",
+            "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
             AsyncMock(return_value="Tracked: ship the refactor"),
         ):
             assert await build_tracked_todos_block(ctx(user_id=None)) == ""

@@ -12,6 +12,8 @@ directly in ``sections.SECTIONS``; only a section that genuinely branches keeps
 a body of its own next to the table.
 """
 
+import asyncio
+import functools
 import re
 
 from app.agents.context.section_context import SectionContext
@@ -24,17 +26,12 @@ from app.agents.context.text import (
     MEMORY_RECALL_HEADER,
 )
 from app.agents.workspace.paths import session_dir
-from app.constants.cache import TRACKED_TODOS_SUMMARY_CACHE_KEY, TRACKED_TODOS_SUMMARY_CACHE_TTL
 from app.db.repositories.todos import todo_repository
-from app.decorators.caching import Cacheable
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.todo_models import TodoDocument
-from app.services.device.device_service import (
-    list_device_servers,
-    list_devices as list_devices_service,
-)
+from app.services.device.device_service import get_device_manifest
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_connected_integrations_named
 from app.services.storage._vfs_common import folder_name
@@ -61,15 +58,12 @@ def _split_off_section(context: str, heading: str) -> tuple[str, str]:
     return context, ""
 
 
-async def _core_context(user_id: str | None) -> str:
-    """The memory core as the engine renders it, or ``""``.
+async def _fetch_core_context(user_id: str) -> str:
+    """Read the memory core once, or ``""``.
 
-    Redis-cached inside the engine and invalidated on ingestion, so the two
-    sections built from it (the stable documents and the volatile agenda +
-    journal) each read it without a second round trip to Mongo.
+    Redis-cached inside the engine and invalidated on ingestion; the swallow logs
+    its cause so a degraded core is visible in the wide event.
     """
-    if not user_id:
-        return ""
     try:
         return await memory_engine.get_core_context(user_id)
     except Exception as e:
@@ -80,6 +74,43 @@ async def _core_context(user_id: str | None) -> str:
             user_id=user_id,
         )
         return ""
+
+
+#: One in-flight core fetch per (event loop, user). The two core-memory sections
+#: run in the same ``asyncio.gather`` and would otherwise each pay the whole
+#: fetch; sharing the task pays it once. Keyed by loop so a task bound to a
+#: closed loop (tests, reloads) is never awaited from another.
+_inflight_core: dict[tuple[asyncio.AbstractEventLoop, str], asyncio.Task[str]] = {}
+
+
+def _forget_inflight(key: tuple[asyncio.AbstractEventLoop, str], task: asyncio.Task[str]) -> None:
+    """Drop the finished fetch, if it is still the registered one.
+
+    Eviction is load-bearing, not cleanup: without it the registry would retain
+    every user's core context for the process's life. Nothing consumes the task's
+    result — ``_fetch_core_context`` catches and returns ``""``, so it never holds
+    an exception to retrieve.
+    """
+    if _inflight_core.get(key) is task:
+        del _inflight_core[key]
+
+
+async def _core_context(user_id: str | None) -> str:
+    """The memory core as the engine renders it, or ``""``.
+
+    A singleflight over the two sections built from it: an assembly pays the core
+    read once, and the fetch is evicted on completion so a later assembly reads
+    afresh — sharing, not TTL caching.
+    """
+    if not user_id:
+        return ""
+    key = (asyncio.get_running_loop(), user_id)
+    task = _inflight_core.get(key)
+    if task is None:
+        task = asyncio.ensure_future(_fetch_core_context(user_id))
+        _inflight_core[key] = task
+        task.add_done_callback(functools.partial(_forget_inflight, key))
+    return await task
 
 
 def _split_core_context(core_context: str) -> tuple[str, str, str]:
@@ -168,27 +199,20 @@ async def build_gaia_knowledge_block(ctx: SectionContext) -> str:
     return f"{GAIA_KNOWLEDGE_HEADER}\n{lines}"
 
 
-@Cacheable(key_pattern=TRACKED_TODOS_SUMMARY_CACHE_KEY, ttl=TRACKED_TODOS_SUMMARY_CACHE_TTL)
-async def _cached_tracked_todos_summary(user_id: str) -> str:
-    return await tracked_todo_service.get_active_tracked_summary(user_id)
-
-
 async def build_tracked_todos_block(ctx: SectionContext) -> str:
-    """Active tracked-todo summary, briefly cached.
+    """Active tracked-todo summary, with this run's bound todo pinned.
 
-    A pinned view is per-run-binding and deliberately skips the cache: it is
-    keyed by user alone, so caching the pinned form would show one run's bound
-    todo on every other turn until the TTL expired.
+    The summary is rendered from the user-scoped list the repository caches under
+    the user's generation — cleared by every todo write, so it is never staler
+    than the last write. The pin is applied here because it is per-run binding,
+    not per-user state, and a user-keyed cache of the pinned form would leak one
+    run's binding onto every other turn.
     """
     if not ctx.user_id:
         return ""
     try:
-        return (
-            await tracked_todo_service.get_active_tracked_summary(
-                ctx.user_id, active_todo_id=ctx.active_todo_id
-            )
-            if ctx.active_todo_id
-            else await _cached_tracked_todos_summary(ctx.user_id)
+        return await tracked_todo_service.get_active_tracked_summary(
+            ctx.user_id, active_todo_id=ctx.active_todo_id
         )
     except Exception as e:
         log.warning(
@@ -327,12 +351,13 @@ async def build_connected_devices_manifest(user_id: str, header: str) -> str:
     """One line per paired device and the servers it exposes, so the agent knows
     the user has their own machine reachable and routes local-file work there
     instead of the cloud sandbox. Capability awareness only - live online status
-    and tool schemas come from list_devices / retrieve_tools at call time."""
+    and tool schemas come from list_devices / retrieve_tools at call time.
+
+    Reads the per-user device manifest, which the service caches for a day and
+    clears on every structural device/server write.
+    """
     try:
-        devices = await list_devices_service(user_id)
-        if not devices:
-            return ""
-        servers_by_device = await list_device_servers([d.id for d in devices])
+        entries = await get_device_manifest(user_id)
     except Exception as e:
         log.warning(
             "Error building connected-devices manifest",
@@ -341,13 +366,14 @@ async def build_connected_devices_manifest(user_id: str, header: str) -> str:
             user_id=user_id,
         )
         return ""
+    if not entries:
+        return ""
     lines = [header]
-    for device in devices:
-        servers = servers_by_device.get(device.id, [])
-        names = ", ".join(s.display_name for s in servers)
+    for entry in entries:
+        names = ", ".join(entry.servers)
         exposing = f" exposing: {names}" if names else ""
         # Include the id verbatim: it is the device_id run_on_device / the device
         # tools take. Without it the model invents one from the name and the call
         # fails the ownership check.
-        lines.append(f"- {device.name} ({device.platform}, id: {device.id}){exposing}")
+        lines.append(f"- {entry.name} ({entry.platform}, id: {entry.id}){exposing}")
     return "\n".join(lines)

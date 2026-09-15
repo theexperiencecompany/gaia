@@ -261,6 +261,30 @@ class TestTodosRepository(UserScopedRepositoryContract):
         active = await repo.list_active_tracked("u", limit=10)
         assert [t.title for t in active] == ["open"]
 
+    async def test_list_active_tracked_is_generation_cached(self, repo, make_doc, raw_collection):
+        """The active-tracked list is a query-cached read: it is served from Redis
+        until a write bumps the user's generation. This is what takes the per-turn
+        Mongo hit off bound context assembly — it must NOT be a live finder."""
+        user = "tracked-cache-user"
+        await repo.create(make_doc(user_id=user, labels=[GAIA_TRACKED_LABEL], title="a"))
+        assert [t.title for t in await repo.list_active_tracked(user, limit=10)] == ["a"]
+
+        # Direct insert with no generation bump — the cached list must not see it.
+        await raw_collection.insert_one(
+            make_doc(user_id=user, labels=[GAIA_TRACKED_LABEL], title="b").model_dump(
+                exclude={"id"}
+            )
+        )
+        assert [t.title for t in await repo.list_active_tracked(user, limit=10)] == ["a"]
+
+        # A repo write bumps the generation → the finder re-queries and sees both.
+        await repo.create(make_doc(user_id=user, labels=[GAIA_TRACKED_LABEL], title="c"))
+        assert sorted(t.title for t in await repo.list_active_tracked(user, limit=10)) == [
+            "a",
+            "b",
+            "c",
+        ]
+
     async def test_vfs_partitions_by_tracked_label(self, repo, make_doc):
         cutoff = datetime.now(UTC) - timedelta(days=7)
         await repo.create(make_doc(user_id="u", title="tracked", labels=[GAIA_TRACKED_LABEL]))

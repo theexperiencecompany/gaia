@@ -122,6 +122,15 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
                 AsyncMock(return_value=list(sources.connected_integrations)),
             )
         )
+        # The device manifest is a cached live read (Postgres) behind @Cacheable.
+        # The fixture declares no devices, so pin the empty manifest rather than
+        # letting the snapshot depend on whatever devices the environment holds.
+        enter(
+            patch(
+                "app.agents.context.fetchers.get_device_manifest",
+                AsyncMock(return_value=[]),
+            )
+        )
         enter(
             patch(
                 "app.agents.context.sections.get_provider_metadata",
@@ -153,16 +162,6 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
             patch(
                 "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
                 AsyncMock(return_value=sources.onboarding_prompt),
-            )
-        )
-        # The tracked-todos summary sits behind @Cacheable, which would reach a
-        # real Redis. Patched at the cached wrapper so the harness stays
-        # hermetic and the value is the declared one rather than whatever a
-        # previous run happened to leave in the cache.
-        enter(
-            patch(
-                "app.agents.context.fetchers._cached_tracked_todos_summary",
-                AsyncMock(return_value=sources.tracked_todos),
             )
         )
         enter(_patch_executor_lock(sources.executor_busy_task_id))

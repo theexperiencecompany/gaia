@@ -368,7 +368,10 @@ FALLIBLE_SOURCES = [
         "app.services.gaia_knowledge_service.gaia_knowledge_service.search_knowledge",
         "GAIA can run scheduled workflows",
     ),
-    ("app.agents.context.fetchers._cached_tracked_todos_summary", "ship the context refactor"),
+    (
+        "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
+        "ship the context refactor",
+    ),
     ("app.agents.context.fetchers.get_connected_integrations_named", "Gmail"),
 ]
 
