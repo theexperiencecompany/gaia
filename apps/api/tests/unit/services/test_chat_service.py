@@ -672,6 +672,7 @@ class TestRunChatStreamBackground:
         assert props["conversation_id"] == "conv_existing_123"
         assert props["voice_mode"] is False
         assert props["is_new_conversation"] is False
+        assert props["has_error"] is False
         assert props["delegated"] is False
         assert props["queued"] is False
         assert props["e2e_ack_ms"] <= props["e2e_full_ms"]
@@ -706,6 +707,7 @@ class TestRunChatStreamBackground:
         assert mock_capture.call_args.args[2]["voice_mode"] is False
         assert mock_capture.call_args.args[2]["is_new_conversation"] is False
         assert mock_capture.call_args.args[2]["source"] == "desktop"
+        assert mock_capture.call_args.args[2]["has_error"] is False
         assert mock_capture.call_args.args[2]["delegated"] is False
         assert mock_capture.call_args.args[2]["queued"] is False
 

@@ -70,6 +70,7 @@ from app.services.latency_metrics import (
 )
 from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
+from app.services.turn_telemetry import TurnHandles, begin_turn_all, end_turn_all
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.message_breaks import strip_partial_message_break
@@ -216,6 +217,9 @@ async def _run_chat_stream(
     # are marked so the executor publishes a ``voice_tts`` frame to speak.
     register_executor_capture(stream_id, voice_mode=body.voice_mode)
 
+    # Declared before the try so the except branch below can always close it:
+    # if init or approval handling raises first, there is nothing to close.
+    telemetry: TurnHandles | None = None
     try:
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
 
@@ -239,6 +243,21 @@ async def _run_chat_stream(
             body, user, conversation_id, stream_id, state, source
         ):
             return
+
+        # Turn telemetry across Agnost, Latitude, and Laminar. Opened only for
+        # turns where the agent actually runs (past the approval early-return
+        # above) and closed once the terminal outcome is known. Never raises.
+        telemetry = begin_turn_all(
+            user_id=user_id or "",
+            conversation_id=conversation_id,
+            user_input=body.message,
+            source=source,
+            properties={
+                "voice_mode": body.voice_mode,
+                "is_new_conversation": is_new_conversation,
+                "selected_tool": body.selectedTool,
+            },
+        )
 
         forwarder_subscribed = asyncio.Event()
         if user_id:
@@ -328,6 +347,10 @@ async def _run_chat_stream(
                 "conversation_id": conversation_id,
                 "voice_mode": body.voice_mode,
                 "is_new_conversation": is_new_conversation,
+                # A yielded error frame sets state.error without raising, so
+                # the turn still completes: mark it or PostHog reads 100%
+                # completed while every trace backend reads failed.
+                "has_error": bool(state.error),
                 "delegated": state.delegated,
                 "queued": state.queued,
             }
@@ -349,16 +372,28 @@ async def _run_chat_stream(
                 event_props,
                 dedupe_key=stream_id,
             )
+        end_turn_all(
+            telemetry,
+            output=state.complete_message,
+            cancelled=state.is_cancelled,
+            error=Exception(state.error) if state.error else None,
+        )
 
     except Exception as e:  # surface to client + flag the stream
         # Persist the SAME user-facing text we stream (friendly for a recursion
         # stop), not the raw exception — a reload shows what the user saw.
         state.error = await _handle_stream_error(stream_id, e)
+        end_turn_all(telemetry, output=state.error, error=e)
         # A failed turn is the slow/broken one the SLOs exist to catch: it must
         # land in the histograms as an error, not vanish from them.
         _close_turn_timings(
             stream_id, state, source=source, voice_mode=body.voice_mode, status="error"
         )
+    except BaseException:
+        # CancelledError (deploy/restart mid-turn) is not an Exception: close
+        # the scopes as cancelled so the turn doesn't vanish, then propagate.
+        end_turn_all(telemetry, output=state.complete_message, cancelled=True)
+        raise
     finally:
         await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
 
