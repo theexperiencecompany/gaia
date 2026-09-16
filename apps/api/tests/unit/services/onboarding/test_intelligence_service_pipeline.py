@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.onboarding_models import (
+    ClarifyAnswerRecord,
     CompletePayload,
     EmailSummary,
     InboxTriage,
@@ -372,22 +373,37 @@ class TestFinalizeOnboarding:
         assert payload == CompletePayload(conversation_id="conv-1")
 
     async def test_context_reaches_the_message_generator(self, finalize_stack: Any) -> None:
+        # Every field, not a sample: the bundles are positional, so a dropped
+        # one reaches the prompt as a missing fact rather than an error.
         message, _, _, _ = finalize_stack
         triage, style = _triage(), _style()
+        answers: list[ClarifyAnswerRecord] = [
+            {"id": "c1", "kind": "text", "question": "Biggest goal?", "value": "ship Q3"}
+        ]
         await _finalize_onboarding(
-            _finalize_ctx(triage=triage, writing_style=style, has_gmail=True),
+            _finalize_ctx(
+                triage=triage,
+                writing_style=style,
+                has_gmail=True,
+                clarify_answers=answers,
+            ),
             **_finalize_kwargs(
                 todos=[{"id": "t1"}],
                 workflows=[{"id": "w1"}],
             ),
         )
 
-        kwargs = message.await_args.kwargs
-        assert kwargs["triage"] is triage
-        assert kwargs["writing_style"] is style
-        assert kwargs["created_todos"] == [{"id": "t1"}]
-        assert kwargs["created_workflows"] == [{"id": "w1"}]
-        assert kwargs["has_gmail"] is True
+        recipient, outcome = message.await_args.args
+        assert recipient.user_id == USER
+        assert recipient.name == "Ann"
+        assert recipient.profession == "lawyer"
+        assert recipient.focus == "close Q3"
+        assert recipient.writing_style is style
+        assert recipient.has_gmail is True
+        assert outcome.triage is triage
+        assert outcome.created_todos == [{"id": "t1"}]
+        assert outcome.created_workflows == [{"id": "w1"}]
+        assert outcome.clarify_answers == answers
 
     async def test_every_write_in_the_tail_is_scoped_to_this_user(
         self, finalize_stack: Any

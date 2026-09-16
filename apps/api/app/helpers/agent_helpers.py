@@ -51,6 +51,7 @@ from app.models.stream_events import (
     ToolOutputPayload,
 )
 from app.services.latency_metrics import observe_comms_graph, span
+from app.services.llm_usage_analytics import graph_call_properties
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
     format_sse_data,
@@ -183,6 +184,8 @@ def _build_agent_callbacks(
     conversation_id: str,
     user: AgentUserContext,
     agent_name: str,
+    source: str | None,
+    workflow_id: str | None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None,
 ) -> list[BaseCallbackHandler]:
     """Assemble the LangChain callback list for an agent run (PostHog, usage)."""
@@ -197,6 +200,7 @@ def _build_agent_callbacks(
                 properties={
                     "conversation_id": conversation_id,
                     "agent_name": agent_name,
+                    **graph_call_properties(agent_name, source, workflow_id),
                 },
                 privacy_mode=False,
             ),
@@ -383,6 +387,10 @@ class AgentTurn:
     source: str | None = None
     """The channel (web/mobile/whatsapp/...); falls back to "background" when unset."""
 
+    workflow_id: str | None = None
+    """The workflow this fire belongs to, on a top-level run only. Child runs
+    inherit it from the parent's configurable."""
+
     user_messages: list[str] | None = None
     """The user's own recent turns, verbatim, oldest first (see
     :func:`recent_user_messages`). Set once by comms and inherited (parent-overrides)
@@ -506,8 +514,18 @@ async def build_agent_config(
         turn.writing_style,
     )
 
+    # Child runs omit both, and `workflow_id` is stamped onto the configurable
+    # only after this returns, so each falls back to the parent's.
+    inherited = base_configurable or {}
+    run_source = source or inherited.get("conversation_source")
+    run_workflow_id = turn.workflow_id or inherited.get("workflow_id")
     callbacks = _build_agent_callbacks(
-        conversation_id, user, agent_name, tracing.usage_metadata_callback
+        conversation_id,
+        user,
+        agent_name,
+        run_source,
+        run_workflow_id,
+        tracing.usage_metadata_callback,
     )
 
     # The one seam every execution path crosses. A run with a parent inherits its

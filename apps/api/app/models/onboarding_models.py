@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, TypedDict
 
 from pydantic import BaseModel, Field
@@ -11,6 +12,8 @@ HOUSES: list[House] = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
 
 
 class WritingStyleExampleBlocks(BaseModel):
+    """An example email split into the parts the onboarding card renders separately."""
+
     greeting: str = Field(
         default="",
         description=(
@@ -36,17 +39,23 @@ class WritingStyleExampleBlocks(BaseModel):
 
 
 class WritingStyleProfile(BaseModel):
+    """The learned writing style, plus the user's own edit of the summary if any."""
+
     summary: str
     example: WritingStyleExampleBlocks
     user_edited_summary: str | None = None
 
 
 class SocialProfile(BaseModel):
+    """One social account belonging to the user, as stored and sent to the client."""
+
     platform: str
     url: str
 
 
 class EmailSummary(BaseModel):
+    """An important email as the triage LLM returns it."""
+
     sender: str
     subject: str
     snippet: str = ""
@@ -71,6 +80,8 @@ class TriageEmailSummary(BaseModel):
 
 
 class InboxTriage(BaseModel):
+    """The whole inbox-scan result, as held in memory for the rest of onboarding."""
+
     total_scanned: int
     total_unread: int
     summary: str = ""
@@ -99,6 +110,8 @@ class PersistedTriageSummary(BaseModel):
 
 
 class InboxTriageOutput(BaseModel):
+    """Structured-output contract for the inbox-triage LLM call."""
+
     summary: str = Field(
         min_length=1,
         description="2-3 sentence overview of the inbox written conversationally to the user",
@@ -110,6 +123,8 @@ class InboxTriageOutput(BaseModel):
 
 
 class WritingStyleOutput(BaseModel):
+    """Structured-output contract for the writing-style LLM call."""
+
     summary: str = Field(
         description=(
             "2-3 sentence writing style description capturing concrete observable patterns: "
@@ -125,6 +140,8 @@ class WritingStyleOutput(BaseModel):
 
 
 class HoloCardLLMOutput(BaseModel):
+    """Structured-output contract for the holo-card LLM call."""
+
     personality_phrase: str = Field(
         description=(
             "Unique 2-3 word personality phrase capturing the user's essence. "
@@ -145,6 +162,8 @@ class HoloCardLLMOutput(BaseModel):
 
 
 class WritingStyleExampleOutput(BaseModel):
+    """Structured-output contract for regenerating the style example on its own."""
+
     example: WritingStyleExampleBlocks = Field(
         description=(
             "Example email matching the provided style summary, broken into structured blocks."
@@ -165,6 +184,8 @@ class OwnedSocialProfile(BaseModel):
 
 
 class SocialProfileFilterOutput(BaseModel):
+    """Structured-output contract for the profile-ownership LLM call."""
+
     owned_profiles: list[OwnedSocialProfile] = Field(
         description="Profiles that belong to the user. Empty list if none."
     )
@@ -185,6 +206,8 @@ class ClarifyQuestion(BaseModel):
 
 
 class ClarifyQuestionsResponse(BaseModel):
+    """Response body for ``POST /onboarding/clarify-questions``."""
+
     questions: list[ClarifyQuestion]
 
 
@@ -246,6 +269,29 @@ class OnboardingWorkflowSummary(BaseModel):
     missing_integrations: list[IntegrationRef] | None = None
 
 
+@dataclass(frozen=True)
+class FirstMessageRecipient:
+    """The user a first message is addressed to."""
+
+    user_id: str
+    name: str
+    profession: str
+    writing_style: WritingStyleProfile | None
+    has_gmail: bool
+    focus: str = ""
+
+
+@dataclass(frozen=True)
+class FirstMessageOutcome:
+    """What the onboarding pipeline produced, which the message reports."""
+
+    triage: InboxTriage | None
+    created_todos: list[OnboardingTodoSummary]
+    created_workflows: list[OnboardingWorkflowSummary]
+    executed_todos: list[OnboardingTodoSummary] | None = None
+    clarify_answers: list[ClarifyAnswerRecord] | None = None
+
+
 class UserProfileMetadata(BaseModel):
     """Holo-card metadata derived from the user's account age."""
 
@@ -274,6 +320,7 @@ class StagePayload(BaseModel):
     omit_none_on_wire: ClassVar[bool] = False
 
     def to_wire(self) -> dict[str, Any]:
+        """The payload as it goes onto the WebSocket frame."""
         return self.model_dump(mode="json", exclude_none=self.omit_none_on_wire)
 
 
@@ -284,15 +331,21 @@ class StatusTextPayload(StagePayload):
 
 
 class WritingStyleReadyPayload(StagePayload):
+    """Payload of the ``writing_style_ready`` stage event."""
+
     style_summary: str | None
     example: WritingStyleExampleBlocks | None
 
 
 class SocialProfilesReadyPayload(StagePayload):
+    """Payload of the ``social_profiles_ready`` stage event."""
+
     profiles: list[SocialProfile]
 
 
 class TriageReadyPayload(StagePayload):
+    """Payload of the ``triage_ready`` stage event."""
+
     total_scanned: int
     total_unread: int
     summary: str | None
@@ -301,18 +354,24 @@ class TriageReadyPayload(StagePayload):
 
 
 class TodosReadyPayload(StatusTextPayload):
+    """Payload of the ``todos_ready`` stage event."""
+
     omit_none_on_wire: ClassVar[bool] = True
 
     todos: list[OnboardingTodoSummary]
 
 
 class WorkflowsReadyPayload(StatusTextPayload):
+    """Payload of the ``workflows_ready`` stage event."""
+
     omit_none_on_wire: ClassVar[bool] = True
 
     workflows: list[OnboardingWorkflowSummary]
 
 
 class CompletePayload(StagePayload):
+    """Payload of the ``complete`` stage event, which closes the stream."""
+
     conversation_id: str | None
 
 
@@ -331,24 +390,34 @@ class OnboardingResetCounts(BaseModel):
 
 
 class OnboardingResetResponse(OnboardingResetCounts):
+    """Response body for the onboarding reset endpoint."""
+
     success: bool
 
 
 class OnboardingPhaseUpdateResponse(BaseModel):
+    """Response body for an onboarding phase update."""
+
     success: bool
     phase: OnboardingPhase
     message: str
 
 
 class SaveWritingStyleResponse(BaseModel):
+    """Response body for saving a user-edited writing style."""
+
     success: bool
 
 
 class RegenerateWritingStyleExampleResponse(BaseModel):
+    """Response body for regenerating the writing-style example."""
+
     example: WritingStyleExampleBlocks | None
 
 
 class SaveSocialProfilesResponse(BaseModel):
+    """Response body for confirming social profiles, carrying how many were kept."""
+
     success: bool
     saved: int
 
@@ -363,11 +432,15 @@ class PersonalizationWorkflow(BaseModel):
 
 
 class PersonalizationWritingStyle(BaseModel):
+    """The learned writing style as rendered by the onboarding cards."""
+
     style_summary: str
     example: WritingStyleExampleBlocks | None
 
 
 class PersonalizationTodo(BaseModel):
+    """A suggested todo as rendered by the onboarding cards."""
+
     id: str
     title: str
     description: str | None

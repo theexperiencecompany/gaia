@@ -1406,6 +1406,41 @@ DEV_OPTION = {
 }
 
 
+class TestPostHogHandlerProperties:
+    """The properties stamped onto ``$ai_generation``. Losing them leaves every
+    attribution chart rendering without its breakdown."""
+
+    def _handler_properties(self, agent_name: str, source: str | None, workflow_id: str | None):
+        client = MagicMock()
+        with (
+            patch("app.helpers.agent_helpers.providers") as mock_providers,
+            patch("app.helpers.agent_helpers.PostHogCallbackHandler") as handler,
+        ):
+            mock_providers.is_available.return_value = True
+            mock_providers.get.return_value = client
+            _build_agent_callbacks("conv-1", FAKE_USER, agent_name, source, workflow_id, None)
+        return handler.call_args.kwargs["properties"]
+
+    def test_a_chat_turn_carries_its_feature_and_surface(self):
+        props = self._handler_properties("comms_agent", "web", None)
+        assert props["conversation_id"] == "conv-1"
+        assert props["agent_name"] == "comms_agent"
+        assert props["feature"] == "chat"
+        assert props["surface"] == "ui"
+
+    def test_a_workflow_run_carries_its_workflow_id(self):
+        props = self._handler_properties("executor_agent", None, "wf-brief")
+        assert props["feature"] == "workflow"
+        assert props["workflow_id"] == "wf-brief"
+        assert props["surface"] == "bg"
+
+    def test_a_subagent_is_integration_spend(self):
+        assert self._handler_properties("gmail_agent", "web", None)["feature"] == "integration"
+
+    def test_a_bot_turn_reports_the_bot_surface(self):
+        assert self._handler_properties("comms_agent", "discord", None)["surface"] == "bot"
+
+
 class TestBuildAgentCallbacks:
     @patch("app.helpers.agent_helpers.build_langfuse_callback", return_value=None)
     @patch("app.helpers.agent_helpers.providers")
@@ -1416,7 +1451,7 @@ class TestBuildAgentCallbacks:
         mock_providers.is_available.return_value = False
         mock_providers.get.return_value = None
 
-        callbacks = _build_agent_callbacks(CONV_ID, FAKE_USER, "comms_agent", None)
+        callbacks = _build_agent_callbacks(CONV_ID, FAKE_USER, "comms_agent", None, None, None)
 
         assert len(callbacks) == 1
         assert isinstance(callbacks[0], LLMTtftCallback)
@@ -1448,8 +1483,96 @@ class TestBuildAgentConfigCallbackWiring:
             CONV_ID,
             FAKE_USER,
             "comms_agent",
+            None,
+            None,
             usage_cb,
         )
+
+    @patch("app.helpers.agent_helpers.resolve_lane", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers._build_agent_callbacks")
+    async def test_a_top_level_workflow_fire_reaches_the_callbacks(
+        self, mock_build_callbacks, mock_resolve
+    ):
+        """The configurable is stamped only after this returns, so reading the id
+        from it alone left the callbacks with None."""
+        mock_resolve.return_value = (DEV_LANE, None)
+        mock_build_callbacks.return_value = []
+
+        await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            turn=AgentTurn(source="web", workflow_id="wf-morning-brief"),
+            tracing=AgentTracing(usage_metadata_callback=MagicMock()),
+        )
+
+        assert mock_build_callbacks.call_args.args[4] == "wf-morning-brief"
+
+    @patch("app.helpers.agent_helpers.resolve_lane", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers._build_agent_callbacks")
+    async def test_a_child_run_inherits_its_parents_surface(
+        self, mock_build_callbacks, mock_resolve
+    ):
+        """The executor and its subagents carry no source of their own, so taking
+        it from the turn alone booked a web chat's worker tiers as background."""
+        mock_resolve.return_value = (DEV_LANE, None)
+        mock_build_callbacks.return_value = []
+
+        await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor_agent",
+            ),
+            thread=AgentThread(base_configurable={"conversation_source": "web"}),
+            turn=AgentTurn(),
+            tracing=AgentTracing(usage_metadata_callback=MagicMock()),
+        )
+
+        assert mock_build_callbacks.call_args.args[3] == "web"
+
+    @patch("app.helpers.agent_helpers.resolve_lane", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers._build_agent_callbacks")
+    async def test_a_turns_own_source_wins_over_the_inherited_one(
+        self, mock_build_callbacks, mock_resolve
+    ):
+        mock_resolve.return_value = (DEV_LANE, None)
+        mock_build_callbacks.return_value = []
+
+        await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            thread=AgentThread(base_configurable={"conversation_source": "web"}),
+            turn=AgentTurn(source="discord"),
+            tracing=AgentTracing(usage_metadata_callback=MagicMock()),
+        )
+
+        assert mock_build_callbacks.call_args.args[3] == "discord"
+
+    @patch("app.helpers.agent_helpers.resolve_lane", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers._build_agent_callbacks")
+    async def test_a_child_run_still_inherits_the_workflow_from_its_parent(
+        self, mock_build_callbacks, mock_resolve
+    ):
+        mock_resolve.return_value = (DEV_LANE, None)
+        mock_build_callbacks.return_value = []
+
+        await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor_agent",
+            ),
+            thread=AgentThread(base_configurable={"workflow_id": "wf-inherited"}),
+            tracing=AgentTracing(usage_metadata_callback=MagicMock()),
+        )
+
+        assert mock_build_callbacks.call_args.args[4] == "wf-inherited"
 
 
 class TestBuildAgentConfigLaneResolution:
