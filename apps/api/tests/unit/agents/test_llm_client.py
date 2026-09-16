@@ -53,11 +53,13 @@ from app.agents.llm.client import (
     ainvoke_llm,
     ainvoke_structured,
     ainvoke_structured_gemini,
+    attributed_config,
     background_structured_runnable,
     get_default_llm,
     init_llm,
     invoke_llm,
     register_llm_providers,
+    silent_metered_config,
 )
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
 from app.agents.llm.types import LLMProviderName
@@ -1365,7 +1367,7 @@ class TestChatbot:
         result = await chatbot(messages)
 
         mock_get_helper.assert_called_once()
-        mock_ainvoke.assert_called_once_with(mock_model, messages, label="chatbot")
+        mock_ainvoke.assert_called_once_with(mock_model, messages, label="chatbot", config=None)
         assert result["messages"][0].content == "default response"
 
     @patch("app.agents.llm.chatbot.log")
@@ -2952,3 +2954,44 @@ class TestIsOpenrouterWire:
         binding = NonCallableMagicMock(spec=RunnableBinding)
         binding.bound = inner
         assert client_module._is_openrouter_wire(binding) is False
+
+
+class TestAttributedConfig:
+    """Auxiliary LLM calls must carry spend attribution AND trace linkage in
+    one config — bare ``config=None`` bills to nobody and orphans every trace
+    backend, and each half is easy to forget alone."""
+
+    def test_binds_user_session_and_trace(self) -> None:
+        config = attributed_config("u-1", session_id="conv-1", langfuse_trace_id="trace-1")
+
+        assert config["configurable"]["user_id"] == "u-1"
+        assert config["metadata"]["langfuse_user_id"] == "u-1"
+        assert config["metadata"]["langfuse_session_id"] == "conv-1"
+        assert config["metadata"]["langfuse_trace_id"] == "trace-1"
+
+    def test_absent_session_and_trace_leave_no_keys(self) -> None:
+        config = attributed_config("u-1")
+
+        assert config["metadata"] == {"langfuse_user_id": "u-1"}
+
+    def test_attaches_langfuse_callback_when_configured(self) -> None:
+        callback = MagicMock()
+        with patch("app.agents.llm.client.build_langfuse_callback", return_value=callback):
+            config = attributed_config("u-1")
+
+        assert config["callbacks"] == [callback]
+
+    def test_no_callback_when_unconfigured(self) -> None:
+        with patch("app.agents.llm.client.build_langfuse_callback", return_value=None):
+            config = attributed_config("u-1")
+
+        assert "callbacks" not in config
+
+    def test_silent_keeps_flags_and_adds_linkage(self) -> None:
+        config = silent_metered_config("u-1", session_id="conv-1", langfuse_trace_id="trace-1")
+
+        assert config["silent"] is True
+        assert config["metadata"]["silent"] is True
+        assert config["metadata"]["langfuse_session_id"] == "conv-1"
+        assert config["metadata"]["langfuse_trace_id"] == "trace-1"
+        assert config["configurable"]["user_id"] == "u-1"

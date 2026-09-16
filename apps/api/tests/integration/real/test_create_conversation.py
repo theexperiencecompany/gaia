@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.utils.chat_utils import create_conversation
+from app.utils.chat_utils import CreateConversationOptions, create_conversation
 
 
 @pytest.mark.service
@@ -23,9 +23,9 @@ class TestCreateConversationReal:
         ):
             result = await create_conversation(
                 {"role": "user", "content": "Hello world"},
-                user={"user_id": "create-user-1"},
-                selectedTool=None,
-                generate_description=False,
+                {"user_id": "create-user-1"},
+                None,
+                CreateConversationOptions(generate_description=False),
             )
 
         doc = await conversations_collection.find_one({"conversation_id": result.conversation_id})
@@ -40,15 +40,15 @@ class TestCreateConversationReal:
         ):
             r1 = await create_conversation(
                 {"role": "user", "content": "First"},
-                user={"user_id": "create-user-2"},
-                selectedTool=None,
-                generate_description=False,
+                {"user_id": "create-user-2"},
+                None,
+                CreateConversationOptions(generate_description=False),
             )
             r2 = await create_conversation(
                 {"role": "user", "content": "Second"},
-                user={"user_id": "create-user-2"},
-                selectedTool=None,
-                generate_description=False,
+                {"user_id": "create-user-2"},
+                None,
+                CreateConversationOptions(generate_description=False),
             )
 
         assert r1.conversation_id != r2.conversation_id

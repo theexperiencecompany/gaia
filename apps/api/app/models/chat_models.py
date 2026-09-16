@@ -136,6 +136,7 @@ class ConversationSource(str, Enum):
     WEB = "web"
     MOBILE = "mobile"
     DESKTOP = "desktop"
+    VOICE = "voice"
     TELEGRAM = "telegram"
     DISCORD = "discord"
     SLACK = "slack"
@@ -180,6 +181,13 @@ class SourceCategory(str, Enum):
         """
         channel = ConversationSource.coerce(source)
         if channel in _UI_SOURCES:
+            return cls.UI
+        if channel == ConversationSource.VOICE:
+            # First-party interactive like the UI family (and categorized as
+            # such before the voice header existed, via the web fallback) —
+            # but NOT a _UI_SOURCES member: that set also drives delivery
+            # routing and the conversation-list filter, which voice turns
+            # must not join.
             return cls.UI
         if channel in BOT_CONVERSATION_SOURCES:
             return cls.BOT

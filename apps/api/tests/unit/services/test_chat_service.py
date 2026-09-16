@@ -28,7 +28,7 @@ from app.agents.core.background.session import (
     teardown_session,
 )
 from app.models.chat_models import ConversationModel
-from app.models.message_models import MessageRequestWithHistory
+from app.models.message_models import MessageRequestWithHistory, SelectedWorkflowData
 from app.services.analytics_service import AnalyticsEvents
 from app.services.chat.chunks import (
     extract_response_text as _extract_response_text,
@@ -295,7 +295,7 @@ class TestInitializeNewConversation:
                 stream_id="s1",
             )
         call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs.get("generate_description") is False
+        assert call_kwargs["options"].generate_description is False
 
     async def test_uses_provided_conversation_id(self, test_user, basic_body):
         mock_conv = _created_conversation("forced_id", "New Chat")
@@ -312,7 +312,33 @@ class TestInitializeNewConversation:
                 stream_id="s1",
             )
         call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs.get("conversation_id") == "forced_id"
+        assert call_kwargs["options"].conversation_id == "forced_id"
+
+    async def test_selected_workflow_reaches_options(self, test_user):
+        mock_conv = _created_conversation("conv_wf", "New Chat")
+        body = MessageRequestWithHistory(
+            message="run it",
+            messages=[{"role": "user", "content": "run it"}],
+            conversation_id=None,
+            selectedWorkflow=SelectedWorkflowData(
+                id="wf-1", title="Triage", description="d", prompt=None, steps=[]
+            ),
+        )
+        with patch(
+            "app.services.chat.persistence.create_conversation",
+            new=AsyncMock(return_value=mock_conv),
+        ) as mock_create:
+            await _initialize_new_conversation(
+                body=body,
+                user=test_user,
+                conversation_id="conv_wf",
+                user_message_id="u1",
+                bot_message_id="b1",
+                stream_id="s1",
+            )
+        options = mock_create.call_args.kwargs["options"]
+        assert options.selected_workflow is not None
+        assert options.selected_workflow.id == "wf-1"
 
     async def test_description_included_in_init_chunk(self, test_user, basic_body):
         mock_conv = _created_conversation("conv_id", "Chat about the weather")
@@ -672,10 +698,12 @@ class TestRunChatStreamBackground:
         assert props["conversation_id"] == "conv_existing_123"
         assert props["voice_mode"] is False
         assert props["is_new_conversation"] is False
+        assert props["has_error"] is False
         assert props["delegated"] is False
         assert props["queued"] is False
         assert props["e2e_ack_ms"] <= props["e2e_full_ms"]
         assert "ttft_ms" not in props
+        assert "source" not in props
 
     async def test_source_is_carried_onto_the_terminal_event(self, test_user, existing_conv_body):
         """`source` is what lets one event name span web, desktop and bots.
@@ -706,6 +734,7 @@ class TestRunChatStreamBackground:
         assert mock_capture.call_args.args[2]["voice_mode"] is False
         assert mock_capture.call_args.args[2]["is_new_conversation"] is False
         assert mock_capture.call_args.args[2]["source"] == "desktop"
+        assert mock_capture.call_args.args[2]["has_error"] is False
         assert mock_capture.call_args.args[2]["delegated"] is False
         assert mock_capture.call_args.args[2]["queued"] is False
 

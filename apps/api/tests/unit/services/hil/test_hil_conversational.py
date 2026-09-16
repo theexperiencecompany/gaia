@@ -475,3 +475,81 @@ class TestTheClassifierCall:
         assert captured["schema"] is BatchDecisionResult
         assert captured["label"] == "hil_conversational_resolve_batch"
         assert captured["options"] == StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS)
+
+
+class TestTraceLinkage:
+    """The classifier fires mid-turn inside an open scope: its spans must join
+    the turn's Langfuse trace via session + trace metadata, not orphan."""
+
+    async def test_single_resolve_threads_session_and_trace_into_config(
+        self, resolver: dict
+    ) -> None:
+        resolver["llm"].return_value = DecisionResult(action="approve")
+        with pending("Send email"):
+            await resolve_pending_from_message(
+                CONVERSATION_ID, USER_ID, "yes", None, langfuse_trace_id="trace-1"
+            )
+
+        config = resolver["llm"].await_args.kwargs["config"]
+        assert config["configurable"]["user_id"] == USER_ID
+        assert config["metadata"]["langfuse_session_id"] == CONVERSATION_ID
+        assert config["metadata"]["langfuse_trace_id"] == "trace-1"
+        assert config["metadata"]["langfuse_user_id"] == USER_ID
+
+    async def test_absent_trace_leaves_no_trace_key(self, resolver: dict) -> None:
+        resolver["llm"].return_value = DecisionResult(action="approve")
+        with pending("Send email"):
+            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes", None)
+
+        config = resolver["llm"].await_args.kwargs["config"]
+        assert "langfuse_trace_id" not in config["metadata"]
+        assert config["metadata"]["langfuse_session_id"] == CONVERSATION_ID
+
+
+class TestBatchTraceLinkage:
+    """The batch path carries the same linkage contract as the single path —
+    config, prompt inputs, and forwarding must all survive."""
+
+    async def test_batch_threads_session_trace_and_user_into_config(
+        self, resolver: dict
+    ) -> None:
+        resolver["llm"].return_value = BatchDecisionResult(
+            decisions=[], unrelated=False
+        )
+        with pending("Send email", "Delete drafts"):
+            await resolve_pending_from_message(
+                CONVERSATION_ID, USER_ID, "yes both", None, langfuse_trace_id="trace-1"
+            )
+
+        config = resolver["llm"].await_args.kwargs["config"]
+        assert config["configurable"]["user_id"] == USER_ID
+        assert config["metadata"]["langfuse_session_id"] == CONVERSATION_ID
+        assert config["metadata"]["langfuse_trace_id"] == "trace-1"
+
+    async def test_batch_prompt_carries_message_and_history(self, resolver: dict) -> None:
+        resolver["llm"].return_value = BatchDecisionResult(
+            decisions=[], unrelated=False
+        )
+        history = [{"role": "user", "content": "earlier question"}]
+        with pending("Send email", "Delete drafts"):
+            await resolve_pending_from_message(
+                CONVERSATION_ID, USER_ID, "yes both", history
+            )
+
+        text = prompt_of(resolver["llm"])
+        assert "yes both" in text
+        assert "earlier question" in text
+
+    async def test_single_prompt_carries_message_and_history(
+        self, resolver: dict
+    ) -> None:
+        resolver["llm"].return_value = DecisionResult(action="approve")
+        history = [{"role": "user", "content": "earlier question"}]
+        with pending("Send email"):
+            await resolve_pending_from_message(
+                CONVERSATION_ID, USER_ID, "yes please", history
+            )
+
+        text = prompt_of(resolver["llm"])
+        assert "yes please" in text
+        assert "earlier question" in text

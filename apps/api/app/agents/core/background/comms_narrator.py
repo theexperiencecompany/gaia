@@ -12,7 +12,7 @@ from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import INTERACTIVE_DELIVERY_NOTE, PLATFORM_DELIVERY_NOTE
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.agents import NARRATOR_TIER_NAME, AgentTag, wrap_agent_payload
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -22,6 +22,7 @@ from app.helpers.agent_helpers import (
     execute_graph_silent,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.turn_telemetry import TurnSpec, begin_turn_all, end_turn_all
 from app.utils.agent_utils import strip_internal_agent_tags
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log
@@ -68,6 +69,20 @@ async def narrate_executor_result(
             msg_type=msg_type,
         )
         return ""
+    # The re-voicing call below is a full comms LLM turn: instrument it as one
+    # (tier=narrator) so its spend is attributable instead of inflating the
+    # parent turn or orphaning spans. Opened only once the graph exists — a
+    # missing graph means no turn ran, so there is nothing to record.
+    telemetry = begin_turn_all(
+        TurnSpec(
+            user_id=user.get("user_id") or "",
+            conversation_id=conversation_id,
+            user_input=result_text,
+            mode="background",
+            tier=NARRATOR_TIER_NAME,
+            properties={"msg_type": msg_type},
+        )
+    )
     try:
         user_preferences, writing_style = onboarding_preferences(user.get("onboarding"))
         # A fresh background task with no parent configurable to inherit from, so
@@ -105,10 +120,15 @@ async def narrate_executor_result(
             ],
         }
         notification_text, _ = await execute_graph_silent(comms_graph, initial_state, config)
+        end_turn_all(telemetry, output=notification_text)
         return strip_internal_agent_tags(notification_text)
     except Exception as e:
         log.error(f"{LogTag.AGENT} narrate_executor_result: failed", error=str(e))
+        end_turn_all(telemetry, output=str(e), error=e)
         return ""
+    except BaseException:
+        end_turn_all(telemetry, output="", cancelled=True)
+        raise
 
 
 async def record_executor_cancellation(

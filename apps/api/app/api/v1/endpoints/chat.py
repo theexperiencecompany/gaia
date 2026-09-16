@@ -53,6 +53,11 @@ def _resolve_source(request: Request) -> str:
     client_type = request.headers.get(_CLIENT_TYPE_HEADER, "").strip().lower()
     if client_type == ConversationSource.DESKTOP.value:
         return ConversationSource.DESKTOP.value
+    if client_type == ConversationSource.VOICE.value:
+        # The LiveKit worker authenticates via agent token; claiming "voice"
+        # only affects attribution (nothing unlocks on it — desktop-gated
+        # tools check DESKTOP explicitly).
+        return ConversationSource.VOICE.value
     return ConversationSource.WEB.value
 
 

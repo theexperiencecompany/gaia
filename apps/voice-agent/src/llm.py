@@ -487,7 +487,10 @@ class _VoiceTurn:
                 yield self._emit(final_tail, "final_tail")
 
     def _build_headers(self) -> dict[str, str]:
-        headers = {"x-timezone": "UTC"}
+        # X-Client-Type names the surface for attribution: without it the
+        # backend resolves every voice turn as "web" and voice COGS hides
+        # inside web across the ledger and all turn dashboards.
+        headers = {"x-timezone": "UTC", "X-Client-Type": "voice"}
         if self.llm.agent_token:
             headers["Authorization"] = f"Bearer {self.llm.agent_token}"
         return headers

@@ -26,7 +26,7 @@ from app.models.stream_events import ConversationInitializedFrame
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
 from app.utils.artifact_utils import artifact_url_base
-from app.utils.chat_utils import create_conversation
+from app.utils.chat_utils import CreateConversationOptions, create_conversation
 
 
 def user_message_content_from(body: MessageRequestWithHistory) -> str:
@@ -55,11 +55,13 @@ async def initialize_new_conversation(
 
     conversation = await create_conversation(
         last_message,
-        user=user,
-        selectedTool=body.selectedTool,
-        selectedWorkflow=body.selectedWorkflow,
-        generate_description=False,
-        conversation_id=conversation_id,
+        user,
+        body.selectedTool,
+        options=CreateConversationOptions(
+            selected_workflow=body.selectedWorkflow,
+            generate_description=False,
+            conversation_id=conversation_id,
+        ),
     )
 
     # Per-conversation session dirs (scratch/, user-uploaded/, artifacts/) are

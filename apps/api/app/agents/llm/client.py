@@ -37,6 +37,7 @@ from app.agents.llm.types import (
     LLMProviderName,
     ProviderLLM,
 )
+from app.config.langfuse import build_langfuse_callback
 from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
@@ -1053,7 +1054,12 @@ def metered_config(user_id: str) -> RunnableConfig:
     return cast(RunnableConfig, {"configurable": {"user_id": user_id}})
 
 
-def silent_metered_config(user_id: str) -> RunnableConfig:
+def silent_metered_config(
+    user_id: str,
+    *,
+    session_id: str | None = None,
+    langfuse_trace_id: str | None = None,
+) -> RunnableConfig:
     """:data:`SILENT_LLM_CONFIG` plus the spend attribution of
     :func:`metered_config` — for an internal call made *while a graph is
     streaming* and on behalf of a specific user (the HIL intent judge and the
@@ -1062,11 +1068,46 @@ def silent_metered_config(user_id: str) -> RunnableConfig:
     Both halves are needed and each is easy to forget alone: without the silent
     flags the structured output leaks into the chat as a bot message, and
     without ``user_id`` the call's real COGS lands on nobody.
+
+    ``session_id``/``langfuse_trace_id`` join the call to its turn's trace
+    (same linkage as :func:`attributed_config`); omitted they stay orphaned
+    spans with ledger attribution only.
     """
-    return cast(
-        RunnableConfig,
-        {**SILENT_LLM_CONFIG, **metered_config(user_id)},
-    )
+    base = attributed_config(user_id, session_id=session_id, langfuse_trace_id=langfuse_trace_id)
+    metadata: dict[str, Any] = {
+        **dict(base.get("metadata") or {}),
+        **dict(SILENT_LLM_CONFIG.get("metadata") or {}),
+    }
+    return cast(RunnableConfig, {**base, **SILENT_LLM_CONFIG, "metadata": metadata})
+
+
+def attributed_config(
+    user_id: str,
+    *,
+    session_id: str | None = None,
+    langfuse_trace_id: str | None = None,
+) -> RunnableConfig:
+    """The one config for auxiliary LLM calls: spend attribution plus trace linkage.
+
+    Bare ``config=None`` aux calls are invisible on two axes — the ledger warns
+    (no user) and Langfuse never sees them (no callback) — and detached ones
+    orphan from their turn entirely. This closes all three: ledger attribution
+    via :func:`metered_config`, Langfuse via its callback, and session/trace
+    linkage via run metadata when the caller has them (e.g. the detached title
+    task seeds ``trace_id_for_message(bot_message_id)`` so its spans land on
+    the turn's own trace instead of orphaning).
+    """
+    config = metered_config(user_id)
+    metadata: dict[str, str] = {"langfuse_user_id": user_id}
+    if session_id is not None:
+        metadata["langfuse_session_id"] = session_id
+    if langfuse_trace_id is not None:
+        metadata["langfuse_trace_id"] = langfuse_trace_id
+    merged: dict[str, Any] = {**config, "metadata": metadata}
+    callback = build_langfuse_callback()
+    if callback is not None:
+        merged["callbacks"] = [callback]
+    return cast(RunnableConfig, merged)
 
 
 def _reported_cost(response: LLMResult) -> float | None:

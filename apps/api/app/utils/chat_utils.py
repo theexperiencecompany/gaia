@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import cast
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
@@ -6,7 +7,9 @@ from langsmith import traceable
 from uuid_extensions import uuid7str
 
 from app.agents.llm.chatbot import chatbot
+from app.agents.llm.client import attributed_config
 from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
+from app.config.langfuse import trace_id_for_message
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationModel
 from app.models.message_models import MessageDict, SelectedWorkflowData
@@ -22,6 +25,9 @@ async def _generate_description_from_message(
     last_message: MessageDict | None,
     selectedTool: str | None,
     selectedWorkflow: SelectedWorkflowData | None,
+    user_id: str = "",
+    conversation_id: str | None = None,
+    bot_message_id: str | None = None,
 ) -> str:
     """Helper to generate conversation description from message context."""
     user_message = (
@@ -33,12 +39,26 @@ async def _generate_description_from_message(
     workflow_context = f" - Workflow: {selectedWorkflow.title}" if selectedWorkflow else ""
 
     try:
+        # Attributed + trace-linked: without a config this call bills to
+        # nobody and orphans from every trace backend. The trace seeds from
+        # the turn's bot message so the detached task lands on the turn's
+        # own Langfuse trace.
+        config = (
+            attributed_config(
+                user_id,
+                session_id=conversation_id,
+                langfuse_trace_id=trace_id_for_message(bot_message_id) if bot_message_id else None,
+            )
+            if user_id
+            else None
+        )
         response = await do_prompt_no_stream(
             prompt=CONVERSATION_DESCRIPTION_GENERATOR.format(
                 user_message=user_message,
                 selectedTool=selectedTool,
                 workflow_context=workflow_context,
             ),
+            config=config,
         )
 
         if not isinstance(response, dict) or "response" not in response:
@@ -55,15 +75,27 @@ async def _generate_description_from_message(
         return "New Chat"
 
 
+@dataclass(frozen=True)
+class CreateConversationOptions:
+    """How to create the conversation, beyond the message itself.
+
+    Bundled so the function signature stays reviewable — seven parallel
+    arguments tripped the complexity ratchet, and every one of these rides
+    together from the same call sites.
+    """
+
+    selected_workflow: SelectedWorkflowData | None = None
+    generate_description: bool = True
+    conversation_id: str | None = None
+    is_onboarding_demo: bool = False
+
+
 @traceable(name="Create Conversation")
 async def create_conversation(
     last_message: MessageDict | None,
     user: AuthenticatedUser,
-    selectedTool: str | None | None,
-    selectedWorkflow: SelectedWorkflowData | None | None = None,
-    generate_description: bool = True,
-    conversation_id: str | None = None,
-    is_onboarding_demo: bool = False,
+    selectedTool: str | None,
+    options: CreateConversationOptions | None = None,
 ) -> ConversationModel:
     """
     Create a new conversation with optional description generation.
@@ -72,24 +104,29 @@ async def create_conversation(
         last_message: The user's message to generate description from
         user: User information
         selectedTool: Optional tool selection
-        selectedWorkflow: Optional workflow selection
-        generate_description: If False, uses "New Chat" as placeholder
-        conversation_id: Optional pre-generated conversation ID (for background streaming)
+        options: Creation options (workflow, description, id override, demo flag)
     """
+    opts = options or CreateConversationOptions()
     log.set(user_id=user.get("user_id"), selected_tool=selectedTool)
     # Use provided ID or generate new one
-    uuid_value = conversation_id or uuid7str()
+    uuid_value = opts.conversation_id or uuid7str()
 
     description = (
         "New Chat"
-        if not generate_description
-        else await _generate_description_from_message(last_message, selectedTool, selectedWorkflow)
+        if not opts.generate_description
+        else await _generate_description_from_message(
+            last_message,
+            selectedTool,
+            opts.selected_workflow,
+            user_id=user.get("user_id") or "",
+            conversation_id=str(uuid_value),
+        )
     )
 
     conversation = ConversationModel(
         conversation_id=str(uuid_value),
         description=description,
-        is_onboarding_demo=is_onboarding_demo,
+        is_onboarding_demo=opts.is_onboarding_demo,
     )
 
     await create_conversation_service(conversation, user)
@@ -104,6 +141,7 @@ async def generate_and_update_description(
     user: AuthenticatedUser,
     selectedTool: str | None | None,
     selectedWorkflow: SelectedWorkflowData | None | None = None,
+    bot_message_id: str | None = None,
 ) -> str:
     """
     Generate a description for an existing conversation and update it.
@@ -119,7 +157,12 @@ async def generate_and_update_description(
         The generated description
     """
     description = await _generate_description_from_message(
-        last_message, selectedTool, selectedWorkflow
+        last_message,
+        selectedTool,
+        selectedWorkflow,
+        user_id=user.get("user_id") or "",
+        conversation_id=conversation_id,
+        bot_message_id=bot_message_id,
     )
 
     try:
@@ -138,6 +181,7 @@ async def generate_and_update_description(
 async def do_prompt_no_stream(
     prompt: str,
     system_prompt: str | None = None,
+    config: RunnableConfig | None = None,
 ) -> dict[str, str]:
     """
     Execute a single LLM prompt without streaming.
@@ -145,6 +189,8 @@ async def do_prompt_no_stream(
     Args:
         prompt: The user prompt to send to the LLM
         system_prompt: Optional system message
+        config: Optional run config (spend attribution + trace linkage — pass
+            ``attributed_config`` so the call doesn't orphan)
 
     Returns:
         dict with "response" key containing the AI's response content
@@ -152,7 +198,7 @@ async def do_prompt_no_stream(
     messages: list[AnyMessage] = [SystemMessage(content=system_prompt)] if system_prompt else []
     messages.append(HumanMessage(content=prompt))
 
-    response = await chatbot(messages)
+    response = await chatbot(messages, config)
 
     # BaseMessage.text handles both plain-string and list-of-blocks content uniformly.
     ai_message = response["messages"][0]

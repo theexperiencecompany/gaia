@@ -37,8 +37,11 @@ from app.agents.llm.client import register_llm_providers
 from app.agents.llm.model_catalog import init_openrouter_model_catalog
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
+from app.config.agnost import flush_agnost, init_agnost
 from app.config.cloudinary import init_cloudinary
+from app.config.laminar import flush_laminar, init_laminar
 from app.config.langfuse import init_langfuse
+from app.config.latitude import flush_latitude, init_latitude
 from app.config.posthog import init_posthog
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -193,6 +196,12 @@ def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
         init_sandbox_pool,
         init_posthog,
         init_langfuse,
+        init_agnost,
+        # Order matters below: Latitude owns the global OTel tracer provider
+        # and Laminar must attach to its own (set_global_tracer_provider=False)
+        # — keep latitude before laminar, do not alphabetize.
+        init_latitude,
+        init_laminar,
     )
 
     for register in registrations:
@@ -367,6 +376,11 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
         # Both contexts open a RabbitMQ connection at startup (outbound topology
         # declaration + publishing), so close the publisher unconditionally.
         (close_publisher_async, "publisher"),
+        # Flush queued turn-event telemetry so a restart loses nothing.
+        # Each flush is a no-op when its backend was never initialized.
+        (flush_agnost, "agnost"),
+        (flush_latitude, "latitude"),
+        (flush_laminar, "laminar"),
     ]
 
     # Context-specific cleanup: the WebSocket event consumer only runs in FastAPI.

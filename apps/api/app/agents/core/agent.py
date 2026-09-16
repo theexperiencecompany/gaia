@@ -55,6 +55,7 @@ from app.models.agent_models import (
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.turn_telemetry import TurnSpec, begin_turn_all, end_turn_all
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log
 
@@ -382,6 +383,15 @@ async def call_agent_silent(
 
     stream_id = str(uuid4())
     user_id = user.get("user_id")
+    telemetry = begin_turn_all(
+        TurnSpec(
+            user_id=user_id or "",
+            conversation_id=conversation_id,
+            user_input=request.message,
+            source=source,
+            mode="background",
+        )
+    )
     try:
         graph, initial_state, config = await _core_agent_logic(
             request,
@@ -391,6 +401,13 @@ async def call_agent_silent(
                 usage_metadata_callback=usage_metadata_callback,
                 trigger_context=trigger_context,
                 source=source,
+                # Seeded from this run's stream_id: no stable message id exists
+                # yet at this layer, so feedback re-derivation (which seeds
+                # from message_id) still can't reach silent traces — they stay
+                # findable via tags/session instead. Closing that last gap
+                # belongs to the delivery layer that mints the message id.
+                langfuse_trace_id=trace_id_for_message(stream_id),
+                langfuse_tags=["comms_agent", settings.ENV, "background"],
             ),
         )
 
@@ -441,6 +458,8 @@ async def call_agent_silent(
                 {"agent": "comms", "mode": "background", "conversation_id": conversation_id},
             )
 
+        end_turn_all(telemetry, output=complete_message)
+
         return SilentRunResult(
             message=complete_message,
             tool_data=tool_data,
@@ -461,6 +480,12 @@ async def call_agent_silent(
                 AnalyticsEvents.AGENT_RUN_FAILED,
                 {"agent": "comms", "mode": "background", "conversation_id": conversation_id},
             )
+        end_turn_all(telemetry, output=str(exc), error=exc)
+        raise
+    except BaseException:
+        # CancelledError (worker shutdown mid-turn) bypasses Exception: close
+        # the scopes as cancelled so the turn doesn't vanish, then propagate.
+        end_turn_all(telemetry, output="", cancelled=True)
         raise
     finally:
         teardown_executor_capture(stream_id)

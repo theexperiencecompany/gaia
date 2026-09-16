@@ -52,6 +52,24 @@ def wrap_agent_payload(tag: AgentTag, body: str, agent: str | None = None) -> st
     return f"<{tag}{attribution}>\n{body.strip()}\n</{tag}>\n"
 
 
+# The user-facing agent tier: owns the conversation thread and is the unit
+# every observability vendor attributes a turn to. Hoisted so telemetry,
+# tracing, and middleware name it identically.
+COMMS_AGENT_NAME = "comms_agent"
+
+# Turn tier for the executor leg: the worker-tier run that does the actual
+# tool-calling work. Recorded as its own turn so per-tier spend and failures
+# stay attributable instead of folding silently into the parent comms turn —
+# which matters most for queued and HIL-resumed runs that have no live
+# parent turn open at all.
+EXECUTOR_TIER_NAME = "executor"
+
+# Turn tier for the narrator leg: the comms re-voicing of an executor result
+# is its own LLM turn, recorded as tier="narrator" so per-tier spend stays
+# attributable instead of inflating the parent turn or orphaning spans.
+NARRATOR_TIER_NAME = "narrator"
+
+
 # Every internal tag, open or close, with or without attributes. Stripped
 # deterministically before delivery (see ``strip_internal_agent_tags``) as the
 # hard backstop for a weak model echoing its context into the reply.

@@ -95,6 +95,7 @@ async def resolve_pending_from_message(
     user_id: str,
     message: str,
     history: list[MessageDict] | None = None,
+    langfuse_trace_id: str | None = None,
 ) -> DecisionAction | None:
     """Resolve the conversation's pending approval(s) from ``message``.
 
@@ -107,8 +108,12 @@ async def resolve_pending_from_message(
     if not pending:
         return None
     if len(pending) == 1:
-        return await _resolve_single(pending[0], conversation_id, user_id, message, history)
-    return await _resolve_batch(pending, conversation_id, user_id, message, history)
+        return await _resolve_single(
+            pending[0], conversation_id, user_id, message, history, langfuse_trace_id
+        )
+    return await _resolve_batch(
+        pending, conversation_id, user_id, message, history, langfuse_trace_id
+    )
 
 
 async def _resolve_single(
@@ -117,9 +122,17 @@ async def _resolve_single(
     user_id: str,
     message: str,
     history: list[MessageDict] | None,
+    langfuse_trace_id: str | None = None,
 ) -> DecisionAction | None:
     action_detail = build_action_detail(record.summary, record.args)
-    result = await interpret_decision_message(message, [action_detail], history, user_id=user_id)
+    result = await interpret_decision_message(
+        message,
+        [action_detail],
+        history,
+        user_id=user_id,
+        session_id=conversation_id,
+        langfuse_trace_id=langfuse_trace_id,
+    )
     if result is None:
         # The classifier errored. Leave the approval pending rather than abandon it —
         # a transient hiccup must not silently decline a legitimate pending action
@@ -142,6 +155,7 @@ async def _resolve_batch(
     user_id: str,
     message: str,
     history: list[MessageDict] | None,
+    langfuse_trace_id: str | None = None,
 ) -> DecisionAction | None:
     """Apply a per-item classification of ``message`` to the pending batch.
 
@@ -151,7 +165,12 @@ async def _resolve_batch(
     """
     action_details = [build_action_detail(r.summary, r.args) for r in pending]
     result = await interpret_batch_decision_message(
-        message, action_details, history, user_id=user_id
+        message,
+        action_details,
+        history,
+        user_id=user_id,
+        session_id=conversation_id,
+        langfuse_trace_id=langfuse_trace_id,
     )
     if result.unrelated:
         await abandon_conversation_approvals(conversation_id, user_id, UNRELATED_FEEDBACK)
@@ -182,6 +201,8 @@ async def interpret_batch_decision_message(
     history: list[MessageDict] | None = None,
     *,
     user_id: str,
+    session_id: str | None = None,
+    langfuse_trace_id: str | None = None,
 ) -> BatchDecisionResult:
     """Classify a chat reply against several pending approvals, per item.
 
@@ -193,7 +214,9 @@ async def interpret_batch_decision_message(
             BatchDecisionResult,
             _batch_prompt(message, action_details, history),
             label="hil_conversational_resolve_batch",
-            config=silent_metered_config(user_id),
+            config=silent_metered_config(
+                user_id, session_id=session_id, langfuse_trace_id=langfuse_trace_id
+            ),
             options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS),
         )
     except Exception as e:
@@ -211,6 +234,8 @@ async def interpret_decision_message(
     history: list[MessageDict] | None = None,
     *,
     user_id: str,
+    session_id: str | None = None,
+    langfuse_trace_id: str | None = None,
 ) -> DecisionResult | None:
     """Classify a chat reply against pending approvals.
 
@@ -222,7 +247,9 @@ async def interpret_decision_message(
             DecisionResult,
             _prompt(message, action_details, history),
             label="hil_conversational_resolve",
-            config=silent_metered_config(user_id),
+            config=silent_metered_config(
+                user_id, session_id=session_id, langfuse_trace_id=langfuse_trace_id
+            ),
             options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS),
         )
     except Exception as e:

@@ -600,10 +600,11 @@ def resolve_channel(configurable: Mapping[str, Any], *, background: bool = False
     it passes the run's real value.
 
     ``conversation_source`` is the value the entry point set — ``"web"`` /
-    ``"desktop"`` from the chat endpoint's ``X-Client-Type`` header, or the bot
-    platform (``"discord"``, ``"slack"``, ``"telegram"``, ``"whatsapp"``,
-    ``"imessage"``) from the bot endpoint — and it is inherited by every child
-    agent, so an executor call reports the surface its root turn came from.
+    ``"desktop"`` / ``"voice"`` from the chat endpoint's ``X-Client-Type``
+    header, or the bot platform (``"discord"``, ``"slack"``, ``"telegram"``,
+    ``"whatsapp"``, ``"imessage"``) from the bot endpoint — and it is
+    inherited by every child agent, so an executor call reports the surface
+    its root turn came from.
     Never inferred from the agent name: ``comms_agent`` serves all of them.
 
     Background runs carry no ``conversation_source`` (nobody typed anything), so
@@ -614,12 +615,9 @@ def resolve_channel(configurable: Mapping[str, Any], *, background: bool = False
     left 11 of 27 rows null in a live session, which is neither of the two
     answers the rule promises.
 
-    ``None`` only for a foreground call that named no surface anywhere.
-
-    KNOWN GAP: voice reports ``"web"``. The LiveKit agent posts to the same chat
-    endpoint without an ``X-Client-Type`` header, so the header-based resolution
-    cannot tell it apart; distinguishing it needs a change in the voice worker,
-    not here, and guessing would be worse than the honest "web".
+    ``None`` only for a foreground call that named no surface anywhere
+    (header absent and unrecognized — the pre-voice-worker fallback; the
+    worker now always sends ``X-Client-Type: voice``).
     """
     source = configurable.get("conversation_source")
     if source:

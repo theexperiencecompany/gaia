@@ -30,6 +30,7 @@ from app.agents.core.background.executor_capture import (
     teardown_executor_capture,
 )
 from app.agents.core.background.session import get_session
+from app.config.langfuse import trace_id_for_message
 from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
 from app.constants.chat import GENERIC_TURN_ERROR, RECURSION_LIMIT_MESSAGE
@@ -70,6 +71,7 @@ from app.services.latency_metrics import (
 )
 from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
+from app.services.turn_telemetry import TurnHandles, TurnSpec, begin_turn_all, end_turn_all
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.message_breaks import strip_partial_message_break
@@ -216,6 +218,9 @@ async def _run_chat_stream(
     # are marked so the executor publishes a ``voice_tts`` frame to speak.
     register_executor_capture(stream_id, voice_mode=body.voice_mode)
 
+    # Declared before the try so the except branch below can always close it:
+    # if init or approval handling raises first, there is nothing to close.
+    telemetry: TurnHandles | None = None
     try:
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
 
@@ -240,6 +245,13 @@ async def _run_chat_stream(
         ):
             return
 
+        # Turn telemetry across Agnost, Latitude, and Laminar. Opened only for
+        # turns where the agent actually runs (past the approval early-return
+        # above) and closed once the terminal outcome is known. Never raises.
+        telemetry = _open_turn_telemetry(
+            user_id=user_id, conversation_id=conversation_id, body=body, source=source
+        )
+
         forwarder_subscribed = asyncio.Event()
         if user_id:
             # Keep the session alive for idle-prune (fire-and-forget) and bridge
@@ -261,27 +273,30 @@ async def _run_chat_stream(
         # For new conversations, files were uploaded without a conversation_id
         # so they only landed in Cloudinary — not JuiceFS. Seed them now, before
         # the agent runs, so they're on disk at the expected user-uploaded/ path.
-        if is_new_conversation and user_id and body.fileData:
-            await _wait_for_artifact_forwarder(forwarder_subscribed, stream_id)
-            await FileService.seed_uploads(body.fileData, user_id, conversation_id)
+        await _seed_new_conversation_uploads(
+            body, user_id, conversation_id, stream_id, forwarder_subscribed
+        )
 
         # Start description generation only after the conversation row exists
         # (created in ``_publish_init_chunk``). Starting it earlier races the
         # row insert: the title LLM can finish first and the ``$set`` description
         # update would silently match zero documents, leaving the title stuck at
         # "New Chat" after a refresh.
-        description_task = _start_description_task(is_new_conversation, body, conversation_id, user)
+        description_task = _start_description_task(
+            is_new_conversation, body, conversation_id, user, state.bot_message_id
+        )
 
         usage_callback = UsageMetadataCallbackHandler()
+        turn = _TurnContext(
+            conversation_id=conversation_id,
+            stream_id=stream_id,
+            source=source,
+            usage_callback=usage_callback,
+        )
         description_task = await _consume_agent_stream(
             body,
             user,
-            _TurnContext(
-                conversation_id=conversation_id,
-                stream_id=stream_id,
-                source=source,
-                usage_callback=usage_callback,
-            ),
+            turn,
             description_task,
             state,
         )
@@ -313,54 +328,134 @@ async def _run_chat_stream(
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
         await stream_manager.complete_stream(stream_id)
 
-        # The turn reached a terminal state: capture the milestone. Cancelled
-        # turns finish the same happy path (the driver ends the stream with a
+        # The turn reached a terminal state: record it everywhere exactly once
+        # (histograms, milestone event, vendor scopes) with one shared outcome
+        # so a turn reads identically in every dashboard. Cancelled turns
+        # finish the same happy path (the driver ends the stream with a
         # `cancelled` nostream marker), so branch on the flag the loop recorded.
-        _close_turn_timings(
-            stream_id,
-            state,
-            source=source,
-            voice_mode=body.voice_mode,
-            status="cancelled" if state.is_cancelled else "success",
-        )
-        if user_id:
-            event_props: dict[str, Any] = {
-                "conversation_id": conversation_id,
-                "voice_mode": body.voice_mode,
-                "is_new_conversation": is_new_conversation,
-                "delegated": state.delegated,
-                "queued": state.queued,
-            }
-            if state.ttft_ms is not None:
-                event_props["ttft_ms"] = state.ttft_ms
-            if state.e2e_ack_ms is not None:
-                event_props["e2e_ack_ms"] = state.e2e_ack_ms
-            if state.e2e_full_ms is not None:
-                event_props["e2e_full_ms"] = state.e2e_full_ms
-            if source:
-                event_props["source"] = source
-            capture_event(
-                user_id,
-                (
-                    AnalyticsEvents.CHAT_MESSAGE_CANCELLED
-                    if state.is_cancelled
-                    else AnalyticsEvents.CHAT_MESSAGE_COMPLETED
-                ),
-                event_props,
-                dedupe_key=stream_id,
-            )
+        await _close_turn_records(telemetry, state, turn, body, user)
 
     except Exception as e:  # surface to client + flag the stream
         # Persist the SAME user-facing text we stream (friendly for a recursion
         # stop), not the raw exception — a reload shows what the user saw.
         state.error = await _handle_stream_error(stream_id, e)
+        end_turn_all(telemetry, output=state.error, error=e)
         # A failed turn is the slow/broken one the SLOs exist to catch: it must
         # land in the histograms as an error, not vanish from them.
         _close_turn_timings(
             stream_id, state, source=source, voice_mode=body.voice_mode, status="error"
         )
+    except BaseException:
+        # CancelledError (deploy/restart mid-turn) is not an Exception: close
+        # the scopes as cancelled so the turn doesn't vanish, then propagate.
+        end_turn_all(telemetry, output=state.complete_message, cancelled=True)
+        raise
     finally:
         await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
+
+
+def _open_turn_telemetry(
+    *,
+    user_id: str | None,
+    conversation_id: str,
+    body: MessageRequestWithHistory,
+    source: str | None,
+) -> TurnHandles:
+    """Open the vendor scopes for a turn where the agent actually runs.
+
+    Called past the approval early-return, so bot approval acks emit no
+    scopes; closed once the terminal outcome is known. Never raises.
+    """
+    return begin_turn_all(
+        TurnSpec(
+            user_id=user_id or "",
+            conversation_id=conversation_id,
+            user_input=body.message,
+            mode="interactive",
+            source=source,
+            properties={
+                "voice_mode": body.voice_mode,
+                "is_new_conversation": body.conversation_id is None,
+                "selected_tool": body.selectedTool,
+            },
+        )
+    )
+
+
+async def _seed_new_conversation_uploads(
+    body: MessageRequestWithHistory,
+    user_id: str | None,
+    conversation_id: str,
+    stream_id: str,
+    forwarder_subscribed: asyncio.Event,
+) -> None:
+    """Seed pre-conversation uploads onto disk before the agent runs.
+
+    For new conversations, files were uploaded without a conversation_id so
+    they only landed in Cloudinary — not JuiceFS. No-op for existing
+    conversations, anonymous users, or turns without files.
+    """
+    if body.conversation_id is None and user_id and body.fileData:
+        await _wait_for_artifact_forwarder(forwarder_subscribed, stream_id)
+        await FileService.seed_uploads(body.fileData, user_id, conversation_id)
+
+
+async def _close_turn_records(
+    telemetry: TurnHandles | None,
+    state: _StreamState,
+    turn: _TurnContext,
+    body: MessageRequestWithHistory,
+    user: AuthenticatedUser,
+) -> None:
+    """Record the turn's terminal outcome everywhere exactly once.
+
+    Histograms, milestone event, then the vendor scopes — one shared outcome
+    so a turn reads identically in every dashboard.
+    """
+    _close_turn_timings(
+        turn.stream_id,
+        state,
+        source=turn.source,
+        voice_mode=body.voice_mode,
+        status="cancelled" if state.is_cancelled else "success",
+    )
+    user_id = user.get("user_id")
+    if user_id:
+        event_props: dict[str, Any] = {
+            "conversation_id": turn.conversation_id,
+            "voice_mode": body.voice_mode,
+            "is_new_conversation": body.conversation_id is None,
+            # A yielded error frame sets state.error without raising, so
+            # the turn still completes: mark it or PostHog reads 100%
+            # completed while every trace backend reads failed.
+            "has_error": bool(state.error),
+            "delegated": state.delegated,
+            "queued": state.queued,
+        }
+        if state.ttft_ms is not None:
+            event_props["ttft_ms"] = state.ttft_ms
+        if state.e2e_ack_ms is not None:
+            event_props["e2e_ack_ms"] = state.e2e_ack_ms
+        if state.e2e_full_ms is not None:
+            event_props["e2e_full_ms"] = state.e2e_full_ms
+        if turn.source:
+            event_props["source"] = turn.source
+        capture_event(
+            user_id,
+            (
+                AnalyticsEvents.CHAT_MESSAGE_CANCELLED
+                if state.is_cancelled
+                else AnalyticsEvents.CHAT_MESSAGE_COMPLETED
+            ),
+            event_props,
+            dedupe_key=turn.stream_id,
+        )
+    end_turn_all(
+        telemetry,
+        output=state.complete_message,
+        cancelled=state.is_cancelled,
+        error=Exception(state.error) if state.error else None,
+    )
 
 
 def _recent_history(messages: list[MessageDict]) -> list[MessageDict]:
@@ -422,9 +517,30 @@ async def _resolve_pending_approval_turn(
     if not user_id or not message:
         return False
 
+    # The classifier call below is a real LLM turn on the most destructive
+    # path (a free-text approve/deny with no button): instrument it as one,
+    # or "why did it approve?" has no turn to open.
+    telemetry = begin_turn_all(
+        TurnSpec(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            user_input=message,
+            source=source,
+            mode="interactive",
+            properties={"approval_flow": "hil_classifier"},
+        )
+    )
     try:
         history = _recent_history(body.messages)
-        action = await resolve_pending_from_message(conversation_id, user_id, message, history)
+        # Join the classifier's spans to this turn's Langfuse trace: without
+        # the seed they orphan despite firing mid-turn inside its scope.
+        action = await resolve_pending_from_message(
+            conversation_id,
+            user_id,
+            message,
+            history,
+            langfuse_trace_id=trace_id_for_message(state.bot_message_id),
+        )
     except Exception as e:  # see below: chat must survive this
         # This lookup sits on the critical path of EVERY chat message, for a feature most
         # users have switched off. If it fails, the only safe degradation is to run the
@@ -438,9 +554,11 @@ async def _resolve_pending_approval_turn(
             error_type=type(e).__name__,
             conversation_id=conversation_id,
         )
+        end_turn_all(telemetry, output=str(e), error=e)
         return False
 
     if action not in ("approve", "deny"):
+        end_turn_all(telemetry, output="")
         return False
 
     ack = HIL_ACK_APPROVED if action == "approve" else HIL_ACK_DENIED
@@ -460,6 +578,7 @@ async def _resolve_pending_approval_turn(
     await _persist_turn(stream_id, body, user, conversation_id, state)
     await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
     await stream_manager.complete_stream(stream_id)
+    end_turn_all(telemetry, output=ack)
     return True
 
 
@@ -495,6 +614,7 @@ def _start_description_task(
     body: MessageRequestWithHistory,
     conversation_id: str,
     user: AuthenticatedUser,
+    bot_message_id: str,
 ) -> asyncio.Task[str] | None:
     """Create a background task to generate a conversation description if new."""
     if not is_new_conversation:
@@ -507,6 +627,7 @@ def _start_description_task(
             user,
             body.selectedTool or None,
             body.selectedWorkflow or None,
+            bot_message_id,
         )
     )
 

@@ -136,10 +136,35 @@ class CommonSettings(BaseAppSettings):
     EMAIL_PROVIDER: str = "resend"
 
     # ----------------------------------------------
+    # Payment Processing
+    # ----------------------------------------------
+    # Optional coupon surfaced alongside the checkout link in every 402
+    # "subscription required" response (web and bots). Unset means no code
+    # is advertised.
+    PAYWALL_DISCOUNT_CODE: str | None = None
+
+    # ----------------------------------------------
     # Observability
     # ----------------------------------------------
     POSTHOG_PROJECT_TOKEN: str | None = None
     POSTHOG_HOST: str | None = None
+
+    # Agnost AI analytics — conversation/turn observability. Ships only when
+    # AGNOST_ORG_ID is set; missing is a silent no-op so dev runs without keys
+    # stay quiet (same pattern as Langfuse/PostHog).
+    AGNOST_ORG_ID: str | None = None
+    AGNOST_ENDPOINT: str = "https://api.agnost.ai"
+
+    # Latitude self-hosted AI observability — full span traces, signals,
+    # monitors, agent dispatch. Ships only when LATITUDE_API_KEY is set;
+    # missing is a silent no-op so dev runs without keys stay quiet.
+    LATITUDE_API_KEY: str | None = None
+    LATITUDE_PROJECT: str = "gaia"
+    LATITUDE_TELEMETRY_URL: str = "https://ingest.latitude.so"
+
+    # Laminar Cloud observability (trace debugger + signals). Ships only when
+    # LMNR_PROJECT_API_KEY is set; missing is a silent no-op.
+    LMNR_PROJECT_API_KEY: str | None = None
 
     # Secret token Prometheus sends as "Authorization: Bearer <token>" when
     # scraping /metrics. Generate with: openssl rand -hex 32
