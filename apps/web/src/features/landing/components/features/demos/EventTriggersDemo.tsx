@@ -73,7 +73,7 @@ export default function EventTriggersDemo() {
 
           {/* Status badge */}
           <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
               trigger.status === "active"
                 ? "bg-emerald-400/10 text-emerald-400"
                 : "bg-zinc-700/50 text-zinc-400"

@@ -99,11 +99,7 @@ export function WhatsNewModal() {
                   No releases found.
                 </p>
               ) : (
-                <div
-                  ref={scrollRef}
-                  className="overflow-y-auto"
-                  style={{ maxHeight: "70vh" }}
-                >
+                <div ref={scrollRef} className="overflow-y-auto max-h-[70vh]">
                   {release && (
                     <WhatsNewSlide
                       release={release}
@@ -146,7 +142,7 @@ export function WhatsNewModal() {
                     isDisabled={!canScrollPrev}
                     onPress={scrollPrev}
                     aria-label="Previous release"
-                    className="h-7 w-7 min-w-7 bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30"
+                    className="h-7 w-7 min-w-7 text-zinc-400 hover:text-white"
                   >
                     <ArrowLeft02Icon className="h-4 w-4" />
                   </Button>
@@ -157,7 +153,7 @@ export function WhatsNewModal() {
                     isDisabled={!canScrollNext}
                     onPress={scrollNext}
                     aria-label="Next release"
-                    className="h-7 w-7 min-w-7 bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30"
+                    className="h-7 w-7 min-w-7 text-zinc-400 hover:text-white"
                   >
                     <ArrowRight02Icon className="h-4 w-4" />
                   </Button>

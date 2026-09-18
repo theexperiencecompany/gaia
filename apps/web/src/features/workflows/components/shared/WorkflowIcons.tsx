@@ -1,5 +1,7 @@
 "use client";
 
+import type { CSSProperties } from "react";
+
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import {
@@ -55,9 +57,9 @@ export default function WorkflowIcons({
       <div className={`flex min-h-8 items-center ${className}`}>
         <div className="relative flex min-w-8 items-center justify-center">
           {showBackground ? (
-            <div className="relative rounded-lg p-1">
+            <div className="relative rounded-xl p-1">
               <div
-                className="absolute inset-0 rounded-lg bg-zinc-700/60"
+                className="absolute inset-0 rounded-xl bg-zinc-700/60"
                 style={
                   iconColor
                     ? {
@@ -108,14 +110,13 @@ export default function WorkflowIcons({
       })}
       {categories.length > maxIcons && (
         <div
-          className="z-0 flex items-center justify-center rounded-lg bg-zinc-700/60 text-foreground-500"
-          style={{
-            width: `${iconSize + 7}px`,
-            height: `${iconSize + 7}px`,
-            minWidth: `${iconSize + 7}px`,
-            minHeight: `${iconSize + 7}px`,
-            fontSize: `${Math.max(10, iconSize * 0.5)}px`,
-          }}
+          className="z-0 flex items-center justify-center rounded-xl bg-zinc-700/60 text-foreground-500 w-[var(--wi-box)] h-[var(--wi-box)] min-w-[var(--wi-box)] min-h-[var(--wi-box)]"
+          style={
+            {
+              "--wi-box": `${iconSize + 7}px`,
+              fontSize: `${Math.max(10, iconSize * 0.5)}px`,
+            } as CSSProperties
+          }
         >
           +{categories.length - maxIcons}
         </div>

@@ -32,7 +32,7 @@ import {
   ROLE_PHRASES,
 } from "../constants";
 import { EASE_OUT_QUART } from "../constants/motion";
-import { OPTION_STYLE } from "../constants/optionStyle";
+import { OPTION_STYLE, TINTS } from "../constants/optionStyle";
 import type { OptionValue } from "../constants/options.types";
 import { OnboardingCTAButton } from "./OnboardingCTAButton";
 
@@ -231,7 +231,7 @@ function OwnWordsInput({
       }}
       variant="flat"
       size="sm"
-      radius="lg"
+      radius="md"
       className="max-w-56"
       autoFocus
     />
@@ -271,6 +271,18 @@ function OptionChips({
         const disabled = !selected && (isDisabled?.(option.value) ?? false);
         const note = personalisedNote?.(option.value) ?? null;
         const { icon: Icon, tint } = OPTION_STYLE[option.value];
+        // One pastel per option, on the fill, the text and the icon; the
+        // fill goes solid when picked. Founder's call, not a theme override.
+        // Applied via style (backgroundColor/color are allowed for this file)
+        // so the Chip className stays a static literal: bg-*/text-* utilities
+        // are rejected by the Chip restyle contract. The palette still lives
+        // in TINTS (single source); only its color name is reused here to
+        // reference the exact Tailwind v4 theme values (bg-*/15 compiles to
+        // the color-mix below).
+        const tintName =
+          Object.entries(TINTS).find(
+            ([, optionTint]) => optionTint === tint,
+          )?.[0] ?? "fuchsia";
         const chip = (
           <Chip
             as="button"
@@ -281,10 +293,16 @@ function OptionChips({
             aria-pressed={selected}
             isDisabled={disabled}
             onClick={() => onSelect(option.value)}
-            // One pastel per option, on the fill, the text and the icon; the
-            // fill goes solid when picked. Founder's call, not a theme override.
+            style={{
+              backgroundColor: selected
+                ? `var(--color-${tintName}-300)`
+                : `color-mix(in oklab, var(--color-${tintName}-400) 15%, transparent)`,
+              color: selected
+                ? `var(--color-${tintName}-950)`
+                : `var(--color-${tintName}-200)`,
+            }}
             classNames={{
-              base: `cursor-pointer ${selected ? tint.active : tint.idle}`,
+              base: "cursor-pointer",
               content: "font-medium",
             }}
             startContent={<Icon className="size-4 shrink-0" />}

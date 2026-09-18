@@ -1,5 +1,6 @@
 "use client";
 
+import { Tick02Icon } from "@icons";
 import { AnimatePresence, useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useEffect, useRef, useState } from "react";
@@ -69,8 +70,8 @@ export default function MCPSupportDemo() {
             {SERVER_URL}
           </span>
         </div>
-        <div className="shrink-0 rounded-xl bg-[#00bbff]/10 px-3 py-2">
-          <span className="text-xs font-medium text-[#00bbff]">Connect</span>
+        <div className="shrink-0 rounded-xl bg-primary/10 px-3 py-2">
+          <span className="text-xs font-medium text-primary">Connect</span>
         </div>
       </div>
 
@@ -85,7 +86,7 @@ export default function MCPSupportDemo() {
             transition={{ duration: 0.25, ease }}
             className="mb-3 flex items-center gap-2 rounded-xl bg-zinc-900 px-3 py-2.5"
           >
-            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-zinc-600 border-t-[#00bbff]" />
+            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-zinc-600 border-t-primary" />
             <span className="text-xs text-zinc-400">
               Connecting to MCP server...
             </span>
@@ -104,8 +105,8 @@ export default function MCPSupportDemo() {
           >
             {/* Connected header */}
             <div className="mb-2 flex items-center gap-1.5">
-              <span className="text-xs font-medium text-emerald-400">
-                ✓ Connected
+              <span className="flex items-center gap-1 text-xs font-medium text-emerald-400">
+                <Tick02Icon className="size-3.5" /> Connected
               </span>
               <span className="text-xs text-zinc-500">·</span>
               <span className="text-xs text-zinc-500">5 tools available</span>
@@ -114,11 +115,8 @@ export default function MCPSupportDemo() {
             {/* Tools list */}
             <div className="rounded-xl bg-zinc-900 px-3">
               {MCP_TOOLS.map((tool) => (
-                <div
-                  key={tool.id}
-                  className="flex items-center gap-2 border-b border-zinc-800 py-2 last:border-0"
-                >
-                  <span className="font-mono text-xs text-[#00bbff]">
+                <div key={tool.id} className="flex items-center gap-2 py-2">
+                  <span className="font-mono text-xs text-primary">
                     {tool.name}
                   </span>
                   <span className="text-xs text-zinc-500">

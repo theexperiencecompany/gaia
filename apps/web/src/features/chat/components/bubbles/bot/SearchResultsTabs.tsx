@@ -1,4 +1,6 @@
 import { Button } from "@heroui/button";
+import { Divider } from "@heroui/divider";
+import { Link } from "@heroui/link";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Skeleton } from "@heroui/skeleton";
 import { CircleArrowRight02Icon, NewsIcon } from "@icons";
@@ -129,11 +131,9 @@ function ImageResults({ images }: ImageResultsProps) {
       {validImages.length > MAX_VISIBLE && (
         <Button
           onPress={cycleNext}
-          className="relative z-10 flex h-32 w-32 shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl bg-zinc-800/80 text-zinc-300 shadow-sm backdrop-blur-sm transition-colors hover:bg-zinc-700/80 hover:text-white"
+          radius="lg"
+          className={`relative z-10 flex h-32 w-32 shrink-0 flex-col items-center justify-center text-zinc-300 transition-colors hover:text-white ${displayImages.length % 2 === 0 ? "rotate-[8deg]" : "rotate-[-8deg]"}`}
           variant="flat"
-          style={{
-            rotate: displayImages.length % 2 === 0 ? "8deg" : "-8deg",
-          }}
         >
           <span className="text-base font-semibold">+{nextBatchCount}</span>
           <CircleArrowRight02Icon
@@ -166,14 +166,23 @@ function ImageItem({
     setIsLoading(false);
   }, []);
 
-  const rotation =
-    totalImages > 1 ? (index % 2 === 0 ? "8deg" : "-8deg") : "0deg";
+  const rotationClass =
+    totalImages > 1 ? (index % 2 === 0 ? "rotate-8" : "-rotate-8") : "rotate-0";
+  const stackClass =
+    index === 0
+      ? "z-0"
+      : index === 1
+        ? "z-1"
+        : index === 2
+          ? "z-2"
+          : index === 3
+            ? "z-3"
+            : "z-4";
 
   return (
     <m.div
       onClick={onImageClick}
-      className="relative h-32 w-32 shrink-0 cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-transform duration-200 hover:scale-105 hover:z-10"
-      style={{ rotate: rotation, zIndex: index }}
+      className={`relative h-32 w-32 shrink-0 cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-transform duration-200 hover:scale-105 hover:z-10 ${rotationClass} ${stackClass}`}
       initial={{ scale: 0.6, filter: "blur(10px)" }}
       animate={{ scale: 1, filter: "blur(0px)" }}
       transition={{
@@ -216,7 +225,7 @@ function SourcesButton({ web }: SourcesButtonProps) {
                 return (
                   <div
                     key={result.url + result.title}
-                    className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-zinc-900 bg-zinc-700"
+                    className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-700"
                   >
                     {host && (
                       <Image
@@ -238,7 +247,7 @@ function SourcesButton({ web }: SourcesButtonProps) {
             <span className="font-medium text-zinc-300">Search Results</span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="bg-transparent p-0! shadow-none">
+        <PopoverContent>
           <WebResults web={web} />
         </PopoverContent>
       </Popover>
@@ -256,7 +265,7 @@ function NewsResults({ news }: NewsResultsProps) {
       {news.map((article) => (
         <div
           key={article.url + article.title}
-          className="max-w-(--breakpoint-sm) overflow-hidden rounded-lg bg-zinc-800 p-4 shadow-md transition-shadow hover:shadow-lg"
+          className="max-w-(--breakpoint-sm) overflow-hidden rounded-3xl bg-zinc-800 p-4"
         >
           <div className="flex flex-row items-center gap-2 text-primary transition-colors hover:text-white">
             <NewsIcon
@@ -265,9 +274,9 @@ function NewsResults({ news }: NewsResultsProps) {
               className="size-[20px] min-w-[20px]"
             />
             <h2 className="truncate text-lg font-medium">
-              <a href={article.url} target="_blank" rel="noopener noreferrer">
+              <Link href={article.url} isExternal>
                 {article.title}
-              </a>
+              </Link>
             </h2>
           </div>
           <p className="mb-1 line-clamp-2 text-sm text-foreground-700">
@@ -289,55 +298,53 @@ interface WebResultsProps {
 function WebResults({ web }: WebResultsProps) {
   return (
     <div className="max-h-80 w-full max-w-lg overflow-y-auto rounded-2xl bg-zinc-800/70 backdrop-blur-2xl">
-      {web.map((result) => {
+      {web.map((result, index) => {
         const url = safeUrl(result.url);
         const host = url?.hostname;
+        const isLast = index === web.length - 1;
         return (
-          <div
-            className="w-full border-b-1 border-b-zinc-700 p-4 pb-3 transition-colors hover:bg-white/5"
-            key={result.url + result.title}
-          >
-            {url ? (
-              <a
-                href={result.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full space-y-1"
-              >
-                <h2 className="truncate text-sm font-medium">{result.title}</h2>
-                <p className="line-clamp-2 text-xs text-foreground-500">
-                  {result.content}
-                </p>
-                <div className="flex flex-wrap items-center gap-x-4 text-sm">
-                  <span className="flex items-center gap-2">
-                    <Image
-                      src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
-                      alt={`${host} favicon`}
-                      width={16}
-                      height={16}
-                      className="rounded-full"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = "none";
-                      }}
-                    />
-                    <span className="max-w-xs truncate text-xs text-primary hover:underline">
-                      {host}
+          <div key={result.url + result.title}>
+            <div className="w-full p-4 pb-3 transition-colors hover:bg-white/5">
+              {url ? (
+                <Link href={result.url} isExternal className="w-full">
+                  <h2 className="truncate text-sm font-medium">
+                    {result.title}
+                  </h2>
+                  <p className="mt-1 line-clamp-2 text-xs text-foreground-500">
+                    {result.content}
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-4 text-sm">
+                    <span className="flex items-center gap-2">
+                      <Image
+                        src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
+                        alt={`${host} favicon`}
+                        width={16}
+                        height={16}
+                        className="rounded-full"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = "none";
+                        }}
+                      />
+                      <span className="max-w-xs truncate text-xs text-primary hover:underline">
+                        {host}
+                      </span>
                     </span>
-                  </span>
-                  {/* <span className="flex items-center">{timeAgo(result.date)}</span> */}
+                    {/* <span className="flex items-center">{timeAgo(result.date)}</span> */}
+                  </div>
+                </Link>
+              ) : (
+                <div className="w-full space-y-1">
+                  <h2 className="truncate text-sm font-medium text-foreground-500">
+                    {result.title}
+                  </h2>
+                  <p className="line-clamp-2 text-xs text-foreground-500">
+                    {result.content}
+                  </p>
                 </div>
-              </a>
-            ) : (
-              <div className="w-full space-y-1">
-                <h2 className="truncate text-sm font-medium text-foreground-500">
-                  {result.title}
-                </h2>
-                <p className="line-clamp-2 text-xs text-foreground-500">
-                  {result.content}
-                </p>
-              </div>
-            )}
+              )}
+            </div>
+            {!isLast && <Divider />}
           </div>
         );
       })}

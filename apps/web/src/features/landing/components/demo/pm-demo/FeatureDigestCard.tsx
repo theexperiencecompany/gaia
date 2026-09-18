@@ -13,7 +13,7 @@ export default function FeatureDigestCard() {
         <span className="text-sm font-medium text-zinc-100">
           Feature Digest: this week
         </span>
-        <span className="flex items-center gap-1 text-[11px] text-zinc-500">
+        <span className="flex items-center gap-1 text-xs text-zinc-500">
           11 requests <ArrowRight02Icon width={10} height={10} /> 4 themes
         </span>
       </div>
@@ -25,7 +25,7 @@ export default function FeatureDigestCard() {
             <span className="text-xs font-medium text-zinc-300">
               API &amp; Integrations (5 requests)
             </span>
-            <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-400">
+            <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-400">
               High Volume
             </span>
           </div>
@@ -76,7 +76,7 @@ export default function FeatureDigestCard() {
             <span className="text-xs font-medium text-zinc-300">
               SSO / Enterprise Auth (1 request)
             </span>
-            <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] text-red-400">
+            <span className="rounded-full bg-red-500/10 px-1.5 py-0.5 text-xs text-red-400">
               High Priority
             </span>
           </div>

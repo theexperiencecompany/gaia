@@ -37,16 +37,9 @@ export const EventCard = ({
 
   return (
     <div
-      className={`relative flex ${hasAction ? "items-end" : "items-start"} gap-2 rounded-lg p-3 pr-2 pl-5 transition-colors ${isDotted ? "border-2 border-dashed" : ""}`}
+      className={`relative flex ${hasAction ? "items-end" : "items-start"} gap-2 rounded-xl p-3 pr-2 pl-5 transition-colors`}
       style={{
-        ...(isDotted
-          ? {
-              borderColor: `${eventColor}80`,
-              backgroundColor: `${eventColor}10`,
-            }
-          : {
-              backgroundColor: `${eventColor}20`,
-            }),
+        backgroundColor: isDotted ? `${eventColor}10` : `${eventColor}20`,
         opacity: finalOpacity,
       }}
     >

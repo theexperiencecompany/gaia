@@ -1,7 +1,7 @@
 "use client";
 
 import * as m from "motion/react-m";
-import { useId } from "react";
+import { type CSSProperties, useId } from "react";
 import { FILE_TYPE_STYLES } from "@/features/chat/components/files/fileTypeConfig";
 
 const DOCUMENT_PATH = [
@@ -45,8 +45,7 @@ export function FileTypeIcon({
       whileHover="hover"
     >
       <m.div
-        className="pointer-events-none absolute inset-0"
-        style={{ opacity: 0.5 }}
+        className="pointer-events-none absolute inset-0 opacity-50"
         aria-hidden="true"
         variants={{
           idle: {
@@ -64,10 +63,14 @@ export function FileTypeIcon({
         }}
         transition={{ duration: 0.2, ease: "easeOut" }}
       >
-        <svg className="h-full w-full" viewBox="-3 0 32 32" aria-hidden="true">
+        <svg
+          className="h-full w-full text-zinc-300"
+          viewBox="-3 0 32 32"
+          aria-hidden="true"
+        >
           <path
             d={DOCUMENT_PATH}
-            fill="#C7CDD6"
+            fill="currentColor"
             fillRule="evenodd"
             transform="translate(-156 -101)"
           />
@@ -113,24 +116,27 @@ export function FileTypeIcon({
           </g>
         </svg>
         <div
-          className="pointer-events-none absolute flex flex-col items-center"
-          style={{
-            left: `${DOC_LEFT}%`,
-            width: `${DOC_WIDTH}%`,
-            top: 0,
-            height: "100%",
-            padding: `${size * 0.12}px ${size * 0.01}px ${size * 0.16}px`,
-          }}
+          className="filetype-pad pointer-events-none absolute flex flex-col items-center"
+          style={
+            {
+              left: `${DOC_LEFT}%`,
+              width: `${DOC_WIDTH}%`,
+              top: 0,
+              height: "100%",
+              "--ft-pad": `${size * 0.12}px ${size * 0.01}px ${size * 0.16}px`,
+            } as CSSProperties
+          }
         >
           <div className="flex flex-1 items-center justify-center">
             <Glyph size={Math.round(size * 0.34)} color="#FFFFFF" />
           </div>
           <div
-            className="font-semibold uppercase tracking-wider text-white"
-            style={{
-              fontSize: Math.max(7, Math.round(size * 0.15)),
-              lineHeight: 1,
-            }}
+            className="filetype-label font-semibold uppercase tracking-wider text-white leading-none"
+            style={
+              {
+                "--ft-font-size": `${Math.max(7, Math.round(size * 0.15))}px`,
+              } as CSSProperties
+            }
           >
             {extension.toUpperCase()}
           </div>

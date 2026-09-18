@@ -1,5 +1,6 @@
 "use client";
 
+import { MinusSignIcon } from "@icons";
 import { useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useRef } from "react";
@@ -225,7 +226,7 @@ export default function InboxZeroAiClient() {
         />
         <div className="w-full max-w-3xl">
           <div className="grid gap-4 sm:grid-cols-2">
-            <AnimatedCard className="rounded-2xl border border-red-900/30 bg-red-950/20 p-6 text-left">
+            <AnimatedCard className="rounded-2xl bg-red-400/10 p-6 text-left">
               <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-red-400">
                 Before
               </p>
@@ -235,9 +236,7 @@ export default function InboxZeroAiClient() {
                     key={item}
                     className="flex items-start gap-2 text-sm text-zinc-300"
                   >
-                    <span className="mt-0.5 shrink-0 text-red-400">
-                      &#x2212;
-                    </span>
+                    <MinusSignIcon className="mt-0.5 shrink-0 text-red-400" />
                     {item}
                   </li>
                 ))}
@@ -245,7 +244,7 @@ export default function InboxZeroAiClient() {
             </AnimatedCard>
             <AnimatedCard
               delay={0.1}
-              className="rounded-2xl border border-emerald-900/30 bg-emerald-950/20 p-6 text-left"
+              className="rounded-2xl bg-emerald-400/10 p-6 text-left"
             >
               <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-emerald-400">
                 After

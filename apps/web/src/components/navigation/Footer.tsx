@@ -109,12 +109,11 @@ export default function Footer() {
             <iframe
               src="https://status.heygaia.io/badge?theme=dark"
               title="GAIA API Status"
-              className="ph-no-capture sm:justify-self-start"
+              className="ph-no-capture scheme-normal sm:justify-self-start"
               scrolling="no"
               height={30}
               width={186}
               sandbox="allow-popups"
-              style={{ colorScheme: "normal" }}
             />
 
             <Link

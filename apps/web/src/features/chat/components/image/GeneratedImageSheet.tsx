@@ -27,22 +27,26 @@ export default function GeneratedImageSheet({
 
   return (
     <Sheet open={openImage} onOpenChange={setOpenImage}>
-      <SheetContent className="flex max-w-(--breakpoint-sm) min-w-fit flex-col items-center rounded-3xl! border-none bg-zinc-900 px-5 py-3 text-white">
-        <div className="relative mt-3 flex aspect-square w-full sm:w-screen sm:max-w-(--breakpoint-sm)">
-          {imageData?.src && (
-            <Image
-              alt={"Generated Image"}
-              className="my-2 aspect-square rounded-3xl"
-              fill={true}
-              src={imageData.src}
-              objectFit="contain"
-              sizes="(max-width: 640px) 100vw, 640px"
-            />
-          )}
-        </div>
+      <SheetContent
+        className="flex max-w-(--breakpoint-sm) min-w-fit flex-col items-center"
+        side="right"
+      >
+        <div className="flex w-full flex-col items-center px-5 py-3">
+          <div className="mt-3 flex w-full items-center justify-center overflow-hidden sm:w-screen sm:max-w-(--breakpoint-sm)">
+            {imageData?.src && (
+              <Image
+                alt={"Generated Image"}
+                className="my-2 h-auto max-h-[70vh] w-auto max-w-full rounded-3xl object-contain"
+                width={1024}
+                height={1024}
+                src={imageData.src}
+                sizes="(max-width: 640px) 100vw, 640px"
+              />
+            )}
+          </div>
 
-        <div className="mt-3 flex w-screen max-w-(--breakpoint-sm) flex-col justify-evenly gap-3">
-          {/* {imageData?.prompt && (
+          <div className="mt-3 flex w-screen max-w-(--breakpoint-sm) flex-col justify-evenly gap-3">
+            {/* {imageData?.prompt && (
             <div className="w-full">
               <ScrollArea className="max-h-[50px]">
                 <div className="font-medium">Your Prompt:</div>
@@ -63,15 +67,16 @@ export default function GeneratedImageSheet({
               </ScrollArea>
             </div>
           )} */}
-        </div>
+          </div>
 
-        {imageData?.src && (
-          <ChatBubble_Actions_Image
-            fullWidth
-            setOpenImage={setOpenImage}
-            image_data={image_data}
-          />
-        )}
+          {imageData?.src && (
+            <ChatBubble_Actions_Image
+              fullWidth
+              setOpenImage={setOpenImage}
+              image_data={image_data}
+            />
+          )}
+        </div>
       </SheetContent>
     </Sheet>
   );

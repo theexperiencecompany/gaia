@@ -169,7 +169,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
 
   const cardContent = (
     <div
-      className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${isClickable ? "cursor-pointer hover:bg-zinc-700/50" : ""}`}
+      className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl ${useBlurEffect ? "bg-zinc-800/40 backdrop-blur-lg" : "bg-zinc-800"} p-4 transition-all select-none ${isClickable ? "cursor-pointer hover:bg-zinc-700/50" : ""}`}
       onClick={href ? undefined : handleCardClick}
       onKeyDown={
         !href && isClickable
@@ -284,9 +284,6 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       placement="top"
       className="max-w-xs"
       showArrow
-      classNames={{
-        content: "bg-zinc-800 p-4 rounded-3xl",
-      }}
       delay={200}
       closeDelay={0}
     >
@@ -446,7 +443,8 @@ function WorkflowActionButton({
       color="primary"
       size={size}
       variant={buttonVariant}
-      className={`font-medium rounded-xl ${variant === "flat" ? "text-primary" : ""}`}
+      radius="md"
+      className={`font-medium ${variant === "flat" ? "text-primary" : ""}`}
       isLoading={isLoading}
       onPress={(e) => onPress(e as unknown as React.MouseEvent)}
     >

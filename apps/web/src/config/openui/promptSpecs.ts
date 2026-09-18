@@ -22,7 +22,6 @@ export const imageGallerySchema = z.object({
   ),
   columns: z.number().int().min(1).max(6).optional(),
   gap: z.enum(["xs", "sm", "md", "lg"]).optional(),
-  aspectRatio: z.string().optional(),
   maxWidth: z.enum(["sm", "md", "lg", "xl", "full"]).optional(),
 });
 

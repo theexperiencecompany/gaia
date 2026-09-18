@@ -79,7 +79,7 @@ export default function MemoryIndicator({
       size="sm"
       variant="flat"
       radius="full"
-      className="w-fit text-gray-500"
+      className="w-fit text-zinc-500"
       startContent={<AiBrain01Icon className="h-4 w-4" />}
       onPress={onOpenModal}
     >

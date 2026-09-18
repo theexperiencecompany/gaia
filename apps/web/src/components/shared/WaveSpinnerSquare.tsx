@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 export function WaveSpinnerSquare() {
   return (
     <div className="flex items-center justify-center w-fit">
@@ -10,12 +12,8 @@ export function WaveSpinnerSquare() {
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: static array for spinner
                 key={idx}
-                className="w-1.5 h-1.5"
-                style={{
-                  backgroundColor: "#00bbff",
-                  animation: "waveDiagTLAnimation 0.7s ease-out infinite",
-                  animationDelay: `${delays[idx]}s`,
-                }}
+                className="w-1.5 h-1.5 bg-primary wave-cell"
+                style={{ "--wave-delay": `${delays[idx]}s` } as CSSProperties}
               />
             );
           })}

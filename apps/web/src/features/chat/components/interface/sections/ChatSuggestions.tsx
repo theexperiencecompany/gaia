@@ -49,7 +49,8 @@ export const ChatSuggestions: React.FC = () => {
               variant="light"
               size="sm"
               onPress={() => appendToInput(prompt)}
-              className="h-10 justify-start gap-3 rounded-xl px-3 text-sm font-normal text-zinc-400 hover:text-zinc-100"
+              radius="md"
+              className="h-10 justify-start text-sm font-normal text-zinc-400 hover:text-zinc-100"
               startContent={
                 <Icon size={18} className="shrink-0 text-zinc-500" />
               }

@@ -68,7 +68,7 @@ export default async function About() {
                 height={80}
               />
             </div>
-            <div className="prose prose-zinc dark:prose-invert max-w-2xl">
+            <div className="max-w-2xl">
               <ReactMarkdown
                 components={{
                   h1: ({ children }) => (
@@ -126,7 +126,8 @@ export default async function About() {
                   key={author.name}
                   author={author}
                   avatarSize="md"
-                  avatarClassName="h-10 w-10 cursor-help border-2 border-background"
+                  avatarClassName="h-10 w-10 cursor-help"
+                  stacked
                 />
               ))}
             </div>

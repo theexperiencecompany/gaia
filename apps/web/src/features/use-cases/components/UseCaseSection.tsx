@@ -132,7 +132,7 @@ function CategoryChip({
       <Chip
         variant={isSelected ? "solid" : "flat"}
         color={isSelected ? "primary" : "default"}
-        className={`cursor-pointer capitalize ${isSelected ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
+        className={`cursor-pointer capitalize ${isSelected ? "" : "text-foreground-500"} font-light!`}
         size="lg"
         startContent={
           category === "featured" ? (

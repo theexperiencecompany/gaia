@@ -41,10 +41,6 @@ export function NestedMenuTooltip({
       placement="right-start"
       offset={8}
       closeDelay={0}
-      classNames={{
-        content: "p-0 bg-secondary-bg border-0! outline-0!",
-        base: "border-0",
-      }}
       content={
         <div
           onMouseEnter={() => onOpenChange(true)}
@@ -83,13 +79,12 @@ export function NestedMenuTooltip({
       }
     >
       <div
+        className="pointer-events-none fixed"
         style={{
-          position: "fixed",
           left: itemRect.right,
           top: itemRect.top,
           width: 1,
           height: 1,
-          pointerEvents: "none",
         }}
       />
     </Tooltip>

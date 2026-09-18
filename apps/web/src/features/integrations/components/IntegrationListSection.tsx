@@ -267,16 +267,18 @@ function IntegrationListSection({
           />
         }
       >
-        <ScrollShadow className="max-h-[150px] divide-y divide-zinc-700">
-          {suggestedIntegrations.map(renderSuggested)}
+        <ScrollShadow className="max-h-[150px]">
+          <div className="divide-y divide-zinc-700">
+            {suggestedIntegrations.map(renderSuggested)}
+          </div>
         </ScrollShadow>
         <div className="mt-3 flex justify-center">
           <Link
             href="/marketplace"
-            className="text-xs text-primary hover:underline gap-1"
+            className="text-xs text-primary hover:underline"
           >
             <span>Go to Marketplace</span>
-            <ArrowRight02Icon width={16} height={16} />
+            <ArrowRight02Icon width={16} height={16} className="ml-1" />
           </Link>
         </div>
       </AccordionItem>
@@ -306,7 +308,6 @@ function IntegrationListSection({
         selectionMode="multiple"
         // showDivider={false}
         defaultExpandedKeys={defaultExpandedKeys}
-        className="px-0"
         variant="light"
         isCompact
         itemClasses={{

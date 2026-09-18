@@ -20,6 +20,7 @@ import {
 } from "@icons";
 import { toPng } from "html-to-image";
 import {
+  type CSSProperties,
   type RefObject,
   useCallback,
   useEffect,
@@ -166,16 +167,17 @@ const ColorSwatch = ({ color }: { color: string }) => {
   const angle = angleMatch ? parseInt(angleMatch[1], 10) : 0;
 
   return (
+    // The picked color/gradient is user data, so it rides on --swatch-bg;
+    // the linear-gradient angle is parsed out of it for --swatch-rotate
+    // (see .color-swatch in globals.css). Static geometry stays in classes.
     <span
-      className="border-1 border-zinc-300"
-      style={{
-        display: "inline-block",
-        width: 24,
-        height: 24,
-        borderRadius: "50%",
-        background: color,
-        ...(isLinear ? { transform: `rotate(${angle}deg)` } : {}),
-      }}
+      className="border-1 border-zinc-300 inline-block size-6 rounded-full color-swatch"
+      style={
+        {
+          "--swatch-bg": color,
+          "--swatch-rotate": `${angle}deg`,
+        } as CSSProperties
+      }
     />
   );
 };
@@ -348,15 +350,7 @@ const HiddenDownloadCards = ({
   height,
   width,
 }: HiddenDownloadCardsProps) => (
-  <div
-    style={{
-      position: "fixed",
-      top: -10000,
-      left: -10000,
-      opacity: 0,
-      pointerEvents: "none",
-    }}
-  >
+  <div className="pointer-events-none fixed top-[-10000px] left-[-10000px] opacity-0">
     <div ref={cardRef} className="flex items-center gap-8 bg-transparent p-8">
       <div style={{ width, height }}>
         <HoloCard

@@ -84,7 +84,7 @@ export default function LinkPlatformClient({
       <RaisedButton
         size="lg"
         color="#00bbff"
-        className="w-full font-medium text-black!"
+        className="w-full"
         onClick={handleLink}
         disabled={isLinking}
       >

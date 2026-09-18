@@ -60,7 +60,7 @@ function GitHubAgentCard() {
             showBackground: false,
           })}
         </div>
-        <span className="text-[11px] font-medium text-zinc-400">
+        <span className="text-xs font-medium text-zinc-400">
           Reviewing 3 open pull requests
         </span>
       </div>
@@ -71,7 +71,7 @@ function GitHubAgentCard() {
               <p className="truncate text-sm font-medium text-zinc-200">
                 {pr.title}
               </p>
-              <span className="shrink-0 rounded-full bg-blue-400/10 px-2 py-0.5 text-[10px] font-medium text-blue-400">
+              <span className="shrink-0 rounded-full bg-blue-400/10 px-2 py-0.5 text-xs font-medium text-blue-400">
                 PR #{pr.number}
               </span>
             </div>

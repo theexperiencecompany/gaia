@@ -41,16 +41,15 @@ const GALLERY_MAX_W: Record<
 
 export function ImageGalleryView(props: z.infer<typeof imageGallerySchema>) {
   const images = props.images;
-  const aspectRatio = props.aspectRatio ?? "3/2";
   const cols = props.columns ?? defaultGalleryCols(images.length);
   const gridCols = GALLERY_COLS[cols] ?? "grid-cols-2";
   const gap = GALLERY_GAP[props.gap ?? "md"];
   const maxW = GALLERY_MAX_W[props.maxWidth ?? "xl"];
 
   return (
-    <div className={`grid ${gridCols} ${gap} w-full ${maxW}`}>
+    <div className={`grid ${gridCols} ${gap} w-full ${maxW} items-center`}>
       {images.map((img) => (
-        <GalleryImage key={img.src} img={img} aspectRatio={aspectRatio} />
+        <GalleryImage key={img.src} img={img} />
       ))}
     </div>
   );

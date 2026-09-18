@@ -10,7 +10,7 @@
 
 "use client";
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
 import { useIsMobile } from "@/hooks/ui/useMobile";
@@ -122,12 +122,12 @@ export function OnboardingShell({
       >
         <div
           ref={contentRef}
-          className="relative mx-auto w-full max-w-3xl"
-          style={{
-            paddingBottom:
-              Math.max(composer ? composerHeight : 0, BOTTOM_BLUR_PX) +
-              COMPOSER_GUTTER_PX,
-          }}
+          className="relative mx-auto w-full max-w-3xl onboarding-shell-content"
+          style={
+            {
+              "--onboarding-pad-b": `${Math.max(composer ? composerHeight : 0, BOTTOM_BLUR_PX) + COMPOSER_GUTTER_PX}px`,
+            } as CSSProperties
+          }
         >
           {children}
         </div>

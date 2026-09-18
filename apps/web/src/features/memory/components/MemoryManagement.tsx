@@ -103,10 +103,7 @@ export default function MemoryManagement({
         {stats.map((stat, index) => (
           <div key={stat.label} className="flex items-center">
             {index > 0 && (
-              <Divider
-                orientation="vertical"
-                className="mx-6 h-8 bg-zinc-700/50"
-              />
+              <Divider orientation="vertical" className="mx-6 h-8" />
             )}
             <div className="flex items-center gap-3">
               <stat.icon className="size-5 shrink-0 text-zinc-500" />

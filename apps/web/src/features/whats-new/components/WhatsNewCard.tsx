@@ -74,7 +74,7 @@ export function WhatsNewCard() {
           size="sm"
           onPress={handleDismiss}
           aria-label="Dismiss what's new"
-          className="absolute top-2 right-2 h-6 w-6 min-w-6 bg-zinc-900/60 text-zinc-400 hover:bg-zinc-900 hover:text-white opacity-0 group-hover:opacity-100"
+          className="absolute top-2 right-2 h-6 w-6 min-w-6 text-zinc-400 hover:text-white opacity-0 group-hover:opacity-100"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
@@ -92,7 +92,7 @@ export function WhatsNewCard() {
             </span>
           </div>
           {latest && (
-            <span className="text-[11px] text-zinc-600">
+            <span className="text-xs text-zinc-600">
               {formatReleaseDate(latest.date)}
             </span>
           )}

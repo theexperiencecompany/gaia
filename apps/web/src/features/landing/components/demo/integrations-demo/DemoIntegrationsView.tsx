@@ -366,9 +366,6 @@ export default function DemoIntegrationsView({
             startContent={
               <Search01Icon className="text-zinc-500" width={18} height={18} />
             }
-            classNames={{
-              inputWrapper: "bg-zinc-800/50 border-zinc-700",
-            }}
             size="sm"
             isClearable
             onClear={() => setSearchQuery("")}

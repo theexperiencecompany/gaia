@@ -78,7 +78,13 @@ function DownloadSectionLayout({
             webpSrc={webpSrc}
             pngSrc={pngSrc}
             alt={imageAlt}
-            className={imageClassName}
+            className={
+              imageClassName === "object-cover object-center"
+                ? "object-cover object-center"
+                : imageClassName === "object-cover object-top"
+                  ? "object-cover object-top"
+                  : "object-cover object-bottom"
+            }
           />
         </div>
 

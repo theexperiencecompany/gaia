@@ -45,7 +45,7 @@ Callout(variant: "info" | "warning" | "error" | "success" | "neutral", title: st
 TextCallout(variant?: "neutral" | "info" | "warning" | "success" | "danger", title?: string, description?: string) - Text callout with variant, title, and description
 Image(alt: string, src?: string) - Image with alt text and optional URL
 ImageBlock(src: string, alt?: string) - Image block with loading state
-ImageGallery(images: {src: string, alt?: string, caption?: string}[], columns?: number, gap?: "xs" | "sm" | "md" | "lg", aspectRatio?: string, maxWidth?: "sm" | "md" | "lg" | "xl" | "full") - Grid of images with captions.
+ImageGallery(images: {src: string, alt?: string, caption?: string}[], columns?: number, gap?: "xs" | "sm" | "md" | "lg", maxWidth?: "sm" | "md" | "lg" | "xl" | "full") - Grid of images with captions.
 CodeBlock(language: string, codeString: string) - Syntax-highlighted code block
 - Use Cards to group related KPIs or sections. Stack with direction "row" for side-by-side layouts.
 - Success toast: Callout("success", "Saved", "Done.", $showSuccess) - use @Set($showSuccess, true) in save action, auto-dismisses after 3s. For errors: result.status == "error" ? Callout("error", "Failed", result.error) : null

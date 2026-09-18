@@ -48,10 +48,9 @@ export const DateStrip: React.FC<DateStripProps> = ({
       {/* Date Headers - Virtualized */}
       <div className="relative min-h-9 flex-1 overflow-hidden">
         <div
-          className="relative"
+          className="relative min-h-9"
           style={{
             width: `${columnVirtualizer.getTotalSize()}px`,
-            minHeight: "36px",
           }}
         >
           {columnVirtualizer.getVirtualItems().map((virtualColumn) => {
@@ -78,7 +77,7 @@ export const DateStrip: React.FC<DateStripProps> = ({
                     : isSelected
                       ? "bg-zinc-800 text-white hover:bg-zinc-700/40"
                       : isWeekend
-                        ? "hover:bg-zinc- bg-zinc-900 text-zinc-400"
+                        ? "hover:bg-white/5 bg-zinc-900 text-zinc-400"
                         : "bg-primary-bg text-zinc-400 hover:bg-zinc-800"
                 }`}
                 style={{

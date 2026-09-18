@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Divider } from "@heroui/divider";
 import {
   Dropdown,
   DropdownItem,
@@ -14,6 +15,7 @@ import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import React from "react";
 import type { z } from "zod";
+import { cn } from "@/lib/utils";
 import { ToolCard } from "../primitives/ToolCard";
 import type { textDocumentSchema } from "../promptSpecs";
 
@@ -92,16 +94,14 @@ interface ToolbarButtonProps {
 function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
   return (
     <Button
-      variant="light"
+      variant={active ? "flat" : "light"}
       size="sm"
+      radius="sm"
       onPress={() => onClick()}
-      className={[
-        "h-7 min-w-7 rounded px-1.5",
-        "text-xs font-semibold transition-all duration-100",
-        active
-          ? "bg-zinc-600 text-zinc-100"
-          : "text-zinc-400 hover:bg-zinc-500 hover:text-zinc-50",
-      ].join(" ")}
+      className={cn(
+        "h-7 min-w-7 text-xs font-semibold transition-all duration-150",
+        active ? "text-zinc-100" : "text-zinc-400 hover:text-zinc-50",
+      )}
     >
       {children}
     </Button>
@@ -188,8 +188,8 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
         {/* Copy button group */}
         <div
           className={[
-            "flex items-center rounded-lg overflow-hidden transition-all duration-150",
-            copied ? "bg-emerald-500/20" : "bg-white/[0.06]",
+            "flex items-center rounded-xl overflow-hidden transition-all duration-150",
+            copied ? "bg-emerald-500/10" : "bg-white/[0.06]",
           ].join(" ")}
         >
           {/* Main copy button — copies as markdown */}
@@ -208,7 +208,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
           <div
             className={[
               "h-4 w-px",
-              copied ? "bg-emerald-500/30" : "bg-zinc-600",
+              copied ? "bg-emerald-500/10" : "bg-zinc-600",
             ].join(" ")}
           />
 
@@ -254,14 +254,14 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
       )}
 
       {/* Divider */}
-      <div className="h-px bg-zinc-700" />
+      <Divider />
 
       {/* Bubble menu — appears on text selection */}
       {editor && (
         <BubbleMenu
           editor={editor}
           tippyOptions={{ duration: 100 }}
-          className="flex items-center gap-0.5 rounded-2xl bg-zinc-700 p-1 shadow-lg"
+          className="flex items-center gap-0.5 rounded-2xl bg-zinc-700 p-1"
         >
           <ToolbarButton
             active={editor.isActive("heading", { level: 1 })}
@@ -325,8 +325,8 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
           "[&_.ProseMirror_li]:my-0.5 [&_.ProseMirror_li]:text-sm [&_.ProseMirror_li]:leading-relaxed [&_.ProseMirror_li]:text-zinc-300 [&_.ProseMirror_li]:marker:text-zinc-500",
           "[&_.ProseMirror_li>ul]:my-1 [&_.ProseMirror_li>ol]:my-1",
           "[&_.ProseMirror_blockquote]:my-2 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-zinc-600 [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_blockquote]:text-zinc-400 [&_.ProseMirror_blockquote]:italic",
-          "[&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:bg-zinc-800 [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:py-0.5 [&_.ProseMirror_code]:font-mono [&_.ProseMirror_code]:text-[0.8125rem] [&_.ProseMirror_code]:text-zinc-200",
-          "[&_.ProseMirror_pre]:my-2 [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:rounded-xl [&_.ProseMirror_pre]:bg-zinc-950 [&_.ProseMirror_pre]:p-3 [&_.ProseMirror_pre]:text-[0.8125rem] [&_.ProseMirror_pre]:leading-relaxed [&_.ProseMirror_pre_code]:bg-transparent [&_.ProseMirror_pre_code]:p-0",
+          "[&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:bg-zinc-800 [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:py-0.5 [&_.ProseMirror_code]:font-mono [&_.ProseMirror_code]:text-xs [&_.ProseMirror_code]:text-zinc-200",
+          "[&_.ProseMirror_pre]:my-2 [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:rounded-xl [&_.ProseMirror_pre]:bg-zinc-950 [&_.ProseMirror_pre]:p-3 [&_.ProseMirror_pre]:text-xs [&_.ProseMirror_pre]:leading-relaxed [&_.ProseMirror_pre_code]:bg-transparent [&_.ProseMirror_pre_code]:p-0",
           "[&_.ProseMirror_hr]:my-4 [&_.ProseMirror_hr]:border-zinc-700",
         ].join(" ")}
       >

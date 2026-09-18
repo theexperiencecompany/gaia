@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar } from "@heroui/avatar";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import {
@@ -27,7 +28,6 @@ import {
   useState,
 } from "react";
 import { ChevronRight } from "@/components/shared/icons";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { appConfig } from "@/config/appConfig";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -103,33 +103,37 @@ const MemoDemoTodosView = memo(DemoTodosView);
 
 const UserAvatar = memo(function UserAvatar() {
   return (
-    <Avatar className="relative bottom-18 rounded-full border border-white/10 bg-black">
-      <AvatarImage
-        src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
-        alt="User"
-        loading="lazy"
-        decoding="async"
-      />
-      <AvatarFallback className="bg-primary/20 text-xs font-medium text-primary">
-        U
-      </AvatarFallback>
-    </Avatar>
+    <Avatar
+      size="sm"
+      radius="full"
+      src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
+      name="User"
+      showFallback
+      fallback="U"
+      imgProps={{ loading: "lazy", decoding: "async" }}
+      classNames={{
+        base: "relative bottom-18",
+        fallback: "text-xs font-medium text-primary",
+      }}
+    />
   );
 });
 
 const AryanAvatar = memo(function AryanAvatar() {
   return (
-    <Avatar className="relative bottom-18 rounded-full border border-white/10 bg-black">
-      <AvatarImage
-        src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
-        alt="Aryan"
-        loading="lazy"
-        decoding="async"
-      />
-      <AvatarFallback className="bg-primary/20 text-xs font-medium text-primary">
-        AR
-      </AvatarFallback>
-    </Avatar>
+    <Avatar
+      size="sm"
+      radius="full"
+      src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
+      name="Aryan"
+      showFallback
+      fallback="AR"
+      imgProps={{ loading: "lazy", decoding: "async" }}
+      classNames={{
+        base: "relative bottom-18",
+        fallback: "text-xs font-medium text-primary",
+      }}
+    />
   );
 });
 
@@ -524,10 +528,10 @@ function ChatDemoWindow() {
         >
           <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-red-500" />
           <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-yellow-400" />
-          <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-green-500" />
+          <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-emerald-400" />
           <div className="flex justify-center flex-1">
             <a
-              className="ml-4 text-center text-[11px] text-zinc-500 hover:text-primary w-fit"
+              className="ml-4 text-center text-xs text-zinc-500 hover:text-primary w-fit"
               target="_blank"
               rel="noopener noreferrer"
               href={`https://${appConfig.site.domain}`}
@@ -614,7 +618,6 @@ function ChatDemoWindow() {
                               <Link href="/signup">
                                 <RaisedButton
                                   color={"#00bbff"}
-                                  className="text-black!"
                                   onClick={() => {
                                     trackEvent(
                                       ANALYTICS_EVENTS.CTA_GET_STARTED_CLICKED,
@@ -657,7 +660,7 @@ function ChatDemoWindow() {
                           <div className="imessage-bubble imessage-from-me">
                             {uc.userMessage}
                           </div>
-                          <div className="invisible pointer-events-none flex flex-col items-end justify-end gap-1 pb-3 opacity-0 transition-all group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:visible group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+                          <div className="invisible pointer-events-none flex flex-col items-end justify-end gap-1 pb-3 opacity-0 transition-opacity group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:visible group-focus-within:pointer-events-auto group-focus-within:opacity-100">
                             <span className="flex flex-col text-xs text-zinc-400 select-text">
                               just now
                             </span>
@@ -735,7 +738,7 @@ function ChatDemoWindow() {
                           )}
                         </div>
 
-                        <div className="chatbubblebot_parent flex-1">
+                        <div className="flex-1">
                           {/* Text response */}
                           {showResponse && (
                             <div
@@ -756,7 +759,7 @@ function ChatDemoWindow() {
 
                       {/* Bot hover actions — always last, after all content */}
                       {showResponse && (
-                        <div className="bot-actions ml-10.75 invisible flex flex-col opacity-0 transition-all duration-200 group-hover:visible group-hover:opacity-100">
+                        <div className="ml-10.75 invisible flex flex-col opacity-0 transition-opacity duration-200 group-hover:visible group-hover:opacity-100">
                           <span className="p-1 py-2 text-xs text-nowrap text-zinc-400 select-text">
                             just now
                           </span>
@@ -801,7 +804,7 @@ function ChatDemoWindow() {
       {/* Use case chips + retry — only for chat demo */}
       {activePage === "chats" && (
         <div
-          className={`relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl px-4 sm:px-6 transition-[opacity,transform] duration-[400ms] ease-out ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}`}
+          className={`relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl px-4 sm:px-6 transition-[opacity,transform] duration-400 ease-out ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}`}
         >
           <div className="hidden sm:block" />
           <div className="flex flex-wrap items-center justify-center gap-2">

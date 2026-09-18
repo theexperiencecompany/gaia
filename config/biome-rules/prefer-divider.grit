@@ -1,0 +1,27 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Contentless divider divs in features/**/components/** must use the HeroUI
+// <Divider className="bg-zinc-700/50"/> instead of a raw border-t/b div.
+// Matches self-closing divs only, so section wrappers that happen to carry a
+// top border plus content/padding are never flagged. MarkdownRenderer
+// hr-mapping + tables are exempt — triage those hits as keeps.
+// Spinner dots (animate-spin + rounded-full border-t technique) are excluded.
+// NOTE: path scoping (features/**/components/**) is by triage; the rule fires
+// wherever the shape appears so nothing is missed silently.
+//
+// GritQL notes: bare `className=$x` snippets do not match in this engine, so
+// the rule matches JsxSelfClosingElement() nodes and filters on node text.
+// Regexes use non-capturing (?:...) groups only.
+JsxSelfClosingElement() as $node where {
+  $node <: r"[\s\S]*<div\s[\s\S]*",
+  $node <: r"[\s\S]*border-(?:t|b)[\s\S]*",
+  $node <: r"[\s\S]*border-zinc-700[\s\S]*",
+  $node <: not r"[\s\S]*animate-spin[\s\S]*",
+  $node <: not r"[\s\S]*rounded-full[\s\S]*",
+  register_diagnostic(
+    span = $node,
+    message = "Use HeroUI <Divider className='bg-zinc-700/50'/> instead of a contentless border-t/b div. (MarkdownRenderer hr-mapping + tables exempt.)",
+    severity = "error"
+  )
+}

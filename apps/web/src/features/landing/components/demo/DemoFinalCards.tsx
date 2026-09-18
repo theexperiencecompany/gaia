@@ -24,7 +24,7 @@ function WorkflowCard() {
         <span className="text-sm font-medium text-zinc-200">
           Workflow: Daily Standup
         </span>
-        <span className="ml-auto rounded-full bg-green-500/20 px-2 py-0.5 text-[10px] text-green-400">
+        <span className="ml-auto rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-400">
           Completed
         </span>
       </div>
@@ -40,12 +40,12 @@ function WorkflowCard() {
             </div>
             <div className="flex min-w-0 flex-1 items-center justify-between">
               <span className="text-xs text-zinc-300">{s.label}</span>
-              <span className="text-[10px] text-zinc-500">{s.count}</span>
+              <span className="text-xs text-zinc-500">{s.count}</span>
             </div>
             <CheckmarkBadge01Icon
               width={14}
               height={14}
-              className="text-green-400"
+              className="text-emerald-400"
             />
           </div>
         ))}
@@ -86,18 +86,16 @@ function SocialContentCard() {
 
   return (
     <div className="flex w-full max-w-sm flex-col gap-2">
-      <p className="px-1 text-[11px] text-zinc-500">
-        2 drafts scheduled · Mon–Wed
-      </p>
+      <p className="px-1 text-xs text-zinc-500">2 drafts scheduled · Mon–Wed</p>
       {posts.map((p) => (
         <div
           key={p.platform}
-          className="flex w-full flex-col gap-2.5 rounded-xl border border-zinc-700/60 bg-zinc-900 p-4"
+          className="flex w-full flex-col gap-2.5 rounded-xl bg-zinc-900 p-4"
         >
           {/* Author row */}
           <div className="flex items-center gap-2.5">
             <div
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
               style={{ backgroundColor: p.platformColor }}
             >
               G
@@ -108,16 +106,16 @@ function SocialContentCard() {
                   {p.name}
                 </span>
                 {p.verified && (
-                  <CheckmarkBadge02Icon className="h-3.5 w-3.5 shrink-0 text-[#1d9bf0]" />
+                  <CheckmarkBadge02Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
                 )}
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-[11px] text-zinc-500">@{p.handle}</span>
+                <span className="text-xs text-zinc-500">@{p.handle}</span>
                 <span className="text-zinc-700">·</span>
                 {getToolCategoryIcon(p.platform, { width: 11, height: 11 })}
               </div>
             </div>
-            <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-400">
+            <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-400">
               {p.scheduledFor}
             </span>
           </div>
@@ -128,7 +126,7 @@ function SocialContentCard() {
           {/* Hashtags */}
           <div className="flex flex-wrap gap-1">
             {p.hashtags.map((tag) => (
-              <span key={tag} className="text-[11px] text-[#1d9bf0]">
+              <span key={tag} className="text-xs text-primary">
                 {tag}
               </span>
             ))}
@@ -136,10 +134,10 @@ function SocialContentCard() {
 
           {/* Footer: char count + draft badge */}
           <div className="flex items-center justify-between border-t border-zinc-800 pt-2">
-            <span className="text-[11px] text-zinc-600">
+            <span className="text-xs text-zinc-600">
               {p.charCount} / {p.charLimit} chars
             </span>
-            <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400">
+            <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
               Draft · Ready to publish
             </span>
           </div>
@@ -260,13 +258,13 @@ function MorningBriefingCard() {
           <span className="text-xs font-medium text-zinc-400">
             Today's meetings
           </span>
-          <span className="text-[10px] text-zinc-500">4 events</span>
+          <span className="text-xs text-zinc-500">4 events</span>
         </div>
         <div className="space-y-1.5">
           {calendarEvents.map((ev) => (
             <div
               key={ev.title}
-              className="relative flex items-start gap-2 rounded-lg p-3 pl-5 transition-colors hover:bg-zinc-700/50"
+              className="relative flex items-start gap-2 rounded-xl p-3 pl-5 transition-colors hover:bg-zinc-700/50"
               style={{ backgroundColor: `${ev.color}18` }}
             >
               <div className="absolute left-1 top-0 flex h-full items-center">
@@ -296,7 +294,7 @@ function MorningBriefingCard() {
           <span className="text-xs font-medium text-zinc-400">
             Urgent emails
           </span>
-          <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] text-red-400">
+          <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs text-red-400">
             3 unread
           </span>
         </div>
@@ -309,7 +307,7 @@ function MorningBriefingCard() {
               <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-medium text-zinc-200">{em.from}</p>
-                <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+                <p className="mt-0.5 truncate text-xs text-zinc-500">
                   {em.subject}
                 </p>
               </div>

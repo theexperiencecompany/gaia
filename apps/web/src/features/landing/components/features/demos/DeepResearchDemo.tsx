@@ -1,5 +1,6 @@
 "use client";
 
+import { Tick02Icon } from "@icons";
 import { AnimatePresence, useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useEffect, useRef, useState } from "react";
@@ -95,9 +96,9 @@ function StatusLabel({ status }: { status: SourceStatus }) {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="text-xs font-medium text-green-400"
+          className="flex items-center gap-1 text-xs font-medium text-emerald-400"
         >
-          ✓ done
+          <Tick02Icon className="size-3.5" /> done
         </m.span>
       )}
     </AnimatePresence>
@@ -108,7 +109,7 @@ function SourceCard({ source, status }: SourceCardProps) {
   return (
     <div className="flex items-center gap-3 rounded-xl bg-zinc-700/50 p-3">
       <div
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${source.color} text-[10px] font-bold text-white`}
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${source.color} text-xs font-bold text-white`}
       >
         {source.initials}
       </div>
@@ -259,7 +260,7 @@ export default function DeepResearchDemo() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, ease }}
-            className="rounded-xl border border-[#00bbff]/20 bg-[#00bbff]/10 p-3 text-xs text-[#00bbff]"
+            className="rounded-xl bg-primary/10 p-3 text-xs text-primary"
           >
             3 sources analyzed · 12 citations extracted · Synthesis ready
           </m.div>

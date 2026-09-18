@@ -18,7 +18,7 @@ const DummyIntegrationsCard: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(true);
 
   return (
-    <div className="mx-2 mb-3 border-b-1 border-zinc-800">
+    <div className="mx-2 mb-3">
       <Accordion
         variant="light"
         isCompact
@@ -55,11 +55,11 @@ const DummyIntegrationsCard: React.FC = () => {
               {dummyIntegrations.map((integration) => (
                 <div
                   key={integration.id}
-                  className="flex items-center gap-2 rounded-lg p-2 px-3"
+                  className="flex items-center gap-2 rounded-xl p-2 px-3"
                 >
                   {/* Icon */}
                   <div className="flex-shrink-0">
-                    <div className="flex items-center justify-center rounded-lg">
+                    <div className="flex items-center justify-center rounded-xl">
                       {getToolCategoryIcon(integration.id, {
                         size: 25,
                         width: 25,
@@ -546,7 +546,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
             damping: 20,
             stiffness: 300,
           }}
-          className="relative z-[200] mx-auto flex w-full flex-col overflow-hidden rounded-3xl border-1 border-zinc-700 bg-zinc-900/60 shadow-2xl backdrop-blur-2xl"
+          className="relative z-[200] mx-auto flex w-full flex-col overflow-hidden rounded-2xl bg-zinc-900/60 backdrop-blur-2xl"
           style={{ height: "min(60vh, 420px)" }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -587,20 +587,19 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
             <ScrollShadow orientation="horizontal" className="overflow-x-auto">
               <div className="flex min-w-max gap-1 px-2 py-2">
                 {categories.map((category) => (
-                  <button
-                    type="button"
+                  <Button
                     key={category}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedCategory(category);
-                    }}
-                    className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${selectedCategory === category ? "bg-zinc-700 text-white" : "text-zinc-400 hover:bg-white/10 hover:text-zinc-300"}`}
+                    size="sm"
+                    radius="lg"
+                    onPress={() => setSelectedCategory(category)}
+                    variant={selectedCategory === category ? "flat" : "light"}
+                    className={`flex items-center text-xs font-medium whitespace-nowrap ${selectedCategory === category ? "text-white" : "text-zinc-400 hover:text-zinc-300"}`}
                   >
                     {category === "all" ? (
                       <GridIcon
                         size={16}
                         strokeWidth={2}
-                        className="text-gray-400"
+                        className="text-zinc-400"
                       />
                     ) : (
                       getToolCategoryIcon(category)
@@ -608,7 +607,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                     <span className="capitalize">
                       {category === "all" ? "All" : category.replace("_", " ")}
                     </span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </ScrollShadow>
@@ -646,8 +645,8 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                           )}
                           {tool.required_integration && (
                             <div className="flex items-center gap-1">
-                              <Tick02Icon className="h-3 w-3 text-green-400" />
-                              <span className="text-xs text-green-400">
+                              <Tick02Icon className="h-3 w-3 text-emerald-400" />
+                              <span className="text-xs text-emerald-400">
                                 Connected
                               </span>
                             </div>

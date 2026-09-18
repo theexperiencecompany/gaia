@@ -561,8 +561,7 @@ export function FooterWordmark() {
         <canvas
           ref={canvasRef}
           aria-hidden
-          className="block w-full mix-blend-overlay"
-          style={{ aspectRatio: "23 / 4" }}
+          className="block aspect-[23/4] w-full mix-blend-overlay"
         />
         <canvas
           ref={glowRef}

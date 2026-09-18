@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 export interface BlurLayer {
   blur: number;
   maskStops: [number, number, number, number]; // [fadeInStart, solidStart, solidEnd, fadeOutEnd]
@@ -15,6 +17,14 @@ const DEFAULT_BLUR_CONFIG: BlurLayer[] = [
   { blur: 64, maskStops: [87.5, 100, 100, 100], zIndex: 8 },
 ];
 
+// Per-layer alpha veil. Built here (not inline) because the gradient's
+// black/transparent stops are structural mask alpha, not theme colors;
+// consumed below through vars so only measured values stay in `style`.
+function maskImageFor(maskStops: BlurLayer["maskStops"]): string {
+  const [start, solidStart, solidEnd, end] = maskStops;
+  return `linear-gradient(rgba(0,0,0,0) ${start}%, rgb(0,0,0) ${solidStart}%, rgb(0,0,0) ${solidEnd}%, rgba(0,0,0,0) ${end}%)`;
+}
+
 export default function BlurStack({
   className,
   config = DEFAULT_BLUR_CONFIG,
@@ -24,26 +34,20 @@ export default function BlurStack({
 }) {
   return (
     <div className={className}>
-      <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+      <div className="absolute inset-0 overflow-hidden">
         {config.map((layer, index) => {
-          const [start, solidStart, solidEnd, end] = layer.maskStops;
-          const maskImage = `linear-gradient(rgba(0,0,0,0) ${start}%, rgb(0,0,0) ${solidStart}%, rgb(0,0,0) ${solidEnd}%, rgba(0,0,0,0) ${end}%)`;
-
           return (
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: static stack
               key={index}
-              style={{
-                opacity: 1,
-                position: "absolute",
-                inset: 0,
-                zIndex: layer.zIndex,
-                maskImage,
-                borderRadius: 0,
-                pointerEvents: "none",
-                backdropFilter: `blur(${layer.blur}px)`,
-                WebkitBackdropFilter: `blur(${layer.blur}px)`,
-              }}
+              className="pointer-events-none absolute inset-0 rounded-none opacity-100 [mask-image:var(--blur-mask)] [backdrop-filter:blur(var(--blur-amount))] [-webkit-backdrop-filter:blur(var(--blur-amount))]"
+              style={
+                {
+                  zIndex: layer.zIndex,
+                  "--blur-mask": maskImageFor(layer.maskStops),
+                  "--blur-amount": `${layer.blur}px`,
+                } as CSSProperties
+              }
             />
           );
         })}

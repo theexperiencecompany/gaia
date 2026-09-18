@@ -41,7 +41,8 @@ export default function BlogMetadata({
               key={author.id || author.name}
               author={authorData}
               avatarSize="md"
-              avatarClassName="h-10 w-10 cursor-help border-2 border-background"
+              avatarClassName="h-10 w-10 cursor-help"
+              stacked
             />
           );
         })}

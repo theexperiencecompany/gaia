@@ -46,7 +46,7 @@ const CalendarCard: React.FC<CalendarCardProps> = ({
   return (
     <button
       type="button"
-      className="hover:bg-opacity-100 relative z-1 block w-full cursor-pointer overflow-hidden rounded-lg p-4 text-left text-white shadow-md transition-colors duration-200"
+      className="relative z-1 block w-full cursor-pointer overflow-hidden rounded-xl p-4 text-left text-white shadow-md transition-colors duration-200"
       onClick={onClick}
     >
       <div
@@ -69,7 +69,7 @@ const CalendarCard: React.FC<CalendarCardProps> = ({
         </div>
       )}
       <div
-        className="absolute inset-0 z-0 w-full rounded-lg opacity-20"
+        className="absolute inset-0 z-0 w-full rounded-xl opacity-20"
         style={{ backgroundColor }}
       />
     </button>

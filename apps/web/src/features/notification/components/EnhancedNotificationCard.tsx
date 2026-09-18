@@ -10,7 +10,6 @@ import {
 } from "@icons";
 import { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { Button } from "@/components/ui/button";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
   type ModalConfig,
@@ -92,7 +91,7 @@ export const EnhancedNotificationCard = ({
             {/* Title with unread indicator */}
             <div className="flex items-center gap-2">
               <h3
-                className={`${isUnread ? "text-white" : "text-zinc-500"} text-[15px] leading-tight font-semibold`}
+                className={`${isUnread ? "text-white" : "text-zinc-500"} text-base leading-tight font-semibold`}
               >
                 {notification.content.title}
               </h3>
@@ -103,7 +102,7 @@ export const EnhancedNotificationCard = ({
 
             {/* Description */}
             <p
-              className={`mb-0 text-[13px] ${isUnread ? "text-zinc-400" : "text-zinc-600"}`}
+              className={`mb-0 text-sm ${isUnread ? "text-zinc-400" : "text-zinc-600"}`}
             >
               {notification.content.body}
             </p>
@@ -142,17 +141,23 @@ export const EnhancedNotificationCard = ({
                   const showLoading = isLoading && action.type !== "modal";
 
                   return (
-                    <Button
+                    <HeroButton
                       key={action.id}
-                      disabled={buttonProps.disabled || isLoading || isExecuted}
-                      onClick={() => handleActionClick(action.id)}
-                      className={`gap-1.5 rounded-lg px-4 text-xs font-normal transition ${
+                      size="sm"
+                      radius="sm"
+                      variant="flat"
+                      color={
                         action.style === "primary"
-                          ? "bg-primary/10 text-primary hover:bg-primary/20"
+                          ? "primary"
                           : action.style === "danger"
-                            ? "bg-red-500/10 text-red-500 hover:bg-red-500/20"
-                            : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300"
-                      } ${showLoading ? "opacity-50" : ""} ${isExecuted ? "cursor-not-allowed opacity-60" : ""}`}
+                            ? "danger"
+                            : "default"
+                      }
+                      isDisabled={
+                        buttonProps.disabled || isLoading || isExecuted
+                      }
+                      onPress={() => handleActionClick(action.id)}
+                      className={`text-xs font-normal ${action.style !== "primary" && action.style !== "danger" ? "text-zinc-400" : ""} ${isExecuted ? "cursor-not-allowed" : ""}`}
                     >
                       {showLoading ? (
                         <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -169,14 +174,14 @@ export const EnhancedNotificationCard = ({
                           {!isExecuted && getActionIcon(action.type)}
                         </>
                       )}
-                    </Button>
+                    </HeroButton>
                   );
                 })}
               </div>
             )}
 
           <span
-            className="inline-block text-[11px] text-zinc-600"
+            className="inline-block text-xs text-zinc-600"
             suppressHydrationWarning
           >
             {formattedDate}

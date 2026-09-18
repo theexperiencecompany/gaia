@@ -1,5 +1,6 @@
 "use client";
 
+import { Tick02Icon } from "@icons";
 import { useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useRef } from "react";
@@ -43,7 +44,7 @@ function TimelinePreview() {
               <div className="h-3 w-px bg-zinc-700" />
             )}
           </div>
-          <span className="text-[10px] text-zinc-400">{label}</span>
+          <span className="text-xs text-zinc-400">{label}</span>
         </div>
       ))}
     </div>
@@ -56,8 +57,8 @@ function StatusCardPreview() {
   return (
     <div className="flex items-center gap-2 w-full">
       <div className="h-2 w-2 rounded-full bg-emerald-400 shrink-0" />
-      <span className="text-[10px] font-medium text-emerald-400">
-        Deployed ✓
+      <span className="flex items-center gap-1 text-xs font-medium text-emerald-400">
+        <Tick02Icon className="size-3.5" /> Deployed
       </span>
     </div>
   );
@@ -78,7 +79,7 @@ function ComparisonTablePreview() {
           {cells.map((cell) => (
             <div
               key={cell}
-              className="flex-1 rounded bg-zinc-800 px-1 py-0.5 text-center text-[10px] text-zinc-400"
+              className="flex-1 rounded bg-zinc-800 px-1 py-0.5 text-center text-xs text-zinc-400"
             >
               {cell}
             </div>
@@ -93,7 +94,7 @@ function ComparisonTablePreview() {
 
 const AVATAR_COLORS = [
   { id: "av1", color: "bg-violet-400" },
-  { id: "av2", color: "bg-cyan-400" },
+  { id: "av2", color: "bg-blue-400" },
   { id: "av3", color: "bg-emerald-400" },
   { id: "av4", color: "bg-amber-400" },
 ];
@@ -104,8 +105,7 @@ function AvatarListPreview() {
       {AVATAR_COLORS.map(({ id, color }, i) => (
         <div
           key={id}
-          className={`h-6 w-6 rounded-full border-2 border-zinc-900 ${color}`}
-          style={{ marginLeft: i === 0 ? 0 : -8 }}
+          className={`h-6 w-6 rounded-full border-2 border-zinc-900 ${color} ${i === 0 ? "ml-0" : "-ml-2"}`}
         />
       ))}
     </div>
@@ -126,7 +126,7 @@ function StepListPreview() {
               {i + 1}
             </span>
           </div>
-          <span className="text-[10px] text-zinc-400">{step}</span>
+          <span className="text-xs text-zinc-400">{step}</span>
         </div>
       ))}
     </div>
@@ -163,7 +163,7 @@ export default function RichResponsesDemo() {
           <span className="text-xs font-medium text-zinc-400 mb-1">
             {card.label}
           </span>
-          <div className="rounded-lg bg-zinc-900 p-2 flex-1 flex items-center justify-center">
+          <div className="rounded-xl bg-zinc-900 p-2 flex-1 flex items-center justify-center">
             {card.preview}
           </div>
         </m.div>

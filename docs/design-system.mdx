@@ -213,7 +213,7 @@ Inline code gets `border-radius: 10px` and `padding: 4px` globally. Use `font-mo
 
 | Context | Class | Size |
 |---------|-------|------|
-| Dark cards, outer | `rounded-2xl` | 16px |
+| Dark cards, outer | `rounded-3xl` | 24px |
 | Dark cards, inner items | `rounded-2xl` or `rounded-xl` | 12px |
 | Images | `rounded-3xl` | 24px |
 | Buttons, inputs | `rounded-md` | 6px |
@@ -221,7 +221,7 @@ Inline code gets `border-radius: 10px` and `padding: 4px` globally. Use `font-mo
 | Context menus | `rounded-xl` | 12px |
 
 <Warning>
-  Never use `rounded-lg` on card containers, that's the Shadcn base radius, visually too small. Cards always use `rounded-2xl`.
+  Never use `rounded-lg` on card containers, that's the Shadcn base radius, visually too small. Chat outer cards always use `rounded-3xl`; inner items and settings surfaces use `rounded-2xl`.
 </Warning>
 
 ---
@@ -265,7 +265,7 @@ const statusClasses = {
 
 export default function MyCard({ title, items, badge }) {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-fit min-w-[400px]">
+    <div className="rounded-3xl bg-zinc-800 p-4 w-fit min-w-[400px]">
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm font-semibold text-zinc-100">{title}</p>
         {badge && (
@@ -295,7 +295,7 @@ export default function MyCard({ title, items, badge }) {
 ### Live preview
 
 <div style={{ background: '#0d0d0d', padding: '28px', borderRadius: '12px', margin: '16px 0' }}>
-  <div style={{ borderRadius: '16px', background: '#27272a', padding: '16px', maxWidth: '380px' }}>
+  <div style={{ borderRadius: '24px', background: '#27272a', padding: '16px', maxWidth: '380px' }}>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
       <span style={{ fontSize: '14px', fontWeight: 600, color: '#f4f4f5', fontFamily: 'Inter, sans-serif' }}>Recent Activity</span>
       <span style={{ borderRadius: '999px', background: 'rgba(63,63,70,0.5)', padding: '2px 10px', fontSize: '12px', color: '#a1a1aa', fontFamily: 'Inter, sans-serif' }}>4 items</span>
@@ -330,11 +330,11 @@ export default function MyCard({ title, items, badge }) {
 
 | Layer | Classes |
 |-------|---------|
-| Outer container | `rounded-2xl bg-zinc-800 p-4 w-fit min-w-[400px]` |
-| Outer (accordion) | `rounded-2xl bg-zinc-800 p-3 py-0` |
+| Outer container | `rounded-3xl bg-zinc-800 p-4 w-fit min-w-[400px]` |
+| Outer (accordion) | `rounded-3xl bg-zinc-800 p-3 py-0` |
 | Inner item | `rounded-2xl bg-zinc-900 p-3` |
 | Inner item compact | `rounded-xl bg-zinc-900 p-3` |
-| Glass variant | `rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl` |
+| Glass variant | `rounded-3xl bg-zinc-800/40 p-4 backdrop-blur-xl` |
 | Section header | `text-sm font-semibold text-zinc-100 mb-3` |
 | Item title | `text-sm font-medium text-zinc-200` |
 | Item title (prominent) | `text-sm font-medium text-zinc-100` |
@@ -345,7 +345,7 @@ export default function MyCard({ title, items, badge }) {
 | Section divider | `<Divider className="bg-zinc-700/50" />` (HeroUI) |
 | Hoverable list item | `p-4 transition-all hover:bg-white/5` |
 
-**Constraints:** Never `border-`, `ring-`, `outline-` anywhere in the card tree. `rounded-2xl` on outer containers always. `zinc-800` outer → `zinc-900` inner is the entire separation mechanism. Status colors always use `/10` opacity backgrounds.
+**Constraints:** Never `border-`, `ring-`, `outline-` anywhere in the card tree. `rounded-3xl` on outer containers always. `zinc-800` outer → `zinc-900` inner is the entire separation mechanism. Status colors always use `/10` opacity backgrounds.
 
 ---
 
@@ -516,7 +516,7 @@ import { cn } from "@/lib/utils";
 
 // cva, for components with multiple visual variants
 import { cva } from "class-variance-authority";
-const cardVariants = cva("rounded-2xl p-4", {
+const cardVariants = cva("rounded-3xl p-4", {
   variants: {
     depth: {
       outer: "bg-zinc-800",
@@ -638,7 +638,7 @@ Global scrollbar is already styled (8px, pill-shaped, zinc-700 thumb). Use `.no-
   <Column>
     **Do**
 
-    - `rounded-2xl` on all outer card containers
+    - `rounded-3xl` on all outer card containers
     - `zinc-800` outer → `zinc-900` inner for card depth
     - `/10` opacity backgrounds for all status colors
     - Import icons from `@icons`

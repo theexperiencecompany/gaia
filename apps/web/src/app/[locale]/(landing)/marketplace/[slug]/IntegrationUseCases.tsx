@@ -142,7 +142,7 @@ export function IntegrationUseCases({ integration }: IntegrationUseCasesProps) {
             className="flex items-start gap-3 text-zinc-300 text-sm"
           >
             <CheckmarkCircleIcon
-              className="mt-0.5 flex-shrink-0 h-5 w-5 text-[#00bbff]"
+              className="mt-0.5 flex-shrink-0 h-5 w-5 text-primary"
               aria-hidden="true"
             />
             {useCase}

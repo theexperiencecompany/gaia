@@ -235,7 +235,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
                     <button
                       type="button"
                       key={event.id}
-                      className="relative flex w-full cursor-pointer items-start gap-2 rounded-lg p-2 pl-5 text-left transition-colors hover:bg-zinc-700/30"
+                      className="relative flex w-full cursor-pointer items-start gap-2 rounded-xl p-2 pl-5 text-left transition-colors hover:bg-zinc-700/30"
                       aria-label={`Event ${event.summary}`}
                       onClick={() => onEventClick?.(event)}
                       style={{

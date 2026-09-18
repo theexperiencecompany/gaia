@@ -89,15 +89,14 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
       onClose={handleClose}
       placement="center"
       size="md"
-      className="shadow-none rounded-2xl"
       backdrop="blur"
       isDismissable={!isLoading}
       isKeyboardDismissDisabled={isLoading}
     >
       <ModalContent>
-        <ModalHeader className="flex flex-col gap-1">
+        <ModalHeader className="flex flex-col">
           <h2 className="text-xl font-semibold">Connect {integrationName}</h2>
-          <p className="text-sm font-normal text-zinc-400">
+          <p className="mt-1 text-sm font-normal text-zinc-400">
             Enter your API key / Bearer Token to connect
           </p>
         </ModalHeader>

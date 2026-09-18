@@ -123,7 +123,7 @@ spacing:
 components:
   card-outer:
     backgroundColor: "{colors.neutral-800}"
-    rounded: "{rounded.xl}"
+    rounded: "{rounded.xxl}"
     padding: "{spacing.lg}"
   card-inner:
     backgroundColor: "{colors.neutral-900}"
@@ -131,11 +131,11 @@ components:
     padding: "{spacing.md}"
   card-glass:
     backgroundColor: "{colors.neutral-800}"
-    rounded: "{rounded.xl}"
+    rounded: "{rounded.xxl}"
     padding: "{spacing.lg}"
   card-hoverable:
     backgroundColor: "{colors.neutral-800}"
-    rounded: "{rounded.xl}"
+    rounded: "{rounded.xxl}"
     padding: "{spacing.lg}"
   button-primary:
     backgroundColor: "{colors.primary}"
@@ -331,7 +331,7 @@ Three families do all the work. **Inter** for every UI surface, **PP Editorial N
 - **Display (PP Editorial New, 48px / 200):** Reserved for landing hero text. Never used inside the product.
 - **Headline scale (Inter, 30 → 14px / 700):** `headline-lg` through `title-sm` map to `<h1>` through `<h6>`.
 - **Body scale (Inter, 16 / 14 / 12px / 400):** Default product text.
-- **Label (Inter, 12px / 500 / uppercase / wider tracking):** Section labels in settings panels and form groups.
+- **Label (Inter, 12px / 500 / uppercase / wider tracking):** Section labels in settings panels and form groups only — dense-data pages use sentence case (see Dense Data Pages).
 - **Code (Anonymous Pro, 14px):** Inline code and code blocks. Inline code gets `border-radius: 10px` and `padding: 4px` globally.
 
 ### Font Families
@@ -359,7 +359,7 @@ h6 → text-sm font-bold
 
 ### Text Patterns
 
-**Uppercase section labels** (settings panels, card headers, form groups):
+**Uppercase section labels** (settings panels / form groups only — dense-data pages use sentence case, see below):
 
 ```tsx
 <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Section Title</p>
@@ -407,7 +407,9 @@ mostly numbers (usage, analytics, billing) — where the difference between
 
 - Hierarchy comes from **weight and tone, not size or case**. Card titles are
   `text-base font-semibold text-white`; supporting copy drops to
-  `text-[13px] text-zinc-500`. Never uppercase-with-letter-spacing labels.
+  `text-[13px] text-zinc-500`. Never uppercase-with-letter-spacing labels
+  on dense-data pages (settings panels / form groups keep uppercase labels
+  per Text Patterns above).
 - Sentence case everywhere — "Usage this month", not "USAGE THIS MONTH".
 - Numbers wear `tabular-nums`, and large counts use compact notation
   (`5.2k`, `300K`) — a stat is a glanceable word, not a paragraph of digits.
@@ -449,7 +451,9 @@ Depth is conveyed through **tonal layering**, not shadows. Cards stack `neutral-
 | Dialogs, sheets | `shadow-lg` |
 | Dark cards (solid) | No shadow — flat design |
 | Dark cards (glass) | `bg-zinc-800/40 backdrop-blur-xl` — semi-transparent + blur |
-| Hover on dark surfaces | `hover:bg-white/5` — subtle white overlay |
+| Hover on dark surfaces (chat + tool surfaces on zinc-800/900) | `hover:bg-white/5` — subtle white overlay |
+
+`hover:bg-zinc-700/50` appears only on workflow/integration marketing cards — intentional divergence, do not migrate.
 
 ### Backdrop Blur Scale
 
@@ -461,14 +465,18 @@ Depth is conveyed through **tonal layering**, not shadows. Cards stack `neutral-
 
 ## Shapes
 
-The shape language is **soft and rounded**. Cards default to `rounded-xl (16px)` for outer containers — large enough to read as a deliberate card, never `rounded-lg` (the Shadcn default which feels cramped). Buttons and inputs use `rounded-md (8px)`. Pills and avatars are fully rounded. Sharp corners (`rounded-none`) are not used anywhere in the product surface.
+The shape language is **soft and rounded**. Chat thread cards use `rounded-3xl (24px)` for outer containers with `rounded-2xl` or `rounded-xl (12px)` inner items — large enough to read as a deliberate card, never `rounded-lg` (the Shadcn default which feels cramped). Buttons and inputs use `rounded-md (8px)`. Pills and avatars are fully rounded. Sharp corners (`rounded-none`) are not used anywhere in the product surface.
+
+Scope split: landing/marketing large sections may also use `rounded-3xl`; settings surfaces keep their own system (`rounded-2xl bg-zinc-900/60`, see Dense Data Pages) — do not rewrite settings to match chat.
 
 ### Decision Table
 
 | Context | Class |
 |---|---|
-| Dark cards — outer | `rounded-2xl` (16px) |
-| Dark cards — inner items | `rounded-2xl` or `rounded-xl` (12px) |
+| Chat thread cards — outer | `rounded-3xl` (24px) |
+| Chat thread cards — inner items | `rounded-2xl` or `rounded-xl` (12px) |
+| Landing/marketing large sections | `rounded-3xl` (24px) — may use |
+| Settings surfaces | Own system: `rounded-2xl bg-zinc-900/60` (see Dense Data Pages) — do not migrate to chat pattern |
 | Images | `rounded-3xl` (24px) |
 | Buttons, inputs | `rounded-md` (6px) |
 | Badges, pills | `rounded-full` |
@@ -482,12 +490,12 @@ GAIA composes from three component families: **Shadcn** (`src/components/ui/`) f
 
 ### Dark Card Styling Contract
 
-Most data cards, tool sections, and info panels follow this two-tone zinc pattern (no borders anywhere). It's the default, not a mandate — a card with a deliberately distinct presentation (e.g. an OS-style notification banner) may diverge when the design calls for it.
+Chat thread cards (data cards, tool sections, info panels in chat) follow this two-tone zinc pattern (no borders anywhere). It's the default, not a mandate — a card with a deliberately distinct presentation (e.g. an OS-style notification banner) may diverge when the design calls for it. Settings surfaces keep their own system (`rounded-2xl bg-zinc-900/60`, see Dense Data Pages) — do not rewrite them to match chat.
 
 | Layer | Classes |
 |---|---|
-| Outer container | `rounded-2xl bg-zinc-800 p-4 w-fit min-w-[400px]` |
-| Outer (accordion variant) | `rounded-2xl bg-zinc-800 p-3 py-0` |
+| Outer container | `rounded-3xl bg-zinc-800 p-4 w-fit min-w-[400px]` |
+| Outer (accordion variant) | `rounded-3xl bg-zinc-800 p-3 py-0` |
 | Inner item | `rounded-2xl bg-zinc-900 p-3` |
 | Inner item (compact) | `rounded-xl bg-zinc-900 p-3` |
 | Section header | `text-sm font-semibold text-zinc-100 mb-3` |
@@ -497,8 +505,8 @@ Most data cards, tool sections, and info panels follow this two-tone zinc patter
 | Meta / timestamp | `text-xs text-zinc-500` |
 | Item spacing | `space-y-2` |
 | Status badge | `rounded-full px-2 py-0.5 text-xs` + status color |
-| Section divider | `<Divider className="bg-zinc-700/50" />` (HeroUI) |
-| Glass variant | `rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl` |
+| Section divider | Theme-default `<Divider />` (or `bg-zinc-700/50` on dark zinc surfaces) |
+| Glass variant | `rounded-3xl bg-zinc-800/40 p-4 backdrop-blur-xl` |
 | Hoverable list item | `p-4 transition-all hover:bg-white/5` (no bg, just overlay on hover) |
 
 ### Card Template
@@ -516,7 +524,7 @@ const statusClasses = {
 
 export default function MyCard({ title, items, badge }) {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-fit min-w-[400px]">
+    <div className="rounded-3xl bg-zinc-800 p-4 w-fit min-w-[400px]">
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm font-semibold text-zinc-100">{title}</p>
         {badge && (
@@ -623,12 +631,14 @@ Error state is driven by `aria-invalid={!!error}` — styling is applied automat
 | State | Classes |
 |---|---|
 | Hover (standard) | `hover:bg-accent` · `hover:bg-primary/90` · `hover:opacity-80` |
-| Hover (dark surface) | `hover:bg-white/5` — subtle white overlay on zinc backgrounds |
+| Hover (dark surface: chat + tool surfaces on zinc-800/900) | `hover:bg-white/5` — subtle white overlay on zinc backgrounds |
 | Focus visible | `focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:border-ring` |
 | Active / press | `active:scale-95` |
 | Disabled | `disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed` |
 | Error | `aria-invalid:ring-destructive/20 aria-invalid:border-destructive` |
 | Hover reveal | `opacity-0 transition-all group-hover:opacity-100` (parent needs `group`) |
+
+`hover:bg-zinc-700/50` appears only on workflow/integration marketing cards — intentional divergence, do not migrate.
 
 ### Loading & Empty States
 
@@ -767,7 +777,7 @@ Use `cva` from `class-variance-authority` for components with multiple visual va
 ```typescript
 import { cva } from "class-variance-authority";
 
-const cardVariants = cva("rounded-2xl p-4", {
+const cardVariants = cva("rounded-3xl p-4", {
   variants: {
     depth: {
       outer: "bg-zinc-800",
@@ -792,7 +802,7 @@ Global scrollbar is already styled (8px, pill-shaped, `zinc-700` thumb). Use `.n
 
 ## New Card Checklist
 
-- [ ] Outer: `rounded-2xl bg-zinc-800 p-4`
+- [ ] Outer: `rounded-3xl bg-zinc-800 p-4` (chat thread cards; settings keep their own `rounded-2xl bg-zinc-900/60` system)
 - [ ] Inner items: `rounded-2xl bg-zinc-900 p-3`
 - [ ] No `border-`, `ring-`, `outline-` anywhere
 - [ ] Icons from `@icons` only

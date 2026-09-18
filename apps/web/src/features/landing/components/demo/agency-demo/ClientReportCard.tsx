@@ -34,7 +34,7 @@ export default function ClientReportCard() {
         <span className="flex-1 text-sm font-medium text-zinc-100">
           Weekly Status Report: TechCorp
         </span>
-        <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-400">
           Draft ready
         </span>
       </div>
@@ -90,7 +90,7 @@ export default function ClientReportCard() {
       </div>
 
       <div className="mt-3 flex items-center gap-2">
-        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] text-primary">
+        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
           cc: project@techcorp.com
         </span>
       </div>

@@ -43,7 +43,7 @@ function renderTriggerSections(
         key={integrationId}
         classNames={{
           base: "mb-1",
-          heading: "px-2 py-1 text-tiny font-medium text-zinc-500",
+          heading: "text-tiny font-medium text-zinc-500",
         }}
         title={formatIntegrationName(integrationId)}
       >
@@ -134,7 +134,7 @@ export function TriggerAutocomplete({
         items={filteredSchemas}
         defaultFilter={() => true}
         classNames={{
-          listboxWrapper: `${Object.keys(groupedTriggers).length > 2 ? "min-h-[300px]" : "h-fit"} p-1`,
+          listboxWrapper: `${Object.keys(groupedTriggers).length > 2 ? "min-h-[300px]" : "h-fit"}`,
         }}
         startContent={
           selectedSchema &&

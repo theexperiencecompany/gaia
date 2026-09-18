@@ -87,7 +87,9 @@ const ACTION_ITEMS: MenuItemConfig[] = [
   {
     id: "upgrade_to_pro",
     label: "Subscribe to GAIA Pro",
-    icon: <CircleArrowUp02Icon width={18} height={18} color="#00bbff" />,
+    icon: (
+      <CircleArrowUp02Icon width={18} height={18} className="text-primary" />
+    ),
     path: "/pricing",
     hideWhenSubscribed: true,
   },
@@ -166,24 +168,23 @@ export const ANIMATION_CONFIG = {
 export const COMMAND_MENU_STYLES = {
   backdrop: "fixed inset-0 bg-black/40 backdrop-blur-md",
   container:
-    "relative w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-800/40 bg-zinc-900/50 backdrop-blur-2xl shadow-2xl",
-  inputWrapper:
-    "flex items-center gap-3 border-b border-zinc-800/30 px-5 py-4 mb-2",
+    "relative w-full max-w-2xl overflow-hidden rounded-2xl bg-zinc-900/50 backdrop-blur-2xl",
+  inputWrapper: "flex items-center gap-3 px-5 py-4 mb-2",
   searchIcon: "h-4 w-4 text-zinc-500",
   input:
     "flex-1 bg-transparent  text-zinc-100 placeholder-zinc-500 outline-none",
   list: "max-h-[400px] overflow-y-auto pb-3 outline-none!",
   empty: "flex h-16 items-center justify-center text-sm text-zinc-500",
-  item: "mx-2 flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-3 text-sm text-zinc-500 transition-all duration-200 hover:bg-zinc-800/40 aria-selected:bg-zinc-800/50 aria-selected:text-zinc-300!",
+  item: "mx-2 flex cursor-pointer items-center gap-3 rounded-xl px-2.5 py-3 text-sm text-zinc-500 transition-all duration-200 hover:bg-zinc-800/40 aria-selected:bg-zinc-800/50 aria-selected:text-zinc-300!",
   separator: "mx-3 h-px bg-zinc-800/50",
   itemShortcut:
-    "inline-flex h-5 items-center gap-0.5 rounded-md bg-zinc-800/50 px-1.5 font-mono text-[10px] font-medium text-zinc-500",
+    "inline-flex h-5 items-center gap-0.5 rounded-md bg-zinc-800/50 px-1.5 font-mono text-xs font-medium text-zinc-500",
   flexOne: "flex-1",
   contentWrapper: "min-w-0 flex-1",
   resultTitle: "truncate text-sm",
   resultSubtitle: "truncate text-xs text-zinc-500",
   resultTitleClamp: "line-clamp-1 truncate text-sm",
-  footer: "border-t border-zinc-800/30 px-5 py-3",
+  footer: "px-5 py-3",
   footerText: "text-xs text-zinc-500",
   modalWrapper: "fixed inset-0 z-50 flex items-start justify-center pt-[20vh]",
   shortcutText: "text-xs",

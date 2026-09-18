@@ -19,19 +19,14 @@ import type { HoloCardDisplayData, HoloCardProps } from "./types";
 import { calculateBackgroundPosition } from "./utils";
 
 // Use CSS `border` not mask-composite: html-to-image drops the mask and downloads it as a filled rectangle.
-const STAMP_BORDER_STYLE: React.CSSProperties = {
-  position: "absolute",
-  inset: 22,
-  border: "4px solid rgba(255, 255, 255, 0.92)",
-  borderRadius: 0,
-  pointerEvents: "none",
-  zIndex: 4,
-  boxSizing: "border-box",
-};
-
 // Module scope so its identity is stable across renders (a component defined
 // inside HoloCard would remount on every render).
-const StampBorder = () => <div aria-hidden style={STAMP_BORDER_STYLE} />;
+const StampBorder = () => (
+  <div
+    aria-hidden
+    className="pointer-events-none absolute inset-[22px] z-[4] box-border rounded-none border-4 border-white/90"
+  />
+);
 
 interface HoloCardFaceProps {
   /** Whether this face renders the back content instead of the front content. */
@@ -39,7 +34,7 @@ interface HoloCardFaceProps {
   /** Static mode (used for PNG download): no Tilt, inactive holo layer. */
   staticMode: boolean;
   data: HoloCardDisplayData;
-  clipStyle: React.CSSProperties;
+  clipUrl: string;
   houseImage: string;
   hover: boolean;
   animated: boolean;
@@ -61,7 +56,7 @@ function HoloCardFace({
   back,
   staticMode,
   data,
-  clipStyle,
+  clipUrl,
   houseImage,
   hover,
   animated,
@@ -135,11 +130,17 @@ function HoloCardFace({
   );
 
   return staticMode ? (
-    <div className="relative h-full w-full" style={clipStyle}>
+    <div
+      className="relative h-full w-full [clip-path:var(--holo-clip)] [-webkit-clip-path:var(--holo-clip)]"
+      style={{ "--holo-clip": clipUrl } as React.CSSProperties}
+    >
       {face}
     </div>
   ) : (
-    <Tilt className="relative h-full w-full p-0!" style={clipStyle}>
+    <Tilt
+      className="relative h-full w-full p-0! [clip-path:var(--holo-clip)] [-webkit-clip-path:var(--holo-clip)]"
+      style={{ "--holo-clip": clipUrl } as React.CSSProperties}
+    >
       {face}
     </Tilt>
   );
@@ -232,7 +233,6 @@ export const HoloCard = ({
       }
     : {
         perspective: "1000px",
-        cursor: "pointer",
       };
 
   const innerStyle = forceSide
@@ -253,11 +253,9 @@ export const HoloCard = ({
     ? {
         display: forceSide === "front" ? "block" : "none",
         position: "absolute" as const,
-        inset: 0,
       }
     : {
         position: "absolute" as const,
-        inset: 0,
         backfaceVisibility: "hidden" as const,
         WebkitBackfaceVisibility: "hidden" as const,
       };
@@ -266,12 +264,10 @@ export const HoloCard = ({
     ? {
         display: forceSide === "back" ? "block" : "none",
         position: "absolute" as const,
-        inset: 0,
         transform: "none", // Crucial: No rotation for static back view
       }
     : {
         position: "absolute" as const,
-        inset: 0,
         backfaceVisibility: "hidden" as const,
         WebkitBackfaceVisibility: "hidden" as const,
         transform: "rotateY(180deg)",
@@ -281,15 +277,11 @@ export const HoloCard = ({
   const clipId = useId();
   const clipUrl = `url(#${clipId})`;
   const clipTransform = `scale(${width / STAMP_NATURAL_HEIGHT} ${height / STAMP_NATURAL_WIDTH}) translate(${STAMP_NATURAL_HEIGHT} 0) rotate(90)`;
-  const clipStyle: React.CSSProperties = {
-    clipPath: clipUrl,
-    WebkitClipPath: clipUrl,
-  };
 
   const faceProps = {
     staticMode: Boolean(forceSide),
     data,
-    clipStyle,
+    clipUrl,
     houseImage,
     hover,
     animated,
@@ -308,7 +300,7 @@ export const HoloCard = ({
   return (
     <button
       type="button"
-      className={`block w-full text-left ${forceSide ? "" : "perspective-1000"}`}
+      className={`block w-full text-left ${forceSide ? "" : "[perspective:1000px] cursor-pointer"}`}
       onClick={handleCardClick}
       style={containerStyle}
     >
@@ -332,12 +324,12 @@ export const HoloCard = ({
         style={innerStyle}
       >
         {/* Front Side */}
-        <div style={frontStyle}>
+        <div className="absolute inset-0" style={frontStyle}>
           <HoloCardFace {...faceProps} back={false} />
         </div>
 
         {/* Back Side */}
-        <div style={backStyle}>
+        <div className="absolute inset-0" style={backStyle}>
           <HoloCardFace {...faceProps} back={true} />
         </div>
       </div>

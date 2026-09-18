@@ -34,7 +34,7 @@ export default function DemoChatTab({ label, active }: DemoChatTabProps) {
       onBlur={() => setButtonHovered(false)}
     >
       <Button
-        className={`w-full justify-start px-2 text-sm font-light ${active ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
+        className={`w-full justify-start text-sm font-light ${active ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
         size="sm"
         variant={active ? "flat" : "light"}
       >

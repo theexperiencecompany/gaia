@@ -80,7 +80,7 @@ export default function SidebarTopButtons() {
         href="/c"
         size="sm"
         variant="light"
-        className="w-full justify-start gap-2 text-sm text-zinc-400 hover:text-zinc-300"
+        className="w-full justify-start text-sm text-zinc-400 hover:text-zinc-300"
         startContent={<ChevronLeft className="size-4" />}
       >
         Back to chats
@@ -120,7 +120,6 @@ export default function SidebarTopButtons() {
           return (
             <div key={route + label} className="relative">
               <Tooltip
-                className="rounded-xl"
                 showArrow
                 content={
                   shortcut ? (
@@ -142,7 +141,7 @@ export default function SidebarTopButtons() {
                   variant={isRouteActive(route) ? "flat" : "light"}
                   // color={isRouteActive(route) ? "primary" : "default"}
                   color={"default"}
-                  className={`group-topbtns focus-visible:outline-none w-full justify-start text-sm ${isRouteActive(route) ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
+                  className={`group/topbtns w-full justify-start text-sm ${isRouteActive(route) ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
                   as={Link}
                   href={route}
                   onPress={() => {
@@ -154,7 +153,7 @@ export default function SidebarTopButtons() {
                 >
                   <div className="flex w-full items-center gap-2">
                     <div className="flex w-[17px] min-w-[17px] items-center justify-center">
-                      <span className="group-topbtns-hover:text-white text-xs">
+                      <span className="group-hover/topbtns:text-white text-xs">
                         {React.cloneElement(icon, {
                           width: 18,
                           height: 18,

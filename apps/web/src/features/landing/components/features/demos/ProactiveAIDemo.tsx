@@ -87,13 +87,7 @@ export default function ProactiveAIDemo() {
               }}
               onMouseEnter={() => setHoveredIndex(index)}
               onMouseLeave={() => setHoveredIndex(null)}
-              className="flex items-start gap-2 py-1.5 px-2 rounded-lg transition-all duration-150 cursor-default"
-              style={{
-                borderLeft:
-                  hoveredIndex === index
-                    ? "2px solid rgb(34 211 238)"
-                    : "2px solid transparent",
-              }}
+              className={`flex items-start gap-2 py-1.5 px-2 rounded-lg transition-all duration-150 cursor-default border-l-2 ${hoveredIndex === index ? "border-primary" : "border-transparent"}`}
             >
               <item.icon className="size-3.5 text-zinc-400 shrink-0 mt-0.5" />
               <span className="text-xs text-zinc-300 leading-relaxed">

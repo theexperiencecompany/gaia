@@ -22,38 +22,29 @@ function TodoItemSkeleton() {
     <div className="w-full p-2 pl-3 pt-6">
       <div className="flex items-start gap-3">
         {/* Checkbox */}
-        <Skeleton className="mt-1 h-5 w-5 rounded-full bg-zinc-700" />
+        <Skeleton className="mt-1 h-5 w-5 rounded-full" />
         {/* Content */}
         <div className="min-w-0 flex-1">
-          <Skeleton className="h-5 w-3/5 bg-zinc-700" />
-          <Skeleton className="mt-2 h-3 w-2/5 bg-zinc-700" />
+          <Skeleton className="h-5 w-3/5" />
+          <Skeleton className="mt-2 h-3 w-2/5" />
           <div className="mt-3 flex flex-wrap items-center gap-1">
-            <Skeleton className="h-6 w-24 rounded-lg bg-zinc-700" />
-            <Skeleton className="h-6 w-20 rounded-lg bg-zinc-700" />
-            <Skeleton className="h-6 w-16 rounded-lg bg-zinc-700" />
-            <Skeleton className="h-6 w-28 rounded-lg bg-zinc-700" />
-            <Skeleton className="h-6 w-14 rounded-lg bg-zinc-700" />
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="h-6 w-20" />
+            <Skeleton className="h-6 w-16" />
+            <Skeleton className="h-6 w-28" />
+            <Skeleton className="h-6 w-14" />
           </div>
         </div>
         {/* Workflow category icons — matches real 22x22 in min-w-7 containers */}
         <div className="flex min-h-8 items-center -space-x-1.5 self-center">
-          <div
-            className="relative flex min-w-7 items-center justify-center"
-            style={{ rotate: "8deg" }}
-          >
-            <Skeleton className="h-[22px] w-[22px] rounded-md bg-zinc-700" />
+          <div className="relative flex min-w-7 items-center justify-center rotate-8">
+            <Skeleton className="h-[22px] w-[22px]" />
           </div>
-          <div
-            className="relative flex min-w-7 items-center justify-center"
-            style={{ rotate: "-8deg" }}
-          >
-            <Skeleton className="h-[22px] w-[22px] rounded-md bg-zinc-700" />
+          <div className="relative flex min-w-7 items-center justify-center -rotate-8">
+            <Skeleton className="h-[22px] w-[22px]" />
           </div>
-          <div
-            className="relative flex min-w-7 items-center justify-center"
-            style={{ rotate: "8deg" }}
-          >
-            <Skeleton className="h-[22px] w-[22px] rounded-md bg-zinc-700" />
+          <div className="relative flex min-w-7 items-center justify-center rotate-8">
+            <Skeleton className="h-[22px] w-[22px]" />
           </div>
         </div>
       </div>

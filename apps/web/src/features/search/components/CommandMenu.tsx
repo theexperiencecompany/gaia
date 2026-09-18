@@ -135,11 +135,7 @@ function MenuSectionsList({
           {sectionIndex > 0 && showSeparators && (
             <Command.Separator className={COMMAND_MENU_STYLES.separator} />
           )}
-          <Command.Group
-            heading={section.heading}
-            className="pt-1! pb-3!"
-            style={{ padding: 0 }}
-          >
+          <Command.Group heading={section.heading} className="pt-1! pb-3! p-0">
             {section.items.map((item) => (
               <Command.Item
                 key={item.id}

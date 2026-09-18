@@ -42,7 +42,7 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
     <div className="mx-2 mt-4 mb-2">
       <div className="flex items-center justify-between rounded-xl bg-zinc-800 p-2">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/20">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10">
             <SquareLock01Icon className="h-4 w-4 text-red-400" />
           </div>
           <div>

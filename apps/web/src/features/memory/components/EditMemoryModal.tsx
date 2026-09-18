@@ -52,9 +52,9 @@ export function EditMemoryModal({
   return (
     <Modal isOpen={memory !== null} onClose={onClose} size="lg">
       <ModalContent>
-        <ModalHeader className="flex-col gap-1">
+        <ModalHeader className="flex flex-col">
           <span>Edit memory</span>
-          <span className="text-xs font-normal text-zinc-500">
+          <span className="mt-1 text-xs font-normal text-zinc-500">
             Saving keeps the previous version in this memory's history
           </span>
         </ModalHeader>
@@ -74,12 +74,12 @@ export function EditMemoryModal({
           />
         </ModalBody>
         <ModalFooter>
-          <Button variant="light" className="rounded-xl" onPress={onClose}>
+          <Button variant="light" radius="md" onPress={onClose}>
             Cancel
           </Button>
           <Button
             color="primary"
-            className="rounded-xl"
+            radius="md"
             onPress={handleSave}
             isLoading={isPending}
             isDisabled={!content.trim() || content.length > MAX_MEMORY_LENGTH}

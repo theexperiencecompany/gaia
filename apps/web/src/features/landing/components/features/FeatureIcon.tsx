@@ -248,7 +248,7 @@ export function FeatureIcon({
 }: FeatureIconProps) {
   const Icon = ICON_MAP[name] ?? ZapIcon;
   return (
-    <span style={{ color, display: "flex", alignItems: "center" }}>
+    <span className="flex items-center" style={{ color }}>
       <Icon size={size} />
     </span>
   );

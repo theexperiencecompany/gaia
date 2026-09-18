@@ -1,4 +1,5 @@
 import { Button } from "@heroui/button";
+import { Divider } from "@heroui/divider";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { CalendarAdd01Icon, Tick02Icon } from "@icons";
 import { useMemo, useState } from "react";
@@ -241,76 +242,76 @@ export default function CalendarEventSection({
 
   return (
     <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">
-      <ScrollShadow className="mt-2 max-h-[400px] space-y-3">
-        {Object.entries(eventsByDate).map(([dateString, events]) => (
-          <div key={dateString} className="space-y-3">
-            <div className="relative flex items-center">
-              <div className="flex-1 border-t border-zinc-700" />
-              <span className="px-3 text-xs text-zinc-500">
-                {formatDateWithRelative(dateString)}
-              </span>
-              <div className="flex-1 border-t border-zinc-700" />
-            </div>
+      <ScrollShadow className="mt-2 max-h-[400px]">
+        <div className="space-y-3">
+          {Object.entries(eventsByDate).map(([dateString, events]) => (
+            <div key={dateString} className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Divider className="flex-1" />
+                <span className="px-3 text-xs text-zinc-500">
+                  {formatDateWithRelative(dateString)}
+                </span>
+                <Divider className="flex-1" />
+              </div>
 
-            <div className="space-y-2">
-              {events.map(({ event, index, isSameDay }) => {
-                if (isSameDay) {
-                  const sameDayEvent = event as SameDayEvent;
-                  const eventColor = sameDayEvent.background_color || "#00bbff";
-                  return (
-                    <div
-                      key={`same-${sameDayEvent.id}`}
-                      className="relative flex items-start gap-2 rounded-lg p-3 pl-5 transition-colors hover:bg-zinc-700/50"
-                      style={{ backgroundColor: `${eventColor}20` }}
-                    >
-                      <div className="absolute top-0 left-1 flex h-full items-center">
-                        <div
-                          className="h-[80%] w-1 flex-shrink-0 rounded-full"
-                          style={{ backgroundColor: eventColor }}
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-base leading-tight text-white">
-                          {sameDayEvent.summary}
+              <div className="space-y-2">
+                {events.map(({ event, index, isSameDay }) => {
+                  if (isSameDay) {
+                    const sameDayEvent = event as SameDayEvent;
+                    const eventColor =
+                      sameDayEvent.background_color || "#00bbff";
+                    return (
+                      <div
+                        key={`same-${sameDayEvent.id}`}
+                        className="relative flex items-start gap-2 rounded-xl p-3 pl-5 transition-colors hover:bg-zinc-700/50"
+                        style={{ backgroundColor: `${eventColor}20` }}
+                      >
+                        <div className="absolute top-0 left-1 flex h-full items-center">
+                          <div
+                            className="h-[80%] w-1 flex-shrink-0 rounded-full"
+                            style={{ backgroundColor: eventColor }}
+                          />
                         </div>
-                        <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
-                          <span>{getDisplayTime(sameDayEvent)}</span>
-                          {sameDayEvent.calendarTitle && (
-                            <>
-                              <span className="text-zinc-500">•</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-base leading-tight text-white">
+                            {sameDayEvent.summary}
+                          </div>
+                          <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
+                            <span>{getDisplayTime(sameDayEvent)}</span>
+                            {sameDayEvent.calendarTitle && (
                               <span>{sameDayEvent.calendarTitle}</span>
-                            </>
-                          )}
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    );
+                  }
+
+                  const status = eventStatuses[index!] || "idle";
+                  // Get background_color from the original calendar_option
+                  const originalOption = calendar_options[index!];
+                  const eventColor =
+                    originalOption?.background_color || "#00bbff";
+
+                  return (
+                    <EventCard
+                      key={index}
+                      eventColor={eventColor}
+                      status={status}
+                      variant="action"
+                      buttonColor="primary"
+                      completedLabel="Added"
+                      icon={CalendarAdd01Icon}
+                      onAction={() => handleAdd(event as CalendarEvent, index!)}
+                    >
+                      <EventContent event={event as CalendarEvent} />
+                    </EventCard>
                   );
-                }
-
-                const status = eventStatuses[index!] || "idle";
-                // Get background_color from the original calendar_option
-                const originalOption = calendar_options[index!];
-                const eventColor =
-                  originalOption?.background_color || "#00bbff";
-
-                return (
-                  <EventCard
-                    key={index}
-                    eventColor={eventColor}
-                    status={status}
-                    variant="action"
-                    buttonColor="primary"
-                    completedLabel="Added"
-                    icon={CalendarAdd01Icon}
-                    onAction={() => handleAdd(event as CalendarEvent, index!)}
-                  >
-                    <EventContent event={event as CalendarEvent} />
-                  </EventCard>
-                );
-              })}
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </ScrollShadow>
 
       {calendarEvents.length > 1 && (

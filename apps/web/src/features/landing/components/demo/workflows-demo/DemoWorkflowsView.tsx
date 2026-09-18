@@ -147,7 +147,8 @@ function DemoWorkflowCard({
               color="primary"
               size="sm"
               variant={variant === "user" ? "flat" : "solid"}
-              className={`font-medium rounded-xl ${variant === "user" ? "text-primary" : ""}`}
+              radius="md"
+              className={`font-medium ${variant === "user" ? "text-primary" : ""}`}
               endContent={
                 variant !== "user" ? (
                   <ZapIcon width={16} height={16} />

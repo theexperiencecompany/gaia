@@ -52,7 +52,7 @@ export default function RecurrenceFieldChip({
                 fullWidth
                 radius="lg"
                 aria-pressed={isOptionSelected}
-                className={`justify-start gap-2 px-3 text-sm ${
+                className={`justify-start text-sm ${
                   isOptionSelected ? "text-zinc-200" : "text-zinc-500"
                 }`}
                 startContent={

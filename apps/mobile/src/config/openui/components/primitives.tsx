@@ -3,10 +3,16 @@ import { type Text as RNText, View } from "react-native";
 import { Text } from "@/components/ui/text";
 
 /**
- * Card styling primitives for OpenUI components, mirroring the web contract:
- * outer `rounded-2xl bg-zinc-800 p-4`, inner `rounded-2xl bg-zinc-900 p-3`,
- * header `text-sm font-semibold text-zinc-100 mb-3`, body `text-sm font-medium
- * text-zinc-200`, muted `text-xs text-zinc-400`. Cards render full width.
+ * Card styling primitives for OpenUI components.
+ *
+ * Mirrors the web card contract:
+ *   outer:  rounded-3xl bg-zinc-800 p-4
+ *   inner:  rounded-2xl bg-zinc-900 p-3
+ *   header: text-sm font-semibold text-zinc-100 mb-3
+ *   body:   text-sm font-medium text-zinc-200
+ *   muted:  text-xs text-zinc-400
+ *
+ * All OpenUI cards render at full width and let the parent constrain horizontal space.
  */
 
 interface CardProps {
@@ -16,7 +22,7 @@ interface CardProps {
 
 export function Card({ children, className }: CardProps) {
   return (
-    <View className={`rounded-2xl bg-zinc-800 p-4 w-full ${className ?? ""}`}>
+    <View className={`rounded-3xl bg-zinc-800 p-4 w-full ${className ?? ""}`}>
       {children}
     </View>
   );

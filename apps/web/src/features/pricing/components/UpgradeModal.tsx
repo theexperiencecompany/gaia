@@ -86,32 +86,32 @@ export function UpgradeModal() {
       hideCloseButton={!dismissible}
       backdrop="blur"
       scrollBehavior="inside"
-      className="outline-none"
       classNames={{
         wrapper: dismissible ? "overflow-hidden" : undefined,
-        closeButton:
-          "text-zinc-400 hover:text-white hover:bg-zinc-800 top-3 right-3",
+        closeButton: "text-zinc-400 hover:text-white top-3 right-3",
       }}
     >
-      <ModalContent className={dismissible ? undefined : "p-4"}>
-        {dismissible ? (
-          <UpgradeModalPlanPicker
-            offerMessage={offerMessage}
-            discountBanner={discountBanner}
-            plans={plans}
-          />
-        ) : (
-          <UpgradeModalOffer
-            offerMessage={offerMessage}
-            discountBanner={discountBanner}
-            copy={copy}
-            proPlan={proPlan}
-            isConfirming={isConfirming}
-            checkoutPhase={checkoutPhase}
-            onSubscribe={handleSubscribe}
-            onLogout={logout}
-          />
-        )}
+      <ModalContent>
+        <div className={dismissible ? undefined : "p-4"}>
+          {dismissible ? (
+            <UpgradeModalPlanPicker
+              offerMessage={offerMessage}
+              discountBanner={discountBanner}
+              plans={plans}
+            />
+          ) : (
+            <UpgradeModalOffer
+              offerMessage={offerMessage}
+              discountBanner={discountBanner}
+              copy={copy}
+              proPlan={proPlan}
+              isConfirming={isConfirming}
+              checkoutPhase={checkoutPhase}
+              onSubscribe={handleSubscribe}
+              onLogout={logout}
+            />
+          )}
+        </div>
       </ModalContent>
     </Modal>
   );

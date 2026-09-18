@@ -20,7 +20,7 @@ import {
 // Shown in place of the running spinner so the tree explains why a step is stuck on HIL approval.
 export function WaitingForApprovalPill() {
   return (
-    <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-amber-400">
+    <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-amber-400">
       <ShieldAlertIcon width={13} height={13} />
       Waiting for approval
     </span>
@@ -47,7 +47,7 @@ function ApprovalOutcomeChip({ status }: Readonly<{ status: ApprovalStatus }>) {
       size="sm"
       variant="flat"
       color={chip.color}
-      className="ml-2 h-5 text-[10px]"
+      className="ml-2 h-5 text-xs"
     >
       {chip.label}
     </Chip>
@@ -66,7 +66,7 @@ function ToolCallIcon({
   if (isSkill) {
     return (
       <div className="relative rounded-lg p-1">
-        <div className="absolute inset-0 rounded-lg bg-lime-500/20 backdrop-blur" />
+        <div className="absolute inset-0 rounded-lg bg-lime-400/20 backdrop-blur" />
         <PuzzleIcon width={21} height={21} className="relative text-lime-400" />
       </div>
     );
@@ -125,7 +125,7 @@ function ToolCallHeader({
         {approvalStatus && <ApprovalOutcomeChip status={approvalStatus} />}
       </div>
       {hasCategoryText && (
-        <p className="text-[11px] text-zinc-600 leading-tight">
+        <p className="text-xs text-zinc-600 leading-tight">
           {display.secondaryLabel}
         </p>
       )}
@@ -153,7 +153,7 @@ function ToolCallDetails({
           transition={expandTransition}
           className="overflow-hidden"
         >
-          <div className="mt-2 space-y-2 text-[11px] bg-zinc-800/50 rounded-xl p-3 mb-3 w-fit">
+          <div className="mt-2 space-y-2 bg-zinc-800/50 rounded-xl p-3 mb-3 w-fit text-xs">
             {display.hasInputs && (
               <div className="flex flex-col">
                 <span className="text-zinc-500 font-medium mb-1">Input</span>

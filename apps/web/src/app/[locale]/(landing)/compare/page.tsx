@@ -122,10 +122,7 @@ export default async function ComparisonsHubPage({ params }: PageProps) {
                   className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
                 >
                   <div className="flex items-center -space-x-2">
-                    <div
-                      className="relative flex h-9 w-9 items-center justify-center p-0"
-                      style={{ rotate: "-9deg", zIndex: 1 }}
-                    >
+                    <div className="relative flex h-9 w-9 items-center justify-center p-0 -rotate-9 z-1">
                       <Image
                         src="/images/logos/macos.webp"
                         alt="GAIA"
@@ -133,10 +130,7 @@ export default async function ComparisonsHubPage({ params }: PageProps) {
                         height={50}
                       />
                     </div>
-                    <div
-                      className="relative flex h-8 w-8 items-center justify-center rounded-md overflow-hidden p-0"
-                      style={{ rotate: "9deg", zIndex: 0 }}
-                    >
+                    <div className="relative flex h-8 w-8 items-center justify-center rounded-md overflow-hidden p-0 rotate-9 z-0">
                       <Image
                         src={`https://www.google.com/s2/favicons?domain=${comparison.domain}&sz=128`}
                         alt={comparison.name}

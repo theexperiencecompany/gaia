@@ -12,6 +12,7 @@ import {
   Tag01Icon,
 } from "@icons";
 import { formatDistanceToNow } from "date-fns";
+import type { CSSProperties } from "react";
 import { Priority, type Project, type Todo } from "@/types/features/todoTypes";
 import { formatDate } from "@/utils/date/dateUtils";
 
@@ -54,7 +55,13 @@ function TodoPriorityChip({ priority }: { priority: Todo["priority"] }) {
         size="sm"
         variant="flat"
         radius="sm"
-        className={`px-2 ${PRIORITY_CHIP_CLASS[priority]}`}
+        className={
+          priority === Priority.HIGH
+            ? "text-red-400 bg-red-400/10"
+            : priority === Priority.MEDIUM
+              ? "text-yellow-400 bg-yellow-400/10"
+              : "text-blue-400 bg-blue-400/10"
+        }
         startContent={<Flag02Icon width={15} height={15} className="mx-1" />}
       >
         {capitalize(priority)}
@@ -77,7 +84,7 @@ export function TodoItemMeta({
     <div className="mt-2 flex flex-wrap items-center gap-1">
       {todo.due_date && (
         <Chip
-          className="flex items-center text-zinc-400 px-1"
+          className="flex items-center text-zinc-400"
           size="sm"
           radius="sm"
           color={dueChipColor(isToday, isOverdue)}
@@ -92,7 +99,7 @@ export function TodoItemMeta({
 
       {todo.scheduled_at && (
         <Chip
-          className="flex items-center text-zinc-400 px-1"
+          className="flex items-center text-zinc-400"
           size="sm"
           radius="sm"
           color="primary"
@@ -105,7 +112,7 @@ export function TodoItemMeta({
 
       {todo.expires_at && (
         <Chip
-          className="flex items-center text-zinc-400 px-1"
+          className="flex items-center text-zinc-400"
           size="sm"
           radius="sm"
           color="warning"
@@ -123,7 +130,7 @@ export function TodoItemMeta({
 
       {todo.vfs_path && (
         <Chip
-          className="flex items-center text-primary px-1"
+          className="flex items-center text-primary"
           size="sm"
           radius="sm"
           color="primary"
@@ -138,9 +145,9 @@ export function TodoItemMeta({
         <Chip
           size="sm"
           variant="flat"
-          className=" text-zinc-400 px-1"
+          className="text-zinc-400 text-(--todo-project-color)"
           radius="sm"
-          style={{ color: todoProject.color }}
+          style={{ "--todo-project-color": todoProject.color } as CSSProperties}
           startContent={
             <Folder02Icon width={15} height={15} className="mx-1" />
           }
@@ -155,7 +162,7 @@ export function TodoItemMeta({
             key={label}
             size="sm"
             variant="flat"
-            className="flex items-center text-zinc-400 px-1"
+            className="flex items-center text-zinc-400"
             radius="sm"
             startContent={<Tag01Icon width={17} height={17} className="mx-1" />}
           >
@@ -171,7 +178,7 @@ export function TodoItemMeta({
         <Chip
           size="sm"
           variant="flat"
-          className=" text-zinc-400 px-1"
+          className="text-zinc-400"
           radius="sm"
           startContent={
             <CheckmarkCircle02Icon width={15} height={15} className="mx-1" />

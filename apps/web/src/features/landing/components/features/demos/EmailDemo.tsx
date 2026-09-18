@@ -31,7 +31,7 @@ function DraftReplyCard() {
           height: 16,
           showBackground: false,
         })}
-        <span className="text-[11px] font-medium text-zinc-400">
+        <span className="text-xs font-medium text-zinc-400">
           Draft reply ready to send
         </span>
       </div>
@@ -96,7 +96,7 @@ function EmailSummaryCard() {
           height: 16,
           showBackground: false,
         })}
-        <span className="text-[11px] font-medium text-zinc-400">
+        <span className="text-xs font-medium text-zinc-400">
           Top 3 unread emails
         </span>
       </div>
@@ -108,7 +108,7 @@ function EmailSummaryCard() {
                 {email.sender}
               </span>
               {email.urgency === "urgent" && (
-                <span className="text-[10px] font-medium rounded-full bg-red-400/10 text-red-400 px-2 py-0.5">
+                <span className="text-xs font-medium rounded-full bg-red-400/10 text-red-400 px-2 py-0.5">
                   Urgent
                 </span>
               )}

@@ -1,8 +1,15 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 
-import { ArrowUp02Icon, BubbleChatIcon, LinkSquare02Icon } from "@icons";
+import {
+  ArrowUp02Icon,
+  ArrowUpRight01Icon,
+  BubbleChatIcon,
+  LinkSquare02Icon,
+} from "@icons";
+import Link from "next/link";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { RedditPostData } from "@/types/features/redditTypes";
 
@@ -60,36 +67,34 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
   };
 
   return (
-    <div className="group w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-800 text-white transition-[border-color,box-shadow] hover:border-orange-600/50 hover:shadow-lg hover:shadow-orange-600/10">
+    <div className="group w-full max-w-2xl overflow-hidden rounded-3xl bg-zinc-800 text-white">
       <div className="space-y-3 p-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             {/* Subreddit & Author */}
             <div className="mb-1.5 flex items-center gap-2 text-xs">
-              <span className="font-semibold text-[#FF4500]">
+              <span className="font-semibold text-orange-500">
                 {post.subreddit}
               </span>
-              <span className="text-gray-500">•</span>
-              <span className="text-gray-400">u/{post.author}</span>
-              <span className="text-gray-500">•</span>
-              <span className="text-gray-500">
+              <span className="text-zinc-400">u/{post.author}</span>
+              <span className="text-zinc-500">
                 {formatTime(post.created_utc)}
               </span>
             </div>
 
             {/* Title */}
             {post.permalink ? (
-              <a
+              <Link
                 href={`https://reddit.com${post.permalink}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block cursor-pointer"
               >
-                <h3 className="text-base leading-snug font-semibold text-white transition-colors group-hover:text-[#FF4500]">
+                <h3 className="text-base leading-snug font-semibold text-white transition-colors group-hover:text-orange-500">
                   {post.title}
                 </h3>
-              </a>
+              </Link>
             ) : (
               <h3 className="text-base leading-snug font-semibold text-white">
                 {post.title}
@@ -102,7 +107,8 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
             <Chip
               size="sm"
               variant="flat"
-              className="flex-shrink-0 bg-blue-900/30 text-xs text-blue-300"
+              color="primary"
+              className="text-xs text-blue-400"
             >
               {post.link_flair_text}
             </Chip>
@@ -111,53 +117,57 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
 
         {/* Content Preview */}
         {post.selftext && (
-          <p className="line-clamp-3 text-sm leading-relaxed text-gray-300">
+          <p className="line-clamp-3 text-sm leading-relaxed text-zinc-300">
             {post.selftext}
           </p>
         )}
 
         {/* Link Preview */}
         {!post.is_self && post.url && (
-          <a
+          <Link
             href={post.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300"
+            className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-400"
           >
             <LinkSquare02Icon className="h-3 w-3" />
             <span className="truncate">{post.url}</span>
-          </a>
+          </Link>
         )}
 
         {/* Footer Stats */}
         <div className="flex items-center gap-4 pt-2">
           {/* Upvotes */}
           <div className="flex items-center gap-1.5 text-sm">
-            <ArrowUp02Icon height={18} width={18} className="text-[#FF4500]" />
-            <span className="font-medium text-[#FF4500]">
+            <ArrowUp02Icon height={18} width={18} className="text-orange-500" />
+            <span className="font-medium text-orange-500 tabular-nums">
               {formatNumber(post.score)}
             </span>
             {post.upvote_ratio && (
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-zinc-500 tabular-nums">
                 ({Math.round(post.upvote_ratio * 100)}%)
               </span>
             )}
           </div>
 
           {/* Comments */}
-          <div className="flex items-center gap-1.5 text-sm text-gray-400">
+          <div className="flex items-center gap-1.5 text-sm text-zinc-400">
             <BubbleChatIcon className="h-4 w-4" />
-            <span>{formatNumber(post.num_comments)}</span>
+            <span className="tabular-nums">
+              {formatNumber(post.num_comments)}
+            </span>
           </div>
 
           {/* Open Link */}
-          <button
-            type="button"
-            onClick={handleOpenPost}
-            className="ml-auto text-xs text-gray-400 transition-colors hover:text-[#FF4500]"
+          <Button
+            variant="light"
+            size="sm"
+            onPress={handleOpenPost}
+            endContent={<ArrowUpRight01Icon className="h-3.5 w-3.5" />}
+            className="ml-auto text-xs text-zinc-400"
           >
-            View on Reddit →
-          </button>
+            View on Reddit
+          </Button>
         </div>
       </div>
     </div>

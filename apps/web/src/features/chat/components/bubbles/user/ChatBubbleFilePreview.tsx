@@ -22,16 +22,16 @@ const ChatBubbleFilePreview: React.FC<ChatBubbleFilePreviewProps> = ({
         {files.map((file) => (
           <div
             key={file.fileId}
-            className={`group/filetype group ${file?.type?.startsWith("image/") ? "flex max-h-[300px] w-[300px] flex-col items-center justify-center overflow-hidden rounded-xl" : "flex w-fit items-center rounded-xl bg-zinc-700 p-3 text-white"}`}
+            className={`group/filetype group ${file?.type?.startsWith("image/") ? "flex max-h-[320px] w-fit max-w-full flex-col items-center justify-center overflow-hidden rounded-xl" : "flex w-fit items-center rounded-xl bg-zinc-700 p-3 text-white"}`}
           >
             {file?.type?.startsWith("image/") ? (
-              <div className="w-full overflow-hidden">
+              <div className="flex max-h-[320px] w-fit max-w-full items-center justify-center overflow-hidden">
                 <Image
                   src={file.url}
                   alt={file.filename}
                   width={1000}
                   height={1000}
-                  className="h-auto w-full object-cover"
+                  className="h-auto max-h-[320px] w-auto max-w-full rounded-xl object-contain"
                 />
               </div>
             ) : (

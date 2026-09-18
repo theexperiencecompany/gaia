@@ -125,9 +125,7 @@ export default function ChatBubbleBot(
         <div className="relative">
           {showAvatar && <BotBubbleAvatar delaySeconds={logoDelay} />}
 
-          <div
-            className={`chatbubblebot_parent ${hideAvatar ? "" : "pl-10.75"}`}
-          >
+          <div className={`${hideAvatar ? "" : "pl-10.75"}`}>
             <div className="flex w-full flex-col gap-2">
               {memory_data && onOpenMemoryModal && (
                 <MemoryIndicator

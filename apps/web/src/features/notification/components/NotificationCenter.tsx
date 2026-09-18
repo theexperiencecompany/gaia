@@ -84,7 +84,7 @@ export function NotificationCenter({
               isInvisible={unreadCount === 0}
               // pointer-events-none lets the bell underneath capture hover/press;
               // select-none keeps the count from being text-selected.
-              classNames={{ badge: "pointer-events-none select-none border-0" }}
+              classNames={{ badge: "pointer-events-none select-none" }}
             >
               <SidebarHeaderButton
                 aria-label="Notifications"
@@ -96,7 +96,7 @@ export function NotificationCenter({
           </div>
         </PopoverTrigger>
 
-        <PopoverContent className="mr-4 w-96 rounded-2xl border-1 border-zinc-700 bg-zinc-800 p-0 shadow-xl">
+        <PopoverContent className="mr-4 w-96">
           <Tabs
             selectedKey={activeTab}
             onSelectionChange={(key) => setActiveTab(key as "unread" | "all")}
@@ -112,7 +112,7 @@ export function NotificationCenter({
                   placement="top-right"
                   content={unreadCount > 99 ? "99+" : unreadCount}
                   isInvisible={unreadCount === 0}
-                  classNames={{ badge: "select-none border-0" }}
+                  classNames={{ badge: "select-none" }}
                 >
                   {/* right padding gives the corner-anchored count room so it
                       sits after the label instead of overlapping it */}

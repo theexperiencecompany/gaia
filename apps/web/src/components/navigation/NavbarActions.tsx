@@ -36,14 +36,14 @@ export function NavbarActions({
           });
         }}
       >
-        <Button className="group rounded-xl border-0! bg-black/60 hover:bg-black/40 text-white">
+        <Button variant="secondary" className="group text-white">
           <div className="flex items-center">
             <Github className="mr-1 size-4 fill-white" />
             <span className="ml-1 lg:hidden">Star</span>
             <span className="ml-1 hidden lg:inline">GitHub</span>
           </div>
           <div className="flex items-center gap-1 text-sm">
-            <StarFilledIcon className="relative top-px size-4 text-white group-hover:text-yellow-300" />
+            <StarFilledIcon className="relative top-px size-4 text-white group-hover:text-amber-400" />
             <NumberFlow
               value={stars}
               className="font-medium text-white tabular-nums"
@@ -56,7 +56,7 @@ export function NavbarActions({
       <Link href={isAuthenticated ? "/c" : "/signup"}>
         <RaisedButton
           size={"sm"}
-          className="rounded-xl text-black!"
+          className="rounded-xl"
           color="#00bbff"
           onClick={() => {
             trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {

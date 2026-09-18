@@ -1,5 +1,7 @@
 "use client";
 
+import { Avatar } from "@heroui/avatar";
+import { Button } from "@heroui/button";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import {
   Calendar01Icon,
@@ -7,7 +9,6 @@ import {
   LinkIcon,
   MapsIcon,
 } from "@icons";
-import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { format, parseISO } from "date-fns";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { TwitterIcon } from "@/components/shared/icons";
@@ -47,7 +48,7 @@ function TwitterUserCard({
   };
 
   return (
-    <div className="group relative flex w-full flex-col gap-3 rounded-xl border border-default-200 bg-content1/50 p-4 backdrop-blur-sm transition-colors hover:border-default-300 hover:bg-content1/70">
+    <div className="group relative flex w-full flex-col gap-3 rounded-2xl bg-zinc-900 p-3 transition-colors hover:bg-zinc-900/70">
       {/* Card-level action as a stretched overlay button: the card contains a
           nested Follow button, so the card itself cannot be a <button>. The
           overlay covers everything; ONLY the Follow button is raised above it,
@@ -63,16 +64,11 @@ function TwitterUserCard({
       {/* Header Row — unraised so it stays click-through to the overlay. */}
       <div className="relative flex items-start justify-between">
         <div className="flex items-start gap-3">
-          <Avatar className="h-12 w-12 shrink-0 rounded-full overflow-hidden">
-            <AvatarImage
-              src={user.profile_image_url}
-              alt={user.name}
-              className="h-full w-full object-cover"
-            />
-            <AvatarFallback className="flex h-full w-full items-center justify-center bg-primary/10 text-primary text-lg font-semibold">
-              {user.name?.[0]?.toUpperCase() || "?"}
-            </AvatarFallback>
-          </Avatar>
+          <Avatar
+            src={user.profile_image_url}
+            name={user.name}
+            className="h-12 w-12 shrink-0"
+          />
 
           <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-1">
@@ -80,7 +76,7 @@ function TwitterUserCard({
                 {user.name}
               </span>
               {user.verified && (
-                <CheckmarkBadge02Icon className="h-4 w-4 text-[#1d9bf0] shrink-0" />
+                <CheckmarkBadge02Icon className="h-4 w-4 text-primary shrink-0" />
               )}
             </div>
             <span className="text-xs text-default-500">@{user.username}</span>
@@ -88,13 +84,16 @@ function TwitterUserCard({
         </div>
 
         {onFollow && (
-          <button
-            type="button"
-            onClick={() => onFollow(user.id)}
-            className="relative z-20 rounded-full bg-foreground text-background px-4 py-1.5 text-sm font-semibold hover:bg-foreground/90 transition-colors"
+          <Button
+            color="primary"
+            variant="flat"
+            size="sm"
+            radius="full"
+            className="relative z-20"
+            onPress={() => onFollow(user.id)}
           >
             Follow
-          </button>
+          </Button>
         )}
       </div>
 
@@ -116,7 +115,7 @@ function TwitterUserCard({
         {user.url && (
           <div className="flex items-center gap-1">
             <LinkIcon className="h-3.5 w-3.5" />
-            <span className="text-[#1d9bf0] hover:underline truncate max-w-[150px]">
+            <span className="text-primary hover:underline truncate max-w-[150px]">
               {user.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
             </span>
           </div>
@@ -164,7 +163,7 @@ export default function TwitterUserSection({
   title?: string;
   onFollow?: (userId: string) => void;
   backgroundColor?: string;
-  maxHeight?: string;
+  maxHeight?: "max-h-[400px]" | "max-h-[500px]";
   isCollapsible?: boolean;
 }) {
   if (!twitter_user_data || twitter_user_data.length === 0) {
@@ -180,10 +179,16 @@ export default function TwitterUserSection({
       className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-white`}
     >
       {/* Twitter User List */}
-      <ScrollShadow className={`${maxHeight} flex flex-col gap-2`}>
-        {twitter_user_data.map((user) => (
-          <TwitterUserCard key={user.id} user={user} onFollow={onFollow} />
-        ))}
+      <ScrollShadow
+        className={
+          maxHeight === "max-h-[500px]" ? "max-h-[500px]" : "max-h-[400px]"
+        }
+      >
+        <div className="flex flex-col gap-2">
+          {twitter_user_data.map((user) => (
+            <TwitterUserCard key={user.id} user={user} onFollow={onFollow} />
+          ))}
+        </div>
       </ScrollShadow>
     </div>
   );

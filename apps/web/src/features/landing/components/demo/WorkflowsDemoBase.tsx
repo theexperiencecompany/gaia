@@ -76,10 +76,10 @@ export function WorkflowsDemoBase({
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1"
+                  className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1"
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                  <span className="text-[11px] font-medium text-emerald-400">
+                  <span className="text-xs font-medium text-emerald-400">
                     Completed
                   </span>
                 </m.div>
@@ -92,7 +92,7 @@ export function WorkflowsDemoBase({
                   className="flex items-center gap-1.5 rounded-full bg-primary/15 px-2.5 py-1"
                 >
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-                  <span className="text-[11px] font-medium text-primary">
+                  <span className="text-xs font-medium text-primary">
                     Running
                   </span>
                 </m.div>
@@ -129,20 +129,18 @@ export function WorkflowsDemoBase({
                     >
                       {step.label}
                     </span>
-                    <span className="text-[11px] text-zinc-600">
-                      {step.detail}
-                    </span>
+                    <span className="text-xs text-zinc-600">{step.detail}</span>
                     {isDone && (
                       <m.span
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="text-[11px] font-medium text-emerald-400"
+                        className="text-xs font-medium text-emerald-400"
                       >
                         Done
                       </m.span>
                     )}
                     {isRunning && (
-                      <span className="animate-pulse text-[11px] font-medium text-primary">
+                      <span className="animate-pulse text-xs font-medium text-primary">
                         Running
                       </span>
                     )}

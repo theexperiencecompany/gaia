@@ -330,7 +330,7 @@ export default function WorkflowSection({
       <div
         className={
           hideBg
-            ? "border-0! bg-transparent! shadow-0! outline-0!"
+            ? "border-0! bg-transparent! shadow-none! outline-0!"
             : "border-zinc-700 bg-zinc-800"
         }
       >
@@ -339,10 +339,10 @@ export default function WorkflowSection({
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="flex items-start gap-3">
-                  <Skeleton className="mt-1 h-6 w-6 rounded-full bg-zinc-600" />
+                  <Skeleton className="mt-1 h-6 w-6 rounded-full" />
                   <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-40 bg-zinc-600" />
-                    <Skeleton className="h-3 w-32 bg-zinc-600" />
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-32" />
                   </div>
                 </div>
               ))}

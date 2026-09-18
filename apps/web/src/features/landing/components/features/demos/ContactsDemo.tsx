@@ -39,7 +39,7 @@ function ContactCard() {
             </div>
           </div>
           <div className="flex shrink-0 gap-1.5">
-            <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-medium text-red-400">
+            <span className="flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-400">
               {getToolCategoryIcon("gmail", {
                 width: 10,
                 height: 10,
@@ -47,7 +47,7 @@ function ContactCard() {
               })}
               Gmail
             </span>
-            <span className="flex items-center gap-1 rounded-full bg-orange-500/15 px-2 py-0.5 text-[10px] font-medium text-orange-400">
+            <span className="flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-xs font-medium text-orange-400">
               {getToolCategoryIcon("hubspot", {
                 width: 10,
                 height: 10,
@@ -59,13 +59,13 @@ function ContactCard() {
         </div>
         <div className="mt-3 space-y-1.5">
           <div className="flex items-center gap-2">
-            <span className="w-12 text-[11px] text-zinc-500">Email</span>
+            <span className="w-12 text-xs text-zinc-500">Email</span>
             <span className="text-xs text-zinc-300">
               alex.chen@acmecorp.com
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-12 text-[11px] text-zinc-500">Phone</span>
+            <span className="w-12 text-xs text-zinc-500">Phone</span>
             <span className="text-xs text-zinc-300">+1 (415) 555-0142</span>
           </div>
         </div>

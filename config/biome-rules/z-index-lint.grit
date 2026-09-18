@@ -1,0 +1,20 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Stacking audit only: z-[...] or z-100|200 outside overlay / sheet / modal /
+// tooltip / dropdown / menu / popover files. INFO severity, list only — do NOT
+// change stacking (functional). Triage overlay-file hits out of the list.
+//
+// GritQL notes: matches JsxAttribute() nodes (bare `className=$x` snippets do
+// not match in this engine). Regexes use non-capturing (?:...) groups only.
+JsxAttribute() as $node where {
+  $node <: or {
+    r"[\s\S]*z-\[[\s\S]*\][\s\S]*",
+    r"[\s\S]*z-(?:100|200)[^0-9][\s\S]*"
+  },
+  register_diagnostic(
+    span = $node,
+    message = "Stacking audit (warn-only, do not change): z-[...]/z-100/z-200 outside overlay files. Listed for review, not for fixing.",
+    severity = "info"
+  )
+}

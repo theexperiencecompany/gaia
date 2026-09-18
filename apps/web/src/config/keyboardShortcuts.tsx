@@ -47,7 +47,7 @@ export function ShortcutKeysDisplay({
   size?: "sm" | "md";
 }) {
   const displayKeys = parseDisplayKeys(keys);
-  const kbdClass = `${size === "sm" ? "text-[10px]" : ""} rounded-sm`;
+  const kbdClass = size === "sm" ? "text-xs" : undefined;
 
   if (displayKeys.length === 1)
     return <Kbd className={kbdClass}>{displayKeys[0]}</Kbd>;

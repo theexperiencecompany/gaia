@@ -58,7 +58,6 @@ function statusChip(granted: boolean, known: boolean) {
       variant="flat"
       color="success"
       classNames={{
-        base: "bg-success/15",
         content: "text-xs text-emerald-400",
       }}
     >
@@ -69,7 +68,7 @@ function statusChip(granted: boolean, known: boolean) {
       size="sm"
       variant="flat"
       color="danger"
-      classNames={{ base: "bg-red-500/15", content: "text-xs text-red-400" }}
+      classNames={{ content: "text-xs text-red-400" }}
     >
       Not granted
     </Chip>
@@ -150,7 +149,7 @@ export function DesktopPermissions() {
                 <Button
                   size="sm"
                   variant="flat"
-                  className="rounded-xl"
+                  radius="md"
                   onPress={() => {
                     handleRequest(row);
                   }}
@@ -163,7 +162,7 @@ export function DesktopPermissions() {
                   size="sm"
                   variant="flat"
                   color="primary"
-                  className="rounded-xl"
+                  radius="md"
                   onPress={() => getElectronAPI()?.relaunchDesktopApp()}
                 >
                   Restart GAIA

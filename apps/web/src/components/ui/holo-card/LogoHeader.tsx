@@ -26,11 +26,7 @@ export const LogoHeader: React.FC<LogoHeaderProps> = ({
           className="object-contain"
         />
         <span
-          className={`${textSize} tracking-wide text-white`}
-          style={{
-            fontFamily: "var(--font-aeonik), system-ui, sans-serif",
-            fontWeight: 700,
-          }}
+          className={`${textSize} font-serif font-bold tracking-wide text-white`}
         >
           GAIA
         </span>

@@ -3,7 +3,6 @@
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Link } from "@heroui/link";
-import { Snippet } from "@heroui/snippet";
 import {
   BookOpen01Icon,
   CheckmarkCircle02Icon,
@@ -12,6 +11,7 @@ import {
 } from "@icons";
 import { type ReactNode, useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import CopyButton from "@/components/ui/CopyButton";
 import { devicesApi } from "@/features/devices/api/devicesApi";
 import { PAIRING_CODE_LENGTH } from "@/features/devices/constants";
 import { useBridge } from "@/features/devices/hooks/useBridge";
@@ -43,9 +43,9 @@ function StepCard({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-2xl bg-zinc-900 p-3">
+    <div className="rounded-3xl bg-zinc-800 p-4">
       <div className="flex items-center gap-2">
-        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-[11px] font-medium text-zinc-400 tabular-nums">
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-xs font-medium text-zinc-400 tabular-nums">
           {index}
         </span>
         <p className="text-sm font-medium text-zinc-100">{title}</p>
@@ -57,15 +57,10 @@ function StepCard({
 
 function CommandSnippet({ command }: { command: string }) {
   return (
-    <Snippet
-      hideSymbol
-      variant="flat"
-      size="sm"
-      codeString={command}
-      className="w-full bg-zinc-800 text-zinc-200"
-    >
+    <div className="flex w-full items-center justify-between gap-2 rounded-2xl bg-zinc-900 p-3">
       <span className="truncate font-mono text-xs">{command}</span>
-    </Snippet>
+      <CopyButton textToCopy={command} variant="flat" size="sm" />
+    </div>
   );
 }
 

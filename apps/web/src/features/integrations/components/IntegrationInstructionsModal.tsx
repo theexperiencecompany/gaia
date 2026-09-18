@@ -146,10 +146,9 @@ export const IntegrationInstructionsModal = ({
       size="2xl"
       backdrop="blur"
       scrollBehavior="inside"
-      className="rounded-2xl border border-zinc-800 bg-zinc-900/95 outline-0 backdrop-blur-3xl"
     >
       <ModalContent>
-        <ModalHeader className="flex gap-3">
+        <ModalHeader className="flex">
           <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-zinc-800">
             <IntegrationIcon
               integrationId={integration.id}
@@ -158,7 +157,7 @@ export const IntegrationInstructionsModal = ({
               size={26}
             />
           </div>
-          <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="ml-3 flex min-w-0 flex-col gap-0.5">
             <span className="text-lg font-semibold text-zinc-100">
               Custom instructions for {integration.name}
             </span>
@@ -170,58 +169,55 @@ export const IntegrationInstructionsModal = ({
           </div>
         </ModalHeader>
 
-        <ModalBody className="gap-3">
-          <Tabs
-            aria-label="Instructions editor"
-            selectedKey={tab}
-            onSelectionChange={(key) => setTab(String(key))}
-            variant="solid"
-            classNames={{
-              tabList: "bg-zinc-800/60",
-              cursor: "bg-zinc-700",
-              panel: "px-0 pb-0 pt-2",
-            }}
-          >
-            <Tab key="write" title="Write">
-              <MentionEditor
-                value={value}
-                onChange={setValue}
-                toolNames={toolNames}
-                renderMentionIcon={renderMentionIcon}
-                maxLength={MAX_CHARS}
-                placeholder={`e.g. Focus on #eng, #design, and #pm.\nNever post to #general.\nDefault to a friendly, concise tone.`}
-              />
+        <ModalBody>
+          <div className="flex flex-col gap-3">
+            <Tabs
+              aria-label="Instructions editor"
+              selectedKey={tab}
+              onSelectionChange={(key) => setTab(String(key))}
+              variant="solid"
+            >
+              <Tab key="write" title="Write">
+                <MentionEditor
+                  value={value}
+                  onChange={setValue}
+                  toolNames={toolNames}
+                  renderMentionIcon={renderMentionIcon}
+                  maxLength={MAX_CHARS}
+                  placeholder={`e.g. Focus on #eng, #design, and #pm.\nNever post to #general.\nDefault to a friendly, concise tone.`}
+                />
 
-              <div className="mt-2 flex items-center justify-between text-xs font-light text-zinc-500">
-                <span>
-                  {canMention
-                    ? "Type @ to mention a tool"
-                    : "Markdown supported"}
-                </span>
-                <span>
-                  {value.length} / {MAX_CHARS}
-                </span>
-              </div>
-            </Tab>
+                <div className="mt-2 flex items-center justify-between text-xs font-light text-zinc-500">
+                  <span>
+                    {canMention
+                      ? "Type @ to mention a tool"
+                      : "Markdown supported"}
+                  </span>
+                  <span>
+                    {value.length} / {MAX_CHARS}
+                  </span>
+                </div>
+              </Tab>
 
-            <Tab key="preview" title="Preview">
-              <div className="min-h-60 rounded-2xl bg-zinc-800/50 p-4">
-                {value.trim() ? (
-                  <MarkdownRenderer
-                    content={previewContent}
-                    className="text-sm"
-                    components={previewComponents}
-                    extraLinkProtocols={MENTION_PROTOCOLS}
-                  />
-                ) : (
-                  <p className="py-12 text-center text-sm text-zinc-500">
-                    Nothing to preview yet — switch to Write and add some
-                    guidance.
-                  </p>
-                )}
-              </div>
-            </Tab>
-          </Tabs>
+              <Tab key="preview" title="Preview">
+                <div className="min-h-60 rounded-2xl bg-zinc-800/50 p-4">
+                  {value.trim() ? (
+                    <MarkdownRenderer
+                      content={previewContent}
+                      className="text-sm"
+                      components={previewComponents}
+                      extraLinkProtocols={MENTION_PROTOCOLS}
+                    />
+                  ) : (
+                    <p className="py-12 text-center text-sm text-zinc-500">
+                      Nothing to preview yet — switch to Write and add some
+                      guidance.
+                    </p>
+                  )}
+                </div>
+              </Tab>
+            </Tabs>
+          </div>
         </ModalBody>
 
         <ModalFooter>

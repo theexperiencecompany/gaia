@@ -32,62 +32,65 @@ export default function RedditCreatedCard({
 
   const content = (
     <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-3 text-white">
-      <ScrollShadow className="max-h-[400px] divide-y divide-gray-700">
-        {allItems.map((item) => (
-          <div key={item.data.id} className="space-y-3 p-3">
-            <div className="flex items-center gap-2">
-              <CheckmarkCircle02Icon className="h-5 w-5 text-green-400" />
-              <span className="text-sm font-semibold text-green-400">
-                {item.type === "post"
-                  ? "Post Created Successfully!"
-                  : "Comment Posted Successfully!"}
-              </span>
-              <Chip
-                size="sm"
-                variant="flat"
-                className="ml-auto bg-green-900/30 text-xs text-green-300"
-              >
-                Just now
-              </Chip>
-            </div>
-
-            <div className="text-sm text-gray-300">{item.data.message}</div>
-
-            <div className="flex items-center justify-between pt-2">
-              {item.data.id && (
-                <div className="text-xs text-gray-500">
-                  ID:{" "}
-                  <span className="font-mono text-gray-400">
-                    {item.data.id}
-                  </span>
-                </div>
-              )}
-
-              {item.data.permalink && (
-                <Link
-                  href={`https://reddit.com${item.data.permalink}`}
-                  target="_blank"
-                  className="ml-auto flex items-center gap-1.5 text-xs text-[#FF4500] transition-colors hover:text-orange-300"
+      <ScrollShadow className="max-h-[400px]">
+        <div className="divide-y divide-zinc-800">
+          {allItems.map((item) => (
+            <div key={item.data.id} className="space-y-3 p-3">
+              <div className="flex items-center gap-2">
+                <CheckmarkCircle02Icon className="h-5 w-5 text-emerald-400" />
+                <span className="text-sm font-semibold text-emerald-400">
+                  {item.type === "post"
+                    ? "Post Created Successfully!"
+                    : "Comment Posted Successfully!"}
+                </span>
+                <Chip
+                  size="sm"
+                  variant="flat"
+                  color="success"
+                  className="ml-auto text-xs text-emerald-400"
                 >
-                  View on Reddit
-                  <LinkSquare02Icon className="h-3.5 w-3.5" />
-                </Link>
-              )}
-              {item.type === "post" &&
-                !item.data.permalink &&
-                (item.data as RedditPostCreatedData).url && (
+                  Just now
+                </Chip>
+              </div>
+
+              <div className="text-sm text-zinc-300">{item.data.message}</div>
+
+              <div className="flex items-center justify-between pt-2">
+                {item.data.id && (
+                  <div className="text-xs text-zinc-500">
+                    ID:{" "}
+                    <span className="font-mono text-zinc-400 tabular-nums">
+                      {item.data.id}
+                    </span>
+                  </div>
+                )}
+
+                {item.data.permalink && (
                   <Link
-                    href={(item.data as RedditPostCreatedData).url || ""}
+                    href={`https://reddit.com${item.data.permalink}`}
                     target="_blank"
-                    className="ml-auto flex items-center gap-1.5 text-xs text-[#FF4500] transition-colors hover:text-orange-300"
+                    className="ml-auto flex items-center gap-1.5 text-xs text-orange-500 transition-colors hover:text-orange-400"
                   >
                     View on Reddit
                     <LinkSquare02Icon className="h-3.5 w-3.5" />
                   </Link>
                 )}
+                {item.type === "post" &&
+                  !item.data.permalink &&
+                  (item.data as RedditPostCreatedData).url && (
+                    <Link
+                      href={(item.data as RedditPostCreatedData).url || ""}
+                      target="_blank"
+                      className="ml-auto flex items-center gap-1.5 text-xs text-orange-500 transition-colors hover:text-orange-400"
+                    >
+                      View on Reddit
+                      <LinkSquare02Icon className="h-3.5 w-3.5" />
+                    </Link>
+                  )}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </ScrollShadow>
     </div>
   );

@@ -22,7 +22,7 @@ function RoadmapCard() {
           <div key={milestone.id} className="flex items-start gap-3">
             <div className="flex flex-col items-center">
               <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-400/10">
-                <span className="text-[10px] font-semibold text-emerald-400">
+                <span className="text-xs font-semibold text-emerald-400">
                   {index + 1}
                 </span>
               </div>

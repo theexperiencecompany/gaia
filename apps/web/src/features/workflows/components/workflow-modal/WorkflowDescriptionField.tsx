@@ -154,7 +154,7 @@ export default function WorkflowDescriptionField({
           size="sm"
           variant="light"
           color="primary"
-          className="h-7 px-2 text-xs"
+          className="h-7 text-xs"
           startContent={!isGenerating && <SparklesIcon className="h-4 w-4" />}
           isLoading={isGenerating}
           isDisabled={isGenerating || !canGenerate}

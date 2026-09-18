@@ -79,13 +79,11 @@ export default function WorkflowHeader({
               placeholder={
                 mode === "edit" ? "Workflow name" : "Name your workflow"
               }
-              variant="flat"
+              variant="underlined"
               classNames={{
                 base: "min-w-0 flex-1",
                 input:
-                  "text-2xl font-semibold text-white placeholder:font-normal placeholder:text-zinc-600 focus:outline-none focus-visible:outline-none",
-                inputWrapper:
-                  "h-auto min-h-0 border-none bg-transparent px-0 py-0 shadow-none outline-none ring-0 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus=true]:shadow-none group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
+                  "text-2xl font-semibold text-white placeholder:font-normal placeholder:text-zinc-600",
               }}
               isRequired
               isInvalid={!!errors.title}
@@ -104,7 +102,6 @@ export default function WorkflowHeader({
                 variant="flat"
                 color={isActivated ? "success" : "default"}
                 classNames={{
-                  base: isActivated ? "bg-success/15" : "bg-zinc-800",
                   content: "text-xs font-medium",
                 }}
               >
@@ -210,12 +207,9 @@ export default function WorkflowHeader({
             placeholder="Add a short description..."
             minRows={1}
             maxRows={2}
-            variant="flat"
+            variant="underlined"
             classNames={{
-              input:
-                "resize-none text-sm text-zinc-300 focus:outline-none focus-visible:outline-none",
-              inputWrapper:
-                "border-none bg-transparent px-0 py-0 shadow-none outline-none ring-0 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus=true]:shadow-none group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
+              input: "resize-none text-sm text-zinc-300",
             }}
             isInvalid={!!errors.description}
             errorMessage={errors.description?.message}

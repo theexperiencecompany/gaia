@@ -93,7 +93,7 @@ export default function NotificationListSection({
 
   if (localNotifications.length === 0) {
     return (
-      <div className="mx-auto mb-3 w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300">
+      <div className="mx-auto mb-3 w-full rounded-3xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300">
         <Accordion variant="light" defaultExpandedKeys={["notifications"]}>
           <AccordionItem
             key="notifications"
@@ -123,7 +123,7 @@ export default function NotificationListSection({
   }
 
   return (
-    <div className="mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300">
+    <div className="mx-auto w-full rounded-3xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300">
       <Accordion variant="light" defaultExpandedKeys={["notifications"]}>
         <AccordionItem
           key="notifications"
@@ -135,19 +135,16 @@ export default function NotificationListSection({
                 <span className="text-sm font-medium">{title}</span>
               </div>
               {localNotifications.length > 0 && (
-                <Chip
-                  className="bg-zinc-700 text-zinc-300"
-                  size="sm"
-                  variant="flat"
-                >
+                <Chip className="text-zinc-300" size="sm" variant="flat">
                   {localNotifications.length}
                 </Chip>
               )}
               {unreadNotifications.length > 0 && (
                 <Chip
-                  className="bg-blue-900/30 text-blue-400"
+                  className="text-blue-400"
                   size="sm"
                   variant="flat"
+                  color="primary"
                 >
                   {unreadNotifications.length} unread
                 </Chip>

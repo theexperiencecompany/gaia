@@ -61,7 +61,7 @@ function GitHubPRSummaryCard() {
             showBackground: false,
           })}
         </div>
-        <span className="text-[11px] font-medium text-zinc-400">
+        <span className="text-xs font-medium text-zinc-400">
           3 open pull requests
         </span>
       </div>
@@ -78,7 +78,7 @@ function GitHubPRSummaryCard() {
                 </p>
               </div>
               <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${pr.statusBg} ${pr.statusColor}`}
+                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${pr.statusBg} ${pr.statusColor}`}
               >
                 {pr.status}
               </span>

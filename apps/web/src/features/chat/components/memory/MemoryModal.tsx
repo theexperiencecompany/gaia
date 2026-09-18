@@ -20,7 +20,6 @@ export default function MemoryModal({ isOpen, onClose }: MemoryModalProps) {
       isDismissable={true}
       backdrop="blur"
       classNames={{
-        body: "py-6",
         base: "z-[50]", // Lower z-index than child modal
         wrapper: "z-[50]", // Lower z-index than child modal
       }}
@@ -29,8 +28,10 @@ export default function MemoryModal({ isOpen, onClose }: MemoryModalProps) {
         {(onClose) => (
           <>
             <ModalBody>
-              <div className="font-bold">Your Memories</div>
-              <MemoryManagement autoFetch={isOpen} />
+              <div className="py-6">
+                <div className="font-bold">Your Memories</div>
+                <MemoryManagement autoFetch={isOpen} />
+              </div>
             </ModalBody>
 
             <ModalFooter>

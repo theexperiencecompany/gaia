@@ -41,7 +41,7 @@ export default function TableOfContents({ headings }: TableOfContentsProps) {
 
   return (
     <nav aria-label="Table of contents" className="sticky top-28 w-56">
-      <p className="mb-3 text-[11px] font-medium uppercase tracking-widest text-zinc-600">
+      <p className="mb-3 text-xs font-medium uppercase tracking-widest text-zinc-600">
         On this page
       </p>
       <ul className="space-y-0.5">
@@ -61,7 +61,7 @@ export default function TableOfContents({ headings }: TableOfContentsProps) {
                   }
                 }}
                 className={cn(
-                  "block border-l py-1 text-[13px] leading-snug transition-colors duration-150",
+                  "block border-l py-1 text-xs leading-snug transition-colors duration-150",
                   heading.level === 1
                     ? "pl-3"
                     : heading.level === 2

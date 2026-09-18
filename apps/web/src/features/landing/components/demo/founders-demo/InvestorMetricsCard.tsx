@@ -15,16 +15,16 @@ export default function InvestorMetricsCard() {
           height: 16,
           showBackground: false,
         })}
-        <span className="text-[11px] font-medium text-zinc-400">
+        <span className="text-xs font-medium text-zinc-400">
           Live metrics pulled from Google Sheets
         </span>
       </div>
       <div className="grid grid-cols-3 gap-2.5">
         {METRICS.map((m) => (
           <div key={m.label} className="rounded-xl bg-zinc-900 p-2.5">
-            <p className="text-[10px] text-zinc-500">{m.label}</p>
+            <p className="text-xs text-zinc-500">{m.label}</p>
             <p className="text-sm font-medium text-white">{m.value}</p>
-            <p className="mt-0.5 text-[10px] text-emerald-400">
+            <p className="mt-0.5 text-xs text-emerald-400">
               {m.positive
                 ? m.label === "Churn"
                   ? `\u2193${m.change}`

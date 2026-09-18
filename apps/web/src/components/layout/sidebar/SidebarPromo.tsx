@@ -38,7 +38,7 @@ export function SidebarPromo({ price, copy, onUpgrade }: SidebarPromoProps) {
 
   return (
     <div
-      className={`flex flex-col justify-center transition-all duration-200 group/pricingsidebar ${isCollapsed ? "w-full px-1 mb-2 mt-1" : "mb-2 h-fit w-fit rounded-2xl bg-zinc-800 p-4 pt-1"}`}
+      className={`flex flex-col justify-center transition-all duration-200 group/pricingsidebar group ${isCollapsed ? "w-full px-1 mb-2 mt-1" : "mb-2 h-fit w-fit rounded-2xl bg-zinc-800 p-4 pt-1"}`}
     >
       {!isCollapsed && (
         <>
@@ -49,7 +49,7 @@ export function SidebarPromo({ price, copy, onUpgrade }: SidebarPromoProps) {
               variant="light"
               size="sm"
               radius="full"
-              className="p-0! text-zinc-400 hover:text-white relative left-3 group-hover/pricingsidebar:opacity-100 opacity-0 transition"
+              className="text-zinc-400 hover:text-white relative left-3 group-hover:opacity-100 opacity-0 transition"
               onPress={() => handleCollapse()}
             >
               <CancelIcon width={15} height={15} />
@@ -60,7 +60,7 @@ export function SidebarPromo({ price, copy, onUpgrade }: SidebarPromoProps) {
       )}
 
       <RaisedButton
-        className={`w-full rounded-xl! text-black! ${isCollapsed ? "" : "mt-2"}`}
+        className={`w-full rounded-xl! ${isCollapsed ? "" : "mt-2"}`}
         color="#00bbff"
         size={"sm"}
         onClick={onUpgrade}

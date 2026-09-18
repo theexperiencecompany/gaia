@@ -52,15 +52,13 @@ export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
                   key={author.name}
                   author={author}
                   avatarClassName={
-                    isLarge
-                      ? "h-8 w-8 cursor-help border-2 border-zinc-700"
-                      : "h-6 w-6 cursor-help border-2 border-zinc-700"
+                    isLarge ? "h-8 w-8 cursor-help" : "h-6 w-6 cursor-help"
                   }
                 />
               ),
             )}
             {!isLarge && blog.authors.length > 3 && (
-              <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-zinc-700 bg-zinc-700 text-xs text-zinc-300">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-700 text-xs text-zinc-300">
                 +{blog.authors.length - 3}
               </div>
             )}

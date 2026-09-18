@@ -16,7 +16,7 @@ export function InfoTip({ text }: { text: string }) {
       delay={150}
       closeDelay={0}
       classNames={{
-        content: "max-w-64 bg-zinc-800 text-xs text-zinc-300 shadow-xl",
+        content: "max-w-64 text-xs text-zinc-300",
       }}
     >
       <span className="cursor-default text-zinc-600 transition-colors hover:text-zinc-400">

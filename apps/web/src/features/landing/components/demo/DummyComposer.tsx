@@ -12,7 +12,6 @@ import {
 import { twMerge } from "cn";
 import type React from "react";
 import { useRef, useState } from "react";
-import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -94,9 +93,11 @@ const DummyComposer: React.FC<{
         {/* Integration Banner - uses searchbar class to match composer width */}
         {!hideIntegrationBanner && (
           <Button
-            className="searchbar absolute -top-4 z-0 flex h-fit rounded-full bg-zinc-800/40 px-4 py-2 pb-8 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400"
+            variant="flat"
+            radius="full"
             onPress={handleIntegrationsClick}
             aria-label="Connect your tools to GAIA"
+            className="absolute -top-4 z-0 flex h-fit text-xs text-foreground-300 hover:text-zinc-400"
           >
             <div className="flex w-full items-center justify-between">
               <span className="text-xs">Connect your tools to GAIA</span>
@@ -140,8 +141,6 @@ const DummyComposer: React.FC<{
               ref={textareaRef}
               autoFocus
               classNames={{
-                inputWrapper:
-                  "px-3 data-[hover=true]:bg-zinc-800 group-data-[focus-visible=true]:ring-zinc-800 group-data-[focus-visible=true]:ring-offset-0 shadow-none",
                 innerWrapper: "items-center",
                 input: "font-light",
               }}
@@ -154,7 +153,7 @@ const DummyComposer: React.FC<{
               onKeyDown={handleKeyPress}
               endContent={
                 <div className="flex items-center gap-1 text-xs text-nowrap text-foreground-500">
-                  <Kbd className="bg-zinc-700">/</Kbd>
+                  <Kbd>/</Kbd>
                   for tools
                 </div>
               }
@@ -167,9 +166,11 @@ const DummyComposer: React.FC<{
               {/* Add Context Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <ShadcnButton
-                    size="icon"
-                    className="group relative h-9 w-9 rounded-full border-none bg-zinc-700 p-0 hover:bg-zinc-600/90"
+                  <Button
+                    isIconOnly
+                    radius="full"
+                    variant="flat"
+                    className="group relative h-9 w-9"
                     aria-label="Add context or attach files"
                   >
                     <PlusSignIcon className="min-h-[23px] min-w-[23px] text-zinc-400!" />
@@ -177,13 +178,9 @@ const DummyComposer: React.FC<{
                       className="absolute -top-0 -right-0 h-2 w-2 rounded-full bg-primary opacity-0 transition"
                       aria-hidden="true"
                     />
-                  </ShadcnButton>
+                  </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  side="top"
-                  className="w-fit gap-2 rounded-xl border-none bg-zinc-900 p-1 text-white outline-2! outline-zinc-800!"
-                >
+                <DropdownMenuContent align="end" side="top" className="w-fit">
                   <Tooltip
                     content={
                       <div className="max-w-[270px]">
@@ -193,8 +190,8 @@ const DummyComposer: React.FC<{
                     color="foreground"
                     radius="sm"
                   >
-                    <DropdownMenuItem className="cursor-pointer rounded-lg px-3 py-2 focus:bg-zinc-800 focus:text-white">
-                      <div className="flex w-full items-center justify-between gap-3">
+                    <DropdownMenuItem className="cursor-pointer">
+                      <div className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2">
                         <div className="flex flex-col">
                           <div className="flex flex-row items-center gap-2">
                             <AttachmentIcon className="min-h-[20px] min-w-[20px] text-primary" />
@@ -214,9 +211,12 @@ const DummyComposer: React.FC<{
                 color="primary"
                 showArrow
               >
-                <ShadcnButton
-                  size="icon"
-                  className={`group w- relative h-9 rounded-full border-none bg-zinc-700 p-0 text-zinc-400 hover:bg-zinc-600/90 ${isSlashDropdownOpen && "border-primary/50 bg-primary/20 text-primary"}`}
+                <Button
+                  isIconOnly
+                  radius="full"
+                  variant="flat"
+                  color={isSlashDropdownOpen ? "primary" : "default"}
+                  className={`group relative h-9 w-9`}
                   onClick={handleSlashButtonClick}
                   aria-label="Browse all tools"
                 >
@@ -231,16 +231,19 @@ const DummyComposer: React.FC<{
                       aria-hidden="true"
                     />
                   )}
-                </ShadcnButton>
+                </Button>
               </Tooltip>
             </div>
 
             {/* Send Button */}
-            <ShadcnButton
+            <Button
               type="submit"
+              isIconOnly
+              radius="full"
+              color="primary"
               onClick={handleSend}
-              disabled={!message.trim()}
-              className="h-9 w-9 rounded-full bg-primary p-0 text-xl hover:bg-primary/90 disabled:opacity-50"
+              isDisabled={!message.trim()}
+              className="h-9 w-9 text-xl"
               aria-label="Send message"
             >
               <ArrowUp02Icon
@@ -248,7 +251,7 @@ const DummyComposer: React.FC<{
                 height={40}
                 className="min-h-5 min-w-5"
               />
-            </ShadcnButton>
+            </Button>
           </div>
         </div>
       </div>

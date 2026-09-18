@@ -14,29 +14,25 @@ import { timelineSchema } from "../promptSpecs";
 
 const TIMELINE_STATUS: Record<
   string,
-  { dot: string; ring: string; label: string; labelColor: string }
+  { dot: string; label: string; labelColor: string }
 > = {
   success: {
     dot: "bg-emerald-400",
-    ring: "ring-emerald-400/25",
     label: "Success",
     labelColor: "text-emerald-400 bg-emerald-400/10",
   },
   error: {
     dot: "bg-red-400",
-    ring: "ring-red-400/25",
     label: "Failed",
     labelColor: "text-red-400 bg-red-400/10",
   },
   warning: {
     dot: "bg-amber-400",
-    ring: "ring-amber-400/25",
     label: "Warning",
     labelColor: "text-amber-400 bg-amber-400/10",
   },
   neutral: {
     dot: "bg-zinc-500",
-    ring: "ring-zinc-500/20",
     label: "",
     labelColor: "",
   },
@@ -79,7 +75,7 @@ function TimelineView(props: z.infer<typeof timelineSchema>) {
               >
                 {/* Dot */}
                 <span
-                  className={`h-2.5 w-2.5 rounded-full shrink-0 mt-1.5 z-10 ring-4 ring-offset-0 ${st.dot} ${st.ring}`}
+                  className={`h-2.5 w-2.5 rounded-full shrink-0 mt-1.5 z-10 ${st.dot}`}
                 />
                 {/* Content */}
                 <div className="flex-1 min-w-0">
@@ -97,12 +93,12 @@ function TimelineView(props: z.infer<typeof timelineSchema>) {
                     <div className="flex items-center gap-1.5 shrink-0">
                       {item.status && item.status !== "neutral" && (
                         <span
-                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md ${st.labelColor}`}
+                          className={`text-xs font-medium px-1.5 py-0.5 rounded-md ${st.labelColor}`}
                         >
                           {st.label}
                         </span>
                       )}
-                      <span className="text-[11px] text-zinc-500 tabular-nums">
+                      <span className="text-xs text-zinc-500 tabular-nums">
                         {formatTimelineTime(item.time)}
                       </span>
                     </div>
@@ -118,7 +114,7 @@ function TimelineView(props: z.infer<typeof timelineSchema>) {
                         const safeHref = sanitizeRedirectUrl(String(link.url));
                         const linkClassName =
                           link.type === "primary"
-                            ? "text-xs text-[#00bbff]"
+                            ? "text-xs text-primary"
                             : "text-xs text-zinc-400";
                         return safeHref ? (
                           <Link

@@ -3,7 +3,7 @@
 import { ArrowUpRight01Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { useEffect, useRef } from "react";
+import { type CSSProperties, useEffect, useRef } from "react";
 
 import { type AppLink, product, resources } from "@/config/appConfig";
 import { Link } from "@/i18n/navigation";
@@ -114,11 +114,19 @@ export function NavbarMenu({
   );
 
   return (
+    // `left` is clamped anchor math (stays inside the navbar wrapper) and the
+    // width is per-menu config — both ride on vars; the transition between
+    // menus stays in classes.
     <div
-      className="absolute top-full z-40 pt-2 transition-[left,width] duration-300 ease-out"
-      style={{ left, width: menu.width }}
+      className="absolute top-full left-[var(--menu-left)] z-40 w-[var(--menu-w)] pt-2 transition-[left,width] duration-300 ease-out"
+      style={
+        {
+          "--menu-left": `${left}px`,
+          "--menu-w": `${menu.width}px`,
+        } as CSSProperties
+      }
     >
-      <div className="overflow-hidden rounded-2xl border border-white/5 bg-zinc-900/60 shadow-2xl backdrop-blur-2xl">
+      <div className="overflow-hidden rounded-2xl bg-zinc-900/60 backdrop-blur-2xl">
         <AnimatePresence mode="wait" initial={false} custom={direction}>
           <m.div
             key={activeMenu}

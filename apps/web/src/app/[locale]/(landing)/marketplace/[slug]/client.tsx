@@ -309,7 +309,7 @@ export function IntegrationDetailClient({
               {alreadyHasIntegration ? (
                 <RaisedButton
                   color="#00bbff"
-                  className="shrink-0 text-black!"
+                  className="shrink-0"
                   onClick={() =>
                     router.push(`/integrations?id=${integration.integrationId}`)
                   }
@@ -319,7 +319,7 @@ export function IntegrationDetailClient({
               ) : (
                 <RaisedButton
                   color="#00bbff"
-                  className="shrink-0 text-black!"
+                  className="shrink-0"
                   onClick={handleAdd}
                   disabled={isAdding || isAdded}
                 >
@@ -343,7 +343,7 @@ export function IntegrationDetailClient({
           {/* What you can do: value prop above the technical tool list */}
           <IntegrationUseCases integration={integration} />
 
-          <Card className="bg-zinc-900/50 backdrop-blur-md outline-0 border-none rounded-3xl">
+          <Card>
             {integration.tools && integration.tools.length > 0 && (
               <CardHeader>
                 <h2 className="text-lg font-normal">

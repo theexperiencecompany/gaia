@@ -298,7 +298,7 @@ function DocumentSection({
             variant="light"
             radius="full"
             onPress={() => setExpanded((v) => !v)}
-            className="mt-2 h-auto min-w-0 px-2 py-1 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300"
+            className="mt-2 h-auto min-w-0 text-xs text-zinc-500"
           >
             {expanded ? "Show less" : "Show more"}
           </Button>
@@ -325,11 +325,11 @@ export default function MemoryCard({ items: rawItems }: MemoryCardProps) {
   if (items.length === 0) return null;
 
   return (
-    <div className="flex w-full max-w-md flex-col gap-0 overflow-hidden rounded-2xl bg-zinc-800">
+    <div className="flex w-full max-w-md flex-col gap-0 overflow-hidden rounded-3xl bg-zinc-800">
       <div className="flex flex-col gap-3 p-4">
         {items.map(({ item, index }) => (
           <div key={`${item.action}-${index}`}>
-            {index > 0 && <Divider className="mb-3 bg-zinc-700/50" />}
+            {index > 0 && <Divider className="mb-3" />}
             {item.action === "add" && <AddSection item={item} />}
             {item.action === "search" && <SearchSection item={item} />}
             {item.action === "update" && <UpdateSection item={item} />}

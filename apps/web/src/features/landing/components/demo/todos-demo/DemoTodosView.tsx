@@ -5,6 +5,7 @@ import { Chip } from "@heroui/chip";
 import {
   ArrowDown01Icon,
   CalendarCheckOut01Icon,
+  Cancel01Icon,
   CheckmarkCircle02Icon,
   Delete02Icon,
   Flag02Icon,
@@ -28,13 +29,6 @@ const priorityRingColors = {
   medium: "border-yellow-500",
   low: "border-blue-500",
   none: "border-zinc-500",
-} as const;
-
-const priorityChipClassNames = {
-  high: "text-red-400 bg-red-400/10",
-  medium: "text-yellow-400 bg-yellow-400/10",
-  low: "text-blue-400 bg-blue-400/10",
-  none: "text-zinc-500",
 } as const;
 
 function formatDueDate(dateString: string): string {
@@ -96,7 +90,7 @@ function DemoTodoItem({
           className={`mt-1 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 border-dashed ${priorityRingColors[todo.priority]}`}
         >
           {todo.completed && (
-            <div className="h-full w-full rounded-full bg-green-500" />
+            <div className="h-full w-full rounded-full bg-emerald-500" />
           )}
         </div>
 
@@ -115,7 +109,7 @@ function DemoTodoItem({
           <div className="mt-2 flex flex-wrap items-center gap-1">
             {todo.due_date && (
               <Chip
-                className="flex items-center px-1 text-zinc-400"
+                className="flex items-center text-zinc-400"
                 size="sm"
                 radius="sm"
                 color={
@@ -143,7 +137,15 @@ function DemoTodoItem({
                 size="sm"
                 variant="flat"
                 radius="sm"
-                className={`px-2 ${priorityChipClassNames[todo.priority]}`}
+                color={
+                  todo.priority === "high"
+                    ? "danger"
+                    : todo.priority === "medium"
+                      ? "warning"
+                      : todo.priority === "low"
+                        ? "primary"
+                        : "default"
+                }
                 startContent={
                   <Flag02Icon width={15} height={15} className="mx-1" />
                 }
@@ -156,7 +158,7 @@ function DemoTodoItem({
               <Chip
                 size="sm"
                 variant="flat"
-                className="px-1 text-zinc-400"
+                className="text-zinc-400"
                 radius="sm"
                 style={{ color: project.color }}
                 startContent={
@@ -172,7 +174,7 @@ function DemoTodoItem({
                 key={label}
                 size="sm"
                 variant="flat"
-                className="flex items-center px-1 text-zinc-400"
+                className="flex items-center text-zinc-400"
                 radius="sm"
                 startContent={
                   <Tag01Icon width={17} height={17} className="mx-1" />
@@ -186,7 +188,7 @@ function DemoTodoItem({
               <Chip
                 size="sm"
                 variant="flat"
-                className="px-1 text-zinc-400"
+                className="text-zinc-400"
                 radius="sm"
                 startContent={
                   <CheckmarkCircle02Icon
@@ -248,7 +250,7 @@ function DemoFieldChip({
   return (
     <button
       type="button"
-      className={`flex h-7 items-center gap-1 rounded-lg px-2 text-xs transition-colors ${color ? "" : "bg-zinc-800 text-zinc-500"} hover:bg-zinc-700 cursor-pointer`}
+      className={`flex h-7 items-center gap-1 rounded-xl px-2 text-xs transition-colors ${color ? "" : "bg-zinc-800 text-zinc-500"} hover:bg-zinc-700 cursor-pointer`}
       style={color ? { backgroundColor: `${color}20`, color } : undefined}
     >
       {icon}
@@ -324,10 +326,7 @@ function DemoTodoSidebar({
   }[todo.priority];
 
   return (
-    <div
-      className="flex h-full w-[300px] shrink-0 flex-col border-l border-zinc-800"
-      style={{ backgroundColor: "#141414" }}
-    >
+    <div className="flex h-full w-[300px] shrink-0 flex-col bg-zinc-900">
       <div className="flex shrink-0 items-center justify-end px-3 pt-2">
         <button
           type="button"
@@ -335,7 +334,7 @@ function DemoTodoSidebar({
           aria-label="Close"
           className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
         >
-          ✕
+          <Cancel01Icon className="size-4" />
         </button>
       </div>
       <div className="flex-1 overflow-y-auto pl-6 pr-3 pt-2">
@@ -346,7 +345,7 @@ function DemoTodoSidebar({
               className={`mt-1.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-2 border-dashed ${priorityRingColors[todo.priority]}`}
             >
               {todo.completed && (
-                <div className="h-full w-full rounded-full bg-green-500" />
+                <div className="h-full w-full rounded-full bg-emerald-500" />
               )}
             </div>
             <h2
@@ -428,10 +427,10 @@ function DemoTodoSidebar({
             {todo.subtasks.map((st) => (
               <div
                 key={st.id}
-                className="flex items-center gap-2 rounded-lg p-2 hover:bg-zinc-800/50"
+                className="flex items-center gap-2 rounded-xl p-2 hover:bg-zinc-800/50"
               >
                 <div
-                  className={`h-3.5 w-3.5 shrink-0 rounded-full border ${st.completed ? "border-green-500 bg-green-500" : "border-dashed border-zinc-500"}`}
+                  className={`h-3.5 w-3.5 shrink-0 rounded-full border ${st.completed ? "border-emerald-500 bg-emerald-500" : "border-dashed border-zinc-500"}`}
                 />
                 <span
                   className={`text-sm ${st.completed ? "text-zinc-500 line-through" : "text-zinc-300"}`}
@@ -441,7 +440,7 @@ function DemoTodoSidebar({
               </div>
             ))}
             {/* Add subtask input placeholder */}
-            <div className="mt-2 flex items-center gap-2 rounded-lg px-2 py-1.5">
+            <div className="mt-2 flex items-center gap-2 rounded-xl px-2 py-1.5">
               <PlusSignIcon width={14} height={14} className="text-zinc-600" />
               <span className="text-sm text-zinc-600">Add subtask...</span>
             </div>

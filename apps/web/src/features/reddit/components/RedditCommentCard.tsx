@@ -1,14 +1,20 @@
 "use client";
 
+import { Link } from "@heroui/link";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { ArrowUp02Icon, RedditIcon, UserCircle02Icon } from "@icons";
+import {
+  ArrowUp02Icon,
+  ArrowUpRight01Icon,
+  RedditIcon,
+  UserCircle02Icon,
+} from "@icons";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import type { RedditCommentData } from "@/types/features/redditTypes";
 
 interface RedditCommentCardProps {
   comments?: RedditCommentData[] | null;
   backgroundColor?: string;
-  maxHeight?: string;
+  maxHeight?: "max-h-[400px]" | "max-h-[500px]";
   isCollapsible?: boolean;
 }
 
@@ -53,61 +59,63 @@ export default function RedditCommentCard({
     <div
       className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-white`}
     >
-      <ScrollShadow className={`${maxHeight} space-y-3`}>
-        {comments.map((comment) => (
-          <div
-            key={comment.id}
-            className="rounded-xl border border-zinc-700 bg-zinc-900/50 p-3 transition-colors hover:border-zinc-600"
-          >
-            <div className="space-y-2">
-              {/* Author & Meta */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-xs">
-                  <UserCircle02Icon className="h-3.5 w-3.5 text-gray-400" />
-                  <span
-                    className={`font-medium ${comment.is_submitter ? "text-blue-400" : "text-gray-300"}`}
-                  >
-                    u/{comment.author}
-                  </span>
-                  {comment.is_submitter && (
-                    <span className="rounded bg-blue-900/40 px-1.5 py-0.5 text-[10px] font-medium text-blue-400">
-                      OP
+      <ScrollShadow
+        className={
+          maxHeight === "max-h-[400px]" ? "max-h-[400px]" : "max-h-[500px]"
+        }
+      >
+        <div className="space-y-3">
+          {comments.map((comment) => (
+            <div key={comment.id} className="rounded-xl bg-zinc-900/50 p-3">
+              <div className="space-y-2">
+                {/* Author & Meta */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs">
+                    <UserCircle02Icon className="h-3.5 w-3.5 text-zinc-400" />
+                    <span
+                      className={`font-medium ${comment.is_submitter ? "text-blue-400" : "text-zinc-300"}`}
+                    >
+                      u/{comment.author}
                     </span>
-                  )}
-                  <span className="text-gray-500">•</span>
-                  <span className="text-gray-500">
-                    {formatTime(comment.created_utc)}
-                  </span>
+                    {comment.is_submitter && (
+                      <span className="rounded bg-blue-400/10 px-1.5 py-0.5 text-xs font-medium text-blue-400">
+                        OP
+                      </span>
+                    )}
+                    <span className="text-zinc-500">
+                      {formatTime(comment.created_utc)}
+                    </span>
+                  </div>
+
+                  {/* Score */}
+                  <div className="flex items-center gap-1 text-xs text-orange-500">
+                    <ArrowUp02Icon width={18} height={18} />
+                    <span className="font-medium tabular-nums">
+                      {formatNumber(comment.score)}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Score */}
-                <div className="flex items-center gap-1 text-xs text-[#FF4500]">
-                  <ArrowUp02Icon width={18} height={18} />
-                  <span className="font-medium">
-                    {formatNumber(comment.score)}
-                  </span>
-                </div>
+                {/* Comment Body */}
+                <p className="text-sm leading-relaxed text-zinc-200">
+                  {comment.body}
+                </p>
+
+                {/* Permalink */}
+                {comment.permalink && (
+                  <Link
+                    href={`https://reddit.com${comment.permalink}`}
+                    isExternal
+                    className="inline-flex items-center text-xs text-orange-500 transition-colors hover:text-orange-400"
+                  >
+                    View on Reddit
+                    <ArrowUpRight01Icon className="ml-1 h-3.5 w-3.5" />
+                  </Link>
+                )}
               </div>
-
-              {/* Comment Body */}
-              <p className="text-sm leading-relaxed text-gray-200">
-                {comment.body}
-              </p>
-
-              {/* Permalink */}
-              {comment.permalink && (
-                <a
-                  href={`https://reddit.com${comment.permalink}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block text-xs text-[#FF4500] transition-colors hover:text-orange-300"
-                >
-                  View on Reddit →
-                </a>
-              )}
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </ScrollShadow>
     </div>
   );

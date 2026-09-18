@@ -28,8 +28,7 @@ export function VideoBlockView(props: z.infer<typeof videoBlockSchema>) {
     // Cross-origin, so `allow-same-origin` grants only the player's own storage.
     <iframe
       src={embedSrc}
-      className="w-full max-w-2xl rounded-2xl aspect-video"
-      style={{ border: "none" }}
+      className="w-full max-w-2xl rounded-2xl aspect-video border-0"
       sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
       allowFullScreen
       title={props.title ?? "video"}

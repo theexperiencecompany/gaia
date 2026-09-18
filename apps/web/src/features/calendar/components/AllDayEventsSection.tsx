@@ -1,6 +1,11 @@
 "use client";
 
-import { UnfoldLessIcon, UnfoldMoreIcon } from "@icons";
+import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  UnfoldLessIcon,
+  UnfoldMoreIcon,
+} from "@icons";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import { useMemo, useState } from "react";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
@@ -170,7 +175,7 @@ const MultiDayEventBar: React.FC<MultiDayEventBarProps> = ({
     >
       <button
         type="button"
-        className="sti flex h-7 w-full cursor-pointer items-center overflow-hidden text-white transition-opacity hover:opacity-80"
+        className="flex h-7 w-full cursor-pointer items-center overflow-hidden text-white transition-opacity hover:opacity-80"
         style={{
           backgroundColor: `${eventColor}40`,
           borderTopLeftRadius: eventPos.continuesLeft ? "0px" : "6px",
@@ -191,13 +196,13 @@ const MultiDayEventBar: React.FC<MultiDayEventBarProps> = ({
         />
         <div className="flex flex-1 items-center overflow-hidden px-2">
           {eventPos.continuesLeft && (
-            <span className="mr-1 text-xs opacity-70">←</span>
+            <ArrowLeft01Icon className="mr-1 h-3 w-3 shrink-0 opacity-70" />
           )}
           <div className="flex-1 truncate text-xs font-medium">
             {eventPos.event.summary}
           </div>
           {eventPos.continuesRight && (
-            <span className="ml-1 text-xs opacity-70">→</span>
+            <ArrowRight01Icon className="ml-1 h-3 w-3 shrink-0 opacity-70" />
           )}
         </div>
       </button>

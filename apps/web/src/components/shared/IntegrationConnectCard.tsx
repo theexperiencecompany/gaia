@@ -34,7 +34,7 @@ export const IntegrationConnectCard: React.FC<IntegrationConnectCardProps> = ({
 
   return (
     <div
-      className={`flex flex-col items-center justify-center gap-1 ${outlined ? "rounded-3xl border border-dashed border-zinc-700 bg-zinc-800/50 p-4" : ""}`}
+      className={`flex flex-col items-center justify-center gap-1 ${outlined ? "rounded-2xl bg-zinc-800/50 p-4" : ""}`}
     >
       <div className="mb-2">{icon}</div>
       <div className="text-center">
@@ -51,7 +51,7 @@ export const IntegrationConnectCard: React.FC<IntegrationConnectCardProps> = ({
         color="primary"
         onPress={handleConnect}
         size={small ? "sm" : "md"}
-        className="mt-2 px-4"
+        className="mt-2"
       >
         {buttonText}
       </Button>

@@ -11,7 +11,6 @@ import {
   TableCell,
   TableColumn,
   TableHeader,
-  type TableProps,
   TableRow,
   Tooltip,
 } from "@heroui/react";
@@ -61,7 +60,9 @@ interface VoiceTableProps {
   /** Fired (after persisting) when the selection changes — lets the live
    * session re-point the agent's voice. */
   onSelect?: (voiceId: string) => void;
-  classNames?: TableProps["classNames"];
+  /** Scroll/overflow constraints for the table wrapper (e.g. the compact
+   * in-session picker caps height). Applied to a plain wrapper div. */
+  wrapperClassName?: string;
   "aria-label"?: string;
 }
 
@@ -88,7 +89,7 @@ export function VoiceTable({
   wrapText = false,
   previewOnSelect = true,
   onSelect,
-  classNames,
+  wrapperClassName,
   "aria-label": ariaLabel = "Available voices",
 }: Readonly<VoiceTableProps>) {
   const { data, isLoading } = useVoices();
@@ -217,7 +218,7 @@ export function VoiceTable({
                   }
                   className={cn(
                     "text-zinc-600 hover:text-zinc-300",
-                    voice.starred && "text-yellow-400 hover:text-yellow-300",
+                    voice.starred && "text-yellow-400",
                   )}
                   onPress={() =>
                     starVoice.mutate({
@@ -270,7 +271,7 @@ export function VoiceTable({
                   <Chip
                     size="sm"
                     variant="flat"
-                    className="cursor-default bg-zinc-800 text-zinc-400"
+                    className="cursor-default text-zinc-400"
                   >
                     +{voice.languages.length - 1}
                   </Chip>
@@ -332,38 +333,41 @@ export function VoiceTable({
   );
 
   return (
-    <Table
-      aria-label={ariaLabel}
-      selectionMode="single"
-      classNames={{ tr: "cursor-pointer", ...classNames }}
-      disallowEmptySelection
-      selectedKeys={selectedKeys}
-      onSelectionChange={handleSelectionChange}
-    >
-      <TableHeader columns={columns}>
-        {(column) => (
-          <TableColumn
-            key={column.key}
-            className={column.align === "end" ? "text-right" : undefined}
-          >
-            {column.label}
-          </TableColumn>
-        )}
-      </TableHeader>
-      <TableBody
-        items={rows}
-        isLoading={isLoading}
-        loadingContent={<Spinner size="sm" label="Loading voices" />}
-        emptyContent={isLoading ? " " : "No voices match your filters"}
+    <div className={wrapperClassName}>
+      <Table
+        aria-label={ariaLabel}
+        selectionMode="single"
+        removeWrapper
+        classNames={{ tr: "cursor-pointer" }}
+        disallowEmptySelection
+        selectedKeys={selectedKeys}
+        onSelectionChange={handleSelectionChange}
       >
-        {(voice) => (
-          <TableRow key={voice.voice_id} textValue={voice.name}>
-            {(columnKey) => (
-              <TableCell>{renderCell(voice, String(columnKey))}</TableCell>
-            )}
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+        <TableHeader columns={columns}>
+          {(column) => (
+            <TableColumn
+              key={column.key}
+              className={column.align === "end" ? "text-right" : undefined}
+            >
+              {column.label}
+            </TableColumn>
+          )}
+        </TableHeader>
+        <TableBody
+          items={rows}
+          isLoading={isLoading}
+          loadingContent={<Spinner size="sm" label="Loading voices" />}
+          emptyContent={isLoading ? " " : "No voices match your filters"}
+        >
+          {(voice) => (
+            <TableRow key={voice.voice_id} textValue={voice.name}>
+              {(columnKey) => (
+                <TableCell>{renderCell(voice, String(columnKey))}</TableCell>
+              )}
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

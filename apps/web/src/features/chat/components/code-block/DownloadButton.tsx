@@ -66,7 +66,7 @@ const DownloadButton: React.FC<DownloadButtonProps> = ({
 
   return (
     <Button
-      className="text-xs text-zinc-400 hover:text-gray-300"
+      className="text-xs text-zinc-400 hover:text-zinc-300"
       size="sm"
       isIconOnly
       variant="light"

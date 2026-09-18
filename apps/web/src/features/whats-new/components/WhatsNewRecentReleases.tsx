@@ -63,7 +63,7 @@ export function WhatsNewRecentReleases({
                 <span className="block truncate text-xs font-medium text-zinc-300 transition group-hover/thumb:text-white">
                   {release.title}
                 </span>
-                <span className="text-[11px] text-zinc-500">
+                <span className="text-xs text-zinc-500">
                   {formatReleaseDate(release.date)}
                 </span>
               </div>

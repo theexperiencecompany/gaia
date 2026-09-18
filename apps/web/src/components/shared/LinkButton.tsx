@@ -20,8 +20,7 @@ export function LinkButton({
         target="_blank"
         rel="noopener noreferrer"
         variant="light"
-        className="text-md font-medium text-zinc-300"
-        style={{ padding: "9px", height: "30px", width: "fit-content" }}
+        className="text-base h-[30px] w-fit font-medium text-zinc-300"
         {...props}
       >
         {children}
@@ -35,8 +34,7 @@ export function LinkButton({
       href={href}
       variant="light"
       radius="sm"
-      style={{ padding: "9px", height: "30px", width: "fit-content" }}
-      className="text-md text-start font-medium text-zinc-300"
+      className="text-base h-[30px] w-fit text-start font-medium text-zinc-300"
       {...props}
     >
       {children}

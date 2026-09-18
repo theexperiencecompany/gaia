@@ -18,7 +18,8 @@ export default function UserContainer() {
   return (
     <SettingsMenu onOpenChange={setIsOpen}>
       <Button
-        className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 bg-transparent px-2 py-6! hover:bg-zinc-800"
+        variant="light"
+        className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between"
         endContent={
           isOpen ? (
             <ChevronsDownUp
@@ -36,7 +37,7 @@ export default function UserContainer() {
         }
       >
         <div className="flex items-center gap-3">
-          <Avatar className="size-7 rounded-full bg-black">
+          <Avatar className="size-7">
             <AvatarImage src={user?.profilePicture} alt="User Avatar" />
             <AvatarFallback>
               <Image
@@ -52,7 +53,7 @@ export default function UserContainer() {
             {isUnknown ? (
               <Skeleton className="h-2.5 w-12 rounded-full" />
             ) : (
-              <span className="text-[11px] text-foreground-400">
+              <span className="text-xs text-foreground-400">
                 {isPaid
                   ? "GAIA Pro"
                   : paywallCopyFor(hasEverSubscribed).planLabel}

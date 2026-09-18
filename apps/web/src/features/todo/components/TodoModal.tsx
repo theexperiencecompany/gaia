@@ -40,7 +40,7 @@ interface TodoModalProps {
   todo?: Todo; // Required when mode is "edit"
   initialProjectId?: string; // Used when mode is "add"
   buttonText?: string;
-  buttonClassName?: string;
+  buttonLayout?: "full" | "icon";
 }
 
 function getChangedFields<T extends object>(
@@ -253,7 +253,7 @@ function useTodoModalForm({
 
 interface TodoModalTriggerProps {
   buttonText: string;
-  buttonClassName: string;
+  buttonLayout: "full" | "icon";
   onOpen: () => void;
 }
 
@@ -262,7 +262,7 @@ type TodoFormData = Omit<TodoCreate, "subtasks"> & { subtasks?: SubTask[] };
 
 function TodoModalTrigger({
   buttonText,
-  buttonClassName,
+  buttonLayout,
   onOpen,
 }: TodoModalTriggerProps) {
   return (
@@ -270,16 +270,21 @@ function TodoModalTrigger({
       content={
         <span className="flex items-center gap-2">
           {buttonText}
-          <Kbd className="text-[10px]">C</Kbd>
+          <Kbd className="text-xs">C</Kbd>
         </span>
       }
       placement="right"
     >
       <Button
-        className={buttonClassName}
         color="primary"
         size="sm"
-        variant="flat"
+        variant={buttonLayout === "icon" ? "light" : "flat"}
+        isIconOnly={buttonLayout === "icon"}
+        className={
+          buttonLayout === "icon"
+            ? undefined
+            : "w-full justify-start text-sm text-primary"
+        }
         startContent={<TaskAddIcon className="h-4 w-4 outline-0" />}
         onPress={onOpen}
         data-keyboard-shortcut="create-todo"
@@ -309,9 +314,7 @@ function TodoTextInputFields({
         placeholder="Title"
         classNames={{
           input:
-            "text-2xl font-semibold bg-transparent border-0 text-zinc-100 placeholder:text-zinc-500",
-          inputWrapper:
-            "border-0 bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
+            "text-2xl font-semibold text-zinc-100 placeholder:text-zinc-500",
         }}
         value={title}
         variant="underlined"
@@ -329,10 +332,7 @@ function TodoTextInputFields({
         maxRows={5}
         variant="underlined"
         classNames={{
-          input:
-            "bg-transparent border-0 text-zinc-200 placeholder:text-zinc-500",
-          inputWrapper:
-            "border-0 bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
+          input: "text-zinc-200 placeholder:text-zinc-500",
         }}
       />
     </div>
@@ -345,7 +345,7 @@ export default function TodoModal({
   todo,
   initialProjectId,
   buttonText = "Add Task",
-  buttonClassName = "w-full justify-start text-sm text-primary",
+  buttonLayout = "full",
 }: TodoModalProps) {
   const user = useCurrentUser();
   const { isMac, modifierKeyName } = usePlatform();
@@ -393,7 +393,7 @@ export default function TodoModal({
     <>
       <TodoModalTrigger
         buttonText={buttonText}
-        buttonClassName={buttonClassName}
+        buttonLayout={buttonLayout}
         onOpen={onOpen}
       />
 

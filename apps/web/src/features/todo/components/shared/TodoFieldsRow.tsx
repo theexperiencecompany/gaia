@@ -49,7 +49,7 @@ export default function TodoFieldsRow({
       <PriorityFieldChip
         value={priority}
         onChange={onPriorityChange}
-        className={`${priority === Priority.HIGH ? "text-red-400 bg-red-400/20" : priority === Priority.MEDIUM ? "text-yellow-400 bg-yellow-400/20" : priority === Priority.LOW ? "text-blue-400 bg-blue-400/20" : "text-zinc-500"}`}
+        className={`${priority === Priority.HIGH ? "text-red-400" : priority === Priority.MEDIUM ? "text-yellow-400" : priority === Priority.LOW ? "text-blue-400" : "text-zinc-500"}`}
       />
       <DateFieldChip
         value={dueDate}

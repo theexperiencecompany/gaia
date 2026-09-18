@@ -76,9 +76,9 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
       showArrow
       delay={0}
       closeDelay={0}
-      className="max-w-[320px] border-0 bg-zinc-900 p-0 text-white shadow-xl rounded-2xl overflow-hidden"
+      className="max-w-[320px] overflow-hidden text-white"
       content={
-        <div className="flex w-full flex-col rounded-3xl">
+        <div className="flex w-full flex-col rounded-2xl bg-zinc-900">
           {websiteImage && (
             <div className="relative aspect-video w-full overflow-hidden">
               <Image

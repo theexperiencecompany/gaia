@@ -61,11 +61,10 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
           aria-label="Executed Code"
           title="Executed Code"
           classNames={{
-            trigger: "text-sm font-medium text-gray-300 hover:text-white",
-            content: "pt-0",
+            trigger: "text-sm font-medium text-zinc-300 hover:text-white",
           }}
         >
-          <div className="w-full max-w-[30vw] overflow-hidden rounded-[15px] rounded-b-[20px]">
+          <div className="w-full max-w-[30vw] overflow-hidden rounded-xl">
             <CodeBlock className={`language-${code_data.language}`}>
               {code_data.code}
             </CodeBlock>
@@ -78,8 +77,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
           aria-label="Output"
           title="Output"
           classNames={{
-            trigger: "text-sm font-medium text-gray-300 hover:text-white",
-            content: "pt-0",
+            trigger: "text-sm font-medium text-zinc-300 hover:text-white",
           }}
         >
           <CodeExecutionOutput
@@ -98,8 +96,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
             aria-label="Charts"
             title="Charts"
             classNames={{
-              trigger: "text-sm font-medium text-gray-300 hover:text-white",
-              content: "pt-0",
+              trigger: "text-sm font-medium text-zinc-300 hover:text-white",
             }}
           >
             <ChartDisplay charts={code_data.charts} />

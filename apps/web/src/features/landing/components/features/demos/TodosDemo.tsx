@@ -15,18 +15,18 @@ function TaskCreatedCard() {
               Call Alex about Q4 budget review
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="rounded-full bg-cyan-400/10 px-2 py-0.5 text-[10px] font-medium text-cyan-400">
+              <span className="rounded-full bg-blue-400/10 px-2 py-0.5 text-xs font-medium text-blue-400">
                 Tomorrow
               </span>
-              <span className="rounded-full bg-red-400/10 px-2 py-0.5 text-[10px] font-medium text-red-400">
+              <span className="rounded-full bg-red-400/10 px-2 py-0.5 text-xs font-medium text-red-400">
                 P1
               </span>
-              <span className="rounded-full bg-purple-400/10 px-2 py-0.5 text-[10px] font-medium text-purple-400">
+              <span className="rounded-full bg-purple-400/10 px-2 py-0.5 text-xs font-medium text-purple-400">
                 @finance
               </span>
             </div>
           </div>
-          <span className="shrink-0 rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+          <span className="shrink-0 rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
             Task created ✓
           </span>
         </div>

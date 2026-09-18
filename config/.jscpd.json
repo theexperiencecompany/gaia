@@ -1,6 +1,9 @@
 {
   "threshold": 3.5,
-  "reporters": ["consoleFull", "json"],
+  "reporters": [
+    "consoleFull",
+    "json"
+  ],
   "output": ".jscpd-report",
   "absolute": true,
   "gitignore": true,
@@ -8,7 +11,13 @@
   "minLines": 10,
   "maxLines": 2000,
   "maxSize": "120kb",
-  "format": ["javascript", "typescript", "tsx", "jsx", "python"],
+  "format": [
+    "javascript",
+    "typescript",
+    "tsx",
+    "jsx",
+    "python"
+  ],
   "ignore": [
     "**/node_modules/**",
     "**/.next/**",
@@ -37,6 +46,7 @@
     "**/.agents/**",
     "**/.claude/**",
     "**/.github/**",
-    "**/config/biome-rules/**"
+    "**/config/biome-rules/**",
+    "**/dev/lint-showcase/**"
   ]
 }

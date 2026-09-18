@@ -77,7 +77,7 @@ function PaidPlanCta({
     return <CheckoutConfirming isLate={isCheckoutLate} />;
   return (
     <RaisedButton
-      className="w-full text-black!"
+      className="w-full"
       color="#00bbff"
       onClick={onGetStarted}
       disabled={isCtaDisabled}

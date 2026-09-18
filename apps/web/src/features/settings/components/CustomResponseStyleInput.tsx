@@ -21,8 +21,7 @@ export function CustomResponseStyleInput({
         onChange={(e) => onChange(e.target.value)}
         isDisabled={isDisabled}
         classNames={{
-          input: "bg-zinc-800/50 min-h-[36px] text-sm",
-          inputWrapper: "bg-zinc-800/50 hover:bg-zinc-700/50",
+          input: "min-h-[36px] text-sm",
         }}
       />
     </div>

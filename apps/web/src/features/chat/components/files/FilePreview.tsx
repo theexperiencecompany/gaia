@@ -51,7 +51,8 @@ const FileChip: React.FC<{
         size="sm"
         variant="faded"
         isDisabled={file.isUploading}
-        className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 rounded-full opacity-0 transition-opacity group-hover:opacity-100"
+        radius="full"
+        className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 opacity-0 transition-opacity group-hover:opacity-100"
         onPress={() => onRemove(file.id)}
       >
         <Cancel01Icon size={14} />

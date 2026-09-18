@@ -13,6 +13,9 @@ interface RotatingExperienceLogoProps {
 
 const DEFAULT_TEXT = "The Experience Company  •   ";
 
+// Shared spin keyframes live in globals.css (`holoRotatingLogoSpin`); the
+// <svg> below only sets its own duration, which stays inline under the
+// holo-card no-inline-styles override (animation is an allowed property).
 const SPIN_KEYFRAMES_NAME = "holoRotatingLogoSpin";
 
 export function RotatingExperienceLogo({
@@ -44,19 +47,12 @@ export function RotatingExperienceLogo({
         pointerEvents: "none",
       }}
     >
-      <style>{`
-        @keyframes ${SPIN_KEYFRAMES_NAME} {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
-      `}</style>
       <svg
         viewBox={`0 0 ${size} ${size}`}
         width={size}
         height={size}
+        className="absolute inset-0"
         style={{
-          position: "absolute",
-          inset: 0,
           animation: `${SPIN_KEYFRAMES_NAME} ${durationSec}s linear infinite`,
           transformOrigin: "center center",
           overflow: "visible",
@@ -67,12 +63,10 @@ export function RotatingExperienceLogo({
           <path id={pathId} d={circlePath} fill="none" />
         </defs>
         <text
-          fill="rgba(255,255,255,0.95)"
+          className="font-serif font-semibold text-white"
+          fill="currentColor"
+          fillOpacity="0.95"
           fontSize={fontSize}
-          style={{
-            fontFamily: "var(--font-aeonik), system-ui, sans-serif",
-            fontWeight: 600,
-          }}
         >
           <textPath
             href={`#${pathId}`}
@@ -91,12 +85,7 @@ export function RotatingExperienceLogo({
         height={imgSize}
         priority
         unoptimized
-        style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-        }}
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
       />
     </div>
   );

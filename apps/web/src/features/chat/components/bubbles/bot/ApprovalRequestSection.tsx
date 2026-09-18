@@ -40,7 +40,7 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
     <div className="mt-3 space-y-2 rounded-2xl bg-zinc-900 p-3">
       {rows.map(([key, value]) => (
         <div key={key} className="text-xs">
-          <div className="mb-0.5 text-[11px] text-zinc-500">
+          <div className="mb-0.5 text-xs text-zinc-500">
             {key.replaceAll("_", " ")}
           </div>
           <div className="text-zinc-200">{String(value)}</div>
@@ -88,7 +88,7 @@ export default function ApprovalRequestSection({
   if (data.status !== "pending") return null;
 
   return (
-    <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">
+    <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">
       <div className="flex items-start gap-2.5">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-400/10">
           <ShieldAlertIcon width={17} height={17} className="text-amber-400" />

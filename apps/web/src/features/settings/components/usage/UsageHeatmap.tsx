@@ -195,7 +195,7 @@ export function ActivityBadge({
       <div className="flex w-44 shrink-0 flex-col items-center justify-start gap-1 rounded-2xl bg-zinc-900/60 p-4 text-center">
         <Medal tier="locked" className="size-28 opacity-80" />
         <p className="mt-1 text-sm font-semibold text-zinc-400">Top 25%</p>
-        <p className="text-[11px] leading-tight text-zinc-600">
+        <p className="text-xs leading-tight text-zinc-600">
           Keep using GAIA to earn your first badge
         </p>
       </div>
@@ -208,11 +208,13 @@ export function ActivityBadge({
       <Button
         onPress={onOpen}
         disableRipple
-        className="flex h-auto w-44 shrink-0 flex-col items-center justify-start gap-1 rounded-2xl bg-zinc-900/60 p-4 text-center transition-colors data-[hover=true]:bg-zinc-800/70"
+        variant="flat"
+        radius="lg"
+        className="flex h-auto w-44 shrink-0 flex-col items-center justify-start text-center transition-colors"
       >
         <Medal tier={tier} className="size-28" />
         <p className="mt-1 text-lg font-semibold text-white">{t.label}</p>
-        <p className="text-[11px] leading-tight text-zinc-500">
+        <p className="text-xs leading-tight text-zinc-500">
           of GAIA users by activity
         </p>
       </Button>
@@ -224,39 +226,43 @@ export function ActivityBadge({
         placement="center"
         backdrop="blur"
       >
-        <ModalContent className="bg-zinc-900">
-          <ModalBody className="items-center gap-0 px-8 py-10 text-center">
-            <Medal
-              tier={tier}
-              className="size-44 drop-shadow-[0_10px_35px_rgba(0,0,0,0.55)]"
-            />
-            <p className="mt-6 text-2xl font-semibold text-white">{t.label}</p>
-            <p className="mt-1 text-sm text-zinc-400">
-              of GAIA users by activity
-            </p>
-            <div className="mt-5 flex items-center gap-5 text-sm text-zinc-500">
-              <span>
-                <span className="font-semibold text-zinc-200">
-                  {formatCompactNumber(activity.total)}
-                </span>{" "}
-                actions
-              </span>
-              <span>
-                <span className="font-semibold text-zinc-200">
-                  {activity.streak}
+        <ModalContent>
+          <ModalBody>
+            <div className="flex flex-col items-center px-8 py-10 text-center">
+              <Medal
+                tier={tier}
+                className="size-44 drop-shadow-[0_10px_35px_rgba(0,0,0,0.55)]"
+              />
+              <p className="mt-6 text-2xl font-semibold text-white">
+                {t.label}
+              </p>
+              <p className="mt-1 text-sm text-zinc-400">
+                of GAIA users by activity
+              </p>
+              <div className="mt-5 flex items-center gap-5 text-sm text-zinc-500">
+                <span>
+                  <span className="font-semibold text-zinc-200">
+                    {formatCompactNumber(activity.total)}
+                  </span>{" "}
+                  actions
                 </span>
-                -day streak
-              </span>
+                <span>
+                  <span className="font-semibold text-zinc-200">
+                    {activity.streak}
+                  </span>
+                  -day streak
+                </span>
+              </div>
+              <Button
+                className="mt-7 font-medium"
+                color="primary"
+                radius="full"
+                startContent={<Share08Icon size={16} />}
+                onPress={() => void shareActivity(activity)}
+              >
+                Share
+              </Button>
             </div>
-            <Button
-              className="mt-7 font-medium"
-              color="primary"
-              radius="full"
-              startContent={<Share08Icon size={16} />}
-              onPress={() => void shareActivity(activity)}
-            >
-              Share
-            </Button>
           </ModalBody>
         </ModalContent>
       </Modal>
@@ -321,7 +327,7 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
           <p className="text-base font-semibold text-white">
             GAIA&apos;s activity
           </p>
-          <p className="text-[13px] text-zinc-500">
+          <p className="text-sm text-zinc-500">
             <span className="font-medium tabular-nums text-zinc-300">
               {formatCompactNumber(activity.total)}
             </span>{" "}
@@ -332,10 +338,10 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
               size="sm"
               variant="flat"
               radius="full"
+              color="warning"
               classNames={{
-                base: "h-6 bg-orange-500/15",
                 content:
-                  "flex items-center gap-1 px-2 text-xs font-medium text-orange-400",
+                  "flex items-center text-xs font-medium text-orange-400",
               }}
             >
               <Fire02Icon size={13} />
@@ -347,7 +353,7 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
           isIconOnly
           size="sm"
           variant="light"
-          className="shrink-0 text-zinc-400 data-[hover=true]:text-zinc-100"
+          className="shrink-0 text-zinc-400"
           aria-label="Share on X"
           onPress={() => void shareActivity(activity)}
         >
@@ -355,7 +361,7 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
         </Button>
       </div>
 
-      <div className="flex gap-[3px]">
+      <div className="flex gap-0.75">
         {columns.map((col, ci) => {
           const m = new Date(`${col[0].date}T00:00:00Z`).getUTCMonth();
           const prev =
@@ -374,19 +380,19 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
           );
         })}
       </div>
-      <div ref={gridRef} className="relative mt-1 flex gap-[3px]">
+      <div ref={gridRef} className="relative mt-1 flex gap-0.75">
         {columns.map((col) => (
-          <div key={col[0].date} className="flex flex-1 flex-col gap-[3px]">
+          <div key={col[0].date} className="flex flex-1 flex-col gap-0.75">
             {col.map((cell) =>
               cell.count === null ? (
                 // Padding day outside the range — no data, no hover label.
-                <div key={cell.date} className="aspect-square rounded-[2px]" />
+                <div key={cell.date} className="aspect-square rounded-xs" />
               ) : (
                 <div
                   key={cell.date}
                   role="img"
                   aria-label={cell.label}
-                  className="aspect-square rounded-[2px]"
+                  className="aspect-square rounded-xs"
                   style={{ backgroundColor: intensity(cell.count, max) }}
                   onMouseEnter={(e) => showTip(e, cell)}
                   onMouseLeave={hideTip}
@@ -404,12 +410,12 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
           </div>
         )}
       </div>
-      <div className="mt-3 flex items-center justify-end gap-1.5 text-[11px] text-zinc-500">
+      <div className="mt-3 flex items-center justify-end gap-1.5 text-xs text-zinc-500">
         <span>Less</span>
         {INTENSITY_RAMP.map((c) => (
           <div
             key={c}
-            className="size-2.5 rounded-[2px]"
+            className="size-2.5 rounded-xs"
             style={{ backgroundColor: c }}
           />
         ))}

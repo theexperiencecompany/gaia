@@ -1,0 +1,605 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [],
+  "categories": {
+    "correctness": "off",
+    "nursery": "off",
+    "pedantic": "off",
+    "perf": "off",
+    "restriction": "off",
+    "style": "off",
+    "suspicious": "off"
+  },
+  "jsPlugins": ["@shadcn/lint"],
+  "settings": {
+    "shadcn": {
+      "componentImports": ["^@heroui/"],
+      "note": "See DESIGN.md for the card contract (outer rounded-3xl bg-zinc-800 p-4, inner rounded-2xl bg-zinc-900 p-3, no borders, status /10) and approved exceptions."
+    }
+  },
+  "rules": {
+    "shadcn/no-restyle": [
+      "error",
+      {
+        "allow": ["layout"],
+        "contracts": [
+          {
+            "pattern": "^(Accordion|AccordionItem|Autocomplete|AutocompleteSection|Avatar|Badge|Button|Card|CardBody|CardHeader|Checkbox|Chip|Divider|Dropdown|DropdownItem|DropdownSection|Input|Kbd|Link|Modal|ModalContent|ModalHeader|PopoverContent|Progress|Radio|RadioGroup|ScrollShadow|Select|SelectItem|SelectSection|Switch|Tab|Table|TableCell|TableColumn|Tabs|Textarea|Tooltip|User)$",
+            "allow": [
+              "layout",
+              "typography",
+              "text-*",
+              "opacity-0",
+              "group-hover:opacity-100",
+              "transition",
+              "transition-colors",
+              "transition-transform",
+              "transition-opacity",
+              "transition-all",
+              "duration-150",
+              "duration-200",
+              "duration-300",
+              "hover:bg-transparent",
+              "bg-red-400/10",
+              "bg-yellow-400/10",
+              "bg-blue-400/10"
+            ]
+          },
+          {
+            "pattern": "^RaisedButton$",
+            "allow": [
+              "layout",
+              "spacing",
+              "rounded-xl",
+              "rounded-2xl",
+              "sm:text-lg",
+              "rounded-full",
+              "before:rounded-xl",
+              "before:rounded-full",
+              "font-semibold",
+              "text-sm",
+              "text-base",
+              "border-0",
+              "outline-none",
+              "duration-400",
+              "ease-out",
+              "shadow-black"
+            ]
+          },
+          {
+            "pattern": "^InputOTPSlot$",
+            "allow": [
+              "layout",
+              "shape",
+              "typography",
+              "color",
+              "border-0",
+              "shadow-none",
+              "transition-[background-color,box-shadow]"
+            ]
+          },
+          {
+            "pattern": "^InputOTPGroup$",
+            "allow": ["spacing"]
+          },
+          {
+            "pattern": "^InputOTP$",
+            "allow": ["spacing"]
+          },
+          {
+            "pattern": "^Separator$",
+            "allow": ["layout", "bg-zinc-700"]
+          },
+          {
+            "pattern": "^GrainOverlay$",
+            "allow": ["layout", "rounded-2xl", "opacity-[0.34]"]
+          },
+          {
+            "pattern": "^Skeleton$",
+            "allow": ["layout", "shape"]
+          },
+          {
+            "pattern": "^MessageScrollerViewport$",
+            "allow": ["compact-chat", "no-scrollbar"]
+          },
+          {
+            "pattern": "^MessageScrollerContent$",
+            "allow": ["gap-3", "p-8"]
+          },
+          {
+            "pattern": "^CopyButton$",
+            "allow": [
+              "layout",
+              "text-zinc-400",
+              "data-[hover=true]:text-zinc-100"
+            ]
+          },
+          {
+            "pattern": "^Calendar$",
+            "allow": ["bg-zinc-800"]
+          },
+          {
+            "pattern": "^ProgressiveImage$",
+            "allow": ["layout", "rounded-4xl"]
+          },
+          {
+            "pattern": "^SidebarInset$",
+            "allow": ["layout", "bg-primary-bg"]
+          },
+          {
+            "pattern": "^SidebarHeader$",
+            "allow": ["layout", "spacing", "electron-drag"]
+          },
+          {
+            "pattern": "^SheetContent$",
+            "allow": [
+              "layout",
+              "border-none",
+              "bg-zinc-950/50",
+              "text-foreground",
+              "backdrop-blur-2xl"
+            ]
+          },
+          {
+            "pattern": "^ModalBody$",
+            "allow": ["layout", "spacing"]
+          },
+          {
+            "pattern": "^Progress$",
+            "allow": ["layout", "bg-zinc-700", "transition-all"]
+          },
+          {
+            "pattern": "^Checkbox$",
+            "allow": [
+              "layout",
+              "typography",
+              "text-*",
+              "mt-1",
+              "bg-zinc-900",
+              "border-dashed",
+              "border-1",
+              "before:border-0",
+              "border-red-500",
+              "border-yellow-500",
+              "border-blue-500",
+              "border-zinc-500",
+              "before:border-0!"
+            ]
+          }
+        ],
+        "message": {
+          "spacing": "Don't restyle {{component}} spacing \u2014 use the {{component}} size prop (sm, md, lg) or {{around}}. See DESIGN.md card contract.",
+          "default": "Don't restyle {{component}} \u2014 use HeroUI variant/color/size props instead of {{className}}. See DESIGN.md (variants: solid, bordered, light, flat, faded, shadow, ghost)."
+        }
+      }
+    ],
+    "shadcn/no-raw-colors": [
+      "error",
+      {
+        "allow": [
+          "*-zinc-*",
+          "*-emerald-400",
+          "*-emerald-500",
+          "*-amber-400",
+          "*-amber-500",
+          "*-red-400",
+          "*-red-500",
+          "*-blue-400",
+          "*-blue-500",
+          "*-yellow-400",
+          "*-yellow-500",
+          "*-orange-400",
+          "*-orange-500",
+          "*-violet-400",
+          "*-lime-400",
+          "*-purple-400",
+          "*-foreground",
+          "*-foreground-*",
+          "*-default-*",
+          "*-danger",
+          "*-danger-*",
+          "*-warning",
+          "*-warning-*",
+          "*-success",
+          "*-background",
+          "*-popover",
+          "*-muted",
+          "*-accent",
+          "*-ring",
+          "*-destructive",
+          "*-input",
+          "*-card",
+          "*-secondary",
+          "text-pink-400",
+          "text-small",
+          "text-tiny",
+          "text-medium",
+          "bg-custom-gradient2"
+        ],
+        "message": "Use a theme color for {{className}} ({{suggestions|see DESIGN.md status colors}}). Declared tokens: {{tokens|none found}}. See {{file|your theme CSS}}."
+      }
+    ],
+    "shadcn/no-arbitrary-values": [
+      "error",
+      {
+        "allow": [
+          "layout",
+          "text-[9px]",
+          "transition-[width]",
+          "transition-[max-height]",
+          "transition-[left,width]",
+          "transition-[height]",
+          "transition-[filter,opacity]",
+          "transition-[opacity,transform]",
+          "transition-[width,min-width]",
+          "lg:pt-[35vh]",
+          "pb-[var(--letter-pad-b)]",
+          "opacity-[0.34]",
+          "rounded-[56px]",
+          "rounded-[46px]",
+          "rounded-[2.5rem]",
+          "rounded-[31px]",
+          "rounded-[24%]",
+          "leading-[1.1]",
+          "bg-size-[200%_100%]",
+          "text-[calc(var(--letter-small)*1.05)]",
+          "text-[clamp(2.8rem,8.3vw,5rem)]",
+          "leading-[1.05]",
+          "blur-[2px]",
+          "group-hover:blur-[0px]",
+          "transition-[filter]",
+          "transition-[filter,background]",
+          "transition-[background-color,transform]",
+          "transition-[background-color,box-shadow]",
+          "drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)]",
+          "drop-shadow-[0_10px_35px_rgba(0,0,0,0.55)]",
+          "shadow-[0_50px_100px_-20px_rgba(0,0,0,0.35),0_30px_60px_-30px_rgba(0,0,0,0.4),inset_0_0_0_1px_rgba(255,255,255,0.04)]",
+          "rounded-[22px]",
+          "rounded-[22%]",
+          "rounded-[18%]",
+          "px-[var(--letter-pad-x)]",
+          "pt-[var(--letter-pad-t)]",
+          "pt-[25vh]",
+          "sm:pt-[30vh]",
+          "text-[40vw]",
+          "text-[3.2rem]",
+          "sm:text-[5.75rem]",
+          "pt-[12vh]",
+          "tracking-[0.2em]"
+        ],
+        "message": "Stay on the scale for {{className}} \u2014 use {{replacement|{{suggestions}}|a scale step}} instead. Colors: use a theme token or declare --color-<name> in {{file|your theme CSS}}."
+      }
+    ],
+    "shadcn/no-inline-styles": [
+      "warn",
+      {
+        "message": "Inline style sets {{property}} \u2014 use classes (DESIGN.md); only measured geometry / dynamic Google-pill colors are allowed, see .oxlintrc.json overrides."
+      }
+    ],
+    "shadcn/no-unknown-classes": [
+      "warn",
+      {
+        "allow": [
+          "ph-no-capture",
+          "tool-icon-btn",
+          "slash-command-dropdown",
+          "compact-chat",
+          "mermaid",
+          "colored",
+          "markdown-table",
+          "chat-demo-thread"
+        ]
+      }
+    ],
+    "shadcn/require-static-classes": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["src/components/ui/**"],
+      "rules": {
+        "shadcn/no-restyle": "off",
+        "shadcn/no-arbitrary-values": "off",
+        "shadcn/require-static-classes": "off"
+      }
+    },
+    {
+      "files": ["src/app/*/dev/**", "src/**/dev/**", "src/app/api/og/**"],
+      "rules": {
+        "shadcn/no-restyle": "off",
+        "shadcn/no-raw-colors": "off",
+        "shadcn/no-arbitrary-values": "off",
+        "shadcn/no-inline-styles": "off",
+        "shadcn/no-unknown-classes": "off",
+        "shadcn/require-static-classes": "off"
+      }
+    },
+    {
+      "files": ["src/features/calendar/components/**"],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "warn",
+          {
+            "allow": [
+              "width",
+              "height",
+              "top",
+              "left",
+              "transform",
+              "backgroundColor",
+              "background",
+              "border-*",
+              "scrollSnapAlign",
+              "scrollSnapType",
+              "scrollPaddingLeft",
+              "margin"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/landing/components/iphone/**"],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "warn",
+          {
+            "allow": [
+              "background",
+              "backgroundColor",
+              "backgroundImage",
+              "color",
+              "fontSize",
+              "fontWeight",
+              "letterSpacing",
+              "lineHeight",
+              "padding",
+              "margin*",
+              "gap",
+              "width",
+              "height",
+              "minWidth",
+              "minHeight",
+              "maxWidth",
+              "display",
+              "position",
+              "top",
+              "left",
+              "right",
+              "bottom",
+              "zIndex",
+              "overflow",
+              "border",
+              "borderColor",
+              "borderRadius",
+              "boxShadow",
+              "opacity",
+              "objectFit",
+              "transform",
+              "clipPath",
+              "alignItems",
+              "whiteSpace",
+              "aspectRatio",
+              "fontFamily",
+              "scrollbarWidth",
+              "wordBreak",
+              "backgroundSize",
+              "backgroundRepeat",
+              "borderBottom",
+              "textOverflow",
+              "gridTemplateColumns",
+              "verticalAlign",
+              "animation"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/ui/shine-border.tsx"],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "warn",
+          {
+            "allow": [
+              "background",
+              "backgroundImage",
+              "backgroundSize",
+              "padding",
+              "mask",
+              "maskComposite",
+              "WebkitMask",
+              "WebkitMaskComposite",
+              "--*"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/landing/components/shared/TextSoftBlurIn.tsx"],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "warn",
+          {
+            "allow": ["display"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/components/ui/holo-card/**"],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "warn",
+          {
+            "allow": [
+              "position",
+              "width",
+              "height",
+              "transform",
+              "transformStyle",
+              "transformOrigin",
+              "perspective",
+              "backfaceVisibility",
+              "WebkitBackfaceVisibility",
+              "display",
+              "borderRadius",
+              "pointerEvents",
+              "opacity",
+              "overflow",
+              "animation",
+              "background"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/chat/components/composer/**",
+        "src/features/todo/components/TodoList.tsx",
+        "src/features/chat/components/bubbles/user/ChatBubbleUser.tsx",
+        "src/features/chat/components/code-block/FlowchartPreview.tsx",
+        "src/features/chat/components/tools/MCPAppRenderer.tsx"
+      ],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "warn",
+          {
+            "allow": [
+              "transform",
+              "transformOrigin",
+              "height",
+              "width",
+              "position",
+              "top",
+              "left",
+              "contentVisibility",
+              "containIntrinsicSize"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/workflows/components/shared/WorkflowIcons.tsx",
+        "src/features/workflows/components/workflow-modal/WorkflowIconPicker.tsx",
+        "src/features/todo/components/TodoItem.tsx",
+        "src/features/todo/components/fields/**",
+        "src/features/skills/components/SkillTargetIcon.tsx",
+        "src/features/chat/components/bubbles/bot/CalendarEvent*.tsx",
+        "src/features/chat/components/composer/SelectedCalendarEventIndicator.tsx",
+        "src/features/chat/components/bubbles/bot/TodoSection.tsx",
+        "src/features/chat/components/bubbles/bot/CalendarEventCard.tsx",
+        "src/features/calendar/components/CalendarCard.tsx",
+        "src/features/calendar/components/UpcomingEventsView.tsx",
+        "src/features/calendar/components/CalendarListCard.tsx",
+        "src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx",
+        "src/features/settings/components/usage/**",
+        "src/features/weather/components/**",
+        "src/features/todo/components/AddProjectModal.tsx",
+        "src/components/layout/sidebar/variants/TodoSidebar.tsx"
+      ],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "warn",
+          {
+            "allow": [
+              "backgroundColor",
+              "color",
+              "borderColor",
+              "opacity",
+              "filter",
+              "top",
+              "left",
+              "width",
+              "rotate",
+              "zIndex",
+              "fontSize"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/config/openui/components/FileTreeNodeRow.tsx",
+        "src/features/memory/components/MemoryTree.tsx",
+        "src/features/chat/components/files/FileTypeIcon.tsx",
+        "src/components/layout/sidebar/RightSidebar.tsx",
+        "src/components/layout/sidebar/ChatTab.tsx",
+        "src/features/search/components/CommandMenu.tsx",
+        "src/features/settings/components/SettingsMenu.tsx",
+        "src/features/settings/components/NestedMenuTooltip.tsx",
+        "src/features/chat/utils/toolIcons.tsx",
+        "src/components/ui/blur-stack.tsx"
+      ],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "warn",
+          {
+            "allow": [
+              "width",
+              "height",
+              "minWidth",
+              "paddingLeft",
+              "left",
+              "top",
+              "zIndex",
+              "pointerEvents",
+              "overflow",
+              "color"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/features/landing/components/sections/TiredBoringAssistants.tsx",
+        "src/features/landing/components/demo/**",
+        "src/features/landing/components/features/**",
+        "src/features/chat/components/interface/founder-letter/**",
+        "src/features/onboarding/components/Onboarding*.tsx",
+        "src/features/onboarding/components/reveal/**",
+        "src/app/[locale]/(landing)/**"
+      ],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "warn",
+          {
+            "allow": [
+              "width",
+              "height",
+              "minWidth",
+              "minHeight",
+              "maxHeight",
+              "top",
+              "left",
+              "transform",
+              "rotate",
+              "zIndex",
+              "opacity",
+              "visibility",
+              "perspective",
+              "background",
+              "backgroundColor",
+              "backgroundImage",
+              "color",
+              "fontSize",
+              "lineHeight",
+              "filter",
+              "mixBlendMode",
+              "boxShadow",
+              "animation",
+              "animationDelay",
+              "transition",
+              "--*"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

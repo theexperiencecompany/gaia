@@ -80,9 +80,7 @@ export default function AddProjectModal({
       <ModalContent>
         {(onClose) => (
           <>
-            <ModalHeader className="flex flex-col gap-1">
-              Create New Project
-            </ModalHeader>
+            <ModalHeader>Create New Project</ModalHeader>
             <ModalBody>
               <div className="flex flex-col gap-4">
                 {/* Name */}
@@ -120,32 +118,35 @@ export default function AddProjectModal({
                   >
                     Project Color
                   </label>
-                  <RadioGroup
-                    id="radiogroupcolorpicker"
-                    value={formData.color}
-                    color="default"
-                    onValueChange={(value) =>
-                      setFormData((prev) => ({ ...prev, color: value }))
-                    }
-                    orientation="horizontal"
-                    classNames={{ wrapper: "flex gap-8 p-3" }}
-                    // className="flex flex-wrap items-start gap-10"
-                  >
-                    {colorOptions.map((option) => (
-                      <Radio
-                        key={option.value}
-                        value={option.value}
-                        className="p-0"
-                      >
-                        <div className="flex h-full w-full items-center">
-                          <div
-                            className="h-7 w-7 rounded-full"
-                            style={{ backgroundColor: option.value }}
-                          />
-                        </div>
-                      </Radio>
-                    ))}
-                  </RadioGroup>
+                  <div className="p-3">
+                    <RadioGroup
+                      id="radiogroupcolorpicker"
+                      value={formData.color}
+                      color="default"
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({ ...prev, color: value }))
+                      }
+                      orientation="horizontal"
+                      // className="flex flex-wrap items-start gap-10"
+                    >
+                      {colorOptions.map((option, index) => (
+                        <Radio
+                          key={option.value}
+                          value={option.value}
+                          className={
+                            index < colorOptions.length - 1 ? "mr-8" : undefined
+                          }
+                        >
+                          <div className="flex h-full w-full items-center">
+                            <div
+                              className="h-7 w-7 rounded-full"
+                              style={{ backgroundColor: option.value }}
+                            />
+                          </div>
+                        </Radio>
+                      ))}
+                    </RadioGroup>
+                  </div>
                 </div>
               </div>
             </ModalBody>

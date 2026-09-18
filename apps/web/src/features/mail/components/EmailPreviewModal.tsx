@@ -283,17 +283,17 @@ export function EmailPreviewModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="3xl" scrollBehavior="inside">
       <ModalContent>
-        <ModalHeader className="flex flex-col gap-1">
+        <ModalHeader className="flex flex-col">
           <h2 className="text-xl font-semibold">Review & Send Email</h2>
-          <p className="text-sm text-gray-600">
+          <p className="mt-1 text-sm text-zinc-600">
             {recipient_query
               ? `AI composed this email based on: "${recipient_query}"`
               : "Review and edit your email before sending"}
           </p>
         </ModalHeader>
 
-        <ModalBody className="py-6">
-          <div className="space-y-6">
+        <ModalBody>
+          <div className="space-y-6 py-6">
             {/* Recipients */}
             <RecipientsField
               chips={emailChips}

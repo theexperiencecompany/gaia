@@ -1,5 +1,6 @@
 "use client";
 
+import { Tick02Icon } from "@icons";
 import ChatDemo from "@/features/landing/components/demo/founders-demo/ChatDemo";
 import type { ChatMessage } from "@/features/landing/components/demo/founders-demo/types";
 
@@ -33,8 +34,8 @@ function ReminderConfirmationCard() {
           </div>
         </div>
         <div className="flex items-center gap-2 px-1 pt-1">
-          <span className="text-xs font-medium text-emerald-400">
-            Reminder set ✓
+          <span className="flex items-center gap-1 text-xs font-medium text-emerald-400">
+            <Tick02Icon className="size-3.5" /> Reminder set
           </span>
         </div>
       </div>

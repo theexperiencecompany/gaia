@@ -11,7 +11,7 @@ import type { EmailFetchData } from "@/types/features/mailTypes";
 interface EmailListProps {
   emails?: EmailFetchData[] | null;
   backgroundColor?: string;
-  maxHeight?: string;
+  maxHeight?: "max-h-[300px]" | "max-h-[400px]" | "max-h-[500px]" | "";
   isCollapsible?: boolean;
   onLoadMore?: () => void;
   hasNextPage?: boolean;
@@ -74,7 +74,7 @@ function EmailTime({ time }: { time: string | null }) {
     setLabel(formatTime(time));
   }, [time]);
 
-  return <span className="text-xs text-gray-400">{label}</span>;
+  return <span className="text-xs text-zinc-400">{label}</span>;
 }
 
 export default function EmailListCard({
@@ -122,57 +122,69 @@ export default function EmailListCard({
     const content = (
       <div
         className={`w-full max-w-2xl ${backgroundColor} px-3 text-white ${
-          isSingle ? "rounded-2xl py-1" : "rounded-3xl py-3"
+          isSingle ? "rounded-3xl py-1" : "rounded-3xl py-3"
         }`}
       >
         {/* Email List */}
-        <ScrollShadow className={`${maxHeight} divide-y divide-zinc-800`}>
-          {!!emails &&
-            emails.length > 0 &&
-            emails.map((email) => (
-              <Tooltip
-                key={email.id}
-                content={`Ask about this email from ${extractSenderName(email.from || "Unknown Sender")}`}
-                showArrow
-                color="foreground"
-                delay={0}
-                closeDelay={0}
-                disableAnimation
-              >
-                <button
-                  type="button"
-                  className="group flex w-full cursor-pointer items-center gap-4 p-3 text-left transition-colors hover:bg-zinc-700"
-                  onClick={() => handleEmailClick(email)}
+        <ScrollShadow
+          className={
+            maxHeight === "max-h-[400px]"
+              ? "max-h-[400px]"
+              : maxHeight === "max-h-[500px]"
+                ? "max-h-[500px]"
+                : maxHeight === ""
+                  ? ""
+                  : "max-h-[300px]"
+          }
+        >
+          <div className="divide-y divide-zinc-800">
+            {!!emails &&
+              emails.length > 0 &&
+              emails.map((email) => (
+                <Tooltip
+                  key={email.id}
+                  content={`Ask about this email from ${extractSenderName(email.from || "Unknown Sender")}`}
+                  showArrow
+                  color="foreground"
+                  delay={0}
+                  closeDelay={0}
+                  disableAnimation
                 >
-                  <div className="w-40 flex-shrink-0">
-                    <span className="block truncate text-sm font-medium text-gray-300">
-                      {extractSenderName(email.from || "Unknown Sender")}
-                    </span>
-                  </div>
+                  <button
+                    type="button"
+                    className="group flex w-full cursor-pointer items-center gap-4 p-3 text-left transition-colors hover:bg-zinc-700"
+                    onClick={() => handleEmailClick(email)}
+                  >
+                    <div className="w-40 flex-shrink-0">
+                      <span className="block truncate text-sm font-medium text-zinc-300">
+                        {extractSenderName(email.from || "Unknown Sender")}
+                      </span>
+                    </div>
 
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-white group-hover:text-gray-100">
-                      {email.subject || "Unknown Subject"}
-                    </span>
-                  </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-white group-hover:text-zinc-100">
+                        {email.subject || "Unknown Subject"}
+                      </span>
+                    </div>
 
-                  {/* Time */}
-                  <div className="w-20 flex-shrink-0 text-right">
-                    <EmailTime time={email.time || null} />
-                  </div>
-                </button>
-              </Tooltip>
-            ))}
+                    {/* Time */}
+                    <div className="w-20 flex-shrink-0 text-right">
+                      <EmailTime time={email.time || null} />
+                    </div>
+                  </button>
+                </Tooltip>
+              ))}
 
-          {/* Sentinel for infinite scroll */}
-          {hasNextPage && <div ref={sentinelRef} className="h-1" />}
+            {/* Sentinel for infinite scroll */}
+            {hasNextPage && <div ref={sentinelRef} className="h-1" />}
 
-          {/* Loading spinner for next page */}
-          {isFetchingNextPage && (
-            <div className="flex items-center justify-center py-2">
-              <Spinner size="sm" color="default" />
-            </div>
-          )}
+            {/* Loading spinner for next page */}
+            {isFetchingNextPage && (
+              <div className="flex items-center justify-center py-2">
+                <Spinner size="sm" color="default" />
+              </div>
+            )}
+          </div>
         </ScrollShadow>
       </div>
     );

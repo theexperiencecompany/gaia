@@ -222,7 +222,7 @@ The full design system is documented in **[`DESIGN.md`](./DESIGN.md)** at the re
 - Animation tokens, Framer Motion conventions, easing functions
 - Toast/notification system (Sileo — never sonner or react-hot-toast)
 - Chat bubble architecture and the TextBubble/TOOL_RENDERERS system
-- **Chat tool card styling contract** (outer `rounded-2xl bg-zinc-800 p-4`, inner `rounded-2xl bg-zinc-900 p-3`, no borders)
+- **Chat tool card styling contract** (outer `rounded-3xl bg-zinc-800 p-4`, inner `rounded-2xl bg-zinc-900 p-3`, no borders)
 - Adding new tool cards vs OpenUI primitives (decision tree)
 - Copy-paste card template and pre-commit checklist
 

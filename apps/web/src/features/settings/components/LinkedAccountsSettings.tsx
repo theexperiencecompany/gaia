@@ -276,7 +276,7 @@ export default function LinkedAccountsSettings() {
                   </Chip>
                 )}
                 {isConnected && (
-                  <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                     Connected
                   </span>
@@ -304,13 +304,9 @@ export default function LinkedAccountsSettings() {
 
       <SettingsSection title="How it works">
         <div className="px-4 py-3.5">
-          <ul className="space-y-1.5 text-sm text-zinc-400">
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 text-zinc-600">•</span>
-              Connect your account using the button above
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 text-zinc-600">•</span>
+          <ul className="list-disc space-y-1.5 pl-5 text-sm text-zinc-400">
+            <li>Connect your account using the button above</li>
+            <li>
               Use{" "}
               <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">
                 /gaia
@@ -318,14 +314,8 @@ export default function LinkedAccountsSettings() {
               in Discord or Slack, or just message the Telegram, WhatsApp, or
               iMessage bot
             </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 text-zinc-600">•</span>
-              All conversations sync with your GAIA account
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-0.5 text-zinc-600">•</span>
-              Disconnect anytime from this page
-            </li>
+            <li>All conversations sync with your GAIA account</li>
+            <li>Disconnect anytime from this page</li>
           </ul>
         </div>
       </SettingsSection>

@@ -125,9 +125,7 @@ export const NaturalLanguageDateInput: React.FC<
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder={placeholder}
             classNames={{
-              input: "text-zinc-200 placeholder:text-zinc-600 pr-10",
-              inputWrapper:
-                "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+              input: "text-zinc-200 placeholder:text-zinc-600",
             }}
             endContent={
               <PopoverTrigger asChild>
@@ -142,7 +140,11 @@ export const NaturalLanguageDateInput: React.FC<
             }
           />
         </div>
-        <PopoverContent className="w-auto overflow-hidden rounded-2xl border-0 bg-zinc-800 p-0 shadow-xl">
+        <PopoverContent
+          className="w-auto overflow-hidden"
+          align="center"
+          sideOffset={4}
+        >
           <div className="p-3">
             <Calendar
               mode="single"
@@ -304,9 +306,7 @@ export const NaturalLanguageDateRangeInput: React.FC<
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder={placeholder}
             classNames={{
-              input: "text-zinc-200 placeholder:text-zinc-600 pr-10",
-              inputWrapper:
-                "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+              input: "text-zinc-200 placeholder:text-zinc-600",
             }}
             endContent={
               <PopoverTrigger asChild>
@@ -321,7 +321,11 @@ export const NaturalLanguageDateRangeInput: React.FC<
             }
           />
         </div>
-        <PopoverContent className="w-auto overflow-hidden rounded-2xl border-0 bg-zinc-800 p-1 shadow-xl">
+        <PopoverContent
+          className="w-auto overflow-hidden"
+          align="center"
+          sideOffset={4}
+        >
           <Calendar
             mode="range"
             selected={range}
