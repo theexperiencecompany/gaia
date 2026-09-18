@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Clockwise optimizes team calendars by auto-scheduling focus time and finding the best meeting slots. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across your entire digital life.",
   metaTitle:
-    "Clockwise Alternative with AI Email Management — GAIA vs Clockwise",
+    "Clockwise Alternative with AI Email Management: GAIA vs Clockwise",
   metaDescription:
     "Clockwise optimizes team calendars but doesn't touch your inbox or automate cross-tool workflows. GAIA is an open-source Clockwise alternative with AI email management, calendar intelligence, and workflow automation across 50+ tools.",
   keywords: [
@@ -22,7 +22,7 @@ export const entry: ComparisonData = {
     "AI productivity tool",
   ],
   intro:
-    "Clockwise has built a compelling product around one specific problem: helping teams protect their focus time by intelligently rearranging calendars and finding optimal meeting slots. Trusted by over 40,000 organizations including Uber, Netflix, and Atlassian, it does calendar optimization remarkably well. But calendar optimization is one slice of the productivity puzzle. Clockwise does not touch your inbox, does not create tasks from emails, does not automate workflows across tools, and has no mobile app. GAIA takes a fundamentally broader position: it is a proactive AI assistant that monitors your email and calendar, acts on your behalf across 50+ connected tools, and maintains persistent memory of your projects and the people in them — without waiting to be asked.",
+    "Clockwise has built a compelling product around one specific problem: helping teams protect their focus time by intelligently rearranging calendars and finding optimal meeting slots. Trusted by over 40,000 organizations including Uber, Netflix, and Atlassian, it does calendar optimization remarkably well. But calendar optimization is one slice of the productivity puzzle. Clockwise does not touch your inbox, does not create tasks from emails, does not automate workflows across tools, and has no mobile app. GAIA takes a fundamentally broader position: it is a proactive AI assistant that monitors your email and calendar, acts on your behalf across 50+ connected tools, and maintains persistent memory of your projects and the people in them, without waiting to be asked.",
   rows: [
     {
       feature: "Core approach",
@@ -38,12 +38,12 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Email management",
-      gaia: "Full Gmail management — reads inboxes, triages messages, drafts replies, and converts emails into tasks automatically",
+      gaia: "Full Gmail management: reads inboxes, triages messages, drafts replies, and converts emails into tasks automatically",
       competitor: "No email integration or inbox management of any kind",
     },
     {
       feature: "Task management",
-      gaia: "AI-powered todos with priorities, projects, and deadlines — created automatically from emails and conversations",
+      gaia: "AI-powered todos with priorities, projects, and deadlines, created automatically from emails and conversations",
       competitor:
         "Task-to-calendar conversion that schedules to-do items as flexible holds; no dedicated task management after Asana integration was sunset",
     },
@@ -63,11 +63,11 @@ export const entry: ComparisonData = {
       feature: "Mobile support",
       gaia: "Web, desktop, mobile, CLI, and bot interfaces for full cross-platform access",
       competitor:
-        "No native mobile app — cannot manage schedules, mark events flexible, or use the AI assistant from a phone or tablet",
+        "No native mobile app: cannot manage schedules, mark events flexible, or use the AI assistant from a phone or tablet",
     },
     {
       feature: "Open source",
-      gaia: "Fully open source and self-hostable via Docker — your data never leaves your infrastructure",
+      gaia: "Fully open source and self-hostable via Docker, so your data never leaves your infrastructure",
       competitor:
         "Proprietary closed-source SaaS platform; no self-hosting option",
     },
@@ -79,11 +79,11 @@ export const entry: ComparisonData = {
     },
   ],
   gaiaAdvantages: [
-    "Manages email, tasks, and workflows in addition to calendar — not just scheduling",
+    "Manages email, tasks, and workflows in addition to calendar, not just scheduling",
     "Proactively reads your inbox and creates tasks or drafts replies without waiting for input",
     "Natural-language multi-step automations that span your entire connected tool stack",
-    "Full mobile, desktop, CLI, and bot support — Clockwise has no mobile app at all",
-    "Open source and self-hostable — full data ownership with no per-seat pricing when self-hosted",
+    "Full mobile, desktop, CLI, and bot support; Clockwise has no mobile app at all",
+    "Open source and self-hostable: full data ownership with no per-seat pricing when self-hosted",
     "Graph-based persistent memory that links tasks, meetings, and people for deep contextual understanding",
   ],
   competitorAdvantages: [
@@ -92,7 +92,7 @@ export const entry: ComparisonData = {
     "Established track record with 40,000+ organizations including large enterprises",
   ],
   verdict:
-    "Choose Clockwise if your primary pain point is team calendar fragmentation — protecting focus time, resolving scheduling conflicts across large groups, and getting visibility into meeting load. It is highly specialized and effective at that narrow problem. Choose GAIA if you need an AI assistant that goes beyond the calendar: reading your email, creating tasks automatically, automating multi-step workflows, supporting you on mobile, and maintaining persistent memory across your entire digital workflow — all from an open source platform you can self-host.",
+    "Choose Clockwise if your primary pain point is team calendar fragmentation: protecting focus time, resolving scheduling conflicts across large groups, and getting visibility into meeting load. It is highly specialized and effective at that narrow problem. Choose GAIA if you need an AI assistant that goes beyond the calendar: reading your email, creating tasks automatically, automating multi-step workflows, supporting you on mobile, and maintaining persistent memory across your entire digital workflow, all from an open source platform you can self-host.",
   faqs: [
     {
       question: "Can GAIA replace Clockwise for calendar management?",

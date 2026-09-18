@@ -612,7 +612,7 @@ def _full_disk_access_hint(device: Device) -> str:
         fix = (
             "This device is the GAIA desktop app. Tell the user to grant it Full Disk "
             "Access in System Settings > Privacy & Security > Full Disk Access (enable "
-            "GAIA), then reopen the app — the grant carries into the commands it runs."
+            "GAIA), then reopen the app. The grant carries into the commands it runs."
         )
     else:
         fix = (

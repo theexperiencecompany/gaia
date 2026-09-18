@@ -82,9 +82,9 @@ from shared.py.wide_events import log
 # card is shareable the moment its content is saved; there is no publish step.
 _HOLO_CARD_PATH = "/profile"
 
-_PERSONALIZATION_NOTIFICATION_TITLE = "Check your memories — I just added a lot"
+_PERSONALIZATION_NOTIFICATION_TITLE = "Check your memories, I just added a lot"
 _MEMORIES_NOTIFICATION_BODY = (
-    "I read through your inbox and saved what matters — the people you work with, "
+    "I read through your inbox and saved what matters: the people you work with, "
     "how you write, what you're on top of."
 )
 
@@ -638,7 +638,7 @@ def _holo_card_message(card_url: str) -> str:
     rather than as a payload the client would silently drop.
     """
     return (
-        "Your holo card is ready — I built it from what I learned in your inbox.\n\n"
+        "Your holo card is ready. I built it from what I learned in your inbox.\n\n"
         f"{card_url}\n\n"
         "I also added a lot to your memories while I was in there."
     )

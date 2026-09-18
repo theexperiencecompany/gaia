@@ -83,7 +83,7 @@ const getTimeBasedGreeting = (
     "Still cooking something{name}?",
     "Midnight clarity unlocked{name}.",
     "Night shift in progress{name}.",
-    "Who needs 9–5 anyway{name}?",
+    "Who needs 9 to 5 anyway{name}?",
     "Dark hours, bright ideas{name}.",
     "World's quiet, your turn{name}.",
     "Night = deep work zone{name}.",

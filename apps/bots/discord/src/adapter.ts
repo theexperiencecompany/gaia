@@ -354,9 +354,9 @@ export class DiscordAdapter extends BaseBotAdapter {
       },
       async (authUrl: string) => {
         const publicContent =
-          "To use GAIA, please authenticate first — check your DMs for the link.";
+          "To use GAIA, please authenticate first. Check your DMs for the link.";
         const publicContentFallback =
-          "To use GAIA, please authenticate first — an ephemeral link has been sent above.";
+          "To use GAIA, please authenticate first. An ephemeral link has been sent above.";
         try {
           await interaction.user.send(
             renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
@@ -681,13 +681,13 @@ export class DiscordAdapter extends BaseBotAdapter {
       .setColor(0x6366f1)
       .setTitle("Hey, I'm GAIA 👋")
       .setDescription(
-        "Your personal AI — built to think ahead, remember everything, and get things done with you.\n\nHere's what I can do right in Discord:",
+        "Your personal AI, built to think ahead, remember everything, and get things done with you.\n\nHere's what I can do right in Discord:",
       )
       .addFields(
         {
           name: "Chat",
           value:
-            "Just type anything — ask questions, brainstorm, think out loud.",
+            "Just type anything: ask questions, brainstorm, think out loud.",
           inline: false,
         },
         {
@@ -832,7 +832,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     }
     await send(
       dmSent
-        ? "To use GAIA here, please link your account — check your DMs for the link."
+        ? "To use GAIA here, please link your account. Check your DMs for the link."
         : "To use GAIA here, please link your account. Enable DMs from server members and try again, or use /auth in a private message.",
     );
   }

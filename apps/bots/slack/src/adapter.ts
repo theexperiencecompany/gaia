@@ -427,7 +427,7 @@ export class SlackAdapter extends BaseBotAdapter {
         await client.chat.update({
           channel: channelId,
           ts: currentTs,
-          text: "🔒 Authentication required — check the private message below to link your account.",
+          text: "🔒 Authentication required. Check the private message below to link your account.",
         });
         await client.chat.postEphemeral({
           channel: channelId,

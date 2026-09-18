@@ -189,7 +189,7 @@ export default function DemoCalendarView() {
                         </div>
                         {height > 30 && (
                           <div className="text-[10px] text-zinc-400">
-                            {formatTime12(startDate)} – {formatTime12(endDate)}
+                            {formatTime12(startDate)} to {formatTime12(endDate)}
                           </div>
                         )}
                       </div>

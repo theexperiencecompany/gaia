@@ -1,13 +1,13 @@
 ---
 name: linear-gather-context
-description: Gather comprehensive Linear context — my tasks, sprint progress, blockers, team workload, prioritized status report
+description: Gather comprehensive Linear context: my tasks, sprint progress, blockers, team workload, prioritized status report
 target: linear_agent
 ---
 
 # Linear: Gather Context & Status Report
 
 ## When to Activate
-User wants to know what's happening in Linear — their tasks, sprint progress, blockers, team status, or needs a daily standup summary.
+User wants to know what's happening in Linear: their tasks, sprint progress, blockers, team status, or needs a daily standup summary.
 
 ## Step 1: My Tasks & Priorities
 
@@ -103,7 +103,7 @@ LINEAR_LIST_LINEAR_ISSUES(first=50) → all team issues
 
 **Standup format:**
 ```
-Linear Status — Feb 23, 2025
+Linear Status: Feb 23, 2025
 
 Your Tasks:
   Completed yesterday: GEN-190 (Auth migration)

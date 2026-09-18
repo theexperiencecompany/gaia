@@ -346,6 +346,21 @@ class TestNotifyMemoryReady:
         assert redirect.open_in_new_tab is False
         assert redirect.close_notification is True
 
+    async def test_the_notification_says_what_was_learned_and_that_it_stays_editable(
+        self,
+    ) -> None:
+        """Backfill reads the user's whole history, so the notice has to say what is now remembered and that they can edit it."""
+        create = AsyncMock()
+        with patch(f"{MODULE}.notification_service.create_notification", create):
+            await _notify_memory_ready(USER_ID)
+
+        (request,) = create.await_args.args
+        assert request.content.body == (
+            "GAIA just organized memories from your past conversations. It now "
+            "remembers your context, preferences, and the people you mention. "
+            "Review or edit anything anytime."
+        )
+
     async def test_a_failed_notification_is_warned_not_raised(self) -> None:
         create = AsyncMock(side_effect=RuntimeError("notification service down"))
         with patch(f"{MODULE}.notification_service.create_notification", create):

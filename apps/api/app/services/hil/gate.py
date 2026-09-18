@@ -35,6 +35,7 @@ from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.services.hil.approvals_store import approval_id_for, get_approval
 from app.services.hil.bridge import (
     ApprovalOutcome,
+    GatedApproval,
     build_summary,
     publish_approval_request,
     publish_auto_approval,
@@ -220,27 +221,7 @@ async def _decide(
         if policy == "auto":
             decision = await _judge(request, context, call, record, summary)
 
-        if decision is not None and decision.aligned:
-            log.info(
-                f"{LogTag.HIL} auto-approved",
-                call_name=call.name,
-                reason=decision.reason,
-            )
-            # The receipt says GAIA decided to act, and why. It is not a claim that the
-            # action happened — the tool node runs it afterwards, like any other call.
-            await publish_auto_approval(
-                approval_id=approval_id,
-                stream_id=context.stream_id,
-                user_id=context.user_id,
-                conversation_id=context.conversation_id,
-                tool_call=call,
-                summary=summary,
-                integration_name=integration_name,
-                reason=decision.reason,
-            )
-            return None
-
-        await publish_approval_request(
+        approval = GatedApproval(
             approval_id=approval_id,
             stream_id=context.stream_id,
             user_id=context.user_id,
@@ -249,6 +230,18 @@ async def _decide(
             summary=summary,
             integration_name=integration_name,
         )
+        if decision is not None and decision.aligned:
+            log.info(
+                f"{LogTag.HIL} auto-approved",
+                call_name=call.name,
+                reason=decision.reason,
+            )
+            # The receipt says GAIA decided to act, and why. It is not a claim that the
+            # action happened — the tool node runs it afterwards, like any other call.
+            await publish_auto_approval(approval, reason=decision.reason)
+            return None
+
+        await publish_approval_request(approval)
         return _Pending(approval_id, call.name, summary, integration_name)
     except GraphBubbleUp:
         raise

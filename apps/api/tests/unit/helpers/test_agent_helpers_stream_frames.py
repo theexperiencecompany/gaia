@@ -20,7 +20,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 import pytest
 
 from app.agents.core.background.session import RunKind, create_session, teardown_session
@@ -893,6 +893,53 @@ async def test_messages_thread_the_user_id_into_the_mcp_resource_fetch() -> None
         await _drain(_stream_messages((chunk, {}), state, True, "stream-1", "user-1"))
 
     assert fetch.await_args.kwargs["user_id"] == "user-1"
+
+
+def _reasoning_chunk(text: str, *, content: str = "") -> AIMessageChunk:
+    """Return a chunk carrying provider-style thinking, as ChatOpenRouter streams it."""
+    return AIMessageChunk(
+        content=content, id="msg-1", additional_kwargs={"reasoning_content": text}
+    )
+
+
+@pytest.mark.asyncio
+async def test_comms_thinking_is_streamed_as_a_top_level_reasoning_frame() -> None:
+    """No subagent_id: the root turn renders as a top-level thinking block, not nested under a delegate."""
+    state = _StreamAccumulators()
+
+    frames = await _drain(
+        _stream_messages((_reasoning_chunk("weighing it up"), {}), state, True, "s1", "u1")
+    )
+
+    assert frames == [_sse({"reasoning": {"content": "weighing it up"}})]
+
+
+@pytest.mark.asyncio
+async def test_a_thinking_chunk_carrying_reply_text_emits_both_in_order() -> None:
+    state = _StreamAccumulators()
+
+    frames = await _drain(
+        _stream_messages(
+            (_reasoning_chunk("weighing it up", content="hello"), {}), state, True, "s1", "u1"
+        )
+    )
+
+    assert frames == [
+        _sse({"reasoning": {"content": "weighing it up"}}),
+        _sse({"response": "hello"}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_chunk_with_no_thinking_emits_no_reasoning_frame() -> None:
+    """Non-reasoning models stream every chunk with empty thinking — one empty frame each would be a per-token spinner the client cannot tell from real work."""
+    state = _StreamAccumulators()
+
+    frames = await _drain(
+        _stream_messages((AIMessageChunk(content="hello", id="msg-1"), {}), state, True, "s1", "u1")
+    )
+
+    assert frames == [_sse({"response": "hello"})]
 
 
 # ── execute_graph_streaming ──────────────────────────────────────────

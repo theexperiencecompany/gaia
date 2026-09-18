@@ -47,10 +47,11 @@ def _ready_session_with_cards(stream_id: str) -> None:
     )
 
 
-def _state(*, cancelled: bool, saved: bool = False) -> _StreamState:
+def _state(*, cancelled: bool, saved: bool = False, attached: bool = False) -> _StreamState:
     state = _StreamState()
     state.is_cancelled = cancelled
     state.saved = saved
+    state.attached = attached
     return state
 
 
@@ -191,13 +192,24 @@ class TestFinalizeStreamBackstop:
     async def test_saved_turn_is_not_resaved_or_reattached(self) -> None:
         """The backstop must never double-persist or double-attach a turn already saved and attached."""
         _ready_session_with_cards("s1")
-        state = _state(cancelled=False, saved=True)
+        state = _state(cancelled=False, saved=True, attached=True)
 
         persist, repo = await self._finalize(state)
 
         persist.assert_not_awaited()
         repo.append_message_tool_data.assert_not_awaited()
         assert get_session("s1") is None  # cleanup still happens
+
+    async def test_saved_but_interrupted_attach_still_attaches_cards(self) -> None:
+        """Regression: gating the attach on saved (the old behavior) skipped it when cancelled mid-wait; the backstop must still drain and persist the cards."""
+        _ready_session_with_cards("s1")
+        state = _state(cancelled=True, saved=True, attached=False)
+
+        persist, repo = await self._finalize(state)
+
+        persist.assert_not_awaited()  # already saved — no double save
+        repo.append_message_tool_data.assert_awaited_once()  # cards STILL attached
+        assert get_session("s1") is None
 
 
 class TestRecentHistory:

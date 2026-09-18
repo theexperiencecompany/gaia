@@ -73,7 +73,7 @@ export default function ProductManagerClient() {
           transition={{ duration: 0.7, ease, delay: 0.2 }}
           className="relative z-10 mb-10 max-w-2xl text-xl font-light leading-relaxed text-white"
         >
-          GAIA handles the status updates, meeting prep, and feature triage — so
+          GAIA handles the status updates, meeting prep, and feature triage, so
           you can spend your time on the decisions that actually matter.
         </m.p>
         <m.div
@@ -95,7 +95,7 @@ export default function ProductManagerClient() {
         <SectionHeader
           label="Proactive AI"
           headline="GAIA keeps the pulse so you keep the vision."
-          description="Stop spending half your day as a human status router. GAIA monitors your sprint progress, Slack threads, and customer signals in the background — and surfaces what needs a decision, not a dashboard."
+          description="Stop spending half your day as a human status router. GAIA monitors your sprint progress, Slack threads, and customer signals in the background and surfaces what needs a decision, not a dashboard."
           integrations={[
             { id: "linear", label: "Linear" },
             { id: "slack", label: "Slack" },
@@ -114,7 +114,7 @@ export default function ProductManagerClient() {
         <SectionHeader
           label="Product Brief"
           headline="Your full picture. Before your first meeting."
-          description="Every morning, GAIA compiles sprint progress, deployment status, and team blockers from Linear, GitHub, and Slack — and delivers one crisp brief. Walk into every meeting knowing where things stand."
+          description="Every morning, GAIA compiles sprint progress, deployment status, and team blockers from Linear, GitHub, and Slack, and delivers one crisp brief. Walk into every meeting knowing where things stand."
           integrations={[
             { id: "linear", label: "Linear" },
             { id: "github", label: "GitHub" },
@@ -132,7 +132,7 @@ export default function ProductManagerClient() {
         <SectionHeader
           label="Stakeholder Updates"
           headline="Write once. Never rewrite it."
-          description="GAIA pulls sprint velocity, deployment status, and key wins from Linear and GitHub — then drafts your stakeholder update in the format your audience expects. One review, done."
+          description="GAIA pulls sprint velocity, deployment status, and key wins from Linear and GitHub, then drafts your stakeholder update in the format your audience expects. One review, done."
           integrations={[
             { id: "linear", label: "Linear" },
             { id: "github", label: "GitHub" },
@@ -151,7 +151,7 @@ export default function ProductManagerClient() {
         <SectionHeader
           label="Feature Triage"
           headline="Every customer signal. Captured and categorized."
-          description="Feature requests scatter across Slack, email, and support tickets. GAIA captures every signal, groups by theme, and creates structured Linear tickets with full context — before your next roadmap review."
+          description="Feature requests scatter across Slack, email, and support tickets. GAIA captures every signal, groups by theme, and creates structured Linear tickets with full context, before your next roadmap review."
           integrations={[
             { id: "slack", label: "Slack" },
             { id: "gmail", label: "Gmail" },
@@ -170,7 +170,7 @@ export default function ProductManagerClient() {
           label="Product Ops"
           labelIcon={<SlackIcon />}
           headline="Your team gets product answers. You stay in flow."
-          description="Ask @GAIA about any ticket, sprint status, or roadmap question in Slack — it answers from Linear, GitHub, and Notion instantly. No DMs, no interruptions, no meetings to answer simple questions."
+          description="Ask @GAIA about any ticket, sprint status, or roadmap question in Slack. It answers from Linear, GitHub, and Notion instantly. No DMs, no interruptions, no meetings to answer simple questions."
           integrations={[
             { id: "slack", label: "Slack" },
             { id: "linear", label: "Linear" },
@@ -188,7 +188,7 @@ export default function ProductManagerClient() {
         <SectionHeader
           label="On Autopilot"
           headline="Your product operations. Running themselves."
-          description="Weekly stakeholder updates every Friday. Sprint status to Slack every Monday morning. Feature digest after every sprint. Tell GAIA once — it connects Linear, GitHub, and Notion, and runs the workflow every time."
+          description="Weekly stakeholder updates every Friday. Sprint status to Slack every Monday morning. Feature digest after every sprint. Tell GAIA once. It connects Linear, GitHub, and Notion, and runs the workflow every time."
           integrations={[
             { id: "linear", label: "Linear" },
             { id: "github", label: "GitHub" },

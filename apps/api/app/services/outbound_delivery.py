@@ -144,8 +144,9 @@ async def publish_outbound_message(
     return OutboundResult.PUBLISHED
 
 
-# Friendly platform names for user-facing copy (e.g. the link confirmation,
-# delivery provenance frames). Single source — import, don't restate.
+# Friendly platform names for user-facing copy consumed by other modules
+# (e.g. workflow delivery provenance frames). Single source — import, don't
+# restate. In-module copy prefers ``ConversationSource.display_name``.
 PLATFORM_DISPLAY_NAMES: dict[ConversationSource, str] = {
     ConversationSource.TELEGRAM: "Telegram",
     ConversationSource.DISCORD: "Discord",
@@ -167,11 +168,11 @@ async def notify_account_linked(platform: str, user_id: str) -> OutboundResult:
     if source is None or source not in OUTBOUND_QUEUES:
         return OutboundResult.SKIPPED
 
-    display_name = PLATFORM_DISPLAY_NAMES.get(source, source.value.capitalize())
+    display_name = source.display_name
     text = (
-        "✅ **You're connected!**\n\n"
-        f"Your {display_name} account is now linked to GAIA. "
-        "Send me a message or use `/help` to see everything I can do."
+        "✅ **You're connected**\n\n"
+        f"Your {display_name} account is linked. "
+        "Message me anytime, or send `/help` to see what I can do."
     )
     return await publish_outbound_message(
         source, user_id, [text], ttl_seconds=OUTBOUND_TTL_SECONDS_GREETING
@@ -220,6 +221,41 @@ async def publish_outbound_file(
 
     log.info(
         "outbound_file_published",
+        platform=platform.value,
+        queue=queue_name,
+        filename=filename,
+    )
+    return True
+
+
+async def publish_outbound_photo(
+    platform: ConversationSource, user_id: str, url: str, filename: str, caption: str | None = None
+) -> bool:
+    """Enqueue a CDN-hosted image (e.g. a browser-automation step screenshot) for the bot to deliver as a photo.
+
+    Unlike publish_outbound_file, the bot fetches the bytes directly from url;
+    nothing is proxied through the session artifact store. Best-effort: unknown
+    platform, unlinked account, unavailable broker, and publish errors all
+    return False without raising.
+    """
+    prep = await _prepare(platform, user_id, "publish_outbound_photo")
+    if isinstance(prep, OutboundResult):
+        return False
+    queue_name, destination_id, publisher = prep
+
+    envelope = OutboundMessageEnvelope(
+        platform=platform.value,
+        destination_id=destination_id,
+        attachment=OutboundAttachment(url=url, filename=filename, caption=caption),
+    )
+    try:
+        await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
+    except Exception as e:
+        log.error("publish_outbound_photo: publish failed", platform=platform.value, error=str(e))
+        return False
+
+    log.info(
+        "outbound_photo_published",
         platform=platform.value,
         queue=queue_name,
         filename=filename,

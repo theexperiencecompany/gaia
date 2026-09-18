@@ -108,7 +108,7 @@ const WorkflowListView = memo(({ workflows = [] }: WorkflowListViewProps) => {
         description: "Get a plain-English summary of what each workflow does",
         onPress: () =>
           appendToInput(
-            "Give me a plain-English summary of each of my active workflows — what triggers them, what they do, and what problem they're solving for me.",
+            "Give me a plain-English summary of each of my active workflows: what triggers them, what they do, and what problem they're solving for me.",
           ),
       },
       {

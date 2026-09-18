@@ -39,6 +39,7 @@ from app.agents.llm.client import (
     LLMInvokeOptions,
     ResponseFacts,
     StructuredCallOptions,
+    _build_custom_default_llm,
     _build_default_llm,
     _create_configurable_llm,
     _GenerationIdCallback,
@@ -63,7 +64,10 @@ from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredE
 from app.constants.llm import (
     AUX_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
+    DEFAULT_LLM_TEMPERATURE,
+    DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
+    DEV_LLM_MAX_OUTPUT_TOKENS,
     HELPER_MAX_OUTPUT_TOKENS,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
@@ -582,6 +586,12 @@ class TestGetDefaultLlm:
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.GAIA_SIM_MODE = False
+        # get_default_llm prefers the custom endpoint when DEV_LLM_* is fully
+        # set, and a MagicMock's attributes are all truthy — pin them off so
+        # these tests exercise the OpenRouter lane they assert on.
+        mock_settings.DEV_LLM_BASE_URL = None
+        mock_settings.DEV_LLM_API_KEY = None
+        mock_settings.DEV_LLM_MODEL = None
         mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
         mock_chat_openrouter.return_value = MagicMock()
 
@@ -604,6 +614,12 @@ class TestGetDefaultLlm:
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.GAIA_SIM_MODE = False
+        # get_default_llm prefers the custom endpoint when DEV_LLM_* is fully
+        # set, and a MagicMock's attributes are all truthy — pin them off so
+        # these tests exercise the OpenRouter lane they assert on.
+        mock_settings.DEV_LLM_BASE_URL = None
+        mock_settings.DEV_LLM_API_KEY = None
+        mock_settings.DEV_LLM_MODEL = None
         mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
         mock_chat_openrouter.side_effect = lambda **_: MagicMock()
 
@@ -614,6 +630,12 @@ class TestGetDefaultLlm:
     @patch("app.agents.llm.client.settings")
     def test_no_openrouter_key_raises(self, mock_settings: MagicMock) -> None:
         mock_settings.GAIA_SIM_MODE = False
+        # get_default_llm prefers the custom endpoint when DEV_LLM_* is fully
+        # set, and a MagicMock's attributes are all truthy — pin them off so
+        # these tests exercise the OpenRouter lane they assert on.
+        mock_settings.DEV_LLM_BASE_URL = None
+        mock_settings.DEV_LLM_API_KEY = None
+        mock_settings.DEV_LLM_MODEL = None
         mock_settings.OPENROUTER_API_KEY = None
 
         with pytest.raises(LLMNotConfiguredError, match="Default LLM not configured"):
@@ -628,6 +650,114 @@ class TestGetDefaultLlm:
         mock_settings.GOOGLE_API_KEY = None
 
         assert get_default_llm() is mock_sim_llm.return_value
+
+
+class TestGetDefaultLlmCustomLane:
+    """DEV_LLM_* takes precedence over OpenRouter for auxiliary work — but only when all three settings are present."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh_cache(self):
+        _build_custom_default_llm.cache_clear()
+        yield
+        _build_custom_default_llm.cache_clear()
+
+    @patch("app.agents.llm.client.ChatOpenRouter")
+    @patch("app.agents.llm.client.settings")
+    def test_a_configured_custom_lane_serves_the_requested_temperature(
+        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+    ) -> None:
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.DEV_LLM_BASE_URL = "https://gw/v1"
+        mock_settings.DEV_LLM_API_KEY = "dev-key"  # pragma: allowlist secret
+        mock_settings.DEV_LLM_MODEL = "zai/glm-5.3-flash"
+        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+
+        assert get_default_llm(temperature=0.9) is mock_chat_openrouter.return_value
+        kwargs = mock_chat_openrouter.call_args.kwargs
+        assert kwargs["model"] == "zai/glm-5.3-flash"
+        assert kwargs["base_url"] == "https://gw/v1"
+        assert kwargs["api_key"] == "dev-key"  # pragma: allowlist secret
+        # A creative caller's temperature must survive the custom lane; dropping
+        # it silently pins every auxiliary task to the endpoint's own default.
+        assert kwargs["temperature"] == 0.9
+
+    @pytest.mark.parametrize(
+        ("base_url", "api_key", "model"),
+        [
+            (None, None, "zai/glm-5.3-flash"),
+            (None, "dev-key", "zai/glm-5.3-flash"),  # pragma: allowlist secret
+            ("https://gw/v1", None, None),
+            ("https://gw/v1", "dev-key", None),  # pragma: allowlist secret
+            ("https://gw/v1", None, "zai/glm-5.3-flash"),
+        ],
+    )
+    @patch("app.agents.llm.client.ChatOpenRouter")
+    @patch("app.agents.llm.client.settings")
+    def test_a_partial_custom_lane_stays_on_openrouter(
+        self,
+        mock_settings: MagicMock,
+        mock_chat_openrouter: MagicMock,
+        base_url: str | None,
+        api_key: str | None,
+        model: str | None,
+    ) -> None:
+        _build_default_llm.cache_clear()
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.DEV_LLM_BASE_URL = base_url
+        mock_settings.DEV_LLM_API_KEY = api_key
+        mock_settings.DEV_LLM_MODEL = model
+        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+
+        get_default_llm()
+
+        assert mock_chat_openrouter.call_args.kwargs["model"] == DEFAULT_MODEL_NAME
+
+    @patch("app.agents.llm.client.ChatOpenRouter")
+    @patch("app.agents.llm.client.settings")
+    def test_the_custom_lane_streams_with_usage_and_a_bounded_output(
+        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+    ) -> None:
+        """Same wire contract as the OpenRouter lane it replaces: streaming on, usage metadata attached to that stream, and the output capped — an unbounded auxiliary call runs to the endpoint's own 64k ceiling."""
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.DEV_LLM_BASE_URL = "https://gw/v1"
+        mock_settings.DEV_LLM_API_KEY = "dev-key"  # pragma: allowlist secret
+        mock_settings.DEV_LLM_MODEL = "zai/glm-5.3-flash"
+
+        get_default_llm()
+
+        kwargs = mock_chat_openrouter.call_args.kwargs
+        assert kwargs["streaming"] is True
+        assert kwargs["stream_usage"] is True
+        assert kwargs["max_tokens"] == DEV_LLM_MAX_OUTPUT_TOKENS
+
+    @patch("app.agents.llm.client.ChatOpenRouter")
+    @patch("app.agents.llm.client.settings")
+    def test_the_custom_lane_carries_the_context_window_profile(
+        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+    ) -> None:
+        """The fractional-window middleware reads profile["max_input_tokens"] at graph-build time and raises without it; an arbitrary custom endpoint has no curated LangChain profile, so this lane must supply one."""
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.DEV_LLM_BASE_URL = "https://gw/v1"
+        mock_settings.DEV_LLM_API_KEY = "dev-key"  # pragma: allowlist secret
+        mock_settings.DEV_LLM_MODEL = "zai/glm-5.3-flash"
+
+        llm = get_default_llm()
+
+        assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
+
+    @patch("app.agents.llm.client.ChatOpenRouter")
+    @patch("app.agents.llm.client.settings")
+    def test_an_unset_model_asks_for_no_model_rather_than_a_placeholder(
+        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+    ) -> None:
+        """DEV_LLM_MODEL is str or None; the or "" only keeps the kwarg typed as str, never a stand-in model id."""
+        mock_settings.DEV_LLM_MODEL = None
+        mock_settings.DEV_LLM_API_KEY = "dev-key"  # pragma: allowlist secret
+        mock_settings.DEV_LLM_BASE_URL = "https://gw/v1"
+
+        _build_custom_default_llm(DEFAULT_LLM_TEMPERATURE)
+
+        assert mock_chat_openrouter.call_args.kwargs["model"] == ""
 
 
 class TestBackgroundStructuredRunnable:

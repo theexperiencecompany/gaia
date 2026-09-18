@@ -67,9 +67,9 @@ const gaiaComponentGroups = [
       "KbdRow",
     ],
     notes: [
-      "MapBlock — geographic map with markers, routes, and arcs.",
-      "Timeline — chronological event feed with actor, links, and actions.",
-      "TextDocument — editable rich-text card for drafts, reports, and letters.",
+      "MapBlock: geographic map with markers, routes, and arcs.",
+      "Timeline: chronological event feed with actor, links, and actions.",
+      "TextDocument: editable rich-text card for drafts, reports, and letters.",
     ],
   },
 ];

@@ -16,7 +16,7 @@ MESSAGE_ID_KEY = "message_id"
 # User-facing error text when the executor exhausts its recursion budget
 # (GraphRecursionError). Handed to comms as the error result so it's re-voiced in
 # GAIA's persona instead of leaking the raw LangGraph traceback string.
-EXECUTOR_STEP_LIMIT_MESSAGE = "This task hit its step limit — try breaking it into smaller pieces."
+EXECUTOR_STEP_LIMIT_MESSAGE = "This task hit its step limit. Try breaking it into smaller pieces."
 
 # result_type for a run that stopped on a HIL approval instead of finishing. Such
 # a run has nothing to deliver and KEEPS the busy lock: its thread is checkpointed

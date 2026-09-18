@@ -25,7 +25,7 @@ from shared.py.wide_events import log
 
 INTERRUPTION_MARKER = (
     "[The user pressed stop and interrupted your previous response before it "
-    "completed. It was cut off by the user's choice — if it comes up, say it was "
+    "completed. It was cut off by the user's choice. If it comes up, say it was "
     "stopped/interrupted; do not invent another explanation.]"
 )
 INTERRUPTED_TOOL_RESULT = (

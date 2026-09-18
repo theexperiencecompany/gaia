@@ -254,7 +254,7 @@ async def extract_social_profiles_from_emails(
         context_lines = []
         for i, ctx in enumerate(entry.contexts, 1):
             context_lines.append(
-                f'  Context {i} — From: {ctx.sender} | Subject: {ctx.subject} | "{ctx.snippet}"'
+                f'  Context {i}, From: {ctx.sender} | Subject: {ctx.subject} | "{ctx.snippet}"'
             )
         candidates_lines.append(header)
         candidates_lines.extend(context_lines)

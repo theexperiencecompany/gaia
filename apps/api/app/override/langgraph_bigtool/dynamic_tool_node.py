@@ -50,7 +50,7 @@ def _timeout_error_text(tool_name: str) -> str:
     return (
         f"Error: TimeoutError: '{tool_name}' timed out after "
         f"{TOOL_EXECUTION_TIMEOUT_SECONDS}s. The operation may or may not have "
-        "completed on the provider side — verify its effect before retrying."
+        "completed on the provider side. Verify its effect before retrying."
     )
 
 

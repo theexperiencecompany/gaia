@@ -23,7 +23,7 @@ from app.templates.docstrings.research_tool_docs import (
     RESEARCH_INSTRUCTIONS,
 )
 from app.utils.chat_utils import get_user_id_from_config
-from app.utils.crawl4ai_utils import batch_fetch_with_crawl4ai
+from app.utils.crawl4ai_utils import CrawlBatchParams, batch_fetch_with_crawl4ai
 from app.utils.research_utils import (
     RankedUrl,
     build_research_cache_key,
@@ -108,13 +108,23 @@ async def _fetch_sources(
     urls_to_fetch = [u.url for u in ranked_urls]
     crawl4ai_contents, crawl4ai_errors = await batch_fetch_with_crawl4ai(
         urls_to_fetch,
-        page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
-        total_timeout_seconds=DEEP_RESEARCH_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
-        semaphore_count=DEEP_RESEARCH_CRAWL4AI_SEMAPHORE_COUNT,
-        context_name="crawl4ai",
-        content_query=query,
+        CrawlBatchParams(
+            page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
+            total_timeout_seconds=DEEP_RESEARCH_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
+            semaphore_count=DEEP_RESEARCH_CRAWL4AI_SEMAPHORE_COUNT,
+            content_query=query,
+        ),
     )
+    return await _fetch_source_contents(ranked_urls, crawl4ai_contents, crawl4ai_errors, writer)
 
+
+async def _fetch_source_contents(
+    ranked_urls: list[RankedUrl],
+    crawl4ai_contents: dict[str, str],
+    crawl4ai_errors: dict[str, str],
+    writer: StreamWriter,
+) -> list[ResearchSource]:
+    """Resolve each ranked URL to page content, tiered: batch crawl4ai, then httpx, then snippet."""
     semaphore = asyncio.Semaphore(DEEP_RESEARCH_FALLBACK_SEMAPHORE_COUNT)
     fetch_counter = 0
     total_urls = len(ranked_urls)

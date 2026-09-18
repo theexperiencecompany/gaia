@@ -27,6 +27,9 @@ from app.db.redis import delete_cache, get_cache, set_cache
 from app.utils.redis_lock import DistributedLock
 from shared.py.wide_events import VectorContext, log
 
+from .chroma_store import ChromaStore
+from .index_warmup import run_index_warmup
+
 
 def _tools_seed_lock(namespace: str) -> DistributedLock:
     """Return the cross-replica seed lock for one indexing namespace."""
@@ -37,9 +40,6 @@ def _tools_seed_lock(namespace: str) -> DistributedLock:
         renew_seconds=TOOLS_SEED_LOCK_RENEW_SECONDS,
         max_hold_seconds=TOOLS_SEED_LOCK_MAX_HOLD_SECONDS,
     )
-
-
-from .chroma_store import ChromaStore
 
 
 class IndexableTool(Protocol):
@@ -302,33 +302,6 @@ def _build_put_operations(
     return put_ops
 
 
-async def _execute_batch_operations(
-    store: ChromaStore, put_ops: list[PutOp], batch_size: int = 50
-) -> None:
-    """Execute put operations in batches.
-
-    Args:
-        store: ChromaStore instance
-        put_ops: List of PutOp operations to execute
-        batch_size: Number of operations per batch
-    """
-    if not put_ops:
-        return
-
-    total_ops = len(put_ops)
-
-    for i in range(0, total_ops, batch_size):
-        batch = put_ops[i : i + batch_size]
-        await store.abatch(batch)
-        log.info(
-            f"{LogTag.CHROMA} Processed batch",
-            batch_index=i // batch_size + 1,
-            batch_total=(total_ops + batch_size - 1) // batch_size,
-        )
-
-    log.info(f"{LogTag.CHROMA} Successfully updated tools in ChromaDB", total_ops=total_ops)
-
-
 async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, str]]) -> None:
     """Index tools into ChromaDB on-demand, diffing against existing tools for the namespace."""
     input_count = len(tools_with_space)
@@ -450,7 +423,11 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
             tools_to_delete_count=len(tools_to_delete),
         )
         put_ops = _build_put_operations(tools_to_upsert, tools_to_delete)
-        await _execute_batch_operations(store, put_ops)
+        # Leave the hash uncached on failure so the next boot retries; caching a
+        # failed write is what made a transient embedding outage permanent (the
+        # guard then hit on every later boot and the tools were never re-indexed).
+        if not await run_index_warmup(store, put_ops, context=f"index_tools_to_store[{namespace}]"):
+            return
         await set_cache(cache_key, tools_hash, ttl=TOOLS_INDEX_CACHE_TTL_SECONDS)
         log.info(
             f"{LogTag.CHROMA} index_tools_to_store: completed namespace, cache key set",
@@ -552,7 +529,7 @@ async def initialize_chroma_tools_store() -> ChromaStore:
             tools_to_delete_count=len(tools_to_delete),
         )
         put_ops = _build_put_operations(tools_to_upsert, tools_to_delete)
-        await _execute_batch_operations(store, put_ops)
+        await run_index_warmup(store, put_ops, context="tools_store_seed")
 
     # Serialize seeding across replicas/workers so a cold-start herd doesn't each
     # embed the full builtin tool + subagent set; the diff keeps it correct if the

@@ -125,7 +125,7 @@ export function buildLinkCodeFailureMessage(
   }
   return (
     "**That link has expired**\n\n" +
-    "Head back to GAIA and pick your platform again — it only takes a tap.\n" +
+    "Head back to GAIA and pick your platform again. It only takes a tap.\n" +
     `${frontendUrl}/onboarding`
   );
 }

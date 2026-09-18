@@ -5,6 +5,7 @@ from arq.typing import WorkerCoroutine
 from arq.worker import func
 import stackprinter
 
+from app.constants.browser import BROWSER_JOB_TASK
 from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK
@@ -39,6 +40,7 @@ from app.workers.tasks import (
     sweep_idle_sandboxes,
     sweep_undelivered_signup_emails,
 )
+from app.workers.tasks.browser_tasks import run_browser_job
 from app.workers.tasks.device_tasks import warm_device_servers
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
@@ -108,6 +110,12 @@ _sync_workflows_for_subscription_state = func(
     name=SUBSCRIPTION_WORKFLOW_SYNC_TASK,
 )
 
+# One run per conversation is enforced by the browser slot lease, not by ARQ,
+# and a browser run is not idempotent — it may already have submitted a form.
+_run_browser_job = func(
+    arq_task(run_browser_job), name=BROWSER_JOB_TASK, max_tries=1, keep_result=0
+)
+
 WorkerSettings.functions = [
     _sweep_hil_approvals,
     _process_reminder,
@@ -136,6 +144,7 @@ WorkerSettings.functions = [
     _sweep_undelivered_signup_emails,
     _warm_device_servers,
     _sync_workflows_for_subscription_state,
+    _run_browser_job,
 ]
 
 WorkerSettings.cron_jobs = [

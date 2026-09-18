@@ -489,9 +489,9 @@ export class ImessageAdapter extends BaseBotAdapter {
   private async sendWelcome(space: Space, handle: string): Promise<void> {
     const text =
       "Hey, I'm GAIA 👋\n\n" +
-      "Your personal AI — I think ahead, remember what matters, and help you actually get things done.\n\n" +
+      "Your personal AI. I think ahead, remember what matters, and help you actually get things done.\n\n" +
       "Here's what I can do right here on iMessage:\n\n" +
-      "Chat\nJust type anything — ask questions, brainstorm, think out loud.\n\n" +
+      "Chat\nJust type anything: ask questions, brainstorm, think out loud.\n\n" +
       "Todos\nCapture tasks with /todo add.\n\n" +
       "Workflows\nRun automations with /workflow and delegate whole projects.\n\n" +
       "Link your account\nRun /auth to connect GAIA so I remember you and your context.\n\n" +

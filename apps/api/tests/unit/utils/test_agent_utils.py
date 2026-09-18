@@ -1,5 +1,6 @@
 """Tests for app/utils/agent_utils.py."""
 
+from datetime import UTC, datetime, timedelta
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -7,9 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.browser import BROWSER_TOOL_CATEGORY
 from app.constants.cache import CUSTOM_INT_METADATA_CACHE_PREFIX, CUSTOM_INT_METADATA_TTL
 from app.models.integration_models import Integration
 from app.models.stream_events import ToolOutputPayload
+from app.services.browser.captions import describe_action
 from app.utils.agent_utils import (
     IntegrationDisplayMetadata,
     ToolCallView,
@@ -19,6 +22,7 @@ from app.utils.agent_utils import (
     _resolve_handoff_display_name,
     _resolve_mcp_ui_metadata,
     _special_tool_display,
+    format_browser_action_entry,
     format_sse_data,
     format_sse_response,
     format_tool_call_entry,
@@ -282,6 +286,68 @@ class TestFormatToolCallEntry:
 
         assert result["data"]["icon_url"] == "https://icon.png"  # type: ignore[index]  # runtime returns a dict though the signature says str
         assert result["data"]["integration_name"] == "My Service"  # type: ignore[index]  # runtime returns a dict though the signature says str
+
+
+# ---------------------------------------------------------------------------
+# format_browser_action_entry
+# ---------------------------------------------------------------------------
+
+
+class TestFormatBrowserActionEntry:
+    def test_navigate_action_produces_a_real_caption_and_exact_shape(self) -> None:
+        inputs = {"url": "https://www.github.com/x"}
+        before = datetime.now(UTC)
+
+        entry = format_browser_action_entry(
+            name="navigate",
+            inputs=inputs,
+            target=None,
+            subagent_id="sub-1",
+            tool_call_id="tc-1",
+        )
+
+        after = datetime.now(UTC)
+
+        assert entry["tool_name"] == "tool_calls_data"
+        assert entry["tool_category"] == BROWSER_TOOL_CATEGORY
+        assert entry["subagent_id"] == "sub-1"
+        assert entry["mcp_ui"] is None
+        assert entry["mcp_server_url"] is None
+
+        data = entry["data"]
+        assert data["tool_name"] == "navigate"
+        assert data["tool_category"] == BROWSER_TOOL_CATEGORY
+        assert data["message"] == describe_action("navigate", inputs, None)
+        assert data["message"] == "Opening github.com"
+        assert data["show_category"] is False
+        assert data["tool_call_id"] == "tc-1"
+        assert data["inputs"] == inputs
+        assert data["icon_url"] is None
+        assert data["integration_name"] is None
+
+        timestamp = datetime.fromisoformat(entry["timestamp"])
+        assert timestamp.tzinfo is not None
+        assert timestamp.utcoffset() == timedelta(0)
+        assert before <= timestamp <= after + timedelta(seconds=5)
+
+    def test_typing_action_with_a_target_names_both_text_and_field(self) -> None:
+        inputs = {"text": "hello world"}
+        target = "Search box"
+
+        entry = format_browser_action_entry(
+            name="input",
+            inputs=inputs,
+            target=target,
+            subagent_id="sub-2",
+            tool_call_id="tc-2",
+        )
+
+        expected_message = describe_action("input", inputs, target)
+        assert expected_message == 'Typing "hello world" into "Search box"'
+        assert entry["data"]["message"] == expected_message
+        assert entry["subagent_id"] == "sub-2"
+        assert entry["data"]["tool_call_id"] == "tc-2"
+        assert entry["data"]["inputs"] == inputs
 
 
 # ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
-from livekit import rtc  # type: ignore[attr-defined]  # livekit __init__ untyped upstream
+from livekit import rtc
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
 
 from shared.py.wide_events import VoiceContext, get_trace_id, log, log_context, wide_task
@@ -243,14 +243,11 @@ class CustomLLM(LLM):
         if event.keys() & PLUMBING_EVENT_KEYS:
             await self.forward_stream_event_to_frontend(data)
 
-    # The base class declares chat() -> LLMStream, but the LiveKit pipeline calls it as
-    # `async with llm.chat(...) as stream: async for chunk in stream:`, which is exactly
-    # what @asynccontextmanager + yield gen() provides.
-    # The pipeline also passes tools/tool_choice/conn_options (voice/agent.py), which
-    # this override does not use — the catch-all has to stay or those calls TypeError.
-    # `object`, not Any: nothing here ever reads them.
+    # livekit-agents 1.6+ made LLMStream an ABC; this yields an async generator
+    # instead, satisfying the same `async with s: async for c in s` contract the
+    # pipeline actually uses (voice/agent.py) without reimplementing LLMStream.
     @asynccontextmanager
-    async def chat(
+    async def chat(  # type: ignore[override]  # yields an async generator, not an LLMStream
         self, *, chat_ctx: ChatContext, **_kwargs: object
     ) -> AsyncGenerator[AsyncGenerator[ChatChunk, None], None]:
         """Stream SSE from the backend and yield ChatChunks for TTS."""

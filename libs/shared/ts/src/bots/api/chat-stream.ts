@@ -137,7 +137,7 @@ function toStreamErrorMessage(message: string): string {
     return "Connection interrupted. Please try again.";
   }
   if (message.includes("timeout")) {
-    return "Request timed out. The server may be busy - please try again.";
+    return "Request timed out. The server might be busy, so try again.";
   }
   return message;
 }
@@ -226,7 +226,7 @@ async function streamChatOnce(
             // No content after timeout - this is an error
             const errorMsg = receivedKeepalive
               ? "The AI is taking longer than expected. Please try a simpler request or try again later."
-              : "Connection timeout - no response from server. Please try again.";
+              : "Connection timed out with no response from the server. Try again.";
             await onError(new Error(errorMsg));
           }
           resolve();

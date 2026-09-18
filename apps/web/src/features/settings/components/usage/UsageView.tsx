@@ -327,7 +327,7 @@ function Stats({
         accent={
           streak > 0 ? (
             <Tooltip
-              content={`${streak}-day streak — you've been active every day for the last ${streak} days`}
+              content={`${streak}-day streak. You've been active every day for the last ${streak} days`}
               placement="top"
               delay={150}
               closeDelay={0}
@@ -345,7 +345,7 @@ function Stats({
       />
       <StatCard
         label="Max task"
-        value={ceiling ? formatCompactNumber(ceiling) : "—"}
+        value={ceiling ? formatCompactNumber(ceiling) : "N/A"}
         sub="tokens / run"
       />
     </div>
@@ -618,7 +618,7 @@ function Trend({
       </div>
       {isEmpty && (
         <div className="flex aspect-[16/6] w-full items-center justify-center text-sm text-zinc-600">
-          Nothing used yet this {monthName} — your trend will appear here.
+          Nothing used yet this {monthName}. Your trend will appear here.
         </div>
       )}
       {!isEmpty &&
@@ -859,7 +859,7 @@ function upgradeReason(summary: UsageSummary): string {
   // counts, not cost, so there's no per-day budget-hit series to tally.
   const budgetPct = summary.budget?.daily?.percentage ?? 0;
   if (budgetPct >= USAGE_WARN_THRESHOLD) {
-    return "You're near today's usage limit — Pro gives you much higher daily limits.";
+    return "You're near today's usage limit. Pro gives you much higher daily limits.";
   }
   const near = Object.values(summary.features).filter((f) => {
     const p = f.periods.day;
@@ -868,7 +868,7 @@ function upgradeReason(summary: UsageSummary): string {
     );
   }).length;
   if (near > 0) {
-    return `You're close to your limit on ${near} ${near === 1 ? "tool" : "tools"} — Pro gives you far more room.`;
+    return `You're close to your limit on ${near} ${near === 1 ? "tool" : "tools"}. Pro gives you far more room.`;
   }
   return "Unlimited chat messages, much higher limits on every feature, and room for far larger tasks.";
 }

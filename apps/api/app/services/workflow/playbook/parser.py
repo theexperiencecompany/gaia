@@ -347,13 +347,13 @@ def _unmatched_problem(tool_name: str, walk: _Walk) -> str:
     if not same_tool:
         return (
             f"{tool_name} did not run in this run; a playbook freezes calls "
-            "that ran and produced their result — run it, or drop the step"
+            "that ran and produced their result. Run it, or drop the step"
         )
     left = [call for index, call in same_tool if index not in walk.consumed]
     if not left:
         return (
             f"{tool_name} ran {len(same_tool)} time(s) in this run and earlier steps froze "
-            "every one of them; a step cannot replay a call the run did not make — drop "
+            "every one of them; a step cannot replay a call the run did not make. Drop "
             "this step, or run it again"
         )
     return (
@@ -429,7 +429,7 @@ def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
     if is_error_envelope(call.result):
         return (
             f"{tool_name} failed in this run ({_envelope_error(call.result)}); a playbook "
-            "freezes calls that succeeded — fix the call and run it again, or drop the step"
+            "freezes calls that succeeded. Fix the call and run it again, or drop the step"
         )
     # Not a list length: a write tool answers with the record it just made, and
     # that record's own empty attributes are not the call returning nothing.
@@ -437,7 +437,7 @@ def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
     if carries_no_data(call.result):
         return (
             f"{tool_name} returned no items in this run (args: {_rendered_args(call.args)}); "
-            "freeze a call that produced data — widen the args or decline the playbook"
+            "freeze a call that produced data. Widen the args or decline the playbook"
         )
     return None
 

@@ -140,7 +140,7 @@ export function DesktopPermissions() {
             label={row.label}
             description={
               needsRestart
-                ? "Enabled it in System Settings? Restart GAIA to apply — macOS only applies this permission on launch."
+                ? "Enabled it in System Settings? Restart GAIA to apply. macOS only applies this permission on launch."
                 : row.description
             }
           >

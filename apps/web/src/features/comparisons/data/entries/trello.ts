@@ -7,9 +7,9 @@ export const entry: ComparisonData = {
   tagline: "Visual project boards, lists, and cards",
   description:
     "Trello is a kanban-style project management tool owned by Atlassian. GAIA goes far beyond visual boards to proactively manage your entire digital workflow with AI.",
-  metaTitle: "Trello Alternative with AI Automation — GAIA vs Trello",
+  metaTitle: "Trello Alternative with AI Automation: GAIA vs Trello",
   metaDescription:
-    "Trello's kanban boards still require manual work. GAIA is an open-source Trello alternative with AI automation that creates tasks from email, automates workflows, and manages your calendar across 50+ tools — with a free tier.",
+    "Trello's kanban boards still require manual work. GAIA is an open-source Trello alternative with AI automation that creates tasks from email, automates workflows, and manages your calendar across 50+ tools, with a free tier.",
   keywords: [
     "GAIA vs Trello",
     "Trello alternative",
@@ -27,7 +27,7 @@ export const entry: ComparisonData = {
     "Trello vs GAIA",
   ],
   intro:
-    "Trello built its reputation on simplicity: drag-and-drop cards across lists on a board. For teams that need a lightweight visual way to track work, it delivers a familiar and frictionless experience. But a board is only as smart as the person moving the cards. GAIA takes a fundamentally different approach — instead of giving you a surface to organize work manually, it acts as a proactive AI assistant that captures tasks from your emails, schedules them against your calendar, automates repetitive workflows, and remembers context across every tool you use. Where Trello shows you what needs doing, GAIA helps get it done.",
+    "Trello built its reputation on simplicity: drag-and-drop cards across lists on a board. For teams that need a lightweight visual way to track work, it delivers a familiar and frictionless experience. But a board is only as smart as the person moving the cards. GAIA takes a fundamentally different approach: instead of giving you a surface to organize work manually, it acts as a proactive AI assistant that captures tasks from your emails, schedules them against your calendar, automates repetitive workflows, and remembers context across every tool you use. Where Trello shows you what needs doing, GAIA helps get it done.",
   rows: [
     {
       feature: "Core approach",
@@ -104,7 +104,7 @@ export const entry: ComparisonData = {
     "Battle-tested platform trusted by millions of teams worldwide",
   ],
   verdict:
-    "Choose Trello if you need a simple, visual board to coordinate a small team's work and want a low-friction tool that everyone can pick up immediately. Choose GAIA if you want an AI assistant that actively manages your tasks, email, calendar, and workflows — reducing the manual overhead of keeping boards up to date and acting on your behalf across the tools you already use.",
+    "Choose Trello if you need a simple, visual board to coordinate a small team's work and want a low-friction tool that everyone can pick up immediately. Choose GAIA if you want an AI assistant that actively manages your tasks, email, calendar, and workflows, reducing the manual overhead of keeping boards up to date and acting on your behalf across the tools you already use.",
   faqs: [
     {
       question: "Can GAIA replace Trello for project management?",
@@ -119,12 +119,12 @@ export const entry: ComparisonData = {
     {
       question: "Is GAIA more expensive than Trello?",
       answer:
-        "GAIA offers a free tier and Pro plans starting at $20/month per user, and it can be self-hosted for free with full data ownership. Trello's paid plans start at $5/user/month, making it cheaper on a per-seat basis for large teams, but GAIA replaces multiple tools simultaneously — email management, calendar assistant, automation platform, and task manager — which often makes it more cost-effective overall.",
+        "GAIA offers a free tier and Pro plans starting at $20/month per user, and it can be self-hosted for free with full data ownership. Trello's paid plans start at $5/user/month, making it cheaper on a per-seat basis for large teams, but GAIA replaces multiple tools simultaneously (email management, calendar assistant, automation platform, and task manager) which often makes it more cost-effective overall.",
     },
     {
       question: "Can GAIA automate Trello workflows?",
       answer:
-        "Yes. Through its MCP integration layer, GAIA can create cards, move cards between lists, assign members, set due dates, and trigger Trello actions as part of broader multi-step workflows. For example, GAIA can receive an email, create a Trello card from it, assign the right person, and send a Slack notification — all automatically.",
+        "Yes. Through its MCP integration layer, GAIA can create cards, move cards between lists, assign members, set due dates, and trigger Trello actions as part of broader multi-step workflows. For example, GAIA can receive an email, create a Trello card from it, assign the right person, and send a Slack notification, all automatically.",
     },
   ],
 };

@@ -15,23 +15,23 @@
 apps/api/app/agents/context/assemble.py	TB002
 apps/api/app/agents/context/fetchers.py	TB002
 apps/api/app/agents/core/background/bg_results.py	TB002
-apps/api/app/agents/core/background/executor_capture.py	TB002
+apps/api/app/agents/core/background/executor_capture.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/agents/core/background/redis_writer.py	TB001
 apps/api/app/agents/core/background/redis_writer.py	TB002
 apps/api/app/agents/core/background/subagent_runner.py	TB002
 apps/api/app/agents/core/integration_capabilities.py	TB001
-apps/api/app/agents/core/interruption.py	TB002
+apps/api/app/agents/core/interruption.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/agents/core/nodes/adapt_media.py	TB002
-apps/api/app/agents/core/nodes/executor_status.py	TB002
+apps/api/app/agents/core/nodes/executor_status.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/agents/core/nodes/filter_messages.py	TB002
 apps/api/app/agents/core/nodes/follow_up_actions_node.py	TB002
 apps/api/app/agents/core/nodes/manage_system_prompts.py	TB002
 apps/api/app/agents/core/nodes/memory_node.py	TB002
 apps/api/app/agents/core/subagents/call_record.py	TB002
-apps/api/app/agents/core/subagents/subagent_runner.py	TB001
-apps/api/app/agents/core/subagents/subagent_runner.py	TB002
-apps/api/app/agents/llm/client.py	TB001
-apps/api/app/agents/llm/client.py	TB002
+apps/api/app/agents/core/subagents/subagent_runner.py	TB001	deferred-until=2026-10-15; #876 touches this file only to wire extract_reasoning_delta into the runner; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
+apps/api/app/agents/core/subagents/subagent_runner.py	TB002	deferred-until=2026-10-15; #876 touches this file only to wire extract_reasoning_delta into the runner; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
+apps/api/app/agents/llm/client.py	TB001	deferred-until=2026-10-15; #876 touches this file only to add the custom-lane check beside master's provider setup; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
+apps/api/app/agents/llm/client.py	TB002	deferred-until=2026-10-15; #876 touches this file only to add the custom-lane check beside master's provider setup; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
 apps/api/app/agents/llm/lane.py	TB001
 apps/api/app/agents/llm/lane.py	TB002
 apps/api/app/agents/llm/model_catalog.py	TB001
@@ -41,14 +41,14 @@ apps/api/app/agents/memory/profile_extractor.py	TB001
 apps/api/app/agents/memory/profile_extractor.py	TB002
 apps/api/app/agents/middleware/accounting.py	TB001
 apps/api/app/agents/middleware/accounting.py	TB002
-apps/api/app/agents/middleware/compaction.py	TB001
-apps/api/app/agents/middleware/compaction.py	TB002
+apps/api/app/agents/middleware/compaction.py	TB001	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/agents/middleware/compaction.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/agents/middleware/completion.py	TB002
 apps/api/app/agents/middleware/executor.py	TB001
 apps/api/app/agents/middleware/executor.py	TB002
 apps/api/app/agents/middleware/hil_approval.py	TB001
-apps/api/app/agents/middleware/loop_guard.py	TB001
-apps/api/app/agents/middleware/loop_guard.py	TB002
+apps/api/app/agents/middleware/loop_guard.py	TB001	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/agents/middleware/loop_guard.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/agents/middleware/media.py	TB001
 apps/api/app/agents/middleware/runtime_adapter.py	TB001
 apps/api/app/agents/middleware/runtime_adapter.py	TB002
@@ -59,8 +59,8 @@ apps/api/app/agents/middleware/subagent_join.py	TB002
 apps/api/app/agents/middleware/summarization.py	TB001
 apps/api/app/agents/middleware/summarization.py	TB002
 apps/api/app/agents/prompts/trigger_prompts.py	TB002
-apps/api/app/agents/skills/builtin/create-spreadsheet/templates/report.py	TB001
-apps/api/app/agents/skills/builtin/create-spreadsheet/templates/report.py	TB002
+apps/api/app/agents/skills/builtin/create-spreadsheet/templates/report.py	TB001	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/agents/skills/builtin/create-spreadsheet/templates/report.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/agents/skills/github_discovery.py	TB001
 apps/api/app/agents/skills/github_discovery.py	TB002
 apps/api/app/agents/skills/installer.py	TB001
@@ -91,8 +91,8 @@ apps/api/app/agents/tools/file_tools.py	TB002
 apps/api/app/agents/tools/integration_instructions_tools.py	TB002
 apps/api/app/agents/tools/integration_tool.py	TB002	deferred-until=2026-10-15; master's custom-MCP add path (#1208) reads the untyped connection dict create_and_connect_custom_integration returns; typing it changes custom_crud's return shape, a product change kept out of this merge (decided 2026-09-14)
 apps/api/app/agents/tools/memory_tools.py	TB002
-apps/api/app/agents/tools/playbook_tools.py	TB001
-apps/api/app/agents/tools/playbook_tools.py	TB002
+apps/api/app/agents/tools/playbook_tools.py	TB001	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/agents/tools/playbook_tools.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/agents/tools/reminder_tool.py	TB001
 apps/api/app/agents/tools/reminder_tool.py	TB002
 apps/api/app/agents/tools/skill_tools.py	TB002
@@ -121,34 +121,34 @@ apps/api/app/api/v1/endpoints/webhook_composio.py	TB001
 apps/api/app/api/v1/endpoints/webhook_composio.py	TB002
 apps/api/app/config/sentry.py	TB001
 apps/api/app/config/sentry.py	TB002
-apps/api/app/config/settings.py	TB001
+apps/api/app/config/settings.py	TB001	deferred-until=2026-10-15; #876 touches this file only to add the browser settings; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
 apps/api/app/config/token_repository.py	TB001
 apps/api/app/config/token_repository.py	TB002
 apps/api/app/constants/outbound.py	TB001
 apps/api/app/constants/profession_bios.py	TB002
-apps/api/app/constants/voices.py	TB002
+apps/api/app/constants/voices.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/core/lazy_loader.py	TB001
-apps/api/app/core/lifespan.py	TB002
+apps/api/app/core/lifespan.py	TB002	deferred-until=2026-10-15; #876 touches this file only to add the Obscura crawler shutdown hook; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
 apps/api/app/core/stream_manager.py	TB001
 apps/api/app/core/stream_manager.py	TB002
 apps/api/app/core/websocket_broadcast_listener.py	TB002
 apps/api/app/core/websocket_manager.py	TB001
 apps/api/app/core/websocket_manager.py	TB002
-apps/api/app/db/chroma/chroma_store.py	TB001
-apps/api/app/db/chroma/chroma_store.py	TB002
-apps/api/app/db/chroma/chroma_tools_store.py	TB002
-apps/api/app/db/chroma/chroma_triggers_store.py	TB001
-apps/api/app/db/chroma/chroma_triggers_store.py	TB002
-apps/api/app/db/chroma/chromadb.py	TB002
+apps/api/app/db/chroma/chroma_store.py	TB001	deferred-until=2026-10-15; #876 touches this file only to add ChromaBatchWriteError and namespaced collections; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
+apps/api/app/db/chroma/chroma_store.py	TB002	deferred-until=2026-10-15; #876 touches this file only to add ChromaBatchWriteError and namespaced collections; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
+apps/api/app/db/chroma/chroma_tools_store.py	TB002	deferred-until=2026-10-15; #876 touches this file only to route indexing through run_index_warmup; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
+apps/api/app/db/chroma/chroma_triggers_store.py	TB001	deferred-until=2026-10-15; #876 touches this file only to route indexing through run_index_warmup; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
+apps/api/app/db/chroma/chroma_triggers_store.py	TB002	deferred-until=2026-10-15; #876 touches this file only to route indexing through run_index_warmup; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
+apps/api/app/db/chroma/chromadb.py	TB002	deferred-until=2026-10-15; #876 touches this file only to namespace the collection lookup; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
 apps/api/app/db/chroma/noop_embedding.py	TB001
 apps/api/app/db/chroma/public_integrations_store.py	TB001
 apps/api/app/db/chroma/public_integrations_store.py	TB002
 apps/api/app/db/mongodb/collections.py	TB001
-apps/api/app/db/mongodb/indexes.py	TB001
-apps/api/app/db/mongodb/indexes.py	TB002
+apps/api/app/db/mongodb/indexes.py	TB001	deferred-until=2026-10-15; #876 touches this file only to add the browser_profiles/browser_tasks index builders; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
+apps/api/app/db/mongodb/indexes.py	TB002	deferred-until=2026-10-15; #876 touches this file only to add the browser_profiles/browser_tasks index builders; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
 apps/api/app/db/mongodb/mongodb.py	TB001
 apps/api/app/db/postgresql.py	TB001
-apps/api/app/db/redis.py	TB001
+apps/api/app/db/redis.py	TB001	deferred-until=2026-10-15; #876 adds get_and_delete/set_if_absent/ttl_seconds beside the module's measured Any overloads (narrowing them costs 31 mypy errors per its own note); that narrowing is its own change (decided 2026-09-17)
 apps/api/app/db/repositories/conversations.py	TB002
 apps/api/app/db/repositories/usage_daily.py	TB002
 apps/api/app/db/repositories/users.py	TB002
@@ -168,14 +168,14 @@ apps/api/app/models/composio_schemas/github_tools.py	TB002
 apps/api/app/models/composio_schemas/slack_tools.py	TB002
 apps/api/app/models/mail_models.py	TB001
 apps/api/app/models/memory_models.py	TB002
-apps/api/app/models/onboarding_models.py	TB001
+apps/api/app/models/onboarding_models.py	TB001	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/models/playbook_models.py	TB001
 apps/api/app/models/playbook_models.py	TB002
 apps/api/app/models/trigger_configs.py	TB001
 apps/api/app/models/trigger_configs.py	TB002
 apps/api/app/models/workflow_execution_models.py	TB001
-apps/api/app/models/workflow_models.py	TB001
-apps/api/app/models/workflow_models.py	TB002
+apps/api/app/models/workflow_models.py	TB001	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/models/workflow_models.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/schemas/desktop_schemas.py	TB001
 apps/api/app/schemas/errors.py	TB001
 apps/api/app/schemas/errors.py	TB002
@@ -188,8 +188,8 @@ apps/api/app/scripts/reset_playbook_declines.py	TB002
 apps/api/app/scripts/sync_user_workspaces.py	TB002
 apps/api/app/services/_vfs_scheduler.py	TB002
 apps/api/app/services/account_fs.py	TB002
-apps/api/app/services/analytics_service.py	TB001
-apps/api/app/services/analytics_service.py	TB002
+apps/api/app/services/analytics_service.py	TB001	deferred-until=2026-10-15; #876 touches this file only to add the browser analytics events; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
+apps/api/app/services/analytics_service.py	TB002	deferred-until=2026-10-15; #876 touches this file only to add the browser analytics events; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
 apps/api/app/services/bot/stream_frames.py	TB001
 apps/api/app/services/bot_token_service.py	TB001
 apps/api/app/services/bot_token_service.py	TB002
@@ -214,14 +214,14 @@ apps/api/app/services/connect_link_service.py	TB002
 apps/api/app/services/contact_service.py	TB001
 apps/api/app/services/contact_service.py	TB002
 apps/api/app/services/delivery/chat_channel.py	TB002
-apps/api/app/services/desktop/bridge.py	TB001
-apps/api/app/services/desktop/bridge.py	TB002
+apps/api/app/services/desktop/bridge.py	TB001	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/services/desktop/bridge.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/services/desktop/releases.py	TB002
 apps/api/app/services/dev_agent_service.py	TB002
 apps/api/app/services/device/bridge.py	TB001
 apps/api/app/services/device/device_auth.py	TB002
-apps/api/app/services/device/device_service.py	TB001
-apps/api/app/services/device/device_service.py	TB002
+apps/api/app/services/device/device_service.py	TB001	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/services/device/device_service.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/services/device/revoke_listener.py	TB002
 apps/api/app/services/device/up_listener.py	TB002
 apps/api/app/services/device_token_service.py	TB002
@@ -235,8 +235,8 @@ apps/api/app/services/gaia_knowledge_service.py	TB002	deferred-until=2026-10-15;
 apps/api/app/services/gaia_task_files.py	TB002
 apps/api/app/services/hil/approvals_store.py	TB001
 apps/api/app/services/hil/classification.py	TB002
-apps/api/app/services/hil/conversational.py	TB002
-apps/api/app/services/hil/gate.py	TB002
+apps/api/app/services/hil/conversational.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/services/hil/gate.py	TB002	deferred-until=2026-10-15; #876 touches this file only to adopt the GatedApproval record; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
 apps/api/app/services/hil/notify.py	TB001
 apps/api/app/services/hil/notify.py	TB002
 apps/api/app/services/hil/policy.py	TB001
@@ -279,12 +279,12 @@ apps/api/app/services/oauth/oauth_state_service.py	TB002
 apps/api/app/services/onboarding/inbox_scan_cache.py	TB001
 apps/api/app/services/onboarding/inbox_triage_service.py	TB001
 apps/api/app/services/onboarding/inbox_triage_service.py	TB002
-apps/api/app/services/onboarding/intelligence_service.py	TB002
+apps/api/app/services/onboarding/intelligence_service.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/services/onboarding/onboarding_service.py	TB001
-apps/api/app/services/onboarding/social_profile_service.py	TB001
-apps/api/app/services/onboarding/social_profile_service.py	TB002
+apps/api/app/services/onboarding/social_profile_service.py	TB001	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/services/onboarding/social_profile_service.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/services/onboarding/writing_style_service.py	TB002
-apps/api/app/services/outbound_delivery.py	TB002
+apps/api/app/services/outbound_delivery.py	TB002	deferred-until=2026-10-15; #876 touches this file only to add publish_outbound_photo; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
 apps/api/app/services/payments/payment_service.py	TB002
 apps/api/app/services/payments/payment_webhook_service.py	TB001
 apps/api/app/services/payments/payment_webhook_service.py	TB002
@@ -300,13 +300,13 @@ apps/api/app/services/scheduler_service.py	TB001
 apps/api/app/services/storage/_vfs_common.py	TB001
 apps/api/app/services/storage/_vfs_common.py	TB002
 apps/api/app/services/storage/account_vfs.py	TB002
-apps/api/app/services/storage/gaia_tasks_vfs.py	TB001
-apps/api/app/services/storage/gaia_tasks_vfs.py	TB002
+apps/api/app/services/storage/gaia_tasks_vfs.py	TB001	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/services/storage/gaia_tasks_vfs.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/services/storage/metrics.py	TB002
 apps/api/app/services/storage/sessions/meta.py	TB002
-apps/api/app/services/storage/user_todos_vfs.py	TB001
-apps/api/app/services/storage/user_todos_vfs.py	TB002
-apps/api/app/services/support_service.py	TB002
+apps/api/app/services/storage/user_todos_vfs.py	TB001	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/services/storage/user_todos_vfs.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/services/support_service.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/services/tools/tools_service.py	TB002
 apps/api/app/services/triggers/base.py	TB001
 apps/api/app/services/triggers/base.py	TB002
@@ -335,13 +335,13 @@ apps/api/app/services/triggers/subscription_service.py	TB002
 apps/api/app/services/upload_service.py	TB002
 apps/api/app/services/workflow/playbook/check.py	TB002
 apps/api/app/services/workflow/playbook/evaluator.py	TB001
-apps/api/app/services/workflow/playbook/parser.py	TB001
-apps/api/app/services/workflow/playbook/parser.py	TB002
+apps/api/app/services/workflow/playbook/parser.py	TB001	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/services/workflow/playbook/parser.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/services/workflow/playbook/runner.py	TB001
 apps/api/app/services/workflow/playbook/runner.py	TB002
 apps/api/app/services/workflow/playbook/scripted_model.py	TB001
 apps/api/app/services/workflow/queue_service.py	TB001
-apps/api/app/services/workflow/run_trace.py	TB002
+apps/api/app/services/workflow/run_trace.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/services/workflow/scheduler.py	TB001
 apps/api/app/services/workflow/scheduler.py	TB002
 apps/api/app/services/workflow/subagent_output.py	TB001
@@ -352,8 +352,8 @@ apps/api/app/services/workflow/workflow_subagent.py	TB001
 apps/api/app/services/workflow/workflow_subagent.py	TB002
 apps/api/app/utils/device_onboarding.py	TB002
 apps/api/app/workers/config/log_config.py	TB002
-apps/api/app/workers/lifecycle/shutdown.py	TB001
-apps/api/app/workers/lifecycle/shutdown.py	TB002
+apps/api/app/workers/lifecycle/shutdown.py	TB001	deferred-until=2026-10-15; #876 touches this file only to add the Obscura crawler shutdown hook; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
+apps/api/app/workers/lifecycle/shutdown.py	TB002	deferred-until=2026-10-15; #876 touches this file only to add the Obscura crawler shutdown hook; the grandfathered boundary predates it and typing it is its own change (decided 2026-09-17)
 apps/api/app/workers/lifecycle/startup.py	TB001
 apps/api/app/workers/queue.py	TB001
 apps/api/app/workers/task_envelope.py	TB001
@@ -363,8 +363,8 @@ apps/api/app/workers/tasks/cleanup_tasks.py	TB001
 apps/api/app/workers/tasks/device_tasks.py	TB001
 apps/api/app/workers/tasks/hil_sweep_tasks.py	TB001
 apps/api/app/workers/tasks/hil_sweep_tasks.py	TB002
-apps/api/app/workers/tasks/memory_backfill_tasks.py	TB001
-apps/api/app/workers/tasks/memory_backfill_tasks.py	TB002
+apps/api/app/workers/tasks/memory_backfill_tasks.py	TB001	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
+apps/api/app/workers/tasks/memory_backfill_tasks.py	TB002	deferred-until=2026-10-15; #876's dash sweep changed string punctuation in this file only, no code or signature (decided 2026-09-18)
 apps/api/app/workers/tasks/memory_email_tasks.py	TB001
 apps/api/app/workers/tasks/memory_email_tasks.py	TB002
 apps/api/app/workers/tasks/memory_sweep_tasks.py	TB001

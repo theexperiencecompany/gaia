@@ -38,7 +38,7 @@ export default function OrbDevPage() {
         </Button>
       </div>
       <p className="font-mono text-xs text-zinc-500">
-        /dev/orb — GaiaOrb WebGL2 shader playground
+        /dev/orb: GaiaOrb WebGL2 shader playground
       </p>
     </div>
   );

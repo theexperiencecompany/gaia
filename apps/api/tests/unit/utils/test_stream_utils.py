@@ -8,6 +8,7 @@ import pytest
 
 from app.utils.agent_utils import IntegrationMetadata
 from app.utils.stream_utils import (
+    absorb_collector_event,
     extract_tool_entries_from_update,
     reconstruct_subagent_groups,
 )
@@ -421,6 +422,59 @@ class TestReconstructSubagentGroups:
         [root] = td["tool_data"]
         assert root["data"]["subagent_id"] == "parent"
         assert [nested["subagent_id"] for nested in root["data"]["nested_subagents"]] == ["child"]
+
+
+class TestAbsorbCollectorEventReasoning:
+    """absorb_collector_event's reasoning branch (delegates to absorb_reasoning)."""
+
+    def test_reasoning_with_content_appends_exactly_one_reasoning_entry(self) -> None:
+        accumulated: dict[str, Any] = {"tool_data": []}
+        tool_outputs: dict[str, str] = {}
+
+        absorb_collector_event(
+            {"reasoning": {"content": "Thinking about the weather", "subagent_id": "sub-9"}},
+            accumulated,
+            tool_outputs,
+        )
+
+        assert accumulated["tool_data"] == [
+            {
+                "tool_name": "tool_calls_data",
+                "tool_category": "reasoning",
+                "data": {
+                    "tool_name": "reasoning",
+                    "tool_category": "reasoning",
+                    "message": "",
+                    "reasoning": "Thinking about the weather",
+                },
+                "subagent_id": "sub-9",
+            }
+        ]
+        assert tool_outputs == {}
+
+    def test_reasoning_without_a_subagent_id_omits_the_key(self) -> None:
+        accumulated: dict[str, Any] = {"tool_data": []}
+
+        absorb_collector_event({"reasoning": {"content": "musing"}}, accumulated, {})
+
+        [entry] = accumulated["tool_data"]
+        assert "subagent_id" not in entry
+
+    def test_empty_reasoning_content_adds_nothing(self) -> None:
+        accumulated: dict[str, Any] = {"tool_data": []}
+
+        absorb_collector_event(
+            {"reasoning": {"content": "", "subagent_id": "sub-9"}}, accumulated, {}
+        )
+
+        assert accumulated["tool_data"] == []
+
+    def test_event_without_a_reasoning_key_adds_nothing(self) -> None:
+        accumulated: dict[str, Any] = {"tool_data": []}
+
+        absorb_collector_event({}, accumulated, {})
+
+        assert accumulated["tool_data"] == []
 
 
 @pytest.mark.unit

@@ -68,10 +68,10 @@ export default function ApprovalRequestGroup({
       if (
         response.outcomes.some((o) => !o.resolved && o.reason !== "not_found")
       ) {
-        toast.error("Some approvals couldn't be submitted — please try again");
+        toast.error("Some approvals couldn't be submitted, please try again");
       }
     } catch {
-      toast.error("Couldn't submit your decisions — please try again");
+      toast.error("Couldn't submit your decisions, please try again");
     } finally {
       setBatchSubmitting(null);
     }

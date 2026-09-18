@@ -31,6 +31,7 @@ from app.agents.core.graph_manager import (
 )
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, dev_option
+from app.agents.llm.reasoning import extract_reasoning_delta
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
@@ -72,32 +73,6 @@ def _capture_finish_task_content(chunk: ToolMessage, current_message: str) -> st
     if chunk.name == FINISH_TASK_NAME and isinstance(chunk.content, str):
         return chunk.content
     return current_message
-
-
-def _extract_reasoning_delta(chunk: AIMessageChunk) -> str:
-    """Pull this chunk's reasoning ("thinking") text, model-agnostic.
-
-    ChatOpenRouter surfaces reasoning as standard reasoning content blocks;
-    other providers (DeepSeek-style) put it in additional_kwargs.reasoning_content.
-    Returns "" when the chunk carries no thinking (e.g. non-reasoning models), so
-    the caller emits nothing for them.
-    """
-    parts: list[str] = []
-    for block in getattr(chunk, "content_blocks", None) or []:
-        block_type = block.get("type") if isinstance(block, dict) else getattr(block, "type", None)
-        if block_type == "reasoning":
-            text = (
-                block.get("reasoning")
-                if isinstance(block, dict)
-                else getattr(block, "reasoning", "")
-            )
-            if text:
-                parts.append(text)
-    if not parts:
-        fallback = (getattr(chunk, "additional_kwargs", None) or {}).get("reasoning_content")
-        if fallback:
-            parts.append(fallback if isinstance(fallback, str) else str(fallback))
-    return "".join(parts)
 
 
 @dataclass(frozen=True)
@@ -283,7 +258,7 @@ def _process_messages_payload(
         # (empty for non-reasoning models). Deltas are per chunk; the stream
         # writer coalesces them for the persistence collector, never for publish.
         if stream_writer:
-            reasoning_delta = _extract_reasoning_delta(chunk)
+            reasoning_delta = extract_reasoning_delta(chunk)
             if reasoning_delta:
                 reasoning_payload = ReasoningPayload(
                     content=reasoning_delta, subagent_id=subagent_id

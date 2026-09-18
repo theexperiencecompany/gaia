@@ -328,7 +328,7 @@ def _summarized_compact_message(
     one-line pointer rides along for lossless recovery; otherwise the
     summary stands alone. spilled is (fmt, sandbox_path) from _write_raw_output.
     """
-    body = f"[{tool_name} compacted — {reason}] {summary}"
+    body = f"[{tool_name} compacted: {reason}] {summary}"
     additional: dict[str, Any] = {
         **existing_additional_kwargs,
         "original_length": len(content_str),
@@ -341,7 +341,7 @@ def _summarized_compact_message(
         mine = "query_json/grep" if fmt in ("json", "jsonl") else "grep"
         size_kb = len(content_str) / 1024
         body += (
-            f"\n\n[Full raw output ({size_kb:.1f} KB) saved at {sandbox_path} — if the "
+            f"\n\n[Full raw output ({size_kb:.1f} KB) saved at {sandbox_path}. If the "
             f"digest missed something you need, mine just that with {mine}; do NOT "
             f"read the whole file back into context.]"
         )
@@ -404,7 +404,7 @@ def _truncate_in_context(
         f"({reason}). The full output could NOT be saved for later and the middle "
         f"{dropped} chars are gone for good. The first "
         f"{COMPACTION_FALLBACK_HEAD_CHARS} and last {COMPACTION_FALLBACK_TAIL_CHARS} "
-        f"chars are below — if you need what was dropped, call the tool again with a "
+        f"chars are below. If you need what was dropped, call the tool again with a "
         f"narrower query rather than assuming this is the complete result.\n\n"
         f"{content_str[:COMPACTION_FALLBACK_HEAD_CHARS]}\n\n"
         f"[... {dropped} chars dropped ...]\n\n"

@@ -52,7 +52,7 @@ async def executor_status_hook(state: State, config: RunnableConfig, store: Base
             content=(
                 "A background task you dispatched in this conversation is STILL "
                 f"RUNNING right now (task_id: {task_id or 'unknown'}). Its results "
-                "have not arrived yet — do not claim it finished, and do not "
+                "have not arrived yet. Do not claim it finished, and do not "
                 "dispatch the same task again. If the user asks about it, tell "
                 "them it's in progress."
             ),

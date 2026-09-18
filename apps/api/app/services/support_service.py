@@ -177,16 +177,16 @@ async def _rollback_created_request(
             status_code=500,
             detail=(
                 "Email sending failed and automatic cleanup of the support "
-                "request also failed. The request may still be stored — "
-                "please contact support instead of retrying."
+                "request also failed. The request may still be stored. "
+                "Please contact support instead of retrying."
             ),
         ) from rollback_error
     raise HTTPException(
         status_code=500,
         detail=(
             "Email sending failed and automatic cleanup of the support "
-            "request also failed. The request may still be stored — "
-            "please contact support instead of retrying."
+            "request also failed. The request may still be stored. "
+            "Please contact support instead of retrying."
         ),
     ) from email_error
 

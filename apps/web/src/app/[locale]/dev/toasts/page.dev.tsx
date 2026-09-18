@@ -27,7 +27,7 @@ const GROUPS: Group[] = [
       { label: "error", run: () => toast.error("Something went wrong.") },
       {
         label: "warning",
-        run: () => toast.warning("Heads up — quota almost reached."),
+        run: () => toast.warning("Heads up, quota almost reached."),
       },
       { label: "info", run: () => toast.info("New version available.") },
     ],
@@ -95,10 +95,7 @@ const GROUPS: Group[] = [
         label: "loading to error",
         run: () => {
           const id = toast.loading("Saving workflow…");
-          setTimeout(
-            () => toast.error("Save failed — try again", { id }),
-            1500,
-          );
+          setTimeout(() => toast.error("Save failed, try again", { id }), 1500);
         },
       },
     ],

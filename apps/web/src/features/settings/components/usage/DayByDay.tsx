@@ -256,7 +256,7 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
             text={
               isTokens
                 ? "Tokens charged to you each day. Background work (memory, onboarding) is billed separately and not counted here."
-                : "Everything GAIA did for you each day — messages and tool calls."
+                : "Everything GAIA did for you each day: messages and tool calls."
             }
           />
         </div>

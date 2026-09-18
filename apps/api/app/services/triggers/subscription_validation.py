@@ -168,7 +168,7 @@ def _validate_one(
         if correction is None:
             return None, [_bad_operator_error(field, operator)], None
         operator, operator_reason = correction
-        reasons.append(f"'{condition.operator}' became '{operator}' — {operator_reason}")
+        reasons.append(f"'{condition.operator}' became '{operator}': {operator_reason}")
 
     value, value_reason = _coerce_value(condition.value, field)
     if value is None:

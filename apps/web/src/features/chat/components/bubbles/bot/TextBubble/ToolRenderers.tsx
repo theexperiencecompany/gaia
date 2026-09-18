@@ -43,6 +43,7 @@ import type {
 } from "@/types/features/redditTypes";
 import type { SearchResults } from "@/types/features/searchTypes";
 import ApprovalRequestGroup from "../ApprovalRequestGroup";
+import BrowserTaskSection from "../BrowserTaskSection";
 import { CalendarDeleteSection } from "../CalendarDeleteSection";
 import { CalendarEditSection } from "../CalendarEditSection";
 import CalendarEventSection from "../CalendarEventSection";
@@ -132,6 +133,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 
   // Desktop
   screenshot_data: (data) => <ScreenshotSection screenshot_data={data} />,
+
+  // Browser automation (Browser-Use)
+  browser_task_data: (data) => <BrowserTaskSection data={data} />,
 
   // Email
   email_thread_data: (data) => <EmailThreadCard emailThreadData={data} />,

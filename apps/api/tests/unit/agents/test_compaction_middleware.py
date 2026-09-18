@@ -683,7 +683,7 @@ class TestDigestComposition:
 
     def test_header_carries_tool_and_reason(self) -> None:
         assert self._build().content.startswith(
-            "[search compacted — large_output (9000 chars)] the digest"
+            "[search compacted: large_output (9000 chars)] the digest"
         )
 
     def test_json_pointer_offers_query_json_and_grep(self) -> None:
@@ -1134,7 +1134,7 @@ class TestCompactToolOutputBoundary:
         msg = result.update["messages"][0]
         # tool_name reached both the message name and the summarizer prompt
         assert msg.name == "search"
-        assert msg.content.startswith("[search compacted — large_output")
+        assert msg.content.startswith("[search compacted: large_output")
         human = captured["messages"][1]
         assert "Tool: search" in human.content
         # reason reached the header; size reached the pointer (1024-based)

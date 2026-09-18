@@ -1,6 +1,9 @@
 """Apply patches to third-party components for compatibility and bug fixes."""
 
 from . import (
+    browser_use_input_timing_patch,
+    browser_use_page_ready_patch,
+    browser_use_stealth_patch,
     composio_custom_tool_patch,
     composio_custom_tool_schema_patch,
     composio_langchain_patch,

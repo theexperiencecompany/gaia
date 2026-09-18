@@ -142,7 +142,7 @@ function SkillEditorForm({
         placeholder="Sort, label, and draft replies for new mail"
         value={description}
         onValueChange={setDescription}
-        description="What it does and when to use it — the agent sees this at all times."
+        description="What it does and when to use it: the agent sees this at all times."
         isInvalid={!!descriptionError}
         errorMessage={descriptionError}
       />

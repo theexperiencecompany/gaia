@@ -80,7 +80,7 @@ export default function ApprovalRequestSection({
         feedback.trim() || null,
       );
     } catch {
-      toast.error("Couldn't submit your decision — please try again");
+      toast.error("Couldn't submit your decision, please try again");
       setSubmitting(null);
     }
   };

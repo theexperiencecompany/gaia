@@ -195,8 +195,8 @@ class TestRecordExecutorCancellation:
         assert messages[0].content == wrap_agent_payload(
             AgentTag.EXECUTOR_CANCELLED,
             "The background task task-42 ('send the email') was cancelled by the user "
-            "before it completed. It did NOT finish and will not deliver results — "
-            "do not claim otherwise.",
+            "before it completed. It did NOT finish and will not deliver results. "
+            "Do not claim otherwise.",
         )
 
     async def test_unknown_task_id_is_named_as_unknown(self) -> None:

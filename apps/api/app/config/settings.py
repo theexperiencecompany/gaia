@@ -24,6 +24,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
+from app.constants.browser import BrowserEngine
 from app.constants.log_tags import LogTag
 from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
@@ -170,6 +171,135 @@ class CommonSettings(BaseAppSettings):
         except (TypeError, ValueError):
             return CRAWL4AI_DEFAULT_MAX_BROWSERS
         return max(CRAWL4AI_MIN_MAX_BROWSERS, parsed)
+
+    # --- Browser-Use (autonomous browser automation) ---
+    # Opt-in: disabled by default until BROWSER_HOST_URL is configured; when
+    # false the tool reports unavailable instead of spinning up a browser.
+    BROWSER_USE_ENABLED: bool = False
+
+    # Strips thinking/evaluation_previous_goal/next_goal/plan from step output.
+    # On by default: measured ~26% fewer prompt tokens, per-step cost roughly
+    # halves. NOT measured on recovery-heavy tasks; turn off if those regress.
+
+    # Dev-only: suffixes every ChromaDB collection name so parallel worktrees,
+    # which share one local Chroma, stop deleting each other's indexed tools.
+    # Empty in production (dedicated Chroma); set per worktree by `mise run wt:env`.
+    CHROMA_COLLECTION_NAMESPACE: str = ""
+    # Flash mode strips thinking/evaluation_previous_goal/next_goal/plan from each step's
+    # output schema. Measured 2026-08-27 (glm-5.3-flash, 7-field form): same accuracy, ~26%
+    # fewer prompt tokens (27k vs 36k median). Not measured on recovery-heavy tasks.
+    BROWSER_USE_FLASH_MODE: bool = True
+    # Cloudflare R2, the fast edge store for browser step screenshots; Cloudinary
+    # stays the durable store for arbitrary user files. Optional: any unset field
+    # falls back to inline data URLs. Use a custom domain in prod, r2.dev is rate-limited.
+    CLOUDFLARE_ACCOUNT_ID: str | None = None
+    R2_ACCESS_KEY_ID: str | None = None
+    R2_SECRET_ACCESS_KEY: str | None = None
+    R2_BUCKET: str = "gaia-browser-shots"
+    R2_PUBLIC_BASE_URL: str | None = None
+    # Jev "System One" decision policy (TypeSafe AI, served by OpenRouter): each
+    # step's decision is a single Jev evaluation over the page's indexed element
+    # table, not a generative chat completion. Screenshots are never sent to Jev.
+    BROWSER_USE_JEV_DECISIONS_URL: str = "https://openrouter.ai/api/alpha/decisions"
+    BROWSER_USE_JEV_MODEL: str = "~typesafe/jev-latest"
+    # Text helper for the loop, called only when a decision needs a typed value.
+    # gemini-3.5-flash-lite is the verified model: mercury-2.5 returned empty
+    # content when it spent its token budget on reasoning (measured 2026-09-18).
+    BROWSER_USE_JEV_TEXT_MODEL: str = "google/gemini-3.5-flash-lite"
+
+    # Hard limits — everything is bounded so no browser task can run away.
+    BROWSER_USE_MAX_STEPS: int = 25
+    BROWSER_USE_MAX_ACTIONS_PER_STEP: int = 5
+    BROWSER_USE_TASK_TIMEOUT_SECONDS: int = 600
+    # How long a paused run waits for the human to finish a handoff step,
+    # deliberately generous since people get pulled away mid-login. Kept alive
+    # by the keepalive in session.py; resolving sooner resumes immediately.
+    BROWSER_USE_HANDOFF_TIMEOUT_SECONDS: int = 1800
+    # Active work budget for a single step. The effective per-step timeout adds the
+    # handoff timeout on top, so a step that pauses for a human live-view takeover
+    # is never killed as "stuck" while the user is completing it.
+    BROWSER_USE_STEP_TIMEOUT_SECONDS: int = 180
+    # Stream per-step screenshots into the chat card / bot messages.
+    BROWSER_USE_STREAM_SCREENSHOTS: bool = True
+
+    # There is no automatic CAPTCHA solver: when set, the agent gets an action to
+    # hand a CAPTCHA to the user, who solves it in live-view before it continues.
+    BROWSER_USE_SOLVE_CAPTCHA: bool = True
+
+    # --- Browser host (gaia-browser-host, our own low-RAM Chromium host) ---
+
+    # One long-lived Chromium, one isolated context per session, proxied over
+    # CDP with an authenticated screencast live view. Reached internally by
+    # service name; override locally to http://localhost:8930.
+    BROWSER_HOST_URL: str = "http://browser-host:8930"  # NOSONAR python:S5332 — internal docker service, plain HTTP on the private network by design (TLS terminates at the edge)
+    # Port the host binds inside its container.
+    BROWSER_HOST_PORT: int = 8930
+    # Address the host binds. All interfaces by default — the host runs in its own
+    # container on the internal overlay network and this port is never published; a
+    # value from settings also makes the bind configurable for local runs.
+    BROWSER_HOST_BIND: str = "0.0.0.0"  # noqa: S104  # nosec B104 — internal overlay only, port never published
+    # Shared secret the API/worker must present to every host endpoint. Required
+    # in production: the host renders attacker-controlled pages in the SAME
+    # container, so a page could otherwise reach the control plane on localhost.
+    BROWSER_HOST_KEY: str | None = None
+    # Absolute anti-runaway backstop on concurrent contexts, NOT the real gate:
+    # admission is memory-based (see the watermarks below), so this only guards
+    # against a pathological leak spawning unbounded contexts. 0 disables it.
+    BROWSER_HOST_MAX_SESSIONS: int = 200
+    # Memory-based admission reading the cgroup's used/limit: admits while a new
+    # session's projected cost stays under HIGH_WATERMARK, sheds idle sessions
+    # between SOFT and HIGH. LIMIT_MB pins the budget when the cgroup is unreadable.
+    BROWSER_HOST_MEMORY_LIMIT_MB: int | None = None
+    BROWSER_HOST_MEMORY_HIGH_WATERMARK: float = 0.85
+    BROWSER_HOST_MEMORY_SOFT_WATERMARK: float = 0.75
+    # Conservative floor reserved for each in-flight/next session so a burst of
+    # concurrent creates cannot collectively overshoot the watermark before their
+    # memory materializes; the live estimate rises above this as real cost shows.
+    BROWSER_HOST_SESSION_COST_FLOOR_MB: int = 50
+    # Under pressure a create waits up to this long for memory to free (idle reap,
+    # other disposals) before returning 429 — graceful slowdown, not instant refusal.
+    BROWSER_HOST_ADMISSION_WAIT_SECONDS: float = 5.0
+    # Dispose a context after this many seconds with no activity and no live viewer.
+    BROWSER_HOST_IDLE_TTL_SECONDS: int = 300
+    # Run Chromium headed (under Xvfb) instead of --headless=new, for anti-bot.
+    BROWSER_HOST_HEADED: bool = False
+    # Dev only: let the agent's browser reach loopback/private/link-local hosts.
+    # Off, the CDP proxy refuses them and Obscura gets no private-network access.
+    BROWSER_HOST_ALLOW_PRIVATE_NETWORK: bool = False
+    # Override the Chromium binary; when unset the host resolves Playwright's bundled one.
+    BROWSER_HOST_CHROMIUM_PATH: str | None = None
+    # Per-renderer V8 heap ceiling. One runaway page must not be able to eat the
+    # whole host's budget and OOM every other user's session with it.
+    BROWSER_HOST_JS_HEAP_MB: int = 512
+    # Which engine the host launches. Obscura (a low-RAM Rust CDP server) is the
+    # default; Chromium (headless-shell) is the flag-selectable break-glass engine
+    # over the same CDP plane. Set BROWSER_ENGINE=chromium to fall back.
+    BROWSER_ENGINE: BrowserEngine = BrowserEngine.OBSCURA
+    # Path to the Obscura binary; required when BROWSER_ENGINE=obscura (the gaia
+    # image sets it via ENV). Missing it fails the host launch loud, no fallback.
+    OBSCURA_BIN: str | None = None
+    # Port Obscura's CDP server binds. Fixed (not ephemeral) because Obscura only
+    # publishes its /json/version — and thus its ws endpoint — at a port we name.
+    OBSCURA_PORT: int = 9222
+    # Base port for the dedicated Obscura the crawl4ai engine drives, distinct
+    # from OBSCURA_PORT so the two never collide; the manager probes upward from
+    # here if taken. High range on purpose: 9222/9223 collide with local Chrome.
+    OBSCURA_CRAWL_PORT: int = 39222
+
+    # Fernet key (32 url-safe base64 bytes) encrypting each user's saved browser
+    # login (storage_state) at rest in Mongo. Infisical-provided in production;
+    # persistence fails loud if a save/load is attempted while it's unset.
+    BROWSER_STATE_ENCRYPTION_KEY: str | None = None
+    # HMAC secret (>=32 chars) for the short-lived live-view takeover JWT handed
+    # to a user's own bot channel so they can take over a handoff without a web login.
+    BROWSER_TAKEOVER_TOKEN_SECRET: str | None = None
+    # When false, a session's login is never persisted or restored (per-deployment
+    # opt-out of "log in once, reuse next time").
+    BROWSER_PERSIST_LOGINS: bool = True
+    # Public base URL fronting the authenticated live-view route, e.g.
+    # https://browser.heygaia.io in prod, where a vhost reverse-proxies to this
+    # api service. When unset, live-view links fall back to HOST.
+    BROWSER_LIVE_VIEW_BASE_URL: str | None = None
 
     # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage.
     # All three must be set; the "custom" provider is registered exclusively in
@@ -391,6 +521,7 @@ class ProductionSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str
+    POSTHOG_API_KEY: str
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -585,6 +716,7 @@ class DevelopmentSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str | None = None
+    POSTHOG_API_KEY: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials

@@ -567,8 +567,8 @@ async def test_the_repeat_block_spells_out_the_count_the_limit_and_the_way_out()
     assert blocked.content == (
         "[Loop guard] Blocked without executing: `search` has already been "
         f"called {LOOP_GUARD_STOP_REPEAT} times in a row with identical arguments (limit "
-        f"{LOOP_GUARD_STOP_REPEAT}). Re-running it will return the same result — "
-        "reuse the earlier result, or if the task is done, stop and report it."
+        f"{LOOP_GUARD_STOP_REPEAT}). Re-running it will return the same result. "
+        "Reuse the earlier result, or if the task is done, stop and report it."
     )
     assert blocked.name == "search"  # the frontend keys the tool card off this
 
@@ -595,7 +595,7 @@ async def test_the_repeat_warning_note_is_appended_verbatim() -> None:
     assert warned.content == (
         "ok"
         f"\n\n[Loop guard: `search` has now been called {LOOP_GUARD_WARN_REPEAT} times in a row "
-        "with identical arguments. The result won't change — reuse the earlier result "
+        "with identical arguments. The result won't change. Reuse the earlier result "
         "and move on instead of repeating this call.]"
     )
 
@@ -614,3 +614,47 @@ async def test_an_identical_failing_run_reports_the_failure_stop_not_the_repeat_
 
     blocked = results[-1]
     assert f"already failed {LOOP_GUARD_STOP_IDENTICAL} times" in blocked.content
+
+
+async def test_the_identical_failure_block_says_stop_retrying_and_change_approach() -> None:
+    """Pin the blocked-call instruction verbatim: retrying unchanged is futile, so change tack or move on."""
+    mw = LoopGuardMiddleware(hard_stop=True)
+    blocked = (await _run(mw, LOOP_GUARD_STOP_IDENTICAL + 1))[-1]
+
+    assert blocked.content == (
+        "[Loop guard] Blocked without executing: `search` has already failed "
+        f"{LOOP_GUARD_STOP_IDENTICAL} times this run with identical arguments "
+        f"(limit {LOOP_GUARD_STOP_IDENTICAL}). "
+        "This call will keep failing. Stop retrying it, re-read the earlier errors, and "
+        "either change the arguments/approach or move on to a different step."
+    )
+
+
+async def test_the_same_tool_block_says_stop_calling_it_and_try_a_different_step() -> None:
+    """Pin the per-tool stop instruction: the tool is not working for this task, so take another route."""
+    mw = LoopGuardMiddleware(hard_stop=True)
+    blocked = [
+        await _wrap(mw, _request(args={"q": str(i)}), _failing())
+        for i in range(LOOP_GUARD_STOP_SAME_TOOL + 1)
+    ][-1]
+
+    assert blocked.content == (
+        "[Loop guard] Blocked without executing: `search` has already failed "
+        f"{LOOP_GUARD_STOP_SAME_TOOL} times this run (limit {LOOP_GUARD_STOP_SAME_TOOL}). "
+        "This tool is not "
+        "working for the current task. Stop calling it, re-read the earlier errors, and try "
+        "a different approach or step."
+    )
+
+
+async def test_the_identical_failure_note_says_change_arguments_before_retrying() -> None:
+    """Pin the in-band warning: re-read the error and change something, because an unchanged retry keeps failing."""
+    mw = LoopGuardMiddleware()
+    warned = (await _run(mw, LOOP_GUARD_WARN_IDENTICAL))[-1]
+
+    assert warned.content == (
+        "boom"
+        f"\n\n[Loop guard: this exact call to `search` has now failed {LOOP_GUARD_WARN_IDENTICAL} "
+        "times in a row. Re-read the error above and change your arguments or approach. "
+        "retrying it unchanged will keep failing.]"
+    )

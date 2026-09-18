@@ -266,6 +266,7 @@ class ToolRegistry:
         self._tools_by_name: dict[str, tuple[str, Tool]] = {}
 
     def setup(self) -> None:
+        """Initialize and (re)register every tool category on this registry."""
         self._initialize_categories()
 
     def _add_category(
@@ -350,6 +351,7 @@ class ToolRegistry:
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
         from app.agents.tools import (
             account_tools,
+            browser_tool,
             context_tool,
             desktop_tools,
             download_tool,
@@ -525,6 +527,13 @@ class ToolRegistry:
             tools=[context_tool.gather_context],
             risk=CategoryRisk(destructive_tools=set()),
         )
+        # browser_task is gated by HIL: the executor must get user approval before
+        # spinning up a browser ("do you want me to use a browser for this?").
+        self._add_category(
+            "browser",
+            tools=[browser_tool.browser_task],
+            risk=CategoryRisk(destructive_tools={"browser_task"}),
+        )
         # Desktop-executed tools live in their own space so discovery can be
         # gated to conversations that originate from the desktop app. They act on
         # the user's own machine and are reversible, so none are destructive.
@@ -626,6 +635,7 @@ class ToolRegistry:
         total = 0
 
         async def load_metadata(integration: OAuthIntegration) -> None:
+            """Load tool metadata (setups, inputs) for the provider catalog."""
             nonlocal total
             toolkit = integration.composio_config.toolkit
             space = integration.subagent_config.tool_space
@@ -903,6 +913,7 @@ async def get_tool_registry() -> ToolRegistry:
     auto_initialize=True,
 )
 async def init_tool_registry() -> ToolRegistry:
+    """Construct and return a fully populated ToolRegistry singleton."""
     tool_registry = ToolRegistry()
     tool_registry.setup()
     return tool_registry

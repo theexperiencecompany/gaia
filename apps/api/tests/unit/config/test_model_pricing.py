@@ -20,6 +20,7 @@ from app.config.model_pricing import (
     calculate_token_cost,
     get_model_pricing,
 )
+from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
     DEFAULT_MODEL_NAME,
@@ -43,7 +44,17 @@ def _fresh_wide_event() -> None:
 # Every model id the runtime actually meters. A new runtime model constant
 # must be added to MODEL_PRICING, or the coverage test below catches it.
 RUNTIME_MODEL_IDS = sorted(
-    {DEFAULT_MODEL_NAME, PAID_MODEL_NAME, AUX_MODEL_NAME, MEMORY_MODEL_NAME, VISION_MODEL_NAME}
+    {
+        DEFAULT_MODEL_NAME,
+        PAID_MODEL_NAME,
+        AUX_MODEL_NAME,
+        MEMORY_MODEL_NAME,
+        VISION_MODEL_NAME,
+        # The browser lane's decision model and its text helper — both metered
+        # from Browser-Use's history.
+        settings.BROWSER_USE_JEV_MODEL,
+        settings.BROWSER_USE_JEV_TEXT_MODEL,
+    }
 )
 
 

@@ -2,6 +2,7 @@
 
 import type React from "react";
 import AccountSettings from "@/features/settings/components/AccountSettings";
+import BrowserSettings from "@/features/settings/components/BrowserSettings";
 import DesktopSettings from "@/features/settings/components/DesktopSettings";
 import DevicesSettings from "@/features/settings/components/DevicesSettings";
 import { IntegrationInstructionsSettings } from "@/features/settings/components/IntegrationInstructionsSettings";
@@ -53,6 +54,8 @@ export function SectionComponent({
       return <NotificationSettings />;
     case "devices":
       return <DevicesSettings />;
+    case "browser":
+      return <BrowserSettings />;
     case "desktop":
       return <DesktopSettings />;
   }

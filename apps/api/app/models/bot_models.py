@@ -143,7 +143,7 @@ class RedeemLinkCodeResponse(BaseModel):
         default_factory=list,
         description=(
             "Ordered bubbles the bot must send itself because delivery failed. "
-            "Empty whenever delivered is true — sending them then would say "
+            "Empty whenever delivered is true, because sending them then would say "
             "everything twice."
         ),
     )

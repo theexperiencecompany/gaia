@@ -9,7 +9,7 @@ export const entry: AlternativeData = {
   painPoints: [
     "Powerful but requires extensive plugin setup and maintenance",
     "No proactive AI, only what community plugins add",
-    "Sync across devices costs extra ($4–$8/month)",
+    "Sync across devices costs extra ($4 to $8/month)",
     "Steep learning curve for graph-based knowledge management",
     "Cannot manage email, calendar, or tasks natively",
   ],

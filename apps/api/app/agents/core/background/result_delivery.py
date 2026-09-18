@@ -213,7 +213,7 @@ async def deliver_message_to_conversation(
     # (only once actually delivered) so the next turn here remembers it.
     if delivered:
         await record_platform_delivery(
-            conversation_id, f"[Delivered to the user — {origin}]: {text}"
+            conversation_id, f"[Delivered to the user ({origin})]: {text}"
         )
 
     _log_delivery_verdict(

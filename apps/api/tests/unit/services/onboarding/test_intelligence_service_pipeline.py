@@ -561,7 +561,7 @@ class TestHoloCardMessage:
     def test_the_message_is_the_whole_reward_the_user_reads(self) -> None:
         """The entire hand-off after a Gmail connect, seeded as GAIA's own turn — prose a user reads, not a log line."""
         assert _holo_card_message(CARD_URL) == (
-            "Your holo card is ready — I built it from what I learned in your inbox.\n\n"
+            "Your holo card is ready. I built it from what I learned in your inbox.\n\n"
             f"{CARD_URL}\n\n"
             "I also added a lot to your memories while I was in there."
         )
@@ -580,7 +580,7 @@ class TestAnnouncePersonalization:
         request = notifications.create_notification.await_args.args[0]
         assert request.user_id == USER
         assert request.source is NotificationSourceEnum.BACKGROUND_JOB
-        assert request.content.title == "Check your memories — I just added a lot"
+        assert request.content.title == "Check your memories, I just added a lot"
 
     async def test_the_notification_offers_the_memories_and_the_card(
         self, announce_stack: Any

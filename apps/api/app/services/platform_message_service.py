@@ -12,6 +12,7 @@ bots — there is no Python copy.
 
 from dataclasses import dataclass
 
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.services.outbound_delivery import OutboundResult, publish_outbound_message
@@ -63,11 +64,17 @@ async def deliver_message_to_platform(
         return False
     if not text.strip():
         return False
+    # The model marks bubble breaks with NEW_MESSAGE_BREAKER; the interactive
+    # stream splits on it, but this proactive path must too or the literal
+    # token leaks into the message.
+    parts = [part.strip() for part in text.split(NEW_MESSAGE_BREAKER) if part.strip()]
+    if not parts:
+        return False
     target = await _resolve_channel_target(conversation_id)
     result = await publish_outbound_message(
         platform,
         user_id,
-        [text],
+        parts,
         destination_override=target.destination_id if target else None,
         is_channel=target.is_channel if target else False,
     )

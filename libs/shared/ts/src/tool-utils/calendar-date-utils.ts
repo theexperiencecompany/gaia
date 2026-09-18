@@ -68,15 +68,15 @@ export function formatTimeRange(startTime: string, endTime: string): string {
   const endStr = formatTimeString(end);
 
   if (start.getHours() < 12 && end.getHours() >= 12) {
-    return `${startStr} – ${endStr}`;
+    return `${startStr} to ${endStr}`;
   }
   if (start.getHours() >= 12 && end.getHours() >= 12) {
-    return `${startStr.replace(" PM", "")} – ${endStr}`;
+    return `${startStr.replace(" PM", "")} to ${endStr}`;
   }
   if (start.getHours() < 12 && start.getHours() < 12 && end.getHours() < 12) {
-    return `${startStr.replace(" AM", "")} – ${endStr}`;
+    return `${startStr.replace(" AM", "")} to ${endStr}`;
   }
-  return `${startStr} – ${endStr}`;
+  return `${startStr} to ${endStr}`;
 }
 
 /** Normalizes any date-ish input into a YYYY-MM-DD bucket key. */

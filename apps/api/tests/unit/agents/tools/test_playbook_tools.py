@@ -1737,7 +1737,7 @@ class TestBlockedDeclines:
         assert result == {
             "success": True,
             "data": {"declined": True, "blocked": True, "counted": False},
-            "message": "Noted — this run never reached the work, so it does not count against "
+            "message": "Noted. This run never reached the work, so it does not count against "
             "the workflow. It will be asked again on a run that gets further.",
         }
         assert call("playbook", blocked=True, blocked_integrations=[]) in log.set_ns.call_args_list
@@ -1786,7 +1786,7 @@ class TestDeclineKindArguments:
             "error": "branch_on_required",
             "message": "order_branches has to name the one call that runs on some days and not "
             "others, as branch_on. If every call you made happens every run and only their "
-            "arguments differ, the order does not branch — use placeholders and call "
+            "arguments differ, the order does not branch. Use placeholders and call "
             "write_playbook. If only the NUMBER of times a call repeats differs, that is a "
             "for_each step, not a decline.",
         }

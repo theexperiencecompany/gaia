@@ -1406,7 +1406,7 @@ class TestMaybeInjectWrapupDirect:
         notice = result["messages"][-1]
         assert notice.content == (
             "[System notice: you are almost out of steps for this run "
-            "(~2 left). Stop exploring now — summarize what you "
+            "(~2 left). Stop exploring now. Summarize what you "
             "found and what remains to be done, and finish your reply.]"
         )
 

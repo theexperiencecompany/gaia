@@ -87,3 +87,16 @@ async def test_no_status_when_no_lock_held() -> None:
         out = await executor_status_hook(state, _config(), MagicMock())
 
     assert out["messages"] == state["messages"]
+
+
+async def test_status_frame_forbids_claiming_completion_or_redispatching() -> None:
+    """Pin the running-task rule: results are not in, so claim nothing and never re-dispatch."""
+    state = {"messages": [HumanMessage(content="did that finish?")]}
+    cache = _redis_holding(build_lock_value("s1", "task-123"))
+    with patch(f"{MODULE}.redis_cache", cache):
+        out = await executor_status_hook(state, _config(), MagicMock())
+
+    assert (
+        "Its results have not arrived yet. Do not claim it finished, and do not "
+        "dispatch the same task again." in out["messages"][-1].content
+    )

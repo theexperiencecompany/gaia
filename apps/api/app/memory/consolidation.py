@@ -287,7 +287,7 @@ async def _rewrite_within_cap(
             f"{human}\n\n## Your previous attempt was too long\n"
             f"It was {len(content)} characters against a hard cap of "
             f"{DOCUMENT_TARGET_MAX_CHARS}. Rewrite it under the cap by dropping "
-            "the least important bullets — do not truncate mid-sentence, and do "
+            "the least important bullets. Do not truncate mid-sentence, and do "
             "not drop a section heading."
         )
     return None
@@ -439,6 +439,6 @@ def _format_inputs(previous_content: str, sections: list[str]) -> str:
     previous_block = previous_content.strip() or "(no previous version)"
     inputs_block = "\n\n".join(sections) if sections else "(no facts)"
     return (
-        "## Previous version of the document (a draft — the facts below outrank it)\n"
+        "## Previous version of the document (a draft outranked by the facts below)\n"
         f"{previous_block}\n\n{inputs_block}"
     )

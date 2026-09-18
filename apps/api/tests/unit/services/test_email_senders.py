@@ -331,7 +331,7 @@ class TestSendLimitReachedEmail:
         message = mock_send.call_args[0][0]
         assert message.sender == FOUNDER_SENDER
         assert message.to == ["user@example.com"]
-        assert message.subject == "You hit your GAIA limit today — here's what Pro unlocks"
+        assert message.subject == "You hit your GAIA limit today, here's what Pro unlocks"
         assert message.html == "<h1>Upsell</h1>"
         assert message.reply_to == CONTACT_EMAIL
         claim.assert_awaited_once()

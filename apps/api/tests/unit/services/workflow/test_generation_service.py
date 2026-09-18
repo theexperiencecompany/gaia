@@ -9,6 +9,7 @@ so every branch is provable without touching a model.
 """
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.exceptions import OutputParserException
@@ -34,7 +35,9 @@ from app.services.workflow.generation_service import (
     WorkflowGenerationService,
     WorkflowPromptRequest,
     WorkflowStepGenerationError,
+    _build_available_triggers,
     _build_integration_hints,
+    _build_trigger_hint,
     _collect_custom_integration_categories,
     _collect_registry_categories,
     _collect_subagent_categories,
@@ -458,6 +461,60 @@ class TestValidatedSteps:
 
 
 # ---------------------------------------------------------------------------
+# _build_trigger_hint / _build_available_triggers
+# ---------------------------------------------------------------------------
+
+
+class TestBuildTriggerHint:
+    def test_with_no_trigger_chosen_the_model_is_told_to_pick_one_from_intent(self):
+        """A workflow with no trigger never fires, so the hint has to ask for a suggestion rather than stay silent."""
+        assert _build_trigger_hint(None) == (
+            "No trigger selected yet. Suggest the most appropriate trigger "
+            "type based on the user's intent."
+        )
+
+
+class TestBuildAvailableTriggers:
+    def test_a_triggers_description_is_appended_after_its_name(self):
+        """The slug and name alone do not say when a trigger fires; the description is what lets the model choose between two of them."""
+        integration = _FakeIntegration(
+            "gmail",
+            name="Gmail",
+            associated_triggers=(
+                SimpleNamespace(
+                    workflow_trigger_schema=SimpleNamespace(
+                        slug="gmail_new_message",
+                        name="New message",
+                        description="Fires on every new email",
+                    )
+                ),
+            ),
+        )
+
+        with _catalog(integration):
+            assert _build_available_triggers() == (
+                "Available integration triggers (use the slug for trigger_name):\n"
+                "- gmail_new_message: New message (Gmail), Fires on every new email"
+            )
+
+    def test_a_trigger_with_no_description_is_listed_without_a_dangling_separator(self):
+        integration = _FakeIntegration(
+            "gmail",
+            name="Gmail",
+            associated_triggers=(
+                SimpleNamespace(
+                    workflow_trigger_schema=SimpleNamespace(
+                        slug="gmail_new_message", name="New message", description=""
+                    )
+                ),
+            ),
+        )
+
+        with _catalog(integration):
+            assert _build_available_triggers().endswith("- gmail_new_message: New message (Gmail)")
+
+
+# ---------------------------------------------------------------------------
 # _build_integration_hints
 # ---------------------------------------------------------------------------
 
@@ -481,7 +538,7 @@ class TestBuildIntegrationHints:
         """Preferred is a soft hint, explicit a hard requirement — the two lines must read differently or the model treats them the same."""
         with _catalog(_FakeIntegration("notion", name="Notion")):
             assert _build_integration_hints(set(), {"notion"}, {}) == [
-                "Integrations the user explicitly named — MUST appear in the steps: "
+                "Integrations the user explicitly named, MUST appear in the steps: "
                 "Notion (category: notion)"
             ]
 
@@ -493,7 +550,7 @@ class TestBuildIntegrationHints:
 
         assert hints == [
             "Preferred integrations (use where the workflow makes sense): Gmail (category: gmail)",
-            "Integrations the user explicitly named — MUST appear in the steps: "
+            "Integrations the user explicitly named, MUST appear in the steps: "
             "Notion (category: notion)",
         ]
 
@@ -519,7 +576,7 @@ class TestBuildIntegrationHints:
             hints = _build_integration_hints(set(), {"notion", "gmail"}, {})
 
         assert hints == [
-            "Integrations the user explicitly named — MUST appear in the steps: "
+            "Integrations the user explicitly named, MUST appear in the steps: "
             "Gmail (category: gmail), Notion (category: notion)"
         ]
 
@@ -797,7 +854,7 @@ class TestRunGenerationAttempt:
         assert steps is None
         assert isinstance(error, ValueError)
         assert str(error) == (
-            "LLM returned a workflow with no steps — the model may not have understood the request"
+            "LLM returned a workflow with no steps. The model may not have understood the request"
         )
 
     async def test_a_missing_draft_is_treated_the_same_as_an_empty_one(self):
@@ -955,8 +1012,10 @@ class TestGenerateStepsWithLlm:
             await _generate_steps(prompt="p", title="t", user_id="user-1")
 
         prompt = mock_llm.await_args.args[1]
-        assert "gaia: GAIA reasoning" in prompt
-        assert "No external tool call." in prompt
+        assert (
+            "gaia: GAIA reasoning, summarize content, draft text, classify items, "
+            "generate outlines, extract key points, write briefs. No external tool call."
+        ) in prompt
 
     async def test_the_registry_the_subagents_and_gaia_all_reach_the_prompt_in_order(self):
         """Categories are a comma-separated list the model picks from; a lost section is a whole class of steps it can never produce."""
@@ -1105,7 +1164,7 @@ class TestGenerateStepsWithLlm:
 
         prompt = mock_llm.await_args.args[1]
         assert (
-            "Integrations the user explicitly named — MUST appear in the steps: "
+            "Integrations the user explicitly named, MUST appear in the steps: "
             "Notion (category: notion)" in prompt
         )
         assert "notion: search" in prompt
@@ -1233,7 +1292,7 @@ class TestGenerateStepsWithLlm:
         assert mock_llm.await_count == _MAX_GENERATION_ATTEMPTS
         assert caught.value.reason == (
             f"the model returned no usable steps after {_MAX_GENERATION_ATTEMPTS} attempts "
-            "(ValueError: LLM returned a workflow with no steps — the model may not have "
+            "(ValueError: LLM returned a workflow with no steps. The model may not have "
             "understood the request)"
         )
 
@@ -1363,7 +1422,10 @@ class TestGenerateWorkflowPrompt:
 
         human = mock_llm.await_args.args[1][1].content
         assert "Existing instructions to improve:\nSummarize my mail." in human
-        assert "Improve these instructions" in human
+        assert (
+            "Improve these instructions. Keep the user's intent, add specificity, "
+            "edge case handling, and output details."
+        ) in human
         assert "from scratch" not in human
 
     async def test_with_no_existing_instructions_it_generates_from_scratch(self):

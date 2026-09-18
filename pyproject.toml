@@ -26,6 +26,7 @@ constraint-dependencies = [
   "click>=8.3.3",
   "pillow>=12.3.0",
   "json-repair>=0.60.1",
+  "soupsieve>=2.9.0",
 ]
 
 [tool.uv.workspace]
@@ -68,6 +69,7 @@ ignore_decorators = [
   "@router.*",
   "@app.exception_handler",
   "@composio.tools.custom_tool",
+  "@tools.action",  # Browser-Use custom actions (@tools.action on a Tools() instance)
   "@register_before_hook",
   "@register_after_hook",
   "@register_schema_modifier",
@@ -75,6 +77,7 @@ ignore_decorators = [
   "@*.on",          # LiveKit event handlers (@session.on / @ctx.room.on)
   "@app.get",       # bare-FastAPI route handlers (embedding sidecar)
   "@app.post",      # bare-FastAPI route handlers (embedding sidecar)
+  "@app.websocket", # Starlette websocket handlers — registered via decorator (browser host)
 ]
 ignore_names = [
   "model_config",   # Pydantic v2 config attribute (set on every model)
@@ -411,7 +414,6 @@ unfixable = [
 "apps/api/app/services/triggers/handlers/notion.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/handlers/slack.py" = ["PLR0912"]  # handler predates this change; the triggers feature only renames the owner-ref parameter (workflow_id -> owner_id) here
 "apps/api/app/services/triggers/subscription_service.py" = ["PLR0913"]  # register_subscription's parameters are the subscription fields a caller must supply; grouping them into an object would hide the required inputs
-"apps/api/app/services/hil/bridge.py" = ["PLR0913"]  # publish_approval_request/publish_auto_approval/_approval_entry each take the distinct fields an approval carries (run identity, the gated call, its summary/integration). Bundling them into one object was tried and reverted: the card renderer consumes only a subset, so the object's other fields become unused assignments in the decision-redraw path that the mutation gate flags as unkillable. The flat arg list is the honest interface.
 "apps/api/app/services/workflow/service.py" = ["PLR0912", "PLR0915"]  # the flagged function predates this change; the triggers feature only renames the owner-ref parameter here
 "apps/api/tests/e2e/test_todo_trigger_dispatch_e2e.py" = ["PLR0913"]  # _seed_watch is a test helper whose keyword arguments mirror the subscription fields under test
 "apps/api/tests/unit/services/test_todo_service.py" = ["PLR0913"]  # test parameterization, not production complexity
@@ -668,6 +670,7 @@ warn_no_return = true
 module = [
   "app.db.repositories.*",
   "app.models.notes_models",
+  "app.models.browser_models",
   "app.models.todo_models",
   "app.models.mail_models",
   "app.models.workflow_execution_models",

@@ -92,6 +92,14 @@
       "command": "pnpm run quality:publint && pnpm run quality:attw"
     },
     {
+      "name": "go-connect",
+      "scope": "^tools/gaia-connect/",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": ["go"],
+      "command": "cd tools/gaia-connect && go vet ./... && go test ./... && cd ../.. && bash scripts/ci/release.sh connect-cross-check"
+    },
+    {
       "name": "type-check",
       "scope": "\\.(ts|tsx|js|jsx)$|^tsconfig|^nx\\.json$",
       "heavy": false,

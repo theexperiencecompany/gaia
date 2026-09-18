@@ -197,6 +197,10 @@ backend = [
   "litellm>=1.83.4,<1.90",
   "prometheus-fastapi-instrumentator>=7.0.0",
   "prometheus-client>=0.20.0",
+  # Browser automation: Browser-Use agent layer over gaia-browser-host.
+  # Pinned to 0.11.13 — later releases exact-pin openai==2.16, which conflicts
+  # with litellm's openai>=2.20 requirement. The tool imports it lazily.
+  "browser-use==0.11.13",
   "pyarrow>=25.0.0",
 ]
 

@@ -146,7 +146,7 @@ def _build_trigger_hint(trigger_config: PromptTriggerHint | None) -> str:
     """
     if not trigger_config:
         return (
-            "No trigger selected yet — suggest the most appropriate trigger "
+            "No trigger selected yet. Suggest the most appropriate trigger "
             "type based on the user's intent."
         )
 
@@ -190,7 +190,7 @@ def _build_available_triggers(
         for tc in integration.associated_triggers:
             schema = tc.workflow_trigger_schema
             if schema:
-                desc = f" — {schema.description}" if schema.description else ""
+                desc = f", {schema.description}" if schema.description else ""
                 lines.append(f"- {schema.slug}: {schema.name} ({integration.name}){desc}")
     if not lines:
         return ""
@@ -324,7 +324,7 @@ def _build_integration_hints(
     if explicit_set:
         friendly_explicit = [_hint_label(s) for s in sorted(explicit_set)]
         hint_parts.append(
-            "Integrations the user explicitly named — MUST appear in the steps: "
+            "Integrations the user explicitly named, MUST appear in the steps: "
             + ", ".join(friendly_explicit)
         )
     return hint_parts
@@ -391,7 +391,7 @@ async def _run_generation_attempt(
         max_attempts=_MAX_GENERATION_ATTEMPTS,
     )
     return None, ValueError(
-        "LLM returned a workflow with no steps — the model may not have understood the request"
+        "LLM returned a workflow with no steps. The model may not have understood the request"
     )
 
 
@@ -459,7 +459,7 @@ class WorkflowGenerationService:
         # gaia is always a valid category — for pure LLM reasoning steps
         category_names.append("gaia")
         tools_with_categories.append(
-            "gaia: GAIA reasoning — summarize content, draft text, classify items, "
+            "gaia: GAIA reasoning, summarize content, draft text, classify items, "
             "generate outlines, extract key points, write briefs. No external tool call."
         )
 
@@ -574,7 +574,7 @@ class WorkflowGenerationService:
                 f"Existing instructions to improve:\n{existing_prompt}" if existing_prompt else ""
             ),
             mode_instruction=(
-                "Improve these instructions — keep the user's intent, add specificity, "
+                "Improve these instructions. Keep the user's intent, add specificity, "
                 "edge case handling, and output details."
                 if existing_prompt
                 else "Generate comprehensive workflow instructions from scratch."

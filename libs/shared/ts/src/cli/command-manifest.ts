@@ -6,6 +6,8 @@ export const CLI_COMMAND_DESCRIPTIONS = {
   dev: "Run developer mode in Nx TUI (`gaia dev` or `gaia dev full`)",
   logs: "Stream logs for running GAIA services",
   stop: "Stop all GAIA services (safe mode by default)",
+  connect:
+    "Import your browser logins into GAIA so its browser stays signed in",
 } as const;
 
 /** The canonical way to install the `gaia` CLI, per package manager. */

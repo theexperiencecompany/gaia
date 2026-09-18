@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Microsoft OneNote is a free hierarchical notebook app bundled with Microsoft 365, offering flexible freeform notes across Windows, Mac, iOS, and Android. GAIA is a proactive AI assistant that connects your notes to email, calendar, tasks, and 50+ tools.",
   metaTitle:
-    "OneNote Alternative with AI Automation & 50+ Integrations — GAIA vs OneNote",
+    "OneNote Alternative with AI Automation & 50+ Integrations: GAIA vs OneNote",
   metaDescription:
     "OneNote captures notes but doesn't connect them to your workflow. GAIA is a free, open-source OneNote alternative with AI email management, calendar automation, and proactive task creation across 50+ integrations.",
   keywords: [
@@ -23,13 +23,13 @@ export const entry: ComparisonData = {
     "onenote alternative open source",
     "onenote for productivity alternative",
   ],
-  intro: `Microsoft OneNote has been a staple of the digital workspace for over two decades. Bundled free with Microsoft 365 and available across virtually every platform, it offers a familiar notebook-and-section hierarchy that makes it easy for individuals and enterprises alike to capture meeting notes, clip web content, draw sketches, and organize information in flexible freeform canvases. Its deep integration with the Microsoft 365 suite — Word, Outlook, Teams — makes it a natural choice for organizations already invested in that ecosystem.
+  intro: `Microsoft OneNote has been a staple of the digital workspace for over two decades. Bundled free with Microsoft 365 and available across virtually every platform, it offers a familiar notebook-and-section hierarchy that makes it easy for individuals and enterprises alike to capture meeting notes, clip web content, draw sketches, and organize information in flexible freeform canvases. Its deep integration with the Microsoft 365 suite (Word, Outlook, Teams) makes it a natural choice for organizations already invested in that ecosystem.
 
 Yet for all its longevity and breadth, OneNote remains fundamentally a passive storage system. You open it, you type, you organize. It does not read your Outlook inbox and pull out the action items. It does not prepare a briefing document before your next Teams meeting. It does not create tasks in your to-do list from the content you've written. Integration with the rest of the Microsoft 365 ecosystem is real but shallow: OneNote knows when you have a meeting on your calendar only if you deliberately navigate to it through OneNote's linked notes feature.
 
-GAIA approaches productivity from the other direction. Rather than waiting for you to capture information manually, GAIA monitors your email, calendar, and connected tools continuously — surfacing what matters, creating tasks and notes automatically, and orchestrating actions across your entire digital workflow. It integrates with Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, and more than 45 other tools. Its graph-based memory builds a living map of your projects, people, and decisions, connecting information that would otherwise live in isolated silos.
+GAIA approaches productivity from the other direction. Rather than waiting for you to capture information manually, GAIA monitors your email, calendar, and connected tools continuously, surfacing what matters, creating tasks and notes automatically, and orchestrating actions across your entire digital workflow. It integrates with Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, and more than 45 other tools. Its graph-based memory builds a living map of your projects, people, and decisions, connecting information that would otherwise live in isolated silos.
 
-For teams entrenched in Microsoft 365 who need a no-cost, familiar note-capture tool, OneNote remains a practical choice. But for professionals who want their notes layer to be active rather than passive — who want an AI assistant that connects information across tools rather than storing it in a hierarchy — GAIA offers a fundamentally more automated and proactive alternative. And because GAIA is open source and self-hostable, you retain full control over your data without depending on Microsoft's cloud.`,
+For teams entrenched in Microsoft 365 who need a no-cost, familiar note-capture tool, OneNote remains a practical choice. But for professionals who want their notes layer to be active rather than passive (who want an AI assistant that connects information across tools rather than storing it in a hierarchy), GAIA offers a fundamentally more automated and proactive alternative. And because GAIA is open source and self-hostable, you retain full control over your data without depending on Microsoft's cloud.`,
   rows: [
     {
       feature: "Core approach",
@@ -45,7 +45,7 @@ For teams entrenched in Microsoft 365 who need a no-cost, familiar note-capture 
     },
     {
       feature: "Email integration",
-      gaia: "Full Gmail management — reads, triages, drafts replies, and auto-creates tasks or notes from emails",
+      gaia: "Full Gmail management: reads, triages, drafts replies, and auto-creates tasks or notes from emails",
       competitor:
         "Email to OneNote via Outlook's 'Send to OneNote' feature; no inbox management or automated capture",
     },
@@ -53,11 +53,11 @@ For teams entrenched in Microsoft 365 who need a no-cost, familiar note-capture 
       feature: "Task management",
       gaia: "AI-powered task management with priorities, deadlines, and tasks auto-created from emails and conversations",
       competitor:
-        "Outlook task tags within notes; no standalone task system — requires Microsoft To Do or Planner integration",
+        "Outlook task tags within notes; no standalone task system, requires Microsoft To Do or Planner integration",
     },
     {
       feature: "Calendar integration",
-      gaia: "Full Google Calendar integration — reads, creates, and updates events; generates pre-meeting briefings automatically",
+      gaia: "Full Google Calendar integration: reads, creates, and updates events; generates pre-meeting briefings automatically",
       competitor:
         "Linked notes feature for Outlook Calendar meetings; limited to OneNote-specific meeting notes pages",
     },
@@ -65,7 +65,7 @@ For teams entrenched in Microsoft 365 who need a no-cost, familiar note-capture 
       feature: "Proactive behavior",
       gaia: "Continuously monitors email, calendar, and connected tools to surface insights and act before you ask",
       competitor:
-        "Passive notebook — stores and organizes what you write; no autonomous monitoring or actions",
+        "Passive notebook: stores and organizes what you write; no autonomous monitoring or actions",
     },
     {
       feature: "Integrations",
@@ -87,15 +87,15 @@ For teams entrenched in Microsoft 365 who need a no-cost, familiar note-capture 
     },
     {
       feature: "Open source",
-      gaia: "Fully open source and self-hostable via Docker — data in your own infrastructure",
+      gaia: "Fully open source and self-hostable via Docker: data in your own infrastructure",
       competitor:
         "Proprietary Microsoft product; data stored in OneDrive cloud storage",
     },
     {
       feature: "Platform support",
-      gaia: "Web, desktop (Electron), and mobile — works on Windows, macOS, Linux, iOS, and Android",
+      gaia: "Web, desktop (Electron), and mobile: works on Windows, macOS, Linux, iOS, and Android",
       competitor:
-        "Windows, macOS, iOS, Android, and web — broad platform support within Microsoft ecosystem",
+        "Windows, macOS, iOS, Android, and web: broad platform support within Microsoft ecosystem",
     },
     {
       feature: "Pricing",
@@ -106,24 +106,24 @@ For teams entrenched in Microsoft 365 who need a no-cost, familiar note-capture 
   ],
   gaiaAdvantages: [
     "Proactively creates notes and tasks from your email and calendar without manual input",
-    "50+ integrations span the full tool stack — not limited to the Microsoft ecosystem",
+    "50+ integrations span the full tool stack, not limited to the Microsoft ecosystem",
     "AI-driven memory connects information across email, meetings, tasks, and documents contextually",
-    "Open source and self-hostable — no dependency on Microsoft's cloud infrastructure",
+    "Open source and self-hostable: no dependency on Microsoft's cloud infrastructure",
     "Manages your entire workflow, not just note storage and retrieval",
     "Graph-based memory surfaces relevant context automatically without hierarchical manual organization",
   ],
   competitorAdvantages: [
     "Completely free with a Microsoft account and deeply integrated into the Microsoft 365 suite",
     "Flexible freeform canvas supports drawings, handwriting (with stylus), audio recordings, and mixed media",
-    "Broad platform support with real-time co-editing — familiar and trusted by enterprise teams",
+    "Broad platform support with real-time co-editing, familiar and trusted by enterprise teams",
   ],
   verdict:
-    "Choose OneNote if your organization runs on Microsoft 365 and you need a free, familiar notebook tool for capturing meeting notes, clipping content, and organizing information within that ecosystem. Choose GAIA if you want an AI assistant that actively connects your notes to your email, calendar, and 50+ other tools — proactively creating, updating, and acting on information rather than waiting for you to manually organize it.",
+    "Choose OneNote if your organization runs on Microsoft 365 and you need a free, familiar notebook tool for capturing meeting notes, clipping content, and organizing information within that ecosystem. Choose GAIA if you want an AI assistant that actively connects your notes to your email, calendar, and 50+ other tools, proactively creating, updating, and acting on information rather than waiting for you to manually organize it.",
   faqs: [
     {
       question: "Can GAIA replace OneNote for meeting notes?",
       answer:
-        "GAIA integrates with Google Calendar and can automatically generate pre-meeting briefings and post-meeting summaries. While its note editor is not as feature-rich as OneNote's freeform canvas, it captures the key action items and context automatically — reducing the manual note-taking burden that OneNote requires.",
+        "GAIA integrates with Google Calendar and can automatically generate pre-meeting briefings and post-meeting summaries. While its note editor is not as feature-rich as OneNote's freeform canvas, it captures the key action items and context automatically, reducing the manual note-taking burden that OneNote requires.",
     },
     {
       question: "Does GAIA work with Microsoft tools?",
@@ -133,7 +133,7 @@ For teams entrenched in Microsoft 365 who need a no-cost, familiar note-capture 
     {
       question: "Is GAIA free like OneNote?",
       answer:
-        "GAIA has a free hosted tier and is fully open source. Self-hosting GAIA is entirely free — you only pay for your own server infrastructure. OneNote is also free with a Microsoft account, though the full Microsoft 365 suite that most enterprise users rely on carries a per-seat subscription cost.",
+        "GAIA has a free hosted tier and is fully open source. Self-hosting GAIA is entirely free; you only pay for your own server infrastructure. OneNote is also free with a Microsoft account, though the full Microsoft 365 suite that most enterprise users rely on carries a per-seat subscription cost.",
     },
     {
       question:

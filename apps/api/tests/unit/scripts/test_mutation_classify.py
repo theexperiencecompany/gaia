@@ -23,9 +23,11 @@ MODULE_REL = "app/sample.py"
 MODULE_DOTTED = "app.sample"
 
 
-def _write_mutants(workdir: Path, orig_body: str, mutant_body: str) -> None:
+def _write_mutants(
+    workdir: Path, orig_body: str, mutant_body: str, *, module_rel: str = MODULE_REL
+) -> None:
     """Lay out the mutants file the classifier reads, as mutmut emits it."""
-    target = workdir / "mutants" / MODULE_REL
+    target = workdir / "mutants" / module_rel
     target.parent.mkdir(parents=True, exist_ok=True)
     # The trailing dict entry is how mutmut points a mutant back at its
     # original, and it is what the classifier resolves through — without it the
@@ -37,17 +39,20 @@ def _write_mutants(workdir: Path, orig_body: str, mutant_body: str) -> None:
     )
 
 
-def _classify(workdir: Path, ranges: str = "[[1,200]]") -> subprocess.CompletedProcess[str]:
+def _classify(
+    workdir: Path, ranges: str = "[[1,200]]", *, module_rel: str = MODULE_REL
+) -> subprocess.CompletedProcess[str]:
+    dotted = module_rel.removesuffix(".py").replace("/", ".")
     return subprocess.run(
         [
             # The lane runs the classifier under the project venv; a bare
             # "python3" can be an older interpreter than its syntax needs.
             sys.executable,
             str(CLASSIFIER),
-            f"{MODULE_DOTTED}.x_probe__mutmut_1: survived",
+            f"{dotted}.x_probe__mutmut_1: survived",
             str(workdir),
             ranges,
-            MODULE_REL,
+            module_rel,
         ],
         capture_output=True,
         text=True,
@@ -268,6 +273,349 @@ class TestPopThroughCastWithEarlyExit:
         assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
 
 
+class TestLookupThroughAConditionalExpression:
+    """The reasoning extractor's shape.
+
+    The lookup is one arm of "a if c else b", and only the conditional's value
+    is bound and truth-tested.
+    """
+
+    _BODY = (
+        '    text = d.get("k") if isinstance(d, dict) else getattr(d, "k", "")\n'
+        "    if text:\n"
+        "        return 1\n"
+        "    return None"
+    )
+
+    def _write_real_module(self, workdir: Path, body: str) -> None:
+        (workdir / MODULE_REL).write_text(f"def probe(d):\n{body}\n")
+
+    def test_a_default_behind_the_conditional_is_equivalent(self, workdir: Path) -> None:
+        self._write_real_module(workdir, self._BODY)
+        _write_mutants(
+            workdir, self._BODY, self._BODY.replace('getattr(d, "k", "")', 'getattr(d, "k", None)')
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_conditional_whose_value_is_returned_is_still_reported(self, workdir: Path) -> None:
+        body = (
+            '    text = d.get("k") if isinstance(d, dict) else getattr(d, "k", "")\n    return text'
+        )
+        self._write_real_module(workdir, body)
+        _write_mutants(workdir, body, body.replace('getattr(d, "k", "")', 'getattr(d, "k", None)'))
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+
+class TestTwoLookupsGuardedByOneEarlyExit:
+    """The runner's viewport shape.
+
+    Two getattr defaults, one "if not w or not h: return" guard, and real
+    arithmetic on both past it.
+    """
+
+    _BODY = (
+        '    w = getattr(p, "w", 0)\n'
+        '    h = getattr(p, "h", 0)\n'
+        "    if not w or not h:\n"
+        "        return None\n"
+        "    return 1 / w + 1 / h"
+    )
+
+    def _write_real_module(self, workdir: Path) -> None:
+        (workdir / MODULE_REL).write_text(f"def probe(p):\n{self._BODY}\n")
+
+    def test_a_default_behind_the_shared_guard_is_equivalent(self, workdir: Path) -> None:
+        # Every falsy w takes the `return None` arm of the or-chain, so the
+        # division below it only ever sees a truthy w.
+        self._write_real_module(workdir)
+        _write_mutants(
+            workdir, self._BODY, self._BODY.replace('getattr(p, "w", 0)', 'getattr(p, "w", None)')
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_guard_that_only_exits_on_the_other_name_is_still_reported(
+        self, workdir: Path
+    ) -> None:
+        body = (
+            '    w = getattr(p, "w", 0)\n'
+            '    h = getattr(p, "h", 0)\n'
+            "    if not h:\n"
+            "        return None\n"
+            "    return (w or 0) + 1 / h if w is not None else 0"
+        )
+        (workdir / MODULE_REL).write_text(f"def probe(p):\n{body}\n")
+        _write_mutants(workdir, body, body.replace('getattr(p, "w", 0)', 'getattr(p, "w", None)'))
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+
+class TestToolDumpModeLiteral:
+    """A tools-tree model_dump(mode="json") is guarded by a lint, not by tests.
+
+    Rewriting the literal fails the tool-dump-boundary lint lane of the same
+    gate, so it is reported under its own verdict, never as an equivalence.
+    """
+
+    _TOOL_REL = "app/agents/tools/sample_tool.py"
+    _BODY = '    return {"out": payload.model_dump(mode="json", exclude_none=True)}'
+
+    def _write_real_module(self, workdir: Path, module_rel: str) -> None:
+        (workdir / module_rel).parent.mkdir(parents=True, exist_ok=True)
+        (workdir / module_rel).write_text(f"def probe(payload):\n{self._BODY}\n")
+
+    def test_a_respelled_mode_is_lint_caught(self, workdir: Path) -> None:
+        self._write_real_module(workdir, self._TOOL_REL)
+        _write_mutants(
+            workdir,
+            self._BODY,
+            self._BODY.replace('mode="json"', 'mode="XXjsonXX"'),
+            module_rel=self._TOOL_REL,
+        )
+
+        result = _classify(workdir, module_rel=self._TOOL_REL)
+
+        assert result.stdout.strip() == "LINTED:2", result.stdout + result.stderr
+        assert result.returncode == 1
+
+    def test_a_dropped_mode_is_lint_caught(self, workdir: Path) -> None:
+        self._write_real_module(workdir, self._TOOL_REL)
+        _write_mutants(
+            workdir,
+            self._BODY,
+            self._BODY.replace('mode="json", ', ""),
+            module_rel=self._TOOL_REL,
+        )
+
+        result = _classify(workdir, module_rel=self._TOOL_REL)
+
+        assert result.stdout.strip() == "LINTED:2", result.stdout + result.stderr
+
+    def test_another_argument_of_the_same_call_is_still_reported(self, workdir: Path) -> None:
+        self._write_real_module(workdir, self._TOOL_REL)
+        _write_mutants(
+            workdir,
+            self._BODY,
+            self._BODY.replace("exclude_none=True", "exclude_none=False"),
+            module_rel=self._TOOL_REL,
+        )
+
+        result = _classify(workdir, module_rel=self._TOOL_REL)
+
+        assert result.stdout.strip() == "CHANGED:2", result.stdout + result.stderr
+
+    def test_the_same_rewrite_outside_the_tools_tree_is_still_reported(self, workdir: Path) -> None:
+        service_rel = "app/services/sample_service.py"
+        self._write_real_module(workdir, service_rel)
+        _write_mutants(
+            workdir,
+            self._BODY,
+            self._BODY.replace('mode="json"', 'mode="XXjsonXX"'),
+            module_rel=service_rel,
+        )
+
+        result = _classify(workdir, module_rel=service_rel)
+
+        assert result.stdout.strip() == "CHANGED:2", result.stdout + result.stderr
+
+
+class TestArgumentThatIsTheCalleeDefault:
+    """An argument stating the callee's own default constructs an identical object.
+
+    Deleting it cannot be killed, while re-valuing it can and must stay
+    reported. Both directions are pinned on the real shapes from
+    _build_browser_config (crawl4ai) and seed_for_user (fingerprint).
+    """
+
+    _WRAPPED = (
+        "    return BrowserConfig(\n"
+        '        browser_mode="cdp",\n'
+        "        headless=True,\n"
+        "        verbose=False,\n"
+        "        cdp_cleanup_on_close=False,\n"
+        "    )"
+    )
+    _INLINE = '    return BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)'
+    _POSITIONAL = '    return int.from_bytes(digest[:4], "big")'
+
+    def _probe(self, workdir: Path, body: str, mutant: str) -> subprocess.CompletedProcess[str]:
+        (workdir / MODULE_REL).write_text(f"def probe(digest):\n{body}\n")
+        _write_mutants(workdir, body, mutant)
+        return _classify(workdir)
+
+    def test_a_dropped_headless_on_its_own_line_is_equivalent(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._WRAPPED, self._WRAPPED.replace("        headless=True,\n", "")
+        )
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_dropped_cdp_cleanup_on_close_is_equivalent(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir,
+            self._WRAPPED,
+            self._WRAPPED.replace("        cdp_cleanup_on_close=False,\n", ""),
+        )
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_dropped_inline_headless_is_equivalent(self, workdir: Path) -> None:
+        result = self._probe(workdir, self._INLINE, self._INLINE.replace("headless=True, ", ""))
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_dropped_inline_browser_mode_is_equivalent(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._INLINE, self._INLINE.replace('browser_mode="dedicated", ', "")
+        )
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_dropped_positional_byteorder_is_equivalent(self, workdir: Path) -> None:
+        # mutmut leaves the separator behind: int.from_bytes(digest[:4], )
+        result = self._probe(workdir, self._POSITIONAL, self._POSITIONAL.replace('"big"', ""))
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_headless_set_to_none_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._WRAPPED, self._WRAPPED.replace("headless=True,", "headless=None,")
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_cdp_cleanup_on_close_flipped_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir,
+            self._WRAPPED,
+            self._WRAPPED.replace("cdp_cleanup_on_close=False,", "cdp_cleanup_on_close=True,"),
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_headless_flipped_to_false_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._INLINE, self._INLINE.replace("headless=True", "headless=False")
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_re_spelled_browser_mode_value_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._INLINE, self._INLINE.replace('"dedicated"', '"XXdedicatedXX"')
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_widened_digest_slice_is_still_reported(self, workdir: Path) -> None:
+        # Same call, a DIFFERENT argument — the byteorder entry must not cover it.
+        result = self._probe(
+            workdir, self._POSITIONAL, self._POSITIONAL.replace("digest[:4]", "digest[:5]")
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_an_argument_outside_the_table_is_still_reported(self, workdir: Path) -> None:
+        # verbose=False is NOT crawl4ai's default (it defaults to True), so
+        # dropping it is a real change and the rule must not generalise to it.
+        result = self._probe(workdir, self._INLINE, self._INLINE.replace(", verbose=False", ""))
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+
+class TestUrlparseHostDefault:
+    """urlparse(x).hostname is None for every non-URL.
+
+    So the lookup default feeding it cannot be observed, but the lookup's KEY
+    still can be.
+    """
+
+    _BODY = (
+        '    host = urlparse(origin.get("origin", "")).hostname\n'
+        "    if host:\n"
+        "        return host.lower()\n"
+        "    return None"
+    )
+    _COMPREHENSION = (
+        '    return [o for o in origins if (urlparse(o.get("origin", "")).hostname or "") == host]'
+    )
+
+    def _probe(self, workdir: Path, body: str, mutant: str) -> subprocess.CompletedProcess[str]:
+        (workdir / MODULE_REL).write_text(f"def probe(origin, origins, host):\n{body}\n")
+        _write_mutants(workdir, body, mutant)
+        return _classify(workdir)
+
+    def test_a_none_default_is_equivalent(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._BODY, self._BODY.replace('"origin", ""', '"origin", None')
+        )
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_dropped_default_is_equivalent(self, workdir: Path) -> None:
+        # mutmut drops the value and leaves the separator behind: .get("origin", )
+        result = self._probe(workdir, self._BODY, self._BODY.replace('"origin", ""', '"origin", '))
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_non_url_string_default_is_equivalent(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._BODY, self._BODY.replace('"origin", ""', '"origin", "XXXX"')
+        )
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_the_same_defaults_inside_a_comprehension_are_equivalent(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir,
+            self._COMPREHENSION,
+            self._COMPREHENSION.replace('"origin", ""', '"origin", "XXXX"'),
+        )
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_default_that_IS_a_url_is_still_reported(self, workdir: Path) -> None:
+        # The rule proves both values name no host; a real URL names one.
+        result = self._probe(
+            workdir, self._BODY, self._BODY.replace('"origin", ""', '"origin", "https://a.com"')
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_changed_lookup_key_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._BODY, self._BODY.replace('"origin", ""', '"XXoriginXX", ""')
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_changed_key_inside_the_comprehension_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir,
+            self._COMPREHENSION,
+            self._COMPREHENSION.replace('"origin", ""', '"XXoriginXX", ""'),
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_flipped_host_comparison_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._COMPREHENSION, self._COMPREHENSION.replace('"") == host', '"") != host')
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+
 class TestContainerFunctionWithNestedDefs:
     """A CONTAINER function with nested defs must not have its body truncated at the first def (788 real survivors once hid this way)."""
 
@@ -284,6 +632,85 @@ class TestContainerFunctionWithNestedDefs:
 
         assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
         assert result.returncode == 1
+
+
+class TestCacheSetModelArgument:
+    """redis_cache.set dumps through TypeAdapter(model or Any).
+
+    So a model=C beside a value that already is a C(...) writes identical
+    bytes either way, but only then. The shape is mint_import_token's.
+    """
+
+    _WRAPPED = (
+        "    redis_cache.set(\n"
+        "        _key(token),\n"
+        "        ImportTokenRecord(user_id=user_id),\n"
+        "        ttl=BROWSER_IMPORT_TOKEN_TTL_SECONDS,\n"
+        "        model=ImportTokenRecord,\n"
+        "    )"
+    )
+    _DICT_VALUE = _WRAPPED.replace(
+        "        ImportTokenRecord(user_id=user_id),\n", '        {"user_id": user_id},\n'
+    )
+    _VARIABLE_VALUE = _WRAPPED.replace(
+        "        ImportTokenRecord(user_id=user_id),\n", "        record,\n"
+    )
+
+    def _probe(self, workdir: Path, body: str, mutant: str) -> subprocess.CompletedProcess[str]:
+        (workdir / MODULE_REL).write_text(f"def probe(token, user_id, record):\n{body}\n")
+        _write_mutants(workdir, body, mutant)
+        return _classify(workdir)
+
+    def test_a_none_model_beside_its_own_construction_is_equivalent(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._WRAPPED, self._WRAPPED.replace("model=ImportTokenRecord,", "model=None,")
+        )
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_dropped_model_beside_its_own_construction_is_equivalent(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._WRAPPED, self._WRAPPED.replace("        model=ImportTokenRecord,\n", "")
+        )
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_none_model_beside_a_dict_value_is_still_reported(self, workdir: Path) -> None:
+        # A dict IS coerced by the model adapter — dropping it changes the bytes.
+        result = self._probe(
+            workdir,
+            self._DICT_VALUE,
+            self._DICT_VALUE.replace("model=ImportTokenRecord,", "model=None,"),
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_dropped_model_beside_a_variable_value_is_still_reported(self, workdir: Path) -> None:
+        # Nothing at this call site says what `record` is, so nothing proves the
+        # adapter has no work to do.
+        result = self._probe(
+            workdir,
+            self._VARIABLE_VALUE,
+            self._VARIABLE_VALUE.replace("        model=ImportTokenRecord,\n", ""),
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_mutated_key_on_the_same_call_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._WRAPPED, self._WRAPPED.replace("_key(token)", "_key(None)")
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_mutated_ttl_on_the_same_call_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir,
+            self._WRAPPED,
+            self._WRAPPED.replace("ttl=BROWSER_IMPORT_TOKEN_TTL_SECONDS,", "ttl=None,"),
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
 
 
 class TestResponseHeaderCase:

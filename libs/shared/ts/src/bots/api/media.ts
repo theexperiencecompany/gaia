@@ -9,8 +9,39 @@
  */
 import type { AxiosInstance } from "axios";
 import type { BotFileData } from "../types";
+import { fetchPublicAsset } from "../utils/public-fetch";
 
 type Headers = Record<string, string>;
+
+// 100 MB = the largest per-platform outbound cap (WhatsApp). A lower cap here
+// would reject 50–100 MB artifacts as transport errors before
+// OUTBOUND_FILE_LIMITS can apply the platform limit or graceful note.
+const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
+
+/**
+ * GETs binary bytes from GAIA's own API through the bot-authenticated client,
+ * with the shared transport cap applied.
+ *
+ * `url` is a path on the API, or an absolute URL already proven to be on it by
+ * {@link isOwnApiUrl} — axios skips `baseURL` for an absolute URL, so a base
+ * carrying a path prefix cannot corrupt the target.
+ */
+export async function downloadApiBinaryRequest(
+  client: AxiosInstance,
+  headers: Headers,
+  url: string,
+): Promise<{ data: Buffer; contentType: string }> {
+  const { data, headers: respHeaders } = await client.get(url, {
+    responseType: "arraybuffer",
+    headers,
+    maxContentLength: MAX_DOWNLOAD_BYTES,
+    maxBodyLength: MAX_DOWNLOAD_BYTES,
+  });
+  const contentType = String(
+    respHeaders["content-type"] ?? "application/octet-stream",
+  );
+  return { data: Buffer.from(data as ArrayBuffer), contentType };
+}
 
 /**
  * Uploads a file to GAIA and returns its {@link BotFileData}, sendable with the
@@ -80,22 +111,45 @@ export async function downloadArtifactRequest(
     .split("/")
     .map((seg) => encodeURIComponent(seg))
     .join("/");
-  const { data, headers: respHeaders } = await client.get(
+  return downloadApiBinaryRequest(
+    client,
+    headers,
     `/api/v1/sessions/${encodeURIComponent(conversationId)}/artifacts/${encodedPath}`,
-    {
-      responseType: "arraybuffer",
-      headers,
-      // 100 MB = the largest per-platform outbound cap (WhatsApp). A lower cap
-      // here would reject 50–100 MB artifacts as transport errors before
-      // OUTBOUND_FILE_LIMITS can apply the platform limit or graceful note.
-      maxContentLength: 100 * 1024 * 1024,
-      maxBodyLength: 100 * 1024 * 1024,
-    },
   );
-  const contentType = String(
-    respHeaders["content-type"] ?? "application/octet-stream",
-  );
-  return { data: Buffer.from(data as ArrayBuffer), contentType };
+}
+
+/**
+ * True when `url` is served by the GAIA API `baseUrl` points at.
+ *
+ * Origin equality, never a path or substring test: `https://evil.com/<our
+ * host>/…` and `https://<our host>.evil.com/…` both carry our host and neither
+ * is ours. `URL.origin` normalises case, a default port and a trailing slash.
+ */
+export function isOwnApiUrl(baseUrl: string | undefined, url: string): boolean {
+  if (!baseUrl) return false;
+  try {
+    const origin = new URL(url).origin;
+    return origin !== "null" && origin === new URL(baseUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Downloads bytes from a URL served by somebody other than GAIA — a step
+ * screenshot published as a signed, short-lived object-store link.
+ *
+ * The URL is the whole authorization, so every hop is SSRF-guarded: a poisoned
+ * queue entry must not make the bot read internal services. A URL on GAIA's own
+ * API is the other case — see {@link downloadApiBinaryRequest}.
+ */
+export async function downloadUrlRequest(
+  url: string,
+): Promise<{ data: Buffer; contentType: string }> {
+  return fetchPublicAsset(url, {
+    maxContentLength: MAX_DOWNLOAD_BYTES,
+    maxBodyLength: MAX_DOWNLOAD_BYTES,
+  });
 }
 
 /**

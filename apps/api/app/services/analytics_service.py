@@ -29,6 +29,14 @@ class AnalyticsEvents(StrEnum):
     # Without it a refusal is a MISSING event, and missing is
     # indistinguishable from a user who never typed.
     CHAT_MESSAGE_REFUSED = "chat:message_refused"
+    # Browser automation — captured when the run finishes (never on start, so
+    # attempts don't count as successes) and when a human resolves a handoff.
+    BROWSER_TASK_FINISHED = "browser:task_finished"
+    BROWSER_HANDOFF_RESOLVED = "browser:handoff_resolved"
+    # The two halves of the `gaia connect` login import: the web session mints a
+    # code, then the CLI redeems it. Both are needed to see where the flow drops.
+    BROWSER_IMPORT_TOKEN_MINTED = "browser:import_token_minted"  # nosec B105 -- analytics event name, not a credential
+    BROWSER_LOGINS_IMPORTED = "browser:logins_imported"
     WORKFLOW_CREATED = "workflow:created"
     WORKFLOW_EXECUTED = "workflow:executed"
     WORKFLOW_ACTIVATED = "workflow:activated"

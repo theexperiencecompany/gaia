@@ -23,6 +23,7 @@ from app.config.rate_limits import (
     RateLimitPeriod,
     get_reset_time,
 )
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.request_context import resolve_caller
 from app.models.chat_models import ToolDataEntry
@@ -488,6 +489,10 @@ async def enforce_daily_cost_budget(
     MANY). Raises the same RateLimitExceededException (429) as the count
     limiter so the frontend toast/upgrade-modal path renders identically.
     """
+    # Dev-only bypass, mirroring the count-based limiter and the middleware cost
+    # wall: a free-plan dev user / eval harness is never blocked. Refused in prod.
+    if settings.DEV_UNLIMITED_RATE_LIMITS:
+        return
     origin = origin or current_limit_origin()
     plan_type = await payment_service.get_cached_plan_type(user_id)
     # The tier this request was priced against, on the wide event — this gate is

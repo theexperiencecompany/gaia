@@ -37,7 +37,8 @@ class SectionContext:
     vfs_session_id: str | None = None
     active_todo_id: str | None = None
     execution_mode: ExecutionMode = "interactive"
-    #: Conversation channel. Observability only; no section branches on it.
+    #: Conversation channel. Read by the comms platform banner, which names the
+    #: messaging app so replies read native to it.
     source: str | None = None
 
     @classmethod

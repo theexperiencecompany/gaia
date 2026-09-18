@@ -32,6 +32,7 @@ from app.agents.core.background.executor_capture import (
 )
 from app.agents.core.background.session import get_session
 from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
+from app.constants.browser import BROWSER_HANDOFF_ACK_CANCEL, BROWSER_HANDOFF_ACK_CONTINUE
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
 from app.constants.chat import (
     EMPTY_RESPONSE_FALLBACK,
@@ -52,6 +53,7 @@ from app.models.stream_events import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.browser.resolution import resolve_handoff_from_message
 from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import ChunkAccumulators, extract_response_text, process_data_chunk
 from app.services.chat.persistence import (
@@ -79,7 +81,7 @@ from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.message_breaks import strip_partial_message_break
-from app.utils.stream_utils import reconstruct_subagent_groups
+from app.utils.stream_utils import ReasoningEvent, absorb_reasoning, reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
 
@@ -116,12 +118,13 @@ async def run_chat_stream_background(
         )
 
 
-class _ErrorChunk(BaseModel):
-    """A ``data:`` chunk, read only for the error an error frame carries."""
+class _ErrorOrReasoningChunk(BaseModel):
+    """A ``data:`` chunk, read only for the error or reasoning frame it carries."""
 
     model_config = ConfigDict(extra="ignore")
 
     error: object = None
+    reasoning: ReasoningEvent | None = None
 
 
 class _CompleteMessageMarker(BaseModel):
@@ -182,6 +185,7 @@ class _StreamState:
 
     __slots__ = (
         "ack_perf",
+        "attached",
         "bot_message_id",
         "complete_message",
         "delegated",
@@ -192,8 +196,6 @@ class _StreamState:
         "is_cancelled",
         "queued",
         "saved",
-        "subagent_ends",
-        "subagent_starts",
         "t0_perf",
         "todo_progress_accumulated",
         "tool_data",
@@ -211,13 +213,7 @@ class _StreamState:
         # The accumulators process_data_chunk fills, and the envelope around them
         # that recovery, grouping and persistence (chat.state) take as one dict.
         self.tool_entries: list[ToolDataEntry] = []
-        self.subagent_starts: dict[str, dict[str, object]] = {}
-        self.subagent_ends: dict[str, dict[str, object]] = {}
-        self.tool_data: dict[str, Any] = {
-            "tool_data": self.tool_entries,
-            "subagent_starts": self.subagent_starts,
-            "subagent_ends": self.subagent_ends,
-        }
+        self.tool_data: dict[str, Any] = {"tool_data": self.tool_entries}
         self.tool_outputs: dict[str, str] = {}
         self.todo_progress_accumulated: dict[str, dict[str, object]] = {}
         self.follow_up_actions: list[str] = []
@@ -229,9 +225,13 @@ class _StreamState:
         # Whether the turn was persisted in the try block (early save). When
         # False, the finally block does a fallback save.
         self.saved: bool = False
-        # Client send id doubles as the user message id (no reload/sync
-        # reconciliation needed); clients that don't send one (bots) get a
-        # server-minted id.
+        # Whether executor tool_data (browser cards etc.) was attached to the
+        # saved message. Separate from saved: a turn cut short during the
+        # executor wait would otherwise skip the attach backstop and lose it.
+        self.attached: bool = False
+        # The client's send id IS the user message id: the client's optimistic
+        # record and the persisted message share one key, so there is nothing
+        # to reconcile after a reload. Bots get a server-minted id instead.
         self.user_message_id: str = turn_id or str(uuid4())
         self.bot_message_id: str = str(uuid4())
         # When comms finished — stamped before any voice-mode executor wait so
@@ -313,6 +313,13 @@ async def _run_chat_stream(
         if is_new_conversation and user_id and body.fileData:
             await _wait_for_artifact_forwarder(forwarder_subscribed, stream_id)
             await FileService.seed_uploads(body.fileData, user_id, conversation_id)
+        # Same idea for a paused browser task: a chat reply ("I paid, continue" /
+        # "stop") resolves its live-view handoff — the text-channel equivalent of
+        # the card's Continue/Cancel buttons, working on web and bots alike.
+        if await _resolve_pending_browser_handoff_turn(
+            body, user, conversation_id, stream_id, state
+        ):
+            return
 
         # Starts only after the conversation row exists (_publish_init_chunk);
         # starting earlier races the insert and the $set description update can
@@ -371,19 +378,22 @@ async def _run_chat_stream(
             status="cancelled" if state.is_cancelled else "success",
         )
         if user_id:
+            # Latency props are omitted, not sent as null, when a stage never ran.
+            latencies = (
+                ("ttft_ms", state.ttft_ms),
+                ("e2e_ack_ms", state.e2e_ack_ms),
+                ("e2e_full_ms", state.e2e_full_ms),
+            )
             event_props: dict[str, Any] = {
                 "conversation_id": conversation_id,
                 "voice_mode": body.voice_mode,
                 "is_new_conversation": is_new_conversation,
                 "delegated": state.delegated,
                 "queued": state.queued,
+                **{name: value for name, value in latencies if value is not None},
             }
-            if state.ttft_ms is not None:
-                event_props["ttft_ms"] = state.ttft_ms
-            if state.e2e_ack_ms is not None:
-                event_props["e2e_ack_ms"] = state.e2e_ack_ms
-            if state.e2e_full_ms is not None:
-                event_props["e2e_full_ms"] = state.e2e_full_ms
+            # Source is falsy-checked, not None-checked: a bot platform is a bare
+            # str, and a blank one is no source rather than an empty-string one.
             if source:
                 event_props["source"] = source
             capture_event(
@@ -482,6 +492,50 @@ async def _resolve_pending_approval_turn(
         format_sse_data(
             MainResponseCompleteFrame(main_response_complete=True).model_dump(exclude_none=True)
         ),
+    )
+    await _persist_turn(stream_id, body, user, conversation_id, state)
+    await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
+    await stream_manager.complete_stream(stream_id)
+    return True
+
+
+async def _resolve_pending_browser_handoff_turn(
+    body: MessageRequestWithHistory,
+    user: AuthenticatedUser,
+    conversation_id: str,
+    stream_id: str,
+    state: _StreamState,
+) -> bool:
+    """Resolve a paused browser task's handoff from the user's chat reply.
+
+    Returns True when the reply continued or cancelled the handoff, so the
+    caller must not run the agent (the paused task resumes on its own stream).
+    False when nothing was pending, so the normal turn runs.
+    """
+    user_id = user.user_id
+    message = user_message_content_from(body)
+    if not user_id or not message:
+        return False
+
+    try:
+        action = await resolve_handoff_from_message(conversation_id, user_id, message)
+    except Exception as e:  # chat must survive an optional-feature lookup
+        log.error(
+            f"{LogTag.CHAT} Pending browser-handoff check failed; normal turn",
+            error_type=type(e).__name__,
+        )
+        return False
+
+    if action not in ("continue", "cancel"):
+        return False
+
+    ack = BROWSER_HANDOFF_ACK_CONTINUE if action == "continue" else BROWSER_HANDOFF_ACK_CANCEL
+    state.complete_message = ack
+    state.turn_completed_at = datetime.now(UTC)
+    await stream_manager.publish_chunk(stream_id, format_sse_response(ack))
+    await stream_manager.publish_chunk(
+        stream_id,
+        format_sse_data(MainResponseCompleteFrame(main_response_complete=True).model_dump()),
     )
     await _persist_turn(stream_id, body, user, conversation_id, state)
     await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
@@ -655,46 +709,67 @@ async def _consume_agent_stream(
             state.is_cancelled = state.is_cancelled or was_cancelled
             continue
 
-        if chunk.startswith("data: ") and '"error"' in chunk:
-            # Errors reach this loop as raised exceptions (state.error, caught
-            # elsewhere) or as error frames yielded by call_agent's setup guard;
-            # record the latter so the persisted message carries the failure.
-            with contextlib.suppress(json.JSONDecodeError):
-                payload = json.loads(chunk[len("data: ") :])
-                if isinstance(payload, dict):
-                    frame_error = _ErrorChunk.model_validate(payload).error
-                    if frame_error:
-                        state.error = str(frame_error)
-
-        if chunk.startswith("data: "):
-            if state.ttft_perf is None and extract_response_text(chunk):
-                # Init/description/keepalive/tool frames carry no "response"
-                # key — this is first reply text, not first byte.
-                state.ttft_perf = time.perf_counter()
-            try:
-                state.follow_up_actions, _ = await process_data_chunk(
-                    stream_id,
-                    chunk,
-                    ChunkAccumulators(
-                        tool_entries=state.tool_entries,
-                        subagent_starts=state.subagent_starts,
-                        subagent_ends=state.subagent_ends,
-                        tool_outputs=state.tool_outputs,
-                        todo_progress=state.todo_progress_accumulated,
-                        follow_up_actions=state.follow_up_actions,
-                    ),
-                )
-            except Exception as e:  # fall back to passthrough
-                log.error(
-                    f"{LogTag.CHAT} Error processing chunk",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    conversation_id=turn.conversation_id,
-                )
-                await stream_manager.publish_chunk(stream_id, chunk)
-        else:
-            await stream_manager.publish_chunk(stream_id, chunk)
+        await _dispatch_stream_chunk(chunk, stream_id, turn, state)
     return description_task
+
+
+async def _dispatch_stream_chunk(
+    chunk: str,
+    stream_id: str,
+    turn: _TurnContext,
+    state: _StreamState,
+) -> None:
+    """Route one non-control chunk: parse a data frame into tool_data, or pass any other frame straight through to the client."""
+    if not chunk.startswith("data: "):
+        await stream_manager.publish_chunk(stream_id, chunk)
+        return
+
+    if '"error"' in chunk or '"reasoning"' in chunk:
+        payload = _data_frame_payload(chunk)
+        # Errors reach this loop as raised exceptions (state.error, caught
+        # elsewhere) or as error frames yielded by call_agent's setup guard;
+        # record the latter so the persisted message carries the failure.
+        frames = _ErrorOrReasoningChunk.model_validate(payload) if payload is not None else None
+        if frames is not None and frames.error:
+            state.error = str(frames.error)
+        # Comms' thinking arrives as a plain `reasoning` frame (the executor's rides
+        # the tool-event collector). Same helper for both so a reloaded turn keeps
+        # one identical thinking-block shape.
+        if frames is not None and frames.reasoning is not None:
+            absorb_reasoning(frames.reasoning, state.tool_entries)
+
+    if state.ttft_perf is None and extract_response_text(chunk):
+        # Init/description/keepalive/tool frames carry no "response"
+        # key — this is first reply text, not first byte.
+        state.ttft_perf = time.perf_counter()
+    try:
+        state.follow_up_actions, _ = await process_data_chunk(
+            stream_id,
+            chunk,
+            ChunkAccumulators(
+                tool_entries=state.tool_entries,
+                tool_outputs=state.tool_outputs,
+                todo_progress=state.todo_progress_accumulated,
+                follow_up_actions=state.follow_up_actions,
+            ),
+        )
+    except Exception as e:  # fall back to passthrough
+        log.error(
+            f"{LogTag.CHAT} Error processing chunk",
+            error=str(e),
+            error_type=type(e).__name__,
+            conversation_id=turn.conversation_id,
+        )
+        await stream_manager.publish_chunk(stream_id, chunk)
+
+
+def _data_frame_payload(chunk: str) -> dict[str, object] | None:
+    """Return the JSON object a data: frame carries, or None for a split or foreign frame."""
+    with contextlib.suppress(json.JSONDecodeError):
+        payload = json.loads(chunk[len("data: ") :])
+        if isinstance(payload, dict):
+            return payload
+    return None
 
 
 def _parse_complete_message(chunk: str) -> tuple[str, bool]:
@@ -929,6 +1004,9 @@ async def _attach_executor_tool_data(
     """
     timeout = VOICE_EXECUTOR_RESULT_TIMEOUT_S if body.voice_mode else EXECUTOR_WAIT_TIMEOUT
     await await_executor_done(stream_id, timeout=timeout)
+    # Past the one interruptible await: the drain + append below are sync /
+    # best-effort, so mark attached now — the finally backstop must not re-run.
+    state.attached = True
     executor_td = drain_executor_tool_data(stream_id)
     if not executor_td:
         return
@@ -978,16 +1056,27 @@ async def _finalize_stream(
     if not state.saved:
         try:
             await _persist_turn(stream_id, body, user, conversation_id, state)
-            # Backstop: the try block errored before the normal attach call, so
-            # executor cards were never pushed. Gated on not state.saved so this
-            # never double-attaches alongside the happy/cancel path's own attach.
-            await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
         except Exception as save_err:  # best-effort fallback save
             log.error(
                 f"{LogTag.CHAT} Fallback save failed for stream",
                 stream_id=stream_id,
                 error=str(save_err),
                 error_type=type(save_err).__name__,
+                conversation_id=conversation_id,
+            )
+
+    # Independent backstop for the executor cards. Gated on attached, not saved:
+    # the early save sets saved=True before the executor wait, so a turn cut
+    # short there leaves saved=True but attached=False. Runs exactly once.
+    if not state.attached:
+        try:
+            await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
+        except Exception as attach_err:  # best-effort backstop
+            log.error(
+                f"{LogTag.CHAT} Backstop executor tool_data attach failed",
+                stream_id=stream_id,
+                error=str(attach_err),
+                error_type=type(attach_err).__name__,
                 conversation_id=conversation_id,
             )
 

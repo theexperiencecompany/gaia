@@ -7,6 +7,7 @@ from app.constants.log_tags import LogTag
 from app.core.provider_registration import unified_shutdown
 from app.services.device.up_listener import stop_up_listener
 from app.utils.browser_reaper import stop_browser_reaper
+from app.utils.crawl_obscura import shutdown_crawl_obscura
 from shared.py.wide_events import log, log_context
 
 
@@ -20,6 +21,7 @@ async def shutdown(ctx: dict[str, Any]) -> None:
         log.info(f"{LogTag.WORKER} ARQ worker shutting down...")
 
         await stop_browser_reaper()
+        await shutdown_crawl_obscura()
 
         # Stop the per-pod up-listener the warm-connect path relies on (started
         # in worker startup). Symmetric with core/lifespan on the API side.

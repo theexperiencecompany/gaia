@@ -7,9 +7,9 @@ export const entry: ComparisonData = {
   tagline: "Team project and task management platform",
   description:
     "Asana is a team collaboration and project management tool built for tracking work across teams. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across your entire digital life.",
-  metaTitle: "Asana Alternative Without Per-Seat Pricing — GAIA vs Asana",
+  metaTitle: "Asana Alternative Without Per-Seat Pricing: GAIA vs Asana",
   metaDescription:
-    "Asana charges per seat and still requires manual task management. GAIA is an open-source Asana alternative with AI that auto-creates tasks from email, automates workflows, and offers free self-hosting — no per-seat fees.",
+    "Asana charges per seat and still requires manual task management. GAIA is an open-source Asana alternative with AI that auto-creates tasks from email, automates workflows, and offers free self-hosting, with no per-seat fees.",
   keywords: [
     "GAIA vs Asana",
     "Asana alternative",
@@ -26,7 +26,7 @@ export const entry: ComparisonData = {
     "Asana vs GAIA",
   ],
   intro:
-    "Asana is one of the most established names in project management. Teams use it to track tasks, coordinate projects, and visualize work across timelines, boards, and lists. It does this well — but Asana is fundamentally a tool you operate, not one that operates on your behalf. GAIA takes a different position entirely: it is a proactive AI assistant that monitors your email, calendar, and connected tools, then acts without waiting to be asked. Where Asana organizes work you manually enter, GAIA creates tasks from your emails, prepares briefings before your meetings, triggers multi-step workflows across tools, and maintains a persistent memory of your projects and the people in them.",
+    "Asana is one of the most established names in project management. Teams use it to track tasks, coordinate projects, and visualize work across timelines, boards, and lists. It does this well, but Asana is fundamentally a tool you operate, not one that operates on your behalf. GAIA takes a different position entirely: it is a proactive AI assistant that monitors your email, calendar, and connected tools, then acts without waiting to be asked. Where Asana organizes work you manually enter, GAIA creates tasks from your emails, prepares briefings before your meetings, triggers multi-step workflows across tools, and maintains a persistent memory of your projects and the people in them.",
   rows: [
     {
       feature: "Core approach",
@@ -36,13 +36,13 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Task creation",
-      gaia: "Creates tasks automatically from emails, meeting notes, and conversations using AI — no manual entry required",
+      gaia: "Creates tasks automatically from emails, meeting notes, and conversations using AI: no manual entry required",
       competitor:
         "Manual task creation with rich fields (due dates, assignees, priorities, subtasks, custom fields)",
     },
     {
       feature: "Email integration",
-      gaia: "Full Gmail management — reads inboxes, triages messages, drafts replies, and converts emails into tasks automatically",
+      gaia: "Full Gmail management: reads inboxes, triages messages, drafts replies, and converts emails into tasks automatically",
       competitor:
         "Email-to-task forwarding via a dedicated Asana email address; no inbox reading or triage capabilities",
     },
@@ -78,7 +78,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Open source",
-      gaia: "Fully open source and self-hostable via Docker — your data never leaves your infrastructure",
+      gaia: "Fully open source and self-hostable via Docker: your data never leaves your infrastructure",
       competitor:
         "Proprietary closed-source SaaS platform; no self-hosting option",
     },
@@ -91,10 +91,10 @@ export const entry: ComparisonData = {
   ],
   gaiaAdvantages: [
     "Proactively manages email, calendar, and tasks without waiting for manual input",
-    "Creates tasks and drafts replies directly from your inbox — eliminating manual data entry",
+    "Creates tasks and drafts replies directly from your inbox, eliminating manual data entry",
     "Natural-language multi-step workflows that span your entire tool stack, not just one platform",
     "Graph-based memory provides persistent, cross-tool context that grows smarter over time",
-    "Open source and self-hostable — full data ownership with no per-seat pricing when self-hosted",
+    "Open source and self-hostable: full data ownership with no per-seat pricing when self-hosted",
   ],
   competitorAdvantages: [
     "Purpose-built for team collaboration with mature project views (timeline, boards, portfolios, workload)",
@@ -102,7 +102,7 @@ export const entry: ComparisonData = {
     "Free Personal plan supports up to 15 members, making it accessible for small teams at no cost",
   ],
   verdict:
-    "Choose Asana if your primary need is structured team project management — coordinating multiple people across boards, timelines, and portfolios with clear ownership and status tracking. Choose GAIA if you want an AI assistant that proactively handles work on your behalf: reading your email, building tasks from context, automating cross-tool workflows, and maintaining deep memory of your projects — all without manual entry or per-seat pricing when self-hosted.",
+    "Choose Asana if your primary need is structured team project management: coordinating multiple people across boards, timelines, and portfolios with clear ownership and status tracking. Choose GAIA if you want an AI assistant that proactively handles work on your behalf: reading your email, building tasks from context, automating cross-tool workflows, and maintaining deep memory of your projects, all without manual entry or per-seat pricing when self-hosted.",
   faqs: [
     {
       question: "Can GAIA replace Asana for project management?",
@@ -112,12 +112,12 @@ export const entry: ComparisonData = {
     {
       question: "Does GAIA work with Asana, or does it replace it?",
       answer:
-        "Both. GAIA integrates with Asana through its MCP integration layer, letting you query and update Asana projects using natural language. Teams heavily invested in Asana can keep it as the source of truth while using GAIA to automate task creation from emails, trigger workflows across tools, and get AI-powered briefings — without changing how the rest of the team works.",
+        "Both. GAIA integrates with Asana through its MCP integration layer, letting you query and update Asana projects using natural language. Teams heavily invested in Asana can keep it as the source of truth while using GAIA to automate task creation from emails, trigger workflows across tools, and get AI-powered briefings, without changing how the rest of the team works.",
     },
     {
       question: "Is GAIA cheaper than Asana for large teams?",
       answer:
-        "For large teams, GAIA's self-hosting option eliminates per-seat pricing entirely — you pay only for infrastructure. Asana's Advanced plan costs $24.99 per user per month billed annually, which adds up quickly at scale. GAIA's hosted Pro plan starts at $20/month regardless of seat count, and self-hosting is free.",
+        "For large teams, GAIA's self-hosting option eliminates per-seat pricing entirely: you pay only for infrastructure. Asana's Advanced plan costs $24.99 per user per month billed annually, which adds up quickly at scale. GAIA's hosted Pro plan starts at $20/month regardless of seat count, and self-hosting is free.",
     },
   ],
   relatedPersonas: [

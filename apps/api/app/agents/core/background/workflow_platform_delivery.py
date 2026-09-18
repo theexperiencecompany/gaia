@@ -132,7 +132,7 @@ async def _post_workflow_message(
             display = PLATFORM_DISPLAY_NAMES.get(source, source.value.capitalize())
             await record_platform_delivery(
                 conversation_id,
-                f"[Delivered to the user on {display} — result of {origin}]: {delivered_text}",
+                f"[Delivered to the user on {display} (result of {origin})]: {delivered_text}",
             )
         log.info(
             f"{LogTag.AGENT} workflow result delivered to platform",

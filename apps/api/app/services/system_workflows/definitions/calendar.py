@@ -92,7 +92,7 @@ def _meeting_reminder() -> CreateWorkflowRequest:
         prompt=(
             "Send the user a short reminder for the upcoming calendar event from the trigger. "
             "Include the event title, time, and join link or location if available. "
-            "Keep it to 2-3 lines — this is just a heads-up, not a full briefing."
+            "Keep it to 2-3 lines. This is just a heads-up, not a full briefing."
         ),
         is_system_workflow=True,
         source_integration="googlecalendar",

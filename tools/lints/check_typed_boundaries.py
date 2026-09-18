@@ -60,6 +60,10 @@ BOUNDARY_MODULES: dict[str, str] = {
     "apps/api/app/db/repositories/base.py": "the Mongo document -> model boundary",
     "apps/api/app/override/": "vendored overrides of third-party library internals",
     "apps/api/app/patches/": "monkeypatches of third-party library internals",
+    "apps/api/app/browser_host/cdp_mux.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/chromium.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/proxy.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/screencast.py": "the CDP wire: Chrome owns every command and result shape",
 }
 
 # Maps keyed by a protocol, not a shape: the key IS the contract (an HTTP
@@ -70,7 +74,7 @@ PROTOCOL_MAP_ATTRIBUTES = ("headers", "query_params", "path_params", "cookies")
 # A key read on a TypedDict is a declared shape, not a guess: mypy checks the key
 # (apps/api/CLAUDE.md, Type Safety item 6). Repo TypedDicts are discovered from
 # ``class X(TypedDict)``; these come from libraries and cannot be discovered.
-EXTERNAL_TYPEDDICTS = ("ToolCall", "RunnableConfig")
+EXTERNAL_TYPEDDICTS = ("ToolCall", "RunnableConfig", "StorageState", "StorageStateCookie")
 
 _BASELINE_HEADER = """\
 # typed-boundaries grandfather baseline.

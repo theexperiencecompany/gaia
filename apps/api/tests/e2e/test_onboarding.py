@@ -757,7 +757,7 @@ class TestConnectingGmailEarnsThePersonalization:
         assert holo_card_url(USER_ID) in holo_turns[0]
 
     async def test_the_notification_goes_out_too(self, externals: _Externals):
-        assert externals.notifications == ["Check your memories — I just added a lot"]
+        assert externals.notifications == ["Check your memories, I just added a lot"]
 
     async def test_the_marker_and_the_conversation_id_are_persisted_together(
         self, users: _UserStore, externals: _Externals

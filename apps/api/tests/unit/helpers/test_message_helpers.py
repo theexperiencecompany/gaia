@@ -422,7 +422,7 @@ class TestFormatFilesList:
     def test_drops_the_read_bash_guide_when_nothing_is_on_disk(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="a.txt", description="a summary")]
         result = format_files_list(files, conversation_id="conv123")
-        assert "read the file at its path" not in result
+        assert "Read the file at its path" not in result
         assert "copy into" not in result
         assert ".summary.md" not in result
         assert "a summary" in result
@@ -438,7 +438,7 @@ class TestFormatFilesList:
             )
         ]
         result = format_files_list(files, conversation_id="conv123")
-        assert "read the file at its path" in result
+        assert "Read the file at its path" in result
         assert "/workspace/sessions/conv123/user-uploaded/a.txt.summary.md" in result
 
 
@@ -661,7 +661,7 @@ class TestUploadedFileLines:
         entry = _uploaded_file_lines(self._file(sandbox_path=None), "conv1", True)
 
         assert entry == (
-            ["- a.txt  (id: f1) — not on disk, use `search_uploaded_files`"],
+            ["- a.txt  (id: f1), not on disk, use `search_uploaded_files`"],
             False,
         )
 

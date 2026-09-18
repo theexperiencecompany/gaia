@@ -310,6 +310,27 @@ def test_a_multi_line_title_cannot_break_the_index_into_extra_rows(tmp_path: Pat
 # ── index.md: the "what's on your plate" view ────────────────────────
 
 
+def test_the_index_header_warns_the_agent_its_edits_would_be_regenerated_away(
+    tmp_path: Path,
+) -> None:
+    """The header is the only thing telling the agent this file is derived, so hand edits are lost on the next sync."""
+    materialize_user_todos(tmp_path, [todo(ID_A, "Buy milk")], GUIDE)
+
+    text = (tmp_path / utv.USER_TODOS_DIRNAME / "index.md").read_text()
+    assert text.startswith(
+        "<!-- Generated index of the user's active todos. Sorted by "
+        "last-updated, newest first. Do not edit, regenerated on every "
+        "sync. -->\n"
+    )
+
+
+def test_a_todo_with_no_timestamps_reads_as_updated_unknown(tmp_path: Path) -> None:
+    # An empty or bogus stamp here would read as a real date to the agent.
+    materialize_user_todos(tmp_path, [todo(ID_A, "Buy milk")], GUIDE)
+
+    assert index_items(tmp_path)[0].endswith("Buy milk  _(updated unknown)_")
+
+
 def test_the_index_lists_the_most_recently_updated_todo_first(tmp_path: Path) -> None:
     docs = [
         todo(ID_A, "Older", updated_at="2026-01-01T00:00:00"),

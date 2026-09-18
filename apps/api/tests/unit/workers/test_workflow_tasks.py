@@ -1514,7 +1514,7 @@ class TestExecuteWorkflowByIdNotifications:
         assert "Error executing workflow" in result
         notif_req = mock_notif.create_notification.call_args[0][0]
         # Falls back to the version without the reset time formatting
-        assert "you've used all your workflow executions" in notif_req.content.body
+        assert "You've used all your workflow executions" in notif_req.content.body
 
     async def test_generic_error_sends_plain_failure_notification(self, ctx):
         """Non-rate-limit errors produce a plain failure notification."""

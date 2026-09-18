@@ -17,6 +17,7 @@ from app.services.device.revoke_listener import (
 from app.services.device.up_listener import start_up_listener, stop_up_listener
 from app.utils.browser_reaper import start_browser_reaper, stop_browser_reaper
 from app.utils.context_utils import _CONTEXT_EXECUTOR
+from app.utils.crawl_obscura import shutdown_crawl_obscura
 from shared.py.wide_events import log, log_context
 
 
@@ -59,6 +60,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
         await stop_up_listener()
         await stop_revoke_listener()
         await stop_browser_reaper()
+        await shutdown_crawl_obscura()
         if posthog_client is not None:
             # shutdown(), not flush(): flush() only flushes the queue, leaving the
             # consumer threads and feature-flag poller running; an atexit hook

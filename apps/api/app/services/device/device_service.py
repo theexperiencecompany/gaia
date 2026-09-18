@@ -448,7 +448,7 @@ async def _create_server_integration(
         # learns the server is on the user's machine, reached via these tools
         # (not run_on_device). Names the device to match the manifest.
         description=(
-            f'MCP server hosted on your device "{device_name}" — its tools run '
+            f'MCP server hosted on your device "{device_name}". Its tools run '
             f"locally on that machine, not the cloud sandbox."
         ),
         category=DEVICE_CATEGORY,

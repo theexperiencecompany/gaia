@@ -678,8 +678,8 @@ export class TelegramAdapter extends BaseBotAdapter {
             // DM failed (privacy settings) — update group message with fallback
             try {
               const fallback = this.botUsername
-                ? `I couldn't send you a DM — your privacy settings may be blocking bot messages.\n\nPlease message me directly at @${this.botUsername} and use /auth to link your account.`
-                : `I couldn't send you a DM — your privacy settings may be blocking bot messages.\n\nPlease message me directly and use /auth to link your account.`;
+                ? `I couldn't send you a DM. Your privacy settings may be blocking bot messages.\n\nPlease message me directly at @${this.botUsername} and use /auth to link your account.`
+                : `I couldn't send you a DM. Your privacy settings may be blocking bot messages.\n\nPlease message me directly and use /auth to link your account.`;
               await ctx.api.editMessageText(chatId, currentMessageId, fallback);
             } catch (fallbackErr) {
               this.adapterLogger.error(

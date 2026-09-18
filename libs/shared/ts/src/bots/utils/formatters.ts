@@ -457,7 +457,7 @@ export function renderForPlatform(
 export function buildAuthLinkMessage(authUrl: string): string {
   return (
     "**Link your account to GAIA**\n\n" +
-    "Tap below to sign in — once you're connected, you can use everything right here.\n" +
+    "Tap below to sign in. Once you're connected, you can use everything right here.\n" +
     `${authUrl}`
   );
 }
@@ -556,7 +556,7 @@ export function formatBotError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error ?? "");
 
   if (message.includes("timed out") || message.includes("timeout")) {
-    return "⏳ The request timed out. The server may be busy — please try again in a moment.";
+    return "⏳ The request timed out. The server may be busy. Please try again in a moment.";
   }
 
   if (

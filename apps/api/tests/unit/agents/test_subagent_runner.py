@@ -19,7 +19,7 @@ import pytest
 from app.agents.context.assemble import AssembledContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.tiers import AgentTier
-from app.agents.core.background import redis_writer as rw, session as sess
+from app.agents.core.background import redis_writer as rw
 from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import RunKind, StreamSession, create_session
@@ -1407,12 +1407,10 @@ def _real_stream_writer(stream_id: str = "s-reasoning"):
     MagicMock writer cannot see it: the SSE frames and the persisted entries have
     to come off the same run.
     """
-    sess._sessions.clear()
     session = create_session(stream_id, RunKind.QUEUED)
     with patch.object(rw, "stream_manager") as stream_manager:
         stream_manager.publish_chunk = AsyncMock()
         yield make_redis_stream_writer(stream_id), stream_manager, session
-    sess._sessions.clear()
 
 
 def _published_reasoning(stream_manager: MagicMock) -> list[str]:

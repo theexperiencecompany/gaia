@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "copilot.microsoft.com",
   tagline: "AI embedded in the Microsoft 365 suite",
   description:
-    "Microsoft Copilot is an AI assistant deeply embedded in the Microsoft 365 ecosystem — Word, Excel, PowerPoint, Outlook, and Teams. GAIA takes a cross-platform, open-source approach that works across Gmail, Google Calendar, Slack, Notion, GitHub, and 50+ other tools regardless of your existing stack.",
+    "Microsoft Copilot is an AI assistant deeply embedded in the Microsoft 365 ecosystem: Word, Excel, PowerPoint, Outlook, and Teams. GAIA takes a cross-platform, open-source approach that works across Gmail, Google Calendar, Slack, Notion, GitHub, and 50+ other tools regardless of your existing stack.",
   metaTitle:
-    "Microsoft Copilot Alternative with Proactive AI — GAIA vs Copilot",
+    "Microsoft Copilot Alternative with Proactive AI: GAIA vs Copilot",
   metaDescription:
-    "Microsoft Copilot is locked to Microsoft 365 and stays reactive. GAIA is an open-source Copilot alternative that works across Gmail, Slack, Notion, and 50+ tools — proactively managing email, calendar, and tasks with a free tier.",
+    "Microsoft Copilot is locked to Microsoft 365 and stays reactive. GAIA is an open-source Copilot alternative that works across Gmail, Slack, Notion, and 50+ tools, proactively managing email, calendar, and tasks with a free tier.",
   keywords: [
     "GAIA vs Copilot",
     "Microsoft Copilot alternative",
@@ -25,7 +25,7 @@ export const entry: ComparisonData = {
     "Microsoft Copilot vs GAIA",
   ],
   intro:
-    "Microsoft Copilot is a powerful AI layer built directly into Microsoft 365, offering deep assistance within Outlook, Word, Excel, PowerPoint, and Teams. For organizations already fully committed to the Microsoft stack, it delivers genuine value. However, Copilot's capabilities are gated behind costly Microsoft 365 licenses and work exclusively with Microsoft-hosted accounts — Gmail, Google Calendar, Slack, and other non-Microsoft tools are not supported. GAIA takes the opposite approach: an open-source, cross-platform AI assistant that connects your entire digital life — email, calendar, tasks, workflows, and 50+ integrations — regardless of which tools you already use.",
+    "Microsoft Copilot is a powerful AI layer built directly into Microsoft 365, offering deep assistance within Outlook, Word, Excel, PowerPoint, and Teams. For organizations already fully committed to the Microsoft stack, it delivers genuine value. However, Copilot's capabilities are gated behind costly Microsoft 365 licenses and work exclusively with Microsoft-hosted accounts: Gmail, Google Calendar, Slack, and other non-Microsoft tools are not supported. GAIA takes the opposite approach: an open-source, cross-platform AI assistant that connects your entire digital life (email, calendar, tasks, workflows, and 50+ integrations) regardless of which tools you already use.",
   rows: [
     {
       feature: "Core approach",
@@ -41,7 +41,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Email management",
-      gaia: "Full Gmail management — reads and triages by urgency, drafts context-aware replies, auto-labels, and creates tasks from emails automatically",
+      gaia: "Full Gmail management: reads and triages by urgency, drafts context-aware replies, auto-labels, and creates tasks from emails automatically",
       competitor:
         "Summarizes Outlook threads, drafts replies with coaching, and schedules meetings from emails; limited to primary Outlook mailbox on Microsoft 365 cloud",
     },
@@ -71,7 +71,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Open source",
-      gaia: "Fully open source — inspect the code, contribute, and self-host with Docker for complete transparency",
+      gaia: "Fully open source: inspect the code, contribute, and self-host with Docker for complete transparency",
       competitor:
         "Proprietary closed-source platform; no option to inspect, modify, or self-host",
     },
@@ -85,13 +85,13 @@ export const entry: ComparisonData = {
       feature: "Pricing",
       gaia: "Free tier available, Pro from $20/month, self-hosting is free with no per-seat fees",
       competitor:
-        "Copilot is free at copilot.microsoft.com with limits; Microsoft 365 Copilot for business starts at ~$30/user/month on top of existing Microsoft 365 licenses ($12.50–$57/user/month)",
+        "Copilot is free at copilot.microsoft.com with limits; Microsoft 365 Copilot for business starts at ~$30/user/month on top of existing Microsoft 365 licenses ($12.50 to $57/user/month)",
     },
   ],
   gaiaAdvantages: [
-    "Works with Gmail, Google Calendar, Slack, and 50+ non-Microsoft tools — no ecosystem lock-in",
+    "Works with Gmail, Google Calendar, Slack, and 50+ non-Microsoft tools: no ecosystem lock-in",
     "Proactively monitors your digital life and acts before you ask, rather than waiting for prompts",
-    "Open source and self-hostable — full data control with no vendor dependency",
+    "Open source and self-hostable: full data control with no vendor dependency",
     "Graph-based persistent memory connects tasks, projects, meetings, and people across tools",
     "Flat, predictable pricing with a free tier and no mandatory underlying license stack",
   ],
@@ -111,7 +111,7 @@ export const entry: ComparisonData = {
     {
       question: "How much does Microsoft Copilot actually cost?",
       answer:
-        "The free tier at copilot.microsoft.com offers limited access. For business use, Microsoft 365 Copilot costs approximately $30 per user per month with an annual commitment — but that requires an existing Microsoft 365 Business Standard, Business Premium, E3, or E5 license, which adds another $12.50 to $57 per user per month. GAIA's Pro plan starts at $20/month with no mandatory underlying subscription, and self-hosting is entirely free.",
+        "The free tier at copilot.microsoft.com offers limited access. For business use, Microsoft 365 Copilot costs approximately $30 per user per month with an annual commitment, but that requires an existing Microsoft 365 Business Standard, Business Premium, E3, or E5 license, which adds another $12.50 to $57 per user per month. GAIA's Pro plan starts at $20/month with no mandatory underlying subscription, and self-hosting is entirely free.",
     },
     {
       question: "Can I self-host Microsoft Copilot to keep my data private?",
@@ -122,7 +122,7 @@ export const entry: ComparisonData = {
       question:
         "What is the main difference between GAIA and Microsoft Copilot?",
       answer:
-        "The core difference is ecosystem philosophy. Microsoft Copilot is a deeply integrated AI layer within the Microsoft 365 suite — it excels inside Outlook, Word, Excel, and Teams, but cannot work with tools outside that ecosystem. GAIA is a cross-platform, open-source AI assistant that works across Gmail, Google Calendar, Slack, Notion, GitHub, and 50+ other tools. GAIA also takes a proactive stance — monitoring your digital life and acting before you ask — whereas Copilot is primarily reactive, responding to prompts within individual Microsoft apps.",
+        "The core difference is ecosystem philosophy. Microsoft Copilot is a deeply integrated AI layer within the Microsoft 365 suite: it excels inside Outlook, Word, Excel, and Teams, but cannot work with tools outside that ecosystem. GAIA is a cross-platform, open-source AI assistant that works across Gmail, Google Calendar, Slack, Notion, GitHub, and 50+ other tools. GAIA also takes a proactive stance (monitoring your digital life and acting before you ask) whereas Copilot is primarily reactive, responding to prompts within individual Microsoft apps.",
     },
   ],
 };

@@ -1672,7 +1672,7 @@ result_brief: x
         assert [issue.where for issue in result.issues] == ["steps[0]"]
         assert result.issues[0].problem == (
             "send_email did not run in this run; a playbook freezes calls that ran and "
-            "produced their result — run it, or drop the step"
+            "produced their result. Run it, or drop the step"
         )
 
     async def test_a_call_that_returned_no_items_is_refused(self) -> None:
@@ -1696,7 +1696,7 @@ result_brief: x
         assert [issue.where for issue in result.issues] == ["steps[0]"]
         assert result.issues[0].problem == (
             'list_events returned no items in this run (args: {"calendar_id": "primary"}); '
-            "freeze a call that produced data — widen the args or decline the playbook"
+            "freeze a call that produced data. Widen the args or decline the playbook"
         )
 
     async def test_a_call_that_reported_its_own_failure_is_refused_by_its_error(self) -> None:
@@ -1727,7 +1727,7 @@ result_brief: x
         assert [issue.where for issue in result.issues] == ["steps[0]"]
         assert result.issues[0].problem == (
             "send_email failed in this run (Gmail token expired); a playbook freezes "
-            "calls that succeeded — fix the call and run it again, or drop the step"
+            "calls that succeeded. Fix the call and run it again, or drop the step"
         )
 
     @pytest.mark.parametrize(
@@ -1762,7 +1762,7 @@ result_brief: x
         assert [issue.where for issue in result.issues] == ["steps[0]"]
         assert result.issues[0].problem == (
             f"send_email failed in this run ({said}); a playbook freezes "
-            "calls that succeeded — fix the call and run it again, or drop the step"
+            "calls that succeeded. Fix the call and run it again, or drop the step"
         )
 
     async def test_the_args_naming_the_empty_call_are_rendered_as_they_were_sent(self) -> None:
@@ -1792,7 +1792,7 @@ result_brief: x
         assert result.issues[0].problem == (
             "list_events returned no items in this run "
             '(args: {"calendar_id": "primary", "query": "café ☕", "after": "2026-09-01 00:00:00"}); '
-            "freeze a call that produced data — widen the args or decline the playbook"
+            "freeze a call that produced data. Widen the args or decline the playbook"
         )
 
     @pytest.mark.parametrize(
@@ -1827,7 +1827,7 @@ result_brief: x
 
         assert result.issues[0].problem == (
             f"list_events returned no items in this run (args: {rendered}); "
-            "freeze a call that produced data — widen the args or decline the playbook"
+            "freeze a call that produced data. Widen the args or decline the playbook"
         )
 
     async def test_a_reference_to_a_field_the_result_lacks_is_refused_with_its_keys(self) -> None:
@@ -1960,7 +1960,7 @@ result_brief: x
             (
                 "steps[1]",
                 "send_email ran 1 time(s) in this run and earlier steps froze every one of "
-                "them; a step cannot replay a call the run did not make — drop this step, "
+                "them; a step cannot replay a call the run did not make. Drop this step, "
                 "or run it again",
             )
         ]

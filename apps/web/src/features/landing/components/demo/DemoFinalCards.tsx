@@ -87,7 +87,7 @@ function SocialContentCard() {
   return (
     <div className="flex w-full max-w-sm flex-col gap-2">
       <p className="px-1 text-[11px] text-zinc-500">
-        2 drafts scheduled · Mon–Wed
+        2 drafts scheduled · Mon to Wed
       </p>
       {posts.map((p) => (
         <div

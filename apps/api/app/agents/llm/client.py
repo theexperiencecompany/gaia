@@ -481,9 +481,39 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)
+    # A configured custom lane takes precedence over OpenRouter for auxiliary
+    # work too, not just the chat agent, so DEV_LLM_* also covers titles,
+    # classification and structured-output helpers. Unset in production.
+    if _custom_lane_configured():
+        return _build_custom_default_llm(temperature)
     if not settings.OPENROUTER_API_KEY:
         raise LLMNotConfiguredError("Default LLM not configured. Set OPENROUTER_API_KEY.")
     return _build_default_llm(temperature)
+
+
+def _custom_lane_configured() -> bool:
+    """Whether the env-defined custom endpoint (DEV_LLM_*) is fully configured."""
+    return bool(settings.DEV_LLM_BASE_URL and settings.DEV_LLM_API_KEY and settings.DEV_LLM_MODEL)
+
+
+@cache
+def _build_custom_default_llm(temperature: float) -> BaseChatModel:
+    """Return the auxiliary-task model served by the custom endpoint (DEV_LLM_*)."""
+    llm = without_sdk_retry(
+        ChatOpenRouter(
+            model=settings.DEV_LLM_MODEL or "",
+            temperature=temperature,
+            streaming=True,
+            stream_usage=True,
+            max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+            api_key=settings.DEV_LLM_API_KEY,
+            base_url=settings.DEV_LLM_BASE_URL,
+        )
+    )
+    # Same reason as _build_default_llm: the middleware needs a context window
+    # and LangChain has no profile for an arbitrary custom endpoint's model.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm
 
 
 def _provider_order_kwargs() -> dict[str, Any]:
@@ -1273,7 +1303,7 @@ async def ainvoke_structured_gemini(
     config: RunnableConfig | None = None,
     options: StructuredCallOptions = _DEFAULT_STRUCTURED_OPTIONS,
 ) -> _StructuredT:
-    """Run the structured one-shot call for the memory pipeline: aux lane primary, direct Gemini fallback.
+    """Run a structured one-shot on the lane that fails over: aux lane primary, direct Gemini fallback.
 
     Same contract as :func:ainvoke_structured. Preference is measured: Gemini
     flash-lite's cache never extends past tools+system (repeat prompts always

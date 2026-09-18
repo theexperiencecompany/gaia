@@ -17,7 +17,7 @@ from app.models.oauth_models import (
 
 GOOGLECALENDAR_CONTENT = IntegrationContent(
     use_cases=[
-        "Schedule meetings by describing your availability in plain English — GAIA books the slot instantly",
+        "Schedule meetings by describing your availability in plain English, and GAIA books the slot instantly",
         "Get a morning briefing of every event happening today, delivered to your chat",
         "Find open time slots across multiple calendars with a single question",
         "Create recurring events, set reminders, and invite attendees without opening Calendar",
@@ -26,7 +26,7 @@ GOOGLECALENDAR_CONTENT = IntegrationContent(
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect Google Calendar to GAIA",
-            body="Open the GAIA Marketplace, find Google Calendar, and click \"Add to your GAIA\". You'll be redirected to Google's OAuth consent screen — grant calendar access and you're connected in under two minutes.",
+            body="Open the GAIA Marketplace, find Google Calendar, and click \"Add to your GAIA\". You'll be redirected to Google's OAuth consent screen. Grant calendar access and you're connected in under two minutes.",
         ),
         IntegrationHowItWorksStep(
             title="Tell GAIA what to schedule in plain English",
@@ -34,7 +34,7 @@ GOOGLECALENDAR_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA manages your calendar automatically",
-            body="GAIA can monitor your calendar, send you proactive reminders before events, and trigger workflows — like sending a Slack message when a meeting is about to start.",
+            body="GAIA can monitor your calendar, send you proactive reminders before events, and trigger workflows, like sending a Slack message when a meeting is about to start.",
         ),
     ],
     faqs=[
@@ -44,7 +44,7 @@ GOOGLECALENDAR_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Will GAIA send invites to other people?",
-            answer="Yes — if you ask GAIA to invite attendees when creating an event, it will add them and Google Calendar will send the invite on your behalf, exactly as if you'd created it manually.",
+            answer="Yes, if you ask GAIA to invite attendees when creating an event, it will add them and Google Calendar will send the invite on your behalf, exactly as if you'd created it manually.",
         ),
         IntegrationFAQ(
             question="Can I set up automatic reminders for upcoming events?",
@@ -59,7 +59,7 @@ GOOGLECALENDAR_CONTENT = IntegrationContent(
 
 GOOGLEDOCS_CONTENT = IntegrationContent(
     use_cases=[
-        "Create a fully formatted Google Doc by describing what you need — GAIA writes and structures it",
+        "Create a fully formatted Google Doc by describing what you need, and GAIA writes and structures it",
         "Search across all your documents and pull out specific information without opening Drive",
         "Update or append to an existing document by just telling GAIA what to change",
         "Generate meeting notes, project briefs, or reports from a short description",
@@ -68,7 +68,7 @@ GOOGLEDOCS_CONTENT = IntegrationContent(
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect Google Docs to GAIA",
-            body='Open the GAIA Marketplace, find Google Docs, and click "Add to your GAIA". Authorise access via Google OAuth — takes under two minutes.',
+            body='Open the GAIA Marketplace, find Google Docs, and click "Add to your GAIA". Authorise access via Google OAuth, which takes under two minutes.',
         ),
         IntegrationHowItWorksStep(
             title="Describe what you need in plain English",
@@ -82,7 +82,7 @@ GOOGLEDOCS_CONTENT = IntegrationContent(
     faqs=[
         IntegrationFAQ(
             question="Can GAIA create documents with proper formatting?",
-            answer="Yes. GAIA creates Google Docs with markdown-style formatting — headings, bullet points, bold text, and more — rendered natively in Google Docs.",
+            answer="Yes. GAIA creates Google Docs with markdown-style formatting (headings, bullet points, bold text, and more) rendered natively in Google Docs.",
         ),
         IntegrationFAQ(
             question="Can GAIA search my existing documents?",
@@ -90,7 +90,7 @@ GOOGLEDOCS_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA edit a document I already have?",
-            answer="Yes. GAIA can append content, replace text, update sections, or rewrite portions of an existing document — just describe what you want changed.",
+            answer="Yes. GAIA can append content, replace text, update sections, or rewrite portions of an existing document. Just describe what you want changed.",
         ),
         IntegrationFAQ(
             question="Does GAIA need full access to my Google Drive?",
@@ -143,16 +143,16 @@ GOOGLEDRIVE_CONTENT = IntegrationContent(
 
 GMAIL_CONTENT = IntegrationContent(
     use_cases=[
-        "Send emails by describing who you're writing to and what you want to say — GAIA drafts and sends it",
+        "Send emails by describing who you're writing to and what you want to say, and GAIA drafts and sends it",
         "Get a daily digest of your most important unread emails every morning",
         "Search your inbox by topic, sender, or keyword instantly from chat",
         'Reply to emails with a quick instruction like "reply and say I\'ll join at 3 PM"',
-        "Trigger workflows when specific emails arrive — like logging leads from contact form submissions",
+        "Trigger workflows when specific emails arrive, like logging leads from contact form submissions",
     ],
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect Gmail to GAIA",
-            body="Open the GAIA Marketplace, find Gmail, and click \"Add to your GAIA\". You'll be redirected to Google's OAuth consent screen — grant mail access and you're done in under two minutes.",
+            body="Open the GAIA Marketplace, find Gmail, and click \"Add to your GAIA\". You'll be redirected to Google's OAuth consent screen. Grant mail access and you're done in under two minutes.",
         ),
         IntegrationHowItWorksStep(
             title="Tell GAIA what to do with your email",
@@ -160,7 +160,7 @@ GMAIL_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA manages your inbox in the background",
-            body="Set up email triggers — GAIA can notify you on Slack when a VIP sender writes, automatically log incoming leads to a spreadsheet, or send you a weekly summary of unread threads.",
+            body="Set up email triggers: GAIA can notify you on Slack when a VIP sender writes, automatically log incoming leads to a spreadsheet, or send you a weekly summary of unread threads.",
         ),
     ],
     faqs=[
@@ -174,7 +174,7 @@ GMAIL_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can I set up email-based triggers for workflows?",
-            answer="Yes. You can create GAIA workflows that fire when emails matching specific criteria arrive — e.g., from a particular sender, with a subject keyword, or containing attachments.",
+            answer="Yes. You can create GAIA workflows that fire when emails matching specific criteria arrive, for example from a particular sender, with a subject keyword, or containing attachments.",
         ),
         IntegrationFAQ(
             question="Does GAIA store copies of my emails?",
@@ -188,7 +188,7 @@ NOTION_CONTENT = IntegrationContent(
         "Create new Notion pages and database entries by describing them in plain English",
         "Search across your entire Notion workspace and pull out specific information instantly",
         "Add meeting notes, action items, or journal entries to Notion without opening the app",
-        "Query Notion databases — filter, sort, and summarise records with natural language",
+        "Query Notion databases: filter, sort, and summarise records with natural language",
         "Trigger workflows when new Notion pages are created in a specific database",
     ],
     how_it_works=[
@@ -202,7 +202,7 @@ NOTION_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps Notion in sync with your work",
-            body="GAIA can automatically log completed tasks, create weekly review pages, or update database properties when you finish work — all triggered by your natural language instructions.",
+            body="GAIA can automatically log completed tasks, create weekly review pages, or update database properties when you finish work, all triggered by your natural language instructions.",
         ),
     ],
     faqs=[
@@ -212,11 +212,11 @@ NOTION_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA create entries in a Notion database?",
-            answer="Yes. GAIA can create database entries with properties like text, dates, selects, and relations — just describe the entry you want and it handles the rest.",
+            answer="Yes. GAIA can create database entries with properties like text, dates, selects, and relations. Just describe the entry you want and it handles the rest.",
         ),
         IntegrationFAQ(
             question="Can GAIA search inside Notion pages?",
-            answer="Yes. GAIA can search your Notion workspace by keyword, page title, or content and return relevant results — useful for quickly finding notes, docs, or project info.",
+            answer="Yes. GAIA can search your Notion workspace by keyword, page title, or content and return relevant results, useful for quickly finding notes, docs, or project info.",
         ),
         IntegrationFAQ(
             question="Can GAIA update existing Notion pages?",
@@ -227,7 +227,7 @@ NOTION_CONTENT = IntegrationContent(
 
 TWITTER_CONTENT = IntegrationContent(
     use_cases=[
-        "Post tweets and threads by describing what you want to say — GAIA writes and publishes them",
+        "Post tweets and threads by describing what you want to say, and GAIA writes and publishes them",
         "Search Twitter for mentions, keywords, or trending topics and get a clean summary",
         "Monitor mentions of your handle and get notified in chat when someone tags you",
         "Draft replies to tweets by giving GAIA context on how you want to respond",
@@ -236,7 +236,7 @@ TWITTER_CONTENT = IntegrationContent(
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect Twitter to GAIA",
-            body='Open the GAIA Marketplace, find Twitter, and click "Add to your GAIA". Authorise via Twitter OAuth — takes under two minutes.',
+            body='Open the GAIA Marketplace, find Twitter, and click "Add to your GAIA". Authorise via Twitter OAuth, which takes under two minutes.',
         ),
         IntegrationHowItWorksStep(
             title="Tell GAIA what to post or find",
@@ -244,7 +244,7 @@ TWITTER_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps you on top of Twitter",
-            body="Set up monitoring workflows — GAIA can alert you when you get mentioned, summarise trending discussions in your niche, or help you maintain a consistent posting schedule.",
+            body="Set up monitoring workflows: GAIA can alert you when you get mentioned, summarise trending discussions in your niche, or help you maintain a consistent posting schedule.",
         ),
     ],
     faqs=[
@@ -254,7 +254,7 @@ TWITTER_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA post threads?",
-            answer="Yes. GAIA can compose and post multi-tweet threads. Just describe the topic and key points — GAIA writes the thread and posts each tweet in sequence.",
+            answer="Yes. GAIA can compose and post multi-tweet threads. Just describe the topic and key points, and GAIA writes the thread and posts each tweet in sequence.",
         ),
         IntegrationFAQ(
             question="Can GAIA search Twitter for specific topics?",
@@ -262,15 +262,15 @@ TWITTER_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Does GAIA support scheduling tweets?",
-            answer="GAIA can post tweets immediately on your behalf. For scheduled posting, combine it with GAIA workflows — set a trigger time and GAIA will post at the specified time.",
+            answer="GAIA can post tweets immediately on your behalf. For scheduled posting, combine it with GAIA workflows: set a trigger time and GAIA will post at the specified time.",
         ),
     ],
 )
 
 GOOGLESHEETS_CONTENT = IntegrationContent(
     use_cases=[
-        "Add rows to a Google Sheet by describing the data — GAIA finds the right sheet and inserts it",
-        "Query spreadsheet data with plain English — 'what's the total revenue in column D for March?'",
+        "Add rows to a Google Sheet by describing the data, and GAIA finds the right sheet and inserts it",
+        "Query spreadsheet data with plain English, like 'what's the total revenue in column D for March?'",
         "Create new spreadsheets with pre-filled data from a short description",
         "Update or overwrite cell ranges without touching a formula",
         "Trigger workflows when new rows are added to a tracking sheet",
@@ -286,7 +286,7 @@ GOOGLESHEETS_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps your sheets up to date automatically",
-            body="Connect Sheets to other integrations — GAIA can log incoming emails, completed tasks, or new form submissions directly into a spreadsheet row, 24/7.",
+            body="Connect Sheets to other integrations: GAIA can log incoming emails, completed tasks, or new form submissions directly into a spreadsheet row, 24/7.",
         ),
     ],
     faqs=[
@@ -300,7 +300,7 @@ GOOGLESHEETS_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA create a new spreadsheet from scratch?",
-            answer="Yes. Ask GAIA to create a spreadsheet with any structure you describe — it will set up the headers, tabs, and initial data as instructed.",
+            answer="Yes. Ask GAIA to create a spreadsheet with any structure you describe, and it will set up the headers, tabs, and initial data as instructed.",
         ),
         IntegrationFAQ(
             question="Does GAIA work with Google Sheets formulas?",
@@ -311,7 +311,7 @@ GOOGLESHEETS_CONTENT = IntegrationContent(
 
 LINKEDIN_CONTENT = IntegrationContent(
     use_cases=[
-        "Post LinkedIn updates by describing your message — GAIA writes and publishes in your voice",
+        "Post LinkedIn updates by describing your message, and GAIA writes and publishes in your voice",
         "Search for people, companies, or jobs on LinkedIn with plain English queries",
         "Draft personalised connection request messages for specific profiles",
         "Get a summary of a LinkedIn profile or company page without opening the app",
@@ -320,7 +320,7 @@ LINKEDIN_CONTENT = IntegrationContent(
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect LinkedIn to GAIA",
-            body='Open the GAIA Marketplace, find LinkedIn, and click "Add to your GAIA". Authorise via LinkedIn OAuth — takes under two minutes.',
+            body='Open the GAIA Marketplace, find LinkedIn, and click "Add to your GAIA". Authorise via LinkedIn OAuth, which takes under two minutes.',
         ),
         IntegrationHowItWorksStep(
             title="Tell GAIA what to post or research",
@@ -328,7 +328,7 @@ LINKEDIN_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA helps you build your professional presence",
-            body="Set up content workflows — GAIA can draft and post weekly thought leadership updates, research your target accounts automatically, or alert you to job openings matching your criteria.",
+            body="Set up content workflows: GAIA can draft and post weekly thought leadership updates, research your target accounts automatically, or alert you to job openings matching your criteria.",
         ),
     ],
     faqs=[
@@ -353,7 +353,7 @@ LINKEDIN_CONTENT = IntegrationContent(
 
 GITHUB_CONTENT = IntegrationContent(
     use_cases=[
-        "Create issues, PRs, and branches by describing them — GAIA handles all the GitHub API calls",
+        "Create issues, PRs, and branches by describing them, and GAIA handles all the GitHub API calls",
         "Get a daily summary of open pull requests, failing CI checks, and pending reviews",
         "Search code, commits, and issues across all your repositories with plain English",
         "Automate release notes from merged PRs with a single instruction",
@@ -370,7 +370,7 @@ GITHUB_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps you on top of your codebase",
-            body="Set up GitHub triggers — GAIA can notify you when CI fails on main, summarise weekly merge activity, or automatically draft release notes when you cut a new tag.",
+            body="Set up GitHub triggers: GAIA can notify you when CI fails on main, summarise weekly merge activity, or automatically draft release notes when you cut a new tag.",
         ),
     ],
     faqs=[
@@ -380,11 +380,11 @@ GITHUB_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA create pull requests?",
-            answer="Yes. GAIA can create branches, push commits, and open pull requests — just describe the change and the target repository.",
+            answer="Yes. GAIA can create branches, push commits, and open pull requests. Just describe the change and the target repository.",
         ),
         IntegrationFAQ(
             question="Can GAIA read and summarise code?",
-            answer="Yes. GAIA can read files, search for code patterns, and summarise what a function or module does — useful for onboarding, code reviews, or answering 'how does X work?'.",
+            answer="Yes. GAIA can read files, search for code patterns, and summarise what a function or module does, useful for onboarding, code reviews, or answering 'how does X work?'.",
         ),
         IntegrationFAQ(
             question="Does GAIA support GitHub Actions?",
@@ -412,7 +412,7 @@ REDDIT_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA monitors Reddit for you",
-            body="Set up Reddit monitoring workflows — GAIA can alert you when your brand is mentioned, track competitor discussions, or surface the most upvoted posts in your niche daily.",
+            body="Set up Reddit monitoring workflows: GAIA can alert you when your brand is mentioned, track competitor discussions, or surface the most upvoted posts in your niche daily.",
         ),
     ],
     faqs=[
@@ -426,19 +426,19 @@ REDDIT_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA summarise long Reddit threads?",
-            answer="Yes. GAIA can fetch a thread and summarise the top comments, key opinions, and main points of discussion — saving you from reading hundreds of comments.",
+            answer="Yes. GAIA can fetch a thread and summarise the top comments, key opinions, and main points of discussion, saving you from reading hundreds of comments.",
         ),
         IntegrationFAQ(
             question="Can GAIA comment on Reddit posts?",
-            answer="Yes. GAIA can post comments on existing threads. Describe the context and what you want to say — GAIA will draft and post the reply.",
+            answer="Yes. GAIA can post comments on existing threads. Describe the context and what you want to say, and GAIA will draft and post the reply.",
         ),
     ],
 )
 
 AIRTABLE_CONTENT = IntegrationContent(
     use_cases=[
-        "Add records to any Airtable base by describing the data — GAIA finds the right table and inserts it",
-        "Query your Airtable bases with plain English — filter, sort, and summarise records",
+        "Add records to any Airtable base by describing the data, and GAIA finds the right table and inserts it",
+        "Query your Airtable bases with plain English: filter, sort, and summarise records",
         "Create new Airtable records from inputs in other tools (emails, forms, Slack messages)",
         "Update or patch existing records by describing what changed",
         "Get a daily summary of new records added to your CRM, project tracker, or content calendar",
@@ -454,7 +454,7 @@ AIRTABLE_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps your Airtable bases in sync",
-            body="Connect Airtable with other integrations — GAIA can automatically create records from incoming emails, completed tasks, or form submissions, keeping your bases always up to date.",
+            body="Connect Airtable with other integrations: GAIA can automatically create records from incoming emails, completed tasks, or form submissions, keeping your bases always up to date.",
         ),
     ],
     faqs=[
@@ -464,7 +464,7 @@ AIRTABLE_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA filter and query Airtable records?",
-            answer="Yes. You can ask GAIA to list records matching specific criteria — like 'show all contacts added this month with status Qualified' — and it will query Airtable and return the results.",
+            answer="Yes. You can ask GAIA to list records matching specific criteria, like 'show all contacts added this month with status Qualified,' and it will query Airtable and return the results.",
         ),
         IntegrationFAQ(
             question="Can GAIA update existing Airtable records?",
@@ -480,7 +480,7 @@ AIRTABLE_CONTENT = IntegrationContent(
 LINEAR_CONTENT = IntegrationContent(
     use_cases=[
         "Create Linear issues and assign them by just describing the bug or feature request",
-        "Get a daily standup summary — open issues, blockers, and what's in progress on your team",
+        "Get a daily standup summary: open issues, blockers, and what's in progress on your team",
         "Move issues between cycles or change their status with a plain English command",
         "Search for issues by keyword, assignee, or label instantly from chat",
         "Trigger GAIA workflows when Linear issues are created, updated, or completed",
@@ -488,7 +488,7 @@ LINEAR_CONTENT = IntegrationContent(
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect Linear to GAIA",
-            body='Open the GAIA Marketplace, find Linear, and click "Add to your GAIA". Authorise via Linear OAuth — takes under two minutes.',
+            body='Open the GAIA Marketplace, find Linear, and click "Add to your GAIA". Authorise via Linear OAuth, which takes under two minutes.',
         ),
         IntegrationHowItWorksStep(
             title="Manage issues in plain English",
@@ -496,7 +496,7 @@ LINEAR_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps your team in sync",
-            body="Set up Linear triggers — GAIA can post to Slack when a high-priority issue is created, send a daily digest of cycle progress, or alert you when an issue is overdue.",
+            body="Set up Linear triggers: GAIA can post to Slack when a high-priority issue is created, send a daily digest of cycle progress, or alert you when an issue is overdue.",
         ),
     ],
     faqs=[
@@ -506,7 +506,7 @@ LINEAR_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA update issue status and priority?",
-            answer="Yes. Ask GAIA to move an issue to In Progress, mark it as Done, or change its priority — it will find the issue and update it instantly.",
+            answer="Yes. Ask GAIA to move an issue to In Progress, mark it as Done, or change its priority, and it will find the issue and update it instantly.",
         ),
         IntegrationFAQ(
             question="Can GAIA search across all my Linear projects?",
@@ -514,7 +514,7 @@ LINEAR_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Does GAIA support Linear cycles and projects?",
-            answer="Yes. GAIA can assign issues to cycles, query which issues are in the current cycle, and report on cycle progress — all from a plain English question.",
+            answer="Yes. GAIA can assign issues to cycles, query which issues are in the current cycle, and report on cycle progress, all from a plain English question.",
         ),
     ],
 )
@@ -523,7 +523,7 @@ SLACK_CONTENT = IntegrationContent(
     use_cases=[
         "Send messages to any Slack channel or DM directly from GAIA chat",
         "Get a summary of what was discussed in a Slack channel while you were away",
-        "Set up GAIA to post automated updates to Slack — like daily briefings or workflow results",
+        "Set up GAIA to post automated updates to Slack, like daily briefings or workflow results",
         "Search Slack for past conversations, decisions, or files with plain English",
         "Trigger GAIA workflows when specific messages are posted in a Slack channel",
     ],
@@ -538,7 +538,7 @@ SLACK_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA becomes your Slack automation layer",
-            body="Connect Slack with other integrations — GAIA can post GitHub CI results, Airtable record updates, or calendar reminders directly to the right Slack channel, automatically.",
+            body="Connect Slack with other integrations: GAIA can post GitHub CI results, Airtable record updates, or calendar reminders directly to the right Slack channel, automatically.",
         ),
     ],
     faqs=[
@@ -556,7 +556,7 @@ SLACK_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can I use Slack messages as triggers for GAIA workflows?",
-            answer="Yes. You can set up GAIA workflows that fire when specific messages are posted in a Slack channel — for example, notifying you when someone posts in #on-call or #alerts.",
+            answer="Yes. You can set up GAIA workflows that fire when specific messages are posted in a Slack channel, for example notifying you when someone posts in #on-call or #alerts.",
         ),
     ],
 )
@@ -564,7 +564,7 @@ SLACK_CONTENT = IntegrationContent(
 HUBSPOT_CONTENT = IntegrationContent(
     use_cases=[
         "Create contacts, companies, and deals in HubSpot by describing them in plain English",
-        "Get a pipeline summary — open deals, stage distribution, and total value — without opening HubSpot",
+        "Get a pipeline summary (open deals, stage distribution, and total value) without opening HubSpot",
         "Log calls, emails, and notes to CRM records with a quick chat message",
         "Search for contacts or deals by name, company, or deal stage instantly",
         "Trigger GAIA workflows when new leads come in or deal stages change",
@@ -572,21 +572,21 @@ HUBSPOT_CONTENT = IntegrationContent(
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect HubSpot to GAIA",
-            body='Open the GAIA Marketplace, find HubSpot, and click "Add to your GAIA". Authorise via HubSpot OAuth — takes under two minutes.',
+            body='Open the GAIA Marketplace, find HubSpot, and click "Add to your GAIA". Authorise via HubSpot OAuth, which takes under two minutes.',
         ),
         IntegrationHowItWorksStep(
             title="Manage your CRM in plain English",
-            body='Say "create a new deal for Acme Corp worth $15k, close date end of month" or "log a call with Sarah from TechCo — discussed pricing, follow up next week". GAIA handles the CRM.',
+            body='Say "create a new deal for Acme Corp worth $15k, close date end of month" or "log a call with Sarah from TechCo: discussed pricing, follow up next week". GAIA handles the CRM.',
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps your pipeline moving",
-            body="Set up HubSpot triggers — GAIA can alert you when a new lead is created, send a Slack notification when a deal moves to Closed Won, or generate weekly pipeline reports automatically.",
+            body="Set up HubSpot triggers: GAIA can alert you when a new lead is created, send a Slack notification when a deal moves to Closed Won, or generate weekly pipeline reports automatically.",
         ),
     ],
     faqs=[
         IntegrationFAQ(
             question="Can GAIA create contacts and companies in HubSpot?",
-            answer="Yes. GAIA can create contacts, companies, and deals — and associate them with each other — from a plain English description.",
+            answer="Yes. GAIA can create contacts, companies, and deals, and associate them with each other, from a plain English description.",
         ),
         IntegrationFAQ(
             question="Can GAIA log activity to HubSpot records?",
@@ -605,7 +605,7 @@ HUBSPOT_CONTENT = IntegrationContent(
 
 GOOGLETASKS_CONTENT = IntegrationContent(
     use_cases=[
-        "Create tasks and to-dos by just describing what you need to do — GAIA adds them instantly",
+        "Create tasks and to-dos by just describing what you need to do, and GAIA adds them instantly",
         "Get a list of all your due tasks for today or this week from a single question",
         "Mark tasks as complete without opening Google Tasks",
         "Organise tasks into lists by project or area of life",
@@ -622,13 +622,13 @@ GOOGLETASKS_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps your task list up to date",
-            body="Connect Google Tasks with Gmail or Calendar — GAIA can automatically create tasks from emails that need follow-up or from calendar events that have action items.",
+            body="Connect Google Tasks with Gmail or Calendar: GAIA can automatically create tasks from emails that need follow-up or from calendar events that have action items.",
         ),
     ],
     faqs=[
         IntegrationFAQ(
             question="Can GAIA access all my Google Task lists?",
-            answer="Yes. GAIA can read and write to all task lists in your Google Tasks account — including the default My Tasks list and any custom lists you've created.",
+            answer="Yes. GAIA can read and write to all task lists in your Google Tasks account, including the default My Tasks list and any custom lists you've created.",
         ),
         IntegrationFAQ(
             question="Can GAIA set due dates and notes on tasks?",
@@ -640,14 +640,14 @@ GOOGLETASKS_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="How is Google Tasks different from GAIA's built-in Todos?",
-            answer="GAIA's built-in Todos are stored in your GAIA account. Google Tasks syncs with your existing Google Tasks lists — useful if you already manage tasks in Gmail or Google Calendar.",
+            answer="GAIA's built-in Todos are stored in your GAIA account. Google Tasks syncs with your existing Google Tasks lists, useful if you already manage tasks in Gmail or Google Calendar.",
         ),
     ],
 )
 
 TODOIST_CONTENT = IntegrationContent(
     use_cases=[
-        "Add tasks to Todoist by describing them — with due dates, priorities, and labels",
+        "Add tasks to Todoist by describing them, with due dates, priorities, and labels",
         "Get a daily briefing of your Todoist tasks due today delivered to your chat",
         "Complete, reschedule, or reprioritise tasks with a quick plain English message",
         "Search and filter tasks across all projects without opening Todoist",
@@ -664,7 +664,7 @@ TODOIST_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA automates your Todoist workflow",
-            body="Connect Todoist with other integrations — GAIA can create tasks from incoming emails, add action items from meeting notes, or send you a Slack message when you hit your daily task goal.",
+            body="Connect Todoist with other integrations: GAIA can create tasks from incoming emails, add action items from meeting notes, or send you a Slack message when you hit your daily task goal.",
         ),
     ],
     faqs=[
@@ -674,7 +674,7 @@ TODOIST_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA set priorities and due dates on Todoist tasks?",
-            answer="Yes. GAIA supports Todoist's P1–P4 priority levels and full due date/time scheduling including recurring tasks.",
+            answer="Yes. GAIA supports Todoist's P1 to P4 priority levels and full due date/time scheduling including recurring tasks.",
         ),
         IntegrationFAQ(
             question="Can GAIA complete tasks in Todoist?",
@@ -682,7 +682,7 @@ TODOIST_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA add labels and sections to tasks?",
-            answer="Yes. GAIA can assign labels, sections, and assignees to Todoist tasks — just describe what you want and it handles the details.",
+            answer="Yes. GAIA can assign labels, sections, and assignees to Todoist tasks. Just describe what you want and it handles the details.",
         ),
     ],
 )
@@ -698,7 +698,7 @@ MICROSOFT_TEAMS_CONTENT = IntegrationContent(
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect Microsoft Teams to GAIA",
-            body='Open the GAIA Marketplace, find Microsoft Teams, and click "Add to your GAIA". Authorise via Microsoft OAuth — takes under two minutes.',
+            body='Open the GAIA Marketplace, find Microsoft Teams, and click "Add to your GAIA". Authorise via Microsoft OAuth, which takes under two minutes.',
         ),
         IntegrationHowItWorksStep(
             title="Tell GAIA what to send or find",
@@ -706,7 +706,7 @@ MICROSOFT_TEAMS_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA becomes your Teams automation layer",
-            body="Connect Teams with GitHub, Linear, or other tools — GAIA can automatically post PR notifications, issue updates, or daily briefings to the right Teams channel.",
+            body="Connect Teams with GitHub, Linear, or other tools: GAIA can automatically post PR notifications, issue updates, or daily briefings to the right Teams channel.",
         ),
     ],
     faqs=[
@@ -731,7 +731,7 @@ MICROSOFT_TEAMS_CONTENT = IntegrationContent(
 
 ZOOM_CONTENT = IntegrationContent(
     use_cases=[
-        "Schedule Zoom meetings by describing the participants and time — GAIA creates the invite",
+        "Schedule Zoom meetings by describing the participants and time, and GAIA creates the invite",
         "Get a list of your upcoming Zoom meetings for today or this week",
         "Generate Zoom meeting links instantly and share them in chat",
         "Access meeting recordings and get a summary of what was discussed",
@@ -748,13 +748,13 @@ ZOOM_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps you on top of your Zoom activity",
-            body="Set up Zoom triggers — GAIA can notify you when a recording is ready, send the meeting link to participants via Slack, or log meeting summaries to Notion automatically.",
+            body="Set up Zoom triggers: GAIA can notify you when a recording is ready, send the meeting link to participants via Slack, or log meeting summaries to Notion automatically.",
         ),
     ],
     faqs=[
         IntegrationFAQ(
             question="Can GAIA create Zoom meetings with specific settings?",
-            answer="Yes. GAIA can create meetings with your specified duration, topic, passcode, and waiting room settings — just describe what you need.",
+            answer="Yes. GAIA can create meetings with your specified duration, topic, passcode, and waiting room settings. Just describe what you need.",
         ),
         IntegrationFAQ(
             question="Can GAIA retrieve Zoom meeting recordings?",
@@ -766,7 +766,7 @@ ZOOM_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Does GAIA support Zoom webinars?",
-            answer="Yes. GAIA can create and manage Zoom webinars — including setting up registration, panellists, and scheduling — if your Zoom account includes webinar features.",
+            answer="Yes. GAIA can create and manage Zoom webinars, including setting up registration, panellists, and scheduling, if your Zoom account includes webinar features.",
         ),
     ],
 )
@@ -790,7 +790,7 @@ GOOGLEMEET_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA handles your video meeting logistics",
-            body="Connect Google Meet with Gmail and Calendar — GAIA can schedule events with Meet links and send invitations to participants in one step, fully automated.",
+            body="Connect Google Meet with Gmail and Calendar: GAIA can schedule events with Meet links and send invitations to participants in one step, fully automated.",
         ),
     ],
     faqs=[
@@ -818,13 +818,13 @@ GOOGLE_MAPS_CONTENT = IntegrationContent(
         "Search for nearby restaurants, cafes, or businesses with a plain English query",
         "Get directions between two locations and estimated travel times",
         "Find the best-rated places of a specific type within a given area",
-        "Look up business details — address, hours, phone, and reviews — instantly",
+        "Look up business details, including address, hours, phone, and reviews, instantly",
         "Combine with Calendar to get directions to your next meeting automatically",
     ],
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect Google Maps to GAIA",
-            body='Open the GAIA Marketplace, find Google Maps, and click "Add to your GAIA". Authorise access — no complex setup required.',
+            body='Open the GAIA Marketplace, find Google Maps, and click "Add to your GAIA". Authorise access. No complex setup required.',
         ),
         IntegrationHowItWorksStep(
             title="Ask GAIA location-based questions",
@@ -832,7 +832,7 @@ GOOGLE_MAPS_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA brings location context into your workflow",
-            body="Combine Google Maps with Calendar — GAIA can proactively tell you when to leave for your next meeting based on current traffic conditions.",
+            body="Combine Google Maps with Calendar: GAIA can proactively tell you when to leave for your next meeting based on current traffic conditions.",
         ),
     ],
     faqs=[
@@ -842,7 +842,7 @@ GOOGLE_MAPS_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA give turn-by-turn directions?",
-            answer="GAIA can provide step-by-step directions and estimated travel times by car, public transit, or walking — just specify your origin and destination.",
+            answer="GAIA can provide step-by-step directions and estimated travel times by car, public transit, or walking. Just specify your origin and destination.",
         ),
         IntegrationFAQ(
             question="Can GAIA tell me current traffic conditions?",
@@ -850,7 +850,7 @@ GOOGLE_MAPS_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Does the Google Maps integration use my location?",
-            answer="GAIA uses the location context you provide in your request. You can share your current location or specify any address — it does not require always-on location tracking.",
+            answer="GAIA uses the location context you provide in your request. You can share your current location or specify any address. It does not require always-on location tracking.",
         ),
     ],
 )
@@ -874,7 +874,7 @@ ASANA_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps your team's Asana up to date",
-            body="Set up Asana triggers — GAIA can post to Slack when a milestone is completed, generate weekly project status reports, or create recurring tasks automatically.",
+            body="Set up Asana triggers: GAIA can post to Slack when a milestone is completed, generate weekly project status reports, or create recurring tasks automatically.",
         ),
     ],
     faqs=[
@@ -884,11 +884,11 @@ ASANA_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA assign tasks to teammates?",
-            answer="Yes. GAIA can assign tasks to any member of your Asana workspace — just include their name in your description.",
+            answer="Yes. GAIA can assign tasks to any member of your Asana workspace. Just include their name in your description.",
         ),
         IntegrationFAQ(
             question="Can GAIA update task status in Asana?",
-            answer="Yes. GAIA can mark tasks as complete, change their status, update due dates, or move them between sections — all from a plain English command.",
+            answer="Yes. GAIA can mark tasks as complete, change their status, update due dates, or move them between sections, all from a plain English command.",
         ),
         IntegrationFAQ(
             question="Does GAIA support Asana subtasks?",
@@ -899,9 +899,9 @@ ASANA_CONTENT = IntegrationContent(
 
 TRELLO_CONTENT = IntegrationContent(
     use_cases=[
-        "Create Trello cards by describing them — GAIA adds them to the right list and board",
+        "Create Trello cards by describing them, and GAIA adds them to the right list and board",
         "Get a summary of what's in progress, blocked, or done across your Trello boards",
-        "Move cards between lists with a plain English command — no drag and drop needed",
+        "Move cards between lists with a plain English command, no drag and drop needed",
         "Add labels, due dates, and checklists to cards by describing what you want",
         "Trigger GAIA workflows when cards are moved to a specific list like Done or Blocked",
     ],
@@ -916,7 +916,7 @@ TRELLO_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA automates your Trello workflow",
-            body="Set up Trello triggers — GAIA can notify your team on Slack when a card moves to Review, create cards from incoming emails, or generate a weekly board summary.",
+            body="Set up Trello triggers: GAIA can notify your team on Slack when a card moves to Review, create cards from incoming emails, or generate a weekly board summary.",
         ),
     ],
     faqs=[
@@ -926,7 +926,7 @@ TRELLO_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA move cards between lists?",
-            answer="Yes. Ask GAIA to move a card to a different list — like from In Progress to Review — and it will find the card and move it.",
+            answer="Yes. Ask GAIA to move a card to a different list, like from In Progress to Review, and it will find the card and move it.",
         ),
         IntegrationFAQ(
             question="Can GAIA add checklists and attachments to cards?",
@@ -958,13 +958,13 @@ INSTAGRAM_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA monitors Instagram for you",
-            body="Set up Instagram monitoring — GAIA can alert you when you're mentioned, track hashtag trends in your industry, or summarise your account's weekly performance.",
+            body="Set up Instagram monitoring: GAIA can alert you when you're mentioned, track hashtag trends in your industry, or summarise your account's weekly performance.",
         ),
     ],
     faqs=[
         IntegrationFAQ(
             question="Can GAIA post to Instagram on my behalf?",
-            answer="GAIA can interact with Instagram via the available API capabilities. Posting to personal Instagram accounts has API limitations — GAIA works best for research, monitoring, and business account interactions.",
+            answer="GAIA can interact with Instagram via the available API capabilities. Posting to personal Instagram accounts has API limitations. GAIA works best for research, monitoring, and business account interactions.",
         ),
         IntegrationFAQ(
             question="Can GAIA search Instagram hashtags?",
@@ -1000,7 +1000,7 @@ CLICKUP_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps your ClickUp workspace in sync",
-            body="Connect ClickUp with Slack, Gmail, or Linear — GAIA can create tasks from emails, post status updates to Slack, or sync issues across tools automatically.",
+            body="Connect ClickUp with Slack, Gmail, or Linear: GAIA can create tasks from emails, post status updates to Slack, or sync issues across tools automatically.",
         ),
     ],
     faqs=[
@@ -1010,7 +1010,7 @@ CLICKUP_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA update ClickUp task status?",
-            answer="Yes. GAIA can update task status to any custom status in your workflow — just tell it what the task is and what status to set.",
+            answer="Yes. GAIA can update task status to any custom status in your workflow. Just tell it what the task is and what status to set.",
         ),
         IntegrationFAQ(
             question="Does GAIA support ClickUp custom fields?",
@@ -1034,7 +1034,7 @@ DEEPWIKI_CONTENT = IntegrationContent(
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect DeepWiki to GAIA",
-            body='Open the GAIA Marketplace, find DeepWiki, and click "Add to your GAIA". DeepWiki uses an MCP server connection — no OAuth required.',
+            body='Open the GAIA Marketplace, find DeepWiki, and click "Add to your GAIA". DeepWiki uses an MCP server connection. No OAuth required.',
         ),
         IntegrationHowItWorksStep(
             title="Ask technical questions about any GitHub repo",
@@ -1042,7 +1042,7 @@ DEEPWIKI_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA becomes your codebase research assistant",
-            body="Combine DeepWiki with your development workflow — ask GAIA to research how a library handles edge cases before you integrate it, or understand a dependency's internals before debugging.",
+            body="Combine DeepWiki with your development workflow: ask GAIA to research how a library handles edge cases before you integrate it, or understand a dependency's internals before debugging.",
         ),
     ],
     faqs=[
@@ -1052,7 +1052,7 @@ DEEPWIKI_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Does DeepWiki require authentication?",
-            answer="No. DeepWiki is available without an API key or OAuth flow — it connects directly as an MCP server.",
+            answer="No. DeepWiki is available without an API key or OAuth flow. It connects directly as an MCP server.",
         ),
         IntegrationFAQ(
             question="Can DeepWiki answer questions about private repositories?",
@@ -1060,7 +1060,7 @@ DEEPWIKI_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="How is DeepWiki different from reading GitHub directly?",
-            answer="DeepWiki builds a deep semantic understanding of the entire codebase — relationships, patterns, and architecture — going beyond simple file browsing to give you expert-level explanations.",
+            answer="DeepWiki builds a deep semantic understanding of the entire codebase (relationships, patterns, and architecture), going beyond simple file browsing to give you expert-level explanations.",
         ),
     ],
 )
@@ -1076,7 +1076,7 @@ HACKERNEWS_CONTENT = IntegrationContent(
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect Hacker News to GAIA",
-            body='Open the GAIA Marketplace, find Hacker News, and click "Add to your GAIA". No OAuth required — connects instantly via MCP.',
+            body='Open the GAIA Marketplace, find Hacker News, and click "Add to your GAIA". No OAuth required. Connects instantly via MCP.',
         ),
         IntegrationHowItWorksStep(
             title="Ask GAIA what's happening on HN",
@@ -1084,13 +1084,13 @@ HACKERNEWS_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA keeps you up to date with tech news",
-            body="Set up a daily HN digest — GAIA can deliver the top 10 stories every morning, filtered by topics you care about, directly to your chat.",
+            body="Set up a daily HN digest: GAIA can deliver the top 10 stories every morning, filtered by topics you care about, directly to your chat.",
         ),
     ],
     faqs=[
         IntegrationFAQ(
             question="Does GAIA need a Hacker News account?",
-            answer="No. The Hacker News integration reads public HN content — no account or authentication required.",
+            answer="No. The Hacker News integration reads public HN content. No account or authentication required.",
         ),
         IntegrationFAQ(
             question="Can GAIA post to Hacker News?",
@@ -1118,7 +1118,7 @@ INSTACART_CONTENT = IntegrationContent(
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect Instacart to GAIA",
-            body='Open the GAIA Marketplace, find Instacart, and click "Add to your GAIA". Connects via MCP — no complex OAuth setup required.',
+            body='Open the GAIA Marketplace, find Instacart, and click "Add to your GAIA". Connects via MCP. No complex OAuth setup required.',
         ),
         IntegrationHowItWorksStep(
             title="Tell GAIA what groceries you need",
@@ -1126,7 +1126,7 @@ INSTACART_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA handles your grocery shopping automatically",
-            body="Set up recurring shopping lists — GAIA can automatically populate your Instacart cart every Sunday with your weekly staples, ready for you to confirm and checkout.",
+            body="Set up recurring shopping lists: GAIA can automatically populate your Instacart cart every Sunday with your weekly staples, ready for you to confirm and checkout.",
         ),
     ],
     faqs=[
@@ -1152,7 +1152,7 @@ INSTACART_CONTENT = IntegrationContent(
 YELP_CONTENT = IntegrationContent(
     use_cases=[
         "Find top-rated restaurants, bars, or services near any location instantly",
-        "Get business details — hours, address, phone, and reviews — with a single question",
+        "Get business details, including hours, address, phone, and reviews, with a single question",
         "Search for businesses by cuisine, category, or specific requirements like pet-friendly",
         "Compare multiple options with ratings, price range, and review summaries",
         "Plan a dinner, event, or errand by finding exactly the right places in your area",
@@ -1160,7 +1160,7 @@ YELP_CONTENT = IntegrationContent(
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect Yelp to GAIA",
-            body='Open the GAIA Marketplace, find Yelp, and click "Add to your GAIA". Connects via MCP — no OAuth required.',
+            body='Open the GAIA Marketplace, find Yelp, and click "Add to your GAIA". Connects via MCP. No OAuth required.',
         ),
         IntegrationHowItWorksStep(
             title="Ask GAIA to find local businesses",
@@ -1168,7 +1168,7 @@ YELP_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA becomes your local discovery assistant",
-            body="Combine Yelp with Google Maps — GAIA can find the best restaurant near your next meeting location and add directions to your calendar event, all in one step.",
+            body="Combine Yelp with Google Maps: GAIA can find the best restaurant near your next meeting location and add directions to your calendar event, all in one step.",
         ),
     ],
     faqs=[
@@ -1182,7 +1182,7 @@ YELP_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Does the Yelp integration require an account?",
-            answer="No. The Yelp integration connects via MCP and reads public Yelp data — no Yelp account or authentication is required.",
+            answer="No. The Yelp integration connects via MCP and reads public Yelp data. No Yelp account or authentication is required.",
         ),
         IntegrationFAQ(
             question="Can GAIA filter Yelp results by price or distance?",
@@ -1210,7 +1210,7 @@ CONTEXT7_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA always uses the latest docs",
-            body="With Context7 connected, GAIA automatically pulls current library documentation when answering coding questions — no more answers based on outdated training data.",
+            body="With Context7 connected, GAIA automatically pulls current library documentation when answering coding questions, no more answers based on outdated training data.",
         ),
     ],
     faqs=[
@@ -1224,7 +1224,7 @@ CONTEXT7_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="How is Context7 different from searching the web?",
-            answer="Context7 surfaces structured, version-specific documentation rather than generic web results — giving GAIA precise, current API references and usage examples for the exact version you're using.",
+            answer="Context7 surfaces structured, version-specific documentation rather than generic web results, giving GAIA precise, current API references and usage examples for the exact version you're using.",
         ),
         IntegrationFAQ(
             question="Does Context7 work for private or internal documentation?",
@@ -1239,7 +1239,7 @@ PERPLEXITY_CONTENT = IntegrationContent(
         "Research any topic and get a concise, sourced summary without leaving your workflow",
         "Ask current events questions that require up-to-date information",
         "Fact-check claims or verify information with live web sources",
-        "Combine web research with other tools — research a company on the web, then create a CRM record",
+        "Combine web research with other tools: research a company on the web, then create a CRM record",
     ],
     how_it_works=[
         IntegrationHowItWorksStep(
@@ -1252,7 +1252,7 @@ PERPLEXITY_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA combines web research with action",
-            body="After researching, GAIA can immediately act on what it finds — log findings to Notion, send a Slack summary, or create a task based on research results.",
+            body="After researching, GAIA can immediately act on what it finds: log findings to Notion, send a Slack summary, or create a task based on research results.",
         ),
     ],
     faqs=[
@@ -1262,7 +1262,7 @@ PERPLEXITY_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="How is Perplexity different from GAIA's built-in knowledge?",
-            answer="GAIA's built-in knowledge has a training cutoff. Perplexity provides real-time web search with citations — essential for current events, recent releases, and up-to-date facts.",
+            answer="GAIA's built-in knowledge has a training cutoff. Perplexity provides real-time web search with citations, essential for current events, recent releases, and up-to-date facts.",
         ),
         IntegrationFAQ(
             question="Does Perplexity return sources and citations?",
@@ -1280,7 +1280,7 @@ AGENTMAIL_CONTENT = IntegrationContent(
         "Give GAIA its own email inbox to send and receive emails on your behalf",
         "Set up GAIA as an email agent that handles inbound requests automatically",
         "Send emails from a dedicated GAIA address without using your personal Gmail",
-        "Build automated email workflows — GAIA receives, processes, and responds to emails",
+        "Build automated email workflows where GAIA receives, processes, and responds to emails",
         "Use email as a trigger source for GAIA automations",
     ],
     how_it_works=[
@@ -1290,11 +1290,11 @@ AGENTMAIL_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="Use GAIA's email capabilities",
-            body="GAIA can send emails from its AgentMail inbox, receive and process inbound emails, and act as a full email agent — replying, forwarding, and routing messages automatically.",
+            body="GAIA can send emails from its AgentMail inbox, receive and process inbound emails, and act as a full email agent, replying, forwarding, and routing messages automatically.",
         ),
         IntegrationHowItWorksStep(
             title="GAIA becomes an autonomous email agent",
-            body="Set up email handling workflows — GAIA can monitor its AgentMail inbox, classify incoming emails, trigger actions based on content, and respond autonomously to routine requests.",
+            body="Set up email handling workflows: GAIA can monitor its AgentMail inbox, classify incoming emails, trigger actions based on content, and respond autonomously to routine requests.",
         ),
     ],
     faqs=[
@@ -1308,60 +1308,18 @@ AGENTMAIL_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="How is AgentMail different from connecting Gmail?",
-            answer="Gmail connects your personal inbox to GAIA. AgentMail gives GAIA its own dedicated inbox — useful for separating agent email activity from your personal account.",
+            answer="Gmail connects your personal inbox to GAIA. AgentMail gives GAIA its own dedicated inbox, useful for separating agent email activity from your personal account.",
         ),
         IntegrationFAQ(
             question="Can GAIA automatically reply to emails via AgentMail?",
-            answer="Yes. GAIA can monitor its AgentMail inbox and send automated replies based on rules or content — making it suitable for handling inbound support, lead qualification, or routine requests.",
-        ),
-    ],
-)
-
-BROWSERBASE_CONTENT = IntegrationContent(
-    use_cases=[
-        "Scrape data from any website and extract structured information with a plain English request",
-        "Automate browser tasks — fill forms, click buttons, and navigate web apps programmatically",
-        "Take screenshots of web pages for monitoring, documentation, or comparison",
-        "Interact with web pages that require JavaScript rendering or login sessions",
-        "Build browser automation workflows — GAIA runs them headlessly in the cloud",
-    ],
-    how_it_works=[
-        IntegrationHowItWorksStep(
-            title="Connect Browserbase to GAIA",
-            body='Open the GAIA Marketplace, find Browserbase, and click "Add to your GAIA". Browserbase connects via MCP and requires a Browserbase API key.',
-        ),
-        IntegrationHowItWorksStep(
-            title="Tell GAIA what to do in the browser",
-            body='Say "scrape the pricing table from this URL" or "go to this web app, log in, and download my latest invoice". GAIA runs a real browser session in the Browserbase cloud.',
-        ),
-        IntegrationHowItWorksStep(
-            title="GAIA automates the web for you",
-            body="Combine Browserbase with other integrations — GAIA can scrape competitor pricing daily and log changes to a Google Sheet, or monitor a web page for changes and notify you on Slack.",
-        ),
-    ],
-    faqs=[
-        IntegrationFAQ(
-            question="Does Browserbase require an API key?",
-            answer="Yes. Browserbase connects via MCP and requires a Browserbase API key. Enter it during the GAIA connection setup.",
-        ),
-        IntegrationFAQ(
-            question="Can GAIA scrape any website with Browserbase?",
-            answer="GAIA can browse and extract data from most public websites. Access to sites behind login walls depends on whether credentials are provided and whether the site's terms of service permit scraping.",
-        ),
-        IntegrationFAQ(
-            question="Where does Browserbase run the browser sessions?",
-            answer="Browserbase runs fully managed cloud browser sessions — no infrastructure to set up on your end. Sessions run in Browserbase's cloud and results are returned to GAIA.",
-        ),
-        IntegrationFAQ(
-            question="Can GAIA take screenshots with Browserbase?",
-            answer="Yes. GAIA can take full-page or viewport screenshots of any URL using Browserbase and return the image or save it to a connected storage integration.",
+            answer="Yes. GAIA can monitor its AgentMail inbox and send automated replies based on rules or content, making it suitable for handling inbound support, lead qualification, or routine requests.",
         ),
     ],
 )
 
 POSTHOG_CONTENT = IntegrationContent(
     use_cases=[
-        "Query your PostHog analytics data with plain English — 'how many users signed up this week?'",
+        "Query your PostHog analytics data with plain English, like 'how many users signed up this week?'",
         "Get conversion funnel analysis and drop-off points from a single question",
         "Set up GAIA to deliver daily or weekly product analytics briefings to Slack",
         "Investigate user behaviour around a specific feature without writing HogQL",
@@ -1370,7 +1328,7 @@ POSTHOG_CONTENT = IntegrationContent(
     how_it_works=[
         IntegrationHowItWorksStep(
             title="Connect PostHog to GAIA",
-            body='Open the GAIA Marketplace, find PostHog, and click "Add to your GAIA". PostHog connects via MCP — authenticate with your PostHog credentials.',
+            body='Open the GAIA Marketplace, find PostHog, and click "Add to your GAIA". PostHog connects via MCP. Authenticate with your PostHog credentials.',
         ),
         IntegrationHowItWorksStep(
             title="Ask GAIA about your product analytics",
@@ -1378,7 +1336,7 @@ POSTHOG_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="GAIA surfaces product insights proactively",
-            body="Set up analytics workflows — GAIA can send a weekly product metrics summary to Slack, alert you when a key event count drops, or help you investigate anomalies in user behaviour.",
+            body="Set up analytics workflows: GAIA can send a weekly product metrics summary to Slack, alert you when a key event count drops, or help you investigate anomalies in user behaviour.",
         ),
     ],
     faqs=[
@@ -1388,7 +1346,7 @@ POSTHOG_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA query PostHog without writing HogQL?",
-            answer="Yes. GAIA translates your plain English questions into PostHog queries — you don't need to write HogQL or know the PostHog query API.",
+            answer="Yes. GAIA translates your plain English questions into PostHog queries. You don't need to write HogQL or know the PostHog query API.",
         ),
         IntegrationFAQ(
             question="Can GAIA access feature flags and experiments in PostHog?",

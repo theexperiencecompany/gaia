@@ -231,7 +231,7 @@ def _maybe_inject_wrapup(state: State) -> State:
     notice = HumanMessage(
         content=(
             "[System notice: you are almost out of steps for this run "
-            f"(~{remaining} left). Stop exploring now — summarize what you "
+            f"(~{remaining} left). Stop exploring now. Summarize what you "
             "found and what remains to be done, and finish your reply.]"
         )
     )

@@ -116,7 +116,7 @@ async def record_executor_cancellation(
             AgentTag.EXECUTOR_CANCELLED,
             f"The background task {task_id or '(unknown id)'} ({task[:200]!r}) was "
             "cancelled by the user before it completed. It did NOT finish and will "
-            "not deliver results — do not claim otherwise.",
+            "not deliver results. Do not claim otherwise.",
         ),
         name=BACKGROUND_EXECUTOR_NAME,
     )

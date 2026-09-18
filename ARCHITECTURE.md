@@ -497,6 +497,17 @@ A **PG-backed** memory engine projected to VFS as Markdown (`/workspace/memory/.
 
 ---
 
+## Browser automation
+
+- `apps/api/app/agents/tools/browser_tool.py`: the executor's only browser tool.
+- `apps/api/app/services/browser/runner.py`: `BrowserTaskRunner` owns one task's progress, handoff, budgets and metering.
+- `apps/api/app/services/browser/agent_run.py`: `BrowserAgentRun` runs Browser-Use's `Agent`, with `JevChatModel` (`apps/api/app/services/browser/jev/chat_model.py`) as its model. Jev picks each step's operation and element; a small OpenRouter chat model writes typed values.
+- Handoff: `request_human_takeover` and `solve_captcha_with_help`, registered in `apps/api/app/services/browser/tools.py`, are the agent's own way to pause; the runner blocks the task and resumes it with the user's note.
+- Browser-Use is pinned (`browser-use==0.11.13` in `apps/api/pyproject.toml`) because `chat_model.py` speaks its `AgentOutput` type directly.
+- Page snapshotting and DOM extraction, including iframes, stay Browser-Use's own; Jev only decides from what it extracts.
+
+---
+
 ## 17. Quick-Reference: "Where do I change X?"
 
 | If you want to… | Go to |

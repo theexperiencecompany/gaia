@@ -108,7 +108,7 @@ class FetchMessagesInput(BaseModel):
         description=(
             "'normalize' (default): strip signatures, disclaimers, "
             "unsubscribe footers, and utm tracking chains. Lossless on "
-            "meaningful content (quoted replies are KEPT — they give context "
+            "meaningful content (quoted replies are KEPT, they give context "
             "into the older conversation). 'raw': untouched Gmail body. "
             "'none': omit body regardless of fields[]."
         ),

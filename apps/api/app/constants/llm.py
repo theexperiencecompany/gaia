@@ -99,7 +99,7 @@ MAX_COMPLETION_NUDGES = 1
 # Tool results that prove no work happened: discovery-only or failed calls.
 COMPLETION_NON_WORK_TOOLS = frozenset({"retrieve_tools"})
 COMPLETION_NUDGE_MESSAGE = (
-    "[System: before you finish — every part of the task must actually be done "
+    "[System: before you finish, every part of the task must actually be done "
     "and confirmed with tools, not assumed. If anything is still pending, not yet "
     "verified, or an action you described but did not take, do it now. Nothing "
     "runs after your reply ends, so never tell the user you are still working or "
@@ -148,6 +148,7 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
         "handoff",
         "wait_for_subagents",
         "deep_research",
+        "browser_task",
     }
 )
 
