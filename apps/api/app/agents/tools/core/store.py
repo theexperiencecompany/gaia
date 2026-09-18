@@ -5,6 +5,9 @@ from langgraph.store.base import BaseStore
 
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.db.chroma.resilient_embeddings import ResilientEmbeddings
+
+GOOGLE_EMBEDDING_MODEL = "models/gemini-embedding-001"
 
 
 @lazy_provider(
@@ -15,8 +18,14 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
     warning_message="Embeddings not configured. Tool discovery using tool_retrieval tool will fail. "
     "Sometimes agent calls tool_retrieval for tool discovery. This may lead to errors when agent is invoked.",
 )
-def init_embeddings() -> GoogleGenerativeAIEmbeddings:
-    return GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+def init_embeddings() -> ResilientEmbeddings:
+    # Wrap the raw Gemini embeddings so every ChromaDB consumer (tool retrieval,
+    # public integrations, notes, triggers) coalesces the concurrent same-text
+    # embeds a single turn fans out and rides out transient Vertex 429s.
+    return ResilientEmbeddings(
+        GoogleGenerativeAIEmbeddings(model=GOOGLE_EMBEDDING_MODEL),
+        model=GOOGLE_EMBEDDING_MODEL,
+    )
 
 
 async def get_tools_store() -> BaseStore:
