@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.25.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.24.0...api-v0.25.0) (2026-09-18)
+
+
+### Features
+
+* **api:** benchmark end-to-end chat turn latency ([#1229](https://github.com/theexperiencecompany/gaia/issues/1229)) ([dd8637b](https://github.com/theexperiencecompany/gaia/commit/dd8637b6ace24760873cd11177cd95b922bb8a13))
+* **api:** one error envelope, response models everywhere, generated TS types with a drift gate ([#1218](https://github.com/theexperiencecompany/gaia/issues/1218)) ([9a5aef8](https://github.com/theexperiencecompany/gaia/commit/9a5aef8b1dd98665b88638ca9dcaeb2332a0a14a))
+* **api:** paid-only entitlement gate, server side ([#1241](https://github.com/theexperiencecompany/gaia/issues/1241)) ([dea3d78](https://github.com/theexperiencecompany/gaia/commit/dea3d788ef3332c39841a29e4dc7f59eb7f3e67b))
+* **onboarding:** first-steps activation checklist, derived from real signals ([#1202](https://github.com/theexperiencecompany/gaia/issues/1202)) ([ac5741a](https://github.com/theexperiencecompany/gaia/commit/ac5741a2f7ec90e1cb3a27fe31de206a5821d01c))
+* **todos:** deliver a tracked todo's run result to the user's chat app ([#1250](https://github.com/theexperiencecompany/gaia/issues/1250)) ([ce61978](https://github.com/theexperiencecompany/gaia/commit/ce6197811130d43bab9d6cc9991f32c212adfd3c))
+* **web:** receipt-printer celebration for post-payment success ([#1079](https://github.com/theexperiencecompany/gaia/issues/1079)) ([3ccb4df](https://github.com/theexperiencecompany/gaia/commit/3ccb4df36cb9f4abe253e7205ecb05636208f183))
+
+
+### Bug Fixes
+
+* **api:** evict per-loop Chroma state for closed event loops ([#1243](https://github.com/theexperiencecompany/gaia/issues/1243)) ([c159f03](https://github.com/theexperiencecompany/gaia/commit/c159f03e7c575251badb113106c8e086ac3228df))
+* **oauth:** stop signup blocking on outbound email, and send both in parallel ([#1175](https://github.com/theexperiencecompany/gaia/issues/1175)) ([e32aa7e](https://github.com/theexperiencecompany/gaia/commit/e32aa7ee32c165738360d70740301192ec4d3c7f))
+* **triggers:** let tracked todos watch per-resource triggers, with scope validation ([#1249](https://github.com/theexperiencecompany/gaia/issues/1249)) ([7c76f1b](https://github.com/theexperiencecompany/gaia/commit/7c76f1bbb23ae23b9589a41ca3a33d9018126bcc))
+
+
+### Performance Improvements
+
+* **api:** cache the mid-tier context reads that gate chat TTFT ([#1240](https://github.com/theexperiencecompany/gaia/issues/1240)) ([7c0f7ae](https://github.com/theexperiencecompany/gaia/commit/7c0f7ae8436242d3e94794912f73921227e456e1))
+* **memory:** fail-fast interactive recall to the embedding sidecar ([#1239](https://github.com/theexperiencecompany/gaia/issues/1239)) ([1360d7d](https://github.com/theexperiencecompany/gaia/commit/1360d7d7bac05f6934ded01f1734961ffc523940))
+* **memory:** trim rerank pool to 16, fetch recall entries in one round ([#1245](https://github.com/theexperiencecompany/gaia/issues/1245)) ([bbc9bf3](https://github.com/theexperiencecompany/gaia/commit/bbc9bf3ef9737df056c90aa35f032645eecf5107))
+
+
+### Documentation
+
+* compress every docstring and comment to its contract ([#1223](https://github.com/theexperiencecompany/gaia/issues/1223)) ([c0ad39a](https://github.com/theexperiencecompany/gaia/commit/c0ad39a815ca8ab80a4e3f3c565b1c9e4f66eec2))
+
 ## [0.24.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.23.0...api-v0.24.0) (2026-09-14)
 
 
