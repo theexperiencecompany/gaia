@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.7.0...bots-v1.8.0) (2026-09-18)
+
+
+### Features
+
+* **api:** one error envelope, response models everywhere, generated TS types with a drift gate ([#1218](https://github.com/theexperiencecompany/gaia/issues/1218)) ([9a5aef8](https://github.com/theexperiencecompany/gaia/commit/9a5aef8b1dd98665b88638ca9dcaeb2332a0a14a))
+* **api:** paid-only entitlement gate, server side ([#1241](https://github.com/theexperiencecompany/gaia/issues/1241)) ([dea3d78](https://github.com/theexperiencecompany/gaia/commit/dea3d788ef3332c39841a29e4dc7f59eb7f3e67b))
+
 ## [1.7.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.6.0...bots-v1.7.0) (2026-09-13)
 
 

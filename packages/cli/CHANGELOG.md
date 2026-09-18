@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.6.0...cli-v0.7.0) (2026-09-18)
+
+
+### Features
+
+* **api:** one error envelope, response models everywhere, generated TS types with a drift gate ([#1218](https://github.com/theexperiencecompany/gaia/issues/1218)) ([9a5aef8](https://github.com/theexperiencecompany/gaia/commit/9a5aef8b1dd98665b88638ca9dcaeb2332a0a14a))
+
 ## [0.6.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.5.0...cli-v0.6.0) (2026-09-13)
 
 
