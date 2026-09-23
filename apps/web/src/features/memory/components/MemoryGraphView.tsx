@@ -93,7 +93,7 @@ export function MemoryGraphView() {
   return (
     <div
       ref={wrapperRef}
-      className="h-[65vh] overflow-hidden rounded-2xl bg-[#111111]"
+      className="h-[65vh] overflow-hidden rounded-2xl bg-primary-bg"
     >
       <MemoryGraph
         documents={documents}

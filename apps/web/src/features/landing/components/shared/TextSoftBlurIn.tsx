@@ -30,9 +30,7 @@ interface TextSoftBlurInProps {
   threshold?: number;
 }
 
-const EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
-
-/** Style object that allows the `--sbi-*` custom properties used by the keyframe. */
+/** Custom properties consumed by the `.sbi-*` classes in globals.css. */
 type AnimStyle = CSSProperties & Record<`--${string}`, string>;
 
 function splitText(text: string, splitBy: "char" | "word"): string[] {
@@ -73,24 +71,70 @@ function groupIntoWords(
   return groups;
 }
 
-function gradientCss(gradient?: string): CSSProperties | undefined {
-  return gradient
-    ? {
-        backgroundImage: gradient,
-        WebkitBackgroundClip: "text",
-        WebkitTextFillColor: "transparent",
-        backgroundClip: "text",
-        color: "transparent",
-      }
-    : undefined;
+interface CharTiming {
+  startDelay: number;
+  charStagger: number;
+  duration: number;
+  blur: number;
+  yOffset: number;
 }
 
-const GRADIENT_INHERIT: CSSProperties = {
-  backgroundImage: "inherit",
-  WebkitBackgroundClip: "inherit",
-  WebkitTextFillColor: "inherit",
-  backgroundClip: "inherit",
-};
+/** Reveal state for the scroll-triggered variant; absent in immediate mode. */
+interface CharReveal {
+  isVisible: boolean;
+  animDone: boolean;
+}
+
+/**
+ * One animated character/word. The `style` holds only `--sbi-*` custom
+ * properties (the CSS-var bridge); the `.sbi-*` classes in globals.css turn
+ * them into animation/transition/opacity/filter/transform.
+ */
+function CharSpan({
+  index,
+  className,
+  timing,
+  reveal,
+  children,
+}: Readonly<{
+  index: number;
+  className?: string;
+  timing: CharTiming;
+  reveal?: CharReveal;
+  children: ReactNode;
+}>) {
+  const delay = timing.startDelay + index * timing.charStagger;
+  const isVisible = !reveal || reveal.isVisible;
+  let filter = "none";
+  if (reveal) {
+    filter = isVisible ? "blur(0px)" : `blur(${timing.blur}px)`;
+  }
+  let transform = "none";
+  if (reveal && !isVisible) {
+    transform = `translateY(${timing.yOffset}px)`;
+  }
+  const willChange =
+    reveal && !reveal.animDone ? "opacity, filter, transform" : "auto";
+  return (
+    <span
+      className={className}
+      style={
+        {
+          "--sbi-delay": `${delay}s`,
+          "--sbi-duration": `${timing.duration}s`,
+          "--sbi-blur": `${timing.blur}px`,
+          "--sbi-y": `${timing.yOffset}px`,
+          "--sbi-opacity": isVisible ? "1" : "0",
+          "--sbi-filter": filter,
+          "--sbi-transform": transform,
+          "--sbi-will-change": willChange,
+        } as AnimStyle
+      }
+    >
+      {children}
+    </span>
+  );
+}
 
 /** Shared inner renderer for both immediate and scroll-triggered text variants. */
 function TextInner({
@@ -98,7 +142,9 @@ function TextInner({
   parts,
   splitBy,
   gradient,
-  buildCharStyle,
+  charClassName,
+  timing,
+  reveal,
   innerRef,
   baseId,
 }: Readonly<{
@@ -106,10 +152,13 @@ function TextInner({
   parts: string[];
   splitBy: "char" | "word";
   gradient?: string;
-  buildCharStyle: (idx: number) => CSSProperties;
+  charClassName: string;
+  timing: CharTiming;
+  reveal?: CharReveal;
   innerRef?: React.RefObject<HTMLSpanElement | null>;
   baseId?: string;
 }>) {
+  const charGradientClass = gradient ? "sbi-gradient-inherit" : undefined;
   // The per-character spans are decorative (aria-hidden); a visually-hidden
   // copy of the full string is the real accessible text — ARIA prohibits
   // `aria-label` on generic <span>/<div> elements with no role.
@@ -117,23 +166,32 @@ function TextInner({
     return (
       <>
         <span className="sr-only">{text}</span>
-        <span ref={innerRef} aria-hidden="true" style={gradientCss(gradient)}>
+        <span
+          ref={innerRef}
+          aria-hidden="true"
+          className={gradient ? "sbi-gradient" : undefined}
+          style={
+            gradient ? ({ "--sbi-gradient": gradient } as AnimStyle) : undefined
+          }
+        >
           {groupIntoWords(parts).map(({ chars, start, isSpace }) => (
             <span
               key={start}
-              style={{
-                display: isSpace ? "inline" : "inline-block",
-                ...(gradient && !isSpace ? GRADIENT_INHERIT : null),
-              }}
+              className={cn(
+                isSpace ? "inline" : "inline-block",
+                !isSpace && charGradientClass,
+              )}
             >
               {chars.map(({ ch, gid }) => (
-                <span
+                <CharSpan
                   key={gid}
-                  className="sbi-anim"
-                  style={buildCharStyle(gid)}
+                  index={gid}
+                  className={cn(charClassName, charGradientClass)}
+                  timing={timing}
+                  reveal={reveal}
                 >
                   {ch}
-                </span>
+                </CharSpan>
               ))}
             </span>
           ))}
@@ -148,17 +206,21 @@ function TextInner({
       <span
         ref={innerRef}
         aria-hidden="true"
-        className="inline-block"
-        style={gradientCss(gradient)}
+        className={cn("inline-block", gradient && "sbi-gradient")}
+        style={
+          gradient ? ({ "--sbi-gradient": gradient } as AnimStyle) : undefined
+        }
       >
         {parts.map((part, i) => (
-          <span
+          <CharSpan
             key={baseId ? `${baseId}-${i}` : i}
-            className="sbi-anim"
-            style={buildCharStyle(i)}
+            index={i}
+            className={cn(charClassName, charGradientClass)}
+            timing={timing}
+            reveal={reveal}
           >
             {part}
-          </span>
+          </CharSpan>
         ))}
       </span>
     </>
@@ -185,20 +247,12 @@ function TextSoftBlurInImmediate({
 }: TextSoftBlurInProps) {
   const parts = splitText(text, splitBy);
 
-  const buildCharStyle = (globalIdx: number): AnimStyle => {
-    const delay = startDelay + globalIdx * charStagger;
-    return {
-      display: "inline-block",
-      whiteSpace: "pre",
-      paddingBlock: "0.12em",
-      marginBlock: "-0.12em",
-      paddingInline: "0.05em",
-      marginInline: "-0.05em",
-      animation: `gaia-soft-blur-in ${duration}s ${EASE} ${delay}s both`,
-      "--sbi-blur": `${blur}px`,
-      "--sbi-y": `${yOffset}px`,
-      ...(gradient ? GRADIENT_INHERIT : null),
-    };
+  const timing: CharTiming = {
+    startDelay,
+    charStagger,
+    duration,
+    blur,
+    yOffset,
   };
 
   return createElement(
@@ -209,7 +263,8 @@ function TextSoftBlurInImmediate({
       parts={parts}
       splitBy={splitBy}
       gradient={gradient}
-      buildCharStyle={buildCharStyle}
+      charClassName="sbi-char sbi-anim sbi-immediate"
+      timing={timing}
     />,
   );
 }
@@ -275,23 +330,14 @@ function TextSoftBlurInOnScroll({
     return () => window.clearTimeout(id);
   }, [isVisible, totalAnimMs]);
 
-  const buildCharStyle = (globalIdx: number): CSSProperties => {
-    const delay = startDelay + globalIdx * charStagger;
-    return {
-      display: "inline-block",
-      whiteSpace: "pre",
-      paddingBlock: "0.12em",
-      marginBlock: "-0.12em",
-      paddingInline: "0.05em",
-      marginInline: "-0.05em",
-      opacity: isVisible ? 1 : 0,
-      filter: isVisible ? "blur(0px)" : `blur(${blur}px)`,
-      transform: isVisible ? "none" : `translateY(${yOffset}px)`,
-      transition: `opacity ${duration}s ${EASE} ${delay}s, filter ${duration}s ${EASE} ${delay}s, transform ${duration}s ${EASE} ${delay}s`,
-      willChange: animDone ? "auto" : "opacity, filter, transform",
-      ...(gradient ? GRADIENT_INHERIT : null),
-    };
+  const timing: CharTiming = {
+    startDelay,
+    charStagger,
+    duration,
+    blur,
+    yOffset,
   };
+  const reveal: CharReveal = { isVisible, animDone };
 
   return createElement(
     as,
@@ -301,7 +347,9 @@ function TextSoftBlurInOnScroll({
       parts={parts}
       splitBy={splitBy}
       gradient={gradient}
-      buildCharStyle={buildCharStyle}
+      charClassName="sbi-char sbi-anim sbi-on-scroll"
+      timing={timing}
+      reveal={reveal}
       innerRef={ref}
       baseId={baseId}
     />,
@@ -338,13 +386,14 @@ function SoftBlurInBlockImmediate({
   yOffset = 16,
 }: SoftBlurInBlockProps) {
   const style: AnimStyle = {
-    animation: `gaia-soft-blur-in ${duration}s ${EASE} ${delay}s both`,
+    "--sbi-delay": `${delay}s`,
+    "--sbi-duration": `${duration}s`,
     "--sbi-blur": `${blur}px`,
     "--sbi-y": `${yOffset}px`,
   };
   return createElement(
     as,
-    { className: cn(className, "sbi-anim"), style },
+    { className: cn(className, "sbi-anim", "sbi-immediate"), style },
     children,
   );
 }
@@ -372,17 +421,18 @@ function SoftBlurInBlockOnScroll({
     return () => window.clearTimeout(id);
   }, [isVisible, delay, duration]);
 
-  const style: CSSProperties = {
-    opacity: isVisible ? 1 : 0,
-    filter: isVisible ? "blur(0px)" : `blur(${blur}px)`,
-    transform: isVisible ? "none" : `translateY(${yOffset}px)`,
-    transition: `opacity ${duration}s ${EASE} ${delay}s, filter ${duration}s ${EASE} ${delay}s, transform ${duration}s ${EASE} ${delay}s`,
-    willChange: animDone ? "auto" : "opacity, filter, transform",
+  const style: AnimStyle = {
+    "--sbi-delay": `${delay}s`,
+    "--sbi-duration": `${duration}s`,
+    "--sbi-opacity": isVisible ? "1" : "0",
+    "--sbi-filter": isVisible ? "blur(0px)" : `blur(${blur}px)`,
+    "--sbi-transform": isVisible ? "none" : `translateY(${yOffset}px)`,
+    "--sbi-will-change": animDone ? "auto" : "opacity, filter, transform",
   };
 
   return createElement(
     as,
-    { ref, className: cn(className, "sbi-anim"), style },
+    { ref, className: cn(className, "sbi-anim", "sbi-on-scroll"), style },
     children,
   );
 }

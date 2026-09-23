@@ -103,7 +103,7 @@ function ComposeHeader({
       radius="none"
       onPress={onToggle}
       aria-expanded={!isCollapsed}
-      className="h-auto justify-between px-6 pt-4 pb-3"
+      className="h-auto justify-between"
     >
       <span className="flex flex-row items-center gap-2">
         <Gmail width={18} height={18} />
@@ -135,7 +135,7 @@ function EmailBodyPreview({
   onEdit: () => void;
 }) {
   return (
-    <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed text-zinc-200">
+    <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto text-sm leading-relaxed text-zinc-200">
       {!isLocked && (
         <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
           <Button variant="light" size="sm" isIconOnly onPress={onEdit}>
@@ -143,7 +143,9 @@ function EmailBodyPreview({
           </Button>
         </div>
       )}
-      <HtmlEmailBody html={html} />
+      <div className="pb-5">
+        <HtmlEmailBody html={html} />
+      </div>
     </ScrollShadow>
   );
 }
@@ -206,13 +208,13 @@ function ComposeFields({
             isLocked={isLocked}
             onEdit={() => onEditField(field)}
           />
-          <Separator className="my-1.5 bg-zinc-700" />
+          <Separator className="my-1.5 bg-zinc-700/50" />
         </div>
       ))}
-      <div className="flex w-full items-center justify-between text-sm text-gray-400">
+      <div className="flex w-full items-center justify-between text-sm text-zinc-400">
         <div className="flex items-center gap-2">
           <span>Subject:</span>
-          <span className="font-medium text-gray-200">{subject}</span>
+          <span className="font-medium text-zinc-200">{subject}</span>
         </div>
 
         {!isLocked && (
@@ -221,7 +223,7 @@ function ComposeFields({
           </Button>
         )}
       </div>
-      <Separator className="my-1.5 bg-zinc-700" />
+      <Separator className="my-1.5 bg-zinc-700/50" />
 
       <EmailBodyPreview html={body} isLocked={isLocked} onEdit={onEdit} />
 
@@ -333,7 +335,7 @@ function EditEmailModal({
               variant="light"
               size="sm"
               onPress={onClose}
-              className="h-7 px-2 text-xs text-gray-300"
+              className="h-7 text-xs text-zinc-300"
             >
               Cancel
             </Button>
@@ -341,7 +343,7 @@ function EditEmailModal({
               color="primary"
               size="sm"
               onPress={() => onSave(draft)}
-              className="h-7 px-3 text-xs font-medium"
+              className="h-7 text-xs font-medium"
             >
               Save
             </Button>
@@ -431,7 +433,7 @@ function RecipientSelectionModal({
             </div>
           )}
 
-          {suggestions.length > 0 && <Divider className="my-2 bg-zinc-700" />}
+          {suggestions.length > 0 && <Divider className="my-2" />}
 
           <div className="flex gap-2">
             <Input

@@ -49,11 +49,11 @@ export default function PRReviewCard() {
             height: 16,
             showBackground: false,
           })}
-          <span className="text-[11px] font-medium text-zinc-400">
+          <span className="text-xs font-medium text-zinc-400">
             4 PRs need your review
           </span>
         </div>
-        <span className="text-[11px] text-zinc-500">oldest: 3 days ago</span>
+        <span className="text-xs text-zinc-500">oldest: 3 days ago</span>
       </div>
       <div className="space-y-2">
         {PR_ITEMS.map((item) => (
@@ -66,12 +66,12 @@ export default function PRReviewCard() {
                 </span>
               </span>
               {item.urgent && (
-                <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] text-red-400">
+                <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs text-red-400">
                   Urgent
                 </span>
               )}
             </div>
-            <p className="mt-1 text-[11px] text-zinc-500">
+            <p className="mt-1 text-xs text-zinc-500">
               {item.author} · {item.age}
             </p>
             <p className="mt-1 text-xs text-zinc-400">{item.stats}</p>

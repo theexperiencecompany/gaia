@@ -25,15 +25,22 @@ const formatTime = (timestamp?: string) => {
 
 export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
   return (
-    <div className="w-full min-w-fit max-w-xs rounded-2xl bg-green-900/20 p-4 text-white">
+    <div className="w-full min-w-fit max-w-xs rounded-3xl bg-emerald-400/10 p-4 text-white">
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Gmail width={20} height={20} />
-          <CheckmarkCircle02Icon className="h-5 w-5 text-green-400" />
-          <span className="text-sm font-medium text-green-400">Email Sent</span>
+          <CheckmarkCircle02Icon className="h-5 w-5 text-emerald-400" />
+          <span className="text-sm font-medium text-emerald-400">
+            Email Sent
+          </span>
         </div>
-        <Chip size="sm" variant="flat" color="success" className="text-xs">
+        <Chip
+          size="sm"
+          variant="flat"
+          color="success"
+          className="text-xs tabular-nums"
+        >
           {formatTime(emailSentData.timestamp)}
         </Chip>
       </div>
@@ -42,21 +49,21 @@ export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
       <div className="space-y-2">
         {emailSentData.subject && (
           <div className="text-sm">
-            <span className="text-gray-400">Subject: </span>
-            <span className="text-gray-200">{emailSentData.subject}</span>
+            <span className="text-zinc-400">Subject: </span>
+            <span className="text-zinc-200">{emailSentData.subject}</span>
           </div>
         )}
 
         {emailSentData.recipients && emailSentData.recipients.length > 0 && (
           <div className="text-sm">
-            <span className="text-gray-400">To: </span>
-            <span className="text-gray-200">
+            <span className="text-zinc-400">To: </span>
+            <span className="text-zinc-200">
               {emailSentData.recipients.join(", ")}
             </span>
           </div>
         )}
 
-        <div className="text-sm font-medium text-green-400">
+        <div className="text-sm font-medium text-emerald-400">
           {emailSentData.message}
         </div>
       </div>

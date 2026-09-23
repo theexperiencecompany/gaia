@@ -25,16 +25,16 @@ export default function MeetingPrepCard() {
           Meeting Brief: Sarah Chen, VP Sales @ ByteScale
         </span>
       </div>
-      <p className="mb-4 text-[11px] text-zinc-500">
+      <p className="mb-4 text-xs text-zinc-500">
         11:00 AM · 30 min · Google Meet
       </p>
 
       <div className="space-y-3">
         <div>
-          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
             Company
           </p>
-          <div className="rounded-lg bg-zinc-900 p-2.5">
+          <div className="rounded-xl bg-zinc-900 p-2.5">
             <p className="text-xs text-zinc-400">
               ByteScale · 180 employees · Series B ($24M, Dec 2024)
             </p>
@@ -45,10 +45,10 @@ export default function MeetingPrepCard() {
         </div>
 
         <div>
-          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
             Deal Context
           </p>
-          <div className="rounded-lg bg-zinc-900 p-2.5">
+          <div className="rounded-xl bg-zinc-900 p-2.5">
             <p className="text-xs text-zinc-300">
               Stage: Proposal Sent · Value: $22,000/yr
             </p>
@@ -59,10 +59,10 @@ export default function MeetingPrepCard() {
         </div>
 
         <div>
-          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
             Last 3 touchpoints
           </p>
-          <div className="rounded-lg bg-zinc-900 p-2.5">
+          <div className="rounded-xl bg-zinc-900 p-2.5">
             <div className="space-y-1">
               {TOUCHPOINTS.map((point) => (
                 <p key={point} className="text-xs text-zinc-400">
@@ -74,10 +74,10 @@ export default function MeetingPrepCard() {
         </div>
 
         <div>
-          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
             Suggested talking points
           </p>
-          <div className="rounded-lg bg-zinc-900 p-2.5">
+          <div className="rounded-xl bg-zinc-900 p-2.5">
             <div className="space-y-1">
               {TALKING_POINTS.map((point) => (
                 <p key={point} className="text-xs text-zinc-300">

@@ -22,35 +22,42 @@ export function AppIconPicker({
       {icons.map((icon) => {
         const isSelected = icon.id === selectedId;
         return (
-          <Button
+          <div
             key={icon.id}
-            isIconOnly
-            variant="light"
-            disableRipple
-            aria-label={`${icon.label} app icon`}
-            aria-pressed={isSelected}
-            onPress={() => onSelect(icon.id)}
             className={cn(
               // 22% radius ≈ the macOS app-icon squircle, so flat square
-              // sources match the default (pre-rounded) GAIA icon. Override
-              // HeroUI's fixed icon-button size to fill the grid cell.
-              "h-auto w-full min-w-0 aspect-square overflow-hidden rounded-[24%] p-1 transition-all",
-              isSelected
-                ? "ring-2 ring-primary"
-                : "ring-2 ring-transparent hover:scale-105",
+              // sources match the default (pre-rounded) GAIA icon. Ring lives
+              // on this wrapper because Button styling stays theme-owned.
+              "overflow-hidden rounded-[24%]",
+              isSelected ? "ring-2 ring-primary" : "ring-2 ring-transparent",
             )}
           >
-            {/* Data-URL previews from the main process — the Next.js optimizer
+            <Button
+              isIconOnly
+              variant="light"
+              disableRipple
+              radius="lg"
+              aria-label={`${icon.label} app icon`}
+              aria-pressed={isSelected}
+              onPress={() => onSelect(icon.id)}
+              className={cn(
+                // Override HeroUI's fixed icon-button size to fill the grid cell.
+                "h-auto w-full min-w-0 aspect-square transition-all",
+                !isSelected && "hover:scale-105",
+              )}
+            >
+              {/* Data-URL previews from the main process — the Next.js optimizer
                 can't process them, so bypass it with `unoptimized`. */}
-            <Image
-              src={icon.preview}
-              alt={`${icon.label} app icon`}
-              width={128}
-              height={128}
-              className="aspect-square h-full w-full rounded-[22%] object-cover"
-              unoptimized
-            />
-          </Button>
+              <Image
+                src={icon.preview}
+                alt={`${icon.label} app icon`}
+                width={128}
+                height={128}
+                className="aspect-square h-full w-full rounded-[22%] object-cover"
+                unoptimized
+              />
+            </Button>
+          </div>
         );
       })}
     </div>

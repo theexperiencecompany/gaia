@@ -11,7 +11,6 @@ import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
 import { tokenComparisons } from "./tokenScale";
 import { ACCENT, CARD, HEALTHY, InfoTip } from "./usageChrome";
-import { TAB_CLASSNAMES } from "./usageTabs";
 
 // recharts is heavy, so it loads on demand instead of shipping eagerly with
 // the settings page. The shared promise means every chart here triggers a
@@ -90,7 +89,7 @@ function DayTooltip({
         <p className="mb-1 text-zinc-400">{row.label}</p>
         <div className="flex items-center gap-1.5">
           <span
-            className="size-2 rounded-[2px]"
+            className="size-2 rounded-sm"
             style={{ backgroundColor: HEALTHY }}
           />
           <span className="font-medium text-zinc-100">
@@ -132,7 +131,7 @@ function DayTooltip({
         ].map((p) => (
           <div key={p.name} className="flex items-center gap-1.5">
             <span
-              className="size-2 shrink-0 rounded-[2px]"
+              className="size-2 shrink-0 rounded-sm"
               style={{ backgroundColor: p.color }}
             />
             <span className="flex-1 text-zinc-400">{p.name}</span>
@@ -180,7 +179,7 @@ function TokenScaleLine({ tokens }: { tokens: number }) {
 
   return (
     <div className="mt-2 flex items-center gap-1">
-      <p className="min-w-0 flex-1 truncate text-[13px] text-zinc-500">
+      <p className="min-w-0 flex-1 truncate text-sm text-zinc-500">
         That&apos;s about{" "}
         <span className="font-medium text-zinc-300">
           {lines[index % lines.length]}
@@ -269,14 +268,13 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
           aria-label="Metric"
           selectedKey={metric}
           onSelectionChange={(k) => setMetric(k as Metric)}
-          classNames={TAB_CLASSNAMES}
         >
           <Tab key="actions" title="Actions" />
           <Tab key="tokens" title="Tokens" />
         </Tabs>
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-3">
-        <p className="min-w-0 truncate text-[13px] text-zinc-500">
+        <p className="min-w-0 truncate text-sm text-zinc-500">
           <span className="font-medium tabular-nums text-zinc-300">
             {formatCompactNumber(total)}
           </span>{" "}
@@ -288,7 +286,6 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
           aria-label="Range"
           selectedKey={range}
           onSelectionChange={(k) => setRange(k as RangeKey)}
-          classNames={TAB_CLASSNAMES}
         >
           {RANGES.map((r) => (
             <Tab key={r.key} title={r.label} />

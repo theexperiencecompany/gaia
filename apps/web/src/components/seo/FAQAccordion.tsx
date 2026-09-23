@@ -12,7 +12,6 @@ export default function FAQAccordion({ faqs }: { faqs: FAQ[] }) {
   return (
     <Accordion
       variant="light"
-      className="p-0!"
       defaultSelectedKeys={firstFaq ? [firstFaq.question] : []}
     >
       {faqs.map((faq) => (
@@ -22,10 +21,10 @@ export default function FAQAccordion({ faqs }: { faqs: FAQ[] }) {
           title={faq.question}
           classNames={{
             title: "text-lg font-medium",
-            content: "text-base text-zinc-400 font-light pb-4",
+            content: "text-base text-zinc-400 font-light",
           }}
         >
-          {faq.answer}
+          <div className="pb-4">{faq.answer}</div>
         </AccordionItem>
       ))}
     </Accordion>

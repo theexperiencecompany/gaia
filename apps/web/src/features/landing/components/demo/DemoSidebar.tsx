@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar } from "@heroui/avatar";
 import { Button } from "@heroui/button";
 import {
   BubbleChatAddIcon,
@@ -31,7 +32,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import DemoChatTab from "./DemoChatTab";
 import DemoSettingsDropdown from "./DemoSettingsDropdown";
@@ -116,18 +116,20 @@ const ChatsSidebarContent = memo(function ChatsSidebarContent() {
     <Accordion
       type="multiple"
       defaultValue={["Today", "Yesterday", "Last 30 days"]}
-      className="w-full p-0"
+      className="w-full"
     >
       {Object.entries(CHAT_GROUPS).map(([group, tabs]) => (
         <AccordionItem
           key={group}
           value={group}
-          className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden border-none py-1"
+          className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden"
         >
-          <AccordionTrigger className="w-full px-2 pb-1 pt-0 text-xs font-normal text-zinc-600 hover:text-zinc-600 hover:no-underline">
-            {group}
+          <AccordionTrigger className="w-full">
+            <span className="w-full px-2 pt-0 pb-1 text-left text-xs font-normal text-zinc-600 hover:text-zinc-600 hover:no-underline">
+              {group}
+            </span>
           </AccordionTrigger>
-          <AccordionContent className="w-full p-0!">
+          <AccordionContent className="w-full">
             <div className="flex w-full flex-col gap-1">
               {tabs.map((tab) => (
                 <DemoChatTab
@@ -232,7 +234,7 @@ const IntegrationsSidebarContent = memo(function IntegrationsSidebarContent({
                 <InternetIcon width={14} height={14} className="text-primary" />
               )}
               {integration.status === "connected" && (
-                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               )}
               {integration.status === "created" && (
                 <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
@@ -430,7 +432,7 @@ const DemoSidebar = memo(function DemoSidebar({
         {/* Logo */}
         <div className="flex items-center px-2 py-2">
           <LogoWithContextMenu
-            className="group flex items-center gap-2 px-1"
+            className="group flex items-center"
             width={80}
             height={24}
           />
@@ -493,15 +495,19 @@ const DemoSidebar = memo(function DemoSidebar({
               className="flex w-full items-center justify-between gap-3 rounded-2xl bg-transparent px-2 py-1 transition-colors hover:bg-zinc-800 cursor-pointer"
             >
               <div className="flex items-center gap-2.5">
-                <Avatar className="size-7 shrink-0 rounded-full bg-black">
-                  <AvatarImage
-                    src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
-                    alt="Aryan"
-                  />
-                  <AvatarFallback className="bg-zinc-700 text-xs text-zinc-300">
-                    AR
-                  </AvatarFallback>
-                </Avatar>
+                <Avatar
+                  size="sm"
+                  radius="full"
+                  src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
+                  alt="Aryan"
+                  name="Aryan"
+                  showFallback
+                  fallback="AR"
+                  classNames={{
+                    base: "size-7 shrink-0",
+                    fallback: "text-xs text-zinc-300",
+                  }}
+                />
                 <div className="flex flex-col items-start space-y-1">
                   <span className="text-sm font-medium text-zinc-200">
                     Aryan Randeriya

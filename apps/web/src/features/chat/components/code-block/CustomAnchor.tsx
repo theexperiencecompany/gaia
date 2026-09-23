@@ -136,8 +136,8 @@ function WebsiteErrorState() {
 function WebsiteNoPreview() {
   return (
     <div className="flex items-center gap-2 p-3">
-      <GlobalIcon className="h-4 w-4 text-gray-400" />
-      <span className="text-sm text-gray-400">No preview available</span>
+      <GlobalIcon className="h-4 w-4 text-zinc-400" />
+      <span className="text-sm text-zinc-400">No preview available</span>
     </div>
   );
 }
@@ -205,7 +205,7 @@ function WebsitePreview({
               onError={() => onImageError(metadata.favicon!)}
             />
           ) : (
-            <GlobalIcon className="h-5 w-5 text-gray-400" />
+            <GlobalIcon className="h-5 w-5 text-zinc-400" />
           )}
           {metadata.website_name && (
             <div className="truncate text-sm font-semibold">
@@ -224,7 +224,7 @@ function WebsitePreview({
 
       {/* Description */}
       {metadata.description && (
-        <div className="line-clamp-3 text-xs text-gray-400">
+        <div className="line-clamp-3 text-xs text-zinc-400">
           {metadata.description}
         </div>
       )}
@@ -378,8 +378,12 @@ const CustomAnchor = memo(
     return (
       <Tooltip
         showArrow
-        className="relative max-w-[280px] min-w-[280px] border-2 border-zinc-800 bg-secondary-bg p-3 text-white shadow-lg"
-        content={tooltipContent}
+        className="relative text-white"
+        content={
+          <div className="max-w-[280px] min-w-[280px] p-3">
+            {tooltipContent}
+          </div>
+        }
       >
         <a
           ref={elementRef}

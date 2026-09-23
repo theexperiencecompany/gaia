@@ -47,7 +47,7 @@ export const PermissionToolList = ({
           <Button
             size="sm"
             variant="light"
-            className="-mr-1 h-7 shrink-0 px-2 text-xs text-zinc-400"
+            className="-mr-1 h-7 shrink-0 text-xs text-zinc-400"
             isLoading={permissions.isSavingTools}
             onPress={permissions.resetToDefaults}
           >

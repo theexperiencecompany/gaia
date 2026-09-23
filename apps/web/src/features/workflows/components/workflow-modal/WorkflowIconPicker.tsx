@@ -45,12 +45,9 @@ function IconGrid({ icons, selectedName, onPick }: IconGridProps) {
           <Button
             isIconOnly
             size="sm"
-            variant="light"
+            variant={selectedName === def.name ? "flat" : "light"}
             aria-label={workflowIconLabel(def.name)}
-            className={cn(
-              "text-zinc-300",
-              selectedName === def.name && "bg-zinc-700",
-            )}
+            className="text-zinc-300"
             onPress={() => onPick(def)}
           >
             <def.Icon size={18} />
@@ -123,10 +120,7 @@ export default function WorkflowIconPicker({
           variant="flat"
           radius="sm"
           aria-label={selected ? "Change workflow icon" : "Add workflow icon"}
-          className={cn(
-            "-mt-0.5 size-10 min-w-10 shrink-0",
-            !selected && "bg-zinc-800",
-          )}
+          className="-mt-0.5 size-10 min-w-10 shrink-0"
           style={selected ? tintedBg : undefined}
         >
           {selected ? (
@@ -136,8 +130,8 @@ export default function WorkflowIconPicker({
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 bg-zinc-800 p-3">
-        <div className="flex w-full flex-col gap-3">
+      <PopoverContent className="w-80">
+        <div className="flex w-full flex-col gap-3 p-3">
           <Input
             autoFocus
             size="sm"
@@ -147,24 +141,29 @@ export default function WorkflowIconPicker({
             startContent={
               <Search01Icon className="size-4 shrink-0 text-zinc-500" />
             }
-            classNames={{ inputWrapper: "bg-zinc-900" }}
           />
 
           <div className="flex items-center justify-between gap-1">
             {WORKFLOW_ICON_COLORS.map((swatch) => (
-              <Button
+              <div
                 key={swatch}
-                isIconOnly
-                radius="full"
-                aria-label={`Use color ${swatch}`}
                 className={cn(
-                  "size-6 min-w-6 shrink-0",
+                  // Ring lives on this wrapper because Button styling stays
+                  // theme-owned.
+                  "shrink-0 rounded-full",
                   color === swatch &&
                     "ring-2 ring-white/80 ring-offset-2 ring-offset-zinc-800",
                 )}
-                style={{ backgroundColor: swatch }}
-                onPress={() => colorField.onChange(swatch)}
-              />
+              >
+                <Button
+                  isIconOnly
+                  radius="full"
+                  aria-label={`Use color ${swatch}`}
+                  className="size-6 min-w-6 shrink-0"
+                  style={{ backgroundColor: swatch }}
+                  onPress={() => colorField.onChange(swatch)}
+                />
+              </div>
             ))}
           </div>
 

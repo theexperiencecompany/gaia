@@ -36,7 +36,7 @@ function DocumentCard() {
                 Q1 Product Roadmap Summary
               </p>
               <div className="mt-1 flex items-center gap-2">
-                <span className="rounded-full bg-cyan-400/10 px-2 py-0.5 text-[10px] font-medium text-cyan-400">
+                <span className="rounded-full bg-blue-400/10 px-2 py-0.5 text-xs font-medium text-blue-400">
                   PDF
                 </span>
                 <span className="text-xs text-zinc-500">142 KB</span>

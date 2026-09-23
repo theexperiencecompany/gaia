@@ -1,0 +1,33 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Status tints must sit at /10. Translucent status pills/badges using
+// bg-(emerald|amber|red|blue|yellow|orange|sky)-(400|500)/(15|20|25|30|50)
+// drift darker than the DESIGN.md contract — normalize the opacity to /10.
+// Solid dots (h-1.5|h-2|size-* rounded-full without px-) are exempt: arm A
+// fires on non-rounded-full hits, arm B on rounded-full pills (which always
+// carry px-). A rounded-full WITHOUT px- matches neither arm and is skipped.
+//
+// GritQL notes: matches JsxAttribute() nodes (bare `className=$x` snippets do
+// not match in this engine). Regexes use non-capturing (?:...) groups only.
+or {
+  JsxAttribute() as $node where {
+    $node <: r"[\s\S]*bg-(?:emerald|amber|red|blue|yellow|orange|sky)-(?:400|500)/(?:15|20|25|30|50)[\s\S]*",
+    $node <: not r"[\s\S]*rounded-full[\s\S]*",
+    register_diagnostic(
+      span = $node,
+      message = "Status tint must be /10: change bg-*/(15|20|25|30|50) to bg-*/10.",
+      severity = "error"
+    )
+  },
+  JsxAttribute() as $node where {
+    $node <: r"[\s\S]*bg-(?:emerald|amber|red|blue|yellow|orange|sky)-(?:400|500)/(?:15|20|25|30|50)[\s\S]*",
+    $node <: r"[\s\S]*rounded-full[\s\S]*",
+    $node <: r"[\s\S]*px-[\s\S]*",
+    register_diagnostic(
+      span = $node,
+      message = "Status tint must be /10: change bg-*/(15|20|25|30|50) to bg-*/10.",
+      severity = "error"
+    )
+  }
+}

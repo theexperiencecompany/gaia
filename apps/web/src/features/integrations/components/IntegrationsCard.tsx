@@ -147,7 +147,6 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
         variant="light"
-        className="px-0!"
         selectedKeys={selectedKeys}
         onSelectionChange={handleSelectionChange}
         itemClasses={{

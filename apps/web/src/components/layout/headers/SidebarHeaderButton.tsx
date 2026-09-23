@@ -1,15 +1,18 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/react";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-interface SidebarHeaderButtonProps
-  extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface SidebarHeaderButtonProps {
   children: ReactNode;
   tooltip?: ReactNode;
   "aria-label": string;
+  className?: string;
+  onClick?: () => void;
+  onMouseEnter?: () => void;
+  onFocus?: () => void;
 }
 
 // Lives in its own module, not HeaderManager: HeaderManager imports every
@@ -18,22 +21,22 @@ interface SidebarHeaderButtonProps
 export const SidebarHeaderButton = ({
   children,
   onClick,
+  onMouseEnter,
+  onFocus,
   tooltip,
   "aria-label": ariaLabel,
   className,
-  ...rest
 }: SidebarHeaderButtonProps) => {
   const button = (
     <Button
       aria-label={ariaLabel}
-      size="icon"
-      variant="ghost"
-      className={cn(
-        "group/btn group rounded-xl p-1! hover:bg-primary/20 hover:text-primary",
-        className,
-      )}
+      isIconOnly
+      radius="md"
+      variant="light"
+      className={cn("group/btn group h-9 w-9 hover:text-primary", className)}
       onClick={onClick}
-      {...rest}
+      onMouseEnter={onMouseEnter}
+      onFocus={onFocus}
     >
       {children}
     </Button>

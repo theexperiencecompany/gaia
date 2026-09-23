@@ -89,8 +89,8 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
 
   return (
     <div className="flex h-full flex-col">
-      <SidebarContent className="flex-1 overflow-y-auto pl-6 pr-3 outline-0">
-        <div className="space-y-4 pt-4">
+      <SidebarContent className="flex-1 overflow-y-auto">
+        <div className="space-y-4 pt-4 pl-6 pr-3">
           {/* Title and Description Section */}
           <div className="flex items-start gap-1">
             <Checkbox
@@ -100,7 +100,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
               color="success"
               radius="full"
               classNames={{
-                wrapper: `mt-1 ${todo.completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900 "}`,
+                wrapper: "mt-1",
                 label: "w-[30vw]",
               }}
             />
@@ -124,16 +124,13 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
                   autoFocus
                   classNames={{
                     input:
-                      "text-2xl font-medium bg-transparent text-zinc-100 placeholder:text-zinc-500",
-                    inputWrapper:
-                      "bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
+                      "text-2xl font-medium text-zinc-100 placeholder:text-zinc-500",
                   }}
                   variant="underlined"
                 />
               ) : (
                 <h1
-                  style={{ wordBreak: "break-all" }}
-                  className={`text-2xl leading-tight font-medium ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
+                  className={`text-2xl leading-tight font-medium break-all ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
                 >
                   <button
                     type="button"
@@ -161,9 +158,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
               maxRows={6}
               autoFocus
               classNames={{
-                input: "bg-transparent text-zinc-200 placeholder:text-zinc-500",
-                inputWrapper:
-                  "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+                input: "text-zinc-200 placeholder:text-zinc-500",
               }}
               variant="flat"
             />
@@ -213,7 +208,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
           </div>
 
           <div
-            className={`py-4 border-y-1 border-zinc-800 ${todo?.subtasks?.length > 0 ? "pt-6r" : ""}`}
+            className={`py-4 border-y-1 border-zinc-800 ${todo?.subtasks?.length > 0 ? "pt-6" : ""}`}
           >
             <SubtaskManager
               subtasks={todo.subtasks}
@@ -230,28 +225,30 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
         </div>
       </SidebarContent>
 
-      <SidebarFooter className="p-3">
-        <div className="flex items-center justify-between">
-          <div className="py-2">
-            <span className="text-xs text-zinc-600">
-              Created{" "}
-              {formatDistanceToNow(new Date(todo.created_at), {
-                addSuffix: true,
-              })}
-            </span>
-          </div>
+      <SidebarFooter>
+        <div className="p-3">
+          <div className="flex items-center justify-between">
+            <div className="py-2">
+              <span className="text-xs text-zinc-600">
+                Created{" "}
+                {formatDistanceToNow(new Date(todo.created_at), {
+                  addSuffix: true,
+                })}
+              </span>
+            </div>
 
-          <Button
-            type="button"
-            isIconOnly
-            color="danger"
-            size="sm"
-            variant="flat"
-            onPress={handleDelete}
-            aria-label="Delete todo"
-          >
-            <Delete02Icon className="size-5" />
-          </Button>
+            <Button
+              type="button"
+              isIconOnly
+              color="danger"
+              size="sm"
+              variant="flat"
+              onPress={handleDelete}
+              aria-label="Delete todo"
+            >
+              <Delete02Icon className="size-5" />
+            </Button>
+          </div>
         </div>
       </SidebarFooter>
     </div>

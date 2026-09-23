@@ -56,7 +56,7 @@ export default function PortfolioBriefCard() {
         <span className="text-sm font-medium text-zinc-100">
           Portfolio Brief: Thursday, March 6
         </span>
-        <span className="text-[11px] text-zinc-500">6 active clients</span>
+        <span className="text-xs text-zinc-500">6 active clients</span>
       </div>
       <div>
         {CLIENTS.map((client) => (
@@ -73,14 +73,14 @@ export default function PortfolioBriefCard() {
             <span className="flex-1 text-xs text-zinc-400">
               {client.statusText}
             </span>
-            <span className="shrink-0 text-[10px] text-zinc-500">
+            <span className="shrink-0 text-xs text-zinc-500">
               {client.action}
             </span>
           </div>
         ))}
       </div>
       <div className="mt-2 border-t border-zinc-800 pt-2">
-        <p className="text-[11px] text-zinc-500">
+        <p className="text-xs text-zinc-500">
           2 client calls today · 1 proposal due EOD · 3 invoices outstanding
         </p>
       </div>

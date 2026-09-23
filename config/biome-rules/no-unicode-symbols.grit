@@ -1,0 +1,24 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Never use Unicode/text symbols as UI elements in rendered JSX.
+// No `→`, `•`, `✓`, `×`, `←` in JSX text. Always use an icon component
+// from `@icons` instead. See DESIGN.md and apps/web/CLAUDE.md.
+or {
+  `<$tag>→</$tag>`,
+  `<$tag $_>→</$tag>`,
+  `<$tag>•</$tag>`,
+  `<$tag $_>•</$tag>`,
+  `<$tag>✓</$tag>`,
+  `<$tag $_>✓</$tag>`,
+  `<$tag>×</$tag>`,
+  `<$tag $_>×</$tag>`,
+  `<$tag>←</$tag>`,
+  `<$tag $_>←</$tag>`
+} as $node where {
+  register_diagnostic(
+    span = $node,
+    message = "Do not use Unicode symbols (→ • ✓ × ← →) as UI elements in JSX. Use an icon component from `@icons` instead.",
+    severity = "error"
+  )
+}

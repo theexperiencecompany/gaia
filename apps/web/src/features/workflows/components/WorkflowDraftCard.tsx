@@ -29,7 +29,6 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           label: "Manual",
           icon: <FlashIcon className="size-3.5" />,
           color: "default" as const,
-          bgColor: "bg-zinc-700/50",
         };
       case "schedule": {
         const cronLabel = draft.cron_expression
@@ -39,7 +38,6 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           label: cronLabel,
           icon: <Clock01Icon className="size-3.5" />,
           color: "primary" as const,
-          bgColor: "bg-primary/15",
         };
       }
       case "integration":
@@ -52,14 +50,12 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
               .join(" ") || "Integration",
           icon: <Calendar03Icon className="size-3.5" />,
           color: "secondary" as const,
-          bgColor: "bg-secondary/15",
         };
       default:
         return {
           label: "Unknown",
           icon: <FlashIcon className="size-3.5" />,
           color: "default" as const,
-          bgColor: "bg-zinc-700/50",
         };
     }
   };
@@ -77,7 +73,7 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           variant="flat"
           color="warning"
           classNames={{
-            base: "absolute -top-2 -right-2 bg-warning/20",
+            base: "absolute -top-2 -right-2",
             content: "text-xs font-semibold text-warning",
           }}
         >
@@ -104,7 +100,7 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
             color={trigger.color}
             startContent={trigger.icon}
             classNames={{
-              base: `${trigger.bgColor} shrink-0`,
+              base: "shrink-0",
               content: "text-xs font-medium",
             }}
           >
@@ -128,7 +124,8 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           variant="flat"
           startContent={<PencilEdit01Icon className="size-3.5" />}
           onPress={() => setIsModalOpen(true)}
-          className="mt-1 w-full rounded-xl font-medium"
+          radius="md"
+          className="mt-1 w-full font-medium"
         >
           Review & Create
         </Button>

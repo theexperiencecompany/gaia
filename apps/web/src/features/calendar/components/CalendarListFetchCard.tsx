@@ -24,35 +24,37 @@ export default function CalendarListFetchCard({
           </div>
         </div>
 
-        <ScrollShadow className="max-h-[200px] divide-y divide-gray-700 overflow-x-hidden">
-          {calendars.length > 0 &&
-            calendars
-              .toSorted((a, b) => a.name.localeCompare(b.name)) // Sort alphabetically
-              .map((calendar) => (
-                <div
-                  key={calendar.id}
-                  className="group flex items-center gap-3 p-3 transition-colors hover:bg-zinc-700"
-                >
-                  {/* Color dot - centered vertically */}
+        <ScrollShadow className="max-h-[200px] overflow-x-hidden">
+          <div className="divide-y divide-zinc-800">
+            {calendars.length > 0 &&
+              calendars
+                .toSorted((a, b) => a.name.localeCompare(b.name)) // Sort alphabetically
+                .map((calendar) => (
                   <div
-                    className="h-3 w-3 flex-shrink-0 rounded-full"
-                    style={{
-                      backgroundColor: calendar.backgroundColor || "#00bbff",
-                    }}
-                  />
+                    key={calendar.id}
+                    className="group flex items-center gap-3 p-3 transition-colors hover:bg-zinc-700"
+                  >
+                    {/* Color dot - centered vertically */}
+                    <div
+                      className="h-3 w-3 flex-shrink-0 rounded-full"
+                      style={{
+                        backgroundColor: calendar.backgroundColor || "#00bbff",
+                      }}
+                    />
 
-                  <div className="flex-1">
-                    <span className="block truncate text-sm font-medium text-gray-300 group-hover:text-white">
-                      {calendar.name}
-                    </span>
-                    {calendar.description && (
-                      <span className="block truncate text-xs text-gray-500 group-hover:text-gray-400">
-                        {calendar.description}
+                    <div className="flex-1">
+                      <span className="block truncate text-sm font-medium text-zinc-300 group-hover:text-white">
+                        {calendar.name}
                       </span>
-                    )}
+                      {calendar.description && (
+                        <span className="block truncate text-xs text-zinc-500 group-hover:text-zinc-400">
+                          {calendar.description}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+          </div>
         </ScrollShadow>
       </div>
     );

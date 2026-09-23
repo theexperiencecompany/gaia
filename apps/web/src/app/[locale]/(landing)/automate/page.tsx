@@ -73,20 +73,17 @@ const TOOL_DOMAINS: Record<string, string> = {
 function ToolFavicon({
   slug,
   name,
-  rotate,
-  zIndex,
+  className,
 }: {
   readonly slug: string;
   readonly name: string;
-  readonly rotate: string;
-  readonly zIndex: number;
+  readonly className?: string;
 }) {
   const domain = TOOL_DOMAINS[slug];
   if (!domain) return null;
   return (
     <div
-      className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md"
-      style={{ rotate, zIndex }}
+      className={`relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md ${className ?? ""}`}
     >
       <Image
         src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
@@ -190,14 +187,12 @@ export default async function AutomateHubPage({ params }: PageProps) {
                     <ToolFavicon
                       slug={combo.toolASlug}
                       name={combo.toolA}
-                      rotate="-9deg"
-                      zIndex={1}
+                      className="-rotate-9 z-1"
                     />
                     <ToolFavicon
                       slug={combo.toolBSlug}
                       name={combo.toolB}
-                      rotate="9deg"
-                      zIndex={0}
+                      className="rotate-9 z-0"
                     />
                   </div>
                   <h3 className="text-base font-medium text-white transition-colors group-hover:text-primary">

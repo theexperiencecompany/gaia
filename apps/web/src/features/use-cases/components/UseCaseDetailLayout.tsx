@@ -70,7 +70,7 @@ export default function UseCaseDetailLayout({
             <ShareButton id={id} />
             <RaisedButton
               color="#00bbff"
-              className="shrink-0 text-black!"
+              className="shrink-0"
               onClick={() => {
                 trackEvent(ANALYTICS_EVENTS.USE_CASE_CLICKED, {
                   use_case_id: id,

@@ -155,11 +155,11 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
     <>
       {panel}
       <Card
-        className="group cursor-pointer border border-zinc-700/80 bg-zinc-900/70 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+        className="group cursor-pointer transition-colors"
         isPressable
         onPress={handleOpen}
       >
-        <CardBody className="p-3.5">
+        <CardBody>
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-center gap-2.5">
               <div className="flex-shrink-0">

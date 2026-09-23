@@ -39,13 +39,11 @@ export default function PipelineBriefCard() {
           height: 16,
           showBackground: false,
         })}
-        <span className="text-[11px] font-medium text-zinc-400">
+        <span className="text-xs font-medium text-zinc-400">
           Today's pipeline: Thursday, March 6
         </span>
       </div>
-      <p className="mb-3 text-[11px] text-zinc-500">
-        3 deals need your attention
-      </p>
+      <p className="mb-3 text-xs text-zinc-500">3 deals need your attention</p>
       <div className="space-y-2">
         {DEAL_ITEMS.map((item) => (
           <div key={item.id} className="rounded-xl bg-zinc-900 p-3">
@@ -54,7 +52,7 @@ export default function PipelineBriefCard() {
                 {item.company}: {item.value}
               </span>
               {item.urgent && (
-                <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] text-red-400">
+                <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs text-red-400">
                   Urgent
                 </span>
               )}
@@ -65,7 +63,7 @@ export default function PipelineBriefCard() {
         ))}
       </div>
       <div className="mt-3 border-t border-zinc-800 pt-3">
-        <p className="text-[11px] text-zinc-500">
+        <p className="text-xs text-zinc-500">
           2 calls today at 11am + 3pm · 1 proposal due by EOD
         </p>
       </div>

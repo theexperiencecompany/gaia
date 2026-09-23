@@ -82,10 +82,7 @@ const EventTitleFields: React.FC<EventTitleFieldsProps> = ({
       onChange={(e) => onSummaryChange(e.target.value)}
       placeholder="Event title"
       classNames={{
-        input:
-          "text-2xl  bg-transparent text-zinc-100 placeholder:text-zinc-700",
-        inputWrapper:
-          "bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent data-[hover=true]:bg-transparent border-red-500!",
+        input: "text-2xl text-zinc-100 placeholder:text-zinc-700",
       }}
       variant="underlined"
       autoFocus={isCreating}
@@ -98,9 +95,7 @@ const EventTitleFields: React.FC<EventTitleFieldsProps> = ({
       minRows={6}
       maxRows={6}
       classNames={{
-        input: "bg-transparent text-zinc-200 placeholder:text-zinc-700",
-        inputWrapper:
-          "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+        input: "text-zinc-200 placeholder:text-zinc-700",
       }}
       variant="flat"
     />
@@ -192,10 +187,7 @@ const RecurrenceSelector: React.FC<RecurrenceSelectorProps> = ({
         if (selected) onRecurrenceTypeChange(selected);
       }}
       classNames={{
-        trigger:
-          "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
         value: "text-zinc-200",
-        popoverContent: "bg-zinc-900 border border-zinc-800",
         label: "text-zinc-400",
       }}
       startContent={<RepeatIcon className="size-4 text-zinc-500" />}
@@ -237,7 +229,7 @@ const RecurrenceSelector: React.FC<RecurrenceSelectorProps> = ({
                   : [...customRecurrenceDays, day.value];
                 onCustomRecurrenceDaysChange(newDays);
               }}
-              className={`flex size-9 items-center justify-center rounded-full text-sm font-medium transition-colors ${customRecurrenceDays.includes(day.value) ? "bg-blue-600 text-white" : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700"}`}
+              className={`flex size-9 items-center justify-center rounded-full text-sm font-medium transition-colors ${customRecurrenceDays.includes(day.value) ? "bg-primary text-primary-foreground" : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700"}`}
             >
               {day.label}
             </button>
@@ -270,10 +262,7 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
       }}
       isRequired
       classNames={{
-        trigger:
-          "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
         value: "text-zinc-200",
-        popoverContent: "bg-zinc-900 border border-zinc-800",
         label: "text-zinc-400",
       }}
       startContent={
@@ -318,12 +307,14 @@ const EventDetailsAccordion: React.FC<EventDetailsAccordionProps> = ({
   event,
 }) => (
   <Accordion type="single" collapsible className="w-full">
-    <AccordionItem value="details" className="border-zinc-800/50">
-      <AccordionTrigger className="text-sm font-medium text-zinc-400 hover:text-zinc-300">
-        Additional Details
+    <AccordionItem value="details">
+      <AccordionTrigger>
+        <span className="text-sm font-medium text-zinc-400 hover:text-zinc-300">
+          Additional Details
+        </span>
       </AccordionTrigger>
       <AccordionContent>
-        <div className="space-y-3 rounded-lg bg-zinc-800/20 p-4">
+        <div className="space-y-3 rounded-xl bg-zinc-800/20 p-4">
           {event.created && (
             <div className="flex items-center justify-between text-sm">
               <span className="text-zinc-500">Created</span>
@@ -474,8 +465,8 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
 
   return (
     <div className="flex h-full flex-col">
-      <SidebarContent className="flex-1 overflow-y-auto px-6">
-        <div className="space-y-4 pt-4">
+      <SidebarContent className="flex-1 overflow-y-auto">
+        <div className="space-y-4 px-6 pt-4">
           <EventTitleFields
             summary={summary}
             description={description}
@@ -514,7 +505,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
 
           {/* Recurrence Info (only for existing recurring events) */}
           {!isCreating && selectedEvent?.recurrence && (
-            <div className="rounded-lg border border-zinc-800/50 bg-zinc-800/20 p-3">
+            <div className="rounded-xl bg-zinc-800/20 p-3">
               <div className="flex items-center gap-2 text-sm">
                 <RepeatIcon className="size-4 text-zinc-500" />
                 <span className="font-medium text-zinc-400">
@@ -531,38 +522,40 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
         </div>
       </SidebarContent>
 
-      <SidebarFooter className="space-y-3 px-6 py-6">
-        {/* AI Actions (only for existing events) */}
-        {!isCreating && selectedEvent && (
-          <CalendarEventAIActions
-            selectedEvent={selectedEvent}
-            calendars={calendars}
-          />
-        )}
-
-        {/* Create/Delete Actions */}
-        <div className="flex items-center gap-3">
-          {isCreating ? (
-            <Button
-              onPress={onCreate}
-              disabled={isSaving || !summary.trim()}
-              color="primary"
-              fullWidth
-              isLoading={isSaving}
-            >
-              {isSaving ? "Creating..." : "Create Event"}
-            </Button>
-          ) : (
-            <>
-              <div className="flex-1 text-center text-sm text-zinc-500">
-                {isSaving ? "Saving changes..." : "Changes saved"}
-              </div>
-              <DeleteEventButton
-                disabled={isSaving}
-                onConfirmDelete={confirmAndDelete}
-              />
-            </>
+      <SidebarFooter>
+        <div className="space-y-3 px-6 py-6">
+          {/* AI Actions (only for existing events) */}
+          {!isCreating && selectedEvent && (
+            <CalendarEventAIActions
+              selectedEvent={selectedEvent}
+              calendars={calendars}
+            />
           )}
+
+          {/* Create/Delete Actions */}
+          <div className="flex items-center gap-3">
+            {isCreating ? (
+              <Button
+                onPress={onCreate}
+                disabled={isSaving || !summary.trim()}
+                color="primary"
+                fullWidth
+                isLoading={isSaving}
+              >
+                {isSaving ? "Creating..." : "Create Event"}
+              </Button>
+            ) : (
+              <>
+                <div className="flex-1 text-center text-sm text-zinc-500">
+                  {isSaving ? "Saving changes..." : "Changes saved"}
+                </div>
+                <DeleteEventButton
+                  disabled={isSaving}
+                  onConfirmDelete={confirmAndDelete}
+                />
+              </>
+            )}
+          </div>
         </div>
       </SidebarFooter>
 

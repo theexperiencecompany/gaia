@@ -5,6 +5,7 @@ import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { handleSlashCommandKey } from "@/features/chat/hooks/useSlashCommandDropdownState";
 import {
@@ -115,7 +116,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
                   {formatToolName(match.tool.name)}
                 </span>
                 {selectedCategory === "all" && (
-                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
+                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
                     {formatToolName(
                       categoryDisplayMap[match.tool.category]?.displayName ||
                         match.tool.category,
@@ -342,18 +343,24 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
             duration: 0.2,
             ease: [0.19, 1, 0.22, 1],
           }}
-          className="slash-command-dropdown fixed z-200 overflow-hidden rounded-3xl border-1 border-zinc-800 bg-zinc-900/70 outline-0! backdrop-blur-xl"
-          style={{
-            ...(position.top !== undefined && { top: 0, height: position.top }),
-            ...(position.bottom !== undefined && {
-              bottom: `calc(100vh - ${position.bottom - 2}px)`,
-              maxHeight: position.bottom,
-            }),
-            left: position.left,
-            width: position.width,
-            transform: "none",
-            boxShadow: "0px -18px 30px 5px rgba(0, 0, 0, 0.2)",
-          }}
+          className="slash-command-dropdown slash-dropdown-shadow slash-dropdown-anchored fixed z-200 overflow-hidden rounded-3xl border-1 border-zinc-800 bg-zinc-900/70 outline-0! backdrop-blur-xl"
+          style={
+            {
+              top: position.top !== undefined ? 0 : undefined,
+              height: position.top,
+              "--sc-dropdown-bottom":
+                position.bottom !== undefined
+                  ? `calc(100vh - ${position.bottom - 2}px)`
+                  : undefined,
+              "--sc-dropdown-max-height":
+                position.bottom !== undefined
+                  ? `${position.bottom}px`
+                  : undefined,
+              left: position.left,
+              width: position.width,
+              transform: "none",
+            } as CSSProperties
+          }
           onClick={(e) => e.stopPropagation()}
           onKeyDown={handleKeyDown}
           tabIndex={-1}

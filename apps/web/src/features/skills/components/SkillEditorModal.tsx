@@ -182,7 +182,7 @@ function SkillEditorForm({
               <MarkdownRenderer
                 content={instructions}
                 hideCodeToolbar
-                className="prose-sm prose-p:text-zinc-300 prose-li:text-zinc-300"
+                className="[&_p]:text-zinc-300 [&_li]:text-zinc-300"
               />
             ) : (
               <p className="text-xs text-zinc-500">Nothing to preview yet.</p>
@@ -195,9 +195,9 @@ function SkillEditorForm({
 
   return (
     <>
-      <ModalHeader className="flex-col items-start gap-1">
+      <ModalHeader className="flex flex-col items-start">
         <span>{isEdit ? "Edit skill" : "New skill"}</span>
-        <span className="text-xs font-normal text-zinc-500">
+        <span className="mt-1 text-xs font-normal text-zinc-500">
           {isEdit
             ? "Update what this skill does and where it runs."
             : "Teach your assistant a reusable workflow it can follow."}
@@ -233,13 +233,13 @@ function SkillEditorForm({
         )}
       </ModalBody>
       <ModalFooter>
-        <Button variant="light" className="rounded-xl" onPress={onClose}>
+        <Button variant="light" radius="md" onPress={onClose}>
           {isEdit || mode === "write" ? "Cancel" : "Done"}
         </Button>
         {(isEdit || mode === "write") && (
           <Button
             color="primary"
-            className="rounded-xl"
+            radius="md"
             onPress={handleSave}
             isLoading={saving}
             isDisabled={!isValid}

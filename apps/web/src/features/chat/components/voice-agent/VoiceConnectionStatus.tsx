@@ -25,7 +25,7 @@ export function VoiceConnectionStatus() {
 
   return (
     <div className="flex justify-center pb-2">
-      <div className="inline-flex items-center gap-2 rounded-full bg-zinc-800/80 px-3 py-1.5 text-sm text-zinc-300 shadow-md backdrop-blur">
+      <div className="inline-flex items-center gap-2 rounded-full bg-zinc-800/80 px-3 py-1.5 text-sm text-zinc-300 backdrop-blur">
         <Image
           alt=""
           src="/images/logos/logo.webp"

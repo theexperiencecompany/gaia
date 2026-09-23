@@ -96,16 +96,13 @@ export default function DemoSettingsDropdown({
     <>
       <Dropdown
         placement="right-end"
-        className="dark rounded-2xl bg-secondary-bg text-foreground shadow-xl"
+        className="dark"
         offset={21}
         onOpenChange={onOpenChange}
       >
         <DropdownTrigger>{children}</DropdownTrigger>
         <DropdownMenu aria-label="Settings" variant="faded">
-          <DropdownSection
-            showDivider
-            classNames={{ divider: "bg-zinc-800/60" }}
-          >
+          <DropdownSection showDivider>
             <DropdownItem
               key="upgrade"
               startContent={
@@ -117,11 +114,7 @@ export default function DemoSettingsDropdown({
             </DropdownItem>
           </DropdownSection>
 
-          <DropdownSection
-            title="Settings"
-            showDivider
-            classNames={{ divider: "bg-zinc-800/60" }}
-          >
+          <DropdownSection title="Settings" showDivider>
             <DropdownItem
               key="profile"
               startContent={<SparklesIcon className={ic} />}
@@ -166,11 +159,7 @@ export default function DemoSettingsDropdown({
             </DropdownItem>
           </DropdownSection>
 
-          <DropdownSection
-            title="Community"
-            showDivider
-            classNames={{ divider: "bg-zinc-800/60" }}
-          >
+          <DropdownSection title="Community" showDivider>
             <DropdownItem
               key="twitter"
               startContent={<TwitterIcon className={ic} />}

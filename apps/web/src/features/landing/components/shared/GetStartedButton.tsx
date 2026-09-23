@@ -4,25 +4,29 @@ import type { ReactNode } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { Link } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { cn } from "@/lib/utils";
 
 export default function GetStartedButton({
   small_text = false,
   text = "Get Started",
   btnColor = "#00bbff",
-  classname = "text-black!",
+  className,
   href = "/signup",
 }: {
   small_text?: boolean;
   text?: ReactNode;
   btnColor?: string;
-  classname?: string;
+  className?: string;
   href?: string;
 }) {
   return (
     <div className="relative z-2 flex flex-col items-center gap-4 group">
       <Link href={href}>
         <RaisedButton
-          className={`rounded-xl ${classname} before:rounded-xl duration-400 ease-out group shadow-black hover:scale-110`}
+          className={cn(
+            "rounded-xl before:rounded-xl duration-400 ease-out group shadow-black hover:scale-110",
+            className,
+          )}
           color={btnColor}
           onClick={() => {
             trackEvent(ANALYTICS_EVENTS.CTA_GET_STARTED_CLICKED, {

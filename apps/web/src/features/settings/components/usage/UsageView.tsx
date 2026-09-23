@@ -229,9 +229,6 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
           onSelectionChange={(k) => setWin(k as Period)}
           className="absolute right-4 top-4"
           classNames={{
-            tabList: "bg-zinc-800/80 p-0.5",
-            cursor: "bg-zinc-700",
-            tab: "h-6 px-3",
             tabContent:
               "text-xs font-medium text-zinc-500 group-data-[selected=true]:text-zinc-100",
           }}
@@ -253,7 +250,7 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
             ? "of your daily allowance used"
             : "of your monthly allowance used"}
         </p>
-        <p className="mt-2 text-[13px] text-zinc-500">
+        <p className="mt-2 text-sm text-zinc-500">
           {heroResetText(win, resetIso)}
         </p>
       </div>
@@ -332,7 +329,7 @@ function Stats({
               delay={150}
               closeDelay={0}
               classNames={{
-                content: "max-w-64 bg-zinc-800 text-xs text-zinc-300 shadow-xl",
+                content: "max-w-64 text-xs text-zinc-300",
               }}
             >
               <span className="flex cursor-default items-center gap-0.5 text-xs font-medium text-orange-400">
@@ -529,7 +526,7 @@ function TrendTooltip({
       </p>
       <div className="flex items-center gap-1.5">
         <span
-          className="size-2 rounded-[2px]"
+          className="size-2 rounded-sm"
           style={{ backgroundColor: row.color }}
         />
         <span className="text-zinc-400">{row.name}</span>
@@ -610,7 +607,7 @@ function Trend({
           <InfoTip text="Your cumulative messages sent this month. The dashed line projects where you'll land at your current pace." />
         </div>
         {runOutDom && (
-          <p className="text-[13px] font-medium text-amber-400">
+          <p className="text-sm font-medium text-amber-400">
             On track to run out {monthName} {runOutDom} ({daysLeft}{" "}
             {daysLeft === 1 ? "day" : "days"} left)
           </p>
@@ -740,9 +737,6 @@ function Tools({
           selectedKey={period}
           onSelectionChange={(k) => onPeriod(k as Period)}
           classNames={{
-            tabList: "bg-zinc-800/80 p-0.5",
-            cursor: "bg-zinc-700",
-            tab: "h-6 px-3",
             tabContent:
               "text-xs font-medium text-zinc-500 group-data-[selected=true]:text-zinc-100",
           }}
@@ -823,7 +817,7 @@ function FeatureRow({
         delay={250}
         closeDelay={0}
         classNames={{
-          content: "max-w-56 bg-zinc-800 text-xs text-zinc-300 shadow-xl",
+          content: "max-w-56 text-xs text-zinc-300",
         }}
       >
         <span className="w-36 shrink-0 cursor-default truncate text-sm font-medium text-zinc-200">
@@ -834,7 +828,7 @@ function FeatureRow({
       <span className="min-w-16 shrink-0 text-right text-xs tabular-nums text-zinc-500">
         {/* Over-limit is legitimate (plan change, automated triggers) — mark it
             instead of letting "29/20" read like a rendering bug. */}
-        <span className={p.used > p.limit ? "text-[#ff453a]" : undefined}>
+        <span className={p.used > p.limit ? "text-red-400" : undefined}>
           {p.used.toLocaleString()}
         </span>
         /{p.limit.toLocaleString()}
@@ -889,7 +883,7 @@ function UpgradeBanner({
         <p className="text-sm font-semibold text-white">
           Subscribe to GAIA Pro
         </p>
-        <p className="truncate text-[13px] text-zinc-500">{reason}</p>
+        <p className="truncate text-sm text-zinc-500">{reason}</p>
       </div>
       <Button
         color="primary"

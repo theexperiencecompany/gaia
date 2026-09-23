@@ -102,7 +102,6 @@ export function useTodoItem({ todo, projects, onUpdate }: UseTodoItemParams) {
   const checkboxColor = todo.completed
     ? "default"
     : priorityColors[todo.priority];
-  const checkboxWrapperClassName = `mt-1 ${todo.completed ? "" : `${priorityRingColors[todo.priority]} border-dashed! border-1 before:border-0! bg-zinc-900`}`;
   const titleClassName = `text-base font-normal ${
     todo.completed ? "text-zinc-500 line-through" : ""
   }`;
@@ -114,7 +113,6 @@ export function useTodoItem({ todo, projects, onUpdate }: UseTodoItemParams) {
     isOverdue,
     isToday,
     checkboxColor,
-    checkboxWrapperClassName,
     titleClassName,
   };
 }

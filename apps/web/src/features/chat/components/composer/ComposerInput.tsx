@@ -111,11 +111,8 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
             ref={inputRef}
             autoFocus
             classNames={{
-              inputWrapper:
-                " px-3 data-[hover=true]:bg-zinc-800 group-data-[focus-visible=true]:ring-zinc-800 group-data-[focus-visible=true]:ring-offset-0 shadow-none group-data-[focus-visible=true]:ring-transparent",
               innerWrapper: `${currentHeight > 24 ? "items-end" : "items-center"} `,
-              input:
-                "font-light focus-visible:border-0! focus-visible:border-transparent!",
+              input: "font-light",
             }}
             maxRows={13}
             minRows={1}

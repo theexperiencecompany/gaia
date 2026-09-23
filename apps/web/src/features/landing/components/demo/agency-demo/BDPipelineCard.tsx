@@ -50,7 +50,7 @@ export default function BDPipelineCard() {
         })}
         <span className="text-sm font-medium text-zinc-100">BD Pipeline</span>
       </div>
-      <p className="mb-3 text-[11px] text-zinc-500">
+      <p className="mb-3 text-xs text-zinc-500">
         4 active opportunities · 2 new this week
       </p>
 
@@ -62,7 +62,7 @@ export default function BDPipelineCard() {
                 {item.company}: {item.value}
               </span>
               {item.hot && (
-                <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-400">
                   Hot
                 </span>
               )}
@@ -74,7 +74,7 @@ export default function BDPipelineCard() {
       </div>
 
       <div className="mt-3 border-t border-zinc-800 pt-3">
-        <p className="text-[11px] text-zinc-500">
+        <p className="text-xs text-zinc-500">
           2 proposals due this week · $29,200 in qualified pipeline
         </p>
       </div>

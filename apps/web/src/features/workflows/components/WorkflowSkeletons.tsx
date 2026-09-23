@@ -2,28 +2,28 @@ import { Skeleton } from "@heroui/react";
 
 const WorkflowCardSkeleton = () => {
   return (
-    <div className="relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 bg-zinc-800 outline-zinc-800/70 p-4">
+    <div className="relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl bg-zinc-800 p-4">
       <div className="flex items-start justify-between">
         <div className="flex min-h-8 items-center gap-2">
-          <Skeleton className="h-8 w-8 rounded-lg" />
-          <Skeleton className="h-8 w-8 rounded-lg" />
-          <Skeleton className="h-8 w-8 rounded-lg" />
+          <Skeleton className="h-8 w-8 rounded-md" />
+          <Skeleton className="h-8 w-8 rounded-md" />
+          <Skeleton className="h-8 w-8 rounded-md" />
         </div>
       </div>
 
       <div>
-        <Skeleton className="mb-2 h-6 w-3/4 rounded-lg" />
-        <Skeleton className="h-4 w-full rounded-lg" />
-        <Skeleton className="mt-1 h-4 w-2/3 rounded-lg" />
+        <Skeleton className="mb-2 h-6 w-3/4 rounded-md" />
+        <Skeleton className="h-4 w-full rounded-md" />
+        <Skeleton className="mt-1 h-4 w-2/3 rounded-md" />
       </div>
 
       <div className="mt-auto">
         <div className="mt-1 flex items-center justify-between gap-2">
           <div className="space-y-1">
-            <Skeleton className="h-3 w-20 rounded-lg" />
-            <Skeleton className="h-3 w-16 rounded-lg" />
+            <Skeleton className="h-3 w-20 rounded-md" />
+            <Skeleton className="h-3 w-16 rounded-md" />
           </div>
-          <Skeleton className="h-8 w-20 rounded-lg" />
+          <Skeleton className="h-8 w-20 rounded-md" />
         </div>
       </div>
     </div>

@@ -101,11 +101,11 @@ export default function MarketplaceDemo() {
                 <span className="text-sm font-semibold text-zinc-100">
                   {card.name}
                 </span>
-                <span className="rounded-full bg-zinc-700/60 px-2 py-0.5 text-[10px] text-zinc-400 shrink-0">
+                <span className="rounded-full bg-zinc-700/60 px-2 py-0.5 text-xs text-zinc-400 shrink-0">
                   {card.category}
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-500 mt-0.5">{card.creator}</p>
+              <p className="text-xs text-zinc-500 mt-0.5">{card.creator}</p>
             </div>
           </div>
 
@@ -120,20 +120,20 @@ export default function MarketplaceDemo() {
               {card.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-md bg-zinc-700/50 px-1.5 py-0.5 text-[10px] text-zinc-500"
+                  className="rounded-md bg-zinc-700/50 px-1.5 py-0.5 text-xs text-zinc-500"
                 >
                   {tag}
                 </span>
               ))}
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-[11px] text-zinc-500 flex items-center gap-1">
+              <span className="text-xs text-zinc-500 flex items-center gap-1">
                 <Download01Icon className="size-3" />
                 {card.clones}
               </span>
               <button
                 type="button"
-                className="rounded-lg bg-[#00bbff]/10 text-[#00bbff] text-xs px-3 py-1 font-medium hover:bg-[#00bbff]/20 transition-colors"
+                className="rounded-xl bg-primary/10 text-primary text-xs px-3 py-1 font-medium hover:bg-primary/10 transition-colors"
               >
                 Install
               </button>

@@ -97,9 +97,8 @@ export function IntervalPicker({
           }
         }}
         fullWidth
+        radius="md"
         classNames={{
-          tabList: "rounded-xl bg-zinc-800/60 p-1",
-          cursor: "rounded-lg bg-zinc-700 shadow-sm",
           tabContent:
             "font-medium text-zinc-400 group-data-[selected=true]:text-white",
           panel: "hidden",

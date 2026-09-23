@@ -14,13 +14,13 @@ export default function OneOnOnePrepCard() {
           1:1 Prep: Alex M.
         </span>
       </div>
-      <p className="mb-1 text-[11px] text-zinc-500">Today, 2:00 PM</p>
+      <p className="mb-1 text-xs text-zinc-500">Today, 2:00 PM</p>
 
       <div>
-        <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
           This Sprint
         </p>
-        <div className="rounded-lg bg-zinc-900 p-2.5 space-y-1">
+        <div className="rounded-xl bg-zinc-900 p-2.5 space-y-1">
           <p className="flex items-start gap-1 text-xs text-emerald-400">
             <CheckmarkCircle02Icon
               width={12}
@@ -44,10 +44,10 @@ export default function OneOnOnePrepCard() {
           </p>
         </div>
 
-        <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
           Potential topics
         </p>
-        <div className="rounded-lg bg-zinc-900 p-2.5 space-y-1">
+        <div className="rounded-xl bg-zinc-900 p-2.5 space-y-1">
           <p className="flex items-start gap-1 text-xs text-zinc-300">
             <ArrowRight02Icon
               width={12}
@@ -74,10 +74,10 @@ export default function OneOnOnePrepCard() {
           </p>
         </div>
 
-        <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
           From last 1:1 (Feb 20)
         </p>
-        <div className="rounded-lg bg-zinc-900 p-2.5 space-y-1">
+        <div className="rounded-xl bg-zinc-900 p-2.5 space-y-1">
           <p className="text-xs text-zinc-400">
             • Action: you&apos;d get clarity on Q2 roadmap, not yet shared
           </p>
@@ -93,7 +93,7 @@ export default function OneOnOnePrepCard() {
       </div>
 
       <div className="mt-2 pt-2 border-t border-zinc-800">
-        <p className="text-[11px] text-amber-400">
+        <p className="text-xs text-amber-400">
           Open questions: 1 (ENG-407 API schema, needs your decision)
         </p>
       </div>

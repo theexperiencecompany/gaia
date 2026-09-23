@@ -76,10 +76,10 @@ function ReplyQuote({
         className="absolute inset-y-2 left-1.5 w-1 rounded-full bg-zinc-400 transition-colors group-hover/quote:bg-primary"
       />
       <div className="flex flex-col overflow-hidden">
-        <span className="text-[11px] font-semibold text-zinc-400">
+        <span className="text-xs font-semibold text-zinc-400">
           {replyToMessage.role === "user" ? "You" : "GAIA"}
         </span>
-        <span className="truncate text-[12px] text-zinc-500">{truncated}</span>
+        <span className="truncate text-xs text-zinc-500">{truncated}</span>
       </div>
     </button>
   );
@@ -106,7 +106,7 @@ function FailedResponse({
 }>) {
   const retryButton = onRetry && (
     <Button
-      className="h-7 min-w-0 shrink-0 px-2 text-xs"
+      className="h-7 min-w-0 shrink-0 text-xs"
       isDisabled={isRetrying}
       onPress={onRetry}
       radius="full"

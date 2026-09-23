@@ -7,6 +7,7 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useTodoItem } from "@/features/todo/hooks/useTodoItem";
 import { cn } from "@/lib/utils";
 import type { Project, Todo, TodoUpdate } from "@/types/features/todoTypes";
+import { Priority } from "@/types/features/todoTypes";
 import { TodoItemMeta } from "./TodoItemMeta";
 import { TodoTitle } from "./TodoTitle";
 
@@ -76,19 +77,17 @@ export default memo(function TodoItem({
     isOverdue,
     isToday,
     checkboxColor,
-    checkboxWrapperClassName,
     titleClassName,
   } = useTodoItem({ todo, projects, onUpdate });
 
   return (
     <div
       className={cn(
-        "pointer-events-auto relative w-full rounded-xl p-2 pl-3 mb-0 group",
+        "pointer-events-auto relative w-full rounded-xl p-2 pl-3 mb-0 group todo-item-cv",
         isSelected ? "bg-zinc-800/50" : "hover:bg-zinc-800/50",
         todo.completed && "opacity-30",
         className,
       )}
-      style={{ contentVisibility: "auto", containIntrinsicSize: "0 80px" }}
       onMouseEnter={() => onPrefetchWorkflow?.(todo.id)}
     >
       <button
@@ -105,7 +104,15 @@ export default memo(function TodoItem({
             color={checkboxColor}
             radius="full"
             classNames={{
-              wrapper: checkboxWrapperClassName,
+              wrapper: todo.completed
+                ? "mt-1"
+                : todo.priority === Priority.HIGH
+                  ? "mt-1 border-red-500 border-dashed! border-1 before:border-0! bg-zinc-900"
+                  : todo.priority === Priority.MEDIUM
+                    ? "mt-1 border-yellow-500 border-dashed! border-1 before:border-0! bg-zinc-900"
+                    : todo.priority === Priority.LOW
+                      ? "mt-1 border-blue-500 border-dashed! border-1 before:border-0! bg-zinc-900"
+                      : "mt-1 border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900",
               label: "w-[30vw]",
             }}
           />
@@ -113,15 +120,7 @@ export default memo(function TodoItem({
 
         <div className="min-w-0 flex-1">
           <div>
-            <h4
-              style={{
-                display: "-webkit-box",
-                WebkitBoxOrient: "vertical",
-                WebkitLineClamp: 2,
-                overflow: "hidden",
-              }}
-              className={titleClassName}
-            >
+            <h4 className={cn("line-clamp-2", titleClassName)}>
               <TodoTitle title={todo.title} />
             </h4>
             {todo.description && (

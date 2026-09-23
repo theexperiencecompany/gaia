@@ -96,7 +96,7 @@ export const gaiaOpenUITheme = createTheme({
   radiusL: "12px", // buttons / inputs
   radiusXl: "14px",
   radius2xl: "16px",
-  radius3xl: "20px", // cards (react-ui Card uses radius-3xl)
+  radius3xl: "24px", // cards (react-ui Card uses radius-3xl)
 
   // ── Shadows — flat cards; keep large shadows only for true overlays ──────
   shadow0: "none",

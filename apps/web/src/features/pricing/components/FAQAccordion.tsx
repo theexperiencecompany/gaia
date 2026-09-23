@@ -9,21 +9,6 @@ export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
 
   return (
     <div className="relative flex h-fit w-full items-center justify-center px-2 py-8 sm:px-4">
-      {/* <div
-        className="pointer-events-none absolute top-0 right-0 z-0 h-screen w-screen"
-        style={{
-          backgroundImage: `
-              radial-gradient(
-                circle at top right,
-                #00bbff40,
-                transparent 70%
-              )
-            `,
-          filter: "blur(100px)",
-          backgroundRepeat: "no-repeat",
-        }}
-      /> */}
-
       <div className="relative z-1 w-full max-w-7xl px-0 py-4 sm:p-8">
         <div className="mb-10 flex w-full flex-col items-start justify-center gap-3">
           <span className="font-serif text-4xl sm:text-5xl lg:text-7xl font-medium">
@@ -33,7 +18,7 @@ export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
 
         <Accordion
           variant="light"
-          className="cursor-pointer p-0!"
+          className="cursor-pointer"
           itemClasses={{ titleWrapper: "cursor-pointer" }}
           defaultSelectedKeys={["0"]}
         >

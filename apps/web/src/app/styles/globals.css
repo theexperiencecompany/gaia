@@ -1280,3 +1280,325 @@
   ) {
   -webkit-app-region: no-drag;
 }
+
+/* ── Inline-style conversions (shadcn/no-inline-styles) ────────────────────
+   Static presentation lives here; components pass only CSS custom properties
+   via `style` (the CSS-var bridge) for the values that are genuinely dynamic. */
+
+/* TextSoftBlurIn / SoftBlurInBlock: per-char and block blur-in entrances. */
+.sbi-char {
+  display: inline-block;
+  white-space: pre;
+  padding-block: 0.12em;
+  margin-block: -0.12em;
+  padding-inline: 0.05em;
+  margin-inline: -0.05em;
+}
+.sbi-immediate {
+  animation: gaia-soft-blur-in var(--sbi-duration, 0.5s)
+    cubic-bezier(0.22, 1, 0.36, 1) var(--sbi-delay, 0s) both;
+}
+.sbi-on-scroll {
+  opacity: var(--sbi-opacity, 1);
+  filter: var(--sbi-filter, none);
+  transform: var(--sbi-transform, none);
+  transition:
+    opacity var(--sbi-duration, 0.5s) cubic-bezier(0.22, 1, 0.36, 1)
+    var(--sbi-delay, 0s),
+    filter var(--sbi-duration, 0.5s) cubic-bezier(0.22, 1, 0.36, 1)
+    var(--sbi-delay, 0s),
+    transform var(--sbi-duration, 0.5s) cubic-bezier(0.22, 1, 0.36, 1)
+    var(--sbi-delay, 0s);
+  will-change: var(--sbi-will-change, auto);
+}
+.sbi-gradient {
+  background-image: var(--sbi-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+.sbi-gradient-inherit {
+  background-image: inherit;
+  -webkit-background-clip: inherit;
+  background-clip: inherit;
+  -webkit-text-fill-color: inherit;
+}
+
+/* TiredBoringAssistants tool constellation (moved from a co-located <style>). */
+@keyframes tool-float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+@keyframes logo-pulse {
+  0%,
+  100% {
+    box-shadow: 0px 0px 120px 50px rgba(0, 187, 255, 0.2);
+  }
+  50% {
+    box-shadow: 0px 0px 140px 60px rgba(0, 187, 255, 0.35);
+  }
+}
+@keyframes tool-scatter {
+  0% {
+    top: 50%;
+    left: 50%;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1.05);
+  }
+  100% {
+    top: var(--end-top);
+    left: var(--end-left);
+    opacity: var(--end-opacity);
+    transform: translate(0, 0) scale(1);
+  }
+}
+@keyframes tool-gather {
+  0% {
+    top: var(--end-top);
+    left: var(--end-left);
+    opacity: var(--end-opacity);
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    top: 50%;
+    left: 50%;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
+}
+.tool-icon-btn {
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.tool-icon-btn:hover {
+  transform: scale(1.12);
+}
+.tool-icon-btn:active {
+  transform: scale(0.88);
+}
+
+/* BotsShowcaseSection phone glow backdrop. */
+.bots-showcase-glow {
+  background-image: radial-gradient(
+    closest-side,
+    rgba(0, 187, 255, 0.7),
+    rgba(0, 187, 255, 0.25) 35%,
+    rgba(0, 187, 255, 0.06) 65%,
+    transparent 80%
+  );
+  filter: blur(18px);
+}
+
+/* OnboardingIntro display type: exact tracking/gap the design calls for. */
+.onboarding-intro-title {
+  letter-spacing: -0.04em;
+}
+.onboarding-scene-1-title {
+  column-gap: 0.25em;
+}
+.onboarding-scene-2-title {
+  letter-spacing: -0.02em;
+}
+
+/* OnboardingShell content pad: follows the measured composer height. */
+.onboarding-shell-content {
+  padding-bottom: var(--onboarding-pad-b, 120px);
+}
+
+/* Receipt printer machine + screen + paper + output. */
+.printer-machine {
+  border-radius: var(--printer-radius);
+  padding: var(--printer-inset);
+  padding-bottom: 2rem;
+  box-shadow:
+    0 20px 36px -20px color-mix(in oklab, #18181b 55%, transparent),
+    0 6px 14px -8px color-mix(in oklab, #18181b 24%, transparent),
+    inset 0 1px 0 color-mix(in oklab, #fafafa 10%, transparent),
+    inset 0 -1px 0 color-mix(in oklab, #18181b 55%, transparent);
+}
+.printer-noise {
+  border-radius: inherit;
+  background-image: url("/textures/plastic-noise.svg");
+  background-size: 180px 180px;
+}
+.printer-screen {
+  border-radius: var(--printer-inner-radius);
+}
+.printer-screen-glow {
+  border-radius: inherit;
+  box-shadow: inset 0 0 24px 4px color-mix(in oklab, #09090b 35%, transparent);
+}
+.receipt-paper {
+  background-image: url("/textures/receipt-paper.svg");
+  clip-path: var(--receipt-clip);
+}
+.receipt-bar {
+  width: var(--bar-w, 2px);
+}
+.printer-output-glow {
+  filter: blur(6px);
+}
+.printer-output-shadow {
+  box-shadow: 0 8px 24px color-mix(in oklab, #09090b 24%, transparent);
+}
+
+/* Use-cases ToolsList collapsed fan: fixed fan angles per slot. */
+.tools-fan-0 {
+  rotate: 8deg;
+  z-index: 0;
+}
+.tools-fan-1 {
+  rotate: -8deg;
+  z-index: 1;
+}
+.tools-fan-2 {
+  rotate: 8deg;
+  z-index: 2;
+}
+.tools-fan-flat {
+  rotate: 0deg;
+}
+
+/* WaveSpinnerSquare cell: shared keyframe, per-cell stagger via var. */
+.wave-cell {
+  animation: waveDiagTLAnimation 0.7s ease-out infinite;
+  animation-delay: var(--wave-delay, 0s);
+}
+
+/* FirstStepsWidget collapse panel: interpolate grid rows, not height. */
+.first-steps-collapse {
+  transition-property: grid-template-rows;
+}
+
+/* TodoItem: skip rendering off-screen rows (intrinsic size = one row). */
+.todo-item-cv {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 80px;
+}
+
+/* Inline-style conversions (oxlint shadcn/no-inline-styles): var-fed classes
+   paired with a vars-only style prop at the use site. Dynamic values stay in
+   vars; static values live here so no raw values sit in JSX. */
+
+/* LoadingIndicator shimmer text: animated shine sweep over a static gradient. */
+.loading-shine-text {
+  background-image: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0.3) 20%,
+    rgb(255 255 255) 50%,
+    rgb(255 255 255 / 0.3) 80%
+  );
+}
+
+/* FileTypeIcon: overlay geometry follows the `size` prop. */
+.filetype-pad {
+  padding: var(--ft-pad);
+}
+.filetype-label {
+  font-size: var(--ft-font-size);
+}
+
+/* Use-case hero icon: tile + glyph colors come from CMS workflow data. */
+.wf-hero-icon {
+  background-color: var(--wf-icon-bg);
+}
+.wf-hero-icon-fg {
+  color: var(--wf-icon-fg);
+}
+
+/* SlashCommandDropdown: static resting shadow + measured anchor geometry. */
+.slash-dropdown-shadow {
+  box-shadow: 0px -18px 30px 5px rgba(0, 0, 0, 0.2);
+}
+.slash-dropdown-anchored {
+  bottom: var(--sc-dropdown-bottom);
+  max-height: var(--sc-dropdown-max-height);
+}
+
+/* MarkdownRenderer tables: rounded card rows (moved out of a <style> tag). */
+.markdown-table table {
+  border-spacing: 0;
+}
+.markdown-table tbody tr:first-child td:first-child {
+  border-top-left-radius: 0.75rem;
+}
+.markdown-table tbody tr:first-child td:last-child {
+  border-top-right-radius: 0.75rem;
+}
+.markdown-table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 0.75rem;
+}
+.markdown-table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 0.75rem;
+}
+.markdown-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.markdown-table tbody tr:hover td {
+  background-color: #27272a80;
+}
+
+/* RotatingExperienceLogo: shared spin keyframes. The <svg> sets its own
+   duration inline (allowed under the holo-card no-inline-styles override);
+   the keyframes live here so no <style> tag is needed at the use site. */
+@keyframes holoRotatingLogoSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* LogoWithContextMenu items: per-item stagger fed by --menu-index at the use
+   site (index * 50ms), on the same node as the animate-in classes. */
+.menu-stagger-item {
+  animation-fill-mode: both;
+  animation-delay: calc(var(--menu-index, 0) * 50ms);
+}
+
+/* HoloCardEditor color-picker swatch: the picked color/gradient and its
+   gradient angle are user data, fed via vars at the use site. */
+.color-swatch {
+  background: var(--swatch-bg);
+  transform: rotate(var(--swatch-rotate, 0deg));
+}
+
+/* RaisedButton flat treatments for near-black / near-white custom colors:
+   fixed brand constants (same declarations the inline flat styles carried),
+   applied conditionally so the glossy vars stay unset in flat mode. */
+.raised-flat-black {
+  background: linear-gradient(to bottom, #444, #000);
+  border-color: #111113;
+  color: #ffffff;
+  box-shadow: none;
+}
+.raised-flat-white {
+  background: linear-gradient(rgb(255, 255, 255) 0%, rgb(235, 238, 240) 100%);
+  border-color: transparent;
+  color: #18181b;
+  box-shadow:
+    rgba(0, 0, 0, 0.06) 0px 0px 0px 1px,
+    rgba(0, 0, 0, 0.06) 0px 1px 2px -1px,
+    rgba(0, 0, 0, 0.04) 0px 2px 4px 0px;
+}
+
+/* Bot-bubble content-lane hook shared by the onboarding typing overlay (and
+   chat bubble chrome): layout comes from utilities at the call site. The
+   min-width floor is the only thing declared here — it is already the used
+   value for the absolutely-positioned overlay (auto computes to 0 off flex),
+   so this changes no computed output; it exists so the lane has a stable,
+   Tailwind-known name instead of an unknown class. */
+.chatbubblebot_parent {
+  min-width: 0;
+}

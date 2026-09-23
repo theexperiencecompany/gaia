@@ -176,9 +176,22 @@
     "./config/biome-rules/no-chevron-from-icons.grit",
     "./config/biome-rules/no-hugeicons-import.grit",
     "./config/biome-rules/no-motion-react-heavy-imports.grit",
-    "./config/biome-rules/no-motion-full-import.grit"
+    "./config/biome-rules/no-motion-full-import.grit",
+    "./config/biome-rules/no-unicode-symbols.grit"
   ],
   "overrides": [
+    {
+      "includes": ["apps/web/**"],
+      "plugins": [
+        "./config/biome-rules/no-card-borders.grit",
+        "./config/biome-rules/no-card-outline.grit",
+        "./config/biome-rules/status-opacity.grit",
+        "./config/biome-rules/no-card-shadow.grit",
+        "./config/biome-rules/prefer-divider.grit",
+        "./config/biome-rules/rounded-lg-card.grit",
+        "./config/biome-rules/z-index-lint.grit"
+      ]
+    },
     {
       "includes": [
         "apps/web/src/**",

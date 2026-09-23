@@ -70,9 +70,10 @@ export function FirstStepsWidget() {
                 value={doneCount}
                 maxValue={totalCount}
                 size="sm"
+                color="success"
                 classNames={{
                   track: "bg-zinc-700",
-                  indicator: "bg-success transition-all duration-500 ease-out",
+                  indicator: "transition-all",
                 }}
               />
             </m.div>
@@ -108,7 +109,7 @@ export function FirstStepsWidget() {
           measured row to interpolate against. */}
       <div
         className={cn(
-          "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+          "grid transition duration-200 ease-out motion-reduce:transition-none first-steps-collapse",
           collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]",
         )}
       >

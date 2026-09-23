@@ -108,29 +108,31 @@ export function PhoneLinkModal({
         {target ? (
           <>
             <ModalHeader>Text GAIA to finish linking</ModalHeader>
-            <ModalBody className="gap-2">
-              <p className="text-sm text-zinc-400">
-                Send {target.command} to this number from the phone you just
-                registered.
-              </p>
-              <CopyableValue label="Number" value={target.contactNumber} />
-              <CopyableValue label="Send" value={target.command} />
-              {target.actionLink && (
-                <div className="pt-1">
-                  <Button
-                    as={Link}
-                    href={target.actionLink}
-                    isExternal
-                    variant="flat"
-                    size="sm"
-                  >
-                    Open in Messages
-                  </Button>
-                  <p className="pt-1.5 text-xs text-zinc-500">
-                    Opens the Messages app on iPhone and Mac only.
-                  </p>
-                </div>
-              )}
+            <ModalBody>
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-zinc-400">
+                  Send {target.command} to this number from the phone you just
+                  registered.
+                </p>
+                <CopyableValue label="Number" value={target.contactNumber} />
+                <CopyableValue label="Send" value={target.command} />
+                {target.actionLink && (
+                  <div className="pt-1">
+                    <Button
+                      as={Link}
+                      href={target.actionLink}
+                      isExternal
+                      variant="flat"
+                      size="sm"
+                    >
+                      Open in Messages
+                    </Button>
+                    <p className="pt-1.5 text-xs text-zinc-500">
+                      Opens the Messages app on iPhone and Mac only.
+                    </p>
+                  </div>
+                )}
+              </div>
             </ModalBody>
             <ModalFooter>
               <Button color="primary" size="sm" onPress={onClose}>

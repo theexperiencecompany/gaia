@@ -4,7 +4,7 @@ import { PlayIcon, UserCircle02Icon } from "@icons";
 import { getToolDisplayName } from "@shared/icons";
 import { formatCompactNumber } from "@shared/utils";
 import Image from "next/image";
-import { useTransition } from "react";
+import { type CSSProperties, useTransition } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -87,10 +87,15 @@ function renderHeroIcon(
   const color = iconColor ?? DEFAULT_WORKFLOW_ICON_COLOR;
   return (
     <div
-      className="flex size-12 shrink-0 items-center justify-center rounded-xl"
-      style={{ backgroundColor: `${color}${WORKFLOW_ICON_BG_ALPHA}` }}
+      className="wf-hero-icon flex size-12 shrink-0 items-center justify-center rounded-xl"
+      style={
+        {
+          "--wf-icon-bg": `${color}${WORKFLOW_ICON_BG_ALPHA}`,
+          "--wf-icon-fg": color,
+        } as CSSProperties
+      }
     >
-      <def.Icon size={26} style={{ color }} />
+      <def.Icon size={26} className="wf-hero-icon-fg" />
     </div>
   );
 }

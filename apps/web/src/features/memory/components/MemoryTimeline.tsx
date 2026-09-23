@@ -142,7 +142,7 @@ export function MemoryTimeline() {
             isIconOnly
             size="sm"
             variant="flat"
-            className="rounded-xl"
+            radius="md"
             aria-label="Previous two weeks"
             onPress={() => setRangeEnd(subDays(rangeEnd, JOURNAL_RANGE_DAYS))}
           >
@@ -152,7 +152,7 @@ export function MemoryTimeline() {
             isIconOnly
             size="sm"
             variant="flat"
-            className="rounded-xl"
+            radius="md"
             aria-label="Next two weeks"
             isDisabled={atToday}
             onPress={() => {

@@ -14,17 +14,17 @@ interface MarkdownPreviewProps {
 export function MarkdownPreview({ content, title }: MarkdownPreviewProps) {
   return (
     <Card className="max-h-96 overflow-hidden">
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
+      <CardHeader>
+        <div className="flex items-center gap-2 pb-3">
           <ViewIcon className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-medium">Preview</h3>
         </div>
       </CardHeader>
-      <CardBody className="overflow-y-auto pt-0">
+      <CardBody className="overflow-y-auto">
         {title && (
           <h1 className="mb-4 text-2xl font-bold text-foreground">{title}</h1>
         )}
-        <div className="prose prose-sm dark:prose-invert max-w-none">
+        <div className="max-w-none">
           <Markdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeHighlight]}

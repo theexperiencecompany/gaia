@@ -136,7 +136,7 @@ export function AgentControlBar({
       {...props}
     >
       {/* One floating pill holds every control — iOS-call style. */}
-      <div className="flex items-center gap-1.5 rounded-full bg-zinc-900/80 p-1.5 shadow-lg backdrop-blur-md">
+      <div className="flex items-center gap-1.5 rounded-full bg-zinc-900/80 p-1.5 backdrop-blur-md">
         <ButtonGroup variant="flat" radius="full">
           <Button
             isIconOnly
@@ -144,7 +144,7 @@ export function AgentControlBar({
             isLoading={microphoneToggle.pending}
             isDisabled={preConnectCapture}
             onPress={handleMicPress}
-            className="h-12 w-14 bg-zinc-800 text-white transition-colors hover:bg-zinc-700 active:bg-zinc-700"
+            className="h-12 w-14 text-white transition-colors"
           >
             <MicStateIcon className="h-6 w-6" />
           </Button>
@@ -156,7 +156,7 @@ export function AgentControlBar({
               <Button
                 isIconOnly
                 aria-label="Select microphone"
-                className="h-12 w-9 bg-zinc-800 text-zinc-400 transition-colors hover:bg-zinc-700"
+                className="h-12 w-9 text-zinc-400 transition-colors"
               >
                 <ArrowDown01Icon className="h-4 w-4" />
               </Button>
@@ -191,7 +191,9 @@ export function AgentControlBar({
             aria-label="End voice session"
             onPress={onLeave}
             isDisabled={isDisconnecting}
-            className="h-12 w-14 bg-red-500/15 transition-colors hover:bg-red-500/20 active:bg-red-500/25"
+            variant="flat"
+            color="danger"
+            className="h-12 w-14 transition-colors"
           >
             <CallEnd04Icon className="h-6 w-6 text-red-400" />
           </Button>

@@ -172,7 +172,7 @@ export default function FileIconsPrototypePage() {
         <h2 className="mb-5 text-sm font-semibold tracking-wide text-zinc-300">
           In the composer file selection
         </h2>
-        <div className="rounded-2xl border border-zinc-700/60 bg-zinc-800/60 p-4">
+        <div className="rounded-2xl bg-zinc-800/60 p-4">
           <FilePreview files={files} onRemove={removeFile} />
         </div>
         <p className="mt-3 text-xs text-zinc-500">

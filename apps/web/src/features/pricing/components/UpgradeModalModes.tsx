@@ -128,7 +128,7 @@ export function UpgradeModalOffer({
         <CheckoutConfirming isLate={checkoutPhase === "timeout"} />
       ) : (
         <RaisedButton
-          className="w-full text-black!"
+          className="w-full"
           color="#00bbff"
           onClick={onSubscribe}
           disabled={!isCheckoutSettled(checkoutPhase)}
@@ -142,7 +142,7 @@ export function UpgradeModalOffer({
       <Button
         variant="light"
         size="sm"
-        className="mx-auto mt-1 h-auto min-w-0 p-0 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300 data-[hover=true]:underline"
+        className="mx-auto mt-1 h-auto min-w-0 text-xs text-zinc-500 hover:bg-transparent data-[hover=true]:text-zinc-300 data-[hover=true]:underline"
         onPress={() => onLogout()}
       >
         Log out

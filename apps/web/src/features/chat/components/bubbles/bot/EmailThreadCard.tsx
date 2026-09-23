@@ -64,15 +64,15 @@ function EmailBodyRenderer({
 
   if (!body && (!content || (!content.text && !content.html))) {
     return (
-      <div className="p-4 text-sm text-gray-500">No content available.</div>
+      <div className="p-4 text-sm text-zinc-500">No content available.</div>
     );
   }
 
   return (
-    <div className="relative w-full overflow-auto shadow-md">
+    <div className="relative w-full overflow-auto">
       <div
         ref={attachShadowContent}
-        className="w-full rounded-lg bg-white p-4 text-black"
+        className="w-full rounded-xl bg-white p-4 text-black"
       />
     </div>
   );
@@ -85,7 +85,7 @@ export default function EmailThreadCard({
 }) {
   return (
     <div
-      className={`mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300`}
+      className={`mx-auto w-full rounded-3xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300`}
     >
       <Accordion variant="light" defaultExpandedKeys={["email-thread"]}>
         <AccordionItem

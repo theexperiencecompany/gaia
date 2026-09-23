@@ -14,6 +14,7 @@ nx build web
 # Lint (Biome)
 nx lint web         # or: pnpm check
 nx run web:lint:fix # or: pnpm fix
+nx run web:lint:shadcn  # after UI changes
 
 # Format
 pnpm format         # inside apps/web
@@ -148,7 +149,7 @@ Types are split into three directories:
 - Use `tailwind-merge` (`twMerge`) to merge conditional class names; use `clsx` for conditionals.
 - `class-variance-authority` (CVA) for variant-based component APIs.
 - HeroUI and Radix UI are both present — prefer HeroUI for standard UI primitives before reaching for Radix directly.
-- **Never use icon components as spinners** (e.g. `Loading02Icon` with `animate-spin`). Always use `<Spinner>` from `@heroui/spinner` for loading states, or `<Skeleton>` from `@heroui/skeleton` for content placeholders. Icon-based spinners look wrong and are not consistent with the design system.
+- **Loading indicators** — prefer `<Spinner>` from `@heroui/spinner` for content placeholders and full-row loads; `animate-spin` on a loading icon (e.g. `Loading03Icon`) is acceptable for small inline statuses. Never leave a spinner animating forever on historical/completed rows — show a static state icon instead.
 - Use Framer Motion (`motion/react`) for transitions; `AnimatePresence` is required for exit animations.
 - Design tokens, the chat tool-card contract, status colors, `cn()` / `cva`, animation classes and easing live in **`DESIGN.md`** at the repo root — read it before writing UI, do not restate it here.
 
@@ -222,7 +223,8 @@ Use `loadFeatureTranslations` to lazy-load per-feature message files rather than
 - Never use the `any` type.
 - Tests are first-class: new features and refactors ship a test at the right tier; every bug ships a failing-then-passing test (see the repo root CLAUDE.md Testing section).
 - **Do not run `nx build web` or `pnpm build`** unless explicitly asked — builds are slow and not needed during development.
-- Biome handles both linting and formatting — do not add ESLint or Prettier config.
+- Biome handles code linting and formatting — do not add ESLint or Prettier config.
+- Oxlint is scoped to design-system only: `apps/web/.oxlintrc.json` runs zero built-in rules (`plugins: []`, all categories `off`) and only hosts `@shadcn/lint` via `jsPlugins`. Never enable oxlint built-in plugins/rules (no `jsx-a11y`, `react`, `unicorn`, etc.) — that overlaps Biome. Rule of thumb: code correctness → Biome; `className`/theme/variant/component-restyling → `nx run web:lint:shadcn`.
 - Lint warnings are debt, not noise — fix each one in the change that surfaces it (decompose the over-complex function, name the empty block, drop the dead re-export). Never leave a Biome warning behind, downgrade a rule, or suppress what is fixable. A targeted `// biome-ignore` with a reason, or a file-scoped config override, is allowed ONLY when the warning is provably unfixable (e.g. an authed dynamic `<img>` next/image cannot optimize, an override stylesheet whose job is beating inline styles, re-exporting an external package's surface) — the justification must live at the suppression site.
 - Strict TypeScript (`strict: true`). Path alias `@/` maps to `src/`.
 - `@shared/*` maps to `libs/shared/ts/src/` for shared TypeScript utilities.

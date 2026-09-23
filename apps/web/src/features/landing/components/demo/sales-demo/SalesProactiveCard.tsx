@@ -35,10 +35,10 @@ export default function SalesProactiveCard() {
   return (
     <div className="rounded-2xl bg-zinc-800 p-4">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-[11px] font-medium text-zinc-400">
+        <span className="text-xs font-medium text-zinc-400">
           Handled while you were in meetings
         </span>
-        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
           ~3.5h saved today
         </span>
       </div>
@@ -54,7 +54,7 @@ export default function SalesProactiveCard() {
             </div>
             <span className="flex-1 text-zinc-300">{item.label}</span>
             <span
-              className={`text-[11px] ${item.flagged ? "text-red-400" : "text-emerald-400"}`}
+              className={`text-xs ${item.flagged ? "text-red-400" : "text-emerald-400"}`}
             >
               {item.detail}
             </span>

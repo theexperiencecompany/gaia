@@ -98,7 +98,7 @@ export function NotificationConnectBanner({
   }
 
   return (
-    <div className="relative rounded-xl border border-zinc-700 bg-zinc-800/60 p-4">
+    <div className="relative rounded-xl bg-zinc-800/60 p-4">
       <Button
         isIconOnly
         variant="light"

@@ -150,21 +150,15 @@ export function OnboardingIntro({ onComplete }: OnboardingIntroProps) {
         transition={{ duration: 1.4, ease: EASE_OUT_QUART }}
       />
 
-      <div
-        className="relative z-10 px-8 text-center text-white"
-        style={{
-          fontFamily: "var(--font-aeonik), system-ui, sans-serif",
-          fontWeight: 700,
-          letterSpacing: "-0.04em",
-          lineHeight: 1.05,
-        }}
-      >
+      <div className="relative z-10 px-8 text-center font-serif font-bold text-white leading-[1.05] onboarding-intro-title">
         <AnimatePresence mode="wait">
           {scene === 1 && (
             <m.h1
               key="scene-1"
-              className="m-0 flex flex-wrap items-center justify-center gap-x-[0.25em]"
-              style={{ fontSize: "clamp(48px, 9vw, 120px)" }}
+              className="m-0 flex flex-wrap items-center justify-center onboarding-scene-1-title"
+              style={{
+                fontSize: "clamp(48px, 9vw, 120px)",
+              }}
               exit={{ opacity: 0, filter: "blur(6px)" }}
               transition={{ duration: SCENE_1_OUT, ease: EASE_OUT_QUART }}
             >
@@ -201,11 +195,9 @@ export function OnboardingIntro({ onComplete }: OnboardingIntroProps) {
           {scene === 2 && (
             <m.h1
               key="scene-2"
-              className="m-0 flex flex-wrap items-center justify-center gap-x-[0.28em]"
+              className="m-0 flex flex-wrap items-center justify-center gap-x-1 font-medium onboarding-scene-2-title"
               style={{
                 fontSize: "clamp(22px, 3.2vw, 44px)",
-                letterSpacing: "-0.02em",
-                fontWeight: 500,
               }}
               exit={{ opacity: 0, filter: "blur(6px)" }}
               transition={{ duration: SCENE_2_OUT, ease: EASE_OUT_QUART }}

@@ -57,7 +57,7 @@ export default function Hero() {
         <GetStartedButton
           text="See it in action"
           btnColor="#000000"
-          classname="text-white! text-base h-12 rounded-2xl"
+          className="text-base h-12 rounded-2xl"
         />
       </m.div>
     </section>

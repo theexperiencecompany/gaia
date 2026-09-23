@@ -106,8 +106,8 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
               color={category === cat.key ? "primary" : "default"}
               size="lg"
               className={cn(
-                "cursor-pointer font-light! backdrop-blur-2xl!",
-                category !== cat.key && "bg-white/5! text-foreground-500",
+                "cursor-pointer font-light!",
+                category !== cat.key && "text-foreground-500",
               )}
               onClick={() => handleCategoryChange(cat.key)}
             >

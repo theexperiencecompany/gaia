@@ -35,10 +35,10 @@ export default function EMProactiveCard() {
   return (
     <div className="rounded-2xl bg-zinc-800 p-4">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-[11px] font-medium text-zinc-400">
+        <span className="text-xs font-medium text-zinc-400">
           Handled while you were in 1:1s
         </span>
-        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
           ~4h saved today
         </span>
       </div>
@@ -57,7 +57,7 @@ export default function EMProactiveCard() {
                 )}
               </div>
               <span className="flex-1 text-zinc-300">{item.label}</span>
-              <span className={`text-[11px] ${item.detailClass}`}>
+              <span className={`text-xs ${item.detailClass}`}>
                 {item.detail}
               </span>
             </div>

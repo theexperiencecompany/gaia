@@ -1,6 +1,7 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { Divider } from "@heroui/divider";
 import { Tooltip } from "@heroui/tooltip";
 import { User } from "@heroui/user";
 import {
@@ -51,12 +52,12 @@ function AISummary({
 }) {
   if (isLoading) {
     return (
-      <div className="mb-3 flex w-fit flex-col rounded-xl bg-zinc-800 p-2 shadow-md outline outline-zinc-700">
+      <div className="mb-3 flex w-fit flex-col rounded-xl bg-zinc-800 p-2">
         <div className="relative flex items-center gap-3 text-sm font-medium text-white">
           <Chip
             classNames={{
               content:
-                "text-sm relative flex! flex-row text-primary items-center gap-1 pl-3 font-medium",
+                "text-sm relative flex! flex-row text-primary items-center font-medium",
             }}
             variant="flat"
             color="primary"
@@ -75,12 +76,12 @@ function AISummary({
   if (!analysis) return null;
 
   return (
-    <div className="mb-3 flex w-fit flex-col rounded-xl bg-zinc-800 p-2 shadow-md outline outline-zinc-700">
+    <div className="mb-3 flex w-fit flex-col rounded-xl bg-zinc-800 p-2">
       <div className="relative flex items-center gap-3 text-sm font-medium text-white">
         <Chip
           classNames={{
             content:
-              "text-sm relative flex! flex-row text-primary items-center gap-1 pl-3 font-medium",
+              "text-sm relative flex! flex-row text-primary items-center font-medium",
           }}
           variant="flat"
           color="primary"
@@ -129,19 +130,18 @@ function AISummary({
       {/* Semantic Labels */}
       {analysis.semantic_labels && analysis.semantic_labels.length > 0 && (
         <div className="px-2 pb-2">
-          <Accordion variant="light" selectionMode="multiple" className="px-0">
+          <Accordion variant="light" selectionMode="multiple">
             <AccordionItem
               key="labels"
               aria-label="Semantic Labels"
               title={
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400">Labels</span>
+                  <span className="text-xs text-zinc-400">Labels</span>
                   <Chip size="sm" variant="flat" color="default">
                     {analysis.semantic_labels.length}
                   </Chip>
                 </div>
               }
-              className="px-0"
             >
               <div className="flex flex-wrap gap-1 pb-2">
                 {analysis.semantic_labels.map((label) => (
@@ -185,7 +185,7 @@ function ThreadMessages({
         return (
           <div
             key={message.id}
-            className={`rounded-lg p-4 ${isCurrentEmail ? "bg-zinc-800" : "bg-zinc-900"} border-l-2 ${isCurrentEmail ? "border-primary" : "border-zinc-700"}`}
+            className={`rounded-xl p-4 ${isCurrentEmail ? "bg-zinc-800" : "bg-zinc-900"}`}
           >
             <div className="mb-2 flex items-start justify-between">
               <User
@@ -197,10 +197,10 @@ function ThreadMessages({
                 name={messageSenderName}
                 classNames={{
                   name: "font-medium",
-                  description: "text-gray-400",
+                  description: "text-zinc-400",
                 }}
               />
-              <div className="text-xs text-gray-400" suppressHydrationWarning>
+              <div className="text-xs text-zinc-400" suppressHydrationWarning>
                 {new Date(message.time).toLocaleString()}
               </div>
             </div>
@@ -254,7 +254,7 @@ function ReplyEditor({
       <div className="mb-2 flex items-center justify-between">
         <div className="text-sm">
           <span className="font-medium">Reply to: </span>
-          <span className="text-gray-400">
+          <span className="text-zinc-400">
             {parseEmail(replyTo.from).name || parseEmail(replyTo.from).email}
           </span>
         </div>
@@ -269,7 +269,7 @@ function ReplyEditor({
         </Button>
       </div>
 
-      <div className="mail-editor rounded-lg border border-zinc-700 bg-zinc-800">
+      <div className="mail-editor rounded-xl bg-zinc-800">
         {/* <MenuBar editor={editor} /> */}
         <div className="max-h-[250px] min-h-[150px] overflow-y-auto px-4 py-2">
           <EditorContent editor={editor} />
@@ -471,8 +471,8 @@ export default function ViewEmail({
             <AISummary analysis={aiAnalysis} isLoading={isLoadingAnalysis} />
 
             {analysisError && (
-              <div className="mb-3 flex w-fit flex-col rounded-xl bg-red-900/20 p-2 shadow-md outline outline-red-700">
-                <div className="p-2 text-sm text-red-300">
+              <div className="mb-3 flex w-fit flex-col rounded-xl bg-red-400/10 p-2">
+                <div className="p-2 text-sm text-red-400">
                   Failed to load AI analysis. The email may not have been
                   processed yet.
                 </div>
@@ -503,7 +503,7 @@ export default function ViewEmail({
               ) : mail ? (
                 <>
                   {mail?.snippet && (
-                    <div className="text-md text-muted-foreground">
+                    <div className="text-base text-muted-foreground">
                       {he.decode(mail.snippet)}
                     </div>
                   )}
@@ -516,11 +516,11 @@ export default function ViewEmail({
                     name={nameFrom}
                     classNames={{
                       name: "font-medium",
-                      description: "text-gray-400",
+                      description: "text-zinc-400",
                     }}
                   />
                   <div>
-                    <hr className="my-4 border-gray-700" />
+                    <Divider className="my-4" />
                     <GmailBody email={mail} />
                   </div>
                 </>

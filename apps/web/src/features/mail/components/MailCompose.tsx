@@ -26,7 +26,6 @@ import { useEmailComposition } from "@/features/mail/hooks/useEmailComposition";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
-import { Button as ShadcnButton } from "../../../components/ui/button";
 
 interface MailComposeProps {
   open: boolean;
@@ -59,8 +58,10 @@ function AiOptionDropdown({
     <div className="relative">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <ShadcnButton
-            className="border-none bg-[#00bbff40] text-sm font-normal text-[#00bbff] ring-0 outline-hidden hover:bg-[#00bbff20]"
+          <Button
+            variant="flat"
+            color="primary"
+            className="text-sm font-normal"
             size="sm"
           >
             <div className="flex flex-row gap-1">
@@ -69,14 +70,14 @@ function AiOptionDropdown({
               <span>{selectedLabel}</span>
               <ArrowDown01Icon width={20} />
             </div>
-          </ShadcnButton>
+          </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="border-none bg-zinc-900 text-white dark">
+        <DropdownMenuContent>
           {options.map((option) => (
             <DropdownMenuItem
               key={option.id}
               onClick={() => onSelect(option.id)}
-              className="cursor-pointer focus:bg-zinc-600 focus:text-white"
+              className="cursor-pointer"
             >
               <div className="flex w-full items-center justify-between">
                 {option.label}
@@ -146,7 +147,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
           <Drawer.Title className="text-xl">New Message</Drawer.Title>
 
           {error && (
-            <Alert variant="destructive" className="bg-red-500/10">
+            <Alert variant="destructive">
               <AlertCircleIcon className="h-4 w-4" />
               <AlertTitle>There was an error.</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
@@ -162,14 +163,12 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
             }
             disabled
             value={user.email}
-            className="bg-zinc-800"
           />
 
           <div className="relative">
             <TagInput
               styleClasses={{
-                inlineTagsContainer:
-                  "bg-zinc-800 border border-t-0 border-x-0 border-b-zinc-600! border-b-2 p-2 rounded-none",
+                inlineTagsContainer: "bg-zinc-800 p-2 rounded-none",
                 tag: { body: "p-0 bg-white/20 pl-3 text-sm border-none" },
               }}
               shape="pill"
@@ -180,22 +179,21 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
               activeTagIndex={activeTagIndex}
               setActiveTagIndex={setActiveTagIndex}
             />
-            <Button
-              isIconOnly
-              className="absolute top-[3px] right-[3px]"
-              size="sm"
-              color="primary"
-              onPress={() => setIsAiModalOpen(true)}
-            >
-              <AiSearch02Icon width={19} />
-            </Button>
+            <div className="absolute top-[3px] right-[3px]">
+              <Button
+                isIconOnly
+                size="sm"
+                color="primary"
+                onPress={() => setIsAiModalOpen(true)}
+              >
+                <AiSearch02Icon width={19} />
+              </Button>
+            </div>
           </div>
 
           <Input
             placeholder="Subject"
             variant="underlined"
-            className="bg-zinc-800"
-            classNames={{ innerWrapper: "px-2" }}
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
           />
@@ -243,8 +241,6 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
             <Input
               placeholder="What is the email about?"
               radius="full"
-              classNames={{ inputWrapper: "pr-1 pl-0" }}
-              className="pr-1"
               variant="faded"
               size="lg"
               value={prompt}

@@ -68,7 +68,7 @@ function DemoEmailsCard() {
           return (
             <div
               key={email.id}
-              className="flex cursor-pointer items-start gap-3 border-b border-zinc-800/50 px-4 py-3 transition-colors hover:bg-zinc-800/50"
+              className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-zinc-800/50"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
@@ -205,7 +205,7 @@ function DemoTodosCard() {
                 <Chip
                   size="sm"
                   variant="flat"
-                  className="text-zinc-400 px-1"
+                  className="text-zinc-400"
                   radius="sm"
                 >
                   {todo.priority}
@@ -214,7 +214,7 @@ function DemoTodosCard() {
                   <Chip
                     size="sm"
                     variant="flat"
-                    className="text-zinc-400 px-1"
+                    className="text-zinc-400"
                     radius="sm"
                   >
                     {new Date(todo.due_date).toDateString() ===
@@ -354,7 +354,7 @@ function DemoGoalsCard() {
                     <Chip
                       size="sm"
                       variant="flat"
-                      className="text-zinc-400 px-1"
+                      className="text-zinc-400"
                       radius="sm"
                       startContent={
                         <CheckmarkCircle02Icon
@@ -413,7 +413,7 @@ function DemoConversationsCard() {
                 <Chip
                   size="sm"
                   variant="flat"
-                  className="text-zinc-400 px-1"
+                  className="text-zinc-400"
                   radius="sm"
                   startContent={
                     <MessageMultiple02Icon
@@ -429,7 +429,7 @@ function DemoConversationsCard() {
                 <Chip
                   size="sm"
                   variant="flat"
-                  className="text-zinc-400 px-1"
+                  className="text-zinc-400"
                   radius="sm"
                   startContent={
                     <Calendar03Icon width={15} height={15} className="mx-1" />
@@ -493,7 +493,7 @@ export default function DemoDashboardView() {
       label: "overdue task",
     },
     {
-      icon: <Mail01Icon className="w-7 h-7 text-sky-400" />,
+      icon: <Mail01Icon className="w-7 h-7 text-blue-400" />,
       count: 5,
       label: "unread emails",
     },
@@ -503,7 +503,7 @@ export default function DemoDashboardView() {
       label: "workflows",
     },
     {
-      icon: <Target02Icon className="w-7 h-7 text-indigo-500" />,
+      icon: <Target02Icon className="w-7 h-7 text-violet-400" />,
       count: 3,
       label: "goals",
     },

@@ -366,59 +366,6 @@ export default function Tired() {
 
   return (
     <section className="relative flex flex-col items-center justify-center px-4 sm:px-6 py-12 sm:py-20">
-      <style>{`
-        @keyframes tool-float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-10px); }
-        }
-        @keyframes logo-pulse {
-          0%, 100% { box-shadow: 0px 0px 120px 50px rgba(0, 187, 255, 0.2); }
-          50% { box-shadow: 0px 0px 140px 60px rgba(0, 187, 255, 0.35); }
-        }
-        @keyframes tool-scatter {
-          0% {
-            top: 50%;
-            left: 50%;
-            opacity: 0;
-            transform: translate(-50%, -50%) scale(0.3);
-          }
-          60% {
-            opacity: 1;
-            transform: translate(0, 0) scale(1.05);
-          }
-          100% {
-            top: var(--end-top);
-            left: var(--end-left);
-            opacity: var(--end-opacity);
-            transform: translate(0, 0) scale(1);
-          }
-        }
-        @keyframes tool-gather {
-          0% {
-            top: var(--end-top);
-            left: var(--end-left);
-            opacity: var(--end-opacity);
-            transform: translate(0, 0) scale(1);
-          }
-          100% {
-            top: 50%;
-            left: 50%;
-            opacity: 0;
-            transform: translate(-50%, -50%) scale(0.3);
-          }
-        }
-        .tool-icon-btn {
-          cursor: pointer;
-          transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        .tool-icon-btn:hover {
-          transform: scale(1.12);
-        }
-        .tool-icon-btn:active {
-          transform: scale(0.88);
-        }
-      `}</style>
-
       <LargeHeader
         chipText="Stop context-switching"
         headingText="Every tool. One assistant."
@@ -509,8 +456,7 @@ export default function Tired() {
                 delay={200}
                 closeDelay={0}
                 classNames={{
-                  content:
-                    "bg-zinc-900 text-white text-xs px-2.5 py-1 rounded-lg",
+                  content: "text-white text-xs",
                 }}
               >
                 <div className="tool-icon-btn">
@@ -536,7 +482,7 @@ export default function Tired() {
 
       {/* CTA */}
       <Link href="/integrations" className="mt-6 sm:mt-8">
-        <RaisedButton color="#00bbff" className="text-black!">
+        <RaisedButton color="#00bbff">
           See All Integrations
           <CircleArrowRight02Icon width={20} height={20} />
         </RaisedButton>

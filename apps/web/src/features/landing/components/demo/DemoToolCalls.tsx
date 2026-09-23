@@ -102,7 +102,7 @@ export default function DemoToolCalls({
                       {t.message}
                     </p>
                     <p
-                      className={`text-[11px] capitalize ${light ? "text-zinc-500" : "text-zinc-600"}`}
+                      className={`text-xs capitalize ${light ? "text-zinc-500" : "text-zinc-600"}`}
                     >
                       {t.category.replace(/_/g, " ")}
                     </p>

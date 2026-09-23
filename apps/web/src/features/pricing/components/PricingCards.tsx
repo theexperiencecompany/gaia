@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 
@@ -91,13 +92,14 @@ export function PricingCards({
             Unable to load pricing plans. Please refresh the page or try again
             later.
           </p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="mt-4 rounded-lg bg-red-500 px-4 py-2 text-white hover:bg-red-600"
+          <Button
+            color="danger"
+            onPress={() => window.location.reload()}
+            radius="md"
+            className="mt-4"
           >
             Refresh Page
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -107,8 +109,8 @@ export function PricingCards({
   if (!plans || plans.length === 0) {
     return (
       <div className="grid w-full max-w-2xl grid-cols-2 gap-3">
-        <div className="col-span-2 flex flex-col items-center justify-center rounded-2xl bg-gray-500/10 p-8">
-          <p className="text-center text-gray-400">
+        <div className="col-span-2 flex flex-col items-center justify-center rounded-2xl bg-zinc-500/10 p-8">
+          <p className="text-center text-zinc-400">
             No pricing plans available at the moment.
           </p>
         </div>

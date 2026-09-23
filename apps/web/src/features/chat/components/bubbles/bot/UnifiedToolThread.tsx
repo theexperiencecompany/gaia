@@ -45,6 +45,22 @@ interface UnifiedToolThreadProps {
 
 const SHOW_ICONS = 10;
 
+// zIndex follows DOM order (0..SHOW_ICONS-1); kept as literals so Tailwind
+// emits them. Tailwind v4 resolves rotate-<n> to <n>deg on the `rotate`
+// property, matching the previous inline style exactly.
+const STACK_Z_CLASSES = [
+  "z-0",
+  "z-1",
+  "z-2",
+  "z-3",
+  "z-4",
+  "z-5",
+  "z-6",
+  "z-7",
+  "z-8",
+  "z-9",
+] as const;
+
 // ── Stacked category icons ──────────────────────────────────────────────────
 
 // Rendered as a child after UnifiedToolThread's early return, so renders that
@@ -69,18 +85,14 @@ function StackedIcons({
             <ToolsIcon width={21} height={21} />
           </div>
         );
-        let rotate = "0deg";
+        let rotateClass = "rotate-0";
         if (display.length > 1) {
-          rotate = i % 2 === 0 ? "8deg" : "-8deg";
+          rotateClass = i % 2 === 0 ? "rotate-8" : "-rotate-8";
         }
         return (
           <div
             key={d.category}
-            className="relative flex min-w-8 items-center justify-center"
-            style={{
-              rotate,
-              zIndex: i,
-            }}
+            className={`relative flex min-w-8 items-center justify-center ${rotateClass} ${STACK_Z_CLASSES[i] ?? "z-0"}`}
           >
             {icon}
           </div>
@@ -197,7 +209,6 @@ export default function UnifiedToolThread({
             keys === "all" || (keys instanceof Set && keys.has("tools")),
           );
         }}
-        style={{ padding: 0 }}
         itemClasses={{ trigger: "cursor-pointer py-0" }}
       >
         <AccordionItem

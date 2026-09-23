@@ -157,7 +157,7 @@ export default function ScheduledFieldChip({
             variant="light"
             fullWidth
             radius="lg"
-            className="justify-start gap-2 px-3 text-zinc-500"
+            className="justify-start text-zinc-500"
             startContent={<Clock01Icon width={18} height={18} />}
             onPress={() => handleQuickSchedule(1, onClose)}
           >
@@ -167,7 +167,7 @@ export default function ScheduledFieldChip({
             variant="light"
             fullWidth
             radius="lg"
-            className="justify-start gap-2 px-3 text-zinc-500"
+            className="justify-start text-zinc-500"
             startContent={<Clock01Icon width={18} height={18} />}
             onPress={() => handleQuickSchedule(4, onClose)}
           >
@@ -177,7 +177,7 @@ export default function ScheduledFieldChip({
             variant="light"
             fullWidth
             radius="lg"
-            className="justify-start gap-2 px-3 text-zinc-500"
+            className="justify-start text-zinc-500"
             startContent={<Clock01Icon width={18} height={18} />}
             onPress={() => handleQuickSchedule(24, onClose)}
           >
@@ -187,12 +187,12 @@ export default function ScheduledFieldChip({
           {/* Clear option */}
           {value && (
             <>
-              <Divider className="my-1 bg-zinc-700" />
+              <Divider className="my-1" />
               <Button
                 variant="light"
                 fullWidth
                 radius="lg"
-                className="justify-start gap-2 px-3 text-red-400"
+                className="justify-start text-red-400"
                 startContent={<Cancel01Icon width={18} height={18} />}
                 onPress={() => {
                   onChange(undefined);

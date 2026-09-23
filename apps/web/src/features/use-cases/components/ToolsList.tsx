@@ -52,16 +52,15 @@ export default function ToolsList({ tools }: ToolsListProps) {
                 return (
                   <div
                     key={t.name}
-                    className="relative flex min-w-8 items-center justify-center"
-                    style={{
-                      rotate:
-                        displayIcons.length > 1
-                          ? i % 2 === 0
-                            ? "8deg"
-                            : "-8deg"
-                          : "0deg",
-                      zIndex: i,
-                    }}
+                    className={
+                      displayIcons.length <= 1
+                        ? "relative flex min-w-8 items-center justify-center tools-fan-flat"
+                        : i === 0
+                          ? "relative flex min-w-8 items-center justify-center tools-fan-0"
+                          : i === 1
+                            ? "relative flex min-w-8 items-center justify-center tools-fan-1"
+                            : "relative flex min-w-8 items-center justify-center tools-fan-2"
+                    }
                   >
                     {Icon}
                   </div>

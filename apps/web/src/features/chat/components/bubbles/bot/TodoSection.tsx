@@ -74,28 +74,30 @@ function toCanonicalProject(p: ChatTodoProject): Project {
 
 function TodoStatsView({ stats }: { stats: TodoToolStats }) {
   return (
-    <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+    <div className="mt-3 w-fit min-w-[400px] rounded-3xl rounded-bl-none bg-zinc-800 p-4">
       <div className="mb-3 text-sm">Task Overview</div>
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-xl bg-zinc-900 p-3 text-center">
-          <p className="text-xl font-semibold text-zinc-100">{stats.total}</p>
+          <p className="text-xl font-semibold tabular-nums text-zinc-100">
+            {stats.total}
+          </p>
           <p className="text-xs text-zinc-500">Total</p>
         </div>
         <div className="rounded-xl bg-zinc-900 p-3 text-center">
-          <p className="text-xl font-semibold text-green-500">
+          <p className="text-xl font-semibold tabular-nums text-emerald-400">
             {stats.completed}
           </p>
           <p className="text-xs text-zinc-500">Done</p>
         </div>
         <div className="rounded-xl bg-zinc-900 p-3 text-center">
-          <p className="text-xl font-semibold text-yellow-500">
+          <p className="text-xl font-semibold tabular-nums text-amber-400">
             {stats.pending}
           </p>
           <p className="text-xs text-zinc-500">Pending</p>
         </div>
         {stats.overdue > 0 && (
           <div className="rounded-xl bg-zinc-900 p-3 text-center">
-            <p className="text-xl font-semibold text-red-500">
+            <p className="text-xl font-semibold tabular-nums text-red-400">
               {stats.overdue}
             </p>
             <p className="text-xs text-zinc-500">Overdue</p>
@@ -103,13 +105,15 @@ function TodoStatsView({ stats }: { stats: TodoToolStats }) {
         )}
         {stats.today > 0 && (
           <div className="rounded-xl bg-zinc-900 p-3 text-center">
-            <p className="text-xl font-semibold text-blue-500">{stats.today}</p>
+            <p className="text-xl font-semibold tabular-nums text-blue-400">
+              {stats.today}
+            </p>
             <p className="text-xs text-zinc-500">Today</p>
           </div>
         )}
         {stats.upcoming > 0 && (
           <div className="rounded-xl bg-zinc-900 p-3 text-center">
-            <p className="text-xl font-semibold text-purple-500">
+            <p className="text-xl font-semibold tabular-nums text-purple-400">
               {stats.upcoming}
             </p>
             <p className="text-xs text-zinc-500">Soon</p>
@@ -128,7 +132,7 @@ function TodoProjectsView({
   onOpenProject: (projectId: string) => void;
 }) {
   return (
-    <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+    <div className="mt-3 w-fit min-w-[400px] rounded-3xl rounded-bl-none bg-zinc-800 p-4">
       <div className="mb-3 text-sm">Your Projects</div>
       <div className="space-y-2">
         {projects.map((project) => (
@@ -154,7 +158,7 @@ function TodoProjectsView({
                 <span>{project.todo_count} tasks</span>
               )}
               {project.completion_percentage !== undefined && (
-                <span>• {Math.round(project.completion_percentage)}%</span>
+                <span>{Math.round(project.completion_percentage)}%</span>
               )}
             </div>
           </button>
@@ -206,18 +210,20 @@ export default function TodoSection({
     const projectList = Array.from(projectMap.values());
 
     return (
-      <ScrollShadow className="mt-3 flex max-h-[400px] w-full max-w-xl flex-col gap-2">
-        {todos.map((todo) => (
-          <TodoItem
-            key={todo.id}
-            todo={toCanonicalTodo(todo)}
-            projects={projectList}
-            isSelected={false}
-            onUpdate={(todoId, updates) => updateTodo(todoId, updates)}
-            onClick={(t) => router.push(`/todos?todoId=${t.id}`)}
-            className="rounded-2xl bg-zinc-800 hover:bg-zinc-800/80"
-          />
-        ))}
+      <ScrollShadow className="mt-3 max-h-[400px] w-full max-w-xl">
+        <div className="flex flex-col gap-2">
+          {todos.map((todo) => (
+            <TodoItem
+              key={todo.id}
+              todo={toCanonicalTodo(todo)}
+              projects={projectList}
+              isSelected={false}
+              onUpdate={(todoId, updates) => updateTodo(todoId, updates)}
+              onClick={(t) => router.push(`/todos?todoId=${t.id}`)}
+              className="rounded-3xl bg-zinc-800 hover:bg-zinc-800/80"
+            />
+          ))}
+        </div>
       </ScrollShadow>
     );
   }
@@ -225,7 +231,7 @@ export default function TodoSection({
   // Empty State
   if (action === "list" && (!todos || todos.length === 0)) {
     return (
-      <div className="mt-3 w-fit min-w-[300px] rounded-2xl rounded-bl-none bg-zinc-800 p-6 text-center">
+      <div className="mt-3 w-fit min-w-[300px] rounded-3xl rounded-bl-none bg-zinc-800 p-4 text-center">
         <CheckmarkCircle02Icon className="mx-auto h-8 w-8 text-zinc-600" />
         <p className="mt-2 text-sm text-zinc-300">No tasks found</p>
         {message && <p className="mt-1 text-xs text-zinc-500">{message}</p>}
@@ -236,10 +242,10 @@ export default function TodoSection({
   // Success/Action Message (delete confirmations etc. that return no task rows)
   if (message && !todos && !stats && !projects) {
     const isDeleteAction = action === "delete";
-    const iconColor = isDeleteAction ? "text-red-500" : "text-green-500";
+    const iconColor = isDeleteAction ? "text-red-400" : "text-emerald-400";
 
     return (
-      <div className="mt-3 w-fit rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="mt-3 w-fit rounded-3xl rounded-bl-none bg-zinc-800 p-4">
         <div className="flex items-center gap-2">
           <CheckmarkCircle02Icon className={`h-4 w-4 ${iconColor}`} />
           <p className="text-sm">{message}</p>

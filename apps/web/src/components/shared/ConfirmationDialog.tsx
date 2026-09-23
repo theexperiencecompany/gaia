@@ -85,7 +85,7 @@ export function ConfirmationDialog({
       <ModalContent>
         {(onClose) => (
           <>
-            <ModalHeader className="flex flex-col gap-1">{title}</ModalHeader>
+            <ModalHeader>{title}</ModalHeader>
             <ModalBody>
               <p>{message}</p>
             </ModalBody>
@@ -96,7 +96,7 @@ export function ConfirmationDialog({
                   onCancel();
                   onClose();
                 }}
-                className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                className="text-zinc-300"
                 endContent={<Kbd keys={["escape"]} />}
                 isDisabled={isLoading}
               >

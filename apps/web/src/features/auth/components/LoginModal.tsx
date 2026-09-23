@@ -49,33 +49,34 @@ export default function LoginModal() {
       onOpenChange={(v) => setLoginModalOpen(v)}
       isDismissable={canDismiss}
       backdrop="blur"
-      className="outline-none"
       isKeyboardDismissDisabled={!canDismiss}
       hideCloseButton={!canDismiss}
     >
-      <ModalContent className="p-4">
-        <ModalBody>
-          <div className="mb-3 space-y-3 text-center">
-            <div className="text-5xl font-medium">Login</div>
-            <div className="text-md text-foreground-600">
-              Please login to continue your journey with GAIA.
+      <ModalContent>
+        <div className="p-4">
+          <ModalBody>
+            <div className="mb-3 space-y-3 text-center">
+              <div className="text-5xl font-medium">Login</div>
+              <div className="text-base text-foreground-600">
+                Please login to continue your journey with GAIA.
+              </div>
             </div>
-          </div>
-          <RaisedButton
-            color="#00bbff"
-            className="text-md w-full text-primary-foreground!"
-            onClick={() => {
-              trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
-                location: "login_modal",
-                destination: "workos_oauth",
-              });
-              handleAuthLogin();
-            }}
-          >
-            <Login02Icon width={22} height={22} />
-            Sign in
-          </RaisedButton>
-        </ModalBody>
+            <RaisedButton
+              color="#00bbff"
+              className="text-base w-full"
+              onClick={() => {
+                trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+                  location: "login_modal",
+                  destination: "workos_oauth",
+                });
+                handleAuthLogin();
+              }}
+            >
+              <Login02Icon width={22} height={22} />
+              Sign in
+            </RaisedButton>
+          </ModalBody>
+        </div>
       </ModalContent>
     </Modal>
   );

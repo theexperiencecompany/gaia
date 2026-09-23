@@ -31,8 +31,7 @@ export default function Pins() {
           </div>
         ) : (
           <div className="flex flex-wrap justify-center gap-4 pb-8">
-            <div className="flex flex-wrap justify-center gap-4 pb-8 sm:px-[10vw]">
-              {/* // <div className="grid gap-3 px-1 sm:px-[10%] sm:grid-cols-[repeat(auto-fill,minmax(15vw,1fr))] grid-cols-[repeat(auto-fill,minmax(1fr,1fr))] pb-24 sm:pb-20"> */}
+            <div className="flex flex-wrap justify-center gap-4 pb-8 sm:px-10">
               {filteredResults && filteredResults.length > 0 ? (
                 <div className="grid grid-cols-1 gap-4 pt-10 pb-24 sm:grid-cols-3 sm:pb-20">
                   {filteredResults.map((result) => (
@@ -72,7 +71,6 @@ export default function Pins() {
           <Input
             autoFocus
             className="w-full"
-            classNames={{ inputWrapper: "pr-1" }}
             placeholder="Enter a message to filter pins"
             radius="full"
             size="lg"

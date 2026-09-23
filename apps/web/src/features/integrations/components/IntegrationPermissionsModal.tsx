@@ -34,22 +34,26 @@ export const IntegrationPermissionsModal = ({
     scrollBehavior="inside"
   >
     <ModalContent>
-      <ModalHeader className="flex-col items-start gap-1 pb-3">
-        <span className="text-base font-semibold text-zinc-100">
-          {name} permissions
-        </span>
-        {/* Someone opening this for the first time has no idea GAIA acts on
-            its own, which is the fact both cards below depend on. */}
-        <span className="text-sm font-normal text-zinc-400">
-          GAIA uses {name} on its own. Tell it when to stop and ask you first.
-        </span>
+      <ModalHeader className="mb-3">
+        <div className="flex flex-col items-start">
+          <span className="text-base font-semibold text-zinc-100">
+            {name} permissions
+          </span>
+          {/* Someone opening this for the first time has no idea GAIA acts on
+             its own, which is the fact both cards below depend on. */}
+          <span className="mt-1 text-sm font-normal text-zinc-400">
+            GAIA uses {name} on its own. Tell it when to stop and ask you first.
+          </span>
+        </div>
       </ModalHeader>
-      <ModalBody className="gap-6 pb-6">
-        <PermissionModeDecision
-          integrationName={name}
-          permissions={permissions}
-        />
-        <PermissionToolList tools={tools} permissions={permissions} />
+      <ModalBody>
+        <div className="flex flex-col gap-6 pb-6">
+          <PermissionModeDecision
+            integrationName={name}
+            permissions={permissions}
+          />
+          <PermissionToolList tools={tools} permissions={permissions} />
+        </div>
       </ModalBody>
     </ModalContent>
   </Modal>

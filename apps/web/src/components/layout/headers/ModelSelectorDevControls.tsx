@@ -52,7 +52,7 @@ function ModelSelect({
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-medium tracking-wide text-zinc-500 uppercase">
+      <span className="text-xs font-medium tracking-wide text-zinc-500 uppercase">
         {label}
       </span>
       <Select
@@ -69,8 +69,7 @@ function ModelSelect({
         className="w-full"
         popoverProps={{ classNames: { content: "bg-zinc-800" } }}
         classNames={{
-          trigger:
-            "h-9 min-h-9 cursor-pointer bg-zinc-800 data-[hover=true]:bg-zinc-700",
+          trigger: "h-9 min-h-9 cursor-pointer",
           value: "text-xs font-medium text-zinc-200",
           selectorIcon: "text-zinc-500",
         }}
@@ -88,7 +87,6 @@ function ModelSelect({
             key={m.id}
             textValue={m.name}
             classNames={{
-              base: "gap-2 rounded-lg data-[hover=true]:bg-zinc-700/60",
               title: "text-xs text-zinc-200",
             }}
             startContent={<ModelLogo src={m.logo} alt={m.provider} size={18} />}
@@ -135,10 +133,10 @@ export default function ModelSelectorDevControls() {
           <CpuIcon width={20} height={20} />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[260px] bg-zinc-900 p-3">
-        <div className="flex w-full flex-col gap-3">
+      <PopoverContent className="w-[260px]">
+        <div className="flex w-full flex-col gap-3 p-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold tracking-wide text-zinc-300 uppercase">
+            <span className="text-xs font-semibold tracking-wide text-zinc-300 uppercase">
               Dev models
             </span>
             <Switch
@@ -146,7 +144,7 @@ export default function ModelSelectorDevControls() {
               isSelected={useDefaultModels}
               onValueChange={setUseDefaultModels}
               aria-label="Use plan-default models"
-              classNames={{ label: "text-[11px] text-zinc-400" }}
+              classNames={{ label: "text-xs text-zinc-400" }}
             >
               Defaults
             </Switch>

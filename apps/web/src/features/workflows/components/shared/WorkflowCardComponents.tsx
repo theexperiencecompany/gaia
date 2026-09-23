@@ -154,7 +154,7 @@ export function SystemWorkflowChip({ size = "sm" }: SystemWorkflowChipProps) {
       placement="top"
       delay={300}
       closeDelay={0}
-      classNames={{ content: "bg-zinc-800 text-xs max-w-48 text-center" }}
+      classNames={{ content: "text-xs max-w-48 text-center" }}
     >
       <Chip
         color="primary"
@@ -280,7 +280,7 @@ export function MissingIntegrationsWarning({
       placement="top"
       delay={200}
       closeDelay={0}
-      classNames={{ content: "bg-zinc-800 text-xs max-w-56 text-center" }}
+      classNames={{ content: "text-xs max-w-56 text-center" }}
     >
       <NeedsSetupChip />
     </Tooltip>
@@ -309,7 +309,7 @@ export function MissingIntegrationsAlert({
   if (!missingIntegrations.length) return null;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-amber-400/10 px-4 py-3 text-sm text-amber-400">
       <span className="flex items-center gap-2">
         <Alert01Icon width={16} height={16} className="shrink-0" />
         <span>{missingIntegrationsMessage(missingIntegrations)}</span>

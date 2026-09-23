@@ -27,8 +27,8 @@
     "quality:types-location": "node scripts/ci/checks.mjs types-location",
     "tokens": "pnpm run tokens:export && pnpm run tokens:build",
     "tokens:build": "style-dictionary build",
-    "tokens:check": "design.md export --format dtcg DESIGN.md | diff - config/design.tokens.json",
-    "tokens:export": "design.md export --format dtcg DESIGN.md > config/design.tokens.json",
+    "tokens:check": "design.md export --format dtcg DESIGN.md | biome format --stdin-file-path=config/design.tokens.json | diff - config/design.tokens.json",
+    "tokens:export": "design.md export --format dtcg DESIGN.md > config/design.tokens.json && biome check --write config/design.tokens.json",
     "doctor": "npx react-doctor@0.9.12"
   },
   "devDependencies": {

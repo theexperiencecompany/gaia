@@ -87,7 +87,7 @@ function buildDashboardSections({
   }
   if (unreadEmailsCount > 0) {
     sections.push({
-      icon: <Mail01Icon className="w-7 h-7 text-sky-400" />,
+      icon: <Mail01Icon className="w-7 h-7 text-blue-400" />,
       count: unreadEmailsCount,
       label: unreadEmailsCount === 1 ? "unread email" : "unread emails",
     });
@@ -106,7 +106,7 @@ function SummaryItem({ icon, count, label }: DashboardSection) {
   return (
     <span className="inline-flex items-center gap-1.5">
       {icon}
-      <span className="font-medium text-white">{count}</span>
+      <span className="font-medium text-white tabular-nums">{count}</span>
       <span>{label}</span>
     </span>
   );
@@ -192,7 +192,7 @@ export default function HomePage() {
     <div className="flex flex-col p-6 pt-0 min-h-screen h-fit overflow-y-scroll outline-none">
       <div className="flex flex-col p-3 mb-6 space-y-1">
         <div className="flex items-center gap-3 mb-5">
-          <h2 className="text-4xl font-medium text-zinc-700">
+          <h2 className="text-3xl font-medium text-zinc-700">
             {simpleGreeting}
           </h2>
           <div className="flex items-center gap-2">
@@ -204,7 +204,7 @@ export default function HomePage() {
                 className="shrink-0 ml-1 hover:scale-120 rotate-6 transition"
               />
             )}
-            <h1 className="font-medium text-4xl text-zinc-700">
+            <h1 className="font-medium text-3xl text-zinc-700">
               {user?.name?.split(" ")[0]}
               <span className="ml-4">:)</span>
             </h1>

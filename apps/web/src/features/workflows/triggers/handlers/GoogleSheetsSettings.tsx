@@ -252,8 +252,7 @@ export function GoogleSheetsSettings({
                       key={group.group}
                       title={spreadsheetName}
                       classNames={{
-                        heading:
-                          "text-xs font-semibold text-zinc-400 px-2 py-1",
+                        heading: "text-xs font-semibold text-zinc-400",
                       }}
                     >
                       {group.options.map((option) => (

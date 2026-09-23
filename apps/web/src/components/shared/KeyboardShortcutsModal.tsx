@@ -61,20 +61,21 @@ export default function KeyboardShortcutsModal({
       onOpenChange={onOpenChange}
       size="4xl"
       backdrop="blur"
-      className="rounded-2xl bg-zinc-900/90 backdrop-blur-3xl outline-0 border-0"
     >
       <ModalContent>
-        <ModalHeader className="flex flex-col gap-1">
+        <ModalHeader>
           <span className="text-xl font-semibold">Keyboard Shortcuts</span>
         </ModalHeader>
 
-        <ModalBody className="gap-6 pb-6">
-          <ShortcutCategory title="Create" shortcuts={createShortcuts} />
-          <ShortcutCategory
-            title="Navigation"
-            shortcuts={navigationShortcuts}
-          />
-          <ShortcutCategory title="General" shortcuts={generalShortcuts} />
+        <ModalBody>
+          <div className="flex flex-col gap-6 pb-6">
+            <ShortcutCategory title="Create" shortcuts={createShortcuts} />
+            <ShortcutCategory
+              title="Navigation"
+              shortcuts={navigationShortcuts}
+            />
+            <ShortcutCategory title="General" shortcuts={generalShortcuts} />
+          </div>
         </ModalBody>
       </ModalContent>
     </Modal>

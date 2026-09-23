@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import type { ReceiptPrinterPaperProps } from "@/features/pricing/components/receipt-printer.types";
 import { cn } from "@/lib/utils";
 
@@ -22,13 +23,15 @@ export function ReceiptPrinterPaper({
   style,
   ...props
 }: ReceiptPrinterPaperProps) {
+  const paperVars = { "--receipt-clip": receiptClipPath } as CSSProperties;
+  const paperStyle = { ...paperVars, ...style };
   return (
     <article
       className={cn(
-        "relative z-10 min-h-80 bg-zinc-50 bg-[url('/textures/receipt-paper.svg')] bg-cover px-6 pt-7 pb-8 font-mono text-zinc-950 bg-blend-soft-light",
+        "relative z-10 min-h-80 bg-zinc-50 bg-cover px-6 pt-7 pb-8 font-mono text-zinc-950 bg-blend-soft-light receipt-paper",
         className,
       )}
-      style={{ clipPath: receiptClipPath, ...style }}
+      style={paperStyle}
       {...props}
     >
       {children}

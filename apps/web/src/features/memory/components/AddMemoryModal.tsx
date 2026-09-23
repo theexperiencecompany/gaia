@@ -66,9 +66,9 @@ export function AddMemoryModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg">
       <ModalContent>
-        <ModalHeader className="flex-col gap-1">
+        <ModalHeader className="flex flex-col">
           <span>Add memory</span>
-          <span className="text-xs font-normal text-zinc-500">
+          <span className="mt-1 text-xs font-normal text-zinc-500">
             Tell GAIA something specific about yourself, your preferences, or
             details worth remembering
           </span>
@@ -99,12 +99,12 @@ export function AddMemoryModal({
           />
         </ModalBody>
         <ModalFooter>
-          <Button variant="light" className="rounded-xl" onPress={onClose}>
+          <Button variant="light" radius="md" onPress={onClose}>
             Cancel
           </Button>
           <Button
             color="primary"
-            className="rounded-xl"
+            radius="md"
             onPress={handleSave}
             isLoading={isPending}
             isDisabled={!content.trim() || content.length > MAX_MEMORY_LENGTH}

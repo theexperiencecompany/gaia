@@ -18,7 +18,7 @@ export default function StakeholderUpdateCard() {
         <span className="flex-1 text-sm font-medium text-zinc-100">
           Weekly Stakeholder Update: Week of March 3
         </span>
-        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
           Draft ready
         </span>
       </div>
@@ -67,7 +67,7 @@ export default function StakeholderUpdateCard() {
         <p className="text-xs text-zinc-400 mt-2">Next review: March 13</p>
       </div>
 
-      <span className="mt-2 inline-block rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+      <span className="mt-2 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
         Ready to send · 3 recipients
       </span>
     </div>

@@ -222,7 +222,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
                           <button
                             type="button"
                             key={`event-${eventPos}`}
-                            className="absolute ml-0.5 flex min-h-fit cursor-pointer overflow-hidden rounded-lg text-left text-white backdrop-blur-3xl transition-opacity duration-200 hover:opacity-80"
+                            className="absolute ml-0.5 flex min-h-fit cursor-pointer overflow-hidden rounded-xl text-left text-white backdrop-blur-3xl transition-opacity duration-200 hover:opacity-80"
                             style={{
                               top: `${eventPos.top}px`,
                               height: `${eventPos.height}px`,

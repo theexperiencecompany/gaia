@@ -84,8 +84,7 @@ export function MemoryRow({
               size="sm"
               variant="flat"
               classNames={{
-                base: "h-5 bg-zinc-800",
-                content: "px-1.5 text-xs text-zinc-400",
+                content: "text-xs text-zinc-400",
               }}
             >
               {memory.category_path}
@@ -98,8 +97,8 @@ export function MemoryRow({
               variant="flat"
               onClick={toggleHistory}
               classNames={{
-                base: "h-5 cursor-pointer bg-zinc-800 data-[hover=true]:bg-zinc-700",
-                content: "px-1.5 text-xs text-zinc-400",
+                base: "cursor-pointer",
+                content: "text-xs text-zinc-400",
               }}
             >
               v{memory.version}
@@ -118,14 +117,14 @@ export function MemoryRow({
                 {history.map((older, i) => (
                   <div key={older.id} className="relative mb-3 pl-4 last:mb-0">
                     <span
-                      className={`absolute left-[-3px] top-1.5 size-[7px] rounded-full border border-zinc-600 ${i === 0 ? "bg-zinc-500" : "bg-zinc-800"}`}
+                      className={`absolute left-[-3px] top-1.5 size-[7px] rounded-full ${i === 0 ? "bg-zinc-500" : "bg-zinc-800"}`}
                     />
                     <div className="flex items-baseline gap-2">
                       <span className="shrink-0 text-xs font-medium text-zinc-500">
                         v{older.version}
                       </span>
                       {older.relation_type && (
-                        <span className="shrink-0 rounded bg-zinc-800 px-1 py-0.5 text-[10px] text-zinc-600">
+                        <span className="shrink-0 rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-600">
                           {older.relation_type}
                         </span>
                       )}

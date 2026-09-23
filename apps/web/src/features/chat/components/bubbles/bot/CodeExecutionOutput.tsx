@@ -1,3 +1,4 @@
+import { Spinner } from "@heroui/spinner";
 import {
   Cancel01Icon,
   CheckmarkCircle02Icon,
@@ -28,17 +29,15 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
 }) => {
   const getStatusIcon = () => {
     if (status === "executing") {
-      return (
-        <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-      );
+      return <Spinner size="sm" />;
     }
     if (status === "error" || output?.error) {
       return <Cancel01Icon className="h-3 w-3 text-red-400" />;
     }
     if (status === "completed" && output && !output.error) {
-      return <CheckmarkCircle02Icon className="h-3 w-3 text-green-400" />;
+      return <CheckmarkCircle02Icon className="h-3 w-3 text-emerald-400" />;
     }
-    return <SourceCodeCircleIcon className="h-3 w-3 text-gray-400" />;
+    return <SourceCodeCircleIcon className="h-3 w-3 text-zinc-400" />;
   };
 
   const getStatusText = () => {
@@ -52,12 +51,12 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
     output && (output.stdout || output.stderr || output.results?.length);
 
   return (
-    <div className="w-full overflow-hidden rounded-2xl bg-zinc-800">
+    <div className="w-full overflow-hidden rounded-3xl bg-zinc-800">
       {/* Header */}
-      <div className="p flex items-center justify-between bg-zinc-900 px-4 py-2">
+      <div className="flex items-center justify-between bg-zinc-900 px-4 py-2">
         <div className="flex items-center gap-2">
           {getStatusIcon()}
-          <span className="text-sm font-medium text-gray-200">
+          <span className="text-sm font-medium text-zinc-200">
             {getStatusText()}
           </span>
         </div>
@@ -69,7 +68,7 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
       {/* Content */}
       <div className="bg-zinc-900 p-3 pt-0">
         {status === "executing" && !output ? (
-          <div className="flex items-center gap-3 py-4 text-gray-400">
+          <div className="flex items-center gap-3 py-4 text-zinc-400">
             <div className="h-2 w-2 animate-pulse rounded-full bg-blue-400" />
             <span className="text-sm">Executing {language} code...</span>
           </div>
@@ -77,7 +76,7 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
           <div className="space-y-3">
             {/* Standard Output */}
             {output.stdout && (
-              <div className="bg-black p-3 font-mono text-sm text-green-400">
+              <div className="bg-black p-3 font-mono text-sm text-emerald-400">
                 <pre className="whitespace-pre-wrap">{output.stdout}</pre>
               </div>
             )}
@@ -108,7 +107,7 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
             {/* Execution Error */}
             {output.error && (
               <div className="space-y-2">
-                <div className="text-xs font-medium text-gray-500">
+                <div className="text-xs font-medium text-zinc-500">
                   EXECUTION ERROR
                 </div>
                 <div className="bg-black p-3 font-mono text-sm text-red-400">
@@ -118,10 +117,10 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
             )}
 
             {/* Status */}
-            <div className="flex items-center justify-between pb-3 text-xs text-gray-500">
+            <div className="flex items-center justify-between pb-3 text-xs text-zinc-500">
               <span>Status: {status || "unknown"}</span>
               {!output.error && !output.stderr ? (
-                <span className="text-green-400">Success</span>
+                <span className="text-emerald-400">Success</span>
               ) : (
                 <span className="text-red-400">Failed</span>
               )}
@@ -132,13 +131,13 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
               !output.stderr &&
               !output.results?.length &&
               !output.error && (
-                <div className="py-4 text-center text-sm text-gray-500">
+                <div className="py-4 text-center text-sm text-zinc-500">
                   No output produced
                 </div>
               )}
           </div>
         ) : (
-          <div className="py-4 text-center text-sm text-gray-500">
+          <div className="py-4 text-center text-sm text-zinc-500">
             Ready to execute
           </div>
         )}

@@ -340,7 +340,7 @@ function IntegrationBadge({ name }: { name: string }) {
       <Chip
         variant="flat"
         size="md"
-        className="bg-zinc-800 text-zinc-300"
+        className="text-zinc-300"
         startContent={
           domain ? (
             <Image

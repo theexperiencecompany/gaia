@@ -23,7 +23,7 @@ export const CategoryIntegrationStatus: React.FC<
 
   // Show green dot if connected
   if (integration?.status === "connected")
-    return <span className="h-1.5 w-1.5 rounded-full bg-green-500" />;
+    return <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />;
 
   // Show orange dot if created (added but not connected)
   if (integration?.status === "created")

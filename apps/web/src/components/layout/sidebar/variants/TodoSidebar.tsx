@@ -18,35 +18,21 @@ import Spinner from "@/components/ui/spinner";
 import AddProjectModal from "@/features/todo/components/AddProjectModal";
 import TodoModal from "@/features/todo/components/TodoModal";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
-import { priorityTextColors } from "@/features/todo/utils/priorityColors";
 import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
-import { Priority } from "@/types/features/todoTypes";
 import { accordionItemStyles } from "../constants";
 
 const HighPriorityIcon = () => (
-  <Flag02Icon
-    width={18}
-    height={18}
-    style={{ color: priorityTextColors[Priority.HIGH] }}
-  />
+  <Flag02Icon width={18} height={18} className="text-red-500" />
 );
 
 const MediumPriorityIcon = () => (
-  <Flag02Icon
-    width={18}
-    height={18}
-    style={{ color: priorityTextColors[Priority.MEDIUM] }}
-  />
+  <Flag02Icon width={18} height={18} className="text-yellow-500" />
 );
 
 const LowPriorityIcon = () => (
-  <Flag02Icon
-    width={18}
-    height={18}
-    style={{ color: priorityTextColors[Priority.LOW] }}
-  />
+  <Flag02Icon width={18} height={18} className="text-blue-500" />
 );
 
 const LabelTagIcon = () => <Tag01Icon width={18} height={18} />;
@@ -123,8 +109,8 @@ function SidebarSection({
                 <span className="ml-auto text-xs">{item.count}</span>
               )
             }
-            className={`justify-start px-2 text-start text-sm ${activeItem === item.href ? "bg-zinc-800 text-zinc-300" : "text-zinc-500 hover:text-zinc-300"}`}
-            variant="light"
+            className={`justify-start text-start text-sm ${activeItem === item.href ? "text-zinc-300" : "text-zinc-500 hover:text-zinc-300"}`}
+            variant={activeItem === item.href ? "flat" : "light"}
             radius="sm"
             size="sm"
             onPress={() => onItemClick(item.href)}

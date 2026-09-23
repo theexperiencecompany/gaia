@@ -36,7 +36,7 @@ export default function FollowUpQueueCard() {
           height: 16,
           showBackground: false,
         })}
-        <span className="text-[11px] font-medium text-zinc-400">
+        <span className="text-xs font-medium text-zinc-400">
           5 follow-ups queued
         </span>
       </div>
@@ -48,7 +48,7 @@ export default function FollowUpQueueCard() {
                 {item.company}: {item.contact}
               </span>
               {item.urgent && (
-                <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] text-red-400">
+                <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs text-red-400">
                   Urgent
                 </span>
               )}
@@ -59,7 +59,7 @@ export default function FollowUpQueueCard() {
         ))}
       </div>
       <div className="mt-3 border-t border-zinc-800 pt-3">
-        <p className="text-[11px] text-zinc-500">
+        <p className="text-xs text-zinc-500">
           All drafts ready. Review and send in 1 click.
         </p>
       </div>

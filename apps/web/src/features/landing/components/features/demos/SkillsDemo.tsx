@@ -1,5 +1,6 @@
 "use client";
 
+import { Tick02Icon } from "@icons";
 import { AnimatePresence, useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useEffect, useRef, useState } from "react";
@@ -46,8 +47,8 @@ const SKILLS: DemoSkill[] = [
 
 function InstalledBadge() {
   return (
-    <span className="shrink-0 text-xs font-medium text-emerald-400">
-      ✓ Installed
+    <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-400">
+      <Tick02Icon className="size-3.5" /> Installed
     </span>
   );
 }
@@ -64,7 +65,7 @@ function AnimatingBadge({ started, onComplete }: AnimatingBadgeProps) {
     <div className="shrink-0 w-24 h-4 rounded-full bg-zinc-700 overflow-hidden">
       {started && (
         <m.div
-          className="h-full rounded-full bg-cyan-400"
+          className="h-full rounded-full bg-blue-400"
           initial={{ width: "0%" }}
           animate={{ width: "100%" }}
           transition={{ duration: 1.5, ease: "easeInOut" }}
@@ -79,7 +80,6 @@ function AnimatingBadge({ started, onComplete }: AnimatingBadgeProps) {
 
 interface SkillRowProps {
   skill: DemoSkill;
-  isLast: boolean;
   animationStarted: boolean;
   onBarComplete: () => void;
   showDone: boolean;
@@ -87,16 +87,13 @@ interface SkillRowProps {
 
 function SkillRow({
   skill,
-  isLast,
   animationStarted,
   onBarComplete,
   showDone,
 }: SkillRowProps) {
   return (
-    <div
-      className={`flex items-center gap-3 py-3 ${!isLast ? "border-b border-zinc-800" : ""}`}
-    >
-      <div className="rounded-lg bg-zinc-700 w-8 h-8 shrink-0 flex items-center justify-center">
+    <div className="flex items-center gap-3 py-3">
+      <div className="rounded-xl bg-zinc-700 w-8 h-8 shrink-0 flex items-center justify-center">
         <span className="text-xs font-semibold text-zinc-300">
           {skill.name[0]}
         </span>
@@ -111,12 +108,12 @@ function SkillRow({
         ) : showDone ? (
           <m.span
             key="done"
-            className="shrink-0 text-xs font-medium text-emerald-400"
+            className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-400"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
           >
-            ✓ Installed
+            <Tick02Icon className="size-3.5" /> Installed
           </m.span>
         ) : (
           <m.div key="bar" exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
@@ -155,11 +152,10 @@ export default function SkillsDemo() {
 
   return (
     <div ref={containerRef} className="rounded-2xl bg-zinc-800 px-4">
-      {SKILLS.map((skill, index) => (
+      {SKILLS.map((skill) => (
         <SkillRow
           key={skill.id}
           skill={skill}
-          isLast={index === SKILLS.length - 1}
           animationStarted={skill.status === "animated" ? barStarted : false}
           onBarComplete={handleBarComplete}
           showDone={skill.status === "animated" ? showDone : false}

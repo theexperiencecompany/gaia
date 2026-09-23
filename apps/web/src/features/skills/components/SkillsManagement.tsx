@@ -123,7 +123,8 @@ export default function SkillsManagement() {
         <Button
           size="sm"
           color="primary"
-          className="shrink-0 rounded-xl"
+          radius="md"
+          className="shrink-0"
           startContent={<PlusSignIcon className="size-4" />}
           onPress={openCreate}
         >

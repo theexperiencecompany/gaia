@@ -51,7 +51,7 @@ export function ChatBubbleUserFooter({
         <span className="text-xs text-zinc-400 select-none">Not delivered</span>
         {onRetry && (
           <Button
-            className="h-7 min-w-0 px-2 text-xs"
+            className="h-7 min-w-0 text-xs"
             isDisabled={isRetrying}
             onPress={onRetry}
             radius="full"

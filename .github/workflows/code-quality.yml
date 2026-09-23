@@ -377,6 +377,37 @@ jobs:
           status: ${{ job.status }}
           name: biome
 
+  # --- Design-system lint (shadcn/lint via Oxlint) --------------------------
+  shadcn-lint:
+    name: Design-system lint (shadcn)
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
+    if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Design-system lint (oxlint + @shadcn/lint, max 99 warnings)
+        run: |
+          trap 'echo "::error::repro: pnpm --filter ./apps/web exec oxlint --max-warnings=4"' ERR
+          echo "::group::oxlint shadcn"
+          pnpm --filter ./apps/web exec oxlint --max-warnings=4
+          echo "::endgroup::"
+          echo "### Design-system lint — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Design-system lint: OK (0 errors, warnings within cap)"
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: shadcn-lint
+
   # --- Workspace dependency hygiene ---------------------------------------
   deps:
     name: Workspace dependency hygiene
@@ -1867,6 +1898,7 @@ jobs:
       - select-runner-services
       - changes
       - biome
+      - shadcn-lint
       - deps
       - circular
       - file-size
@@ -1927,7 +1959,7 @@ jobs:
           # carried would go unmutated (see consolidate --help).
           # Results go through env, not inline expansion.
           EXPECT: >-
-            changes=${{ needs.changes.result }},biome=${{ needs.biome.result }},deps=${{ needs.deps.result }},circular=${{ needs.circular.result }},file-size=${{ needs.file-size.result }},types-location=${{ needs.types-location.result }},api-schema=${{ needs.api-schema.result }},doc-comments=${{ needs.doc-comments.result }},components-per-file=${{ needs.components-per-file.result }},duplicates=${{ needs.duplicates.result }},package-hygiene=${{ needs.package-hygiene.result }},type-check=${{ needs.type-check.result }},python-static=${{ needs.python-static.result }},python-mypy=${{ needs.python-mypy.result }},observability=${{ needs.observability.result }},wide-event-conformance=${{ needs.wide-event-conformance.result }},dead-code=${{ needs.dead-code.result }},alert-rules=${{ needs.alert-rules.result }},suppression-hygiene=${{ needs.suppression-hygiene.result }},gitleaks=${{ needs.gitleaks.result }},semgrep=${{ needs.semgrep.result }},test-mutation-plan=${{ needs.test-mutation-plan.result }},test-mutation@mutation*${{ needs.test-mutation-plan.outputs.count }}=${{ needs.test-mutation.result }},select-runner-services@result-only=${{ needs.select-runner-services.result }}
+            changes=${{ needs.changes.result }},biome=${{ needs.biome.result }},shadcn-lint=${{ needs.shadcn-lint.result }},deps=${{ needs.deps.result }},circular=${{ needs.circular.result }},file-size=${{ needs.file-size.result }},types-location=${{ needs.types-location.result }},api-schema=${{ needs.api-schema.result }},doc-comments=${{ needs.doc-comments.result }},components-per-file=${{ needs.components-per-file.result }},duplicates=${{ needs.duplicates.result }},package-hygiene=${{ needs.package-hygiene.result }},type-check=${{ needs.type-check.result }},python-static=${{ needs.python-static.result }},python-mypy=${{ needs.python-mypy.result }},observability=${{ needs.observability.result }},wide-event-conformance=${{ needs.wide-event-conformance.result }},dead-code=${{ needs.dead-code.result }},alert-rules=${{ needs.alert-rules.result }},suppression-hygiene=${{ needs.suppression-hygiene.result }},gitleaks=${{ needs.gitleaks.result }},semgrep=${{ needs.semgrep.result }},test-mutation-plan=${{ needs.test-mutation-plan.result }},test-mutation@mutation*${{ needs.test-mutation-plan.outputs.count }}=${{ needs.test-mutation.result }},select-runner-services@result-only=${{ needs.select-runner-services.result }}
         run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT"
       # The other half of the `always()` above: a title or body edit ran no
       # lane, so there is nothing to consolidate — but this check must still

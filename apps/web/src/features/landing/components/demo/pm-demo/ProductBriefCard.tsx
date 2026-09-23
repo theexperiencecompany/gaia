@@ -17,7 +17,7 @@ export default function ProductBriefCard() {
 
       <div>
         {/* Sprint Status */}
-        <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
           Sprint Status · Sprint 24, Day 6 of 10
         </p>
         <div className="mt-1 mb-2 rounded-full bg-zinc-700 h-1.5">
@@ -43,7 +43,7 @@ export default function ProductBriefCard() {
         </div>
 
         {/* Shipped Yesterday */}
-        <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
           Shipped Yesterday
         </p>
         <div className="space-y-1">
@@ -66,7 +66,7 @@ export default function ProductBriefCard() {
         </div>
 
         {/* Today's Meetings */}
-        <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 mb-1 mt-3">
           Today&apos;s Meetings
         </p>
         <div className="space-y-1">
@@ -83,7 +83,7 @@ export default function ProductBriefCard() {
       </div>
 
       <div className="mt-3 pt-3 border-t border-zinc-800">
-        <p className="flex items-center gap-1 text-[11px] text-red-400">
+        <p className="flex items-center gap-1 text-xs text-red-400">
           <Alert01Icon width={12} height={12} />1 critical blocker needs your
           call before 10am
         </p>

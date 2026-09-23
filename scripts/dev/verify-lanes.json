@@ -116,6 +116,22 @@
       "command": "bash scripts/dead-code-check.sh --strict --verbose"
     },
     {
+      "name": "design-tokens",
+      "scope": "^DESIGN\\.md$|^config/design\\.tokens\\.json$",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "pnpm tokens:check"
+    },
+    {
+      "name": "shadcn-lint",
+      "scope": "^apps/web/src/.*\\.(tsx|ts|jsx|js)$",
+      "heavy": false,
+      "timeout_s": 180,
+      "require_cmd": [],
+      "command": "pnpm --filter ./apps/web exec oxlint --max-warnings=4"
+    },
+    {
       "name": "python-ruff",
       "scope": "\\.py$|^pyproject\\.toml$|^ruff\\.toml$",
       "heavy": false,

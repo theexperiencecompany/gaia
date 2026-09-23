@@ -57,7 +57,7 @@ const STATIC_EVENTS: StaticEvent[] = [
       id: "standup",
       title: "Standup",
       colorClass: "bg-blue-400/15",
-      textClass: "text-blue-300",
+      textClass: "text-blue-400",
     },
   },
   {
@@ -68,7 +68,7 @@ const STATIC_EVENTS: StaticEvent[] = [
       id: "one-on-one",
       title: "1:1 with Sam",
       colorClass: "bg-purple-400/15",
-      textClass: "text-purple-300",
+      textClass: "text-purple-400",
     },
   },
   {
@@ -113,7 +113,7 @@ export default function CalendarDemo() {
           >
             {/* Time label */}
             <div className="py-2 pr-2 text-right">
-              <span className="text-[10px] text-zinc-600 leading-none">
+              <span className="text-xs text-zinc-600 leading-none">
                 {label}
               </span>
             </div>
@@ -151,12 +151,12 @@ export default function CalendarDemo() {
                         ease: [0.32, 0.72, 0, 1],
                         delay: 0.4,
                       }}
-                      className="rounded-md px-2 py-1 bg-cyan-400/10 border border-cyan-400/30 absolute inset-x-0.5"
+                      className="rounded-md px-2 py-1 bg-blue-400/10 border border-blue-400/30 absolute inset-x-0.5"
                     >
-                      <p className="text-[10px] font-semibold text-cyan-300 truncate leading-tight">
+                      <p className="text-xs font-semibold text-blue-400 truncate leading-tight">
                         Product Review
                       </p>
-                      <p className="text-[9px] text-cyan-400/70 truncate leading-tight mt-0.5">
+                      <p className="text-[9px] text-blue-400/70 truncate leading-tight mt-0.5">
                         Alex, Sam, Jordan · 2:00 PM
                       </p>
                     </m.div>

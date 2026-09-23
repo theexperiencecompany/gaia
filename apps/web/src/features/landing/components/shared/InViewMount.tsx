@@ -1,6 +1,14 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
+import { cn } from "@/lib/utils";
 
 interface InViewMountProps {
   children: ReactNode;
@@ -57,8 +65,12 @@ export function InViewMount({
   return (
     <div
       ref={ref}
-      className={className}
-      style={show ? undefined : { minHeight }}
+      className={cn(!show && "min-h-[var(--inview-min-height)]", className)}
+      style={
+        show
+          ? undefined
+          : ({ "--inview-min-height": minHeight } as CSSProperties)
+      }
     >
       {show ? children : null}
     </div>

@@ -10,6 +10,7 @@ import {
   useComposerSendMode,
 } from "@/features/chat/hooks/useComposerSendMode";
 import { useStopStream } from "@/features/chat/hooks/useStopStream";
+import { cn } from "@/lib/utils";
 
 // One source of truth for the button's look: HeroUI background (`color`)
 // and icon color (`currentColor`) decided together so they can't drift.
@@ -93,23 +94,22 @@ export default function SendStopButton({
     }
   };
 
-  const { bg, contentColor } = getButtonStyle(
-    showStop,
-    hasContent,
-    isUploading,
-  );
-
-  // Queue widens into a labelled pill; stop/send stay icon-only square buttons.
-  const stopCursor = showStop ? "cursor-pointer" : "";
-  const shapeClass = showQueue
-    ? "h-9 min-h-9 gap-1.5 rounded-xl px-3"
-    : `${className} ${stopCursor}`;
+  const { bg } = getButtonStyle(showStop, hasContent, isUploading);
 
   return (
     <Button
       isIconOnly={!showQueue}
       aria-label={MODE_ARIA_LABEL[mode]}
-      className={`transition-all duration-300 ${contentColor} ${shapeClass}`}
+      className={cn(
+        "transition-all duration-300",
+        showStop
+          ? "text-zinc-300"
+          : hasContent && !isUploading
+            ? "text-black"
+            : "text-zinc-500",
+        showQueue ? "h-9 min-h-9" : className,
+        showStop && !showQueue ? "cursor-pointer" : "",
+      )}
       color={bg}
       // Stop (abort the stream) is always pressable; send/queue is gated on
       // readiness — there must be content AND no in-flight upload, otherwise the

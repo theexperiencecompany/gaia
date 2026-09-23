@@ -3,11 +3,11 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Chip } from "@heroui/chip";
 import { Progress } from "@heroui/progress";
+import { Spinner } from "@heroui/spinner";
 import {
   Cancel01Icon,
   CheckmarkCircle02Icon,
   DashedLineCircleIcon,
-  Loading03Icon,
 } from "@icons";
 import { useEffect, useMemo, useRef } from "react";
 import { ChevronDown } from "@/components/shared/icons";
@@ -32,11 +32,10 @@ interface TodoProgressSectionProps {
 }
 
 const STATUS_ICON_MAP: Record<
-  TodoProgressItem["status"],
+  Exclude<TodoProgressItem["status"], "in_progress">,
   React.ComponentType<{ className?: string }>
 > = {
   completed: CheckmarkCircle02Icon,
-  in_progress: Loading03Icon,
   pending: DashedLineCircleIcon,
   cancelled: Cancel01Icon,
 };
@@ -64,14 +63,38 @@ function TaskRow({
   todo: TodoProgressItem;
   isStreaming?: boolean;
 }) {
-  const StatusIcon = STATUS_ICON_MAP[todo.status];
   // Only spin while the stream is live. Historical messages may carry stale
   // in_progress todos (interrupted runs); spinning those forever lies to the
   // user about ongoing work.
   const shouldSpin = todo.status === "in_progress" && isStreaming;
+  if (todo.status === "in_progress") {
+    if (shouldSpin) {
+      return (
+        <div className="flex items-start gap-2">
+          <Spinner size="sm" className="mt-0.5 shrink-0" />
+          <span className="text-xs leading-relaxed text-zinc-300">
+            {todo.content}
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-start gap-2">
+        <div className="mt-0.5 shrink-0">
+          <DashedLineCircleIcon
+            className={`size-4 ${STATUS_COLOR[todo.status]}`}
+          />
+        </div>
+        <span className="text-xs leading-relaxed text-zinc-300">
+          {todo.content}
+        </span>
+      </div>
+    );
+  }
+  const StatusIcon = STATUS_ICON_MAP[todo.status];
   return (
     <div className="flex items-start gap-2">
-      <div className={`shrink-0 mt-0.5 ${shouldSpin ? "animate-spin" : ""}`}>
+      <div className="mt-0.5 shrink-0">
         <StatusIcon className={`size-4 ${STATUS_COLOR[todo.status]}`} />
       </div>
       <span
@@ -169,7 +192,6 @@ function SingleSourceCard({
           size="sm"
           variant="flat"
           classNames={{
-            base: "bg-zinc-700/60",
             content: "text-xs text-zinc-400",
           }}
         >
@@ -210,10 +232,9 @@ function MultiSourceAccordion({
   }, [todo_progress]);
 
   return (
-    <div className="mt-2 mb-2 animate-scale-in rounded-2xl bg-zinc-800/70 backdrop-blur-xl p-1 w-full max-w-96">
+    <div className="mt-2 mb-2 animate-scale-in rounded-3xl bg-zinc-800/70 backdrop-blur-xl p-1 w-full max-w-96">
       <Accordion
         defaultExpandedKeys={[defaultExpandedKey]}
-        className="px-0"
         itemClasses={{
           base: "px-2",
           title: "text-xs font-medium text-zinc-400",
@@ -254,7 +275,7 @@ function MultiSourceAccordion({
                     size="sm"
                     variant="flat"
                     classNames={{
-                      base: "bg-zinc-700/60 shrink-0",
+                      base: "shrink-0",
                       content: "text-xs text-zinc-500",
                     }}
                   >

@@ -77,13 +77,10 @@ export default function DemoCalendarView() {
             return (
               <div
                 key={date.toISOString()}
-                className="flex flex-1 flex-col items-center py-2"
-                style={{
-                  backgroundColor: isToday ? "transparent" : "#111111",
-                }}
+                className={`flex flex-1 flex-col items-center py-2 ${isToday ? "bg-transparent" : "bg-primary-bg"}`}
               >
                 <span
-                  className={`text-[10px] font-medium ${isToday ? "text-primary" : "text-zinc-500"}`}
+                  className={`text-xs font-medium ${isToday ? "text-primary" : "text-zinc-500"}`}
                 >
                   {dayLabel}
                 </span>
@@ -104,17 +101,14 @@ export default function DemoCalendarView() {
         className="relative flex flex-1 overflow-y-auto overflow-x-hidden"
       >
         {/* Time labels column */}
-        <div
-          className="sticky left-0 z-[11] w-16 shrink-0 border-r border-zinc-800"
-          style={{ backgroundColor: "#111111" }}
-        >
+        <div className="sticky left-0 z-[11] w-16 shrink-0 border-r border-zinc-800 bg-primary-bg">
           {HOURS.map((hour) => (
             <div
               key={hour}
               className="relative flex items-start justify-end pr-2"
               style={{ height: PX_PER_HOUR }}
             >
-              <span className="relative -top-2 text-[10px] text-zinc-500">
+              <span className="relative -top-2 text-xs text-zinc-500">
                 {formatHour(hour)}
               </span>
             </div>
@@ -171,7 +165,7 @@ export default function DemoCalendarView() {
                   return (
                     <div
                       key={event.id}
-                      className="absolute left-0.5 right-0.5 cursor-pointer overflow-hidden rounded-lg backdrop-blur-3xl transition-all hover:brightness-110"
+                      className="absolute left-0.5 right-0.5 cursor-pointer overflow-hidden rounded-xl backdrop-blur-3xl transition-[filter] hover:brightness-110"
                       style={{
                         top,
                         height: Math.max(height, 20),
@@ -188,7 +182,7 @@ export default function DemoCalendarView() {
                           {event.summary}
                         </div>
                         {height > 30 && (
-                          <div className="text-[10px] text-zinc-400">
+                          <div className="text-xs text-zinc-400">
                             {formatTime12(startDate)} – {formatTime12(endDate)}
                           </div>
                         )}

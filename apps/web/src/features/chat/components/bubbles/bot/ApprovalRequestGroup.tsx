@@ -80,7 +80,7 @@ export default function ApprovalRequestGroup({
   return (
     <div className="flex w-full max-w-2xl flex-col gap-3">
       {pending.length > 1 && (
-        <div className="flex w-full items-center gap-3 rounded-2xl bg-zinc-800 p-4">
+        <div className="flex w-full items-center gap-3 rounded-3xl bg-zinc-800 p-4">
           <ShieldIcon width={18} className="shrink-0 text-amber-400" />
           <div className="min-w-0 flex-1 text-sm text-zinc-100">
             {pending.length} actions need your approval

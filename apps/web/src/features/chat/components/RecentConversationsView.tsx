@@ -129,7 +129,7 @@ const RecentConversationsView = memo(() => {
                 <Chip
                   size="sm"
                   variant="flat"
-                  className="text-zinc-400 px-1"
+                  className="text-zinc-400"
                   radius="sm"
                   startContent={
                     <MessageMultiple02Icon
@@ -146,7 +146,7 @@ const RecentConversationsView = memo(() => {
                 <Chip
                   size="sm"
                   variant="flat"
-                  className="text-zinc-400 px-1"
+                  className="text-zinc-400"
                   radius="sm"
                   startContent={
                     <Calendar03Icon width={15} height={15} className="mx-1" />
@@ -171,7 +171,7 @@ const RecentConversationsView = memo(() => {
                     <Chip
                       size="sm"
                       variant="flat"
-                      className="text-zinc-400 px-1"
+                      className="text-zinc-400"
                       radius="sm"
                     >
                       <DiscordIcon width={13} height={13} color="#5865f2" />

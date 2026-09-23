@@ -27,7 +27,7 @@ export default function MorningBriefingCard() {
   return (
     <div className="rounded-2xl bg-zinc-800 p-4">
       <div className="mb-3 flex items-center gap-2">
-        <span className="text-[11px] font-medium text-zinc-400">
+        <span className="text-xs font-medium text-zinc-400">
           Prioritized by urgency
         </span>
       </div>

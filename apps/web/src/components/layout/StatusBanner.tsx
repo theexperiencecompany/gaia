@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Alert01Icon, Cancel01Icon } from "@icons";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -53,20 +54,22 @@ export default function StatusBanner() {
             href={STATUS_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="underline underline-offset-2 hover:text-amber-300"
+            className="underline underline-offset-2 hover:text-amber-400"
           >
             Learn more
           </Link>
         </span>
       </div>
-      <button
-        type="button"
+      <Button
+        isIconOnly
+        size="sm"
+        variant="light"
         aria-label="Dismiss status banner"
-        onClick={() => setDismissed(true)}
-        className="shrink-0 rounded p-0.5 hover:bg-amber-500/20"
+        onPress={() => setDismissed(true)}
+        className="shrink-0 text-amber-400"
       >
         <Cancel01Icon className="size-4" />
-      </button>
+      </Button>
     </div>
   );
 }

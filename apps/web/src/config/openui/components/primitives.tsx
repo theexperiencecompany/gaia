@@ -26,12 +26,7 @@ function ProgressView(props: z.infer<typeof progressSchema>) {
           )}
         </div>
       )}
-      <Progress
-        value={pct}
-        color={props.color ?? "primary"}
-        size="md"
-        classNames={{ track: "bg-zinc-800" }}
-      />
+      <Progress value={pct} color={props.color ?? "primary"} size="md" />
     </div>
   );
 }

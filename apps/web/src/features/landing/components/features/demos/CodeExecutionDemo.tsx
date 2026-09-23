@@ -34,17 +34,15 @@ function CodeOutputCard() {
         <div className="flex h-5 w-5 items-center justify-center rounded bg-emerald-400/10">
           <span className="text-[9px] font-bold text-emerald-400">e2b</span>
         </div>
-        <span className="text-[11px] font-medium text-zinc-400">
-          execute_code
-        </span>
-        <span className="ml-auto flex items-center gap-1 text-[10px] text-emerald-400">
+        <span className="text-xs font-medium text-zinc-400">execute_code</span>
+        <span className="ml-auto flex items-center gap-1 text-xs text-emerald-400">
           <Tick01Icon height={12} />
           done in 1.2s
         </span>
       </div>
 
       {/* Code panel */}
-      <div className="mb-2 rounded-2xl bg-zinc-900 p-3 font-mono text-[11px] leading-relaxed">
+      <div className="mb-2 rounded-2xl bg-zinc-900 p-3 font-mono text-xs leading-relaxed">
         <div>
           <span className="text-blue-400">import</span>{" "}
           <span className="text-zinc-300">pandas</span>{" "}
@@ -92,8 +90,8 @@ function CodeOutputCard() {
       </div>
 
       {/* Output panel */}
-      <div className="space-y-1 rounded-2xl bg-zinc-900 p-3 font-mono text-[11px]">
-        <div className="mb-1 flex items-center justify-between text-[10px] text-zinc-500">
+      <div className="space-y-1 rounded-2xl bg-zinc-900 p-3 font-mono text-xs">
+        <div className="mb-1 flex items-center justify-between text-xs text-zinc-500">
           <span>region</span>
           <span>revenue</span>
         </div>

@@ -122,7 +122,7 @@ export default function ChatDemo({
                 <ThinkingIndicator compact={compact} />
               )}
               {msg.role === "tools" && msg.tools && (
-                <div className={compact ? "mb-2" : "mb-2 pl-[47px]"}>
+                <div className={compact ? "mb-2" : "mb-2 pl-12"}>
                   <DemoToolCalls
                     tools={msg.tools}
                     expanded={expandedIds.has(msg.id)}
@@ -136,7 +136,7 @@ export default function ChatDemo({
                 </SimpleChatBubbleBot>
               )}
               {msg.role === "card" && (
-                <div className={compact ? "mb-3" : "mb-3 pl-[47px]"}>
+                <div className={compact ? "mb-3" : "mb-3 pl-12"}>
                   {msg.cardContent}
                 </div>
               )}

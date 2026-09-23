@@ -178,7 +178,6 @@ export function InstallPageClient() {
             aria-label="Package managers"
             color="primary"
             variant="underlined"
-            classNames={{ base: "mx-auto pb-0 mb-0", panel: "pt-3" }}
           >
             {installMethods.map((method) => (
               <Tab key={method.key} title={method.title}>
@@ -200,7 +199,7 @@ export function InstallPageClient() {
             aria-label="Available GAIA CLI commands"
             removeWrapper
             classNames={{
-              th: "bg-zinc-800 text-zinc-400 font-medium",
+              th: "text-zinc-400 font-medium",
               td: "text-zinc-300",
             }}
           >

@@ -3,6 +3,7 @@
 import { useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useRef } from "react";
+import { cn } from "@/lib/utils";
 
 const CHANNELS = [
   { name: "general", active: false },
@@ -28,64 +29,42 @@ export default function DiscordBotDemo() {
   return (
     <div
       ref={ref}
-      className="rounded-2xl overflow-hidden flex"
-      style={{ height: 300, background: "#313338" }}
+      className="rounded-2xl overflow-hidden flex h-[300px] bg-zinc-800"
     >
       {/* Discord Sidebar */}
-      <div
-        className="flex shrink-0"
-        style={{ background: "#2b2d31", width: 144 }}
-      >
+      <div className="flex shrink-0 bg-zinc-900 w-36">
         {/* Server icon column */}
-        <div
-          className="flex flex-col items-center gap-2 py-3 px-2"
-          style={{ background: "#1e1f22", width: 52 }}
-        >
-          <div
-            className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
-            style={{ background: "#5865F2" }}
-          >
+        <div className="flex flex-col items-center gap-2 py-3 px-2 bg-zinc-950 w-[52px]">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-primary">
             <span className="text-xs font-bold text-white">G</span>
           </div>
-          <div
-            className="w-0.5 h-4 rounded-full"
-            style={{ background: "#4e5058" }}
-          />
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center"
-            style={{ background: "#3ba55c" }}
-          >
+          <div className="w-0.5 h-4 rounded-full bg-zinc-600" />
+          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-500">
             <span className="text-xs font-bold text-white">D</span>
           </div>
         </div>
 
         {/* Channel list */}
         <div className="flex-1 py-3 px-1.5 overflow-hidden">
-          <p
-            className="text-[10px] font-semibold uppercase tracking-wide px-2 mb-1.5"
-            style={{ color: "#949ba4" }}
-          >
+          <p className="text-xs font-semibold uppercase tracking-wide px-2 mb-1.5 text-zinc-400">
             Text Channels
           </p>
           {CHANNELS.map((channel) => (
             <div
               key={channel.name}
-              className="flex items-center gap-1.5 px-2 py-1 rounded-md cursor-default mb-0.5"
-              style={{
-                background: channel.active
-                  ? "rgba(255,255,255,0.1)"
-                  : "transparent",
-              }}
+              className={cn(
+                "flex items-center gap-1.5 px-2 py-1 rounded-md cursor-default mb-0.5",
+                channel.active ? "bg-white/10" : "bg-transparent",
+              )}
             >
-              <span style={{ color: "#949ba4" }} className="text-sm">
-                #
-              </span>
+              <span className="text-sm text-zinc-400">#</span>
               <span
-                className="text-xs truncate"
-                style={{
-                  color: channel.active ? "#ffffff" : "#949ba4",
-                  fontWeight: channel.active ? 500 : 400,
-                }}
+                className={cn(
+                  "text-xs truncate",
+                  channel.active
+                    ? "text-white font-medium"
+                    : "text-zinc-400 font-normal",
+                )}
               >
                 {channel.name}
               </span>
@@ -97,13 +76,8 @@ export default function DiscordBotDemo() {
       {/* Main content area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Channel header */}
-        <div
-          className="flex items-center gap-2 px-4 py-2.5 shrink-0"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
-        >
-          <span style={{ color: "#949ba4" }} className="text-base">
-            #
-          </span>
+        <div className="flex items-center gap-2 px-4 py-2.5 shrink-0 border-b border-white/5">
+          <span className="text-base text-zinc-400">#</span>
           <span className="text-sm font-semibold text-white">engineering</span>
         </div>
 
@@ -120,22 +94,15 @@ export default function DiscordBotDemo() {
               delay: 0.1,
             }}
           >
-            <div
-              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-              style={{ background: "#5865F2" }}
-            >
-              <span className="text-[11px] font-bold text-white">JS</span>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-primary">
+              <span className="text-xs font-bold text-white">JS</span>
             </div>
             <div>
               <div className="flex items-baseline gap-2">
                 <span className="text-sm font-semibold text-white">jake_s</span>
-                <span className="text-[10px]" style={{ color: "#949ba4" }}>
-                  Today at 9:41 AM
-                </span>
+                <span className="text-xs text-zinc-400">Today at 9:41 AM</span>
               </div>
-              <p className="text-sm" style={{ color: "#dbdee1" }}>
-                /gaia summarize open PRs
-              </p>
+              <p className="text-sm text-zinc-200">/gaia summarize open PRs</p>
             </div>
           </m.div>
 
@@ -150,43 +117,19 @@ export default function DiscordBotDemo() {
               delay: 0.7,
             }}
           >
-            <div
-              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-              style={{ background: "#00bbff33", border: "1px solid #00bbff55" }}
-            >
-              <span
-                className="text-[11px] font-bold"
-                style={{ color: "#00bbff" }}
-              >
-                G
-              </span>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-primary/10 border border-primary/30">
+              <span className="text-xs font-bold text-primary">G</span>
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-baseline gap-2 mb-1">
-                <span
-                  className="text-sm font-semibold"
-                  style={{ color: "#00bbff" }}
-                >
-                  GAIA
-                </span>
-                <span
-                  className="text-[10px] rounded px-1"
-                  style={{ background: "#5865F2", color: "white", fontSize: 9 }}
-                >
+                <span className="text-sm font-semibold text-primary">GAIA</span>
+                <span className="text-xs rounded-sm px-1 bg-primary text-white">
                   BOT
                 </span>
-                <span className="text-[10px]" style={{ color: "#949ba4" }}>
-                  Today at 9:41 AM
-                </span>
+                <span className="text-xs text-zinc-400">Today at 9:41 AM</span>
               </div>
               {/* Discord embed */}
-              <div
-                className="rounded-sm pl-3 pr-3 py-3"
-                style={{
-                  background: "#2b2d31",
-                  borderLeft: "4px solid #00bbff",
-                }}
-              >
+              <div className="rounded-sm pl-3 pr-3 py-3 bg-zinc-900 border-l-4 border-primary">
                 <p className="text-sm font-semibold text-white mb-2">
                   Open Pull Requests · 3
                 </p>
@@ -194,31 +137,22 @@ export default function DiscordBotDemo() {
                   {PR_FIELDS.map((field) => (
                     <div key={field.pr} className="flex items-center gap-2">
                       <span
-                        className="text-[10px] rounded px-1.5 py-0.5 font-medium shrink-0"
-                        style={{
-                          background: field.open ? "#3ba55c22" : "#72767d22",
-                          color: field.open ? "#3ba55c" : "#72767d",
-                          border: `1px solid ${field.open ? "#3ba55c44" : "#72767d44"}`,
-                        }}
+                        className={cn(
+                          "text-xs rounded px-1.5 py-0.5 font-medium shrink-0",
+                          field.open
+                            ? "bg-emerald-400/10 text-emerald-400"
+                            : "bg-zinc-500/10 text-zinc-400",
+                        )}
                       >
                         {field.open ? "Open" : "Closed"}
                       </span>
-                      <span
-                        className="text-xs font-medium"
-                        style={{ color: "#00bbff" }}
-                      >
+                      <span className="text-xs font-medium text-primary">
                         {field.pr}
                       </span>
-                      <span
-                        className="text-xs truncate"
-                        style={{ color: "#dbdee1" }}
-                      >
+                      <span className="text-xs truncate text-zinc-200">
                         {field.title}
                       </span>
-                      <span
-                        className="text-xs shrink-0"
-                        style={{ color: "#949ba4" }}
-                      >
+                      <span className="text-xs shrink-0 text-zinc-400">
                         {field.author}
                       </span>
                     </div>
@@ -231,10 +165,7 @@ export default function DiscordBotDemo() {
 
         {/* Message input */}
         <div className="px-4 py-3 shrink-0">
-          <div
-            className="rounded-lg px-4 py-2.5 text-xs"
-            style={{ background: "#383a40", color: "#949ba4" }}
-          >
+          <div className="rounded-xl px-4 py-2.5 text-xs bg-zinc-700 text-zinc-400">
             Message #engineering
           </div>
         </div>

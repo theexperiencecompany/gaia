@@ -41,7 +41,7 @@ export function SplitShowcase({
           {rows.map((row) => (
             <div
               key={row.label}
-              className="flex items-center gap-3.5 border-b border-white/10 py-4 text-[15px] text-zinc-300 first:border-t"
+              className="flex items-center gap-3.5 border-b border-white/10 py-4 text-base text-zinc-300 first:border-t"
             >
               <span className="text-zinc-500">{row.icon}</span>
               {row.label}
@@ -52,7 +52,7 @@ export function SplitShowcase({
         <div className="mt-9 flex justify-start">
           <GetStartedButton
             btnColor="#00bbff"
-            classname="text-black! px-2 hover:scale-105"
+            className="px-2 hover:scale-105"
             text="Get Started"
           />
         </div>

@@ -1,0 +1,44 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Outer cards use rounded-3xl: rounded-lg + bg-zinc-800|900 + p-2|3|4 is an
+// outer shell at the wrong radius — change to rounded-3xl.
+// Element-aware: matches JSX elements (not bare JsxAttribute nodes).
+// Verify each hit is an outer: small icon tiles / skeletons / menus are NOT
+// violations. Requiring p-2|3|4 already excludes unpadded tiles; the
+// [^a-zA-Z] guard keeps gap-2/gap-3/gap-4 (which contain a "p-2" substring)
+// from matching.
+// Narrow exclusions (each provable via grep in apps/web/src):
+// - button/Button elements: icon/action buttons (e.g. CalendarRightSidebar
+//   delete button) are never outer shells; real outers are divs/sections/Cards
+// - group-hover:opacity: hover toolbars/menus (e.g. MailsPage EmailRowActions)
+//   are never outers
+//
+// GritQL notes: `<$tag $attrs>$_</$tag>` + `<$tag $attrs />` cover normal and
+// self-closing elements. Regexes use non-capturing (?:...) groups only.
+or {
+  `<$tag $attrs>$_</$tag>` as $node where {
+    $attrs <: r"[\s\S]*rounded-lg[\s\S]*",
+    $attrs <: r"[\s\S]*bg-zinc-(?:800|900)[\s\S]*",
+    $attrs <: r"[\s\S]*[^a-zA-Z]p-[234][^0-9][\s\S]*",
+    $tag <: not r"[\s\S]*[Bb]utton[\s\S]*",
+    $attrs <: not r"[\s\S]*group-hover:opacity[\s\S]*",
+    register_diagnostic(
+      span = $node,
+      message = "Outer cards use rounded-3xl: change rounded-lg to rounded-3xl on this bg-zinc-800/900 + p-2/3/4 shell. (Small icon tiles / skeletons / menus are not outers — leave those.)",
+      severity = "error"
+    )
+  },
+  `<$tag $attrs />` as $node where {
+    $attrs <: r"[\s\S]*rounded-lg[\s\S]*",
+    $attrs <: r"[\s\S]*bg-zinc-(?:800|900)[\s\S]*",
+    $attrs <: r"[\s\S]*[^a-zA-Z]p-[234][^0-9][\s\S]*",
+    $tag <: not r"[\s\S]*[Bb]utton[\s\S]*",
+    $attrs <: not r"[\s\S]*group-hover:opacity[\s\S]*",
+    register_diagnostic(
+      span = $node,
+      message = "Outer cards use rounded-3xl: change rounded-lg to rounded-3xl on this bg-zinc-800/900 + p-2/3/4 shell. (Small icon tiles / skeletons / menus are not outers — leave those.)",
+      severity = "error"
+    )
+  }
+}

@@ -226,9 +226,7 @@ interface MenuItem {
   hasSubmenu?: boolean;
   iconColor?: string;
   badge?: React.ReactNode;
-  customClassNames?: {
-    title?: string;
-  };
+  highlightTitle?: boolean;
 }
 
 export default function SettingsMenu({
@@ -312,7 +310,7 @@ export default function SettingsMenu({
                   }),
                 icon: CircleArrowUp02Icon,
                 iconColor: "#00bbff",
-                customClassNames: { title: "text-primary font-medium" },
+                highlightTitle: true,
               },
             ],
           },
@@ -393,7 +391,7 @@ export default function SettingsMenu({
     <>
       <Dropdown
         placement="right"
-        className="bg-secondary-bg text-foreground dark shadow-xl"
+        className="text-foreground dark"
         offset={21}
         isOpen={isMenuOpen}
         onOpenChange={(open) => {
@@ -415,7 +413,6 @@ export default function SettingsMenu({
               key={section.id}
               title={section.title}
               showDivider={section.showDivider}
-              classNames={{ divider: "bg-zinc-800/60" }}
             >
               {section.items.map((item: MenuItem) => {
                 const Icon = item.icon;
@@ -467,9 +464,14 @@ export default function SettingsMenu({
                         <Icon className={ICON_CLASSES} color={iconColor} />
                       )
                     }
-                    classNames={item.customClassNames}
                   >
-                    {item.label}
+                    {item.highlightTitle ? (
+                      <span className="font-medium text-primary">
+                        {item.label}
+                      </span>
+                    ) : (
+                      item.label
+                    )}
                   </DropdownItem>
                 );
               })}

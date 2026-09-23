@@ -38,7 +38,7 @@ export default function CollapsibleListWrapper({
     <div className="w-full">
       {/* @ts-ignore - HeroUI Accordion has overly complex union types */}
       <Accordion
-        className="w-full max-w-(--breakpoint-sm) px-0"
+        className="w-full max-w-(--breakpoint-sm)"
         defaultExpandedKeys={defaultKeys}
         itemClasses={{ trigger: "cursor-pointer" }}
         onSelectionChange={(keys) => {
@@ -57,7 +57,7 @@ export default function CollapsibleListWrapper({
               </div>
             </div>
           }
-          className="w-screen max-w-(--breakpoint-sm) px-0"
+          className="w-screen max-w-(--breakpoint-sm)"
           isCompact
         >
           {children}

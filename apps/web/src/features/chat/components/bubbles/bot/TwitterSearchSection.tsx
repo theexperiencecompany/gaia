@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar } from "@heroui/avatar";
 import {
   CheckmarkBadge02Icon,
   FavouriteIcon,
@@ -8,7 +9,6 @@ import {
   RepeatIcon,
   ShareIcon,
 } from "@icons";
-import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { format, parseISO } from "date-fns";
 import type { TwitterTweetData } from "@/types/features/twitterTypes";
 
@@ -46,21 +46,16 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
   return (
     <button
       type="button"
-      className="group relative flex w-full cursor-pointer flex-col gap-2 rounded-xl border border-default-200 bg-content1/50 p-4 text-left backdrop-blur-sm transition-colors hover:border-default-300 hover:bg-content1/70"
+      className="group relative flex w-full cursor-pointer flex-col gap-2 rounded-2xl bg-zinc-900 p-3 text-left transition-colors hover:bg-zinc-900/70"
       onClick={handleOpenTweet}
     >
       {/* Author Row */}
       <div className="flex items-start gap-3">
-        <Avatar className="h-10 w-10 shrink-0 rounded-full overflow-hidden">
-          <AvatarImage
-            src={author.profile_image_url}
-            alt={author.name}
-            className="h-full w-full object-cover"
-          />
-          <AvatarFallback className="flex h-full w-full items-center justify-center bg-primary/10 text-primary text-sm font-semibold">
-            {author.name?.[0]?.toUpperCase() || "?"}
-          </AvatarFallback>
-        </Avatar>
+        <Avatar
+          src={author.profile_image_url}
+          name={author.name}
+          className="h-10 w-10 shrink-0"
+        />
 
         <div className="flex flex-col min-w-0 flex-1">
           <div className="flex items-center gap-1">
@@ -68,7 +63,7 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
               {author.name}
             </span>
             {author.verified && (
-              <CheckmarkBadge02Icon className="h-4 w-4 text-[#1d9bf0] shrink-0" />
+              <CheckmarkBadge02Icon className="h-4 w-4 text-primary shrink-0" />
             )}
           </div>
           <div className="flex items-center gap-1 text-xs text-default-500">
@@ -90,20 +85,20 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
       </p>
 
       <div className="flex items-center gap-6 pt-2 text-default-500">
-        <div className="flex items-center gap-1.5 text-xs hover:text-pink-500 transition-colors">
+        <div className="flex items-center gap-1.5 text-xs hover:text-zinc-200 transition-colors">
           <FavouriteIcon className="h-4 w-4" />
           <span>{formatNumber(metrics.like_count)}</span>
         </div>
-        <div className="flex items-center gap-1.5 text-xs hover:text-[#1d9bf0] transition-colors">
+        <div className="flex items-center gap-1.5 text-xs hover:text-primary transition-colors">
           <MessageIcon className="h-4 w-4" />
           <span>{formatNumber(metrics.reply_count)}</span>
         </div>
-        <div className="flex items-center gap-1.5 text-xs hover:text-green-500 transition-colors">
+        <div className="flex items-center gap-1.5 text-xs hover:text-zinc-200 transition-colors">
           <RepeatIcon className="h-4 w-4" />
           <span>{formatNumber(metrics.retweet_count)}</span>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs hover:text-[#1d9bf0] transition-colors">
+        <div className="flex items-center gap-1.5 text-xs hover:text-primary transition-colors">
           <ShareIcon className="h-4 w-4" />
         </div>
       </div>
@@ -134,7 +129,7 @@ export default function TwitterSearchSection({
   }
 
   return (
-    <div className="mt-3 flex w-full flex-col gap-3">
+    <div className="mt-3 flex w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4">
       {result_count != null && result_count > 0 && (
         <p className="text-xs text-default-500 px-1">
           Found {result_count} tweet{result_count !== 1 ? "s" : ""}

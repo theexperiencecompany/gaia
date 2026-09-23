@@ -1,4 +1,5 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
 import {
   CloudAngledRainIcon,
@@ -92,6 +93,9 @@ interface WeatherTheme {
   colorCode: string;
 }
 
+// NOTE: gray/slate gradients and hardcoded colorCode hex values are
+// intentional here — they encode weather semantics (mist, fog, clouds, etc.)
+// and must not be migrated to the zinc design-system palette.
 // Atmospheric conditions (weather codes 7xx) each have a distinct look.
 const getAtmosphereTheme = (weatherId: number): WeatherTheme => {
   if (weatherId === 701) {
@@ -309,7 +313,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
 
   return (
     <div
-      className={`w-full rounded-3xl sm:w-screen sm:max-w-md ${weatherTheme.gradient} relative overflow-hidden p-6 shadow-lg backdrop-blur-xs`}
+      className={`w-full rounded-2xl sm:w-screen sm:max-w-md ${weatherTheme.gradient} relative overflow-hidden p-6 backdrop-blur-xs`}
     >
       <WeatherLocationHeader
         weatherData={weatherData}
@@ -379,7 +383,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
         </AccordionItem>
       </Accordion>
       {/*
-      <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2 text-[10px] text-white/80">
+      <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2 text-xs text-white/80">
         <div>
           <span>Data sources: </span>
           <a
@@ -462,20 +466,19 @@ function WeatherLocationHeader({
       <div className="flex items-center">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 p-1 text-white hover:bg-white/20"
+            <Button
+              isIconOnly
+              size="sm"
               aria-label="Temperature settings"
+              variant="flat"
+              className="h-8 w-8 text-white"
             >
               <ThermometerWarmIcon className="h-5 w-5" />
-            </button>
+            </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="w-40 border-zinc-700 bg-zinc-800 text-white"
-          >
+          <DropdownMenuContent align="end" className="w-40">
             <DropdownMenuLabel>Temperature Unit</DropdownMenuLabel>
-            <DropdownMenuSeparator className="bg-zinc-700" />
+            <DropdownMenuSeparator />
             <div className="px-2 py-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm">°F</span>
@@ -517,13 +520,15 @@ function MainWeatherDisplay({
 
       <div>
         <div className="flex items-baseline">
-          <span className="text-4xl font-bold text-white">{displayTemp}°</span>
+          <span className="text-4xl font-bold text-white tabular-nums">
+            {displayTemp}°
+          </span>
           <span className="ml-1 text-sm font-medium text-white/80">
             {useFahrenheit ? "F" : "C"}
           </span>
         </div>
         <p
-          className="text-xs"
+          className="text-xs tabular-nums"
           style={{
             color: weatherTheme.colorCode,
             filter: "brightness(1.3)",
@@ -590,7 +595,9 @@ function WeeklyForecastRow({
               color="#FCD34D"
               fill="#FCD34D"
             />
-            <span className="w-8 font-medium text-white">{dayTemp}°</span>
+            <span className="w-8 font-medium text-white tabular-nums">
+              {dayTemp}°
+            </span>
           </div>
           <div className="mt-1 flex items-center">
             <Moon02Icon
@@ -598,7 +605,7 @@ function WeeklyForecastRow({
               color="#93C5FD"
               fill="#93C5FD"
             />
-            <span className="w-8 text-white/80">{nightTemp}°</span>
+            <span className="w-8 text-white/80 tabular-nums">{nightTemp}°</span>
           </div>
         </div>
       </div>

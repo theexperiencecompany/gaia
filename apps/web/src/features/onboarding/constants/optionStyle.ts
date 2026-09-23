@@ -52,7 +52,7 @@ export interface OptionTint {
   active: string;
 }
 
-const TINTS = {
+export const TINTS = {
   rose: {
     idle: "bg-rose-400/15 text-rose-200",
     active: "bg-rose-300 text-rose-950",
