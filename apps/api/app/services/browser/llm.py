@@ -17,7 +17,12 @@ from pydantic_core import CoreSchema, core_schema
 from app.agents.llm.dev_lane import custom_endpoint, custom_lane_forced
 from app.agents.llm.lane import AgentRole, resolve_lane
 from app.config.settings import settings
-from app.constants.browser import BROWSER_AGENT_REASONING_EFFORT
+from app.constants.browser import (
+    BROWSER_AGENT_HEDGE_SECONDS,
+    BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
+    BROWSER_AGENT_REASONING_EFFORT,
+    JEV_TEXT_HEDGE_SECONDS,
+)
 from app.constants.llm import (
     DEV_LLM_BROWSER_HEADERS,
     OPENAI_REASONING_EFFORT,
@@ -26,6 +31,7 @@ from app.constants.llm import (
     ReasoningLevel,
 )
 from app.services.browser.exceptions import BrowserUnavailableError
+from app.services.browser.hedge import first_answer
 from app.services.browser.ledger import CallComponent, ModelCall, RunLedger
 
 if TYPE_CHECKING:
@@ -46,14 +52,22 @@ _AGENT_MAX_COMPLETION_TOKENS = 8192
 
 
 class MeteredChatModel:
-    """A Browser-Use chat model that records each call's latency, tokens and provider into the run ledger."""
+    """A Browser-Use chat model that hedges its slow tail and records each call into the run ledger.
+
+    A call not answered within hedge_after seconds gets an identical second
+    request, and the first answer wins: a provider's occasional multi-minute
+    stall costs hedge_after plus a normal call instead of a step timeout.
+    """
 
     _verified_api_keys = True
 
-    def __init__(self, inner: BaseChatModel, ledger: RunLedger, component: CallComponent) -> None:
+    def __init__(
+        self, inner: BaseChatModel, ledger: RunLedger, component: CallComponent, hedge_after: float
+    ) -> None:
         self._inner = inner
         self._ledger = ledger
         self._component = component
+        self._hedge_after = hedge_after
         self.model = inner.model
 
     @property
@@ -87,7 +101,11 @@ class MeteredChatModel:
         self, messages: list[BaseMessage], output_format: type[T] | None = None, **kwargs: Any
     ) -> ChatInvokeCompletion[T] | ChatInvokeCompletion[str]:
         started = perf_counter()
-        result = await self._inner.ainvoke(messages, output_format, **kwargs)
+        result = await first_answer(
+            lambda: self._inner.ainvoke(messages, output_format, **kwargs),
+            hedge_after=self._hedge_after,
+            deadline=BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
+        )
         usage = result.usage
         self._ledger.add(
             ModelCall(
@@ -133,7 +151,7 @@ async def build_agent_llm(user_id: str | None, ledger: RunLedger) -> BaseChatMod
         raise BrowserUnavailableError(
             f"The browser agent runs on an OpenAI-wire lane; {lane.provider} is not one."
         )
-    return MeteredChatModel(model, ledger, CallComponent.AGENT)
+    return MeteredChatModel(model, ledger, CallComponent.AGENT, BROWSER_AGENT_HEDGE_SECONDS)
 
 
 def build_text_model(ledger: RunLedger) -> BaseChatModel:
@@ -164,4 +182,4 @@ def build_text_model(ledger: RunLedger) -> BaseChatModel:
             reasoning_models=[settings.BROWSER_USE_JEV_TEXT_MODEL],
             reasoning_effort=OPENROUTER_REASONING_EFFORT[_TEXT_REASONING],
         )
-    return MeteredChatModel(model, ledger, CallComponent.TEXT)
+    return MeteredChatModel(model, ledger, CallComponent.TEXT, JEV_TEXT_HEDGE_SECONDS)

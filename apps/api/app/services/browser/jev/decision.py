@@ -16,7 +16,6 @@ import re
 
 from app.constants.browser import (
     JEV_ANSWER_LINES,
-    JEV_CAPTURE_EXTRA_LINE,
     JEV_CAPTURE_THRESHOLD,
     JEV_MAX_ELEMENTS,
     JEV_PROBABILITY_SUM_TOLERANCE,
@@ -175,10 +174,6 @@ def goal_addresses(goal: str) -> list[str]:
     return list(dict.fromkeys([*urls, *sites]))
 
 
-def secret_names(goal: str) -> list[str]:
-    return list(dict.fromkeys(_SECRET_PLACEHOLDER.findall(goal)))
-
-
 def _validate_choice(answer: JevChoiceAnswer | JevNoulAnswer | None, ids: set[str]) -> JevChoiceAnswer:
     if not isinstance(answer, JevChoiceAnswer):
         raise JevDecisionError("Jev returned no choice for a question; no action executed.")
@@ -208,12 +203,8 @@ def _captures(evaluation: JevEvaluation, lines: list[str]) -> list[str]:
     chosen = evaluation.answers.get("answer_line")
     if not isinstance(chosen, JevChoiceAnswer):
         return []
-    picked = [
-        key
-        for key, probability in chosen.probabilities.items()
-        if key == chosen.choice or probability >= JEV_CAPTURE_EXTRA_LINE
-    ]
-    return [lines[int(key[1:]) - 1] for key in picked if key.startswith("L") and key[1:].isdigit()]
+    key = chosen.choice
+    return [lines[int(key[1:]) - 1]] if key.startswith("L") and key[1:].isdigit() else []
 
 
 async def decide(
@@ -307,17 +298,14 @@ async def choose_value(
     goal: str,
     target: PageAction,
     history: list[RecentAction],
+    secrets: list[str],
 ) -> tuple[str, JevEvaluation]:
-    """Pick what to type into target: a literal from the goal, a secret placeholder, GENERATE, or NONE.
+    """Pick what to type into target: a literal from the goal, one of the run's secrets, GENERATE, or NONE.
 
-    A password field is offered secrets only, and any other field never a secret.
+    A password field is offered the run's secrets only, and any other field never a secret.
     """
     is_secret = target["kind"] == "secret"
-    options = (
-        [f"<secret>{name}</secret>" for name in secret_names(goal)]
-        if is_secret
-        else literals(goal)
-    )
+    options = [f"<secret>{name}</secret>" for name in secrets] if is_secret else literals(goal)
     criteria: dict[str, JsonInput] = {f"V{i + 1}": value for i, value in enumerate(options)}
     if not is_secret:
         criteria[GENERATE] = "None of these: write the value from what the goal implies."

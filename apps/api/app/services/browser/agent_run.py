@@ -205,9 +205,9 @@ class BrowserAgentRun:
             no_viewport=False,
         )
 
-        def runner_for(browser_session: BrowserSession) -> JevRunner:
+        def runner_for() -> JevRunner:
             return JevRunner(
-                page=self._page_for(browser_session),
+                page=self._page_for(self._agent.browser_session),
                 client=client,
                 text_model=text_model,
                 ledger=self._ledger,

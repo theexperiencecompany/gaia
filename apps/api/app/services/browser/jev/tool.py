@@ -21,12 +21,11 @@ from app.services.browser.jev.loop import BurstResult, JevRunner, JevStep
 if TYPE_CHECKING:
     from browser_use import Tools
     from browser_use.agent.views import ActionResult
-    from browser_use.browser.session import BrowserSession
 
 #: Emits one card for a finished burst: its caption source, and the page it ended on.
 BurstEmitFn = Callable[[list[BrowserAction], str, str], Awaitable[None]]
-#: Builds the burst runner once the Agent's browser session exists.
-RunnerFactory = Callable[["BrowserSession"], JevRunner]
+#: Builds the burst runner, on the Agent's browser session, at the first burst.
+RunnerFactory = Callable[[], JevRunner]
 
 JEV_ACTION = "jev"
 
@@ -53,7 +52,10 @@ _STEP_ACTION = {
 }
 
 _STOP_MEANING = {
-    JevStop.DONE: "Jev judged the goal done. Verify it from the page before you finish.",
+    JevStop.DONE: (
+        "Jev judged the goal done. The current page is already in your browser state and the "
+        "captures are below: if they answer the task, finish now."
+    ),
     JevStop.BLOCKED: "Jev found nothing on this page that advances the goal.",
     JevStop.NEEDS_INPUT: "The goal gives no value for a field: ask the user, or hand the step over.",
     JevStop.NO_PROGRESS: "Jev's last actions changed nothing on the page.",
@@ -62,7 +64,6 @@ _STOP_MEANING = {
     JevStop.COVERED: "An overlay or hidden control blocks the target; deal with it yourself.",
     JevStop.STALE: "The page kept changing under Jev's decisions.",
     JevStop.CAPTCHA: "A CAPTCHA is on the page: hand it to the user with solve_captcha_with_help.",
-    JevStop.LEFT_SITE: "The page left the sites the goal names; decide whether that is right.",
     JevStop.USER_MESSAGE: "The user sent a message; read it (it is in your task) before going on.",
     JevStop.STOPPED: "The run is stopping.",
     JevStop.GATEWAY: "Jev could not decide; continue yourself.",
@@ -123,7 +124,7 @@ class JevDelegate:
         self._fruitless: set[str] = set()
         self.bursts: list[BurstResult] = []
 
-    async def run(self, params: JevParams, browser_session: BrowserSession) -> ActionResult:
+    async def run(self, params: JevParams) -> ActionResult:
         from browser_use.agent.views import ActionResult  # noqa: PLC0415 -- heavy optional dep
 
         goal = _normalized(params.goal)
@@ -135,7 +136,7 @@ class JevDelegate:
                 )
             )
         if self._runner is None:
-            self._runner = self._runner_for(browser_session)
+            self._runner = self._runner_for()
         result = await self._runner.burst(params.goal, params.start_url)
         self.bursts.append(result)
         if not result.progressed:
@@ -150,7 +151,7 @@ def register_jev(tools: Tools[None], delegate: JevDelegate) -> None:
     """Register the jev action on the agent's tools."""
 
     @tools.action(_DESCRIPTION, param_model=JevParams)
-    async def jev(params: JevParams, browser_session: BrowserSession) -> ActionResult:
-        return await delegate.run(params, browser_session)
+    async def jev(params: JevParams) -> ActionResult:
+        return await delegate.run(params)
 
     del jev

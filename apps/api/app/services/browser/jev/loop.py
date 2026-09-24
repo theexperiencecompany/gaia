@@ -15,7 +15,6 @@ from dataclasses import dataclass, field, replace
 import json
 from time import perf_counter
 from typing import TYPE_CHECKING
-from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
 
@@ -117,21 +116,10 @@ class _Burst:
     goal: str
     page: PageState
     addresses: list[str]
-    sites: set[str]
     steps: list[JevStep] = field(default_factory=list)
     captures: list[Capture] = field(default_factory=list)
     stale: int = 0
     covered: int = 0
-
-
-def _site(url: str) -> str:
-    host = (urlsplit(url).hostname or "").lower()
-    return host.removeprefix("www.")
-
-
-def _on_sites(url: str, sites: set[str]) -> bool:
-    host = _site(url)
-    return not sites or any(host == site or host.endswith("." + site) for site in sites)
 
 
 class JevRunner:
@@ -163,13 +151,7 @@ class JevRunner:
             await self._page.navigate(start_url)
         page = await self._page.observe()
         self._visit(page)
-        addresses = goal_addresses(goal)
-        state = _Burst(
-            goal=goal,
-            page=page,
-            addresses=addresses,
-            sites={_site(url) for url in addresses} | ({_site(start_url)} if start_url else set()),
-        )
+        state = _Burst(goal=goal, page=page, addresses=goal_addresses(goal))
         stop, detail = await self._run(state)
         final = state.page
         hidden = [
@@ -320,15 +302,13 @@ class JevRunner:
         return self._stuck(state)
 
     def _stuck(self, state: _Burst) -> tuple[JevStop, str] | None:
-        """Whether the burst stopped making progress: no change, a back-and-forth, or off the task's sites."""
+        """Whether the burst stopped making progress: no change, or a back-and-forth between two moves."""
         recent = [s for s in state.steps[-JEV_UNCHANGED_LIMIT:] if s.operation is not JevOperation.WAIT]
         if len(recent) == JEV_UNCHANGED_LIMIT and all(s.page_changed is False for s in recent):
             return JevStop.NO_PROGRESS, f"{JEV_UNCHANGED_LIMIT} actions in a row changed nothing."
         moves = [(s.url, s.label) for s in state.steps[-4:]]
-        if len(moves) == 4 and moves[0] == moves[2] and moves[1] == moves[3]:
+        if len(moves) == 4 and moves[0] == moves[2] != moves[1] == moves[3]:
             return JevStop.CYCLE, "Jev went back and forth between the same two actions."
-        if not _on_sites(state.page.url, state.sites):
-            return JevStop.LEFT_SITE, f"The page left the sites the goal names ({', '.join(sorted(state.sites))})."
         return None
 
     async def _value_for(self, state: _Burst, action: PageAction) -> tuple[str, str] | None:
@@ -339,7 +319,9 @@ class JevRunner:
             for s in state.steps[-JEV_RECENT_ACTIONS:]
         ]
         started = perf_counter()
-        choice, evaluation = await choose_value(self._client, page, state.goal, action, history)
+        choice, evaluation = await choose_value(
+            self._client, page, state.goal, action, history, self._secrets.names
+        )
         self._record_call(evaluation, round((perf_counter() - started) * 1000))
         if choice == NONE_VALUE:
             return None

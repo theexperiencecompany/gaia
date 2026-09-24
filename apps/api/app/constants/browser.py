@@ -273,6 +273,9 @@ BROWSER_GUIDANCE_ANSWER = (
 BROWSER_AGENT_MAX_FAILURES = 2
 # The browser agent's reasoning effort on any lane: it steers and signs off, Jev does the stepping.
 BROWSER_AGENT_REASONING_EFFORT: Literal["low"] = "low"
+# When a browser model call gets an identical second request (first answer wins). Agent
+# calls measured p50 3.2 s, p90 4.5 s, with stalls past the 180 s timeout (2026-09-25).
+BROWSER_AGENT_HEDGE_SECONDS = 12.0
 # A decision can wait out a layout pass, a part judgement and Jev; Browser-Use's 75s cut it off.
 BROWSER_AGENT_LLM_TIMEOUT_SECONDS = 180
 
@@ -312,7 +315,9 @@ BROWSER_AGENT_ROLE = (
     "task and the only one who writes the answer.\n"
     "Each step, choose one:\n"
     "1. The task is complete: call `done` with the answer. Report only what the current "
-    "page or Jev's verbatim captures show; copy titles, messages, numbers and URLs exactly. "
+    "page or Jev's verbatim captures show; copy titles, messages, numbers and URLs exactly, "
+    "and when asked what a page shows or says, give every heading and message on it that "
+    "answers that, not just one. "
     "Say plainly what was not done or could not be found. Set success=false when the task "
     "was not achieved.\n"
     "2. On-page work remains that Jev can do (clicking, typing, choosing, navigating through "
@@ -376,7 +381,6 @@ class JevStop(StrEnum):
     COVERED = "covered"
     STALE = "stale"
     CAPTCHA = "captcha"
-    LEFT_SITE = "left_site"
     USER_MESSAGE = "user_message"
     STOPPED = "stopped"
     GATEWAY = "gateway"
@@ -393,8 +397,6 @@ JEV_OUT_OF_CREDIT_SECONDS = 300.0
 #: the page shows something the goal asks to report.
 JEV_ANSWER_LINES = 120
 JEV_CAPTURE_THRESHOLD = 0.5
-#: A line other than the chosen one is kept too when it holds this much of the mass.
-JEV_CAPTURE_EXTRA_LINE = 0.25
 JEV_MAX_CAPTURES = 60
 JEV_RECENT_ACTIONS = 10
 JEV_VISITED_PAGES = 12
@@ -412,6 +414,7 @@ JEV_WAIT_SECONDS = 1.0
 JEV_SCREENSHOT_QUALITY = 70
 #: The tiny model writes a value only when no literal from the goal fits; it reads this much page text.
 JEV_TEXT_TIMEOUT_SECONDS = 30.0
+JEV_TEXT_HEDGE_SECONDS = 6.0
 JEV_PAGE_TEXT_MAX_CHARS = 6000
 JEV_TEXT_VALUE_MAX_CHARS = 2000
 # Stands in for a value typed into a password field wherever the run's text reaches a person.

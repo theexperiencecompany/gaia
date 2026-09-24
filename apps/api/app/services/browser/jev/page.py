@@ -254,7 +254,19 @@ class JevPage:
                 params={"type": "keyUp", "key": "a", "code": "KeyA", "modifiers": _CTRL},
                 session_id=session.session_id,
             )
-            await send.Input.insertText(params={"text": text}, session_id=session.session_id)
+            # One key event per character, as a person types: Input.insertText
+            # fires no key events, and a date picker or <input type=time> that
+            # parses keystrokes then drops the value (measured on Chrome).
+            for char in text:
+                key = "Enter" if char == "\n" else char
+                typed = "\r" if char == "\n" else char
+                await send.Input.dispatchKeyEvent(
+                    params={"type": "keyDown", "key": key, "text": typed},
+                    session_id=session.session_id,
+                )
+                await send.Input.dispatchKeyEvent(
+                    params={"type": "keyUp", "key": key}, session_id=session.session_id
+                )
 
     async def press_enter(self) -> None:
         """Press Enter in whatever holds focus: submits a typed search or form."""
