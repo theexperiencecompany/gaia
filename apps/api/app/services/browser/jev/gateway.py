@@ -234,8 +234,9 @@ class JevGatewayClient:
         if isinstance(answers, dict):
             for answer in answers.values():
                 if isinstance(answer, dict) and answer.get("type") == "boolean":
+                    # Vercel answers {"type": "boolean", "probability": p}.
                     answer["type"] = "noul"
-                    answer["noul"] = answer.pop("boolean", answer.get("noul"))
+                    answer["noul"] = answer.pop("probability")
         return body
 
     async def aclose(self) -> None:

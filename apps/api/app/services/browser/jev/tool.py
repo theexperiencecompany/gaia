@@ -102,7 +102,8 @@ def report(result: BurstResult) -> str:
         for n, step in enumerate(result.steps, 1):
             typed = f' = "{step.text}"' if step.text is not None else ""
             changed = "" if step.page_changed is None else (" (page changed)" if step.page_changed else " (no change)")
-            lines.append(f"  {n}. {step.operation.value} {step.label}{typed}{changed}")
+            ident = f" [#{step.ident}]" if step.ident else ""
+            lines.append(f"  {n}. {step.operation.value} {step.label}{ident}{typed}{changed}")
     else:
         lines.append("Actions: none.")
     if result.captures:

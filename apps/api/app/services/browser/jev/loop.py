@@ -76,6 +76,8 @@ class JevStep:
 
     operation: JevOperation
     label: str
+    #: The target's id or name attribute, which tells apart controls that share a label.
+    ident: str
     #: What was typed, with any secret masked; None for every other operation.
     text: str | None
     url: str
@@ -240,6 +242,7 @@ class JevRunner:
         started = perf_counter()
         text: str | None = None
         label = operation.value
+        ident = ""
         action: PageAction | None = None
         try:
             if operation is JevOperation.NAVIGATE and decision.url is not None:
@@ -254,6 +257,7 @@ class JevRunner:
             elif decision.action_id is not None:
                 action = page.action(decision.action_id)
                 label = action["label"]
+                ident = action.get("ident", "")
                 if operation is JevOperation.TYPE_TEXT:
                     value = await self._value_for(state, action)
                     if value is None:
@@ -286,6 +290,7 @@ class JevRunner:
         step = JevStep(
             operation=operation,
             label=label,
+            ident=ident,
             text=text,
             url=self._secrets.mask(page.url),
             page_changed=None,
