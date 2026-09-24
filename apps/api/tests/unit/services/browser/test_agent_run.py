@@ -209,6 +209,29 @@ class TestTheFrame:
 
         assert harness.frames[0].raw_screenshot == "amV2"
 
+    async def test_a_jev_step_with_no_photo_of_its_own_shows_the_states(self) -> None:
+        """A run resumed on the fallback engine frames its first step before Jev captured anything."""
+        jev = MagicMock(spec=JevChatModel)
+        jev.viewport_points.return_value = {}
+        jev.take_step_screenshot = AsyncMock(return_value=None)
+        harness = _Harness(llm=jev)
+
+        await harness.step(1, index=4)
+
+        assert harness.frames[0].raw_screenshot == "c2hvdA=="
+
+    async def test_a_password_typed_in_the_step_is_masked_in_the_frame(self) -> None:
+        """A frame is shown to people and kept, so what went into a password field never reaches it."""
+        jev = MagicMock(spec=JevChatModel)
+        jev.viewport_points.return_value = {}
+        jev.take_step_screenshot = AsyncMock(return_value="amV2")
+        jev.redact.side_effect = lambda text: text.replace("hunter2", "********")
+        harness = _Harness(llm=jev)
+
+        await harness.step(1, "click", index=4, text="hunter2")
+
+        assert harness.frames[0].actions[0].inputs == {"index": 4, "text": "********"}
+
     async def test_the_first_frame_reports_no_time_since_a_previous_one(
         self, harness: _Harness
     ) -> None:
