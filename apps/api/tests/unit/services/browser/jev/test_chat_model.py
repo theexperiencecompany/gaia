@@ -187,7 +187,9 @@ class FakeTextModel:
                 {
                     "requirements": ["the page"],
                     "done": True,
-                    "evidence": [pages[0]["url"]],
+                    "evidence": [
+                        {"requirement": "the page", "kind": "fact", "source": pages[0]["url"]}
+                    ],
                     "findings": "",
                 }
             )
@@ -1381,7 +1383,11 @@ async def test_a_list_that_replaces_a_wall_on_the_same_url_is_judged_and_answers
             {
                 "requirements": ["the first question"],
                 "done": shown,
-                "evidence": [_QUESTIONS_URL] if shown else [],
+                "evidence": [
+                    {"requirement": "the first question", "kind": "fact", "source": _QUESTIONS_URL}
+                ]
+                if shown
+                else [],
                 "findings": "",
             }
         )
@@ -1450,7 +1456,9 @@ class _Judge:
             {
                 "requirements": ["the flights"],
                 "done": self.done,
-                "evidence": [url] if self.done else [],
+                "evidence": [{"requirement": "the flights", "kind": "fact", "source": url}]
+                if self.done
+                else [],
                 "findings": "",
             }
         )
@@ -1716,7 +1724,11 @@ async def test_a_one_page_category_read_to_its_bottom_answers_the_cheapest_book(
             {
                 "requirements": ["the cheapest book"],
                 "done": whole,
-                "evidence": [_TRAVEL] if whole else [],
+                "evidence": [
+                    {"requirement": "the cheapest book", "kind": "fact", "source": _TRAVEL}
+                ]
+                if whole
+                else [],
                 "findings": "",
             }
         )
@@ -2029,6 +2041,23 @@ async def test_the_judge_is_told_the_page_the_part_started_on() -> None:
         [("WAIT", None), ("DONE", None), ("WAIT", None)],
         writer,
         _HN_TASK,
+    )
+
+    assert judged and all(context["start_page"] == _HN for context in judged)
+
+
+@pytest.mark.regression
+async def test_the_judge_of_a_one_part_task_is_told_the_page_the_run_began_on() -> None:
+    """Regression: told no start page, the judge made "open HN" a requirement it could not cite and withheld a right DONE."""
+    judged: list[dict[str, Any]] = []
+    writer = _evidence_writer([], [], [], judged)
+
+    await _run_to_done(
+        make_state({1: FakeNode("A", text="TTS")}, url=_HN),
+        make_state({1: FakeNode("A", text="TTS")}, url=_HN),
+        [("WAIT", None), ("DONE", None), ("WAIT", None)],
+        writer,
+        f"Go to {_HN} and tell me the exact title of the 3rd story.",
     )
 
     assert judged and all(context["start_page"] == _HN for context in judged)

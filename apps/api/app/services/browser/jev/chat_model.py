@@ -1234,7 +1234,7 @@ class JevChatModel:
         self._judged = state
         # Reasoning off: 1-3 s instead of 8-33 s a judgement. Without it the judge
         # needs the text read, not the screen alone, to see a list read to the end.
-        start_page = self._plan[part].url
+        start_page = self._start_page(part)
         verdict = await self._structured(
             _PartDone,
             PART_DONE,
@@ -1298,6 +1298,18 @@ class JevChatModel:
             still_needed=self._missing,
         )
         return done
+
+    def _start_page(self, part: int) -> str | None:
+        """Return the page a part began on: its own url, or for a task of one part the first page read.
+
+        A one-part plan has no url, and a judge told of no start page made opening
+        it a requirement it could not cite, withholding a DONE that was right.
+        """
+        plan = cast(list[_PlanStep], self._plan)
+        if plan[part].url or len(plan) > 1:
+            return plan[part].url
+        pages: list[ReadPage] = self._seen_text.pages
+        return pages[0]["url"] if pages else None
 
     def _holds(self, evidence: _Evidence, start_page: str | None) -> bool:
         """Whether the run itself holds this evidence entry, as what the entry says it is.
