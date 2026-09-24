@@ -314,7 +314,7 @@ def _targets(selector_map: dict[int, EnhancedDOMTreeNode]) -> tuple[list[_Target
             framed += 1
             continue
         xpath = str(getattr(node, "xpath", None) or "")
-        backend_node_id = getattr(node, "backend_node_id", None)
+        backend_node_id = node.backend_node_id
         if xpath or backend_node_id is not None:
             targets.append(_Target(index, xpath, backend_node_id))
     return targets, framed
