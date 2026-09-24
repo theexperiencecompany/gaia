@@ -211,9 +211,10 @@ def _cdp_cookie_to_storage_state(cookie: dict[str, Any]) -> StorageStateCookie:
         "value": cookie["value"],
         "domain": cookie["domain"],
         "path": cookie["path"],
-        "expires": cookie.get("expires", -1),
-        "httpOnly": cookie.get("httpOnly", False),
-        "secure": cookie.get("secure", False),
+        # Required fields of CDP's Network.Cookie: the engine always sends them.
+        "expires": cookie["expires"],
+        "httpOnly": cookie["httpOnly"],
+        "secure": cookie["secure"],
     }
     same_site = cookie.get("sameSite")
     if same_site:
@@ -302,7 +303,7 @@ class ChromiumHost:
         root_mux = self._root_mux
         if root_mux is None:
             raise RuntimeError("the engine has no root connection")
-        user_agent = str((await cdp_call(root_mux, "Browser.getVersion", {}))["userAgent"])
+        user_agent = str((await cdp_call(root_mux, "Browser.getVersion"))["userAgent"])
         if _HEADLESS_MARKER not in user_agent:
             return
         self._user_agent = user_agent.replace(_HEADLESS_MARKER, "Chrome/")
@@ -355,7 +356,12 @@ class ChromiumHost:
         try:
             mux = CdpMux(self.root_ws_url)
             await mux.start()
-            ctx = await cdp_call(mux, "Target.createBrowserContext", {"disposeOnDetach": False})
+            # CDP's own default; the context is disposed explicitly on dispose/reap.
+            ctx = await cdp_call(
+                mux,
+                "Target.createBrowserContext",
+                {"disposeOnDetach": False},  # pragma: no mutate
+            )
             context_id = str(ctx["browserContextId"])
             # Refuse downloads before the context can navigate: a drive-by download
             # is the cheapest way to get a file onto the host's disk. Scoped to this
@@ -541,7 +547,7 @@ class ChromiumHost:
     async def focused_target_id(self, session_id: str) -> str:
         """Return the target id of the context's focused page (for the screencast attach)."""
         session = self._get(session_id)
-        targets = await cdp_call(session.mux, "Target.getTargets", {})
+        targets = await cdp_call(session.mux, "Target.getTargets")
         pages = [
             ti
             for ti in targets["targetInfos"]
@@ -705,7 +711,7 @@ class ChromiumHost:
         return {"cookies": cookies, "origins": origins}
 
     async def _dump_origins(self, session: HostSession) -> list[OriginState]:
-        targets = await cdp_call(session.mux, "Target.getTargets", {})
+        targets = await cdp_call(session.mux, "Target.getTargets")
         page_ids = [
             ti["targetId"]
             for ti in targets["targetInfos"]
@@ -729,7 +735,7 @@ class ChromiumHost:
                 )
             finally:
                 await cdp_call(session.mux, "Target.detachFromTarget", {"sessionId": page_session})
-            value = result.get("result", {}).get("value")
+            value = result["result"].get("value")
             if value and value.get("origin") and value.get("localStorage"):
                 origins.append({"origin": value["origin"], "localStorage": value["localStorage"]})
         return origins
@@ -740,7 +746,7 @@ class ChromiumHost:
         if not self.chromium_up or root_mux is None:
             return False
         try:
-            await cdp_call(root_mux, "Target.getTargets", {}, timeout=timeout)
+            await cdp_call(root_mux, "Target.getTargets", timeout=timeout)
         except Exception as exc:
             log.error(
                 f"{LogTag.BROWSER} browser host CDP is unresponsive",
@@ -753,7 +759,7 @@ class ChromiumHost:
         """Read the session's page url and title; none while a heavy page holds its connection."""
         try:
             targets = await cdp_call(
-                session.mux, "Target.getTargets", {}, timeout=BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS
+                session.mux, "Target.getTargets", timeout=BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS
             )
         except CDPTimeoutError:
             return None, None

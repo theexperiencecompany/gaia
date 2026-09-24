@@ -227,3 +227,204 @@ def make_session(
         created_at=0.0,
         last_activity_at=last_activity_at,
     )
+
+
+class CdpProtocolError(RuntimeError):
+    """What the real mux raises when the engine answers a command with an error object."""
+
+
+_DOWNLOAD_BEHAVIORS = frozenset({"deny", "allow", "allowAndName", "default"})
+# The browser's own context, where CDP puts anything that names no browserContextId.
+DEFAULT_CONTEXT = ""
+
+
+class FakeEngine(FakeMux):
+    """One engine connection that answers the CDP the host speaks the way the engine does.
+
+    Contexts, pages, cookies and localStorage are real state here, so a test
+    asserts what the engine ends up holding rather than which frames were sent.
+    Required parameters are enforced, an omitted browserContextId lands in the
+    browser's default context, cookies come back in Network.Cookie's full shape,
+    an object result carries a value only when asked returnByValue, and a
+    session-scoped command needs a flat attach.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.contexts: dict[str, dict[str, Any]] = {
+            DEFAULT_CONTEXT: {"download": None, "cookies": []}
+        }
+        self.pages: dict[str, dict[str, Any]] = {}
+        # sessionId -> (targetId, flat)
+        self.attached: dict[str, tuple[str, bool]] = {}
+        self._ids = 0
+
+    def _next(self, prefix: str) -> str:
+        self._ids += 1
+        return f"{prefix}-{self._ids}"
+
+    def open_page(
+        self,
+        context_id: str,
+        *,
+        url: str,
+        title: str = "",
+        storage: dict[str, str] | None = None,
+        kind: str = "page",
+    ) -> str:
+        """Put a target the user opened into a context, with its origin's localStorage."""
+        target_id = self._next(kind)
+        self.pages[target_id] = {
+            "context": context_id,
+            "type": kind,
+            "url": url,
+            "title": title,
+            "storage": dict(storage or {}),
+            "scripts": [],
+        }
+        return target_id
+
+    async def send_raw(
+        self, method: str, params: dict[str, Any] | None = None, session_id: str | None = None
+    ) -> dict[str, Any]:
+        self.calls.append((method, params, session_id))
+        if self.send_error is not None:
+            raise self.send_error
+        handler = getattr(self, "_" + method.replace(".", "_"), None)
+        if handler is None:
+            raise CdpProtocolError(f"'{method}' wasn't found")
+        result: dict[str, Any] = handler(params or {}, session_id)
+        return result
+
+    @staticmethod
+    def _required(params: dict[str, Any], *names: str) -> None:
+        missing = [name for name in names if name not in params]
+        if missing:
+            raise CdpProtocolError(f"Invalid parameters: missing {missing}")
+
+    def _context(self, params: dict[str, Any]) -> dict[str, Any]:
+        context_id = params.get("browserContextId", DEFAULT_CONTEXT)
+        if context_id not in self.contexts:
+            raise CdpProtocolError(f"Failed to find browser context for id {context_id}")
+        return self.contexts[context_id]
+
+    def _page_for(self, session_id: str | None) -> dict[str, Any]:
+        target_id, flat = self.attached.get(session_id or "", ("", False))
+        if not flat:
+            raise CdpProtocolError(f"No session with given id: {session_id}")
+        return self.pages[target_id]
+
+    def _Browser_getVersion(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
+        return {"userAgent": "Mozilla/5.0 Chrome/153.0.0.0 Safari/537.36"}
+
+    def _Target_createBrowserContext(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
+        context_id = self._next("ctx")
+        self.contexts[context_id] = {"download": None, "cookies": []}
+        return {"browserContextId": context_id}
+
+    def _Target_disposeBrowserContext(
+        self, params: dict[str, Any], _: str | None
+    ) -> dict[str, Any]:
+        self._required(params, "browserContextId")
+        self._context(params)
+        del self.contexts[params["browserContextId"]]
+        self.pages = {
+            t: p for t, p in self.pages.items() if p["context"] != params["browserContextId"]
+        }
+        return {}
+
+    def _Browser_setDownloadBehavior(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
+        self._required(params, "behavior")
+        if params["behavior"] not in _DOWNLOAD_BEHAVIORS:
+            raise CdpProtocolError(f"Invalid behavior: {params['behavior']}")
+        self._context(params)["download"] = params["behavior"]
+        return {}
+
+    def _Target_createTarget(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
+        self._required(params, "url")
+        self._context(params)
+        target_id = self._next("page")
+        url = params["url"]
+        self.pages[target_id] = {
+            "context": params.get("browserContextId", DEFAULT_CONTEXT),
+            "type": "page",
+            "url": url,
+            "title": "",
+            "storage": {},
+            "scripts": [],
+        }
+        return {"targetId": target_id}
+
+    def _Target_getTargets(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
+        infos = [
+            {
+                "targetId": target_id,
+                "type": page["type"],
+                "url": page["url"],
+                "title": page["title"],
+                "browserContextId": page["context"],
+            }
+            for target_id, page in self.pages.items()
+        ]
+        return {"targetInfos": infos}
+
+    def _Target_attachToTarget(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
+        self._required(params, "targetId")
+        if params["targetId"] not in self.pages:
+            raise CdpProtocolError("No target with given id found")
+        session_id = self._next("attach")
+        self.attached[session_id] = (params["targetId"], params.get("flatten") is True)
+        return {"sessionId": session_id}
+
+    def _Target_detachFromTarget(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
+        if params.get("sessionId") not in self.attached:
+            raise CdpProtocolError("No session with given id")
+        del self.attached[params["sessionId"]]
+        return {}
+
+    def _Runtime_evaluate(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
+        self._required(params, "expression")
+        page = self._page_for(session_id)
+        if params["expression"] != chromium._LOCAL_STORAGE_DUMP_JS:
+            raise AssertionError(f"unexpected script: {params['expression']!r}")
+        origin = "/".join(page["url"].split("/")[:3])
+        value = {
+            "origin": origin,
+            "localStorage": [{"name": k, "value": v} for k, v in page["storage"].items()],
+        }
+        if params.get("returnByValue") is not True:
+            return {"result": {"type": "object", "className": "Object", "objectId": "obj-1"}}
+        return {"result": {"type": "object", "value": value}}
+
+    def _Page_addScriptToEvaluateOnNewDocument(
+        self, params: dict[str, Any], session_id: str | None
+    ) -> dict[str, Any]:
+        self._required(params, "source")
+        self._page_for(session_id)["scripts"].append(params["source"])
+        return {"identifier": self._next("script")}
+
+    def _Storage_setCookies(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
+        self._required(params, "cookies")
+        jar = self._context(params)["cookies"]
+        for cookie in params["cookies"]:
+            self._required(cookie, "name", "value")
+            expires = cookie.get("expires")
+            stored = {
+                "name": cookie["name"],
+                "value": cookie["value"],
+                "domain": cookie.get("domain", ""),
+                "path": cookie.get("path", "/"),
+                "expires": expires if expires is not None else -1,
+                "size": len(cookie["name"]) + len(cookie["value"]),
+                "httpOnly": cookie.get("httpOnly", False),
+                "secure": cookie.get("secure", False),
+                "session": expires is None,
+                "priority": "Medium",
+            }
+            if "sameSite" in cookie:
+                stored["sameSite"] = cookie["sameSite"]
+            jar.append(stored)
+        return {}
+
+    def _Storage_getCookies(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
+        return {"cookies": [dict(c) for c in self._context(params)["cookies"]]}
