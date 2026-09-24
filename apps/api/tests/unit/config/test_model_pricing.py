@@ -119,6 +119,32 @@ class TestEveryRuntimeModelIsPriced:
         assert args[0].endswith("model missing from pricing table — priced at DEFAULT_PRICING")
         assert kwargs == {"model_name": "some-model-nobody-registered"}
 
+    @pytest.mark.regression
+    def test_the_dev_custom_model_is_estimated_without_an_error_per_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """DEV_LLM_MODEL is whatever a developer points it at: one ERROR per call was 285 in one battery."""
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-6-luna")
+
+        with patch("app.config.model_pricing.log") as mock_log:
+            pricing = get_model_pricing("gpt-6-luna")
+
+        assert pricing == DEFAULT_PRICING
+        assert has_rate_card("gpt-6-luna") is False
+        mock_log.error.assert_not_called()
+
+    def test_production_still_logs_an_unpriced_model_named_like_the_dev_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-6-luna")
+
+        with patch("app.config.model_pricing.log") as mock_log:
+            get_model_pricing("gpt-6-luna")
+
+        mock_log.error.assert_called_once()
+
     def test_a_known_model_does_not_log(self) -> None:
         get_model_pricing(DEFAULT_MODEL_NAME)
 

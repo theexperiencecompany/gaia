@@ -11,6 +11,7 @@ unit suite fails if a runtime-referenced model has no rate.
 
 from typing import NamedTuple
 
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -95,6 +96,10 @@ def get_model_pricing(model_name: str) -> ModelPricing:
     base, _, variant = model_name.rpartition(":")
     if variant and base in MODEL_PRICING:
         return MODEL_PRICING[base]
+    if _is_dev_custom_model(model_name):
+        # Any id a developer points DEV_LLM_MODEL at: unpriced by design, and
+        # has_rate_card still marks its cost estimated. An error per call was noise.
+        return DEFAULT_PRICING
     # A model id missing from the table is priced at DEFAULT_PRICING, which is
     # not its real rate — so it must never pass quietly.
     log.error(
@@ -102,6 +107,11 @@ def get_model_pricing(model_name: str) -> ModelPricing:
         model_name=model_name,
     )
     return DEFAULT_PRICING
+
+
+def _is_dev_custom_model(model_name: str) -> bool:
+    """Whether model_name is the development-only custom endpoint's model (DEV_LLM_MODEL)."""
+    return settings.ENV == "development" and model_name == settings.DEV_LLM_MODEL
 
 
 def has_rate_card(model_name: str) -> bool:

@@ -371,8 +371,14 @@ OPENAI_REASONING_EFFORT: Final[dict[ReasoningLevel, Literal["none", "low"]]] = {
 # 402'd as soon as balance dipped, while a 256-token probe still succeeded.
 DEV_LLM_MAX_OUTPUT_TOKENS = 16_000
 
+# Longest silence one custom-lane reply may keep: the SDK default (600 s) let one
+# stalled gpt-6-luna reply eat LLM_INVOKE_TIMEOUT_SECONDS. Every retry attempt fits
+# in that budget; a healthy high-effort reply's longest measured gap was 24 s.
+DEV_LLM_READ_TIMEOUT_SECONDS = 90
+DEV_LLM_CONNECT_TIMEOUT_SECONDS = 10
+
 # Discounted DEV_LLM_* lanes sit behind Cloudflare, which 403s (error 1010)
-# programmatic user agents; a browser UA on the httpx clients passes.
+# programmatic user agents; a browser UA sent as a default header passes.
 DEV_LLM_BROWSER_HEADERS: Final[dict[str, str]] = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 }
