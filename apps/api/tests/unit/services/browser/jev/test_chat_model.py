@@ -331,6 +331,17 @@ async def test_a_value_the_helper_cannot_source_hands_the_field_to_the_human(fli
     }
 
 
+@pytest.mark.regression
+async def test_a_value_call_that_fails_idles_the_step_instead_of_handing_the_field_over(
+    flights_state,
+) -> None:
+    model, _, _, _ = _model(flights_state, [("TYPE_TEXT", "2")], [RuntimeError("provider down")])
+
+    result = await model.ainvoke([], _agent_output())
+
+    assert _action(result.completion) == {"wait": {"seconds": 1}}
+
+
 async def test_an_overlong_helper_value_is_treated_as_missing(flights_state, monkeypatch) -> None:
     monkeypatch.setattr("app.services.browser.jev.chat_model.JEV_TEXT_VALUE_MAX_CHARS", 3)
     model, _, _, _ = _model(flights_state, [("TYPE_TEXT", "2")], [{"text": "London"}])

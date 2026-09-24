@@ -513,11 +513,11 @@ class JevChatModel:
             settled = await self._settle_choice(
                 messages, observation, _PendingChoice(goal, offered, choosing, answering)
             )
+            action, text = await self._action_for(
+                settled.decision, observation, settled.goal, registered, settled.answering
+            )
         except (JevDecisionError, JevGatewayError) as exc:
             return self._rejected_step(output_format, exc)
-        action, text = await self._action_for(
-            settled.decision, observation, settled.goal, registered, settled.answering
-        )
         return self._decided_step(output_format, settled.decision, action, text, observation)
 
     async def _observe_step(self) -> JevObservation:
@@ -896,7 +896,7 @@ class JevChatModel:
             case JevOperation.CLICK:
                 return {"click": {"index": element.browser_index}}, None
             case JevOperation.TYPE_TEXT:
-                value = await self._field_text(TEXT_VALUE, goal, observation, element)
+                value = await self._field_value(goal, observation, element)
                 if value is None:
                     # A value the goal did not supply is never invented; the human
                     # supplies it instead, per the takeover policy.
@@ -976,6 +976,25 @@ class JevChatModel:
         answer = await self._structured(
             _TextValue, instructions, goal, observation, field, _WriterCall(reasoning=reasoning)
         )
+        return self._usable_text(answer)
+
+    async def _field_value(
+        self, goal: str, observation: JevObservation, field: JevElement
+    ) -> str | None:
+        """Return the value to type, None when the goal supplies none; a failed call raises.
+
+        A failure is not a missing value: it idles the step for a retry rather than
+        handing the user a field the goal already filled.
+        """
+        try:
+            answer = await self._ask(_TextValue, TEXT_VALUE, goal, observation, field)
+        except Exception as exc:
+            raise JevDecisionError(
+                f"The value for {field.label} could not be written ({type(exc).__name__})."
+            ) from exc
+        return self._usable_text(answer)
+
+    def _usable_text(self, answer: _TextValue | None) -> str | None:
         value = answer.text if answer else None
         if not value or not value.strip():
             return None
@@ -998,6 +1017,26 @@ class JevChatModel:
         field: JevElement | None,
         call: _WriterCall = _DEFAULT_WRITER_CALL,
     ) -> T | None:
+        """Return the writer's answer, or None once its lane has given up (logged once here)."""
+        try:
+            return await self._ask(output, instructions, goal, observation, field, call)
+        except Exception as exc:
+            log.warning(
+                f"{LogTag.BROWSER} Jev text helper failed",
+                error_type=type(exc).__name__,
+                error=str(exc)[:200],
+            )
+            return None
+
+    async def _ask(
+        self,
+        output: type[T],
+        instructions: str,
+        goal: str,
+        observation: JevObservation | None,
+        field: JevElement | None,
+        call: _WriterCall = _DEFAULT_WRITER_CALL,
+    ) -> T:
         """Goal, field, page and recent actions in; one small JSON value out."""
         context: dict[str, object] = {
             "goal": goal,
@@ -1028,21 +1067,13 @@ class JevChatModel:
         t0 = perf_counter()
         label = call.label or f"browser_{output.__name__.strip('_').lower()}"
         prompt = [SystemMessage(content=instructions), HumanMessage(content=json.dumps(context))]
-        try:
-            parsed = await first_answer(
-                lambda: self._structured_call(
-                    output, prompt, label=label, timeout=call.timeout, reasoning=call.reasoning
-                ),
-                hedge_after=call.hedge_after,
-                deadline=call.timeout,
-            )
-        except Exception as exc:
-            log.warning(
-                f"{LogTag.BROWSER} Jev text helper failed",
-                error_type=type(exc).__name__,
-                error=str(exc)[:200],
-            )
-            return None
+        parsed = await first_answer(
+            lambda: self._structured_call(
+                output, prompt, label=label, timeout=call.timeout, reasoning=call.reasoning
+            ),
+            hedge_after=call.hedge_after,
+            deadline=call.timeout,
+        )
         answer = next(iter(parsed.model_dump().values()), None)
         log.info(
             f"{LogTag.BROWSER} Jev text helper answered",
