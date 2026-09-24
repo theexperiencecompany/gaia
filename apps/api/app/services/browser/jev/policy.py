@@ -109,6 +109,8 @@ class JevHistoryEntry:
     #: The element's own label; the action string bakes in an index that
     #: renumbers between renders, so a repeat is matched by label.
     target_label: str | None = None
+    #: The element's role: a followed link opens a page to read, a submit does not.
+    target_role: str | None = None
     #: The instruction handed back after this step: the user's after a takeover,
     #: or the executor's after this step asked it for guidance.
     note: str | None = None

@@ -13,6 +13,7 @@ from app.constants.browser import BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS
 from app.services.browser.jev import chat_model as chat_model_mod
 from app.services.browser.jev.chat_model import JevChatModel
 from app.services.browser.jev.prompts import DONE_SUMMARY, PART_DONE, PLAN_STEPS
+from app.services.browser.jev.viewport import ViewportRead
 from tests.helpers import captured_wide_event
 
 from .conftest import FakeNode, make_state
@@ -182,6 +183,125 @@ async def test_a_link_back_to_an_earlier_page_can_still_be_gone_back_from() -> N
     await model.ainvoke([], _agent_output())
 
     assert "GO_BACK" in _offered(gateway)
+
+
+# ---------------------------------------------------------------------------
+# A page opened from a link is read before it is left
+# ---------------------------------------------------------------------------
+
+_STORY = "Claude discovers a novel enzyme system with CRISPR-like repeats"
+_LIST = "https://news.example/"
+_ARTICLE = "https://lab.example/news/enzyme"
+_LEAVING = {"GO_BACK", "NAVIGATE"}
+
+
+def _list_page() -> Any:
+    return make_state(
+        {1: FakeNode("A", text=_STORY), 2: FakeNode("A", text="Tutoring company tells parents")},
+        url=_LIST,
+        title="News",
+    )
+
+
+def _article_page() -> Any:
+    return make_state(
+        {1: FakeNode("A", text="Research"), 2: FakeNode("A", text="News")},
+        url=_ARTICLE,
+        title=_STORY,
+    )
+
+
+async def _open_the_story(model: JevChatModel, session: FakeSession) -> None:
+    await model.ainvoke([], _agent_output())
+    session.state = _article_page()
+    await model.ainvoke([], _agent_output())
+
+
+async def test_an_article_opened_from_a_link_cannot_be_left_at_its_first_screen() -> None:
+    """The live run: headline, date and a hero video filled the screen, Jev went back, and the body was reported missing."""
+    model, gateway, _, session = _model(_list_page(), [("CLICK", "1"), ("SCROLL_DOWN", None)])
+
+    await _open_the_story(model, session)
+
+    offered = _offered(gateway)
+    assert "SCROLL_DOWN" in offered
+    assert not offered & _LEAVING
+
+
+async def test_waiting_on_an_article_is_not_reading_it(monkeypatch) -> None:
+    async def top_of_page(*args: object) -> ViewportRead:
+        return ViewportRead(text=_STORY, at_bottom=False)
+
+    monkeypatch.setattr(chat_model_mod, "read_viewport", top_of_page)
+    model, gateway, _, session = _model(
+        _list_page(), [("SCROLL_DOWN", None), ("CLICK", "1"), ("WAIT", None), ("WAIT", None)]
+    )
+    await model.ainvoke([], _agent_output())
+    await _open_the_story(model, session)
+
+    await model.ainvoke([], _agent_output())
+
+    assert not _offered(gateway) & _LEAVING
+
+
+async def test_an_article_scrolled_once_can_be_left() -> None:
+    model, gateway, _, session = _model(
+        _list_page(), [("CLICK", "1"), ("SCROLL_DOWN", None), ("GO_BACK", None)]
+    )
+    await _open_the_story(model, session)
+
+    result = await model.ainvoke([], _agent_output())
+
+    assert _offered(gateway) >= _LEAVING
+    assert _action(result.completion) == {"go_back": {}}
+
+
+async def test_an_article_whose_first_screen_shows_its_end_can_be_left(monkeypatch) -> None:
+    async def whole_page(*args: object) -> ViewportRead:
+        return ViewportRead(text=_STORY, at_bottom=True)
+
+    monkeypatch.setattr(chat_model_mod, "read_viewport", whole_page)
+    model, gateway, _, session = _model(_list_page(), [("CLICK", "1"), ("GO_BACK", None)])
+
+    await _open_the_story(model, session)
+
+    assert _offered(gateway) >= _LEAVING
+
+
+async def test_a_page_a_submit_button_opened_can_be_left_at_once(flights_state) -> None:
+    """A form's result page is where a skipped field is found; going back to it is the move."""
+    model, gateway, _, session = _model(flights_state, [("CLICK", "4"), ("GO_BACK", None)])
+    await model.ainvoke([], _agent_output())
+    session.state = _article_page()
+
+    await model.ainvoke([], _agent_output())
+
+    assert _offered(gateway) >= _LEAVING
+
+
+async def test_an_article_that_finished_its_part_can_be_left_at_once() -> None:
+    def judge(context: dict[str, Any], label: str) -> dict[str, Any]:
+        on_article = context["page"]["url"] == _ARTICLE
+        return {
+            "requirements": ["the story"],
+            "done": on_article and "CURRENT PART (1 of 2)" in context["goal"],
+            "evidence": [{"requirement": "the story", "kind": "fact", "source": _ARTICLE}],
+            "findings": "",
+        }
+
+    writer, _, _ = _planner([{"goal": "Open the top story"}, {"goal": "Open the next one"}], judge)
+    model, gateway, session = _writer_model(
+        _list_page(), [("CLICK", "1"), ("GO_BACK", None)], writer
+    )
+    await model.ainvoke([], _agent_output())
+    await _settle()
+    session.state = _article_page()
+
+    result = await model.ainvoke([], _agent_output())
+
+    assert "CURRENT PART (2 of 2)" in _goal(gateway)
+    assert _offered(gateway) >= _LEAVING
+    assert _action(result.completion) == {"go_back": {}}
 
 
 # ---------------------------------------------------------------------------

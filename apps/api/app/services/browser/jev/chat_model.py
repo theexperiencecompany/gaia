@@ -152,6 +152,10 @@ _WAITS_FOR_JUDGEMENT = _TERMINAL_OPERATIONS | _HANDOFF_OPERATIONS
 #: History kinds a part judgement can cite as done: a field filled, an option or
 #: box chosen, a button clicked, a step handed to the user.
 _EVIDENCE_KINDS = frozenset({"type_text", "select", "click", "request_human", "solve_captcha"})
+#: Steps after which a page opened to read counts as read or used: it was
+#: scrolled, acted on, or a part was finished on it.
+_READ_KINDS = _EVIDENCE_KINDS | {"scroll_down", "scroll_up", "done_part"}
+_LEAVING_OPERATIONS = frozenset({JevOperation.GO_BACK, JevOperation.NAVIGATE})
 #: The part in progress, the pages read and the actions taken: what a judgement is of.
 _JudgedState = tuple[int, tuple[tuple[str, ...], ...], tuple[str, ...]]
 _JEV_DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
@@ -336,10 +340,9 @@ class JevChatModel:
     # The <user_request> Browser-Use sent this step; the task when none was bound.
     _request: str = ""
     _judging_for: _JudgedState | None = None
-    #: The state the part was last judged in, so each part is judged once per
-    #: state of what was read and done: a new page, a page read to the end, a
-    #: new document on a url already read (a wall that cleared into the list),
-    #: or an action it may cite (a field filled on the form it is judging).
+    #: The state the part was last judged in; a part is judged once per state: a new
+    #: page, a page read to the end, a new document on a url already read, or an
+    #: action it may cite (a field filled on the form it is judging).
     _judged: _JudgedState | None = None
     #: The state last judged and the requirements that judgement found no evidence for.
     _missing: tuple[_JudgedState | None, tuple[str, ...]] = (None, ())
@@ -714,6 +717,7 @@ class JevChatModel:
             text,
             url=observation.url,
             target_label=decision.element.label if decision.element is not None else None,
+            target_role=decision.element.role if decision.element is not None else None,
         )
         evaluation = decision.evaluation
         if self._gateway_cost_usd is not None:
@@ -1584,7 +1588,17 @@ class JevChatModel:
             # Two backs in a row is never the plan: the first one landed somewhere,
             # and the run decides from there; twenty of them once spent a whole run.
             offered -= {JevOperation.GO_BACK}
-        return opening, offered - _stalled_operations(self._history)
+        offered -= _stalled_operations(self._history)
+        if (
+            JevOperation.SCROLL_DOWN in offered
+            and observation.at_bottom is not True
+            and _opened_unread(self._history, observation.url)
+        ):
+            # A page opened to read and left at its first screen was never read: an
+            # article's headline, date and hero filled the screen, and Jev went back
+            # from it and reported the body missing.
+            offered -= _LEAVING_OPERATIONS
+        return opening, offered
 
     def fall_back_after_engine_failure(self) -> None:
         """Resume on the fallback engine at the last page the run read, since the primary engine failed under it.
@@ -1613,9 +1627,17 @@ class JevChatModel:
         *,
         url: str | None = None,
         target_label: str | None = None,
+        target_role: str | None = None,
     ) -> None:
         self._history.append(
-            JevHistoryEntry(action=action, kind=kind, text=text, url=url, target_label=target_label)
+            JevHistoryEntry(
+                action=action,
+                kind=kind,
+                text=text,
+                url=url,
+                target_label=target_label,
+                target_role=target_role,
+            )
         )
 
 
@@ -1671,6 +1693,27 @@ def _stalled_operations(history: list[JevHistoryEntry]) -> frozenset[JevOperatio
     if last.kind != before.kind or last.kind == "wait":
         return frozenset()
     return frozenset(op for op in JevOperation if op.value.lower() == last.kind)
+
+
+def _opened_unread(history: list[JevHistoryEntry], url: str) -> bool:
+    """Whether the page at url was opened by following a link and nothing has been read or done on it.
+
+    A page reached by a submit button, by going back or by the plan is not one
+    opened to read, and neither is a page the run scrolled, acted on or finished a part on.
+    """
+    here = page_key(url)
+    arrival = len(history)
+    while arrival and _on_page(history[arrival - 1], here):
+        arrival -= 1
+    if not arrival or any(entry.kind in _READ_KINDS for entry in history[arrival:]):
+        return False
+    followed = history[arrival - 1]
+    return followed.kind == "click" and followed.target_role == "link"
+
+
+def _on_page(entry: JevHistoryEntry, key: str) -> bool:
+    """Whether a step belongs to the page at key; a step with no page (a finished part) belongs to the one it happened on."""
+    return entry.url is None or page_key(entry.url) == key
 
 
 def _same_page(target: str, current: str) -> bool:
