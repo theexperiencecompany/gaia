@@ -2183,16 +2183,27 @@ def _gap_judge(missing: list[str], *, on_done_check_only: bool = False):
 
 @pytest.mark.regression
 async def test_a_one_part_task_is_told_what_the_judge_found_missing() -> None:
-    """Regression: a form submitted without its radio was declared BLOCKED; the gap reached multi-part plans only."""
-    _, gateway = await _run_to_done(
-        _FORM_PAGE,
-        _SUBMITTED_PAGE,
-        [("CLICK", "2"), ("SCROLL_DOWN", None)],
-        _gap_judge(["Radio 2 chosen"]),
-        _FORM_TASK,
-    )
+    """Regression: a form submitted without its radio was declared BLOCKED; the gap reached multi-part plans only.
 
-    assert "Radio 2 chosen" in str(gateway.requests[-1].questions["operation"].instructions["goal"])
+    The gap judged before the submit is not shown on the page it landed on (the
+    submit may be what it lacked); the judgement of that page is, a step later.
+    """
+    gateway = ScriptedGateway(script=[("CLICK", "2"), ("SCROLL_DOWN", None), ("SCROLL_DOWN", None)])
+    model = JevChatModel(
+        client=gateway, text_model=FakeTextModel(), structured_call=_gap_judge(["Radio 2 chosen"])
+    )  # type: ignore[arg-type]  # a scripted gateway and a fake text model stand in for the real ones
+    session = FakeSession(_FORM_PAGE)
+    model.bind(session, _FORM_TASK)  # type: ignore[arg-type]  # a fake session stands in for Browser-Use's
+    await model.ainvoke([], _agent_output())
+    session.state = _SUBMITTED_PAGE
+    for _ in range(2):
+        await model.ainvoke([], _agent_output())
+        for _ in range(20):
+            await asyncio.sleep(0)
+
+    landed, next_step = gateway.requests[1:]
+    assert "BLOCKED" not in landed.questions["operation"].criteria
+    assert "Radio 2 chosen" in str(next_step.questions["operation"].instructions["goal"])
 
 
 @pytest.mark.regression
@@ -2211,6 +2222,41 @@ async def test_a_withheld_done_is_re_decided_on_what_its_check_found_missing() -
     assert "BLOCKED" not in re_ask.criteria
     assert "GO_BACK" in re_ask.criteria
     assert action == {"go_back": {}}
+
+
+@pytest.mark.regression
+async def test_a_gap_judged_before_a_field_was_filled_is_not_repeated_after_it() -> None:
+    """Regression: judged once per page read, a form's first gap stood all run and Jev retyped a field."""
+    helper = FakeTextModel(replies=[{"text": "gaia-test-123"}])
+    judged_after_typing: list[bool] = []
+
+    async def writer(schema, prompt, *, label, timeout=None, reasoning=None):
+        if prompt[0].content.startswith(PLAN_STEPS):
+            return schema.model_validate({"steps": []})
+        if prompt[0].content.startswith(PART_DONE):
+            actions = json.loads(prompt[1].content)["recent_actions"]
+            typed = any(a["action"].startswith("TYPE_TEXT") for a in actions)
+            judged_after_typing.append(typed)
+            gap = [] if typed else ["password entered"]
+            return schema.model_validate(
+                {"requirements": gap, "evidence": [], "done": False, "findings": ""}
+            )
+        return await helper.structured(schema, prompt, label=label, timeout=timeout)
+
+    _, gateway = await _run_to_done(
+        _LOGIN_FORM,
+        _LOGIN_FORM,
+        [("TYPE_TEXT", "1"), ("WAIT", None)],
+        writer,
+        f'Go to {_FORM} and enter the password "gaia-test-123".',
+    )
+    for _ in range(20):
+        await asyncio.sleep(0)
+
+    assert "password entered" not in str(
+        gateway.requests[-1].questions["operation"].instructions["goal"]
+    )
+    assert judged_after_typing == [False, True], "the form is judged again once a field is filled"
 
 
 async def test_blocked_stays_offered_while_something_is_missing_but_no_page_is_behind() -> None:

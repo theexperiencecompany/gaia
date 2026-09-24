@@ -151,6 +151,11 @@ _HANDOFF_OPERATIONS = frozenset({JevOperation.REQUEST_HUMAN, JevOperation.SOLVE_
 # A step that ends the run or hands it to someone acts only once the part's
 # judgement is in: ending a part already done, or asking a person to finish it, is wrong.
 _WAITS_FOR_JUDGEMENT = _TERMINAL_OPERATIONS | _HANDOFF_OPERATIONS
+#: History kinds a part judgement can cite as done: a field filled, an option or
+#: box chosen, a button clicked, a step handed to the user.
+_EVIDENCE_KINDS = frozenset({"type_text", "select", "click", "request_human", "solve_captcha"})
+#: The part in progress, the pages read and the actions taken: what a judgement is of.
+_JudgedState = tuple[int, tuple[tuple[str, ...], ...], tuple[str, ...]]
 _JEV_DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
 # Vercel AI Gateway evaluation endpoint: same {model, state, questions} body
 # and {answers, usage} response as the OpenRouter decisions route.
@@ -339,17 +344,20 @@ class JevChatModel:
         #: The current part's judgement, left running while the step's action
         #: executes; a done verdict is applied at the next step.
         self._judging: asyncio.Task[bool] | None = None
-        self._judging_for: tuple[int, tuple[tuple[str, ...], ...]] | None = None
+        self._judging_for: _JudgedState | None = None
         self._plan_index = 0
-        #: The part and the pages_read it was last judged on, so each part is judged
-        #: once per state of what was read: a new page, a page read to the end, or a
-        #: new document on a url already read (a wall that cleared into the list).
-        self._judged: tuple[int, tuple[tuple[str, ...], ...]] | None = None
+        #: The state the part was last judged in, so each part is judged once per
+        #: state of what was read and done: a new page, a page read to the end, a
+        #: new document on a url already read (a wall that cleared into the list),
+        #: or an action it may cite (a field filled on the form it is judging).
+        self._judged: _JudgedState | None = None
         #: What each finished part produced, in the writer's words: the list a
         #: later part works through, the fact the closing answer reports.
         self._findings: list[str] = []
-        #: What the last judgement of the current part found no evidence for.
+        #: What the last judgement of the current part found no evidence for, and
+        #: the state it judged: the gap is only the run's while the run is in it.
         self._missing: list[str] = []
+        self._missing_for: _JudgedState | None = None
         #: Parts whose own site the run has opened; a part opens its site once.
         self._opened_parts: set[int] = set()
         self._history: list[JevHistoryEntry] = []
@@ -1222,10 +1230,18 @@ class JevChatModel:
         self._judging_for = self._read_state()
         return self._judging
 
-    def _read_state(self) -> tuple[int, tuple[tuple[str, ...], ...]]:
-        """Return the part in progress and what has been read, the state a judgement is of."""
+    def _read_state(self) -> _JudgedState:
+        """Return the part in progress, what has been read and what has been done, the state a judgement is of.
+
+        The actions count: a form is filled on one page, and a gap judged before
+        its first field stood for the whole run, so Jev typed the password twenty times.
+        """
         pages: list[ReadPage] = self._seen_text.pages
-        return self._plan_index, tuple((page["url"], page["title"], page["read"]) for page in pages)
+        return (
+            self._plan_index,
+            tuple((page["url"], page["title"], page["read"]) for page in pages),
+            tuple(entry.action for entry in self._history if entry.kind in _EVIDENCE_KINDS),
+        )
 
     async def _part_is_done(
         self, observation: JevObservation, goal: str, *, done_chosen: bool = False
@@ -1236,7 +1252,7 @@ class JevChatModel:
         before: Jev chose DONE, and only this evidence check may accept it.
         """
         state = self._read_state()
-        part, read = state
+        part, read, _ = state
         pages = len(read)
         if pages == 0 or self._plan is None:
             return False
@@ -1270,6 +1286,7 @@ class JevChatModel:
                 for item in evidence
                 if item.source not in unverified
             }
+            self._missing_for = state
             self._missing = [
                 r for r in verdict.requirements if " ".join(r.casefold().split()) not in held
             ]
@@ -1427,7 +1444,10 @@ class JevChatModel:
         """Frame the goal as its current part when the task was split, with what the part still needs."""
         # The judge knew each article was read only for its title; Jev, not
         # told, went back to the list for 37 steps.
-        still_needed = f"{_STILL_NEEDED}{' / '.join(self._missing)}" if self._missing else None
+        # A gap judged before the run's latest action may be what that action did;
+        # repeated as still needed, it had Jev fill one field again every step.
+        missing = self._missing if self._missing_for == self._read_state() else []
+        still_needed = f"{_STILL_NEEDED}{' / '.join(missing)}" if missing else None
         if not self._plan or len(self._plan) == 1:
             # A one-part task is decided on the task itself, and needs to hear the
             # gap too: a form submitted with its radio unchosen was declared BLOCKED.
