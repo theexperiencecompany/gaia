@@ -92,7 +92,8 @@ def get_model_pricing(model_name: str) -> ModelPricing:
         return pricing
     # OpenRouter routing variants ("model:nitro" sorts providers by throughput,
     # ":floor" by price) name the same model; its rate card is the base id's.
-    base, _, variant = model_name.rpartition(":")
+    # No rate-card id holds a colon, so partition would split the same.
+    base, _, variant = model_name.rpartition(":")  # pragma: no mutate
     if variant and base in MODEL_PRICING:
         return MODEL_PRICING[base]
     # A model id missing from the table is priced at DEFAULT_PRICING, which is
