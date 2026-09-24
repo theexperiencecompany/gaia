@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
+from http import HTTPStatus
 import math
 import uuid
 
@@ -36,6 +37,7 @@ from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
+from app.utils.errors import AppError
 from app.utils.todo_vector_utils import (
     TodoSearchFilters,
     delete_todo_embedding,
@@ -45,6 +47,16 @@ from app.utils.todo_vector_utils import (
     update_todo_embedding,
 )
 from shared.py.wide_events import log, spawn_logged_task
+
+
+class TrackedTodoWorkflowError(AppError):
+    """Raised (409) when a workflow would be linked to a tracked todo."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="Tracked todos run on the agent from their canvas and never link a workflow",
+            status_code=HTTPStatus.CONFLICT,
+        )
 
 
 async def _get_workflow_categories_for_todos(
@@ -112,10 +124,19 @@ def _to_todo_update(updates: TodoUpdateRequest) -> TodoUpdate:
     it — so None-valued fields are dropped rather than written as nulls, and the
     resulting model's set fields are exactly what will be written.
     """
-    update = TodoUpdate(**updates.model_dump(exclude_none=True))
+    update = TodoUpdate(**updates.model_dump(exclude_none=True, exclude={"workflow_id"}))
     if update.subtasks is not None:
         update.subtasks = _ensure_subtask_ids(update.subtasks)
     return update
+
+
+async def _link_workflow(todo_id: str, user_id: str, workflow_id: str) -> None:
+    """Link through the repository's guarded writer; a refusal means a missing or tracked todo."""
+    if await todo_repository.link_workflow(todo_id, user_id=user_id, workflow_id=workflow_id):
+        return
+    if await todo_repository.get(todo_id, user_id=user_id) is None:
+        raise ValueError(f"Todo {todo_id} not found")
+    raise TrackedTodoWorkflowError()
 
 
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
@@ -172,6 +193,8 @@ class TodoService:
                 "user_id": user_id,
             },
         )
+        if GAIA_TRACKED_LABEL in todo.labels and todo.workflow_id:
+            raise TrackedTodoWorkflowError()
         # Whether the caller filed the todo into a project themselves — read
         # before the Inbox default below makes project_id unconditionally set.
         project_chosen = todo.project_id is not None
@@ -350,10 +373,13 @@ class TodoService:
                     log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
                 update = _drop_completion_fields(update)
 
+        if updates.workflow_id is not None:
+            await _link_workflow(todo_id, user_id, updates.workflow_id)
+
         if update.model_fields_set:
             updated = await todo_repository.update(todo_id, user_id=user_id, update=update)
         else:
-            # Only a tracked completion happened; it already persisted + invalidated.
+            # A tracked completion or a workflow link already persisted + invalidated.
             updated = await todo_repository.get(todo_id, user_id=user_id)
 
         if not updated:
@@ -430,6 +456,12 @@ class TodoService:
         cls, request: BulkUpdateRequest, user_id: str
     ) -> BulkOperationResponse:
         """Bulk update multiple todos."""
+        if request.updates.workflow_id is not None:
+            # A bulk $set would bypass link_workflow's tracked-todo guard.
+            raise AppError(
+                message="A workflow is linked one todo at a time, not in bulk",
+                status_code=HTTPStatus.BAD_REQUEST,
+            )
         update = _to_todo_update(request.updates)
         if not update.model_fields_set:
             return BulkOperationResponse(

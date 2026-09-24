@@ -575,6 +575,21 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             array_filters=[{"elem.id": subtask_id}],
         )
 
+    async def link_workflow(
+        self, todo_id: str, *, user_id: str, workflow_id: str
+    ) -> TodoDocument | None:
+        """Link a workflow to a classic todo: the only writer of workflow_id.
+
+        The filter excludes tracked todos, so the refusal is atomic; None means
+        the todo is missing, someone else's, or tracked.
+        """
+        return await self._apply_raw_update(
+            self._scoped_filter(todo_id, user_id),
+            {"$set": {"workflow_id": workflow_id}},
+            scope=user_id,
+            extra_filter={"labels": {"$ne": GAIA_TRACKED_LABEL}},
+        )
+
     async def clear_workflow_id(self, todo_id: str, *, user_id: str) -> TodoDocument | None:
         """Detach a todo's linked workflow ($unset workflow_id)."""
         return await self._apply_raw_update(

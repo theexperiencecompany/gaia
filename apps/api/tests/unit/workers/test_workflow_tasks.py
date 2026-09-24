@@ -601,7 +601,7 @@ class TestProcessWorkflowGenerationTask:
             ),
         ):
             mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
-            mock_repo.update = AsyncMock(return_value=mock_todo_result)
+            mock_repo.link_workflow = AsyncMock(return_value=mock_todo_result)
 
             mock_ws = AsyncMock()
             mock_ws.broadcast_to_user = AsyncMock()
@@ -661,13 +661,17 @@ class TestProcessWorkflowGenerationTask:
             ),
         ):
             mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
-            mock_repo.update = AsyncMock(return_value=None)
+            mock_wf_svc.delete_workflow = AsyncMock(return_value=True)
+            mock_repo.link_workflow = AsyncMock(return_value=None)
             mock_ws = AsyncMock()
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws
 
             with pytest.raises(AppError, match="not found or not updated"):
                 await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
+
+        # A refused link (deleted or tracked todo) must not leave an orphan "Todo:" workflow.
+        mock_wf_svc.delete_workflow.assert_awaited_once_with(workflow.id, user_id)
 
     async def test_websocket_failure_event_sent_on_exception(self, ctx):
         todo_id = str(ObjectId())
@@ -724,7 +728,7 @@ class TestProcessWorkflowGenerationTask:
             ),
         ):
             mock_wf_svc.create_workflow = AsyncMock(side_effect=capture_create)
-            mock_repo.update = AsyncMock(return_value=mock_todo_result)
+            mock_repo.link_workflow = AsyncMock(return_value=mock_todo_result)
             mock_ws = AsyncMock()
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws
@@ -1737,7 +1741,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
             ),
         ):
             mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
-            mock_repo.update = AsyncMock(return_value=mock_todo_result)
+            mock_repo.link_workflow = AsyncMock(return_value=mock_todo_result)
 
             result = await process_workflow_generation_task(ctx, todo_id, user_id, "Test Todo")
 
@@ -1813,7 +1817,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
             ),
         ):
             mock_wf_svc.create_workflow = AsyncMock(side_effect=capture_create)
-            mock_repo.update = AsyncMock(return_value=mock_todo_result)
+            mock_repo.link_workflow = AsyncMock(return_value=mock_todo_result)
             mock_ws = AsyncMock()
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws

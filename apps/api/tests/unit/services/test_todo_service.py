@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, call, patch
 
 from bson import ObjectId
 from fastapi import HTTPException
+from pydantic import ValidationError
 import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL
@@ -31,6 +32,7 @@ from app.models.todo_models import (
     TodoResponse,
     TodoSearchParams,
     TodoStats,
+    TodoUpdate,
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
@@ -48,6 +50,7 @@ from app.services.todos.todo_bulk_service import (
 from app.services.todos.todo_service import (
     ProjectService,
     TodoService,
+    TrackedTodoWorkflowError,
     _get_workflow_categories_for_todos,
     create_project,
     delete_project,
@@ -56,6 +59,7 @@ from app.services.todos.todo_service import (
     get_todo,
     update_project,
 )
+from app.utils.errors import AppError
 from app.utils.todo_vector_utils import TodoSearchFilters
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
@@ -151,6 +155,7 @@ def mock_todo_repo():
         repo.create = AsyncMock()
         repo.get = AsyncMock(return_value=None)
         repo.update = AsyncMock(return_value=None)
+        repo.link_workflow = AsyncMock(return_value=None)
         repo.delete = AsyncMock(return_value=True)
         repo.list_page = AsyncMock()
         repo.compute_stats = AsyncMock(return_value=TodoStats())
@@ -323,6 +328,16 @@ class TestCreateTodo:
         )
         mock_workflow_queue.queue_todo_workflow_generation.assert_not_called()
 
+    async def test_a_tracked_todo_cannot_be_created_with_a_workflow(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
+    ):
+        with pytest.raises(TrackedTodoWorkflowError):
+            await TodoService.create_todo(
+                TodoModel(title="Nightly", labels=[GAIA_TRACKED_LABEL], workflow_id="wf1"),
+                FAKE_USER_ID,
+            )
+        mock_todo_repo.create.assert_not_awaited()
+
     async def test_captures_todo_created(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
     ):
@@ -463,6 +478,40 @@ class TestUpdateTodo:
         with pytest.raises(ValueError, match="not found"):
             await TodoService.update_todo(
                 FAKE_TODO_ID, TodoUpdateRequest(title="new"), FAKE_USER_ID
+            )
+
+    async def test_a_workflow_link_goes_through_link_workflow(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        linked = _make_todo_doc(todo_id=FAKE_TODO_ID, workflow_id="wf1")
+        mock_todo_repo.link_workflow = AsyncMock(return_value=linked)
+        mock_todo_repo.get = AsyncMock(return_value=linked)
+        result = await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(workflow_id="wf1"), FAKE_USER_ID
+        )
+        mock_todo_repo.link_workflow.assert_awaited_once_with(
+            FAKE_TODO_ID, user_id=FAKE_USER_ID, workflow_id="wf1"
+        )
+        mock_todo_repo.update.assert_not_awaited()
+        assert result.workflow_id == "wf1"
+
+    async def test_a_tracked_todo_refuses_a_workflow_link(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        tracked = _make_todo_doc(todo_id=FAKE_TODO_ID)
+        tracked.labels = [GAIA_TRACKED_LABEL]
+        mock_todo_repo.get = AsyncMock(return_value=tracked)
+        with pytest.raises(TrackedTodoWorkflowError):
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(workflow_id="wf1"), FAKE_USER_ID
+            )
+
+    async def test_a_workflow_link_to_a_missing_todo_is_not_found(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        with pytest.raises(ValueError, match="not found"):
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(workflow_id="wf1"), FAKE_USER_ID
             )
 
     async def test_updates_and_returns(
@@ -630,6 +679,14 @@ class TestBulkOps:
             call("a", doc_a, FAKE_USER_ID),
             call("b", doc_b, FAKE_USER_ID),
         ]
+
+    async def test_bulk_update_refuses_to_link_a_workflow(self, mock_todo_repo, mock_project_repo):
+        """A bulk $set of workflow_id would bypass link_workflow's tracked-todo guard."""
+        req = BulkUpdateRequest(todo_ids=["a", "b"], updates=TodoUpdateRequest(workflow_id="wf1"))
+        with pytest.raises(AppError) as raised:
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+        assert raised.value.status_code == 400
+        mock_todo_repo.bulk_update.assert_not_called()
 
     async def test_bulk_update_no_fields_is_noop(self, mock_todo_repo, mock_project_repo):
         req = BulkUpdateRequest(todo_ids=["a"], updates=TodoUpdateRequest())
@@ -929,3 +986,10 @@ class TestBulkServiceDelete:
             await bulk_service_delete_todos(["a", "b"], FAKE_USER_ID)
         # Only the subscribed doc tears down, and with its exact id/user/reason.
         teardown.assert_awaited_once_with("a", FAKE_USER_ID, reason="bulk_deleted")
+
+
+class TestTodoUpdateCannotLinkAWorkflow:
+    def test_the_generic_update_rejects_workflow_id(self):
+        """Only link_workflow may write workflow_id, so it cannot bypass the tracked-todo guard."""
+        with pytest.raises(ValidationError):
+            TodoUpdate(workflow_id="wf1")

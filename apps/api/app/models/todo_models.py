@@ -480,7 +480,6 @@ class TodoUpdate(BaseModel):
     project_id: str | None = None
     completed: bool | None = None
     subtasks: list[SubTask] | None = None
-    workflow_id: str | None = None
     workflow_activated: bool | None = None
     vfs_path: str | None = None
     scheduled_at: datetime | None = None

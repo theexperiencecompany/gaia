@@ -27,6 +27,7 @@ from app.models.todo_models import (
     TodoUpdateRequest,
 )
 from app.services.analytics_service import AnalyticsEvents
+from app.services.todos.todo_service import TrackedTodoWorkflowError
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
 ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture_context_event"
@@ -456,6 +457,17 @@ class TestGenerateTodoWorkflow:
 
         assert resp.status_code == 409
         queue.assert_not_awaited()
+
+
+class TestUpdateTodoWorkflowLink:
+    async def test_linking_a_workflow_to_a_tracked_todo_is_409(self, client: AsyncClient) -> None:
+        with patch(
+            f"{TODOS_ENDPOINT}.TodoService.update_todo",
+            new=AsyncMock(side_effect=TrackedTodoWorkflowError()),
+        ):
+            resp = await client.put("/api/v1/todos/todo-1", json={"workflow_id": "wf1"})
+
+        assert resp.status_code == 409
 
 
 class TestTodoCanvas:
