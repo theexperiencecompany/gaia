@@ -333,6 +333,49 @@ class TestCreateTodo:
         )
         assert result.id == FAKE_TODO_ID
 
+    async def test_create_todo_with_workflow_spawns_a_named_task_scoped_to_the_todo(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
+    ):
+        mock_todo_repo.create = AsyncMock(
+            return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, project_id=FAKE_INBOX_ID)
+        )
+        with patch("app.services.todos.todo_service.spawn_logged_task") as spawn:
+            await TodoService.create_todo_with_workflow(TodoModel(title="Buy milk"), FAKE_USER_ID)
+
+        spawn.assert_called_once()
+        assert spawn.call_args.args[0] == "todo_workflow_generation"
+        assert spawn.call_args.kwargs == {
+            "user": {"id": FAKE_USER_ID},
+            "todo": {"id": FAKE_TODO_ID},
+        }
+        mock_workflow_queue.queue_todo_workflow_generation.assert_called_once_with(
+            todo_id=FAKE_TODO_ID, user_id=FAKE_USER_ID, title="Buy milk", description=""
+        )
+        spawn.call_args.args[1].close()
+
+    async def test_a_failed_generation_queue_still_returns_the_created_todo(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
+    ):
+        mock_todo_repo.create = AsyncMock(
+            return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, project_id=FAKE_INBOX_ID)
+        )
+        with (
+            patch(
+                "app.services.todos.todo_service.spawn_logged_task",
+                side_effect=RuntimeError("loop closed"),
+            ),
+            patch("app.services.todos.todo_service.log") as log,
+        ):
+            result = await TodoService.create_todo_with_workflow(
+                TodoModel(title="Buy milk"), FAKE_USER_ID
+            )
+
+        assert result.id == FAKE_TODO_ID
+        log.warning.assert_called_once_with(
+            "todo.workflow_queue_failed", title="Buy milk", error="loop closed"
+        )
+        mock_workflow_queue.queue_todo_workflow_generation.return_value.close()
+
     async def test_create_todo_with_workflow_refuses_a_tracked_todo(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
     ):
@@ -342,6 +385,13 @@ class TestCreateTodo:
             )
         mock_todo_repo.create.assert_not_awaited()
         mock_workflow_queue.queue_todo_workflow_generation.assert_not_called()
+
+    async def test_a_classic_todo_can_be_created_already_linked(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
+    ):
+        mock_todo_repo.create = AsyncMock(return_value=_make_todo_doc(project_id=FAKE_INBOX_ID))
+        await TodoService.create_todo(TodoModel(title="Buy milk", workflow_id="wf1"), FAKE_USER_ID)
+        assert mock_todo_repo.create.await_args.args[0].workflow_id == "wf1"
 
     async def test_a_tracked_todo_cannot_be_created_with_a_workflow(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
@@ -516,10 +566,14 @@ class TestUpdateTodo:
         tracked = _make_todo_doc(todo_id=FAKE_TODO_ID)
         tracked.labels = [GAIA_TRACKED_LABEL]
         mock_todo_repo.get = AsyncMock(return_value=tracked)
-        with pytest.raises(TrackedTodoWorkflowError):
+        with pytest.raises(TrackedTodoWorkflowError) as refused:
             await TodoService.update_todo(
                 FAKE_TODO_ID, TodoUpdateRequest(workflow_id="wf1"), FAKE_USER_ID
             )
+        mock_todo_repo.get.assert_awaited_once_with(FAKE_TODO_ID, user_id=FAKE_USER_ID)
+        assert refused.value.message == (
+            "Tracked todos run on the agent from their canvas and never link a workflow"
+        )
 
     async def test_a_workflow_link_to_a_missing_todo_is_not_found(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -701,6 +755,7 @@ class TestBulkOps:
         with pytest.raises(AppError) as raised:
             await TodoService.bulk_update_todos(req, FAKE_USER_ID)
         assert raised.value.status_code == 400
+        assert raised.value.message == "A workflow is linked one todo at a time, not in bulk"
         mock_todo_repo.bulk_update.assert_not_called()
 
     async def test_bulk_update_no_fields_is_noop(self, mock_todo_repo, mock_project_repo):

@@ -134,6 +134,9 @@ class TestCreateTodo:
         assert result["error"] is None
         assert result["todo"]["title"] == "Buy groceries"
         mock_service.assert_awaited_once()
+        created, owner = mock_service.await_args.args
+        assert created.title == "Buy groceries"
+        assert owner == FAKE_USER_ID
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_user_id_from_config", return_value="")

@@ -452,6 +452,7 @@ class TestCreateTodoEndpoint:
         assert resp.status_code == 201
         create.assert_awaited_once()
         assert create.await_args.args[0].title == "Buy milk"
+        assert create.await_args.args[1] == "507f1f77bcf86cd799439011"
 
 
 class TestGenerateTodoWorkflow:
@@ -482,6 +483,9 @@ class TestUpdateTodoWorkflowLink:
             resp = await client.put("/api/v1/todos/todo-1", json={"workflow_id": "wf1"})
 
         assert resp.status_code == 409
+        assert resp.json()["message"] == (
+            "Tracked todos run on the agent from their canvas and never link a workflow"
+        )
 
 
 class TestTodoCanvas:

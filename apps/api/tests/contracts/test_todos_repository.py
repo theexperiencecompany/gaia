@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
+from bson import ObjectId
 import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL
@@ -684,6 +685,26 @@ class TestListTrackedWithWorkflow:
 
         assert await repo.list_tracked_with_workflow(limit=10) == []
 
+    async def test_pages_in_id_order_from_the_cursor(self, repo, raw_collection):
+        low, mid, high = sorted(ObjectId() for _ in range(3))
+        # Inserted out of id order, so natural order cannot stand in for the sort.
+        for doc_id in (high, low, mid):
+            await raw_collection.insert_one(
+                {
+                    "_id": doc_id,
+                    "user_id": "u1",
+                    "title": "Tracked",
+                    "labels": [GAIA_TRACKED_LABEL],
+                    "workflow_id": "wf",
+                }
+            )
+        low, mid, high = str(low), str(mid), str(high)
+
+        first_page = await repo.list_tracked_with_workflow(limit=2)
+        assert [t.id for t in first_page] == [low, mid]
+        second_page = await repo.list_tracked_with_workflow(limit=2, after_id=mid)
+        assert [t.id for t in second_page] == [high]
+
 
 class TestLinkWorkflow:
     """link_workflow is the only writer of workflow_id, and it never links a tracked todo."""
@@ -702,3 +723,13 @@ class TestLinkWorkflow:
     async def test_is_user_scoped(self, repo, make_doc):
         created = await repo.create(make_doc(user_id="owner", labels=[]))
         assert await repo.link_workflow(created.id, user_id="attacker", workflow_id="wf1") is None
+
+    async def test_a_link_is_visible_through_the_cached_read(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1", labels=[]))
+        primed = await repo.get(created.id, user_id="u1")
+        assert primed is not None and primed.workflow_id is None
+
+        await repo.link_workflow(created.id, user_id="u1", workflow_id="wf1")
+
+        fresh = await repo.get(created.id, user_id="u1")
+        assert fresh is not None and fresh.workflow_id == "wf1"
