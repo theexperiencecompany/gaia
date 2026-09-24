@@ -2337,16 +2337,54 @@ async def test_a_typed_password_is_masked_in_the_closing_answer_but_still_typed(
     assert gateway.requests[-1].state["recent_actions"][0]["text"] == mask
 
 
-@pytest.mark.regression
-async def test_a_password_field_the_run_typed_into_reads_as_filled_on_the_next_step() -> None:
-    """Engines report no value for a password field, so it read empty and was typed again."""
-    model, gateway, _ = await _typed_a_password(_LOGIN_FORM, [("WAIT", None)], [])
+def _password_form(value: str) -> tuple[Any, dict[str, Any]]:
+    """Return a login form and the DOM snapshot of its password field holding value."""
+    field_node = FakeNode("INPUT", {"type": "password", "name": "my-password"})
+    field_node.backend_node_id = 1  # type: ignore[attr-defined]  # the id the DOM snapshot keys values by
+    snapshot = {
+        "strings": [value],
+        "documents": [
+            {"nodes": {"backendNodeId": [1], "inputValue": {"index": [0], "value": [0]}}}
+        ],
+    }
+    return make_state(
+        {1: field_node, 2: FakeNode("INPUT", {"name": "my-text"})}, url=_FORM
+    ), snapshot
 
+
+async def _typed_into_password_form(task: str, now_holds: str) -> ScriptedGateway:
+    """Type _SECRET into a password field, let the page leave now_holds in it, and decide once more."""
+    gateway = ScriptedGateway(script=[("TYPE_TEXT", "1"), ("WAIT", None)])
+    helper = FakeTextModel(replies=[{"text": _SECRET}])
+    model = JevChatModel(client=gateway, text_model=helper, structured_call=helper.structured)  # type: ignore[arg-type]  # a scripted gateway and a fake text model stand in for the real ones
+    state, snapshot = _password_form("")
+    session = FakeSession(state, snapshot)
+    model.bind(session, task)  # type: ignore[arg-type]  # a fake session stands in for Browser-Use's
     await model.ainvoke([], _agent_output())
+    session.state, session.snapshot = _password_form(now_holds)
+    await model.ainvoke([], _agent_output())
+    return gateway
 
-    values = [row.get("value") for row in gateway.requests[-1].state["elements"]]
-    assert browser_constants.JEV_SECRET_MASK in values
-    assert _SECRET not in json.dumps(gateway.requests[-1].state)
+
+@pytest.mark.regression
+async def test_a_typed_password_reads_the_same_in_the_goal_as_in_its_field() -> None:
+    """Regression: the field read the mask and the goal the password, so Jev typed it twenty times."""
+    mask = browser_constants.JEV_SECRET_MASK
+
+    gateway = await _typed_into_password_form(f'Enter the password "{_SECRET}".', _SECRET)
+
+    request = gateway.requests[-1]
+    assert request.state["elements"][0]["value"] == mask
+    assert f'"{mask}"' in str(request.questions["operation"].instructions["goal"])
+    assert _SECRET not in request.model_dump_json()
+
+
+@pytest.mark.regression
+async def test_a_password_field_the_page_emptied_reads_empty_so_it_is_filled_again() -> None:
+    """Regression: a field typed into once read as filled for good, even after the page cleared it."""
+    gateway = await _typed_into_password_form(f'Enter the password "{_SECRET}".', "")
+
+    assert gateway.requests[-1].state["elements"][0]["value"] == ""
 
 
 @pytest.mark.regression

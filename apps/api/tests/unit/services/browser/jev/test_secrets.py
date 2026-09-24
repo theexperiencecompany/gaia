@@ -10,7 +10,7 @@ pytestmark = pytest.mark.unit
 
 def test_a_secret_is_masked_as_typed_and_as_a_url_carries_it() -> None:
     secrets = TypedSecrets()
-    secrets.add("pa ss/wörd", field_index=51)
+    secrets.add("pa ss/wörd")
 
     text = secrets.redact("typed pa ss/wörd; ?pw=pa+ss%2Fw%C3%B6rd; /pa%20ss/w%C3%B6rd")
 

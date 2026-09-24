@@ -14,23 +14,19 @@ class TypedSecrets:
 
     def __init__(self) -> None:
         self._forms: set[str] = set()
-        self._filled: set[int] = set()
 
-    def add(self, value: str, field_index: int) -> None:
+    def add(self, value: str) -> None:
         # A form sent by GET puts the password in the next page's URL, encoded.
         self._forms |= {form for form in (value, quote_plus(value), quote(value)) if form}
-        self._filled.add(field_index)
 
     def mask_fields(self, observation: JevObservation) -> JevObservation:
-        """Show a filled password field as filled, never its value.
+        """Show a filled password field as filled, never its value; an empty one stays empty.
 
-        Engines leave password values out of what they report, so a field the
-        run typed into would otherwise read empty and be typed again.
+        The engine's live value decides (both engines report a password field's
+        value), so a field the page cleared reads empty and is filled again.
         """
         elements = tuple(
-            replace(element, value=JEV_SECRET_MASK)
-            if element.secret and (element.value or element.browser_index in self._filled)
-            else element
+            replace(element, value=JEV_SECRET_MASK) if element.secret and element.value else element
             for element in observation.elements
         )
         return replace(observation, elements=elements)

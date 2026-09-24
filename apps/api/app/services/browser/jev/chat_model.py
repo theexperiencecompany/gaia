@@ -733,6 +733,10 @@ class JevChatModel:
             # just left may be where it is done (a form submitted with a field
             # skipped): giving up on a page with no way forward is not the move.
             offered -= {JevOperation.BLOCKED}
+        # A typed password reads as the mask in the field and in recent actions,
+        # so the goal says it the same way: against the password itself the
+        # filled field never read as holding it, and Jev typed it again every step.
+        goal = self.redact(goal)
         decision = await choose(
             self._client, observation, goal, self._history, offered, self._seen_text.pages
         )
@@ -914,7 +918,7 @@ class JevChatModel:
                     input_action: {"index": element.browser_index, "text": value, "clear": True}
                 }
                 if element.secret:
-                    self._secrets.add(value, element.browser_index)
+                    self._secrets.add(value)
                     return action, JEV_SECRET_MASK
                 return action, value
             case JevOperation.SELECT if decision.option is not None:
