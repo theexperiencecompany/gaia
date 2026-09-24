@@ -41,6 +41,22 @@ def browser_worker_calls() -> Iterator[list[str]]:
 class TestWorkerStartup:
     """Tests for ARQ worker startup function."""
 
+    async def test_the_browser_worker_is_kept_in_the_ctx_that_shutdown_stops_it_from(
+        self, ctx: dict
+    ) -> None:
+        """Shutdown finds the running browser worker in arq's ctx; started on any other mapping it would never be stopped."""
+        seen: list[object] = []
+        with (
+            patch("app.workers.lifecycle.startup.unified_startup", new_callable=AsyncMock),
+            patch("app.workers.lifecycle.startup.start_browser_worker", seen.append),
+        ):
+            from app.workers.lifecycle.startup import startup
+
+            await startup(ctx)
+
+        assert seen == [ctx]
+        assert seen[0] is ctx
+
     async def test_startup_starts_the_browser_worker_once_the_process_is_ready(
         self, ctx: dict, browser_worker_calls: list[str]
     ) -> None:

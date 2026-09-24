@@ -76,7 +76,8 @@ def _failure(short: str, long: str) -> dict[str, str]:
 
 def _is_native_select(node: EnhancedDOMTreeNode) -> bool:
     """Say whether this is a real <select>; anything else is Browser-Use's ARIA path."""
-    return (getattr(node, "tag_name", "") or "").lower() == "select"
+    # tag_name is Browser-Use's lowercased node_name, never missing.
+    return node.tag_name == "select"
 
 
 async def on_SelectDropdownOptionEvent(
@@ -126,7 +127,7 @@ async def on_SelectDropdownOptionEvent(
 
     outcome: dict[str, Any] = json.loads(raw)
     if outcome.get("error") == "not-found":
-        available = ", ".join(str(o["text"]) for o in outcome.get("options", []))
+        available = ", ".join(str(o["text"]) for o in outcome["options"])
         return _failure(
             f"No option '{event.text}' in this dropdown. Available: {available}",
             f"Dropdown has no option '{event.text}'",

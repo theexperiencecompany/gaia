@@ -16,7 +16,7 @@ import pytest
 
 from app.browser_host import chromium, server as server_mod
 from app.browser_host.chromium import AtCapacityError, SessionNotFoundError
-from app.constants.browser import HostAdmissionRefusal
+from app.constants.browser import BrowserEngine, HostAdmissionRefusal
 from app.constants.log_tags import LogTag
 
 SESSION = MagicMock(session_id="s1", context_id="ctx-1")
@@ -960,3 +960,60 @@ def test_live_endpoint_for_a_gone_session_is_a_failed_ws_event(client) -> None:
     event = _request_event(loguru)
     assert event["browser"] == {"operation": "live_ws", "session_id": "exact-id-123"}
     assert event["reason"] == "session_not_found"
+
+
+def test_a_request_without_the_host_key_is_a_failed_request_event_naming_its_route(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A page probing localhost must leave a trail: which route it hit, how, on which engine, and that the key was the reason."""
+    monkeypatch.setattr(server_mod.browser_host_settings, "BROWSER_HOST_KEY", "k" * 32)
+    monkeypatch.setattr(server_mod.browser_host_settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
+    with patch("shared.py.wide_events._loguru") as loguru:
+        resp = client[0].delete("/sessions/s1")
+
+    event = _request_event(loguru)
+    assert resp.status_code == 401
+    assert event["task"] == "browser_host_request"
+    assert (event["method"], event["path"], event["engine"]) == (
+        "DELETE",
+        "/sessions/s1",
+        "chromium",
+    )
+    assert event["outcome"] == "failed"
+    assert event["reason"] == "invalid_host_key"
+
+
+def test_the_storage_state_of_a_session_whose_engine_is_down_is_a_failed_event_naming_it(
+    client,
+) -> None:
+    """The 503 names the engine as the cause, and the event names the session and the storage-state read that hit it."""
+    _, host = client
+    host.storage_state.side_effect = chromium.EngineUnresponsiveError("s1")
+    with patch("shared.py.wide_events._loguru") as loguru:
+        resp = client[0].get("/sessions/s1/storage-state")
+
+    event = _request_event(loguru)
+    assert resp.status_code == 503
+    assert resp.json() == {"detail": "browser engine unresponsive"}
+    assert event["reason"] == "engine_unresponsive"
+    assert event["browser"] == {"session_id": "s1", "operation": "storage_state"}
+
+
+@pytest.mark.parametrize(("path", "operation"), [("/cdp/s1", "cdp_ws"), ("/live/s1", "live_ws")])
+def test_a_socket_without_the_host_key_is_a_failed_ws_event_naming_the_engine(
+    client, monkeypatch: pytest.MonkeyPatch, path: str, operation: str
+) -> None:
+    """A refused socket closes 4401 and leaves its own browser_host_ws event: the engine, the socket kind and the key as the reason."""
+    monkeypatch.setattr(server_mod.browser_host_settings, "BROWSER_HOST_KEY", "k" * 32)
+    monkeypatch.setattr(server_mod.browser_host_settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
+    with patch("shared.py.wide_events._loguru") as loguru:
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client[0].websocket_connect(path):
+                pass
+
+    event = _request_event(loguru)
+    assert exc.value.code == 4401
+    assert event["task"] == "browser_host_ws"
+    assert event["engine"] == "chromium"
+    assert event["browser"] == {"operation": operation, "session_id": "s1"}
+    assert event["reason"] == "invalid_host_key"

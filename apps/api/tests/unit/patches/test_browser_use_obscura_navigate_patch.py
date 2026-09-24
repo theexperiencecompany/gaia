@@ -61,6 +61,17 @@ class TestObscuraNavigatePatch:
         )
         get_cdp.assert_not_awaited()
 
+    async def test_a_caller_that_omits_the_wait_gets_browser_uses_own_defaults(
+        self, monkeypatch: pytest.MonkeyPatch, original: AsyncMock
+    ) -> None:
+        monkeypatch.setattr(patch_module.settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
+        session, _ = _session(AsyncMock())
+
+        await patch_module._navigate_and_wait(session, _URL, "t1")
+
+        # browser-use 0.11.13 waits for the full "load" when no wait is named.
+        original.assert_awaited_once_with(session, _URL, "t1", timeout=None, wait_until="load")
+
     @pytest.mark.usefixtures("obscura")
     async def test_obscura_navigates_its_target_once_and_skips_lifecycle_polling(
         self, original: AsyncMock

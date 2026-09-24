@@ -14,7 +14,7 @@ import pytest
 
 from app.browser_host import chromium
 from app.browser_host.chromium import ChromiumHost
-from app.browser_host.obscura_launch import obscura_serve_argv
+from app.browser_host.obscura_launch import obscura_serve_argv, obscura_serve_env
 from app.config.browser_host_settings import browser_host_settings
 from app.constants.browser import BrowserEngine
 
@@ -24,6 +24,22 @@ def test_private_targets_are_always_refused(monkeypatch: pytest.MonkeyPatch) -> 
     """No switch disables the guard: Obscura never gets private-network access."""
     monkeypatch.setattr(browser_host_settings, "OBSCURA_BIN", "/opt/obscura/obscura")
     assert "--allow-private-network" not in obscura_serve_argv(9931)
+
+
+@pytest.mark.unit
+def test_obscura_receives_both_load_deadlines_in_milliseconds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Obscura reads its deadlines as *_MS env vars; seconds settings must arrive scaled, under those exact names."""
+    monkeypatch.setattr(browser_host_settings, "OBSCURA_NAV_TIMEOUT_SECONDS", 45)
+    monkeypatch.setattr(browser_host_settings, "OBSCURA_SCRIPT_DEADLINE_SECONDS", 7)
+    monkeypatch.setenv("OBSCURA_PROBE_PASSTHROUGH", "kept")
+
+    env = obscura_serve_env()
+
+    assert env["OBSCURA_NAV_TIMEOUT_MS"] == "45000"
+    assert env["OBSCURA_SCRIPT_DEADLINE_MS"] == "7000"
+    assert env["OBSCURA_PROBE_PASSTHROUGH"] == "kept"
 
 
 @pytest.mark.unit

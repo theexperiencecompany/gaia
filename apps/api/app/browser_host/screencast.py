@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 import contextlib
+from dataclasses import dataclass
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -67,24 +68,26 @@ _FRAME_NAVIGATED_EVENT = "Page.frameNavigated"
 _EventHandler = Callable[[dict[str, Any]], None]
 
 
+@dataclass(slots=True)
 class _PageMeta:
     """Latest url/title/favicon of the streamed page, refreshed on navigation."""
 
-    def __init__(self) -> None:
-        self.url: str | None = None
-        self.title: str | None = None
-        self.favicon: str | None = None
+    url: str | None = None
+    title: str | None = None
+    favicon: str | None = None
 
 
 class _StreamState:
-    """What the screencast delivered since the pull last looked, and at what CSS size."""
+    """The latest frame the screencast delivered, written only by the frame handler.
 
-    __slots__ = ("css_height", "css_width", "delivered")
+    The pull keeps its own mark of the frame it last saw rather than clearing a
+    shared flag, so a quiet stream is simply "the latest frame has not changed".
+    """
+
+    __slots__ = ("latest",)
 
     def __init__(self) -> None:
-        self.delivered = False
-        self.css_width: int | None = None
-        self.css_height: int | None = None
+        self.latest: _Frame | None = None
 
 
 class _Frame:
@@ -113,7 +116,7 @@ async def run_live_view(host: ChromiumHost, session: HostSession, client_ws: Web
             mux, "Target.attachToTarget", {"targetId": target_id, "flatten": True}
         )
         page_session: str = attached["sessionId"]
-        await cdp_call(mux, "Page.enable", {}, session_id=page_session)
+        await cdp_call(mux, "Page.enable", session_id=page_session)
 
         meta = _PageMeta()
         await _refresh_meta(mux, target_id, meta, page_session)
@@ -194,9 +197,7 @@ def _make_frame_handler(
             frame_meta.get("deviceWidth"),
             frame_meta.get("deviceHeight"),
         )
-        stream.delivered = True
-        stream.css_width = frame.css_width
-        stream.css_height = frame.css_height
+        stream.latest = frame
         # Drop the frame when the viewer is behind — we still ack Chromium above,
         # so the stream keeps flowing and the viewer catches the next frame.
         with contextlib.suppress(asyncio.QueueFull):
@@ -309,10 +310,12 @@ async def _pull_frames(
 ) -> None:
     """Capture the page on a timer for as long as the screencast stays quiet."""
     failures = 0
+    seen: _Frame | None = None
     while True:
         await asyncio.sleep(_PULL_INTERVAL_SECONDS)
-        if stream.delivered:
-            stream.delivered = False
+        latest = stream.latest
+        if latest is not seen:
+            seen = latest
             failures = 0
             continue
         try:
@@ -329,10 +332,14 @@ async def _pull_frames(
                 )
             continue
         failures = 0
+        # A capture is the same page at the same viewport, so it carries the CSS
+        # size the screencast last reported; none yet leaves the viewer on the bitmap.
+        css_width = latest.css_width if latest is not None else None
+        css_height = latest.css_height if latest is not None else None
         # Same drop-when-behind rule as a screencast frame: a stale capture is
         # worth less to the viewer than the next one.
         with contextlib.suppress(asyncio.QueueFull):
-            frames.put_nowait(_Frame(result["data"], stream.css_width, stream.css_height))
+            frames.put_nowait(_Frame(result["data"], css_width, css_height))
 
 
 async def _capture_page(
