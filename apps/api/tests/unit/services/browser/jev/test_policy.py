@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+
+import httpx
 import pytest
 
 from app.constants.browser import JEV_MAX_ELEMENTS, JEV_PAGES_READ, JevOperation
@@ -10,6 +13,7 @@ from app.services.browser.jev.gateway import (
     JevChoiceAnswer,
     JevEvaluation,
     JevEvaluationRequest,
+    JevGatewayClient,
     JevUsage,
 )
 from app.services.browser.jev.observation import JevObservation, observe
@@ -654,16 +658,24 @@ def test_jev_sees_only_the_most_recent_pages_read() -> None:
 async def test_choose_hands_jev_the_pages_already_read() -> None:
     seen: list[JevEvaluationRequest] = []
 
-    class _Client:
-        async def evaluate(self, request: JevEvaluationRequest) -> JevEvaluation:
-            seen.append(request)
-            ops = list(request.questions["operation"].criteria)
-            return JevEvaluation(answers={"operation": _answer("DONE", ops)})
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent = JevEvaluationRequest.model_validate(json.loads(request.content))
+        seen.append(sent)
+        ops = list(sent.questions["operation"].criteria)
+        answer = JevEvaluation(answers={"operation": _answer("DONE", ops)})
+        return httpx.Response(200, json=answer.model_dump(mode="json", by_alias=True))
 
+    client = JevGatewayClient(
+        api_key="sk-or-test",
+        model="~typesafe/jev-latest",
+        url="https://openrouter.ai/api/alpha/decisions",
+        provider="openrouter",
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
     pages = [_read(ARTICLE, "Tiny compilers in Rust")]
     observation: JevObservation = _news_page()
 
-    decision = await choose(_Client(), observation, "g", [], ALL, pages)  # type: ignore[arg-type]
+    decision = await choose(client, observation, "g", [], ALL, pages)
 
     assert decision.operation is JevOperation.DONE
     assert seen[0].state["pages_read"] == [dict(pages[0])]
