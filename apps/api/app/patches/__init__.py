@@ -9,6 +9,7 @@ from . import (
     browser_use_read_result_patch,
     browser_use_run_lock_patch,
     browser_use_scroll_patch,
+    browser_use_secret_scope_patch,
     browser_use_select_patch,
     browser_use_stealth_patch,
     browser_use_window_open_patch,

@@ -13,18 +13,23 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, cast
+from collections.abc import Awaitable
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, TypeVar, cast
 
 from app.constants.browser import (
+    JEV_CDP_TIMEOUT_SECONDS,
     JEV_OBSERVE_ATTEMPTS,
     JEV_OBSERVE_RETRY_SECONDS,
     JEV_SCREENSHOT_QUALITY,
     JEV_WAIT_SECONDS,
 )
+from app.constants.log_tags import LogTag
 from app.services.browser.exceptions import BrowserAutomationError
+from shared.py.wide_events import log
 
 if TYPE_CHECKING:
     from browser_use.browser.session import BrowserSession, CDPSession
+    from cdp_use.cdp.input.commands import DispatchKeyEventParameters, DispatchMouseEventParameters
 
 _ASSETS = Path(__file__).parent
 _SNAPSHOT_JS = (_ASSETS / "snapshot.js").read_text()
@@ -36,6 +41,8 @@ _MARKER_JS = f"(() => {{ const state={_SNAPSHOT_JS}; return state?.marker ?? nul
 #: Ctrl on every platform the hosts run (Linux); select-all before text replaces a field.
 _CTRL = 2
 
+_T = TypeVar("_T")
+
 ActionKind = Literal["click", "fill", "secret", "select", "scroll", "wait"]
 
 
@@ -45,6 +52,10 @@ class StalePage(BrowserAutomationError):
 
 class Covered(StalePage):
     """The target is hidden, disabled, off-screen or covered at its centre."""
+
+
+class PageUnresponsive(BrowserAutomationError):
+    """A CDP call got no answer in time; whether an input it carried took effect is unknown."""
 
 
 class UncertainSelect(BrowserAutomationError):
@@ -129,6 +140,15 @@ def _fingerprint(snapshot: _Snapshot) -> str:
     return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
 
 
+async def _bounded(call: Awaitable[_T], what: str) -> _T:
+    """Await one CDP call, raising PageUnresponsive when it gets no answer in time."""
+    try:
+        return await asyncio.wait_for(call, timeout=JEV_CDP_TIMEOUT_SECONDS)
+    except TimeoutError as exc:
+        log.warning(f"{LogTag.BROWSER} Jev CDP call got no answer", call=what)
+        raise PageUnresponsive(f"{what} got no answer in {JEV_CDP_TIMEOUT_SECONDS:.0f}s") from exc
+
+
 class JevPage:
     """The focused tab of one Browser-Use session, as Jev observes and drives it."""
 
@@ -138,17 +158,20 @@ class JevPage:
         self._after_input: PageAction | None = None
 
     async def _session(self) -> CDPSession:
-        return await self._browser.get_or_create_cdp_session()
+        return await _bounded(self._browser.get_or_create_cdp_session(), "the page's CDP session")
 
     async def _evaluate(self, expression: str, *, await_promise: bool = False) -> object:
         session = await self._session()
-        response = await session.cdp_client.send.Runtime.evaluate(
-            params={
-                "expression": expression,
-                "returnByValue": True,
-                "awaitPromise": await_promise,
-            },
-            session_id=session.session_id,
+        response = await _bounded(
+            session.cdp_client.send.Runtime.evaluate(
+                params={
+                    "expression": expression,
+                    "returnByValue": True,
+                    "awaitPromise": await_promise,
+                },
+                session_id=session.session_id,
+            ),
+            "Runtime.evaluate",
         )
         if response.get("exceptionDetails"):
             raise StalePage("The document changed during evaluation.")
@@ -202,21 +225,14 @@ class JevPage:
         if not await self.fresh(page, action if action["kind"] != "scroll" else None):
             raise StalePage("The page changed since this decision.")
         kind = action["kind"]
-        session = await self._session()
-        send = session.cdp_client.send
         if kind == "wait":
             await asyncio.sleep(JEV_WAIT_SECONDS)
             return
+        session = await self._session()
         if kind == "scroll":
-            await send.Input.dispatchMouseEvent(
-                params={
-                    "type": "mouseWheel",
-                    "x": 550,
-                    "y": 400,
-                    "deltaX": 0,
-                    "deltaY": action.get("delta", 0),
-                },
-                session_id=session.session_id,
+            await self._mouse(
+                session,
+                {"type": "mouseWheel", "x": 550, "y": 400, "deltaX": 0, "deltaY": action.get("delta", 0)},
             )
             self._after_input = action
             return
@@ -235,53 +251,44 @@ class JevPage:
             return
         x, y = cast("dict[str, float]", point)["x"], cast("dict[str, float]", point)["y"]
         for event in ("mousePressed", "mouseReleased"):
-            await send.Input.dispatchMouseEvent(
-                params={"type": event, "x": x, "y": y, "button": "left", "clickCount": 1},
-                session_id=session.session_id,
+            await self._mouse(
+                session, {"type": event, "x": x, "y": y, "button": "left", "clickCount": 1}
             )
         if kind in ("fill", "secret") and text is not None:
-            await send.Input.dispatchKeyEvent(
-                params={
-                    "type": "keyDown",
-                    "key": "a",
-                    "code": "KeyA",
-                    "modifiers": _CTRL,
-                    "commands": ["selectAll"],
-                },
-                session_id=session.session_id,
+            await self._key(
+                session,
+                {"type": "keyDown", "key": "a", "code": "KeyA", "modifiers": _CTRL, "commands": ["selectAll"]},
             )
-            await send.Input.dispatchKeyEvent(
-                params={"type": "keyUp", "key": "a", "code": "KeyA", "modifiers": _CTRL},
-                session_id=session.session_id,
-            )
+            await self._key(session, {"type": "keyUp", "key": "a", "code": "KeyA", "modifiers": _CTRL})
             # One key event per character, as a person types: Input.insertText
             # fires no key events, and a date picker or <input type=time> that
             # parses keystrokes then drops the value (measured on Chrome).
             for char in text:
                 key = "Enter" if char == "\n" else char
                 typed = "\r" if char == "\n" else char
-                await send.Input.dispatchKeyEvent(
-                    params={"type": "keyDown", "key": key, "text": typed},
-                    session_id=session.session_id,
-                )
-                await send.Input.dispatchKeyEvent(
-                    params={"type": "keyUp", "key": key}, session_id=session.session_id
-                )
+                await self._key(session, {"type": "keyDown", "key": key, "text": typed})
+                await self._key(session, {"type": "keyUp", "key": key})
 
     async def press_enter(self) -> None:
         """Press Enter in whatever holds focus: submits a typed search or form."""
         session = await self._session()
         for event in ("keyDown", "keyUp"):
-            await session.cdp_client.send.Input.dispatchKeyEvent(
-                params={
-                    "type": event,
-                    "key": "Enter",
-                    "code": "Enter",
-                    "windowsVirtualKeyCode": 13,
-                    "text": "\r",
-                },
-                session_id=session.session_id,
+            await self._key(
+                session,
+                {"type": event, "key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13, "text": "\r"},
             )
+
+    async def _mouse(self, session: CDPSession, params: DispatchMouseEventParameters) -> None:
+        await _bounded(
+            session.cdp_client.send.Input.dispatchMouseEvent(params=params, session_id=session.session_id),
+            "Input.dispatchMouseEvent",
+        )
+
+    async def _key(self, session: CDPSession, params: DispatchKeyEventParameters) -> None:
+        await _bounded(
+            session.cdp_client.send.Input.dispatchKeyEvent(params=params, session_id=session.session_id),
+            "Input.dispatchKeyEvent",
+        )
 
     async def navigate(self, url: str) -> None:
         await self._browser.navigate_to(url)
@@ -307,8 +314,11 @@ class JevPage:
     async def screenshot(self) -> str:
         """The focused tab as a base64 JPEG, for the step card."""
         session = await self._session()
-        result = await session.cdp_client.send.Page.captureScreenshot(
-            params={"format": "jpeg", "quality": JEV_SCREENSHOT_QUALITY},
-            session_id=session.session_id,
+        result = await _bounded(
+            session.cdp_client.send.Page.captureScreenshot(
+                params={"format": "jpeg", "quality": JEV_SCREENSHOT_QUALITY},
+                session_id=session.session_id,
+            ),
+            "Page.captureScreenshot",
         )
         return str(result["data"])

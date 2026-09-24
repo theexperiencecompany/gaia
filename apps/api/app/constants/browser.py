@@ -289,9 +289,12 @@ BROWSER_TAKEOVER_PREAMBLE = (
     "live browser, then continue toward the goal. A login whose credentials the task gives "
     "is done by the run itself, never handed over.\n"
     "If you encounter a CAPTCHA, reCAPTCHA, hCaptcha, or an 'I'm not a robot' / "
-    "image-grid challenge, do NOT attempt to solve it yourself. Call the "
-    f"`{BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP}` action immediately on the FIRST challenge so the user "
-    "solves it in the live browser, then continue. Never keep clicking challenge tiles.\n"
+    "image-grid challenge, do NOT attempt to solve it yourself. When the task cannot be "
+    f"done without passing it, call the `{BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP}` action "
+    "on the FIRST challenge so the user solves it in the live browser, then continue. When "
+    "the blocked page is only one of several sources the task can use, skip it, carry on "
+    "with the others, and say which page could not be opened. Never keep clicking "
+    "challenge tiles.\n"
     # The human's part of a login should be only the secret part.
     "Before you hand off a login, first fill every NON-secret field you can "
     "yourself: username, email, the account identifier, so the takeover leaves "
@@ -315,9 +318,9 @@ BROWSER_AGENT_ROLE = (
     "task and the only one who writes the answer.\n"
     "Each step, choose one:\n"
     "1. The task is complete: call `done` with the answer. Report only what the current "
-    "page or Jev's verbatim captures show; copy titles, messages, numbers and URLs exactly, "
-    "and when asked what a page shows or says, give every heading and message on it that "
-    "answers that, not just one. "
+    "page or Jev's verbatim captures show; copy titles, messages, numbers and URLs exactly. "
+    "When the task asks what a page shows, says or displays, quote all of the page's visible "
+    "text that answers it, its heading included (a result page's title and its message). "
     "Say plainly what was not done or could not be found. Set success=false when the task "
     "was not achieved.\n"
     "2. A sequence of interactions remains (filling a form, searching and choosing, clicking "
@@ -383,6 +386,7 @@ class JevStop(StrEnum):
     COVERED = "covered"
     STALE = "stale"
     CAPTCHA = "captcha"
+    UNRESPONSIVE = "unresponsive"
     USER_MESSAGE = "user_message"
     STOPPED = "stopped"
     GATEWAY = "gateway"
@@ -400,6 +404,8 @@ JEV_OUT_OF_CREDIT_SECONDS = 300.0
 JEV_ANSWER_LINES = 120
 JEV_CAPTURE_THRESHOLD = 0.5
 JEV_MAX_CAPTURES = 60
+#: How much of the final page's visible text a burst report hands the agent.
+JEV_REPORT_PAGE_TEXT_CHARS = 2000
 JEV_RECENT_ACTIONS = 10
 JEV_VISITED_PAGES = 12
 #: One burst's bounds, from jev-ultrafast: actions, unchanged non-wait actions in a
@@ -411,6 +417,9 @@ JEV_COVERED_LIMIT = 2
 #: Snapshot retries while a navigation replaces the document.
 JEV_OBSERVE_ATTEMPTS = 50
 JEV_OBSERVE_RETRY_SECONDS = 0.1
+#: Longest any one of Jev's CDP calls may take; a page or session that does not answer
+#: ends the burst instead of holding it until the task's budget runs out.
+JEV_CDP_TIMEOUT_SECONDS = 20.0
 #: An explicit WAIT; the next observation also waits a frame or two after any input.
 JEV_WAIT_SECONDS = 1.0
 JEV_SCREENSHOT_QUALITY = 70

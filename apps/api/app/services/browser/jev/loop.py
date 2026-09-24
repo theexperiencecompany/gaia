@@ -51,6 +51,7 @@ from app.services.browser.jev.page import (
     JevPage,
     PageAction,
     PageState,
+    PageUnresponsive,
     StalePage,
     UncertainSelect,
 )
@@ -103,6 +104,8 @@ class BurstResult:
     captures: list[Capture]
     url: str
     title: str
+    #: The final page's visible text, as Jev read it.
+    text: str
     #: Frames on the final page whose content Jev cannot see (cross-origin).
     hidden_frames: list[str]
 
@@ -154,7 +157,10 @@ class JevRunner:
         page = await self._page.observe()
         self._visit(page)
         state = _Burst(goal=goal, page=page, addresses=goal_addresses(goal))
-        stop, detail = await self._run(state)
+        try:
+            stop, detail = await self._run(state)
+        except PageUnresponsive as exc:
+            stop, detail = JevStop.UNRESPONSIVE, str(exc)
         final = state.page
         hidden = [
             frame["src"]
@@ -175,6 +181,7 @@ class JevRunner:
             captures=state.captures,
             url=self._secrets.mask(final.url),
             title=final.title,
+            text=self._secrets.mask(final.text),
             hidden_frames=hidden,
         )
 

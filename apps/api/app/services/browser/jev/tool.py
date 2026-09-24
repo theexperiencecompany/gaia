@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from app.constants.browser import JevOperation, JevStop
+from app.constants.browser import JEV_REPORT_PAGE_TEXT_CHARS, JevOperation, JevStop
 from app.schemas.browser import BrowserAction
 from app.services.browser.jev.loop import BurstResult, JevRunner, JevStep
 
@@ -64,6 +64,7 @@ _STOP_MEANING = {
     JevStop.COVERED: "An overlay or hidden control blocks the target; deal with it yourself.",
     JevStop.STALE: "The page kept changing under Jev's decisions.",
     JevStop.CAPTCHA: "A CAPTCHA is on the page: hand it to the user with solve_captcha_with_help.",
+    JevStop.UNRESPONSIVE: "The page stopped answering; an input sent just then may or may not have landed.",
     JevStop.USER_MESSAGE: "The user sent a message; read it (it is in your task) before going on.",
     JevStop.STOPPED: "The run is stopping.",
     JevStop.GATEWAY: "Jev could not decide; continue yourself.",
@@ -110,6 +111,9 @@ def report(result: BurstResult) -> str:
         lines.append("Captured verbatim from the pages (evidence for the answer):")
         lines.extend(f'  - "{c.line}" [{c.title} | {c.url}]' for c in result.captures)
     lines.append(f"Now on: {result.title} ({result.url})")
+    if result.text:
+        visible = result.text[:JEV_REPORT_PAGE_TEXT_CHARS]
+        lines.append(f"Visible text of this page, verbatim:\n{visible}")
     if result.hidden_frames:
         lines.append("Frames on this page Jev cannot see into: " + ", ".join(result.hidden_frames[:5]))
     return "\n".join(lines)
