@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, call
 import pytest
 
 from app.constants.browser import (
+    BROWSER_LIVE_CODE_ENTROPY_BYTES,
     BROWSER_LIVE_CODE_KEY_PREFIX,
     BROWSER_LIVE_CODE_TTL_SECONDS,
 )
@@ -63,6 +64,26 @@ async def test_remaining_seconds_is_the_codes_ttl(monkeypatch):
 
     assert await live_code.live_code_remaining_seconds("abc") == 120.0
     ttl.assert_awaited_once_with(f"{BROWSER_LIVE_CODE_KEY_PREFIX}abc")
+
+
+@pytest.mark.unit
+async def test_a_live_code_is_a_short_url_safe_slug(monkeypatch):
+    """The code rides a chat link: it carries the configured entropy and nothing longer."""
+    monkeypatch.setattr(live_code.redis_cache, "set", AsyncMock())
+
+    code = await live_code.mint_live_code("sess-abc", "user-1")
+
+    # token_urlsafe base64-encodes the entropy bytes: 4 characters per 3 bytes.
+    assert len(code) == -(-BROWSER_LIVE_CODE_ENTROPY_BYTES * 4 // 3)
+    assert _URL_SAFE_RE.match(code)
+
+
+@pytest.mark.unit
+async def test_a_lapsed_code_has_no_time_left(monkeypatch):
+    """No TTL means the key is gone, so the socket bound to it must close at once."""
+    monkeypatch.setattr(live_code.redis_cache, "ttl_seconds", AsyncMock(return_value=None))
+
+    assert await live_code.live_code_remaining_seconds("abc") == 0.0
 
 
 @pytest.mark.unit

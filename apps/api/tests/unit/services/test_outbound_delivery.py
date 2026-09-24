@@ -15,6 +15,7 @@ from app.models.chat_models import ConversationSource
 from app.schemas.outbound import OutboundMessageEnvelope
 from app.services import outbound_delivery as od
 from app.utils.log_identifiers import hash_platform_user_id
+from tests.helpers import captured_wide_event
 
 
 class TestPublishOutboundMessage:
@@ -829,3 +830,117 @@ class TestPublishOutboundReaction:
             error="channel closed",
         )
         mock_log.info.assert_not_called()
+
+
+def _only(entries: list[dict[str, object]], msg: str) -> dict[str, object]:
+    (entry,) = [e for e in entries if e["msg"] == msg]
+    return entry
+
+
+class TestAFailedOutboundSendIsExplainedOnTheWideEvent:
+    """Every can't-deliver path is swallowed, so the wide event is the only place that says who lost what and why."""
+
+    async def test_an_unavailable_broker_records_the_user_platform_and_cause(self) -> None:
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value=_linked("whatsapp", "15551234567"),
+            ),
+            patch.object(
+                od,
+                "get_rabbitmq_publisher",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("down"),
+            ),
+        ):
+            async with captured_wide_event() as event:
+                await od.publish_outbound_message(ConversationSource.WHATSAPP, "user-1", ["hi"])
+
+        warning = _only(event["warnings"], "outbound publish failed: RabbitMQ unavailable")
+        assert warning["operation"] == "publish_outbound_message"
+        assert warning["user_id"] == "user-1"
+        assert warning["platform"] == "whatsapp"
+        assert warning["error"] == "down"
+        assert warning["error_type"] == "RuntimeError"
+
+    async def test_a_failed_message_publish_records_whose_message_and_why(self) -> None:
+        publisher = AsyncMock()
+        publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value=_linked("whatsapp", "15551234567"),
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            async with captured_wide_event() as event:
+                await od.publish_outbound_message(ConversationSource.WHATSAPP, "user-1", ["hi"])
+
+        error = _only(event["errors"], "publish_outbound_message: publish failed")
+        assert error["user_id"] == "user-1"
+        assert error["destination_hash"] == hash_platform_user_id("15551234567")
+        assert error["error"] == "channel closed"
+        assert error["error_type"] == "ConnectionError"
+
+    async def test_a_failed_file_publish_records_the_envelope_the_bot_never_got(self) -> None:
+        publisher = AsyncMock()
+        publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value=_linked("whatsapp", "15551234567"),
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            async with captured_wide_event() as event:
+                ok = await od.publish_outbound_file(
+                    ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
+                )
+
+        assert ok is False
+        (_, body), _ = publisher.publish_outbound.await_args
+        error = _only(event["errors"], "publish_outbound_file: publish failed")
+        assert error["platform"] == "whatsapp"
+        assert error["user_id"] == "u1"
+        # The id the bot would have logged on delivery: the join key for a lost file.
+        assert error["envelope_id"] == json.loads(body)["id"]
+        assert error["destination_hash"] == hash_platform_user_id("15551234567")
+        assert error["error"] == "channel closed"
+        assert error["error_type"] == "ConnectionError"
+
+    async def test_a_photo_url_the_envelope_refuses_is_not_sent_and_is_explained(self) -> None:
+        """The caller falls back to the caption on False; True here would mean a photo that never arrives."""
+        publisher = AsyncMock()
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value=_linked("telegram", "556677"),
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            async with captured_wide_event() as event:
+                ok = await od.publish_outbound_photo(
+                    ConversationSource.TELEGRAM, "u1", "http://cdn.test/1.png", "step-1.png"
+                )
+
+        assert ok is False
+        publisher.publish_outbound.assert_not_awaited()
+        warning = _only(event["warnings"], "publish_outbound_photo: attachment URL rejected")
+        assert warning["platform"] == "telegram"
+        assert warning["user_id"] == "u1"
+        assert warning["destination_hash"] == hash_platform_user_id("556677")
+        assert warning["filename"] == "step-1.png"

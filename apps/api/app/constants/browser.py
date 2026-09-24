@@ -249,6 +249,24 @@ BROWSER_JOB_GUIDANCE_PREFIX = "browser:job:guidance:"
 BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS = 1500
 BROWSER_GUIDANCE_MAX_ELEMENTS = 40
 BROWSER_GUIDANCE_RECENT_ACTIONS = 6
+# The fixed copy of the request a joined executor reads (agent_guidance.guidance_message).
+# Named here so the render is tested for where each part lands, not for its wording.
+BROWSER_GUIDANCE_HEADER = "THE BROWSER TASK IS STUCK and is waiting for one instruction from you."
+BROWSER_GUIDANCE_CHANGED_INSTRUCTION = (
+    "MID-RUN THE USER CHANGED THE INSTRUCTION to {changed}. That is what your guidance "
+    "must serve. Where the task below conflicts with it, the task is no longer wanted, "
+    "and you must never send the run back to a step the user declined."
+)
+BROWSER_GUIDANCE_ANSWER = (
+    "Answer with exactly one of these, then call wait_for_browser_task() again:\n"
+    '  guide_browser_task("<one concrete instruction>") -- what to click, what to '
+    "type, where to navigate, or the fact to use. One step, not a plan. Use only "
+    "facts from this conversation, the user's request and your memory; never invent "
+    "one. Prefer a different route over repeating what already failed: a wall on "
+    "one page rarely blocks the site's direct address for the same content.\n"
+    '  guide_browser_task(give_up=True, reason="<why it cannot be done>") -- only '
+    "when no route is left, never because a step the user already declined is blocked."
+)
 
 # Two failed steps running end the run with its reason, not Browser-Use's narrowing to done.
 BROWSER_AGENT_MAX_FAILURES = 2

@@ -8,6 +8,9 @@ request at every later join. The key exists exactly while the run is waiting.
 """
 
 from app.constants.browser import (
+    BROWSER_GUIDANCE_ANSWER,
+    BROWSER_GUIDANCE_CHANGED_INSTRUCTION,
+    BROWSER_GUIDANCE_HEADER,
     BROWSER_JOB_GUIDANCE_PREFIX,
 )
 from app.db.redis import redis_cache
@@ -21,9 +24,7 @@ def _key(job_id: str) -> str:
 
 async def put_guidance_request(job_id: str, pending: PendingAgentGuidance) -> None:
     """Publish the request a joined agent may answer, for as long as the run waits on it."""
-    await redis_cache.set(
-        _key(job_id), pending, ttl=browser_job_ttl_seconds(), model=PendingAgentGuidance
-    )
+    await redis_cache.set(_key(job_id), pending, ttl=browser_job_ttl_seconds())
 
 
 async def get_guidance_request(job_id: str) -> PendingAgentGuidance | None:
@@ -39,7 +40,7 @@ async def clear_guidance_request(job_id: str) -> None:
 def guidance_message(request: AgentGuidanceRequest) -> str:
     """Return what the joined agent reads: why the browser is stuck, what it can see, and the one call that answers."""
     sections = [
-        "THE BROWSER TASK IS STUCK and is waiting for one instruction from you.",
+        BROWSER_GUIDANCE_HEADER,
         f"Why it is stuck: {request.reason}",
         _changed_instruction(request),
         f"Task it is working on: {request.task}",
@@ -47,16 +48,7 @@ def guidance_message(request: AgentGuidanceRequest) -> str:
         _recent_actions(request),
         _elements(request),
         _page_text(request),
-        (
-            "Answer with exactly one of these, then call wait_for_browser_task() again:\n"
-            '  guide_browser_task("<one concrete instruction>") -- what to click, what to '
-            "type, where to navigate, or the fact to use. One step, not a plan. Use only "
-            "facts from this conversation, the user's request and your memory; never invent "
-            "one. Prefer a different route over repeating what already failed: a wall on "
-            "one page rarely blocks the site's direct address for the same content.\n"
-            '  guide_browser_task(give_up=True, reason="<why it cannot be done>") -- only '
-            "when no route is left, never because a step the user already declined is blocked."
-        ),
+        BROWSER_GUIDANCE_ANSWER,
     ]
     return "\n\n".join(section for section in sections if section)
 
@@ -66,11 +58,7 @@ def _changed_instruction(request: AgentGuidanceRequest) -> str:
     if not request.user_notes:
         return ""
     changed = ", then ".join(f'"{note}"' for note in request.user_notes)
-    return (
-        f"MID-RUN THE USER CHANGED THE INSTRUCTION to {changed}. That is what your guidance "
-        "must serve. Where the task below conflicts with it, the task is no longer wanted, "
-        "and you must never send the run back to a step the user declined."
-    )
+    return BROWSER_GUIDANCE_CHANGED_INSTRUCTION.format(changed=changed)
 
 
 def _recent_actions(request: AgentGuidanceRequest) -> str:

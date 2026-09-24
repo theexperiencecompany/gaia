@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agents.core.background.comms_narrator import (
     narrate_executor_result,
+    record_exchange_in_thread,
     record_executor_cancellation,
     record_platform_delivery,
 )
@@ -24,6 +25,7 @@ from app.agents.prompts.comms_prompts import (
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
 )
+from app.agents.tools.executor_tool import call_executor
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
@@ -184,6 +186,24 @@ class TestNarrateExecutorResult:
         ):
             assert await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER) == ""
 
+    async def test_the_narration_turn_cannot_dispatch_new_executor_work(self) -> None:
+        """The run being narrated still holds the busy lock: a dispatch here would queue a duplicate task."""
+        with (
+            _patch_graph(_fake_comms_graph()),
+            patch(
+                f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", []))
+            ) as silent,
+        ):
+            await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER)
+        narration_config = silent.await_args.args[2]
+
+        with patch("app.agents.tools.executor_tool._dispatch_executor", AsyncMock()) as dispatch:
+            await call_executor.coroutine(
+                config=narration_config, task="do it again", acceptance_criteria=["done"]
+            )
+
+        dispatch.assert_not_awaited()
+
 
 class TestRecordExecutorCancellation:
     async def test_cancellation_record_is_appended_to_the_checkpoint(self) -> None:
@@ -260,6 +280,23 @@ class TestRecordPlatformDelivery:
         assert error["msg"] == (f"{LogTag.AGENT} Failed to record messages in conversation thread")
         assert error["conversation_id"] == CONVERSATION_ID
         assert error["error"] == "checkpoint down"
+
+
+class TestRecordExchangeInThread:
+    async def test_the_user_message_and_reply_are_appended_in_order(self) -> None:
+        """A reply that resolved a paused task never ran the graph; the thread must still hold both turns."""
+        graph = _fake_comms_graph()
+        with _patch_graph(graph):
+            await record_exchange_in_thread(CONVERSATION_ID, "cancel that step", "Cancelled it.")
+
+        call = graph.aupdate_state.await_args
+        assert call.args[0] == {"configurable": {"thread_id": CONVERSATION_ID}}
+        assert call.kwargs["as_node"] == "tools"
+        user_turn, reply = call.args[1]["messages"]
+        assert isinstance(user_turn, HumanMessage)
+        assert user_turn.content == "cancel that step"
+        assert isinstance(reply, AIMessage)
+        assert reply.content == "Cancelled it."
 
 
 class TestNarrationResolvesItsOwnCommsLane:

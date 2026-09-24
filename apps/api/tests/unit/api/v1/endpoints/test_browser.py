@@ -27,6 +27,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.api.v1.endpoints import browser as browser_ep
 from app.constants.browser import (
     BROWSER_HANDOFF_ACK_CONTINUE,
+    BROWSER_HANDOFF_CARD_DECISION,
     BrowserSessionStatus,
     HandoffDecision,
     HandoffKind,
@@ -674,7 +675,13 @@ class TestACardDecisionReachesTheAgentsThread:
         record = HandoffRecord(
             status=HandoffStatus.PENDING, user_id="u1", conversation_id="conv-1", kind=kind
         )
-        monkeypatch.setattr(browser_ep, "get_handoff", AsyncMock(return_value=record))
+        # Only the decided handoff resolves to its record: a lookup under any other id
+        # finds nothing, so the thread would never hear of the decision.
+        monkeypatch.setattr(
+            browser_ep,
+            "get_handoff",
+            AsyncMock(side_effect=lambda hid: record if hid == "h1" else None),
+        )
         monkeypatch.setattr(
             browser_ep, "resolve_handoff", AsyncMock(return_value=HandoffStatus.COMPLETED)
         )
@@ -693,6 +700,16 @@ class TestACardDecisionReachesTheAgentsThread:
         assert conversation_id == "conv-1"
         assert "skip the upvote" in words
         assert reply == BROWSER_HANDOFF_ACK_CONTINUE
+
+    async def test_a_decision_without_a_note_is_written_as_the_bare_decision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        recorded = await self._decide(monkeypatch, HandoffKind.USER, None)
+
+        _, words, _ = recorded.await_args.args
+        assert words == BROWSER_HANDOFF_CARD_DECISION.format(
+            decision=HandoffDecision.CONTINUE.value
+        )
 
     async def test_an_agents_own_handoff_is_not_written_as_the_users_words(
         self, monkeypatch: pytest.MonkeyPatch

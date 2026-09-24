@@ -341,6 +341,11 @@ async def test_a_value_call_that_fails_idles_the_step_instead_of_handing_the_fie
     result = await model.ainvoke([], _agent_output())
 
     assert _action(result.completion) == {"wait": {"seconds": 1}}
+    # Jev's next step reads why nothing was typed, naming the field and the failure.
+    assert (model._history[-1].kind, model._history[-1].text) == (
+        "error",
+        "The value for Where to? could not be written (RuntimeError).",
+    )
 
 
 async def test_an_overlong_helper_value_is_treated_as_missing(flights_state, monkeypatch) -> None:
