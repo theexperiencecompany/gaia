@@ -18,6 +18,7 @@ from app.api.v1.endpoints import (
     desktop,
     device,
     device_ws,
+    features,
     feedback,
     file,
     first_steps,
@@ -79,6 +80,7 @@ router.include_router(mcp_proxy.router, prefix="/mcp", tags=["MCP"])
 router.include_router(onboarding.router, prefix="/onboarding", tags=["Onboarding"])
 router.include_router(user.router, prefix="/user", tags=["User"])
 router.include_router(first_steps.router)
+router.include_router(features.router, prefix="/features", tags=["Features"])
 router.include_router(mail.router, tags=["Mail"])
 router.include_router(blog.router, tags=["Blog"])
 router.include_router(file.router, tags=["File"])

@@ -18,11 +18,13 @@ from datetime import UTC, datetime
 
 from posthog import Posthog
 
-from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag
-from app.constants.analytics import POSTHOG_PROVIDER_KEY
+from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag, UserToggle
+from app.constants.analytics import FEATURE_CHOICE_PERSON_PROPERTY_PREFIX, POSTHOG_PROVIDER_KEY
 from app.core.lazy_loader import providers
 from app.db.repositories.users import user_repository
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.schemas.feature_flags import UserFeatureFlagListResponse, UserFeatureFlagResponse
+from app.services.analytics_service import AnalyticsEvents, capture_event, identify_user
+from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 
@@ -140,6 +142,68 @@ def _track_evaluation(
             error=str(e),
             error_type=type(e).__name__,
         )
+
+
+def _user_facing_flag(key: str) -> tuple[FeatureFlag, UserToggle]:
+    """Resolve a flag key a client sent; unknown and internal keys are the same 404."""
+    flag = next((known for known in FeatureFlag if known.value == key), None)
+    toggle = FEATURE_FLAGS[flag].user_toggle if flag is not None else None
+    if flag is None or toggle is None:
+        raise AppError(
+            message="Feature not found",
+            why="no user-facing feature flag has this key",
+            fix="List the toggleable features with GET /api/v1/features",
+            status_code=404,
+            meta={"flag": key},
+        )
+    return flag, toggle
+
+
+def _feature_response(
+    flag: FeatureFlag, toggle: UserToggle, enabled: bool
+) -> UserFeatureFlagResponse:
+    return UserFeatureFlagResponse(
+        key=flag.value,
+        label=toggle.label,
+        description=toggle.description,
+        stage=toggle.stage,
+        enabled=enabled,
+    )
+
+
+async def list_user_flags(user_id: str) -> UserFeatureFlagListResponse:
+    """List every user-facing flag with the value in effect for this user; internal flags never appear."""
+    toggles = [
+        (flag, spec.user_toggle)
+        for flag, spec in FEATURE_FLAGS.items()
+        if spec.user_toggle is not None
+    ]
+    values = await asyncio.gather(*(is_enabled(flag, user_id) for flag, _ in toggles))
+    return UserFeatureFlagListResponse(
+        features=[
+            _feature_response(flag, toggle, enabled)
+            for (flag, toggle), enabled in zip(toggles, values, strict=True)
+        ]
+    )
+
+
+async def set_user_flag(user_id: str, key: str, enabled: bool) -> UserFeatureFlagResponse:
+    """Store the user's choice for a user-facing flag and record it in PostHog."""
+    flag, toggle = _user_facing_flag(key)
+    if not await user_repository.set_feature_flag(user_id, flag, enabled):
+        raise AppError(
+            message="User not found",
+            why="no user document matches the authenticated session's id",
+            status_code=404,
+            meta={"user_id": user_id},
+        )
+    capture_event(
+        user_id, AnalyticsEvents.FEATURE_TOGGLED, {"flag": flag.value, "enabled": enabled}
+    )
+    identify_user(
+        user_id, {f"{FEATURE_CHOICE_PERSON_PROPERTY_PREFIX}{flag.value.lower()}": enabled}
+    )
+    return _feature_response(flag, toggle, enabled)
 
 
 async def is_code_mode_enabled(user_id: str | None) -> bool:

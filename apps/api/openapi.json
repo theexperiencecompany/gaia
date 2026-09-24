@@ -5763,6 +5763,14 @@
         "title": "FeaturePeriodUsage",
         "type": "object"
       },
+      "FeatureStage": {
+        "description": "How finished a user-facing feature is, shown next to its toggle.",
+        "enum": [
+          "experimental"
+        ],
+        "title": "FeatureStage",
+        "type": "string"
+      },
       "FeatureUpgrade": {
         "description": "The Pro tier's limits for a feature, so a free user sees the delta.",
         "properties": {
@@ -18465,6 +18473,20 @@
         "title": "UpdateTimezoneResponse",
         "type": "object"
       },
+      "UpdateUserFeatureFlagRequest": {
+        "properties": {
+          "enabled": {
+            "description": "The caller's choice; it overrides the rollout for them",
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "UpdateUserFeatureFlagRequest",
+        "type": "object"
+      },
       "UpdateVoiceRequest": {
         "description": "Request body for choosing a voice.",
         "properties": {
@@ -18754,6 +18776,61 @@
           "last_updated"
         ],
         "title": "UsageSummary",
+        "type": "object"
+      },
+      "UserFeatureFlagListResponse": {
+        "properties": {
+          "features": {
+            "description": "Every user-facing flag, in registry order",
+            "items": {
+              "$ref": "#/components/schemas/UserFeatureFlagResponse"
+            },
+            "title": "Features",
+            "type": "array"
+          }
+        },
+        "required": [
+          "features"
+        ],
+        "title": "UserFeatureFlagListResponse",
+        "type": "object"
+      },
+      "UserFeatureFlagResponse": {
+        "description": "One flag the user may toggle, with the value currently in effect for them.",
+        "properties": {
+          "description": {
+            "description": "One or two sentences on what turning it on changes",
+            "title": "Description",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "In effect for the caller: their own choice, else the rollout, else the default",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "key": {
+            "description": "Flag key, the {flag} path parameter of the PATCH route",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "description": "Short name shown next to the toggle",
+            "title": "Label",
+            "type": "string"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/FeatureStage",
+            "description": "How finished the feature is"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "description",
+          "stage",
+          "enabled"
+        ],
+        "title": "UserFeatureFlagResponse",
         "type": "object"
       },
       "UserSubscriptionStatus": {
@@ -24465,6 +24542,131 @@
         "summary": "Revoke",
         "tags": [
           "Device Bridge"
+        ]
+      }
+    },
+    "/api/v1/features": {
+      "get": {
+        "description": "The flags the caller may toggle, each with the value in effect for them.",
+        "operationId": "features_list_features",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserFeatureFlagListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "List Features",
+        "tags": [
+          "Features"
+        ]
+      }
+    },
+    "/api/v1/features/{flag}": {
+      "patch": {
+        "description": "Turn one user-facing flag on or off for the caller; unknown and internal flags are 404.",
+        "operationId": "features_update_feature",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flag",
+            "required": true,
+            "schema": {
+              "title": "Flag",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserFeatureFlagRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserFeatureFlagResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Feature",
+        "tags": [
+          "Features"
         ]
       }
     },
