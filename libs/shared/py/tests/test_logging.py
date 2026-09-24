@@ -1,6 +1,7 @@
 """Tests for shared.py.logging — configure_loguru, configure_file_logging, get_contextual_logger, JSON format."""
 
 from datetime import UTC, datetime
+import io
 import json
 import logging
 from pathlib import Path
@@ -93,12 +94,19 @@ class TestConfigureLoguru:
         assert "AUDIT" in level_names
         assert "SECURITY" in level_names
 
-    def test_console_mode_adds_stderr_sink(self, mock_logger: MagicMock):
+    def test_console_mode_writes_to_the_stderr_of_the_moment(
+        self, mock_logger: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A stream bound at configure time is closed under a later test session."""
         with patch.dict(LOG_CONFIG, {"format_mode": "console"}):
             configure_loguru()
-        # The first .add() call should target stderr
-        first_add = mock_logger.add.call_args_list[0]
-        assert first_add.args[0] is sys.stderr
+        sink = mock_logger.add.call_args_list[0].args[0]
+        now = io.StringIO()
+        monkeypatch.setattr(sys, "stderr", now)
+
+        sink("a line\n")
+
+        assert now.getvalue() == "a line\n"
 
     def test_json_mode_adds_json_sink(self, mock_logger: MagicMock):
         with patch.dict(LOG_CONFIG, {"format_mode": "json"}):

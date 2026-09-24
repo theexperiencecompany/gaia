@@ -663,6 +663,16 @@ def test_a_textarea_carries_its_live_value() -> None:
     assert _only(node, LiveValues(values={9: "Window seat"})).value == "Window seat"
 
 
+@pytest.mark.parametrize(
+    ("input_type", "secret"), [("password", True), ("PASSWORD", True), ("text", False)]
+)
+def test_only_a_password_field_holds_a_secret(input_type: str, secret: bool) -> None:
+    """What is typed into a secret field is masked wherever the run shows it."""
+    node = FakeNode("INPUT", {"type": input_type, "aria-label": "Password"})
+
+    assert _only(node, LiveValues()).secret is secret
+
+
 def test_a_contenteditable_region_carries_its_live_value() -> None:
     node = FakeNode("DIV", {"contenteditable": "true", "aria-label": "Message"})
     node.backend_node_id = 9

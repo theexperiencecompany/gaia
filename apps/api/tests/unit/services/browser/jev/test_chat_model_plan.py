@@ -504,6 +504,88 @@ async def test_what_a_part_not_yet_done_found_is_its_progress_never_a_finished_p
     assert "Part 1: Gemini TTS" not in _goal(gateway)
 
 
+@pytest.mark.parametrize(
+    "later",
+    [{"requirements": ["title"], "done": False, "findings": ""}, RuntimeError("writer down")],
+    ids=["found-nothing-new", "failed"],
+)
+async def test_what_a_part_found_so_far_outlasts_a_later_judgement_that_adds_nothing(
+    later: dict[str, Any] | Exception,
+) -> None:
+    verdicts: list[dict[str, Any] | Exception] = [_found(False)({}, None), later]
+
+    def judge(context, label):
+        verdict = verdicts.pop(0) if len(verdicts) > 1 else verdicts[0]
+        if isinstance(verdict, Exception):
+            raise verdict
+        return verdict
+
+    writer, _, judged = _planner(_SITELESS_PLAN, judge)
+    model, gateway, session = _writer_model(_page(_HN), [("WAIT", None)] * 3, writer)
+    await model.ainvoke([], _agent_output())
+    await _settle()
+    session.state = _page(_HN + "item?id=1", text="Article")
+    await model.ainvoke([], _agent_output())
+    await _settle()
+
+    await model.ainvoke([], _agent_output())
+
+    assert len(judged) == 2
+    assert "Part 1 so far: Gemini TTS, 217 points" in _goal(gateway)
+
+
+async def test_what_a_part_found_so_far_stays_with_that_part_once_it_is_done() -> None:
+    def judge(context, label):
+        if len(judged) == 1:
+            return _found(False)(context, label)
+        return {
+            "requirements": ["title"],
+            "done": True,
+            "evidence": [{"requirement": "title", "kind": "fact", "source": _HN}],
+            "findings": "",
+        }
+
+    writer, _, judged = _planner(_SITELESS_PLAN, judge)
+    model, gateway, session = _writer_model(_page(_HN), [("WAIT", None)] * 4, writer)
+    await model.ainvoke([], _agent_output())
+    await _settle()
+    session.state = _page(_HN + "item?id=1", text="Article")
+    await model.ainvoke([], _agent_output())
+    await _settle()
+    await model.ainvoke([], _agent_output())  # the part is judged done and the plan advances
+    await _settle()
+
+    await model.ainvoke([], _agent_output())
+
+    assert "CURRENT PART (2 of 2)" in _goal(gateway)
+    assert "Gemini TTS" not in _goal(gateway)
+
+
+async def test_a_part_with_no_site_of_its_own_gives_its_judge_no_start_page() -> None:
+    """It begins wherever the part before it ended, not on the first page the run read."""
+    writer, _, judged = _planner(_SITELESS_PLAN, _found(True))
+    model, _, session = _writer_model(_page(_HN), [("WAIT", None)] * 3, writer)
+    await model.ainvoke([], _agent_output())
+    await _settle()
+    session.state = _page(_HN + "item?id=1", text="Article")
+    await model.ainvoke([], _agent_output())
+    await _settle()
+
+    assert judged and all("start_page" not in context for context in judged)
+
+
+async def test_jev_is_shown_the_pages_the_run_has_read() -> None:
+    writer, _, _ = _planner(_SITELESS_PLAN)
+    model, gateway, session = _writer_model(_page(_HN), [("WAIT", None)] * 2, writer)
+    await model.ainvoke([], _agent_output())
+    await _settle()
+    session.state = _page(_HN + "item?id=1", text="Article")
+
+    await model.ainvoke([], _agent_output())
+
+    assert _HN in [page["url"] for page in gateway.requests[-1].state["pages_read"]]
+
+
 async def test_a_bare_citation_of_an_action_the_run_took_is_evidence() -> None:
     writer = _evidence_writer(
         [{"goal": "Log in", "url": _LOGIN}],

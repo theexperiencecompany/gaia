@@ -376,10 +376,9 @@ class BrowserAgentRun:
         self._step_started_at = perf_counter()  # pragma: no mutate
         points = self._llm.viewport_points() if isinstance(self._llm, JevChatModel) else {}
         step_actions = _extract_actions(agent_output, browser_state_summary, points)
+        # Without Jev's own capture the frame falls back to the state's screenshot.
         raw_screenshot = (
-            await self._llm.take_step_screenshot()
-            if isinstance(self._llm, JevChatModel)
-            else getattr(browser_state_summary, "screenshot", None)
+            await self._llm.take_step_screenshot() if isinstance(self._llm, JevChatModel) else None
         )
         # The caption describes what the step does, named after the element it
         # resolved; the model's next_goal only names a step that finishes the run.

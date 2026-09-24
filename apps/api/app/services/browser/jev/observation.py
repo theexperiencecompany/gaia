@@ -423,7 +423,7 @@ def _select_options(
                     target=f"{index}:{len(options) + 1}", label=label or value, value=value
                 )
                 options.append(option)
-                if getattr(child, "backend_node_id", None) in live.selected_options:
+                if child.backend_node_id in live.selected_options:
                     selected, selected_live = option, True
                 elif "selected" in raw_child_attributes and not selected_live:
                     selected = option

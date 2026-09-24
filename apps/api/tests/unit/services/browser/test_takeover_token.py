@@ -1,9 +1,11 @@
 """Tests for the browser live-view takeover token — round-trip, tamper, expiry."""
 
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from jose import JWTError, jwt
 import pytest
+import time_machine
 
 from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
@@ -109,6 +111,17 @@ def test_create_takeover_token_expiry_matches_configured_minutes():
     payload = jwt.decode(token, _SECRET, algorithms=[JWT_ALGORITHM])
     expected_seconds = tt._TAKEOVER_TOKEN_EXPIRY_MINUTES * 60
     assert payload["exp"] - payload["iat"] == pytest.approx(expected_seconds, abs=2)
+
+
+def test_a_token_minted_on_a_host_outside_utc_expires_fifteen_minutes_from_now():
+    """A naive local clock read as UTC would move the expiry by the host's offset."""
+    minted_at = datetime(2026, 3, 1, 12, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
+    with time_machine.travel(minted_at, tick=False):
+        token = tt.create_takeover_token("sess-1", "user-1")
+
+    claims = jwt.get_unverified_claims(token)
+    expiry = minted_at + timedelta(minutes=tt._TAKEOVER_TOKEN_EXPIRY_MINUTES)
+    assert claims["exp"] == int(expiry.timestamp())
 
 
 def test_verify_rejects_missing_session_id():

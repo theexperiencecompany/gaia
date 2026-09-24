@@ -1135,12 +1135,18 @@ class TestRecallCaching:
         patches = harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row])
         rerank = AsyncMock(side_effect=TimeoutError)
         patches = (*patches[:-1], patch.object(retrieval, "rerank", new=rerank))
-        first, second = await self._recall_twice(harness, patches)
+        async with captured_wide_event() as event:
+            first, second = await self._recall_twice(harness, patches)
 
         assert first.degraded is True
         assert second.degraded is True
         assert rerank.await_count == 2
         assert await fake_redis.keys("user:*:memories:*") == []
+        assert {
+            "msg": "memory_recall_degraded",
+            "reasons": ["rerank_skipped"],
+            "result_count": 1,
+        } in event["warnings"]
 
 
 class TestRecall:
