@@ -36,12 +36,13 @@ from app.constants.memory import (
     CHROMA_MEMORIES_COLLECTION,
     CHROMA_MEMORY_EPISODES_COLLECTION,
     CONSOLIDATION_PENDING_KEY,
+    EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
     EMBEDDING_SIDECAR_URL_ENV,
 )
 from app.db.chroma.chromadb import ChromaClient
 import app.db.postgresql as postgresql_module
 from app.db.redis import redis_cache
-from app.memory import chroma_store, consolidation, management
+from app.memory import chroma_store, consolidation, embeddings, management
 from app.memory.embeddings import _embed_sync, _rerank_sync
 import app.memory.extraction as extraction_module
 from tests.integration.real.memory.llm import FakeMemoryLLM
@@ -76,6 +77,19 @@ def warm_embedding_models() -> None:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
         _embed_sync(["warmup"])
         _rerank_sync("warmup", ["warmup document"])
+
+
+@pytest.fixture(autouse=True)
+def full_pipeline_recall(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give recall's sidecar calls the background budget so every recall runs the dense leg and the reranker.
+
+    In production an interactive recall that waits past 5s on the sidecar drops to FTS-only order. Under xdist the one shared sidecar is busy most of the time, so that fallback fired and returned [] for a paraphrased query FTS cannot match. This suite asserts on what the full pipeline returns; the fallback has its own unit tests.
+    """
+    monkeypatch.setattr(
+        embeddings,
+        "EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS",
+        EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
+    )
 
 
 @pytest.fixture
