@@ -49,6 +49,8 @@ POLICY = "app.services.hil.policy"
 RESOLUTION = "app.services.hil.resolution"
 STORE = "app.services.hil.approvals_store"
 
+pytestmark = pytest.mark.usefixtures("hil_barrier_mode")
+
 
 def snapshot(next_nodes: tuple[str, ...] = (), messages: list[Any] | None = None) -> Any:
     """Build a LangGraph StateSnapshot as aget_state returns it.

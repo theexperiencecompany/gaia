@@ -52,6 +52,7 @@ import tests.offline_env  # isort: skip  # noqa: F401 -- imported for its side e
 # pulling in app.config.settings which instantiates settings at import
 # time; without ENV set first that resolves to ProductionSettings and fails.
 from app.config.posthog import init_posthog
+from app.config.settings import settings as app_settings
 from app.core.lazy_loader import MissingKeyStrategy, providers
 from app.db.redis import redis_cache
 from app.models.payment_models import (
@@ -783,6 +784,12 @@ def posthog_provider() -> Iterator[Callable[..., None]]:
 
     yield install
     init_posthog()
+
+
+@pytest.fixture
+def hil_barrier_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gate on the interrupt barrier: HIL_LEDGER's kill-switch path, not the shipped default."""
+    monkeypatch.setattr(app_settings, "ENABLE_HIL_LEDGER", False)
 
 
 @pytest.fixture(autouse=True)

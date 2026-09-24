@@ -82,6 +82,7 @@ async def post_approval_decision(
         # client must refresh the row instead of believing its tap landed.
         # "stale" (row may still be live) is never "not_found" (row is gone).
         if outcome.committed:
+            capture_context_event(AnalyticsEvents.APPROVAL_DECIDED, {"decision": payload.decision})
             return ApprovalDecisionResponse(success=True, status=outcome.state.value)
         return ApprovalDecisionResponse(
             success=False,
@@ -123,20 +124,16 @@ async def post_batch_decision(
         # No resume dispatch exists here — execution and wake already happened
         # inside decide_ledger.
         outcomes = await decide_ledger_batch(user_id, payload.decisions)
-        log.set(hil={"resolved": sum(1 for o in outcomes if o.resolved)})
-        return BatchApprovalDecisionResponse(outcomes=outcomes)
-    outcomes = await resolve_approvals_batch(
-        user_id,
-        [(item.approval_id, item.decision, item.feedback) for item in payload.decisions],
-    )
-    log.set(hil={"resolved": sum(1 for o in outcomes if o.resolved)})
+    else:
+        outcomes = await resolve_approvals_batch(
+            user_id,
+            [(item.approval_id, item.decision, item.feedback) for item in payload.decisions],
+        )
+    resolved = sum(1 for o in outcomes if o.resolved)
+    log.set(hil={"resolved": resolved})
     capture_context_event(
         AnalyticsEvents.APPROVAL_DECIDED,
-        {
-            "batch": True,
-            "decisions": len(payload.decisions),
-            "resolved": sum(1 for o in outcomes if o.resolved),
-        },
+        {"batch": True, "decisions": len(payload.decisions), "resolved": resolved},
     )
     return BatchApprovalDecisionResponse(outcomes=outcomes)
 

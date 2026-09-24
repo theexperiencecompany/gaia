@@ -70,7 +70,7 @@ from tests.e2e._harness.saved_messages import SavedToolData
 from tests.e2e._harness.transcript import Frame, Transcript
 from tests.e2e.test_agent_chain import StreamingScriptedModel, call, streaming_model
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("hil_barrier_mode")]
 
 USER = AuthenticatedUser(
     user_id="u-hil-stream",

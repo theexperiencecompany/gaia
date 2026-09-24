@@ -20,6 +20,7 @@ import pytest
 from starlette.requests import Request
 
 from app.agents.skills.models import Skill
+from app.models.hil_models import LedgerState
 from app.models.integration_models import Integration
 from app.models.mail_models import GmailMessageResource
 from app.models.notification.notification_models import NotificationRecord
@@ -27,7 +28,9 @@ from app.models.payment_models import PlanType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import Workflow
+from app.schemas.hil_schemas import BatchDecisionOutcome
 from app.services.analytics_service import AnalyticsEvents
+from app.services.hil.ledger_decide import LedgerDecision
 
 pytestmark = pytest.mark.unit
 
@@ -881,6 +884,7 @@ class TestNotificationNewEvents:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("hil_barrier_mode")
 class TestApprovalNewEvents:
     async def test_decision_captures(self, client: AsyncClient) -> None:
         with (
@@ -894,8 +898,6 @@ class TestApprovalNewEvents:
         )
 
     async def test_batch_captures(self, client: AsyncClient) -> None:
-        from app.schemas.hil_schemas import BatchDecisionOutcome
-
         with (
             patch(
                 "app.api.v1.endpoints.approvals.resolve_approvals_batch",
@@ -912,6 +914,72 @@ class TestApprovalNewEvents:
         mock_capture.assert_called_once_with(
             AnalyticsEvents.APPROVAL_DECIDED,
             {"batch": True, "decisions": 1, "resolved": 1},
+        )
+
+
+def _ledger_decision(*, committed: bool, stale: bool = False) -> LedgerDecision:
+    return LedgerDecision(
+        committed=committed,
+        approval_id="ap_1",
+        prior_state=LedgerState.PENDING,
+        state=LedgerState.APPROVED if committed else LedgerState.PENDING,
+        stale=stale,
+    )
+
+
+class TestLedgerApprovalEvents:
+    async def test_committed_decision_captures(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.approvals.decide_ledger",
+                new=AsyncMock(return_value=_ledger_decision(committed=True)),
+            ),
+            patch("app.api.v1.endpoints.approvals.capture_context_event") as mock_capture,
+        ):
+            resp = await client.post("/api/v1/approvals/ap_1/decision", json={"decision": "deny"})
+        assert resp.json()["success"] is True
+        mock_capture.assert_called_once_with(AnalyticsEvents.APPROVAL_DECIDED, {"decision": "deny"})
+
+    async def test_stale_decision_does_not_capture(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.approvals.decide_ledger",
+                new=AsyncMock(return_value=_ledger_decision(committed=False, stale=True)),
+            ),
+            patch("app.api.v1.endpoints.approvals.capture_context_event") as mock_capture,
+        ):
+            resp = await client.post(
+                "/api/v1/approvals/ap_1/decision", json={"decision": "approve"}
+            )
+        assert resp.json()["success"] is False
+        mock_capture.assert_not_called()
+
+    async def test_batch_captures(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.approvals.decide_ledger_batch",
+                new=AsyncMock(
+                    return_value=[
+                        BatchDecisionOutcome(approval_id="ap_1", resolved=True),
+                        BatchDecisionOutcome(approval_id="ap_2", resolved=False),
+                    ]
+                ),
+            ),
+            patch("app.api.v1.endpoints.approvals.capture_context_event") as mock_capture,
+        ):
+            resp = await client.post(
+                "/api/v1/approvals/batch-decision",
+                json={
+                    "decisions": [
+                        {"approval_id": "ap_1", "decision": "approve"},
+                        {"approval_id": "ap_2", "decision": "approve"},
+                    ]
+                },
+            )
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.APPROVAL_DECIDED,
+            {"batch": True, "decisions": 2, "resolved": 1},
         )
 
 
