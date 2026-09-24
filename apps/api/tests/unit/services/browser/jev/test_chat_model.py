@@ -331,7 +331,6 @@ async def test_a_value_the_helper_cannot_source_hands_the_field_to_the_human(fli
     }
 
 
-@pytest.mark.regression
 async def test_a_value_call_that_fails_idles_the_step_instead_of_handing_the_field_over(
     flights_state,
 ) -> None:
@@ -2186,7 +2185,6 @@ def _gap_judge(missing: list[str], *, on_done_check_only: bool = False):
     return writer
 
 
-@pytest.mark.regression
 async def test_a_one_part_task_is_told_what_the_judge_found_missing() -> None:
     """Regression: a form submitted without its radio was declared BLOCKED; the gap reached multi-part plans only."""
     _, gateway = await _run_to_done(
@@ -2200,7 +2198,6 @@ async def test_a_one_part_task_is_told_what_the_judge_found_missing() -> None:
     assert "Radio 2 chosen" in str(gateway.requests[-1].questions["operation"].instructions["goal"])
 
 
-@pytest.mark.regression
 async def test_a_withheld_done_is_re_decided_on_what_its_check_found_missing() -> None:
     """Regression: the re-ask after a withheld DONE ran on the goal from before that check, and chose BLOCKED."""
     action, gateway = await _run_to_done(
@@ -2237,7 +2234,6 @@ async def test_blocked_stays_offered_while_something_is_missing_but_no_page_is_b
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.regression
 async def test_the_closing_answer_reads_a_confirmations_heading_and_message_and_quotes_both() -> (
     None
 ):
@@ -2278,7 +2274,6 @@ async def _typed_a_password(then, script, replies) -> tuple[JevChatModel, Script
     return model, gateway, typed
 
 
-@pytest.mark.regression
 async def test_a_typed_password_is_masked_in_the_closing_answer_but_still_typed() -> None:
     landed = f"{_SUBMITTED}&my-password=gaia+test%2F123"
     model, gateway, typed = await _typed_a_password(
@@ -2296,7 +2291,6 @@ async def test_a_typed_password_is_masked_in_the_closing_answer_but_still_typed(
     assert gateway.requests[-1].state["recent_actions"][0]["text"] == mask
 
 
-@pytest.mark.regression
 async def test_a_password_field_the_run_typed_into_reads_as_filled_on_the_next_step() -> None:
     """Engines report no value for a password field, so it read empty and was typed again."""
     model, gateway, _ = await _typed_a_password(_LOGIN_FORM, [("WAIT", None)], [])
@@ -2308,7 +2302,6 @@ async def test_a_password_field_the_run_typed_into_reads_as_filled_on_the_next_s
     assert _SECRET not in json.dumps(gateway.requests[-1].state)
 
 
-@pytest.mark.regression
 async def test_a_typed_password_is_masked_in_what_the_agent_is_asked_for_guidance() -> None:
     landed = f"{_SUBMITTED}&my-password=gaia+test%2F123"
     model, _, _ = await _typed_a_password(

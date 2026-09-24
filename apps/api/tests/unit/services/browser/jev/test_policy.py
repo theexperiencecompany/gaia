@@ -312,7 +312,6 @@ def test_a_form_submitted_and_come_back_to_unchanged_is_not_offered_for_sending_
     assert set(request.questions["click_target"].criteria) == {"1"}
 
 
-@pytest.mark.regression
 def test_a_form_changed_since_it_was_sent_may_be_sent_again() -> None:
     """Regression: back on a form for its skipped radio, the Submit it had used was no longer offered."""
     chose = JevHistoryEntry(

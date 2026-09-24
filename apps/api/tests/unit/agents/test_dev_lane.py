@@ -449,7 +449,6 @@ class TestAFailedAttemptOnTheEndpoint:
     The attempt must end and be retried, not sit until the 300 s call budget runs out.
     """
 
-    @pytest.mark.regression
     @pytest.mark.parametrize(
         "failure",
         [
@@ -485,7 +484,6 @@ class TestAFailedAttemptOnTheEndpoint:
 
         assert route.call_count == 1
 
-    @pytest.mark.regression
     def test_every_attempt_can_time_out_inside_the_call_budget(self) -> None:
         """With no read timeout the SDK waits 600 s, so one stalled attempt ate the whole 300 s budget."""
         llm = resolve_model()
@@ -512,7 +510,6 @@ class TestTheEndpointsHttpClients:
 
         assert route.call_count == 1
 
-    @pytest.mark.regression
     def test_a_sync_request_carries_a_browser_user_agent(self) -> None:
         """Discounted lanes sit behind Cloudflare, which 403s a programmatic user agent."""
         llm = resolve_model()
@@ -524,7 +521,6 @@ class TestTheEndpointsHttpClients:
 
         assert route.calls.last.request.headers["user-agent"] == _BROWSER_USER_AGENT
 
-    @pytest.mark.regression
     async def test_an_async_request_carries_a_browser_user_agent(self) -> None:
         llm = resolve_model()
         with respx.mock() as router:
