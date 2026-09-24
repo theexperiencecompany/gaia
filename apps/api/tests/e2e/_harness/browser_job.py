@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Callable
-from contextlib import ExitStack, asynccontextmanager
+from contextlib import AbstractContextManager, ExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 import json
 from types import SimpleNamespace
@@ -386,17 +386,56 @@ async def browser_job_world(
         world.jobs.append(asyncio.create_task(browser_tasks.run_browser_job({}, payload)))
         return object()
 
-    async def _publish_chunk(chunk_stream_id: str, chunk: str) -> None:
-        if chunk_stream_id == stream_id:
-            world.chunks.append(chunk)
+    patches = [
+        patch("app.db.redis.redis_cache.redis", redis),
+        # The real waits are tens of seconds of polling. Shrunk, not removed: the
+        # poll loops are what the join and the delivery hand-off are made of.
+        patch.object(browser_tasks, "BROWSER_JOB_JOINER_LEASE_SECONDS", 0.2),
+        patch.object(browser_tasks, "BROWSER_JOB_JOINER_REFRESH_SECONDS", 0.1),
+        patch.object(browser_tasks, "BROWSER_JOB_POLL_INTERVAL_SECONDS", 0.02),
+        patch.object(browser_tool, "BROWSER_JOB_POLL_INTERVAL_SECONDS", 0.02),
+        patch.object(browser_tool, "BROWSER_JOB_JOINER_REFRESH_SECONDS", 0.1),
+        patch("app.services.browser.handoff.HANDOFF_POLL_INTERVAL_SECONDS", 0.02),
+        # A guidance request nobody answers must fail the journey in seconds, not
+        # sit out the real two-minute budget.
+        patch("app.services.browser.job_runner.BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS", 2),
+        patch.object(browser_use, "Agent", double.agent),
+        patch.object(browser_use, "Browser", lambda **kwargs: page),
+        patch("app.agents.tools.browser_tool.enqueue_worker_job", _enqueue),
+        patch("app.agents.tools.browser_tool.RedisPoolManager.get_pool", AsyncMock()),
+        patch(
+            "app.services.hil.policy.get_hil_preferences",
+            AsyncMock(return_value=HILPreferences(mode="always_allow")),
+        ),
+        *_host_patches(world, scripted_host, page),
+        patch("app.services.browser.job_runner.build_browser_llm", lambda user_id=None: llm),
+        patch("app.services.browser.job_runner.record_browser_task", AsyncMock()),
+        patch("app.services.browser.job_runner.capture_event", MagicMock()),
+        patch("app.services.browser.agent_run.build_browser_tools", _tools_of(double)),
+        patch(
+            "app.services.browser.runner.publish_step_screenshot",
+            lambda image, session_id, index: _shot_url(index),
+        ),
+        patch("app.services.browser.runner.create_replay_link", AsyncMock(return_value=REPLAY_URL)),
+        patch("app.workers.tasks.browser_tasks.load_user_context", AsyncMock(return_value=_user())),
+        *_delivery_patches(world, stream_id),
+    ]
+    with ExitStack() as stack:
+        for entered in patches:
+            stack.enter_context(entered)
+        try:
+            yield world
+        finally:
+            for task in world.jobs:
+                task.cancel()
+            await redis.aclose()
 
-    async def _outbound_message(platform: Any, user_id: str, blocks: list[str]) -> bool:
-        world.bot_messages.extend(blocks)
-        return True
 
-    async def _outbound_photo(platform: Any, user_id: str, url: str, **kwargs: Any) -> bool:
-        world.bot_photos.append(url)
-        return True
+def _host_patches(
+    world: JobWorld, scripted_host: ScriptedHost, page: object
+) -> list[AbstractContextManager[object]]:
+    """Stand in for the browser host: sessions it opens, loses when the engine dies, and whose state it reads."""
+    double = world.browser
 
     async def _create_host_session(storage_state: Any, host_url: str) -> Any:
         if scripted_host.error is not None:
@@ -409,9 +448,6 @@ async def browser_job_world(
             live_ws="ws://browser.test/live",
             context_id="ctx-1",
         )
-
-    async def _deliver(**kwargs: Any) -> None:
-        world.deliveries.append(kwargs)
 
     def _kill_engine() -> None:
         world.dead_sessions.add(f"sess-{world.host_sessions}")
@@ -440,31 +476,7 @@ async def browser_job_world(
             )
         return LIVE_STORAGE_STATE
 
-    patches = [
-        patch("app.db.redis.redis_cache.redis", redis),
-        # The real waits are tens of seconds of polling. Shrunk, not removed: the
-        # poll loops are what the join and the delivery hand-off are made of.
-        patch.object(browser_tasks, "BROWSER_JOB_JOINER_LEASE_SECONDS", 0.2),
-        patch.object(browser_tasks, "BROWSER_JOB_JOINER_REFRESH_SECONDS", 0.1),
-        patch.object(browser_tasks, "BROWSER_JOB_POLL_INTERVAL_SECONDS", 0.02),
-        patch.object(browser_tool, "BROWSER_JOB_POLL_INTERVAL_SECONDS", 0.02),
-        patch.object(browser_tool, "BROWSER_JOB_JOINER_REFRESH_SECONDS", 0.1),
-        patch("app.services.browser.handoff.HANDOFF_POLL_INTERVAL_SECONDS", 0.02),
-        # A guidance request nobody answers must fail the journey in seconds, not
-        # sit out the real two-minute budget.
-        patch("app.services.browser.job_runner.BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS", 2),
-        patch.object(browser_use, "Agent", double.agent),
-        patch.object(browser_use, "Browser", lambda **kwargs: page),
-        patch("app.agents.tools.browser_tool.enqueue_worker_job", _enqueue),
-        patch("app.agents.tools.browser_tool.RedisPoolManager.get_pool", AsyncMock()),
-        patch(
-            "app.core.stream_manager.StreamManager.publish_chunk",
-            AsyncMock(side_effect=_publish_chunk),
-        ),
-        patch(
-            "app.services.hil.policy.get_hil_preferences",
-            AsyncMock(return_value=HILPreferences(mode="always_allow")),
-        ),
+    return [
         patch("app.services.browser.session.host_client.create_session", _create_host_session),
         patch(
             "app.services.browser.session.host_client.delete_session",
@@ -475,37 +487,44 @@ async def browser_job_world(
         patch.object(settings, "BROWSER_FALLBACK_HOST_URL", scripted_host.fallback_url),
         patch("app.services.browser.session.load_storage_state", AsyncMock(return_value=None)),
         patch("app.services.browser.session.save_storage_state", AsyncMock()),
-        patch("app.services.browser.job_runner.build_browser_llm", lambda user_id=None: llm),
-        patch("app.services.browser.job_runner.record_browser_task", AsyncMock()),
-        patch("app.services.browser.job_runner.capture_event", MagicMock()),
-        patch("app.services.browser.agent_run.build_browser_tools", _tools_of(double)),
+    ]
+
+
+def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextManager[object]]:
+    """Record what reaches the user: the turn's stream, bot messages and photos, and the conversation."""
+
+    async def _publish_chunk(chunk_stream_id: str, chunk: str) -> None:
+        if chunk_stream_id == stream_id:
+            world.chunks.append(chunk)
+
+    async def _outbound_message(platform: Any, user_id: str, blocks: list[str]) -> bool:
+        world.bot_messages.extend(blocks)
+        return True
+
+    async def _outbound_photo(platform: Any, user_id: str, url: str, **kwargs: Any) -> bool:
+        world.bot_photos.append(url)
+        return True
+
+    async def _deliver(**kwargs: Any) -> None:
+        world.deliveries.append(kwargs)
+
+    return [
         patch(
-            "app.services.browser.runner.publish_step_screenshot",
-            lambda image, session_id, index: _shot_url(index),
+            "app.core.stream_manager.StreamManager.publish_chunk",
+            AsyncMock(side_effect=_publish_chunk),
         ),
-        patch("app.services.browser.runner.create_replay_link", AsyncMock(return_value=REPLAY_URL)),
         patch("app.services.browser.bot_delivery.publish_outbound_message", _outbound_message),
         patch("app.services.browser.bot_delivery.publish_outbound_photo", _outbound_photo),
         patch(
             "app.services.browser.bot_delivery.create_live_view_link",
             AsyncMock(return_value=LIVE_VIEW_LINK),
         ),
-        patch("app.workers.tasks.browser_tasks.load_user_context", AsyncMock(return_value=_user())),
         patch(
             "app.workers.tasks.browser_tasks.narrate_executor_result",
             AsyncMock(side_effect=_narrate),
         ),
         patch("app.workers.tasks.browser_tasks.deliver_message_to_conversation", _deliver),
     ]
-    with ExitStack() as stack:
-        for entered in patches:
-            stack.enter_context(entered)
-        try:
-            yield world
-        finally:
-            for task in world.jobs:
-                task.cancel()
-            await redis.aclose()
 
 
 def _tools_of(double: BrowserDouble) -> Callable[..., object]:
