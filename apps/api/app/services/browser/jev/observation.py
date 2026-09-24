@@ -275,13 +275,11 @@ def _page_text(state: BrowserStateSummary) -> str:
 
 
 def _fingerprint(observation: JevObservation) -> str:
-    content = {
-        "url": observation.url,
-        "elements": [
-            (e.label, e.role, e.value, e.checked, e.expanded) for e in observation.elements
-        ],
-    }
-    return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
+    content = [
+        observation.url,
+        [(e.label, e.role, e.value, e.checked, e.expanded) for e in observation.elements],
+    ]
+    return hashlib.sha256(json.dumps(content).encode()).hexdigest()
 
 
 def _element(
@@ -292,9 +290,9 @@ def _element(
     in_viewport: bool,
 ) -> JevElement | None:
     try:
-        attributes: dict[str, str] = getattr(node, "attributes", None) or {}
+        attributes = _attributes(node)
         attrs = _DomAttributes.model_validate(attributes)
-        tag = (getattr(node, "node_name", "") or "").lower()
+        tag = _tag(node)
         if tag in _TABLE_STRUCTURE and not _acts_on_its_own(attributes):
             # Listings flag whole rows as interactive (Hacker News story rows), and
             # Jev clicked such a row forty times to no effect; the link inside it
@@ -305,9 +303,10 @@ def _element(
         label = _label(node, ax, attributes)
         if not label and tag not in ("input", "select", "textarea"):
             return None
-        input_type = (
-            (attrs.type if attrs.type is not None else "text").lower() if tag == "input" else ""
-        )
+        # Both defaults are only looked up in the input-type tables, where any
+        # value those tables do not list reads alike.
+        declared_type = attrs.type if attrs.type is not None else "text"  # pragma: no mutate
+        input_type = declared_type.lower() if tag == "input" else ""  # pragma: no mutate
         role = (
             getattr(ax, "role", None)
             or attrs.role
@@ -350,9 +349,21 @@ def _element(
         return None
 
 
+def _tag(node: object) -> str:
+    """Return the node's lower-case tag name; empty when the engine gave none."""
+    return (getattr(node, "node_name", "") or "").lower()
+
+
+def _attributes(node: object) -> dict[str, str]:
+    """Return the node's DOM attributes; empty when the engine gave none."""
+    attributes: dict[str, str] = getattr(node, "attributes", None) or {}
+    return attributes
+
+
 def _ax_properties(ax: object) -> dict[str, object]:
     return {
-        str(getattr(p, "name", "")): getattr(p, "value", None)
+        # A nameless property's key is one no flag lookup reads, whatever it defaults to.
+        str(getattr(p, "name", "")): getattr(p, "value", None)  # pragma: no mutate — key never read
         for p in (getattr(ax, "properties", None) or [])
     }
 
@@ -398,9 +409,9 @@ def _select_options(
     def walk(current: EnhancedDOMTreeNode) -> None:
         nonlocal selected, selected_live
         for child in getattr(current, "children_nodes", None) or []:
-            raw_child_attributes: dict[str, str] = getattr(child, "attributes", None) or {}
+            raw_child_attributes = _attributes(child)
             child_attrs = _DomAttributes.model_validate(raw_child_attributes)
-            if (getattr(child, "node_name", "") or "").lower() == "option":
+            if _tag(child) == "option":
                 if "disabled" in raw_child_attributes:
                     continue
                 label = " ".join(child.get_all_children_text().split())
