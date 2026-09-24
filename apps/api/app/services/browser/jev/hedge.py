@@ -27,7 +27,7 @@ async def first_answer(
     end = loop.time() + deadline
     pending: set[asyncio.Future[T]] = {asyncio.ensure_future(call())}
     spare_left = True
-    error: BaseException | None = None
+    error: BaseException
     try:
         while pending:
             remaining = end - loop.time()
@@ -38,13 +38,15 @@ async def first_answer(
                 pending, timeout=wait, return_when=asyncio.FIRST_COMPLETED
             )
             for task in done:
-                if task.exception() is None:
+                failure = task.exception()
+                if failure is None:
                     return task.result()
-                error = task.exception()
+                error = failure
             if not done and spare_left:
                 spare_left = False
                 pending.add(asyncio.ensure_future(call()))
-        raise error or TimeoutError(f"no answer within {deadline:.0f}s")
+        # The loop only drains when every call started has failed.
+        raise error
     finally:
         for task in pending:
             task.cancel()
