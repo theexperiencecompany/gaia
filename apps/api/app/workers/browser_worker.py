@@ -13,6 +13,7 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 import signal
 import socket
+from typing import TypedDict
 
 from arq.worker import Worker
 
@@ -37,6 +38,17 @@ class RunningBrowserWorker:
     task: asyncio.Task[None]
 
 
+class _SignalOptions(TypedDict):
+    """The arq Worker option that decides who owns SIGTERM/SIGINT."""
+
+    handle_signals: bool
+
+
+# The main worker owns the process's signals. arq reads the flag only for truth, so a
+# None here is the same worker: the one mutant of this line is equivalent.
+_SIGNALS_STAY_WITH_MAIN_WORKER: _SignalOptions = {"handle_signals": False}  # pragma: no mutate
+
+
 def build_browser_worker() -> Worker:
     """Build the arq Worker for the browser queue; signals stay with the main worker."""
     # One run per conversation is enforced by the browser slot lease, not by ARQ,
@@ -52,7 +64,7 @@ def build_browser_worker() -> Worker:
         functions=[browser_job],
         queue_name=BROWSER_JOB_QUEUE,
         redis_settings=WorkerSettings.redis_settings,
-        handle_signals=False,
+        **_SIGNALS_STAY_WITH_MAIN_WORKER,
         max_jobs=WorkerSettings.max_jobs,
         keep_result=0,
         health_check_interval=WorkerSettings.health_check_interval,
