@@ -142,11 +142,18 @@ async def real_redis(monkeypatch):
     await client.aclose()
 
 
-# chromadb's EphemeralClient is a process-global singleton that raises if a
-# later call's settings differ from the first; pre-creating it here makes
-# every later default-settings call hit the reuse path, order-independent.
+# chromadb's EphemeralClient is a process-global singleton that raises if a later call's
+# settings differ, so it is pre-created once per PROCESS: a forked session (every mutmut
+# mutant) that re-enters its Rust runtime blocks forever, and every mutant timed out.
+_ephemeral_chroma_created = False
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _precreate_ephemeral_chroma() -> None:
+    global _ephemeral_chroma_created
+    if _ephemeral_chroma_created:
+        return
     import chromadb
 
     chromadb.EphemeralClient()
+    _ephemeral_chroma_created = True
