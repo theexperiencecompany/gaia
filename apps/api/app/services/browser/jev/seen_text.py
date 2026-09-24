@@ -30,7 +30,7 @@ class SeenText:
     """Every distinct line read on each page the run has opened, oldest first."""
 
     def __init__(self) -> None:
-        self._page = ""
+        self._page = ""  # pragma: no mutate — no page is stored under any start value
         self._lines: dict[str, list[str]] = {}
         self._titles: dict[str, str] = {}
         self._seen: dict[str, set[str]] = {}
@@ -39,7 +39,7 @@ class SeenText:
 
     def record(self, url: str, text: str, title: str = "", *, at_bottom: bool = False) -> None:
         """Add this screen's lines to its page's memory; a page returned to keeps what it had."""
-        self._page = url.split("#", 1)[0]
+        self._page = url.partition("#")[0]
         if self._page.startswith("about:"):
             # The blank tab before the first navigate is no page read: judging it
             # spent a writer call on nothing, and a blocked run "reported" it.
@@ -105,7 +105,7 @@ class SeenText:
 
 def _fair_shares(sizes: list[int], budget: int) -> list[int]:
     """Split budget so no size gets more than it needs and the rest share alike."""
-    shares = [0] * len(sizes)
+    shares = [0] * len(sizes)  # pragma: no mutate — the loop assigns every share
     left = budget
     by_size = sorted(range(len(sizes)), key=sizes.__getitem__)
     for taken, index in enumerate(by_size):

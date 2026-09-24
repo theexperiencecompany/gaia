@@ -205,7 +205,7 @@ class NodeHandles:
     """
 
     def __init__(self) -> None:
-        self._url: str | None = None
+        self._url: str | None = None  # pragma: no mutate — no handle is kept before a page
         self._handles: dict[int, str] = {}
 
     def on_page(self, url: str | None) -> None:
@@ -329,7 +329,6 @@ async def _by_xpath(session: CDPSession, targets: list[_Target]) -> dict[int, Vi
         params={
             "expression": f"({_MEASURE_JS})({json.dumps(pairs)})",
             "returnByValue": True,
-            "awaitPromise": False,
         },
         session_id=session.session_id,
     )
@@ -337,9 +336,24 @@ async def _by_xpath(session: CDPSession, targets: list[_Target]) -> dict[int, Vi
 
 
 async def _by_backend_node(
-    session: CDPSession, targets: list[_Target], handles: NodeHandles, retry: bool = True
+    session: CDPSession, targets: list[_Target], handles: NodeHandles
 ) -> dict[int, ViewportBox]:
     """Measure each node through its backend id: a resolveNode per new node, then batched measures."""
+    boxes, resolved_any = await _resolve_and_measure(session, targets, handles)
+    if boxes or not resolved_any:
+        return boxes
+    # A kept handle can outlive its document without the url changing; drop them
+    # all and measure this screen the slow way once, keeping what that resolves
+    # so the next step is fast.
+    handles.forget(t.backend_node_id for t in targets if t.backend_node_id is not None)
+    boxes, _ = await _resolve_and_measure(session, targets, handles)
+    return boxes
+
+
+async def _resolve_and_measure(
+    session: CDPSession, targets: list[_Target], handles: NodeHandles
+) -> tuple[dict[int, ViewportBox], bool]:
+    """Return the boxes measured through backend ids, and whether any node resolved at all."""
     semaphore = asyncio.Semaphore(_RESOLVE_CONCURRENCY)
 
     async def resolve(target: _Target) -> tuple[int, str] | None:
@@ -376,14 +390,7 @@ async def _by_backend_node(
     ]
     batches = [resolved[i : i + _MEASURE_BATCH] for i in range(0, len(resolved), _MEASURE_BATCH)]
     measured = await asyncio.gather(*(_measure_batch(session, batch) for batch in batches))
-    boxes = {index: box for batch in measured for index, box in batch.items()}
-    if not boxes and resolved and retry:
-        # A kept handle can outlive its document without the url changing; drop
-        # them all and measure this screen the slow way once, keeping what that
-        # resolves so the next step is fast, and never recursing a second time.
-        handles.forget(t.backend_node_id for t in targets if t.backend_node_id is not None)
-        return await _by_backend_node(session, targets, handles, retry=False)
-    return boxes
+    return {index: box for batch in measured for index, box in batch.items()}, bool(resolved)
 
 
 async def _measure_batch(
@@ -398,14 +405,12 @@ async def _measure_batch(
         },
         session_id=session.session_id,
     )
-    if response.get("exceptionDetails"):
-        return {}
-    raw_values = _returned_value(response.get("result")) or []
+    # A throw in the page comes back as the error object, never a list of rows.
+    raw_values = _returned_value(response.get("result"))
     if not isinstance(raw_values, list):
         return {}
-    return _boxes_from_rows(
-        {str(index): value for (index, _), value in zip(batch, raw_values, strict=False) if value}
-    )
+    rows = zip(batch, raw_values, strict=False)  # pragma: no mutate — one row per element sent
+    return _boxes_from_rows({str(index): value for (index, _), value in rows if value})
 
 
 def _inside_iframe(node: EnhancedDOMTreeNode) -> bool:
@@ -413,7 +418,9 @@ def _inside_iframe(node: EnhancedDOMTreeNode) -> bool:
     for _ in range(_MAX_ANCESTORS):
         if current is None:
             return False
-        if (getattr(current, "node_name", "") or "").lower() == "iframe":
+        # Any stand-in for a missing name is equally not an iframe.
+        name = getattr(current, "node_name", "") or ""  # pragma: no mutate
+        if name.lower() == "iframe":
             return True
         current = getattr(current, "parent_node", None)
     return False
