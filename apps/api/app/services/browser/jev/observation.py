@@ -100,6 +100,8 @@ class JevElement:
     expanded: bool | None = None
     selected: bool | None = None
     options: tuple[JevSelectOption, ...] = ()
+    #: A password field: what is typed into it is never repeated back.
+    secret: bool = False
 
     def _flags(self) -> dict[str, object]:
         return {
@@ -340,6 +342,7 @@ def _element(
             expanded=_flag(properties, "expanded", attrs.aria_expanded, None),
             selected=_flag(properties, "selected", attrs.aria_selected, None),
             options=options,
+            secret=input_type == "password",
         )
     except Exception as exc:  # an unfamiliar node shape loses one row, not the step
         log.warning(

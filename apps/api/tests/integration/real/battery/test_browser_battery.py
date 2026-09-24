@@ -23,7 +23,11 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from app.constants.browser import BROWSER_ENGINE_FALLBACK_NOTE, BROWSER_STALL_NOTE
+from app.constants.browser import (
+    BROWSER_ENGINE_FALLBACK_NOTE,
+    BROWSER_STALL_NOTE,
+    JEV_SECRET_MASK,
+)
 from tests.integration.real.battery.harness import (
     Battery,
     RunOutcome,
@@ -141,7 +145,7 @@ def test_a_form_is_filled_and_submitted_with_every_field(battery: Battery) -> No
     assert url, f"the landing URL with the submitted values was not reported: {outcome.summary}"
     for expected in (
         "my-text=Aryan",
-        "my-password=gaia-test-123",
+        f"my-password={JEV_SECRET_MASK}",
         "my-select=2",
         "my-date=09%2F22%2F2026",
     ):
@@ -150,6 +154,10 @@ def test_a_form_is_filled_and_submitted_with_every_field(battery: Battery) -> No
         "Checkbox 2 was not ticked (the first is pre-ticked)"
     )
     assert "my-radio=on" in url.group(0), "no radio was chosen"
+    # The page puts the typed password in its URL; the user never reads it back.
+    replies = [t for t in outcome.transcript.texts if "Use the browser for this" not in t]
+    for delivered in (outcome.summary, str(outcome.transcript.photos), *replies):
+        assert "gaia-test-123" not in delivered, delivered
     assert outcome.step_count >= 6, "a nine-field form takes at least six actions"
     assert len(outcome.transcript.photos) >= 4, "step photos did not reach Telegram"
     _one_final_message(outcome)

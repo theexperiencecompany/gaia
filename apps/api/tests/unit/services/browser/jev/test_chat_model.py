@@ -26,6 +26,7 @@ from browser_use.tools.views import (
 from pydantic import BaseModel, RootModel, create_model
 import pytest
 
+from app.constants import browser as browser_constants
 from app.constants.browser import (
     BROWSER_RUN_BLOCKED_SUMMARY,
     JEV_DONE_REASK_BUDGET,
@@ -55,7 +56,7 @@ from app.services.browser.jev.prompts import (
 )
 from app.services.browser.jev.viewport import ViewportRead
 
-from .conftest import FakeNode, make_state
+from .conftest import FakeAXNode, FakeNode, make_state
 
 pytestmark = pytest.mark.unit
 
@@ -2130,3 +2131,164 @@ async def test_what_the_part_judge_found_missing_is_what_jev_is_told_to_do_next(
     goal = str(gateway.requests[-1].questions["operation"].instructions["goal"])
     assert "article body read past its headline" in goal
     assert "rank noted" not in goal
+
+
+# ---------------------------------------------------------------------------
+# A form submitted with a field skipped: back to the form, not BLOCKED
+# ---------------------------------------------------------------------------
+
+_FORM = "https://forms.example/web-form.html"
+_SUBMITTED = "https://forms.example/submitted-form.html?my-text=Aryan"
+_FORM_PAGE = make_state(
+    {
+        1: FakeNode("INPUT", {"type": "radio", "aria-label": "Radio 2"}),
+        2: FakeNode("BUTTON", text="Submit", ax_node=FakeAXNode(role="button", name="Submit")),
+    },
+    url=_FORM,
+    title="Web form",
+)
+_SUBMITTED_PAGE = make_state(
+    {1: FakeNode("H1", text="Form submitted")}, url=_SUBMITTED, title="Web form - target page"
+)
+_FORM_TASK = f'Go to {_FORM}, choose "Radio 2", click Submit and tell me what the page shows.'
+
+
+def _gap_judge(missing: list[str], *, on_done_check_only: bool = False):
+    """Return a writer whose part check (one-part plan) finds nothing for missing and everything else held."""
+    helper = FakeTextModel()
+
+    async def writer(schema, prompt, *, label, timeout=None, reasoning=None):
+        if prompt[0].content.startswith(PLAN_STEPS):
+            return schema.model_validate({"steps": []})
+        if prompt[0].content.startswith(PART_DONE):
+            gap = missing if label == "browser_done_check" or not on_done_check_only else []
+            return schema.model_validate(
+                {"requirements": gap, "evidence": [], "done": False, "findings": ""}
+            )
+        return await helper.structured(schema, prompt, label=label, timeout=timeout)
+
+    return writer
+
+
+@pytest.mark.regression
+async def test_a_one_part_task_is_told_what_the_judge_found_missing() -> None:
+    """Regression: a form submitted without its radio was declared BLOCKED; the gap reached multi-part plans only."""
+    _, gateway = await _run_to_done(
+        _FORM_PAGE,
+        _SUBMITTED_PAGE,
+        [("CLICK", "2"), ("SCROLL_DOWN", None)],
+        _gap_judge(["Radio 2 chosen"]),
+        _FORM_TASK,
+    )
+
+    assert "Radio 2 chosen" in str(gateway.requests[-1].questions["operation"].instructions["goal"])
+
+
+@pytest.mark.regression
+async def test_a_withheld_done_is_re_decided_on_what_its_check_found_missing() -> None:
+    """Regression: the re-ask after a withheld DONE ran on the goal from before that check, and chose BLOCKED."""
+    action, gateway = await _run_to_done(
+        _FORM_PAGE,
+        _SUBMITTED_PAGE,
+        [("CLICK", "2"), ("DONE", None), ("GO_BACK", None)],
+        _gap_judge(["Radio 2 chosen"], on_done_check_only=True),
+        _FORM_TASK,
+    )
+
+    re_ask = gateway.requests[-1].questions["operation"]
+    assert "Radio 2 chosen" in str(re_ask.instructions["goal"])
+    assert "BLOCKED" not in re_ask.criteria
+    assert "GO_BACK" in re_ask.criteria
+    assert action == {"go_back": {}}
+
+
+async def test_blocked_stays_offered_while_something_is_missing_but_no_page_is_behind() -> None:
+    _, gateway = await _run_to_done(
+        _SUBMITTED_PAGE,
+        _SUBMITTED_PAGE,
+        [("SCROLL_DOWN", None), ("SCROLL_UP", None)],
+        _gap_judge(["Radio 2 chosen"]),
+        _FORM_TASK,
+    )
+
+    last = gateway.requests[-1].questions["operation"]
+    assert "Radio 2 chosen" in str(last.instructions["goal"])
+    assert "BLOCKED" in last.criteria
+
+
+# ---------------------------------------------------------------------------
+# The closing answer: every line of a confirmation, never a typed password
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.regression
+async def test_the_closing_answer_reads_a_confirmations_heading_and_message_and_quotes_both() -> (
+    None
+):
+    """Regression: "exactly what the page shows" was answered with the message alone, the prompt asking for one element."""
+    confirmation = make_state(
+        {1: FakeNode("H1", text="Form submitted"), 2: FakeNode("P", text="Received!")},
+        url=_SUBMITTED,
+    )
+    model, _, helper, _ = _model(confirmation, [("DONE", None)], [{"text": "ok"}])
+
+    await model.ainvoke([], _agent_output())
+
+    context = helper.context(0)
+    for line in ("Form submitted", "Received!"):
+        assert line in context["page"]["text"]
+        assert line in context["seen_on_pages_read"]
+    assert helper.system_prompt(0) == DONE_SUMMARY
+    assert "single element" not in DONE_SUMMARY
+    assert "heading and its message" in DONE_SUMMARY
+
+
+_LOGIN_FORM = make_state(
+    {
+        1: FakeNode("INPUT", {"type": "password", "name": "my-password"}),
+        2: FakeNode("INPUT", {"name": "my-text"}),
+    },
+    url=_FORM,
+)
+_SECRET = "gaia test/123"
+
+
+async def _typed_a_password(then, script, replies) -> tuple[JevChatModel, ScriptedGateway, Any]:
+    model, gateway, helper, session = _model(
+        _LOGIN_FORM, [("TYPE_TEXT", "1"), *script], [{"text": _SECRET}, *replies]
+    )
+    typed = _action((await model.ainvoke([], _agent_output())).completion)
+    session.state = then
+    return model, gateway, typed
+
+
+@pytest.mark.regression
+async def test_a_typed_password_is_masked_in_the_closing_answer_but_still_typed() -> None:
+    landed = f"{_SUBMITTED}&my-password=gaia+test%2F123"
+    model, gateway, typed = await _typed_a_password(
+        make_state({1: FakeNode("H1", text="Form submitted")}, url=landed),
+        [("DONE", None)],
+        [{"text": f"Typed {_SECRET}; landed on {landed}"}],
+    )
+
+    done = _action((await model.ainvoke([], _agent_output())).completion)["done"]
+
+    assert typed["input_text"]["text"] == _SECRET
+    assert "gaia" not in done["text"]
+    mask = browser_constants.JEV_SECRET_MASK
+    assert done["text"].count(mask) == 2
+    assert gateway.requests[-1].state["recent_actions"][0]["text"] == mask
+
+
+@pytest.mark.regression
+async def test_a_typed_password_is_masked_in_what_the_agent_is_asked_for_guidance() -> None:
+    landed = f"{_SUBMITTED}&my-password=gaia+test%2F123"
+    model, _, _ = await _typed_a_password(
+        make_state({1: FakeNode("P", text=f"You sent {_SECRET}")}, url=landed), [("WAIT", None)], []
+    )
+    await model.ainvoke([], _agent_output())
+
+    request = model.guidance_request("stuck")
+
+    assert "gaia" not in request.url
+    assert "gaia" not in request.page_text

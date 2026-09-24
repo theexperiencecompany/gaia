@@ -1754,7 +1754,7 @@ async def test_a_step_names_and_locates_the_element_its_actions_target(patch_bro
     from app.services.browser.jev.chat_model import JevChatModel
     from app.services.browser.jev.viewport import ViewportBox
 
-    model = object.__new__(JevChatModel)
+    model = JevChatModel(client=MagicMock(), text_model=MagicMock())
     model._viewport = {4: ViewportBox(on_screen=True, cx=0.25, cy=0.5)}
     runner._agent_run._llm = model
 

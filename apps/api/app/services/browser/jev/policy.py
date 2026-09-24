@@ -37,6 +37,7 @@ from app.services.browser.jev.prompts import (
     NEXT_ACTION,
     REQUEST_HUMAN_CRITERION,
     SOLVE_CAPTCHA_CRITERION,
+    STILL_NEEDED_RULE,
     TARGET,
 )
 from app.services.browser.jev.seen_text import ReadPage
@@ -148,7 +149,7 @@ def build_request(
 ) -> JevEvaluationRequest:
     """Return the shared state plus one operation head and one target head per offered element operation."""
     targets = {op: observation.targets(op) for op in JEV_TARGET_OPERATIONS if op in offered}
-    opened = _already_opened(history, observation.url, pages_read)
+    opened = _already_opened(history, observation, pages_read)
     clicks = targets.get(JevOperation.CLICK)
     if opened and clicks:
         # A row this page already opened leads to a page the run has been on;
@@ -163,7 +164,7 @@ def build_request(
         for op in JevOperation
         if op in offered and (op not in JEV_TARGET_OPERATIONS or targets.get(op))
     }
-    rules: JsonInput = [NEXT_ACTION, HUMAN_RULES, NAVIGATE_RULE]
+    rules: JsonInput = [NEXT_ACTION, HUMAN_RULES, NAVIGATE_RULE, STILL_NEEDED_RULE]
     questions: dict[str, JevChoiceQuestion] = {
         "operation": JevChoiceQuestion(
             instructions={"goal": goal, "rules": rules}, criteria=dict(operations)
@@ -192,16 +193,16 @@ def build_request(
 
 
 def _already_opened(
-    history: list[JevHistoryEntry], url: str, pages_read: Sequence[ReadPage]
+    history: list[JevHistoryEntry], observation: JevObservation, pages_read: Sequence[ReadPage]
 ) -> frozenset[str]:
     """Labels on this page that name something the run has already opened and read.
 
-    Two sources: a click from this page that was followed by steps on another
-    page, and the title of any page already read (a story's row names its
-    article's title). A control clicked again on the same page (a next-page
-    link, a toggle, a submit that did not respond) is left alone.
+    Two sources: a click from here followed by steps on another page, unless a
+    field here was filled since (a form is sent again once changed), and the title
+    of any page already read. A control clicked again on the same page is left alone.
     """
-    here = page_key(url)
+    here = page_key(observation.url)
+    fields = frozenset(e.label for e in observation.elements if _is_field(e))
     opened: set[str] = set()
     dead_clicks: dict[str, int] = {}
     for position, entry in enumerate(history):
@@ -214,12 +215,30 @@ def _already_opened(
             dead_clicks[entry.target_label] = dead_clicks.get(entry.target_label, 0) + 1
             if dead_clicks[entry.target_label] >= _DEAD_CLICKS_BEFORE_WITHHELD:
                 opened.add(entry.target_label)
-        elif any(later.url and page_key(later.url) != here for later in history[position + 1 :]):
+        elif any(
+            later.url and page_key(later.url) != here for later in history[position + 1 :]
+        ) and not _filled_since(history[position + 1 :], here, fields):
             opened.add(entry.target_label)
     for page in pages_read:
         if page_key(page["url"]) != here and len(page["title"]) >= _TITLE_MATCH_MIN_CHARS:
             opened.add(page["title"])
     return frozenset(opened)
+
+
+def _is_field(element: JevElement) -> bool:
+    """Whether the element holds a value a form sends: a text field, a select, a box or a radio."""
+    return element.role in _CHOICE_ROLES or any(
+        op in element.operations for op in (JevOperation.TYPE_TEXT, JevOperation.SELECT)
+    )
+
+
+def _filled_since(later: list[JevHistoryEntry], here: str, fields: frozenset[str]) -> bool:
+    """Whether a later step on this page entered something into one of its fields."""
+    return any(
+        page_key(entry.url) == here
+        and (entry.kind in ("type_text", "select") or entry.target_label in fields)
+        for entry in later
+    )
 
 
 def page_key(url: str | None) -> str:
@@ -237,6 +256,7 @@ def _opens_again(label: str, opened: frozenset[str]) -> bool:
     return any(low in seen.lower() or seen.lower() in low for seen in opened)
 
 
+_CHOICE_ROLES = frozenset({"checkbox", "radio", "switch", "menuitemcheckbox", "menuitemradio"})
 #: Shorter labels ("jobs", "hide") would match inside almost any page title.
 _TITLE_MATCH_MIN_CHARS = 12
 #: Dead clicks on one control on one page before it is no longer offered there.
