@@ -1,0 +1,194 @@
+From b1ea7a8bd4ef2bd8060f6369d7739d39addbc2d1 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Thu, 24 Sep 2026 19:47:30 +0530
+Subject: [PATCH] fix(cdp): DOMSnapshot reports what a form field holds now
+
+DOMSnapshot.captureSnapshot had no inputValue, inputChecked or
+optionSelected column, so a CDP agent reading live form state saw every
+field at its HTML default: text it had typed read as empty, a box it had
+ticked as unticked, and it typed or clicked them again. Chrome reports
+all three.
+
+The snapshot now fills them from the same state the value, checked and
+selected getters read: an input's or textarea's live control value (the
+default value attribute, "on" for a checkbox or radio, or a textarea's
+text when nothing set it), a checkbox or radio's live checked flag, and
+an option's selected attribute, which the selected setter keeps in step.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cdp/src/domains/domsnapshot.rs | 130 ++++++++++++++++++
+ 1 file changed, 130 insertions(+)
+
+diff --git a/crates/obscura-cdp/src/domains/domsnapshot.rs b/crates/obscura-cdp/src/domains/domsnapshot.rs
+index a02409e..3c59b54 100644
+--- a/crates/obscura-cdp/src/domains/domsnapshot.rs
++++ b/crates/obscura-cdp/src/domains/domsnapshot.rs
+@@ -129,6 +129,12 @@ fn build_capture_snapshot(dom: &DomTree, url: &str, title: &str) -> Value {
+     let mut backend_ids: Vec<i64> = Vec::with_capacity(n);
+     let mut attributes: Vec<Value> = Vec::with_capacity(n);
+     let mut clickable: Vec<i64> = Vec::new();
++    // Live form state, as Chrome reports it: what a field holds now, not its
++    // value attribute. DOM agents read these to see what was already typed.
++    let mut input_value_index: Vec<i64> = Vec::new();
++    let mut input_value: Vec<i64> = Vec::new();
++    let mut input_checked: Vec<i64> = Vec::new();
++    let mut option_selected: Vec<i64> = Vec::new();
+ 
+     // Layout arrays are 1:1 with nodes (nodeIndex[i] == i).
+     let mut layout_node_index: Vec<i64> = Vec::with_capacity(n);
+@@ -195,6 +201,19 @@ fn build_capture_snapshot(dom: &DomTree, url: &str, title: &str) -> Value {
+         }
+         attributes.push(json!(attr_idx));
+ 
++        if let Some(value) = live_input_value(dom, nid, &tag, &attrs) {
++            input_value_index.push(i as i64);
++            input_value.push(strings.intern(&value));
++        }
++        if is_checkable(&tag, &attrs)
++            && dom.form_control_checked(nid).unwrap_or_else(|| has_attr(&attrs, "checked"))
++        {
++            input_checked.push(i as i64);
++        }
++        if tag == "option" && has_attr(&attrs, "selected") {
++            option_selected.push(i as i64);
++        }
++
+         let interactive = matches!(
+             tag.as_str(),
+             "a" | "button" | "input" | "select" | "textarea" | "summary" | "details" | "option" | "label"
+@@ -258,6 +277,9 @@ fn build_capture_snapshot(dom: &DomTree, url: &str, title: &str) -> Value {
+                 "backendNodeId": backend_ids,
+                 "attributes": attributes,
+                 "isClickable": { "index": clickable },
++                "inputValue": { "index": input_value_index, "value": input_value },
++                "inputChecked": { "index": input_checked },
++                "optionSelected": { "index": option_selected },
+             },
+             "layout": {
+                 "nodeIndex": layout_node_index,
+@@ -277,6 +299,47 @@ fn build_capture_snapshot(dom: &DomTree, url: &str, title: &str) -> Value {
+     })
+ }
+ 
++fn attr<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
++    attrs.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
++}
++
++fn has_attr(attrs: &[(String, String)], name: &str) -> bool {
++    attr(attrs, name).is_some()
++}
++
++fn input_type(attrs: &[(String, String)]) -> String {
++    attr(attrs, "type").unwrap_or("text").to_ascii_lowercase()
++}
++
++fn is_checkable(tag: &str, attrs: &[(String, String)]) -> bool {
++    tag == "input" && matches!(input_type(attrs).as_str(), "checkbox" | "radio")
++}
++
++/// The value an input or textarea holds now, the one its `value` getter returns:
++/// the live control state once script or typing set it, else the default.
++fn live_input_value(
++    dom: &DomTree,
++    nid: NodeId,
++    tag: &str,
++    attrs: &[(String, String)],
++) -> Option<String> {
++    if tag != "input" && tag != "textarea" {
++        return None;
++    }
++    if let Some(value) = dom.form_control_state(nid).and_then(|control| control.value) {
++        return Some(value);
++    }
++    if tag == "textarea" {
++        return Some(dom.text_content(nid));
++    }
++    Some(match input_type(attrs).as_str() {
++        // A checkbox or radio with no value attribute submits "on".
++        "checkbox" | "radio" => attr(attrs, "value").unwrap_or("on").to_string(),
++        "file" => String::new(),
++        _ => attr(attrs, "value").unwrap_or("").to_string(),
++    })
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+@@ -403,6 +466,73 @@ mod tests {
+         }
+     }
+ 
++    /// Node index in the snapshot of the element whose id attribute is `id`.
++    fn row_with_id(snap: &Value, id: &str) -> i64 {
++        let strings = snap["strings"].as_array().unwrap();
++        let attrs = snap["documents"][0]["nodes"]["attributes"].as_array().unwrap();
++        attrs
++            .iter()
++            .position(|pairs| {
++                pairs.as_array().unwrap().chunks(2).any(|kv| {
++                    strings[kv[0].as_u64().unwrap() as usize] == "id"
++                        && strings[kv[1].as_u64().unwrap() as usize] == id
++                })
++            })
++            .unwrap_or_else(|| panic!("#{id} should be in the snapshot")) as i64
++    }
++
++    #[tokio::test]
++    async fn capture_snapshot_reports_live_form_state() {
++        // DOM agents read what a field holds from inputValue/inputChecked/
++        // optionSelected; without them every typed field read as empty and the
++        // agent typed it again.
++        let mut ctx = CdpContext::new();
++        let session = navigate(
++            &mut ctx,
++            "<input id=t value=orig><input id=p type=password><textarea id=a>x</textarea>\
++             <input id=c type=checkbox><input id=r type=radio checked><input id=u type=checkbox>\
++             <select id=s><option id=o1>One</option><option id=o2 value=2>Two</option></select>",
++        )
++        .await;
++        let typed = ctx.get_session_page_mut(&Some(session.clone())).unwrap().evaluate(
++            "(() => { const e = (id) => document.getElementById(id); \
++             e('t').value = 'Aryan'; e('p').value = 'gaia-test-123'; e('a').value = 'typed'; \
++             e('c').checked = true; e('r').checked = false; e('s').value = '2'; \
++             return e('t').value; })()",
++        );
++        assert_eq!(typed, json!("Aryan"), "the page script ran");
++
++        let snap = handle("captureSnapshot", &json!({}), &mut ctx, &Some(session.clone()))
++            .await
++            .expect("captureSnapshot should succeed");
++        let nodes = &snap["documents"][0]["nodes"];
++        let strings = snap["strings"].as_array().unwrap();
++        let rows = |column: &str| -> Vec<i64> {
++            nodes[column]["index"].as_array().unwrap().iter().map(|v| v.as_i64().unwrap()).collect()
++        };
++        let value_rows = rows("inputValue");
++        let value_of = |id: &str| -> String {
++            let at = value_rows
++                .iter()
++                .position(|&row| row == row_with_id(&snap, id))
++                .unwrap_or_else(|| panic!("#{id} should have an inputValue"));
++            let string = nodes["inputValue"]["value"][at].as_u64().unwrap() as usize;
++            strings[string].as_str().unwrap().to_string()
++        };
++        assert_eq!(value_of("t"), "Aryan");
++        assert_eq!(value_of("p"), "gaia-test-123");
++        assert_eq!(value_of("a"), "typed");
++        assert_eq!(value_of("u"), "on", "an untouched checkbox submits its default value");
++
++        let checked = rows("inputChecked");
++        assert!(checked.contains(&row_with_id(&snap, "c")), "a checkbox ticked by script is checked");
++        assert!(!checked.contains(&row_with_id(&snap, "r")), "a radio unticked by script is not");
++        assert!(!checked.contains(&row_with_id(&snap, "u")));
++
++        let selected = rows("optionSelected");
++        assert_eq!(selected, vec![row_with_id(&snap, "o2")]);
++    }
++
+     #[tokio::test]
+     async fn unknown_domsnapshot_method_is_permissive_noop() {
+         // Probing the domain (e.g. getSnapshot) must not abort with an
+-- 
+2.43.0
+

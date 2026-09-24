@@ -450,6 +450,35 @@ async def test_typing_reaches_the_focused_field_with_trusted_events(
     assert json.loads(await evaluate("JSON.stringify(window.__keys)")) == [["h", True], ["i", True]]
 
 
+@pytest.mark.regression
+async def test_the_dom_snapshot_reports_what_a_field_holds_now(
+    at_form: tuple[Cdp, str, Evaluate],
+) -> None:
+    # app/services/browser/jev/live_values.py reads these columns; without them
+    # every field Jev had filled read as empty and it typed the field again.
+    client, session_id, evaluate = at_form
+    await evaluate(f"document.querySelector('{_TEXT_FIELD}').focus()")
+    await _type(client, session_id, "h", "KeyH", 72)
+    await _type(client, session_id, "i", "KeyI", 73)
+    await evaluate("document.querySelector('input[name=my-check]:not([checked])').click()")
+    field = await _backend_node_id(client, session_id, _TEXT_FIELD)
+    ticked = await _backend_node_id(client, session_id, "#my-check-2")
+
+    snapshot = await client.ok("DOMSnapshot.captureSnapshot", {"computedStyles": []}, session_id)
+    nodes, strings = snapshot["documents"][0]["nodes"], snapshot["strings"]
+    backend_ids = nodes["backendNodeId"]
+    values = {
+        backend_ids[row]: strings[string]
+        for row, string in zip(
+            nodes["inputValue"]["index"], nodes["inputValue"]["value"], strict=True
+        )
+    }
+    checked = {backend_ids[row] for row in nodes["inputChecked"]["index"]}
+
+    assert values[field] == "hi"
+    assert ticked in checked
+
+
 async def test_enter_submits_the_form_the_field_belongs_to(
     at_form: tuple[Cdp, str, Evaluate],
 ) -> None:
