@@ -1,83 +1,29 @@
-"""Per-user feature flags backed by PostHog, with env defaults.
+"""Per-user feature flag evaluation: the user's own choice, then PostHog, then the env default.
 
-env/Infisical values are read once at boot (get_settings is lru_cached), so a
-change needs a redeploy and hits every user at once; PostHog evaluates per
-distinct_id at request time, so targeting and rollouts change from the
-dashboard with no deploy. The settings value stays the default and
-kill-switch: when PostHog is unreachable or unconfigured, evaluation fails
-open to it.
+Flags are declared once, in app/config/feature_flags.py. env/Infisical values
+are read once at boot, so a change there needs a redeploy and hits every user;
+PostHog evaluates per distinct_id at request time, so targeting and rollouts
+change from the dashboard with no deploy. The settings value stays the default
+and kill-switch: when PostHog is unreachable or unconfigured, evaluation fails
+open to it. A user-facing flag also honours the choice the user stored in
+Settings, ahead of the rollout; an internal flag never reads one.
 
-Every call evaluates live, no cache: a dashboard flip applies on the next
-turn and PostHog's $feature_flag_called stays a complete exposure record. The
-single source for flags is this module; call sites never touch PostHog or
-settings.ENABLE_* directly. Experiments are built on these flags in the
-dashboard, not here.
+Every call evaluates live, with no cache of the result: a dashboard flip
+applies on the next turn and PostHog's $feature_flag_called stays a complete
+exposure record. Call sites never touch PostHog or settings.ENABLE_* directly.
 """
 
 import asyncio
 from datetime import UTC, datetime
-from enum import StrEnum
 
 from posthog import Posthog
 
-from app.config.settings import settings
+from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag
 from app.constants.analytics import POSTHOG_PROVIDER_KEY
 from app.core.lazy_loader import providers
+from app.db.repositories.users import user_repository
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from shared.py.wide_events import log
-
-
-class FeatureFlag(StrEnum):
-    """PostHog flag keys GAIA evaluates; member name is the code handle, value the dashboard key."""
-
-    COMMS_OPENUI = "COMMS_OPENUI"
-    CODE_MODE = "CODE_MODE"
-    HIL_LEDGER = "HIL_LEDGER"
-    HIL_JEV_JUDGE = "HIL_JEV_JUDGE"
-    HIL_JEV_REPLY = "HIL_JEV_REPLY"
-
-
-# Human description per flag, kept next to the key so the dashboard setup and
-# the code cannot drift apart.
-FEATURE_FLAG_DESCRIPTIONS: dict[FeatureFlag, str] = {
-    FeatureFlag.COMMS_OPENUI: (
-        "Include the OpenUI component reference in the comms prompt on "
-        "renderable channels; off serves the markdown fallback."
-    ),
-    FeatureFlag.CODE_MODE: (
-        "Bash runs seed the `gaia.execute` client and mint a per-invocation "
-        "token; off runs bash with no GAIA_EXECUTE_* env."
-    ),
-    FeatureFlag.HIL_LEDGER: (
-        "Gated calls register PENDING in the approval ledger and return "
-        "instead of parking the run; off keeps the interrupt barrier."
-    ),
-    FeatureFlag.HIL_JEV_JUDGE: (
-        "Auto mode classifies with the JEV choice judge first, falling back "
-        "to the LLM intent judge on transport failure; off keeps the LLM judge."
-        " On by default (see ENABLE_HIL_JEV_JUDGE)."
-    ),
-    FeatureFlag.HIL_JEV_REPLY: (
-        "A bot user's chat reply to pending approvals is classified by the JEV "
-        "reply classifier first, falling back to the LLM classifier on transport "
-        "failure; off keeps the LLM classifier. On by default (see ENABLE_HIL_JEV_REPLY)."
-    ),
-}
-
-
-def _default(flag: FeatureFlag) -> bool:
-    """Return the env default and kill-switch for the flag, read at call time so tests can override settings."""
-    match flag:
-        case FeatureFlag.COMMS_OPENUI:
-            return bool(settings.ENABLE_COMMS_OPENUI)
-        case FeatureFlag.CODE_MODE:
-            return bool(settings.ENABLE_CODE_MODE)
-        case FeatureFlag.HIL_LEDGER:
-            return bool(settings.ENABLE_HIL_LEDGER)
-        case FeatureFlag.HIL_JEV_JUDGE:
-            return bool(settings.ENABLE_HIL_JEV_JUDGE)
-        case FeatureFlag.HIL_JEV_REPLY:
-            return bool(settings.ENABLE_HIL_JEV_REPLY)
 
 
 def _coerce_result(result: object, default: bool) -> bool:
@@ -112,17 +58,33 @@ def _get_posthog_client() -> Posthog | None:
         return None
 
 
-async def is_enabled(flag: FeatureFlag, user_id: str | None, default: bool | None = None) -> bool:
-    """Evaluate the flag for a user, live on every call, failing open to the default.
+async def _stored_choice(flag: FeatureFlag, user_id: str) -> bool | None:
+    """Return the user's own choice for the flag, or None when they never made one."""
+    user = await user_repository.get(user_id)
+    if user is None or user.feature_flags is None:
+        return None
+    return user.feature_flags.get(flag)
 
-    No user means no evaluation and no I/O. The sync SDK call runs in a worker
-    thread. Successful evaluations emit no event from us (the SDK auto-emits
-    $feature_flag_called); feature_flag:evaluated covers only the fallback paths
-    so those users still count in the denominator.
+
+async def is_enabled(flag: FeatureFlag, user_id: str | None, default: bool | None = None) -> bool:
+    """Evaluate the flag for a user, live on every call: stored choice, then PostHog, then the default.
+
+    No user means no evaluation and no I/O; only a user-facing flag reads the
+    stored choice. PostHog runs in a worker thread and fails open to the default.
+    The SDK auto-emits $feature_flag_called on success; feature_flag:evaluated
+    covers every other path so those users still count in the denominator.
     """
-    fallback = _default(flag) if default is None else default
+    spec = FEATURE_FLAGS[flag]
+    fallback = spec.default() if default is None else default
     if not user_id:
         return fallback
+
+    if spec.user_toggle is not None:
+        choice = await _stored_choice(flag, user_id)
+        if choice is not None:
+            log.set(flags={flag.value: choice})
+            _track_evaluation(user_id, flag, choice, fallback_reason="user_choice")
+            return choice
 
     client = _get_posthog_client()
     if client is None:
