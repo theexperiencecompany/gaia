@@ -1,8 +1,11 @@
 """Tests for the Redis handoff bridge — one-time resolution, ownership, timeout."""
 
 import asyncio
+from collections.abc import AsyncIterator
+import json
 from typing import Any
 
+import fakeredis
 import pytest
 
 from app.constants.browser import (
@@ -17,6 +20,7 @@ from app.schemas.browser import HandoffRecord
 from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import handoff as handoff_mod
 from app.services.browser.exceptions import BrowserHandoffNotOwned, BrowserUnavailableError
+from tests.helpers import captured_wide_event
 
 
 class _FakeRedisCache:
@@ -349,8 +353,9 @@ async def test_persistence_failure_fails_loud(monkeypatch: pytest.MonkeyPatch) -
     """A handoff that was never persisted can never be resolved by the awaiting run — fail loudly instead of stranding both sides in a silent stall."""
     fake = _FailingRedisCache()
     monkeypatch.setattr(handoff_mod, "redis_cache", fake)
-    with pytest.raises(BrowserUnavailableError, match="persist handoff"):
+    with pytest.raises(BrowserUnavailableError) as exc_info:
         await handoff_mod.create_pending_handoff("h9", "user-1", "conv-h9")
+    assert str(exc_info.value) == "Could not persist handoff h9 (storage unavailable)."
 
 
 async def test_resolve_persistence_failure_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -471,3 +476,157 @@ async def test_a_decision_still_being_written_is_not_returned_without_its_note(
     await resolver
     outcome = await waiter
     assert outcome.message == "open the Contact tab"
+
+
+@pytest.fixture
+async def real_redis(monkeypatch) -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
+    """Back the real redis_cache with fakeredis, so records cross the boundary as JSON."""
+    client = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(handoff_mod.redis_cache, "redis", client)
+    yield client
+    await client.flushall()
+
+
+async def test_a_pending_handoff_reads_back_through_redis_as_a_typed_record(real_redis):
+    await handoff_mod.create_pending_handoff("r1", "user-1", "conv-r1", reason="checkout")
+
+    record = await handoff_mod.get_handoff("r1")
+
+    assert isinstance(record, HandoffRecord)
+    assert record.status == HandoffStatus.PENDING
+    assert record.reason == "checkout"
+    assert await handoff_mod.get_conversation_pending_handoff("conv-r1") == "r1"
+
+
+async def test_the_record_another_process_reads_carries_the_decision_and_its_note(real_redis):
+    await handoff_mod.create_pending_handoff("r2", "user-1", "conv-r2")
+
+    await handoff_mod.resolve_handoff("r2", HandoffDecision.CONTINUE, "user-1", "open Contact")
+
+    stored = json.loads(await real_redis.get(f"{BROWSER_HANDOFF_KEY_PREFIX}r2"))
+    assert stored["status"] == HandoffStatus.COMPLETED.value
+    assert stored["message"] == "open Contact"
+
+
+async def test_the_settle_marker_expires_with_the_handoff(real_redis):
+    await handoff_mod.create_pending_handoff("r3", "user-1", "conv-r3")
+
+    await handoff_mod.resolve_handoff("r3", HandoffDecision.CANCEL, "user-1")
+
+    ttl = await real_redis.ttl(handoff_mod._settled_key("r3"))
+    assert 0 < ttl <= HANDOFF_KEY_TTL_SECONDS
+
+
+async def test_a_decision_whose_record_rewrite_failed_still_counts_as_that_decision(
+    fake_cache, monkeypatch
+):
+    """The resolver claimed the marker and then lost the record write: the marker alone must say what was decided."""
+    await handoff_mod.create_pending_handoff("h30", "user-1", "conv-h30")
+
+    async def no_more_writes(key, value, ttl=None, model=None):
+        return False
+
+    monkeypatch.setattr(fake_cache, "set", no_more_writes)
+    with pytest.raises(BrowserUnavailableError):
+        await handoff_mod.resolve_handoff("h30", HandoffDecision.CANCEL, "user-1")
+
+    record = await handoff_mod.get_handoff("h30")
+    assert record is not None
+    assert record.status == HandoffStatus.CANCELLED
+
+
+async def test_a_decision_on_an_unknown_handoff_is_a_warning_naming_it(fake_redis):
+    async with captured_wide_event() as event:
+        await handoff_mod.resolve_handoff("gone", HandoffDecision.CONTINUE, "user-1")
+
+    [warning] = event["warnings"]
+    assert "Handoff decision dropped" in warning["msg"]
+    assert warning["handoff_id"] == "gone"
+
+
+async def test_a_continue_sent_with_no_note_carries_no_message(fake_redis):
+    await handoff_mod.create_pending_handoff("h31", "user-1", "conv-h31")
+
+    await handoff_mod.resolve_handoff("h31", HandoffDecision.CONTINUE, "user-1")
+    outcome = await handoff_mod.await_handoff("h31", timeout_seconds=5)
+
+    assert outcome.status == HandoffStatus.COMPLETED
+    assert outcome.message is None
+
+
+async def test_a_decision_made_while_the_run_waits_ends_the_wait_long_before_the_deadline(
+    fake_redis, monkeypatch
+):
+    monkeypatch.setattr(handoff_mod, "HANDOFF_POLL_INTERVAL_SECONDS", 0.001)
+    await handoff_mod.create_pending_handoff("h32", "user-1", "conv-h32")
+    waiter = asyncio.create_task(handoff_mod.await_handoff("h32", timeout_seconds=3600))
+    await asyncio.sleep(0.01)
+
+    await handoff_mod.resolve_handoff("h32", HandoffDecision.CONTINUE, "user-1", "carry on")
+
+    # The hour-long deadline is never reached: only the poll can end this wait.
+    outcome = await asyncio.wait_for(waiter, timeout=5)
+    assert outcome.status == HandoffStatus.COMPLETED
+    assert outcome.message == "carry on"
+
+
+async def test_a_decision_already_made_when_no_wait_time_is_left_still_carries_its_note(
+    fake_redis,
+):
+    await handoff_mod.create_pending_handoff("h33", "user-1", "conv-h33")
+    await handoff_mod.resolve_handoff("h33", HandoffDecision.CONTINUE, "user-1", "done here")
+
+    outcome = await handoff_mod.await_handoff("h33", timeout_seconds=0)
+
+    assert outcome.status == HandoffStatus.COMPLETED
+    assert outcome.message == "done here"
+
+
+async def test_waiting_on_a_handoff_that_no_longer_exists_times_out(fake_redis):
+    outcome = await handoff_mod.await_handoff("expired", timeout_seconds=0)
+
+    assert outcome.status == HandoffStatus.TIMEOUT
+    assert outcome.message is None
+
+
+async def test_a_timeout_is_a_warning_naming_the_handoff_and_how_long_it_waited(fake_redis):
+    await handoff_mod.create_pending_handoff("h34", "user-1", "conv-h34")
+
+    async with captured_wide_event() as event:
+        await handoff_mod.await_handoff("h34", timeout_seconds=0)
+
+    [warning] = event["warnings"]
+    assert "timed out" in warning["msg"]
+    assert warning["handoff_id"] == "h34"
+    assert warning["timeout_seconds"] == 0
+
+
+async def test_a_deadline_decision_whose_record_expired_before_it_was_read_is_a_timeout(
+    fake_redis, monkeypatch
+):
+    """A decision landed on the deadline, then its record expired: nothing is left to report but the timeout."""
+    await handoff_mod.create_pending_handoff("h35", "user-1", "conv-h35")
+    original_get = handoff_mod.get_handoff
+    reads = 0
+    resolving = False
+
+    async def decided_then_expired(handoff_id: str):
+        nonlocal reads, resolving
+        if resolving:  # the resolver's own reads see the live record
+            return await original_get(handoff_id)
+        reads += 1
+        if reads == 1:  # the deadline read: still pending, and the user decides now
+            record = await original_get(handoff_id)
+            resolving = True
+            await handoff_mod.resolve_handoff(handoff_id, HandoffDecision.CONTINUE, "user-1")
+            resolving = False
+            return record
+        if reads == 2:  # the lost settle race reads the winning decision
+            return await original_get(handoff_id)
+        return None  # by the time the outcome is read, the record has expired
+
+    monkeypatch.setattr(handoff_mod, "get_handoff", decided_then_expired)
+
+    outcome = await handoff_mod.await_handoff("h35", timeout_seconds=0)
+
+    assert outcome.status == HandoffStatus.TIMEOUT

@@ -272,7 +272,6 @@ def _build_bot_delivery(request: BrowserJobRequest) -> BotProgressDelivery | Non
     return BotProgressDelivery(
         platform=request.conversation_source,
         user_id=request.user_id,
-        conversation_id=request.conversation_id,
         stream_screenshots=settings.BROWSER_USE_STREAM_SCREENSHOTS,
     )
 

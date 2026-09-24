@@ -21,6 +21,8 @@ from app.services.browser.bot_delivery import (
     _is_blank_tab,
     _step_caption,
 )
+from app.services.outbound_delivery import OutboundResult
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -30,7 +32,6 @@ def delivery():
     return BotProgressDelivery(
         platform=ConversationSource.TELEGRAM,
         user_id="user-1",
-        conversation_id="conv-1",
         stream_screenshots=True,
     )
 
@@ -40,7 +41,6 @@ def delivery_no_screenshots():
     return BotProgressDelivery(
         platform=ConversationSource.TELEGRAM,
         user_id="user-1",
-        conversation_id="conv-1",
         stream_screenshots=False,
     )
 
@@ -666,3 +666,71 @@ async def test_a_run_of_identical_steps_reaches_the_user_once(delivery, monkeypa
         "Step 3 · Reading the last row",
         "Step 4 · Scrolling",
     ]
+
+
+async def test_a_blank_tab_with_no_goal_is_named_by_its_action(delivery, monkeypatch) -> None:
+    sent: list[str] = []
+
+    async def _message(platform, user_id, blocks) -> OutboundResult:
+        sent.extend(blocks)
+        return OutboundResult.PUBLISHED
+
+    monkeypatch.setattr(bot_delivery_mod, "publish_outbound_message", _message)
+
+    await delivery.step(
+        BrowserStepSnapshot(
+            index=1,
+            goal="",
+            url="about:blank",
+            actions=[BrowserAction(name="navigate", inputs={"url": "https://www.example.com/a"})],
+        )
+    )
+
+    assert sent == ["Step 1 · Opening example.com"]
+
+
+async def test_a_blank_tab_opened_mid_run_continues_the_numbering(delivery, monkeypatch) -> None:
+    sent: list[str] = []
+
+    async def _message(platform, user_id, blocks) -> OutboundResult:
+        sent.extend(blocks)
+        return OutboundResult.PUBLISHED
+
+    monkeypatch.setattr(bot_delivery_mod, "publish_outbound_message", _message)
+    monkeypatch.setattr(bot_delivery_mod, "publish_outbound_photo", AsyncMock(return_value=False))
+
+    await delivery.step(BrowserStepSnapshot(index=1, goal="Searching", url="https://example.com"))
+    await delivery.step(BrowserStepSnapshot(index=2, goal="Opening a new tab", url="about:blank"))
+
+    assert sent == ["Step 1 · Searching", "Step 2 · Opening a new tab"]
+
+
+@pytest.mark.parametrize("outcome", [OutboundResult.SKIPPED, OutboundResult.FAILED])
+async def test_a_message_the_bot_never_got_is_a_warning_naming_who_missed_it(
+    delivery, monkeypatch, outcome
+) -> None:
+    monkeypatch.setattr(
+        bot_delivery_mod, "publish_outbound_message", AsyncMock(return_value=outcome)
+    )
+
+    async with captured_wide_event() as event:
+        await delivery.note("Step 1 · Searching")
+
+    [warning] = event["warnings"]
+    assert "not sent to the bot" in warning["msg"]
+    assert warning["outbound_result"] is outcome
+    assert warning["platform"] == ConversationSource.TELEGRAM
+    assert warning["user_id"] == "user-1"
+
+
+async def test_a_delivered_message_raises_no_warning(delivery, monkeypatch) -> None:
+    monkeypatch.setattr(
+        bot_delivery_mod,
+        "publish_outbound_message",
+        AsyncMock(return_value=OutboundResult.PUBLISHED),
+    )
+
+    async with captured_wide_event() as event:
+        await delivery.note("Step 1 · Searching")
+
+    assert "warnings" not in event

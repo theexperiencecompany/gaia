@@ -189,3 +189,85 @@ def test_ttl_seconds_negative_once_past_expiry():
     }
     ttl = tt.takeover_token_ttl_seconds(past_claims)
     assert ttl == pytest.approx(-1000, abs=2)
+
+
+def test_a_token_is_signed_with_the_configured_algorithm_not_the_library_default(monkeypatch):
+    monkeypatch.setattr(tt, "JWT_ALGORITHM", "HS512")
+
+    token = tt.create_takeover_token("sess-1", "user-1")
+
+    assert jwt.get_unverified_header(token)["alg"] == "HS512"
+    assert tt.verify_takeover_token(token)["session_id"] == "sess-1"
+
+
+def test_a_token_signed_with_the_right_secret_under_another_algorithm_is_rejected():
+    # The allow-list is what stops a token minted under any HMAC variant the
+    # secret can sign from passing: only the configured algorithm verifies.
+    other_alg = jwt.encode(
+        {
+            "sub": "user-1",
+            "session_id": "sess-1",
+            "role": "browser_takeover",
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
+        },
+        _SECRET,
+        algorithm="HS512",
+    )
+
+    with pytest.raises(JWTError, match="^Takeover token verification failed: "):
+        tt.verify_takeover_token(other_alg)
+
+
+def test_a_bad_signature_is_reported_as_a_takeover_verification_failure():
+    token = tt.create_takeover_token("sess-1", "user-1")
+    tampered = token[:-2] + ("aa" if token[-2:] != "aa" else "bb")
+
+    with pytest.raises(JWTError, match="^Takeover token verification failed: "):
+        tt.verify_takeover_token(tampered)
+
+
+def test_a_claim_of_the_wrong_type_is_rejected_as_a_missing_claim():
+    # Strict validation: a numeric session_id is not a session id, even if it
+    # would coerce to one.
+    forged = jwt.encode(
+        {
+            "sub": "user-1",
+            "session_id": 42,
+            "role": "browser_takeover",
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
+        },
+        _SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+
+    with pytest.raises(JWTError) as exc:
+        tt.verify_takeover_token(forged)
+    assert str(exc.value) == "Takeover token missing session_id, subject, or expiry"
+
+
+def test_a_wrong_role_is_rejected_with_exactly_the_role_error():
+    forged = jwt.encode(
+        {
+            "sub": "user-1",
+            "session_id": "sess-1",
+            "role": "bot",
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
+        },
+        _SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+
+    with pytest.raises(JWTError) as exc:
+        tt.verify_takeover_token(forged)
+    assert str(exc.value) == "Invalid token role"
+
+
+def test_a_missing_secret_tells_the_operator_how_to_generate_one(monkeypatch):
+    monkeypatch.setattr(settings, "BROWSER_TAKEOVER_TOKEN_SECRET", "", raising=False)
+
+    with pytest.raises(ValueError) as exc:
+        tt.create_takeover_token("sess-1", "user-1")
+    assert str(exc.value) == (
+        "BROWSER_TAKEOVER_TOKEN_SECRET is required for browser takeover token signing. "
+        "Generate with: openssl rand -hex 32"
+    )
