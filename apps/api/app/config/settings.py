@@ -206,18 +206,10 @@ class CommonSettings(BaseAppSettings):
     # --- Browser-Use (autonomous browser automation) ---
     # Always on in every environment; an unreachable host fails loudly at task time.
 
-    # Strips thinking/evaluation_previous_goal/next_goal/plan from step output.
-    # On by default: measured ~26% fewer prompt tokens, per-step cost roughly
-    # halves. NOT measured on recovery-heavy tasks; turn off if those regress.
-
     # Dev-only: suffixes every ChromaDB collection name so parallel worktrees,
     # which share one local Chroma, stop deleting each other's indexed tools.
     # Empty in production (dedicated Chroma); set per worktree by `mise run wt:env`.
     CHROMA_COLLECTION_NAMESPACE: str = ""
-    # Flash mode strips thinking/evaluation_previous_goal/next_goal/plan from each step's
-    # output schema. Measured 2026-08-27 (glm-5.3-flash, 7-field form): same accuracy, ~26%
-    # fewer prompt tokens (27k vs 36k median). Not measured on recovery-heavy tasks.
-    BROWSER_USE_FLASH_MODE: bool = True
     # Cloudflare R2, the fast edge store for browser step screenshots; Cloudinary
     # stays the durable store for arbitrary user files. Optional: any unset field
     # falls back to inline data URLs. Use a custom domain in prod, r2.dev is rate-limited.
@@ -242,8 +234,10 @@ class CommonSettings(BaseAppSettings):
     # reasoning (measured 2026-09-22); forcing reasoning off made it return null.
     BROWSER_USE_JEV_TEXT_MODEL: str = "deepseek/deepseek-v4-flash-0731"
 
-    # Hard limits — everything is bounded so no browser task can run away.
-    BROWSER_USE_MAX_STEPS: int = 40
+    # Hard limits — everything is bounded so no browser task can run away. The
+    # agent's step count is only Browser-Use's required backstop: a run ends on
+    # the agent's finish, no progress, or its time and cost budgets.
+    BROWSER_USE_MAX_STEPS: int = 100
     BROWSER_USE_MAX_ACTIONS_PER_STEP: int = 5
     BROWSER_USE_TASK_TIMEOUT_SECONDS: int = 600
     # How long a paused run waits for the human to finish a handoff step,

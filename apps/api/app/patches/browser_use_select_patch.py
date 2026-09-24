@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 from browser_use.browser.watchdogs.default_action_watchdog import DefaultActionWatchdog
 
 from app.constants.log_tags import LogTag
+from app.patches.obscura_sessions import on_obscura
 from shared.py.wide_events import log
 
 if TYPE_CHECKING:
@@ -87,7 +88,7 @@ async def on_SelectDropdownOptionEvent(
     node = event.node
     # Browser-Use's own handler also drives role=menu/listbox/combobox widgets,
     # which have no options to assign; only the <select> path is broken here.
-    if not _is_native_select(node):
+    if not _is_native_select(node) or not on_obscura(self.browser_session):
         return await _original_on_select(self, event)
 
     cdp_session = await self.browser_session.cdp_client_for_node(node)

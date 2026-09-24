@@ -38,6 +38,7 @@ from app.services.browser.agent_guidance import (
     guidance_message,
 )
 from app.services.browser.handoff import resolve_handoff
+from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.job_relay import relay_job_events
 from app.services.browser.job_runner import agent_result_message
 from app.services.browser.jobs import (
@@ -173,9 +174,10 @@ def _the_one_page_in(task: str) -> str | None:
 
 
 def _job_request(
-    params: _RunParams, job_id: str, task: str, start_url: str | None
+    params: _RunParams, job_id: str, task: str, start_url: str | None, secrets: dict[str, str]
 ) -> BrowserJobRequest:
     return BrowserJobRequest(
+        secrets=secrets,
         job_id=job_id,
         user_id=params.user_id,
         conversation_id=params.conversation_id,
@@ -195,6 +197,12 @@ async def browser_task(
     config: RunnableConfig,
     task: Annotated[str, "Clear, self-contained description of what to do in the browser."],
     start_url: Annotated[str | None, "Optional URL to open first."] = None,
+    secrets: Annotated[
+        dict[str, str] | None,
+        "Credentials the user gave for this task (passwords, usernames of accounts), by a short "
+        "name, e.g. {\"password\": \"...\"}. In the task write <secret>name</secret> wherever one "
+        "is used, never the value.",
+    ] = None,
 ) -> str:
     """Start a browser run as a background job and return immediately.
 
@@ -224,8 +232,11 @@ async def browser_task(
         log.set_ns("browser", refused="slot_held", slot_holder=holder)
         return _SLOT_HELD.format(holder=holder)
 
-    task = _with_the_users_words(task, params.user_request)
-    request = _job_request(params, job_id, task, start_url)
+    given = {name: value for name, value in (secrets or {}).items() if value}
+    # The user's own words carry the values verbatim; only the page may see them.
+    masked = RunSecrets(given, sites=[])
+    task = masked.mask(_with_the_users_words(masked.mask(task), params.user_request))
+    request = _job_request(params, job_id, task, start_url, given)
     await put_job_state(BrowserJobState(job_id=job_id, status=BrowserJobStatus.QUEUED, task=task))
     if not await _enqueue(request):
         await release_conversation_slot(params.conversation_id, job_id)

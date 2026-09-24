@@ -14,6 +14,7 @@ proceed autonomously (e.g. a configured agent card), or abort.
 """
 
 from enum import Enum, StrEnum
+from typing import Literal
 
 # ---------------------------------------------------------------------------
 # Tool identity
@@ -245,7 +246,7 @@ BROWSER_AGENT_GUIDANCE_CAPTION = "Working out another way"
 # The pending request a joined executor reads, keyed by job. Not a card frame:
 # the relay would put it on the user's stream, and a replayed feed would fire it twice.
 BROWSER_JOB_GUIDANCE_PREFIX = "browser:job:guidance:"
-# Tighter than JEV_PAGE_TEXT_MAX_CHARS: this rides inside one executor tool result.
+# Tighter than a Jev observation's text: this rides inside one executor tool result.
 BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS = 1500
 BROWSER_GUIDANCE_MAX_ELEMENTS = 40
 BROWSER_GUIDANCE_RECENT_ACTIONS = 6
@@ -270,22 +271,25 @@ BROWSER_GUIDANCE_ANSWER = (
 
 # Two failed steps running end the run with its reason, not Browser-Use's narrowing to done.
 BROWSER_AGENT_MAX_FAILURES = 2
+# The browser agent's reasoning effort on any lane: it steers and signs off, Jev does the stepping.
+BROWSER_AGENT_REASONING_EFFORT: Literal["low"] = "low"
 # A decision can wait out a layout pass, a part judgement and Jev; Browser-Use's 75s cut it off.
 BROWSER_AGENT_LLM_TIMEOUT_SECONDS = 180
 
 # Appended to every browser task so the agent uses the takeover action instead
 # of doing sensitive steps itself.
 BROWSER_TAKEOVER_PREAMBLE = (
-    "\n\nIMPORTANT: For any payment, login/password/OTP/2FA, or irreversible or "
-    "legally-binding confirmation, do NOT do it yourself. Call the "
-    f"`{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` action first so the user completes that step in the "
-    "live browser, then continue toward the goal.\n"
+    "\n\nIMPORTANT: For a payment, a login whose credentials this task does not give as "
+    "<secret>name</secret> placeholders, an OTP/2FA code, or an irreversible or "
+    "legally-binding confirmation the task did not ask for, do NOT do it yourself. Call the "
+    f"`{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` action so the user completes that step in the "
+    "live browser, then continue toward the goal. A login whose credentials the task gives "
+    "is done by the run itself, never handed over.\n"
     "If you encounter a CAPTCHA, reCAPTCHA, hCaptcha, or an 'I'm not a robot' / "
     "image-grid challenge, do NOT attempt to solve it yourself. Call the "
     f"`{BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP}` action immediately on the FIRST challenge so the user "
     "solves it in the live browser, then continue. Never keep clicking challenge tiles.\n"
-    # The human's part of a login should be only the secret part. Filling the
-    # username yourself first means they open the live view to just a password.
+    # The human's part of a login should be only the secret part.
     "Before you hand off a login, first fill every NON-secret field you can "
     "yourself: username, email, the account identifier, so the takeover leaves "
     "the user only the secret step (password, OTP, 2FA). Then hand off.\n"
@@ -297,15 +301,43 @@ BROWSER_TAKEOVER_PREAMBLE = (
     "plausible-looking placeholder. If a field you cannot leave empty has no value "
     f"in the task, call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` and say which field is missing. "
     "The one exception is when the task itself says the run is a test or that dummy "
-    "values are fine. Reporting a field as filled with a value you invented is a "
-    "failure, not a completion.\n"
-    # Measured on an Airtable form: three custom React dropdowns cost the agent
-    # four steps each by clicking them open and picking by eye, while the native
-    # actions read the option list and select in one step — it called them once.
-    "For any dropdown, select, combobox or multiple-choice control, call "
-    "`dropdown_options` to read the choices and `select_dropdown` to pick one. Do "
-    "not open it by clicking and choose by sight. That takes several steps and "
-    "mis-selects."
+    "values are fine."
+)
+
+# The agent's role around Jev, appended to Browser-Use's system prompt.
+BROWSER_AGENT_ROLE = (
+    "You supervise Jev, a fast page operator exposed as the `jev` action. Your step 0 "
+    "already ran Jev on the whole task; its report (actions, lines captured verbatim, "
+    "where it stopped and why) is in your history. You are the only one who finishes the "
+    "task and the only one who writes the answer.\n"
+    "Each step, choose one:\n"
+    "1. The task is complete: call `done` with the answer. Report only what the current "
+    "page or Jev's verbatim captures show; copy titles, messages, numbers and URLs exactly. "
+    "Say plainly what was not done or could not be found. Set success=false when the task "
+    "was not achieved.\n"
+    "2. On-page work remains that Jev can do (clicking, typing, choosing, navigating through "
+    "pages): call `jev` with a sharper, self-contained goal for what remains, quoting every "
+    "value to type. Never repeat a goal Jev made no progress on.\n"
+    "3. Jev cannot do it (reading content Jev does not capture, counting, a control Jev "
+    "keeps missing, a new tab, a frame): act yourself with your own actions. Count with "
+    "`find_elements` (a CSS selector returns every match on the page), never by eye. Read "
+    "long pages with `extract` or `search_page`.\n"
+    "Logins without given credentials, payments, OTPs and CAPTCHAs go to the user through "
+    "the handoff actions. Messages the user sends mid-task arrive as follow-up requests: "
+    "they change the task from then on."
+)
+
+# Said to the agent when it asks for guidance with no assistant joined to answer.
+BROWSER_NO_GUIDANCE_AVAILABLE = (
+    "No assistant is available to answer. Decide yourself: act, re-delegate to jev, or finish "
+    "with an honest account of what could not be done."
+)
+
+# The same action list on the same page for this many agent steps in a row ends the run.
+BROWSER_AGENT_NO_PROGRESS_STEPS = 3
+BROWSER_RUN_NO_PROGRESS_SUMMARY = (
+    "The browser kept repeating the same step on the same page without getting anywhere, "
+    "so it stopped. Nothing after that point was done."
 )
 
 # Desktop viewport (the ~800x600 CDP default collapses sites to mobile layout). The live
@@ -316,35 +348,78 @@ BROWSER_VIEWPORT_HEIGHT = 800
 
 
 # --- Jev decision policy ---
-# The operation vocabulary browser-use/jev-ultrafast offers Jev, each mapping
-# onto one Browser-Use action, plus the two human-takeover controls registered here.
 class JevOperation(StrEnum):
-    """One Jev choice per step; the element-bound ones also carry a target index."""
+    """One Jev choice per step; CLICK, TYPE_TEXT and SELECT also carry an observed target."""
 
     CLICK = "CLICK"
     TYPE_TEXT = "TYPE_TEXT"
     SELECT = "SELECT"
-    SCROLL_UP = "SCROLL_UP"
+    PRESS_ENTER = "PRESS_ENTER"
     SCROLL_DOWN = "SCROLL_DOWN"
+    SCROLL_UP = "SCROLL_UP"
     WAIT = "WAIT"
     NAVIGATE = "NAVIGATE"
     GO_BACK = "GO_BACK"
-    REQUEST_HUMAN = "REQUEST_HUMAN"
-    SOLVE_CAPTCHA = "SOLVE_CAPTCHA"
     DONE = "DONE"
     BLOCKED = "BLOCKED"
 
 
-# Operations that need an observed element; each gets its own speculative
-# target question in the same Jev request (see services/browser/jev/policy.py).
-JEV_TARGET_OPERATIONS = (JevOperation.CLICK, JevOperation.TYPE_TEXT, JevOperation.SELECT)
+class JevStop(StrEnum):
+    """Why a Jev burst handed control back to the agent."""
+
+    DONE = "done"
+    BLOCKED = "blocked"
+    NEEDS_INPUT = "needs_input"
+    NO_PROGRESS = "no_progress"
+    CYCLE = "cycle"
+    MAX_ACTIONS = "max_actions"
+    COVERED = "covered"
+    STALE = "stale"
+    CAPTCHA = "captcha"
+    LEFT_SITE = "left_site"
+    USER_MESSAGE = "user_message"
+    STOPPED = "stopped"
+    GATEWAY = "gateway"
 
 
-class JevNoteSource(StrEnum):
-    """Who wrote the instruction attached to a step: the user, or the agent that planned the task."""
-
-    USER = "user"
-    AGENT = "agent"
+#: Controls offered to Jev per request, in DOM order within the viewport. Vercel's
+#: gateway 503s from ~130 elements; OpenRouter answered 150 in ~350 ms.
+JEV_MAX_ELEMENTS = 120
+JEV_GATEWAY_TIMEOUT_SECONDS = 8.0
+JEV_GATEWAY_MAX_ATTEMPTS = 3
+#: After a 402 (out of credit) the failover client skips that gateway this long.
+JEV_OUT_OF_CREDIT_SECONDS = 300.0
+#: Visible text lines offered to the capture head, and the probability that says
+#: the page shows something the goal asks to report.
+JEV_ANSWER_LINES = 120
+JEV_CAPTURE_THRESHOLD = 0.5
+#: A line other than the chosen one is kept too when it holds this much of the mass.
+JEV_CAPTURE_EXTRA_LINE = 0.25
+JEV_MAX_CAPTURES = 60
+JEV_RECENT_ACTIONS = 10
+JEV_VISITED_PAGES = 12
+#: One burst's bounds, from jev-ultrafast: actions, unchanged non-wait actions in a
+#: row, and consecutive stale or covered targets before the agent takes over.
+JEV_BURST_MAX_ACTIONS = 25
+JEV_UNCHANGED_LIMIT = 3
+JEV_STALE_LIMIT = 3
+JEV_COVERED_LIMIT = 2
+#: Snapshot retries while a navigation replaces the document.
+JEV_OBSERVE_ATTEMPTS = 50
+JEV_OBSERVE_RETRY_SECONDS = 0.1
+#: An explicit WAIT; the next observation also waits a frame or two after any input.
+JEV_WAIT_SECONDS = 1.0
+JEV_SCREENSHOT_QUALITY = 70
+#: The tiny model writes a value only when no literal from the goal fits; it reads this much page text.
+JEV_TEXT_TIMEOUT_SECONDS = 30.0
+JEV_PAGE_TEXT_MAX_CHARS = 6000
+JEV_TEXT_VALUE_MAX_CHARS = 2000
+# Stands in for a value typed into a password field wherever the run's text reaches a person.
+JEV_SECRET_MASK = "[hidden]"  # nosec B105 -- the placeholder shown in place of a typed password, not a credential
+# Probability mass across a choice question must sum to ~1; the gateway rounds.
+JEV_PROBABILITY_SUM_TOLERANCE = 0.02
+#: Frames whose source names a CAPTCHA provider; one visible ends the burst for the CAPTCHA handoff.
+JEV_CAPTCHA_FRAME_MARKERS = ("recaptcha", "hcaptcha", "turnstile", "arkoselabs", "funcaptcha")
 
 
 # A step that shows nothing for this long gets one line saying so. The Berlin
@@ -389,54 +464,6 @@ BROWSER_HANDOFF_CARD_DECISION = "[From the browser handoff card] {decision}"
 # invented label twice and the browser skipped the step both times.
 BROWSER_USER_WORDS_MAX_CHARS = 1000
 
-# Jev sees the viewport only; this bounds one screen. Measured on Wikipedia:
-# 200 rows is 64,483 bytes, the gateway 400s max_tokens_exceeded from 86,133
-# bytes up, and refuses a question with over 255 choices.
-JEV_MAX_ELEMENTS = 100
-
-JEV_GATEWAY_TIMEOUT_SECONDS = 8.0
-# One writer call's budget, and when an identical hedge request is sent if the
-# first has not answered (first answer wins). Measured 2026-09-23: p50 3 s,
-# p90 17 s, max 59 s, the slow tail from one upstream provider.
-JEV_TEXT_TIMEOUT_SECONDS = 30.0
-JEV_TEXT_HEDGE_SECONDS = 8.0
-JEV_CLOSING_ANSWER_HEDGE_SECONDS = 30.0
-# The closing answer carries every page read and action of the run, so it gets
-# a longer budget and a second attempt: at 60 s a 13-minute research task once
-# ended without one on a slow link.
-JEV_CLOSING_ANSWER_TIMEOUT_SECONDS = 150.0
-JEV_GATEWAY_MAX_ATTEMPTS = 3
-
-# Observation budget: visible page text sent as Jev state, and how much of the
-# run's own action history rides along as context.
-JEV_PAGE_TEXT_MAX_CHARS = 6000
-# What the closing answer may read back across every page the run opened, on
-# top of the current screen. Bounded because the whole of it rides on one
-# writer call; 18000 made that call the slowest in the run.
-JEV_SEEN_TEXT_MAX_CHARS = 8000
-JEV_ELEMENT_LABEL_MAX_CHARS = 120
-JEV_RECENT_ACTIONS = 10
-# Pages already opened and read that Jev is shown, so a list task moves to its next item.
-JEV_PAGES_READ = 12
-# A compound task is split into at most this many ordered parts before the first decision.
-JEV_PLAN_MAX_STEPS = 6
-JEV_TEXT_HELPER_RECENT_ACTIONS = 6
-# The closing answer sees the run's actions, so it reports only what was actually done.
-JEV_CLOSING_ANSWER_ACTIONS = 60
-JEV_TEXT_VALUE_MAX_CHARS = 2000
-# Stands in for a value typed into a password field wherever the run's text reaches a person.
-JEV_SECRET_MASK = "[hidden]"  # nosec B105 -- the placeholder shown in place of a typed password, not a credential
-# The closing answer covers every part of a task; a typed value's cap is far too small for it.
-JEV_SUMMARY_MAX_CHARS = 6000
-# Probability mass across a choice question must sum to ~1; the gateway rounds.
-JEV_PROBABILITY_SUM_TOLERANCE = 0.02
-
-# How long each WAIT in a row on one page waits. Browser-Use sleeps one second
-# less than asked, so a wait of 1 slept nothing and three of them declared a page
-# done 4 s after the click that started its 5 s loader.
-JEV_WAIT_SECONDS = (3, 6, 10)
-
-
 # ---------------------------------------------------------------------------
 # Background browser job
 # ---------------------------------------------------------------------------
@@ -474,6 +501,8 @@ BROWSER_JOB_JOINER_REFRESH_SECONDS = 5
 # Set by cancel_executor for a job whose turn has already ended, when the
 # stream's cancel signal is gone. OR-ed with stream_manager.is_cancelled.
 BROWSER_JOB_CANCEL_PREFIX = "browser:job:cancel:"
+# What the user said while a job runs, oldest first: the run reads it between steps.
+BROWSER_JOB_INBOX_PREFIX = "browser:job:inbox:"
 
 BROWSER_JOB_POLL_INTERVAL_SECONDS = 0.5
 

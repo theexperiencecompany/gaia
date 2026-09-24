@@ -12,11 +12,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from time import perf_counter
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from app.constants.browser import (
     BROWSER_AGENT_GUIDANCE_MAX,
@@ -50,15 +49,17 @@ from app.schemas.browser import (
 from app.services.browser.agent_run import BrowserAgentRun
 from app.services.browser.engine_watchdog import run_watched
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
-from app.services.browser.jev.chat_model import JevChatModel
+from app.services.browser.jev.secrets import RunSecrets
+from app.services.browser.ledger import ModelCall, RunLedger
 from app.services.browser.replay import create_replay_link
 from app.services.browser.run_contract import (
     ActionResultsFn,
     BrowserRunConfig,
+    FlagFn,
     RunHooks,
     RunOutcome,
-    RunUsage,
     StepFrame,
+    TakeMessagesFn,
 )
 from app.services.browser.screenshots import publish_step_screenshot
 from app.services.browser.session import (
@@ -67,12 +68,10 @@ from app.services.browser.session import (
     engine_failure,
     hand_over_state,
 )
+from app.services.cost_budget import get_budget_stop_reason
 from app.services.llm_metering import LLMCallContext, TokenUsage, record_llm_call
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
-
-if TYPE_CHECKING:
-    from browser_use.llm.base import BaseChatModel
 
 # How often the stall watcher looks; a fraction of the note delay, not a knob.
 _STALL_POLL_SECONDS = 1.0
@@ -96,20 +95,15 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class _FallbackRoute:
-    """What moving a run to the fallback engine takes: the Jev run to resume, and the host to open."""
-
-    jev: JevChatModel
-    open_session: OpenFallbackSessionFn
-
-
-@dataclass(frozen=True)
 class BrowserRunnerCallbacks:
     """The runner's injected seams — how it streams progress, pauses for the human, checks cancellation, and mirrors per-action results into the thread."""
 
     emit: EmitFn
     request_handoff: RequestHandoffFn
     is_cancelled: IsCancelledFn
+    #: The user's mid-task messages: whether any wait, and taking them.
+    user_waiting: FlagFn
+    take_user_messages: TakeMessagesFn
     action_results: ActionResultsFn | None = None
     #: Whether an agent is still joined on this run, one process away, and how to
     #: ask it. Absent on a run nothing can reach back to, which then ends blocked.
@@ -118,8 +112,8 @@ class BrowserRunnerCallbacks:
     #: One plain line to the user when a step has shown nothing for a while.
     note: NoteFn | None = None
     #: Opens a fallback-engine session at a url (none when no page was read),
-    #: seeded with the primary's live state when it could give it. Absent with
-    #: no fallback host: a blocked or engine-failed run then just ends failed.
+    #: seeded with the primary's live state when it could give it. Absent when
+    #: the run has no fallback engine: an engine-failed run then just ends failed.
     open_fallback_session: OpenFallbackSessionFn | None = None
 
 
@@ -130,14 +124,15 @@ class BrowserTaskRunner:
         self,
         *,
         session: BrowserHostSession,
-        llm: BaseChatModel | None,
         callbacks: BrowserRunnerCallbacks,
         config: BrowserRunConfig,
+        secrets: RunSecrets,
         user_id: str | None = None,
         root_request_id: str | None = None,
     ) -> None:
         self._session = session
-        self._llm = llm
+        self._secrets = secrets
+        self._callbacks = callbacks
         self._emit = callbacks.emit
         self._request_handoff = callbacks.request_handoff
         self._is_cancelled = callbacks.is_cancelled
@@ -152,8 +147,6 @@ class BrowserTaskRunner:
         #: How the primary engine failed under the run, when it did; its session
         #: then has no state left to carry to the fallback.
         self._engine_failure: EngineFailure | None = None
-        if isinstance(llm, JevChatModel):
-            llm.fallback_available = callbacks.open_fallback_session is not None
         self._config = config
         self._task_timeout = config.task_timeout_seconds
         # A step that hands off waits on the human, so its budget is active work
@@ -165,6 +158,13 @@ class BrowserTaskRunner:
         )
         self._user_id = user_id
         self._root_request_id = root_request_id
+        #: Every model call of the run; each one is metered the moment it lands.
+        self.ledger = RunLedger(on_call=self._meter)
+        self._started_at = perf_counter()
+        #: Seconds spent waiting on the user or the agent: the task budget does not run then.
+        self._waited = 0.0
+        #: Why the run stopped itself, when a budget ended it.
+        self._budget_summary: str | None = None
         self._stopped = False
         self._handed_off = False
         #: What the user told the run to do instead when they took over.
@@ -201,16 +201,20 @@ class BrowserTaskRunner:
             step=self._record_step,
             takeover=self._handle_takeover,
             should_stop=self._should_stop,
+            user_waiting=self._callbacks.user_waiting,
+            take_user_messages=self._take_user_messages,
             action_results=self._action_results,
             guidance_allowed=self._guidance_allowed,
             guidance=self._handle_guidance,
         )
         return BrowserAgentRun(
             session=self._session,
-            llm=self._llm,
             config=self._config,
             hooks=hooks,
             step_timeout=self._step_timeout,
+            secrets=self._secrets,
+            ledger=self.ledger,
+            user_id=self._user_id,
             steps_before=self._last_step,
         )
 
@@ -270,14 +274,13 @@ class BrowserTaskRunner:
             stall_watch.cancel()
 
     async def _execute(self, task: str) -> RunOutcome:
-        """Run the agent; finish on the fallback engine, once, when the primary engine failed under the run or could not pass a page.
+        """Run the agent; finish on the fallback engine, once, when the primary engine failed under the run.
 
-        While the run is on the primary engine a watchdog reads the engine's
-        liveness, so a frozen engine moves the run in seconds, not after
+        While the run is on a primary that has a fallback, a watchdog reads the
+        engine's liveness, so a frozen engine moves the run in seconds, not after
         Browser-Use's own timeouts give out.
         """
-        route = self._fallback_route()
-        if route is None:
+        if self._open_fallback_session is None:
             return await self._agent_run.execute(task)
         try:
             ended = await run_watched(
@@ -288,49 +291,35 @@ class BrowserTaskRunner:
         except Exception as exc:
             # Browser-Use raises only when it cannot attach at all; the host says
             # whether that was the engine or something the fallback would not fix.
-            if not await self._engine_failed_under_run(route.jev):
+            if not await self._engine_failed_under_run():
                 raise
             log.warning(
                 f"{LogTag.BROWSER} Browser agent could not run on the failed engine",
                 error_type=type(exc).__name__,
                 browser={"session_id": self._session.session_id},
             )
-            return await self._resume_on_fallback(task, route, spent=[])
+            return await self._resume_on_fallback(task, self._open_fallback_session)
         if isinstance(ended, EngineFailure):
             if await self._should_stop():
                 # Never read: _finish_after_execute judges the stop before the outcome.
                 return RunOutcome(False, BROWSER_ENGINE_UNRESPONSIVE_SUMMARY)  # pragma: no mutate
-            self._fall_back_after_engine_failure(route.jev, ended)
-            return await self._resume_on_fallback(task, route, spent=await self._agent_run.spent())
-        if ended.success:
-            return ended
-        if route.jev.fallback_url is not None or await self._engine_failed_under_run(route.jev):
-            return await self._resume_on_fallback(task, route, spent=ended.usage)
+            self._fall_back_after_engine_failure(ended)
+            return await self._resume_on_fallback(task, self._open_fallback_session)
+        if not ended.success and await self._engine_failed_under_run():
+            return await self._resume_on_fallback(task, self._open_fallback_session)
         return ended
 
-    def _fallback_route(self) -> _FallbackRoute | None:
-        """Return how this run moves to the fallback engine, or None when it cannot (no host, or it already has)."""
-        jev = self._llm if isinstance(self._llm, JevChatModel) else None
-        if jev is None or not jev.fallback_available or self._open_fallback_session is None:
-            return None
-        return _FallbackRoute(jev=jev, open_session=self._open_fallback_session)
-
-    async def _engine_failed_under_run(self, jev: JevChatModel) -> bool:
-        """Whether the primary engine itself failed the run; when it did, Jev resumes where it was.
-
-        A run the user stopped or a handoff ended is never retried. Otherwise the
-        host decides: a run that failed on an engine still serving it (a site that
-        did not resolve, a model that gave out) failed on its own.
-        """
+    async def _engine_failed_under_run(self) -> bool:
+        """Whether the primary engine itself failed the run; a run the user stopped or a handoff ended is never retried."""
         if await self._should_stop():
             return False
         failure = await engine_failure(self._session)
         if failure is None:
             return False
-        self._fall_back_after_engine_failure(jev, failure)
+        self._fall_back_after_engine_failure(failure)
         return True
 
-    def _fall_back_after_engine_failure(self, jev: JevChatModel, failure: EngineFailure) -> None:
+    def _fall_back_after_engine_failure(self, failure: EngineFailure) -> None:
         self._engine_failure = failure
         log.warning(
             f"{LogTag.BROWSER} Browser engine failed under the run",
@@ -338,16 +327,11 @@ class BrowserTaskRunner:
             engine_failure=failure.value,
         )
         log.set_ns("browser", fallback_reason=failure.value)
-        jev.fall_back_after_engine_failure()
 
-    async def _resume_on_fallback(
-        self, task: str, route: _FallbackRoute, *, spent: list[RunUsage]
-    ) -> RunOutcome:
-        """Open the fallback engine where the run left off and finish the task there, keeping plan, findings and history."""
-        url = route.jev.fallback_url
-        if url is not None:
-            # Jev's first step there reopens that page; a run with no page yet starts over.
-            self._config = replace(self._config, start_url=None)
+    async def _resume_on_fallback(self, task: str, open_session: OpenFallbackSessionFn) -> RunOutcome:
+        """Open the fallback engine where the run left off and run the task there from that page."""
+        url = self._agent_run.last_url
+        self._config = replace(self._config, start_url=url)
         log.info(
             f"{LogTag.BROWSER} Browser run moving to the fallback engine",
             browser={
@@ -358,7 +342,7 @@ class BrowserTaskRunner:
         )
         log.set_ns("browser", primary_session_id=self._session.session_id)
         carried = await self._primary_state()
-        self._session = await route.open_session(url, carried)
+        self._session = await open_session(url, carried)
         self.used_fallback = True
         await self._emit(
             BrowserSessionSnapshot(
@@ -374,12 +358,10 @@ class BrowserTaskRunner:
                 if carried is not None
                 else BROWSER_ENGINE_FALLBACK_WITHOUT_STATE_NOTE
             )
-        route.jev.continue_on_fallback()
         # Continues the step count, so the fallback's first step follows the
         # primary's last on the card, in the recap and in the history.
         self._agent_run = self._build_agent_run()
-        outcome = await self._agent_run.execute(task)
-        return replace(outcome, usage=_merged_usage(spent, outcome.usage))
+        return await self._agent_run.execute(task)
 
     async def _primary_state(self) -> LiveSessionState | None:
         """Read the primary's live state for the fallback, or None when its engine cannot give it; the wide event says which."""
@@ -434,6 +416,8 @@ class BrowserTaskRunner:
             return await self._finish(
                 BrowserSessionStatus.FAILED, False, BROWSER_RUN_HANDOFF_TIMED_OUT
             )
+        if self._budget_summary:
+            return await self._finish(BrowserSessionStatus.FAILED, False, self._budget_summary)
         if self._stopped:
             status = (
                 BrowserSessionStatus.COMPLETED
@@ -448,7 +432,46 @@ class BrowserTaskRunner:
         return await self._finish_from_outcome(outcome)
 
     async def _should_stop(self) -> bool:
-        return self._stopped or await self._is_cancelled()
+        """Whether the run must end now: stopped, cancelled, or past its time or cost budget."""
+        if self._stopped or await self._is_cancelled():
+            return True
+        active = perf_counter() - self._started_at - self._waited
+        if active > self._task_timeout:
+            self._budget_summary = f"Browser task timed out after {self._task_timeout}s of work."
+            log.fail(BrowserRunFailure.TASK_TIMEOUT)
+            return True
+        check = await get_budget_stop_reason(self._user_id, None, self._root_request_id)
+        if check is not None and check.stop_reason is not None:
+            self._budget_summary = check.stop_reason
+            return True
+        return False
+
+    async def _take_user_messages(self) -> list[str]:
+        """The user's mid-task messages, kept for the result too: the reply must answer what they asked last."""
+        messages = await self._callbacks.take_user_messages()
+        self._user_notes.extend(messages)
+        return messages
+
+    def _meter(self, call: ModelCall) -> None:
+        """Record one model call's spend now, so the user's budget sees the run as it goes."""
+        spawn_background_task(
+            record_llm_call(
+                user_id=self._user_id,
+                model_name=call.model,
+                usage=TokenUsage(
+                    input_tokens=call.input_tokens,
+                    output_tokens=call.output_tokens,
+                    cached_tokens=0,
+                    reasoning_tokens=0,
+                ),
+                root_request_id=self._root_request_id,
+                provider_cost=call.cost_usd,
+                context=LLMCallContext(
+                    agent_name="browser_task", background=False, charge_to_budget=True
+                ),
+            ),
+            name="browser_meter_call",
+        )
 
     async def _handle_takeover(self, reason: str, category: str) -> str | None:
         """Pause for the human (the agent's takeover hook) and return the note they left, if any.
@@ -464,6 +487,7 @@ class BrowserTaskRunner:
             cat = SensitiveCategory.IRREVERSIBLE
 
         self._waiting_on_someone = True
+        waiting_since = perf_counter()
         try:
             outcome = await self._request_handoff(
                 HandoffRequest(category=cat, reason=reason), self._session
@@ -472,6 +496,7 @@ class BrowserTaskRunner:
             # None reads as falsy exactly like False.
             self._waiting_on_someone = False  # pragma: no mutate
             self._last_frame_at = perf_counter()
+            self._waited += self._last_frame_at - waiting_since
         if outcome.status == HandoffStatus.COMPLETED:
             self._handed_off = True
             log.info(f"{LogTag.BROWSER} Browser takeover completed by user; agent continuing.")
@@ -500,12 +525,14 @@ class BrowserTaskRunner:
             raise BrowserHandoffCancelled("no-guidance-channel")
         self._guidances += 1
         self._waiting_on_someone = True
+        waiting_since = perf_counter()
         try:
             outcome = await self._request_guidance(request)
         finally:
             # None reads as falsy exactly like False.
             self._waiting_on_someone = False  # pragma: no mutate
             self._last_frame_at = perf_counter()
+            self._waited += self._last_frame_at - waiting_since
         instruction = (outcome.message or "").strip()
         if outcome.status == HandoffStatus.COMPLETED and instruction:
             log.info(f"{LogTag.BROWSER} Browser run guided by the agent that started it")
@@ -625,51 +652,7 @@ class BrowserTaskRunner:
 
     async def _finish_from_outcome(self, outcome: RunOutcome) -> BrowserResultSnapshot:
         status = BrowserSessionStatus.COMPLETED if outcome.success else BrowserSessionStatus.FAILED
-        await self._record_usage(outcome.usage)
-        return await self._finish(status, outcome.success, outcome.summary)
-
-    async def _record_usage(self, usage: list[RunUsage]) -> None:
-        """Price and record the run's LLM spend into GAIA's usage pipeline.
-
-        One record_llm_call per billed model, priced from GAIA's catalog rather
-        than Browser-Use's. A gateway-reported cost for the whole run (Vercel
-        reports one, OpenRouter does not) wins over the table.
-        """
-        for entry in usage:
-            await record_llm_call(
-                user_id=self._user_id,
-                model_name=entry.model_name,
-                usage=TokenUsage(
-                    input_tokens=entry.input_tokens,
-                    output_tokens=entry.output_tokens,
-                    cached_tokens=0,
-                    reasoning_tokens=0,
-                ),
-                root_request_id=self._root_request_id,
-                provider_cost=self._gateway_cost(entry.model_name),
-                context=LLMCallContext(
-                    agent_name="browser_task",
-                    background=False,
-                    charge_to_budget=True,
-                ),
-            )
-
-    def _gateway_cost(self, model_name: str) -> float | None:
-        """Actual gateway-reported spend for model_name, or None to price from the table."""
-        llm = self._llm
-        if isinstance(llm, JevChatModel) and model_name == llm.model:
-            return llm.actual_cost_usd
-        return None
-
-
-def _merged_usage(first: list[RunUsage], second: list[RunUsage]) -> list[RunUsage]:
-    """Sum two runs' token spend per billed model, so a run finished on the fallback bills both halves."""
-    inputs: Counter[str] = Counter()
-    outputs: Counter[str] = Counter()
-    for entry in (*first, *second):
-        inputs[entry.model_name] += entry.input_tokens
-        outputs[entry.model_name] += entry.output_tokens
-    return [
-        RunUsage(model_name=name, input_tokens=inputs[name], output_tokens=outputs[name])
-        for name in inputs
-    ]
+        summary = outcome.summary or (
+            "Completed the browser task." if outcome.success else "Could not complete the browser task."
+        )
+        return await self._finish(status, outcome.success, summary)

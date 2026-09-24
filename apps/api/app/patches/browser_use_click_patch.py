@@ -3,7 +3,7 @@
 Measured on Obscura 2026-09-19. Input.dispatchMouseEvent lands exactly and is
 trusted, but a pressed button costs 450ms to 5.6s, and aiming at a rect centre
 needs occlusion data from the DOM snapshot, whose geometry this engine
-fabricates (see jev/viewport.py). So scroll-into-view and the click go in one
+fabricates. So scroll-into-view and the click go in one
 Runtime.callFunctionOn on the element handle, reporting the measured centre.
 The cost is isTrusted, which a page gating on it will refuse.
 
@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 from browser_use.browser.watchdogs.default_action_watchdog import DefaultActionWatchdog
 
 from app.constants.log_tags import LogTag
+from app.patches.obscura_sessions import on_obscura
 from shared.py.wide_events import log
 
 if TYPE_CHECKING:
@@ -55,7 +56,7 @@ async def _click_element_node_impl(
     self: DefaultActionWatchdog, element_node: EnhancedDOMTreeNode
 ) -> dict[str, Any] | None:
     """Click the element in the page and return the real centre Browser-Use records."""
-    if _needs_browser_use(element_node):
+    if _needs_browser_use(element_node) or not on_obscura(self.browser_session):
         return await _original_click_element_node_impl(self, element_node)
 
     cdp_session = await self.browser_session.cdp_client_for_node(element_node)

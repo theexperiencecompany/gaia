@@ -61,6 +61,7 @@ from app.services.analytics_service import (
     AnalyticsProperties,
     capture_event,
 )
+from app.services.browser.jobs import post_conversation_message
 from app.services.browser.resolution import resolve_handoff_from_message
 from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import ChunkAccumulators, extract_response_text, process_data_chunk
@@ -547,11 +548,13 @@ async def _resolve_pending_browser_handoff_turn(
     _stream_id: str,
     _state: _StreamState,
 ) -> bool:
-    """Resolve a paused browser task's handoff from the user's chat reply.
+    """Resolve a paused browser task's handoff from the user's chat reply, or pass the reply to the running task.
 
-    Records the resolution into the thread (skipped when nothing is pending or
+    Records a resolution into the thread (skipped when nothing is pending or
     addressed) and returns False always, so the normal turn voices the ack. The
-    paused task resumes on its own stream.
+    paused task resumes on its own stream. A reply that resolves no handoff
+    while a browser task runs goes to that task's inbox: its agent reads it at
+    its next step.
     """
     user_id = user.user_id
     message = user_message_content_from(body)
@@ -568,6 +571,9 @@ async def _resolve_pending_browser_handoff_turn(
         return False
 
     if action not in ("continue", "redirect", "cancel"):
+        job_id = await post_conversation_message(conversation_id, message)
+        if job_id is not None:
+            log.set_ns("browser", job_id=job_id, message_to_running_job=True)
         return False
 
     # The thread still holds the original request; without this the turn would

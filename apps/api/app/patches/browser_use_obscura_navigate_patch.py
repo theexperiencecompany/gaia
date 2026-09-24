@@ -17,7 +17,7 @@ import asyncio
 from browser_use.browser.session import BrowserSession
 
 from app.config.settings import settings
-from app.constants.browser import BrowserEngine
+from app.patches.obscura_sessions import on_obscura
 
 _NAVIGATE_MARGIN_SECONDS = 10.0
 
@@ -31,8 +31,8 @@ async def _navigate_and_wait(
     timeout: float | None = None,
     wait_until: str = "load",
 ) -> None:
-    """Navigate with the engine's own deadline under Obscura; Browser-Use's path elsewhere."""
-    if settings.BROWSER_ENGINE is not BrowserEngine.OBSCURA:
+    """Navigate with the engine's own deadline on Obscura; Browser-Use's path elsewhere."""
+    if not on_obscura(self):
         await _original_navigate_and_wait(
             self, url, target_id, timeout=timeout, wait_until=wait_until
         )

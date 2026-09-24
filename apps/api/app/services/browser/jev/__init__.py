@@ -1,16 +1,6 @@
-"""Jev decides every browser step as Browser-Use's chat model.
+"""Jev, the fast page operator: jev-ultrafast's snapshot and decision loop, run as a Browser-Use action.
 
-observation.py indexes the page into an element table, policy.py picks the operation and target
-from it, and chat_model.py answers Browser-Use's calls. Policy and prompts derived from
-browser-use/jev-ultrafast (MIT)."""
-
-from app.services.browser.jev.chat_model import JevChatModel, build_jev_chat_model
-from app.services.browser.jev.gateway import JevFailoverClient, JevGatewayClient, JevGatewayError
-
-__all__ = [
-    "JevChatModel",
-    "JevFailoverClient",
-    "JevGatewayClient",
-    "JevGatewayError",
-    "build_jev_chat_model",
-]
+snapshot.js reads the page, decision.py asks Jev for one operation and target,
+loop.py runs a burst, tool.py exposes it to the agent. Derived from
+browser-use/jev-ultrafast (MIT).
+"""

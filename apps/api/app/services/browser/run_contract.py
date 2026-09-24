@@ -10,7 +10,7 @@ back through RunHooks and returns a RunOutcome.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from time import perf_counter
 
 from app.schemas.browser import AgentGuidanceRequest, BrowserAction, BrowserActionOutput
@@ -24,12 +24,17 @@ ActionResultsFn = Callable[[int, list[BrowserActionOutput]], Awaitable[None]]
 # never cached — an agent that ended its turn stops being reachable mid-run.
 GuidanceGate = Callable[[], Awaitable[bool]]
 GuidanceFn = Callable[[AgentGuidanceRequest], Awaitable[str]]
+#: Whether something is waiting (a stop, a user message); asked between Jev decisions.
+FlagFn = Callable[[], Awaitable[bool]]
+#: The messages the user sent since the last read, oldest first; reading takes them.
+TakeMessagesFn = Callable[[], Awaitable[list[str]]]
 
 
 @dataclass(frozen=True)
 class BrowserRunConfig:
     """One browser run's settings: the BROWSER_USE_* knobs, and the page it starts on."""
 
+    #: Browser-Use's step backstop; the run ends on the agent's own finish, no progress, or a budget.
     max_steps: int
     max_actions_per_step: int
     task_timeout_seconds: int
@@ -37,7 +42,6 @@ class BrowserRunConfig:
     handoff_timeout_seconds: int
     stream_screenshots: bool
     solve_captcha: bool
-    flash_mode: bool = True
     #: Opened before the first decision; Browser-Use's own find of a URL in the
     #: task gives up when the task names more than one.
     start_url: str | None = None
@@ -59,21 +63,11 @@ class StepFrame:
 
 
 @dataclass(frozen=True)
-class RunUsage:
-    """One model's token spend over a run, under the name it is billed as."""
-
-    model_name: str
-    input_tokens: int
-    output_tokens: int
-
-
-@dataclass(frozen=True)
 class RunOutcome:
     """What the agent run produced, before the runner judges cancellation."""
 
     success: bool
     summary: str
-    usage: list[RunUsage] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -87,7 +81,9 @@ class RunHooks:
 
     step: Callable[[StepFrame], None]
     takeover: Callable[[str, str], Awaitable[str | None]]
-    should_stop: Callable[[], Awaitable[bool]]
+    should_stop: FlagFn
+    user_waiting: FlagFn
+    take_user_messages: TakeMessagesFn
     action_results: ActionResultsFn | None = None
     #: Both or neither: without a gate nothing ever asks, so a run with no agent
     #: to reach back to ends blocked exactly as it did before guidance existed.

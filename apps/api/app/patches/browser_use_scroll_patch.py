@@ -16,6 +16,7 @@ from typing import Any
 from browser_use.browser.watchdogs.default_action_watchdog import DefaultActionWatchdog
 
 from app.constants.log_tags import LogTag
+from app.patches.obscura_sessions import on_obscura
 from shared.py.wide_events import log
 
 # Scroll the window, and when the window is not the scroller (an app whose
@@ -40,8 +41,13 @@ _SCROLL_JS = """(pixels) => {
 }"""
 
 
+_original_scroll_with_cdp_gesture = DefaultActionWatchdog._scroll_with_cdp_gesture
+
+
 async def _scroll_with_cdp_gesture(self: DefaultActionWatchdog, pixels: int) -> bool:
     """Scroll by pixels (positive is down) and report whether anything actually moved."""
+    if not on_obscura(self.browser_session):
+        return await _original_scroll_with_cdp_gesture(self, pixels)
     cdp_session = await self.browser_session.get_or_create_cdp_session()
     response: dict[str, Any] = dict(
         await cdp_session.cdp_client.send.Runtime.evaluate(

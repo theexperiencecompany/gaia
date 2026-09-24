@@ -20,6 +20,7 @@ from __future__ import annotations
 from browser_use.browser.session import BrowserSession, CDPSession
 
 from app.constants.log_tags import LogTag
+from app.patches.obscura_sessions import on_obscura
 from shared.py.wide_events import log
 
 # A URL-less window.open builds a document to write into; navigating away from
@@ -48,6 +49,8 @@ async def _get_or_create_cdp_session(
 ) -> CDPSession:
     """Wrap Browser-Use's per-target session accessor to install the shim once per target."""
     cdp_session = await _original_get_or_create_cdp_session(self, target_id=target_id, focus=focus)
+    if not on_obscura(self):
+        return cdp_session
 
     injected: set[str] | None = getattr(self, _INJECTED_ATTR, None)
     if injected is None:

@@ -1,11 +1,16 @@
-"""Drive one Browser-Use Agent over the session's CDP endpoint.
+"""Drive one browser task: Jev first on the whole task, then the Browser-Use agent steers and finishes.
 
-Jev is its model; every executed step is reported back to the runner through
-RunHooks, and the agent's history is read into a RunOutcome.
+One long-lived Browser-Use Agent runs on the reasoning model with Jev registered
+as its `jev` action. The Agent's initial action is a Jev burst on the whole
+task, so the first model call the agent makes already reads what Jev did. The
+agent then writes the answer, hands Jev a sharper goal, or acts itself; it is
+the only finisher and the only answer writer. Every agent step and every Jev
+burst reaches the runner as one frame through RunHooks.
 """
 
 from __future__ import annotations
 
+import json
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, TypedDict
 
@@ -14,20 +19,37 @@ from pydantic import TypeAdapter
 from app.constants.browser import (
     BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
     BROWSER_AGENT_MAX_FAILURES,
+    BROWSER_AGENT_NO_PROGRESS_STEPS,
+    BROWSER_AGENT_ROLE,
+    BROWSER_GUIDANCE_MAX_ELEMENTS,
+    BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
+    BROWSER_GUIDANCE_RECENT_ACTIONS,
+    BROWSER_NO_GUIDANCE_AVAILABLE,
+    BROWSER_RUN_NO_PROGRESS_SUMMARY,
     BROWSER_TAKEOVER_PREAMBLE,
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
 )
 from app.constants.log_tags import LogTag
-from app.schemas.browser import BrowserAction, BrowserActionOutput
-from app.services.browser.captions import step_caption
-from app.services.browser.exceptions import BrowserUnavailableError
-from app.services.browser.jev import JevChatModel
+from app.schemas.browser import (
+    AgentGuidanceRequest,
+    BrowserAction,
+    BrowserActionOutput,
+    GuidanceAction,
+    GuidanceElement,
+)
+from app.services.browser.captions import burst_caption, step_caption
+from app.services.browser.jev.gateway import build_jev_client
+from app.services.browser.jev.loop import JevRunner
+from app.services.browser.jev.page import JevPage
+from app.services.browser.jev.secrets import RunSecrets
+from app.services.browser.jev.tool import JEV_ACTION, JevDelegate, register_jev
+from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
+from app.services.browser.llm import build_agent_llm, build_text_model
 from app.services.browser.run_contract import (
     BrowserRunConfig,
     RunHooks,
     RunOutcome,
-    RunUsage,
     StepClock,
     StepFrame,
 )
@@ -37,11 +59,9 @@ from shared.py.wide_events import log
 
 if TYPE_CHECKING:
     from browser_use.agent.views import AgentHistoryList, AgentOutput
+    from browser_use.browser.session import BrowserSession
     from browser_use.browser.views import BrowserStateSummary
-    from browser_use.llm.base import BaseChatModel
-    from browser_use.tokens.views import UsageSummary
     from pydantic import BaseModel
-
 
 # Attributes worth naming an otherwise-unlabelled control by, in the order a
 # person would recognise it. `value` covers <input type="submit" value="Submit">.
@@ -50,8 +70,7 @@ _LABEL_ATTRIBUTES = ("aria-label", "value", "title", "placeholder", "alt", "name
 _OUTPUT_MAX_CHARS = 1000
 
 #: Caption for a step that produced no action to describe — one whose actions
-#: errored or whose observation stalled. It lives here rather than in
-#: captions.py, which only ever names an action the agent actually chose.
+#: errored or whose observation stalled.
 STEP_ERROR_CAPTION = "That didn't respond, trying again"
 
 
@@ -67,9 +86,8 @@ _ACTION_INPUTS: TypeAdapter[_ActionInputs] = TypeAdapter(_ActionInputs)
 def _element_label(state: BrowserStateSummary, index: object) -> str | None:
     """Return the on-page name of the element an action targets, by its DOM index.
 
-    Prefer the accessibility name (populated even for icon-only buttons), then
-    visible text, then labelling attributes, then the tag name, so a control is
-    never described as a bare verb when anything identifies it.
+    Prefer the accessibility name, then visible text, then labelling
+    attributes, then the tag name, so a control is never a bare verb.
     """
     if not isinstance(index, int):
         return None
@@ -77,34 +95,22 @@ def _element_label(state: BrowserStateSummary, index: object) -> str | None:
     node = selector_map.get(index)
     if node is None:
         return None
-    try:
-        ax_node = getattr(node, "ax_node", None)
-        candidates = [getattr(ax_node, "name", None), node.get_meaningful_text_for_llm()]
-        attributes = getattr(node, "attributes", None) or {}
-        candidates += [attributes.get(attr) for attr in _LABEL_ATTRIBUTES]
-        for candidate in candidates:
-            text = (candidate or "").strip()
-            if text:
-                return text
-        # Last resort: the tag itself ("Clicking BUTTON" still beats "Clicking").
-        tag = (getattr(node, "node_name", "") or "").strip()
-        return tag.lower() or None
-    except Exception as exc:
-        # A DOM node shape we don't recognise must not kill the step — the caption
-        # just loses this element's name. Logged so a systematic shape change shows up.
-        log.warning(
-            f"{LogTag.BROWSER} Could not resolve element label from DOM node",
-            error_type=type(exc).__name__,
-        )
-        return None
+    ax_node = getattr(node, "ax_node", None)
+    candidates = [getattr(ax_node, "name", None), node.get_meaningful_text_for_llm()]
+    attributes = getattr(node, "attributes", None) or {}
+    candidates += [attributes.get(attr) for attr in _LABEL_ATTRIBUTES]
+    for candidate in candidates:
+        text = (candidate or "").strip()
+        if text:
+            return text
+    tag = (getattr(node, "node_name", "") or "").strip()
+    return tag.lower() or None
 
 
 def _extract_actions(
-    agent_output: AgentOutput,
-    state: BrowserStateSummary | None = None,
-    points: dict[int, tuple[float, float]] | None = None,
+    agent_output: AgentOutput, state: BrowserStateSummary | None = None
 ) -> list[BrowserAction]:
-    """Return the step's actions as the agent's own tool calls — name, arguments, and the on-page text of whatever each one targets."""
+    """Return the step's actions as the agent's own tool calls, each with the on-page text of what it targets."""
     actions: list[BrowserAction] = []
     for action in getattr(agent_output, "action", None) or []:
         dumped = action.model_dump(exclude_none=True) if hasattr(action, "model_dump") else {}
@@ -113,17 +119,12 @@ def _extract_actions(
             typed_inputs: _ActionInputs = _ACTION_INPUTS.validate_python(raw_inputs)
             index = typed_inputs.get("index")
             target = _element_label(state, index) if state is not None else None
-            # The centre the page itself reported for this element this step; the
-            # snapshot's own boxes are fabricated on some engines (see jev/viewport.py).
-            point = (points or {}).get(index) if isinstance(index, int) else None
-            actions.append(
-                BrowserAction(name=action_name, inputs=raw_inputs, target=target, point=point)
-            )
+            actions.append(BrowserAction(name=action_name, inputs=raw_inputs, target=target))
     return actions
 
 
 def _summarize_action_result(result: object) -> str | None:
-    """One action's outcome as short display text, or None when there is nothing worth showing (a click that succeeded silently needs no output row)."""
+    """One action's outcome as short display text, or None when there is nothing worth showing."""
     error = getattr(result, "error", None)
     if error:
         text = str(error)
@@ -143,279 +144,265 @@ def _summarize_action_result(result: object) -> str | None:
     )
 
 
-def outcome_from_history(history: AgentHistoryList[BaseModel]) -> RunOutcome:
-    """Return what the agent's history says the run achieved, and what it cost."""
-    # Fallbacks kept in place, not an early return: an early return discards a
-    # final_result() read before a later failure. Mutation-exempt because every
-    # consumer collapses falsy values to one answer, so no other falsy value differs.
-    final = None  # pragma: no mutate
-    is_done = False  # pragma: no mutate
-    is_successful: bool | None = None  # pragma: no mutate
-    try:
-        final = history.final_result()
-        is_done = history.is_done()
-        is_successful = history.is_successful()
-    except Exception as exc:
-        log.warning(
-            f"{LogTag.BROWSER} Could not read browser history result",
-            error_type=type(exc).__name__,
-        )
-
-    success = bool(is_done and is_successful is not False)
-    summary = final or (
-        "Completed the browser task." if success else "Could not complete the browser task."
-    )
-    return RunOutcome(success=success, summary=str(summary), usage=_usage_from_history(history))
-
-
-def _usage_from_history(history: AgentHistoryList[BaseModel]) -> list[RunUsage]:
-    """Return Browser-Use's per-model token totals under the names it billed them.
-
-    Populated only when Agent.run returns normally; timeout, cancellation and
-    CDP failure never reach a history.
-    """
-    return [] if history.usage is None else _usage_by_model(history.usage)
-
-
-def _usage_by_model(usage: UsageSummary) -> list[RunUsage]:
-    return [
-        RunUsage(
-            model_name=model_name,
-            input_tokens=stats.prompt_tokens,
-            output_tokens=stats.completion_tokens,
-        )
-        for model_name, stats in usage.by_model.items()
-    ]
+def outcome_from_history(history: AgentHistoryList[BaseModel]) -> tuple[bool, str | None]:
+    """Return whether the agent finished successfully, and the answer it wrote."""
+    final = history.final_result()
+    success = bool(history.is_done() and history.is_successful() is not False)
+    return success, final
 
 
 class BrowserAgentRun:
-    """Run one Browser-Use Agent that decides and executes this task's steps."""
+    """Run one Browser-Use Agent, with Jev as its first action and its fast operator."""
 
     def __init__(
         self,
         *,
         session: BrowserHostSession,
-        llm: BaseChatModel | None,
         config: BrowserRunConfig,
         hooks: RunHooks,
         step_timeout: float,
+        secrets: RunSecrets,
+        ledger: RunLedger,
+        user_id: str | None,
         steps_before: int = 0,
     ) -> None:
         self._session = session
-        self._llm = llm
         self._config = config
         self._hooks = hooks
         self._step_timeout = step_timeout
+        self._secrets = secrets
+        self._ledger = ledger
+        self._user_id = user_id
         self._agent: Any = None
+        self._page: JevPage | None = None
+        self._delegate: JevDelegate | None = None
         self._clock = StepClock()
         # A run resumed on the fallback engine numbers on from the steps the user already saw.
-        self._last_step = steps_before
         self._frames = steps_before
-        # None reads as False below, so that mutant is the same program.
-        self._framed = False  # pragma: no mutate
-        # Feeds only the step-duration log.info.
-        self._step_started_at = 0.0  # pragma: no mutate
+        self._framed = False
+        self._step_started_at = 0.0
+        self._step_actions: list[str] = []
+        #: Each agent step's page and actions, to see the agent repeat itself on an unchanged page.
+        self._signatures: list[str] = []
+        self.no_progress = False
+        #: Where the run was when it ended, for a resume on the fallback engine.
+        self.last_url: str | None = None
+
+    @property
+    def frames(self) -> int:
+        return self._frames
 
     async def execute(self, task: str) -> RunOutcome:
         from browser_use import Agent, Browser  # noqa: PLC0415 -- heavy optional dep
 
-        if self._llm is None:
-            raise BrowserUnavailableError(
-                "The Browser-Use agent needs a chat model to drive it."  # pragma: no mutate
-            )
-
+        llm = await build_agent_llm(self._user_id, self._ledger)
+        text_model = build_text_model(self._ledger)
+        client = build_jev_client()
         browser = Browser(
             cdp_url=self._session.cdp_url,
             viewport={"width": BROWSER_VIEWPORT_WIDTH, "height": BROWSER_VIEWPORT_HEIGHT},
-            # The live-view surface DPR is set host-side (screencast.py); Browser-Use
-            # ignores device_scale_factor when connecting over CDP, so leave it at 1 here.
             device_scale_factor=1,
             no_viewport=False,
         )
-        # Stealth fingerprinting is injected on every page by browser_use_stealth_patch
-        # (app/patches), which hooks Browser-Use's per-target CDP session accessor so
-        # new tabs are covered too — no per-run registration needed here.
 
-        agent_kwargs: dict[str, Any] = {
-            "task": task + BROWSER_TAKEOVER_PREAMBLE,
-            "llm": self._llm,
-            "browser": browser,
-            # Browser-Use's prompt suggests todo.md for long tasks, but small
-            # models write it even for 3-step forms — a measured ~7s and one
-            # whole step of pure bookkeeping. Steer it to act directly.
-            "extend_system_message": (
-                "Do NOT create or update todo.md (or any planning file) unless the task "
-                "genuinely needs more than 10 steps. For short tasks, act on the page "
-                "directly from the first step."
-            ),
-            "register_new_step_callback": self._on_step,
-            "register_should_stop_callback": self._hooks.should_stop,
-            # Jev decides from structured state; no model on this path takes images.
-            "use_vision": False,
-            # Browser-Use's post-run judge bills a whole extra call and nothing
-            # here reads its verdict; it also judged against an instruction the
-            # user had already cancelled and logged the run as a failure.
-            "use_judge": False,
-            "flash_mode": self._config.flash_mode,
-            "max_failures": BROWSER_AGENT_MAX_FAILURES,
-            "llm_timeout": BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
-            "max_actions_per_step": self._config.max_actions_per_step,
-            "step_timeout": self._step_timeout,
-            "tools": build_browser_tools(
-                solve_captcha=self._config.solve_captcha,
-                handle_takeover=self._takeover,
-                handle_guidance=self._guidance,
-            ),
-        }
-        if self._config.start_url:
-            agent_kwargs["initial_actions"] = [
-                {"navigate": {"url": self._config.start_url, "new_tab": False}}
-            ]
-        if isinstance(self._llm, JevChatModel):
-            # Jev reads the structured observation from the session itself, with the
-            # raw task (not the takeover preamble) as its goal. Its text helper is the
-            # extraction model so Browser-Use meters those tokens under their own name.
-            self._llm.bind(browser, task, self._hooks.guidance_allowed)
-            agent_kwargs["page_extraction_llm"] = self._llm.text_model
-        self._agent = Agent(**agent_kwargs)
+        def runner_for(browser_session: BrowserSession) -> JevRunner:
+            return JevRunner(
+                page=self._page_for(browser_session),
+                client=client,
+                text_model=text_model,
+                ledger=self._ledger,
+                secrets=self._secrets,
+                should_stop=self._hooks.should_stop,
+                user_waiting=self._hooks.user_waiting,
+            )
 
-        history = await self._agent.run(
-            max_steps=self._config.max_steps, on_step_end=self._on_step_end
+        self._delegate = JevDelegate(runner_for=runner_for, emit=self._emit_burst)
+        tools = build_browser_tools(
+            solve_captcha=self._config.solve_captcha,
+            handle_takeover=self._takeover,
+            handle_guidance=self._guidance,
         )
-        return outcome_from_history(history)
+        register_jev(tools, self._delegate)
+        sensitive_data = self._secrets.sensitive_data() or None
+        self._agent = Agent(
+            task=task + BROWSER_TAKEOVER_PREAMBLE,
+            llm=llm,
+            browser=browser,
+            tools=tools,
+            initial_actions=[{JEV_ACTION: {"goal": task, "start_url": self._config.start_url}}],
+            sensitive_data=sensitive_data,
+            extend_system_message=BROWSER_AGENT_ROLE,
+            register_new_step_callback=self._on_step,
+            register_should_stop_callback=self._should_stop,
+            use_vision=False,
+            # Browser-Use's post-run judge bills a whole extra call and nothing reads its verdict.
+            use_judge=False,
+            flash_mode=True,
+            max_failures=BROWSER_AGENT_MAX_FAILURES,
+            llm_timeout=BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
+            max_actions_per_step=self._config.max_actions_per_step,
+            step_timeout=int(self._step_timeout),
+            page_extraction_llm=text_model,
+        )
+        history = await self._agent.run(
+            max_steps=self._config.max_steps,
+            on_step_start=self._on_step_start,
+            on_step_end=self._on_step_end,
+        )
+        self.last_url = await self._current_url()
+        if self.no_progress:
+            return RunOutcome(False, BROWSER_RUN_NO_PROGRESS_SUMMARY)
+        success, final = outcome_from_history(history)
+        summary = self._secrets.redact(final) if final else None
+        return RunOutcome(success, summary or "")
 
     def stop(self) -> None:
         if self._agent is not None:
             self._agent.stop()
 
     async def abandon(self) -> None:
-        """Drop the connection to an engine that stopped answering, failing every call still waiting on it.
-
-        Every Browser-Use EventBus shares one global lock, and a handler waiting on
-        a frozen engine holds it to its own timeout (120 s for a state read), which
-        stalled the fallback run's first step. Failed at once, the run's teardown
-        goes through Browser-Use's own path and never waits on the engine.
-        """
+        """Drop the connection to an engine that stopped answering, failing every call still waiting on it."""
         if self._agent is not None:
             await self._agent.browser_session.reset()
 
-    async def spent(self) -> list[RunUsage]:
-        """Return the tokens this run has spent so far, for a run cut short before it could return a history."""
+    def _page_for(self, browser_session: BrowserSession) -> JevPage:
+        if self._page is None:
+            self._page = JevPage(browser_session)
+        return self._page
+
+    async def _current_url(self) -> str | None:
         if self._agent is None:
-            return []
-        return _usage_by_model(await self._agent.token_cost_service.get_usage_summary())
+            return None
+        url = await self._agent.browser_session.get_current_page_url()
+        return str(url) if url else None
+
+    async def _should_stop(self) -> bool:
+        return self.no_progress or await self._hooks.should_stop()
+
+    async def _on_step_start(self, agent: object) -> None:
+        """Hand the agent whatever the user said since its last step, as a follow-up request."""
+        del agent
+        for message in await self._hooks.take_user_messages():
+            self._agent.message_manager.add_new_task(self._secrets.mask(message))
 
     async def _takeover(self, reason: str, category: str) -> str:
-        """Hand the browser to the user, then give the note they left to both readers: Jev's own state, and the action result Browser-Use records for this step."""
+        """Hand the browser to the user, then give the agent the note they left."""
         note = await self._hooks.takeover(reason, category)
-        if isinstance(self._llm, JevChatModel):
-            self._llm.note_from_user(note)
         return note or "The user finished that step in the live browser."
 
     async def _guidance(self, reason: str) -> str:
-        """Ask the agent that started this run how to proceed, and give its instruction to both readers.
+        """Ask the agent that started this run how to proceed; the hook raises when none answers."""
+        allowed = self._hooks.guidance_allowed
+        if self._hooks.guidance is None or allowed is None or self._page is None or not await allowed():
+            return BROWSER_NO_GUIDANCE_AVAILABLE
+        page = await self._page.observe()
+        request = AgentGuidanceRequest(
+            reason=reason,
+            task=self._agent.task,
+            url=self._secrets.redact(page.url),
+            title=page.title,
+            page_text=self._secrets.redact(page.text)[:BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS],
+            elements=[
+                GuidanceElement(index=n, label=a["label"], role=a.get("role", a["kind"]))
+                for n, a in enumerate(page.actions[:BROWSER_GUIDANCE_MAX_ELEMENTS], 1)
+                if "node" in a
+            ],
+            recent_actions=[
+                GuidanceAction(action=a.description)
+                for a in self._ledger.actions[-BROWSER_GUIDANCE_RECENT_ACTIONS:]
+            ],
+        )
+        return await self._hooks.guidance(request)
 
-        Only reached when the gate already said an agent is there to answer; the
-        hook raises rather than returning when none arrives, which ends the run.
-        """
-        if self._hooks.guidance is None or not isinstance(self._llm, JevChatModel):
-            raise BrowserUnavailableError("This run has no agent to ask for guidance.")
-        instruction = await self._hooks.guidance(self._llm.guidance_request(reason))
-        self._llm.note_from_agent(instruction)
-        return instruction
+    async def _screenshot(self) -> str | None:
+        return await self._page.screenshot() if self._page is not None else None
 
-    def _redact(self, text: str) -> str:
-        """Mask what the run typed into password fields: a frame is shown to people and kept."""
-        return self._llm.redact(text) if isinstance(self._llm, JevChatModel) else text
-
-    def _emit_frame(
-        self,
-        *,
-        goal: str,
-        actions: list[BrowserAction],
-        state: BrowserStateSummary | None = None,
-        raw_screenshot: str | None = None,
-    ) -> None:
-        """Emit one frame under the next number the user sees.
-
-        Numbered by frames emitted, never by Browser-Use's step counter: that one
-        advances for steps that never reach a frame, so the user saw 2, 3, 4, 7.
-        """
+    async def _emit_frame(self, *, caption: str, actions: list[BrowserAction], url: str | None, title: str | None) -> None:
+        """Emit one card under the next number the user sees, with a photo of the page now."""
         self._frames += 1
-        self._last_step = self._frames
-        url: str | None = getattr(state, "url", None)
         self._hooks.step(
             StepFrame(
                 index=self._frames,
                 session_id=self._session.session_id,
-                goal=self._redact(goal),
+                goal=self._secrets.redact(caption),
                 actions=[
                     action.model_copy(
                         update={
                             "inputs": {
-                                key: self._redact(value) if isinstance(value, str) else value
+                                key: self._secrets.redact(value) if isinstance(value, str) else value
                                 for key, value in action.inputs.items()
                             }
                         }
                     )
                     for action in actions
                 ],
-                url=self._redact(url) if url else url,
-                title=getattr(state, "title", None),
-                raw_screenshot=raw_screenshot or getattr(state, "screenshot", None),
+                url=self._secrets.redact(url) if url else url,
+                title=title,
+                raw_screenshot=await self._screenshot(),
                 since_prev_ms=self._clock.tick(),
             )
         )
 
+    async def _emit_burst(self, actions: list[BrowserAction], url: str, title: str) -> None:
+        await self._emit_frame(caption=burst_caption(actions), actions=actions, url=url, title=title)
+
     async def _on_step(
         self, browser_state_summary: BrowserStateSummary, agent_output: AgentOutput, n_steps: int
     ) -> None:
-        """Fire after the model picks actions, before they execute."""
-        del n_steps  # Browser-Use's counter; the frame's own number is what the user reads
+        """Fire after the agent picks actions, before they execute: one card for its own actions."""
+        del n_steps
         self._framed = True
-        self._step_started_at = perf_counter()  # pragma: no mutate
-        points = self._llm.viewport_points() if isinstance(self._llm, JevChatModel) else {}
-        step_actions = _extract_actions(agent_output, browser_state_summary, points)
-        # Without Jev's own capture the frame falls back to the state's screenshot.
-        raw_screenshot = (
-            await self._llm.take_step_screenshot() if isinstance(self._llm, JevChatModel) else None
+        self._step_started_at = perf_counter()
+        if self._page is None:
+            self._page = JevPage(self._agent.browser_session)
+        actions = _extract_actions(agent_output, browser_state_summary)
+        self._step_actions = [a.name for a in actions]
+        self._signatures.append(
+            json.dumps(
+                [browser_state_summary.url, [a.model_dump(exclude={"target"}) for a in actions]],
+                sort_keys=True,
+                default=str,
+            )
         )
-        # The caption describes what the step does, named after the element it
-        # resolved; the model's next_goal only names a step that finishes the run.
-        self._emit_frame(
-            goal=step_caption(step_actions, getattr(agent_output, "next_goal", None)),
-            actions=step_actions,
-            state=browser_state_summary,
-            raw_screenshot=raw_screenshot,
+        recent = self._signatures[-BROWSER_AGENT_NO_PROGRESS_STEPS:]
+        if len(recent) == BROWSER_AGENT_NO_PROGRESS_STEPS and len(set(recent)) == 1:
+            # The same action list on the same page, step after step: the run is going nowhere.
+            self.no_progress = True
+            log.info(f"{LogTag.BROWSER} Browser agent repeated itself; ending the run")
+        own = [a for a in actions if a.name != JEV_ACTION]
+        if not own:
+            # A step that only hands Jev a goal is shown by the burst's own card.
+            return
+        await self._emit_frame(
+            caption=step_caption(own, getattr(agent_output, "next_goal", None)),
+            actions=own,
+            url=browser_state_summary.url,
+            title=browser_state_summary.title,
         )
 
     async def _on_step_end(self, agent: object) -> None:
-        """Mirror each executed action's result into the thread after a step ends.
-
-        register_new_step_callback fires before the actions execute, so only
-        on_step_end sees state.last_result (one entry per action, in order).
-        Keyed by self._last_step so each output lands on the row _on_step emitted.
-        """
+        """Record the step's actions and mirror their results into the thread."""
         state = getattr(agent, "state", None)
         results = getattr(state, "last_result", None) or []
         framed, self._framed = self._framed, False
         if self._step_started_at:
-            log.info(
-                f"{LogTag.BROWSER} Browser step actions executed",
-                duration_ms=round((perf_counter() - self._step_started_at) * 1000),
+            self._ledger.executed(
+                ExecutedAction(
+                    component=CallComponent.AGENT,
+                    description=", ".join(self._step_actions),
+                    duration_ms=round((perf_counter() - self._step_started_at) * 1000),
+                )
             )
-            self._step_started_at = 0.0  # pragma: no mutate
+            self._step_started_at = 0.0
         if not framed and any(result.error for result in results):
-            # The step died before the model picked anything (an action error, a
-            # watchdog timeout on the observation), so nothing else will ever
-            # speak for it and the user just watches the card sit there.
-            self._emit_frame(goal=STEP_ERROR_CAPTION, actions=[])
+            await self._emit_frame(caption=STEP_ERROR_CAPTION, actions=[], url=None, title=None)
         if self._hooks.action_results is None:
             return
         outputs = [
-            BrowserActionOutput(position=position, output=self._redact(text))
+            BrowserActionOutput(position=position, output=self._secrets.redact(text))
             for position, result in enumerate(results)
             if (text := _summarize_action_result(result))
         ]
         if outputs:
-            await self._hooks.action_results(self._last_step, outputs)
+            await self._hooks.action_results(self._frames, outputs)
+

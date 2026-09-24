@@ -29,7 +29,10 @@ toward the goal. So:
     "check my inbox". Do NOT downgrade it to "just open the login page" or stop
     early because a login is involved. Let the handoff happen.
   * NEVER ask the user to send a password, OTP, or card number in chat; the live
-    handoff is exactly how they provide those, directly in the browser.
+    handoff is exactly how they provide those, directly in the browser. When the
+    user has ALREADY given credentials in the conversation, pass them in `secrets`
+    and write <secret>name</secret> in the task where each is used; the run then
+    signs in itself, and the values never reach any model.
   * Do NOT tell the user you "can't hold the browser open" or "have no live
     handoff". You do; the live-view link is delivered automatically at the
     handoff step.
@@ -47,7 +50,8 @@ Args:
         (dates, names, quantities, preferences). Keep it to the GOAL in one or two
         sentences; do not write step-by-step instructions, and do not invent
         requirements the user did not ask for (saving files, reporting byte sizes,
-        etc.). Screenshots are shown to the user automatically. Do not include secrets.
+        etc.). Screenshots are shown to the user automatically. Never write a secret's
+        value in the task: put it in `secrets` and write <secret>name</secret>.
         The browser sees ONLY this text: not the conversation, not your memory. Put
         in every value the page will ask for that you know (names, email, address,
         dates, quantities, the exact item), and if a value it cannot do without is
@@ -56,6 +60,8 @@ Args:
         never invent a label for it, a wrong label sends the browser to the wrong
         control and it skips the step.
     start_url (str, optional): A URL to open first, if the user named a site.
+    secrets (dict, optional): Credentials the user gave for this task, by a short
+        name ({"password": "..."}); the task refers to each as <secret>name</secret>.
 
 Returns:
     str: Confirmation that the run has STARTED, with its job id. Never a result.

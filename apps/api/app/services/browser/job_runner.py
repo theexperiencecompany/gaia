@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable
 import contextlib
 from functools import partial
 from time import perf_counter
+from urllib.parse import urlsplit
 import uuid
 
 from app.config.settings import settings
@@ -19,6 +20,7 @@ from app.constants.browser import (
     BROWSER_JOB_CRASHED_SUMMARY,
     BROWSER_TASK_EVENT,
     BROWSER_TOOL_CATEGORY,
+    BrowserEngine,
     BrowserRunFailure,
     BrowserSessionStatus,
     HandoffKind,
@@ -52,9 +54,16 @@ from app.services.browser.bot_delivery import BotProgressDelivery
 from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
 from app.services.browser.fingerprint import reset_fingerprint_seed, set_fingerprint_seed
 from app.services.browser.handoff import await_handoff, create_pending_handoff
+from app.services.browser.jev.decision import goal_addresses
+from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.job_events import publish_job_event
-from app.services.browser.jobs import job_cancel_requested, joiner_lease_held, put_job_state
-from app.services.browser.llm import build_browser_llm
+from app.services.browser.jobs import (
+    job_cancel_requested,
+    job_messages_waiting,
+    joiner_lease_held,
+    put_job_state,
+    take_job_messages,
+)
 from app.services.browser.replay import create_replay_link
 from app.services.browser.run_failure import record_run_result
 from app.services.browser.runner import (
@@ -504,6 +513,21 @@ async def persist_run_outcome(
     )
 
 
+def hosts_for(engine: BrowserEngine) -> tuple[str, str | None]:
+    """Return the host a run on engine opens on, and the Chrome host it falls back to (Obscura only).
+
+    BROWSER_HOST_URL is the host running BROWSER_ENGINE; BROWSER_FALLBACK_HOST_URL
+    is a Chromium host. Chrome is the default engine, Obscura an opt-in one.
+    """
+    primary_is_chrome = settings.BROWSER_ENGINE is BrowserEngine.CHROMIUM
+    chrome_host = settings.BROWSER_HOST_URL if primary_is_chrome else settings.BROWSER_FALLBACK_HOST_URL
+    if engine is BrowserEngine.OBSCURA and not primary_is_chrome:
+        return settings.BROWSER_HOST_URL, chrome_host
+    if chrome_host is None:
+        raise BrowserUnavailableError("No Chrome browser host is configured (BROWSER_FALLBACK_HOST_URL).")
+    return chrome_host, None
+
+
 async def _is_cancelled(request: BrowserJobRequest) -> bool:
     """Whether the user stopped this run, through the job itself or through the turn that asked for it."""
     if await job_cancel_requested(request.job_id):
@@ -545,15 +569,19 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
     )
 
     try:
-        llm = build_browser_llm(user_id=request.user_id)
+        host_url, fallback_host = hosts_for(request.engine)
     except BrowserUnavailableError as exc:
-        log.warning(
-            f"{LogTag.BROWSER} Browser LLM unavailable",
-            error_type=type(exc).__name__,
-            error=str(exc),
-        )
-        log.fail(BrowserRunFailure.LLM_ERROR)
+        log.fail(BrowserRunFailure.HOST_UNAVAILABLE)
         return await _terminal_failure(emitter, str(exc))
+    log.set_ns("browser", engine=request.engine.value)
+    secrets = RunSecrets(
+        request.secrets,
+        sites=[
+            host
+            for url in (request.start_url, *goal_addresses(request.task))
+            if url and (host := urlsplit(url).hostname)
+        ],
+    )
 
     # Pin this run's canvas/audio fingerprint to the user, so the same person
     # always presents the same device rather than a new one per task.
@@ -573,7 +601,7 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
             session = await sessions.enter_async_context(
                 browser_session(
                     user_id=request.user_id,
-                    host_url=settings.BROWSER_HOST_URL,
+                    host_url=host_url,
                     start_url=request.start_url,
                 )
             )
@@ -591,7 +619,7 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
 
             runner = BrowserTaskRunner(
                 session=session,
-                llm=llm,
+                secrets=secrets,
                 callbacks=BrowserRunnerCallbacks(
                     emit=emitter.emit,
                     request_handoff=partial(
@@ -602,10 +630,12 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
                     ),
                     open_fallback_session=(
                         partial(_open_fallback_session, sessions, request.user_id, fallback_host)
-                        if (fallback_host := settings.BROWSER_FALLBACK_HOST_URL)
+                        if fallback_host
                         else None
                     ),
                     is_cancelled=partial(_is_cancelled, request),
+                    user_waiting=partial(job_messages_waiting, request.job_id),
+                    take_user_messages=partial(take_job_messages, request.job_id),
                     action_results=thread_mirror.results,
                     agent_joined=partial(joiner_lease_held, request.job_id),
                     note=emitter.note,
@@ -624,7 +654,6 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
                     handoff_timeout_seconds=settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS,
                     stream_screenshots=settings.BROWSER_USE_STREAM_SCREENSHOTS,
                     solve_captcha=settings.BROWSER_USE_SOLVE_CAPTCHA,
-                    flash_mode=settings.BROWSER_USE_FLASH_MODE,
                     start_url=request.start_url or None,
                 ),
                 user_id=request.user_id or None,

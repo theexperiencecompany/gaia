@@ -1,13 +1,15 @@
 """Redis-backed store for a background browser job.
 
-Four pieces of shared state, all cross-process because the run lives in an ARQ
+Five pieces of shared state, all cross-process because the run lives in an ARQ
 worker while the turn that asked for it lives in the API: the one-task-per-
 conversation slot lease, the job's durable state, the joiner lease that decides
-who speaks the result, and the cancel flag for a job whose turn has ended.
+who speaks the result, the cancel flag for a job whose turn has ended, and the
+inbox of what the user said while the job runs.
 """
 
 from app.constants.browser import (
     BROWSER_JOB_CANCEL_PREFIX,
+    BROWSER_JOB_INBOX_PREFIX,
     BROWSER_JOB_JOINER_LEASE_SECONDS,
     BROWSER_JOB_JOINER_PREFIX,
     BROWSER_JOB_LOCK_PREFIX,
@@ -33,6 +35,10 @@ def _joiner_key(job_id: str) -> str:
 
 def _cancel_key(job_id: str) -> str:
     return f"{BROWSER_JOB_CANCEL_PREFIX}{job_id}"
+
+
+def _inbox_key(job_id: str) -> str:
+    return f"{BROWSER_JOB_INBOX_PREFIX}{job_id}"
 
 
 async def claim_conversation_slot(conversation_id: str, job_id: str) -> str | None:
@@ -122,4 +128,34 @@ async def cancel_conversation_browser_job(conversation_id: str) -> str | None:
     if job_id is None:
         return None
     await request_job_cancel(job_id)
+    return job_id
+
+
+async def post_job_message(job_id: str, text: str) -> None:
+    """Queue what the user said for the running job to read at its next step."""
+    key = _inbox_key(job_id)
+    await redis_cache.client.rpush(key, text)
+    await redis_cache.client.expire(key, browser_job_ttl_seconds())
+
+
+async def job_messages_waiting(job_id: str) -> bool:
+    return bool(await redis_cache.client.llen(_inbox_key(job_id)))
+
+
+async def take_job_messages(job_id: str) -> list[str]:
+    """Return and clear the messages waiting for this job, oldest first."""
+    key = _inbox_key(job_id)
+    async with redis_cache.client.pipeline(transaction=True) as pipe:
+        pipe.lrange(key, 0, -1)
+        pipe.delete(key)
+        messages, _deleted = await pipe.execute()
+    return [str(message) for message in messages]
+
+
+async def post_conversation_message(conversation_id: str, text: str) -> str | None:
+    """Queue a user message for this conversation's running browser job; returns its id, or None when none runs."""
+    job_id = await get_conversation_slot(conversation_id)
+    if job_id is None:
+        return None
+    await post_job_message(job_id, text)
     return job_id

@@ -149,6 +149,35 @@ def caption_from_action_list(actions: list[BrowserAction]) -> str:
     return _dedupe_join([describe_action(a.name, a.inputs, a.target) for a in actions])
 
 
+# How a burst card counts each kind of action ("Typed into 3 fields, clicked 2 times").
+_BURST_COUNTS: dict[str, tuple[str, str]] = {
+    "input": ("Typed into 1 field", "Typed into {n} fields"),
+    "select_dropdown": ("chose 1 option", "chose {n} options"),
+    "click": ("clicked once", "clicked {n} times"),
+    "send_keys": ("pressed Enter", "pressed Enter {n} times"),
+    "scroll": ("scrolled", "scrolled {n} times"),
+    "go_back": ("went back", "went back {n} times"),
+    "wait": ("waited for the page", "waited for the page"),
+}
+
+
+def burst_caption(actions: list[BrowserAction]) -> str:
+    """Return one card's caption for a whole Jev burst: the single action's own caption, else a count per kind."""
+    if len(actions) == 1:
+        return caption_from_action_list(actions)
+    opened = [describe_action(a.name, a.inputs, a.target) for a in actions if a.name == "navigate"]
+    counts: dict[str, int] = {}
+    for action in actions:
+        if action.name in _BURST_COUNTS:
+            counts[action.name] = counts.get(action.name, 0) + 1
+    parts = [*dict.fromkeys(opened)]
+    for name, n in counts.items():
+        one, many = _BURST_COUNTS[name]
+        parts.append(one if n == 1 else many.format(n=n))
+    text = ", ".join(parts) or "Looked at the page"
+    return text[0].upper() + text[1:]
+
+
 def _dedupe_join(parts: list[str]) -> str:
     # de-dupe consecutive repeats ("Clicking; Clicking" → "Clicking")
     return ", ".join(dict.fromkeys(p for p in parts if p))
