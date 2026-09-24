@@ -43,7 +43,7 @@ class TestGetToolSchema:
             doc = await get_tool_schema.ainvoke({"tool_name": "GMAIL_FETCH_EMAILS"}, config=CONFIG)
         info.assert_awaited_once_with("u1", "GMAIL_FETCH_EMAILS")
         assert "## GMAIL_FETCH_EMAILS" in doc
-        assert '"max_results"' in doc  # args stay JSON schema
+        assert "max_results?: int" in doc  # args are field lines
         assert "Returns: {data:obj}" in doc  # returns are type notation
         assert '"provider_output_schema"' not in doc  # never the raw dump
 
@@ -81,8 +81,8 @@ class TestGetToolSchemaLayout:
         assert doc.split("\n") == [
             "## GMAIL_FETCH_EMAILS",
             "Fetch emails.",
-            "Args schema:",
-            '{"type":"object","properties":{"max_results":{"type":"integer"}}}',
+            "Args, ? = optional:",
+            "max_results?: int",
             "Returns: {data:obj}",
         ]
 

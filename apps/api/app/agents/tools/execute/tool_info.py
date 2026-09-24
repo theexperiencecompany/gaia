@@ -12,11 +12,8 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.agents.tools.execute.resolver import resolve_tool
-from app.agents.tools.execute.schema_docs import (
-    _args_schema_of,
-    _response_schema_of,
-    render_compact_type,
-)
+from app.agents.tools.execute.schema_docs import _args_schema_of, _response_schema_of
+from app.agents.tools.execute.schema_notation import render_compact_type
 from app.db.repositories.tool_shapes import tool_shapes_repository
 
 

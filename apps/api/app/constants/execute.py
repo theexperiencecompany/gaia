@@ -19,9 +19,9 @@ TICKET_NAMES = frozenset({TICKET_APPROVE_NAME, TICKET_REVOKE_NAME})
 # tokens — cap the doc, never inject a huge schema wholesale.
 SCHEMA_DOC_MAX_CHARS = 6000
 
-# The args schema has its own budget inside the doc cap: an oversized schema
-# degrades to shallower levels (nested detail collapses to "...") rather than
-# eating the doc or clipping mid-JSON. Args must render inline for the model.
+# The args have their own budget inside the doc cap: an oversized schema sheds
+# description text, then nested depth, rather than eating the doc. Args must
+# render inline for the model.
 ARGS_SCHEMA_MAX_CHARS = 3000
 # The get_tool_schema tool's per-section output bound: full depth for almost
 # every tool, degrading by depth for the rare monster schema.

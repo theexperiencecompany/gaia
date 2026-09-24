@@ -12,8 +12,8 @@ from typing import Annotated
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.tools.execute.schema_docs import (
-    _render_budgeted_schema,
+from app.agents.tools.execute.schema_notation import (
+    render_args_budgeted,
     render_compact_type_budgeted,
 )
 from app.agents.tools.execute.tool_info import full_tool_info
@@ -51,8 +51,8 @@ async def get_tool_schema(
     lines = [f"## {info.tool_name}"]
     if info.description:
         lines.append(clip_text(info.description, _DESCRIPTION_MAX_CHARS))
-    lines.append("Args schema:")
-    lines.append(_render_budgeted_schema(info.input_schema, ARGS_SCHEMA_MAX_CHARS))
+    lines.append("Args, ? = optional:")
+    lines.append(render_args_budgeted(info.input_schema, ARGS_SCHEMA_MAX_CHARS))
     returns_schema = info.provider_output_schema or info.observed_output_schema
     if returns_schema is None:
         lines.append(
