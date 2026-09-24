@@ -2202,11 +2202,7 @@ def _gap_judge(missing: list[str], *, on_done_check_only: bool = False):
 
 
 async def test_a_one_part_task_is_told_what_the_judge_found_missing() -> None:
-    """Regression: a form submitted without its radio was declared BLOCKED; the gap reached multi-part plans only.
-
-    The gap judged before the submit is not shown on the page it landed on (the
-    submit may be what it lacked); the judgement of that page is, a step later.
-    """
+    """Regression: a form sent without its radio was BLOCKED; the gap reached multi-part plans only."""
     gateway = ScriptedGateway(script=[("CLICK", "2"), ("SCROLL_DOWN", None), ("SCROLL_DOWN", None)])
     model = JevChatModel(
         client=gateway, text_model=FakeTextModel(), structured_call=_gap_judge(["Radio 2 chosen"])

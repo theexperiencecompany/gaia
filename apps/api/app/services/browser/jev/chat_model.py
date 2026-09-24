@@ -336,10 +336,8 @@ class JevChatModel:
     # The <user_request> Browser-Use sent this step; the task when none was bound.
     _request: str = ""
     _judging_for: _JudgedState | None = None
-    #: The state the part was last judged in, so each part is judged once per
-    #: state of what was read and done: a new page, a page read to the end, a
-    #: new document on a url already read (a wall that cleared into the list),
-    #: or an action it may cite (a field filled on the form it is judging).
+    #: The state the part was last judged in: re-judged on a new page, a page read
+    #: to its end, a new document on the same url, or a new action it may cite.
     _judged: _JudgedState | None = None
     #: The state last judged and the requirements that judgement found no evidence for.
     _missing: tuple[_JudgedState | None, tuple[str, ...]] = (None, ())
