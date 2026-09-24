@@ -622,9 +622,7 @@ def test_when_every_row_was_opened_the_rows_are_offered_rather_than_none() -> No
 def test_a_run_not_offered_click_still_decides_on_a_page_it_already_opened_a_row_from() -> None:
     history = [_click("Tiny compilers in Rust"), _step_on(ARTICLE)]
 
-    request = build_request(
-        _news_page(), "read every story", history, ALL - {JevOperation.CLICK}
-    )
+    request = build_request(_news_page(), "read every story", history, ALL - {JevOperation.CLICK})
 
     assert "CLICK" not in request.questions["operation"].criteria
     assert "click_target" not in request.questions
