@@ -345,9 +345,9 @@ class JevChatModel:
     _judged: _JudgedState | None = None
     #: The state last judged and the requirements that judgement found no evidence for.
     _missing: tuple[_JudgedState | None, tuple[str, ...]] = (None, ())
-    #: What the current part's last judgement found so far (the items it chose,
-    #: in order, and what it read of them); the next judgement and Jev build on it.
-    _progress = ""
+    #: What a part's last judgement found so far (the items it chose, in order, and
+    #: what it read of them), and that part: the next judgement and Jev build on it.
+    _progress: tuple[int, str] = (0, "")
     _last_fingerprint: str | None = None
     #: Whether a run blocked on a page may retry it once on the fallback
     #: engine (the runner says so when a fallback host is configured).
@@ -1307,7 +1307,7 @@ class JevChatModel:
         elif findings and part == self._plan_index:
             # Kept only once the part was done, each judgement of a list re-chose its
             # items: the run never settled which three stories it was reading, or their order.
-            self._progress = findings
+            self._progress = (part, findings)
         log.info(
             f"{LogTag.BROWSER} Jev part judged",
             step=self._steps,
@@ -1360,7 +1360,6 @@ class JevChatModel:
         _discard(self._judging)
         self._judging = None
         self._plan_index += 1
-        self._progress = ""
         self._remember(f"DONE part {self._plan_index}: {done.goal[:80]}", "done_part", None)
         log.info(
             f"{LogTag.BROWSER} Jev plan advanced",
@@ -1490,9 +1489,10 @@ class JevChatModel:
 
     def _findings_so_far(self) -> list[str]:
         """Return what the finished parts produced, then what the current part has found so far."""
-        if not self._progress:
+        part, progress = self._progress
+        if part != self._plan_index or not progress:
             return list(self._findings)
-        return [*self._findings, f"Part {self._plan_index + 1} so far: {self._progress}"]
+        return [*self._findings, f"Part {part + 1} so far: {progress}"]
 
     def _effective_goal(self, *, whole_task: bool = False) -> str:
         """Return the goal to decide and answer against: what the user changed, how to proceed, then the task.

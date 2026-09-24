@@ -2221,6 +2221,39 @@ async def test_a_one_part_task_is_told_what_the_judge_found_missing() -> None:
     assert "Radio 2 chosen" in str(next_step.questions["operation"].instructions["goal"])
 
 
+async def test_an_action_on_the_page_it_was_judged_on_is_decided_without_waiting_for_a_judgement() -> (
+    None
+):
+    """Only a newly read page waits for its judgement; typing reads none, so a form never waits."""
+    helper = FakeTextModel()
+    judgements = 0
+
+    async def writer(schema, prompt, *, label, timeout=None, reasoning=None):
+        nonlocal judgements
+        if prompt[0].content.startswith(PLAN_STEPS):
+            return schema.model_validate({"steps": []})
+        if prompt[0].content.startswith(PART_DONE):
+            judgements += 1
+            if judgements > 1:
+                await asyncio.Event().wait()  # the judgement after the click never answers
+            return schema.model_validate(
+                {"requirements": ["Radio 2 chosen"], "evidence": [], "done": False, "findings": ""}
+            )
+        return await helper.structured(schema, prompt, label=label, timeout=timeout)
+
+    gateway = ScriptedGateway(script=[("CLICK", "1"), ("CLICK", "2")])
+    model = JevChatModel(client=gateway, text_model=FakeTextModel(), structured_call=writer)  # type: ignore[arg-type]  # a scripted gateway and a fake text model stand in for the real ones
+    model.bind(FakeSession(_FORM_PAGE), _FORM_TASK)  # type: ignore[arg-type]  # a fake session stands in for Browser-Use's
+    await model.ainvoke([], _agent_output())
+    for _ in range(20):  # the click executes; the first judgement names the gap
+        await asyncio.sleep(0)
+
+    result = await asyncio.wait_for(model.ainvoke([], _agent_output()), timeout=1)
+
+    assert "click" in _action(result.completion)
+    assert judgements == 2
+
+
 async def test_a_withheld_done_is_re_decided_on_what_its_check_found_missing() -> None:
     """Regression: the re-ask after a withheld DONE ran on the goal from before that check, and chose BLOCKED."""
     action, gateway = await _run_to_done(
