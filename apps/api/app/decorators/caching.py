@@ -53,12 +53,14 @@ class Cacheable:
         model: type[Any] | None = None,
         smart_hash: bool = False,
         namespace: str = "api",
+        cache_if: Callable[[Any], bool] | None = None,
     ):
         """Initialize the cache decorator.
 
         key_pattern: a literal without placeholders acts as a static key.
         model: uses TypeAdapter(model) instead of TypeAdapter(Any) for typed
         (de)serialization.
+        cache_if: a result it rejects is returned but not stored.
         """
         if not key_pattern and not key_generator and not smart_hash:
             raise ValueError("Either key_pattern, key_generator, or smart_hash must be provided.")
@@ -68,6 +70,7 @@ class Cacheable:
         self.namespace = namespace
         self.ttl = ttl
         self.model = model
+        self.cache_if = cache_if
 
     async def _cache_key(
         self,
@@ -117,6 +120,8 @@ class Cacheable:
                 result = cast(R, func(*args, **kwargs))
 
             log.debug(f"{LogTag.API} Cache miss for key", cache_key=cache_key)
+            if self.cache_if is not None and not self.cache_if(result):
+                return result
             log.debug(f"{LogTag.API} Setting cache for key", cache_key=cache_key)
 
             await set_cache(key=cache_key, value=result, ttl=self.ttl, model=self.model)

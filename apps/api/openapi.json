@@ -9292,6 +9292,12 @@
       "MemorySearchResult": {
         "description": "Results from a memory search.",
         "properties": {
+          "degraded": {
+            "default": false,
+            "description": "Whether the embedding sidecar failed fast and recall ran without dense search or the reranker; such a result is never cached",
+            "title": "Degraded",
+            "type": "boolean"
+          },
           "has_confident_match": {
             "default": false,
             "description": "Whether any memory matched the query confidently rather than as a weak fallback",
@@ -9316,7 +9322,8 @@
         "required": [
           "memories",
           "total_count",
-          "has_confident_match"
+          "has_confident_match",
+          "degraded"
         ],
         "title": "MemorySearchResult",
         "type": "object"

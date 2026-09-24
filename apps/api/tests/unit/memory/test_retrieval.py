@@ -1079,6 +1079,70 @@ async def _run_recall(harness: _RecallHarness, patches, **kwargs):
         return await recall.__wrapped__(USER, "the query", **kwargs)
 
 
+class TestRecallCaching:
+    """recall is cached per query, but only when the full pipeline produced the result."""
+
+    @staticmethod
+    async def _recall_twice(harness: _RecallHarness, patches) -> list:
+        from contextlib import ExitStack
+
+        results = []
+        with ExitStack() as stack:
+            for patcher in patches:
+                stack.enter_context(patcher)
+            for _ in range(2):
+                results.append(await recall(USER, "the query", include_graph_expansion=False))
+        return results
+
+    async def test_full_result_is_cached_and_served_to_the_next_call(self, fake_redis) -> None:
+        row = make_row("the answer")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"the answer": 5.0}
+        patches = harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row])
+        first, second = await self._recall_twice(harness, patches)
+
+        assert first.degraded is False
+        assert [m.content for m in second.memories] == ["the answer"]
+        assert len(harness.rerank_inputs) == 1  # second call was a cache hit
+
+    @pytest.mark.regression
+    async def test_timed_out_embed_is_not_cached_and_the_next_call_recomputes(
+        self, fake_redis
+    ) -> None:
+        row = make_row("the answer")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"the answer": 5.0}
+        patches = harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row])
+        embed = AsyncMock(side_effect=[httpx.ReadTimeout("slow"), [0.1] * 8])
+        patches = (patch.object(retrieval, "embed_query", new=embed), *patches[1:])
+        async with captured_wide_event() as event:
+            first, second = await self._recall_twice(harness, patches)
+
+        assert first.degraded is True
+        assert first.memories == []
+        assert second.degraded is False
+        assert [m.content for m in second.memories] == ["the answer"]
+        assert embed.await_count == 2
+        assert {
+            "msg": "memory_recall_degraded",
+            "reasons": ["embed_query_skipped"],
+            "result_count": 0,
+        } in event["warnings"]
+
+    async def test_skipped_rerank_is_not_cached(self, fake_redis) -> None:
+        row = make_row("the answer")
+        harness = _RecallHarness()
+        patches = harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row])
+        rerank = AsyncMock(side_effect=TimeoutError)
+        patches = (*patches[:-1], patch.object(retrieval, "rerank", new=rerank))
+        first, second = await self._recall_twice(harness, patches)
+
+        assert first.degraded is True
+        assert second.degraded is True
+        assert rerank.await_count == 2
+        assert await fake_redis.keys("user:*:memories:*") == []
+
+
 class TestRecall:
     async def test_returns_hydrated_ranked_entries(self) -> None:
         best, worst = make_row("the answer"), make_row("unrelated")
@@ -1683,7 +1747,7 @@ class TestInteractiveRecallEmbeds:
     @pytest.mark.regression
     async def test_ann_search_falls_back_to_no_hits_when_the_embed_sidecar_fails(self) -> None:
         # A slow/overloaded embedding sidecar must degrade recall to the FTS leg,
-        # not fail the user's turn: _ann_search returns no hits and never touches
+        # not fail the user's turn: _ann_search reports the skip (None) and never touches
         # Chroma. Before the fix the raw HTTP error propagated out of recall.
         query_similar = AsyncMock()
         with (
@@ -1693,7 +1757,7 @@ class TestInteractiveRecallEmbeds:
             patch.object(retrieval.chroma_store, "query_similar", new=query_similar),
         ):
             hits = await retrieval._ann_search(USER, "the query", {})
-        assert hits == []
+        assert hits is None
         query_similar.assert_not_awaited()
 
     async def test_recall_transcripts_returns_empty_when_the_embed_sidecar_fails(self) -> None:

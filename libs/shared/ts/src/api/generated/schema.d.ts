@@ -10096,6 +10096,12 @@ export interface components {
          */
         MemorySearchResult: {
             /**
+             * Degraded
+             * @description Whether the embedding sidecar failed fast and recall ran without dense search or the reranker; such a result is never cached
+             * @default false
+             */
+            degraded: boolean;
+            /**
              * Has Confident Match
              * @description Whether any memory matched the query confidently rather than as a weak fallback
              * @default false
