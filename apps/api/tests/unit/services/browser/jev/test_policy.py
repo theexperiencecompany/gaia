@@ -619,6 +619,17 @@ def test_when_every_row_was_opened_the_rows_are_offered_rather_than_none() -> No
     assert _offered_rows(page, history) == {"Tiny compilers in Rust"}
 
 
+def test_a_run_not_offered_click_still_decides_on_a_page_it_already_opened_a_row_from() -> None:
+    history = [_click("Tiny compilers in Rust"), _step_on(ARTICLE)]
+
+    request = build_request(
+        _news_page(), "read every story", history, ALL - {JevOperation.CLICK}
+    )
+
+    assert "CLICK" not in request.questions["operation"].criteria
+    assert "click_target" not in request.questions
+
+
 def test_an_offered_dropdown_gets_its_target_question_on_a_page_with_no_text_field() -> None:
     """SELECT is offered as an operation, so its head must exist or the answer cannot resolve."""
     page = observe(
