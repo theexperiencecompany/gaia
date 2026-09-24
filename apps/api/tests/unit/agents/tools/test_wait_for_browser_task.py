@@ -14,8 +14,10 @@ import pytest
 from app.agents.tools import browser_tool as tool_mod
 from app.agents.tools.browser_tool import wait_for_browser_task
 from app.constants.browser import (
+    BROWSER_JOB_JOINER_REFRESH_SECONDS,
     BrowserSessionStatus,
 )
+from app.constants.log_tags import LogTag
 from app.schemas.browser import (
     AgentGuidanceRequest,
     BrowserResultSnapshot,
@@ -23,6 +25,7 @@ from app.schemas.browser import (
 )
 from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
 from app.services.browser.job_runner import agent_result_message
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -48,6 +51,11 @@ class Joiner:
     def __init__(self) -> None:
         self.taken: list[tuple[str, str]] = []
         self.refreshed: list[tuple[str, str]] = []
+        #: The fake clock's reading at each refresh.
+        self.refreshed_at: list[float] = []
+        #: Every id the join looked anything up by.
+        self.asked_conversations: list[str] = []
+        self.asked_jobs: list[str] = []
         self.dropped: list[str] = []
         self.polls = 0
         self.slept = 0.0
@@ -67,9 +75,11 @@ def _install(
     j = Joiner()
 
     async def _slot(conversation_id: str) -> str | None:
+        j.asked_conversations.append(conversation_id)
         return slots[min(j.polls, len(slots) - 1)]
 
     async def _state(job_id: str) -> BrowserJobState | None:
+        j.asked_jobs.append(job_id)
         answer = states[min(j.polls, len(states) - 1)]
         j.polls += 1
         if j.polls >= 2:
@@ -81,6 +91,7 @@ def _install(
 
     async def _refresh(job_id: str, stream_id: str) -> None:
         j.refreshed.append((job_id, stream_id))
+        j.refreshed_at.append(j.slept)
 
     async def _drop(job_id: str) -> None:
         j.dropped.append(job_id)
@@ -89,6 +100,7 @@ def _install(
         j.slept += seconds
 
     async def _guidance(job_id: str) -> PendingAgentGuidance | None:
+        j.asked_jobs.append(job_id)
         return guidance
 
     monkeypatch.setattr(tool_mod, "get_guidance_request", _guidance)
@@ -236,3 +248,97 @@ async def test_asking_for_guidance_keeps_this_turns_claim_on_the_result(
     await wait_for_browser_task.ainvoke({"timeout": 600}, config=UI_CONFIG)
 
     assert j.dropped == []
+
+
+WORKER_DIED = agent_result_message(
+    BrowserResultSnapshot(
+        status=BrowserSessionStatus.FAILED,
+        success=False,
+        summary="the browser worker stopped unexpectedly",
+    )
+)
+
+
+async def test_a_join_with_no_timeout_waits_the_documented_ten_minutes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The schema promises the model a 600 s default; the raw coroutine is what that default is read from."""
+    j = _install(monkeypatch, slots=["job-1"], states=[RUNNING])
+
+    out = await wait_for_browser_task.coroutine(config=UI_CONFIG)
+
+    assert out == tool_mod._STILL_RUNNING
+    assert j.slept == pytest.approx(600.0)
+
+
+async def test_a_long_wait_re_arms_the_lease_on_the_refresh_cadence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The lease outlives a refresh interval by a margin only; a late or missing refresh lets the worker speak over this turn."""
+    j = _install(monkeypatch, slots=["job-1"], states=[RUNNING])
+
+    await wait_for_browser_task.ainvoke({"timeout": 20}, config=UI_CONFIG)
+
+    step = BROWSER_JOB_JOINER_REFRESH_SECONDS
+    assert j.refreshed_at == pytest.approx([step, 2 * step, 3 * step, 4 * step])
+    assert set(j.refreshed) == {("job-1", "s1")}
+
+
+async def test_the_join_follows_its_own_conversations_job_throughout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    j = _install(monkeypatch, slots=["job-1"], states=[RUNNING, RUNNING, DONE])
+
+    await wait_for_browser_task.ainvoke({}, config=UI_CONFIG)
+
+    assert set(j.asked_conversations) == {"c1"}
+    assert set(j.asked_jobs) == {"job-1"}
+
+
+async def test_a_finished_run_that_left_no_answer_is_reported_as_not_completed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A DONE state with no message is a worker that died mid-write; an empty reply would read as success."""
+    done_silent = DONE.model_copy(update={"agent_message": None})
+    _install(monkeypatch, slots=["job-1"], states=[done_silent])
+
+    out = await wait_for_browser_task.ainvoke({}, config=UI_CONFIG)
+
+    assert out == WORKER_DIED
+
+
+async def test_a_queued_job_whose_enqueue_lease_lapsed_is_still_waited_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A QUEUED job never had a worker; a missing slot says nothing about it, and a worker still booting will run it."""
+    queued = BrowserJobState(job_id="job-1", status=BrowserJobStatus.QUEUED, task="book a table")
+    _install(monkeypatch, slots=["job-1", None], states=[queued, queued, DONE])
+
+    out = await wait_for_browser_task.ainvoke({}, config=UI_CONFIG)
+
+    assert out == DONE.agent_message
+
+
+async def test_a_lost_worker_is_a_warning_naming_the_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install(monkeypatch, slots=["job-1", None], states=[RUNNING])
+
+    async with captured_wide_event() as event:
+        await wait_for_browser_task.ainvoke({}, config=UI_CONFIG)
+
+    (warning,) = [w for w in event["warnings"] if "browser" in w]
+    assert warning["msg"].startswith(LogTag.BROWSER)
+    assert warning["browser"] == {"job_id": "job-1"}
+
+
+async def test_a_join_that_gave_up_waiting_says_so_on_the_wide_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A timed-out join hands delivery to the worker; the event is how a missing follow-up is traced to it."""
+    _install(monkeypatch, slots=["job-1"], states=[RUNNING])
+
+    async with captured_wide_event() as event:
+        await wait_for_browser_task.ainvoke({"timeout": 1}, config=UI_CONFIG)
+
+    assert event["browser"] == {"job_id": "job-1", "join": "timed_out_still_running"}

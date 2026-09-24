@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
-import pytest
-
 
 @dataclass
 class FakeAXProperty:
@@ -55,32 +53,3 @@ def make_state(
     )
     dom_state = SimpleNamespace(selector_map=selector_map, llm_representation=lambda: text)
     return SimpleNamespace(dom_state=dom_state, url=url, title=title)
-
-
-@pytest.fixture
-def flights_state():
-    """Return a tiny Google-Flights-like page: two comboboxes, a native select, a button."""
-    return make_state(
-        {
-            17: FakeNode(
-                "INPUT", {"role": "combobox", "placeholder": "Where from?", "value": "Zurich"}
-            ),
-            23: FakeNode("INPUT", {"role": "combobox", "placeholder": "Where to?"}),
-            31: FakeNode(
-                "SELECT",
-                {"value": "economy"},
-                ax_node=FakeAXNode(role="combobox", name="Cabin class"),
-                children_nodes=[
-                    FakeNode("OPTION", {"value": "economy"}, text="Economy"),
-                    FakeNode("OPTION", {"value": "business"}, text="Business"),
-                    FakeNode("OPTION", {"value": "first", "disabled": ""}, text="First"),
-                ],
-            ),
-            40: FakeNode("BUTTON", text="Search", ax_node=FakeAXNode(role="button", name="Search")),
-            41: FakeNode(
-                "INPUT",
-                {"type": "checkbox", "aria-label": "Nonstop only", "checked": ""},
-                ax_node=FakeAXNode(role="checkbox", properties=[FakeAXProperty("checked", True)]),
-            ),
-        }
-    )

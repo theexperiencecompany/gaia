@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from app.constants.browser import (
+    BROWSER_LIVE_CODE_ENTROPY_BYTES,
     BROWSER_REPLAY_CODE_TTL_SECONDS,
 )
 from app.schemas.browser import ReplayRecord
@@ -22,6 +23,7 @@ from app.services.browser.replay import (
     render_replay_page,
     resolve_replay_code,
 )
+from tests.helpers import captured_wide_event
 
 
 class _FakeRedisCache:
@@ -225,3 +227,56 @@ async def test_create_replay_link_builds_a_replays_url_from_the_minted_code(
     assert stored.shots == ["https://cdn/1.png", "https://cdn/2.png"]
     # The step count carried on the record must be derived from the real shots, not guessed.
     assert stored.steps == 2
+
+
+@pytest.mark.unit
+async def test_every_minted_replay_code_is_a_fresh_short_url_safe_slug(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The code is the only secret on a shared recap link: short enough for chat, never reused."""
+    monkeypatch.setattr(replay_module, "redis_cache", _FakeRedisCache())
+
+    codes = {await mint_replay_code("s1", 1, ["https://cdn/1.png"]) for _ in range(5)}
+
+    assert len(codes) == 5
+    # token_urlsafe base64-encodes the entropy bytes: 4 characters per 3 bytes.
+    expected_length = -(-BROWSER_LIVE_CODE_ENTROPY_BYTES * 4 // 3)
+    assert all(len(code) == expected_length for code in codes)
+    assert all(code.replace("-", "").replace("_", "").isalnum() for code in codes)
+
+
+@pytest.mark.unit
+async def test_minting_reports_the_session_its_frame_count_and_latency_on_the_wide_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(replay_module, "redis_cache", _FakeRedisCache())
+    clock = iter([10.0, 10.75])
+    monkeypatch.setattr(replay_module, "perf_counter", lambda: next(clock))
+
+    async with captured_wide_event() as event:
+        await mint_replay_code("s1", 3, ["https://cdn/1.png", "https://cdn/3.png"])
+
+    assert event["browser"] == {"session_id": "s1", "replay_shots": 2, "replay_mint_ms": 750}
+
+
+@pytest.mark.unit
+def test_derived_urls_join_a_slash_terminated_store_base_without_doubling_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the trailing slash goes: the base's own path, to its last character, is kept."""
+    monkeypatch.setattr(replay_module.settings, "R2_PUBLIC_BASE_URL", "https://cdn/bucket-X/")
+
+    page = render_replay_page(ReplayRecord(session_id="s1", steps=1))
+
+    assert '["https://cdn/bucket-X/browser_steps/s1/step_1.png"]' in page
+
+
+@pytest.mark.unit
+def test_without_an_object_store_derived_urls_stay_relative(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(replay_module.settings, "R2_PUBLIC_BASE_URL", None)
+
+    page = render_replay_page(ReplayRecord(session_id="s1", steps=1))
+
+    assert '["/browser_steps/s1/step_1.png"]' in page

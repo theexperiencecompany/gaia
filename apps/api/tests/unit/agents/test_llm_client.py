@@ -16,7 +16,7 @@ from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
-from langchain_core.callbacks import UsageMetadataCallbackHandler
+from langchain_core.callbacks import AsyncCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, Generation, LLMResult
 from langchain_core.runnables import (
@@ -48,6 +48,7 @@ from app.agents.llm.client import (
     _get_available_providers,
     _get_ordered_providers,
     _openrouter_wire_configurables,
+    _parse_structured_reply,
     _record_auxiliary_usage,
     _reported_cost,
     _requested_model,
@@ -668,6 +669,15 @@ class TestResolveModelOnOpenRouter:
         assert llm.max_tokens == HELPER_MAX_OUTPUT_TOKENS
         assert llm.model_kwargs["models"] == [HIL_JUDGE_MODEL_NAME, *HIL_JUDGE_FALLBACK_MODEL_NAMES]
 
+    @pytest.mark.usefixtures("openrouter")
+    def test_the_judge_samples_at_the_callers_temperature_and_reasoning(self) -> None:
+        """A judge asked for a cold, reasoning-off verdict must not silently run at the lane defaults."""
+        llm = resolve_model(ModelUse.JUDGE, temperature=0.2, reasoning=ReasoningLevel.OFF)
+
+        assert isinstance(llm, ChatOpenRouter)
+        assert llm.temperature == 0.2
+        assert llm.reasoning == {"effort": "none"}
+
     def test_the_judge_keeps_the_configured_provider_order(
         self, monkeypatch: pytest.MonkeyPatch, openrouter: None
     ) -> None:
@@ -706,22 +716,25 @@ class TestResolveModelOnOpenRouter:
         assert llm.model == model
 
     @pytest.mark.parametrize(
-        ("use", "missing"),
+        ("use", "message"),
         [
-            (ModelUse.HELPER, "OPENROUTER_API_KEY"),
-            (ModelUse.JUDGE, "OPENROUTER_API_KEY"),
-            (ModelUse.MEMORY, "GOOGLE_API_KEY"),
-            (ModelUse.VISION, "GOOGLE_API_KEY"),
+            (ModelUse.HELPER, "Default LLM not configured. Set OPENROUTER_API_KEY."),
+            (ModelUse.JUDGE, "Default LLM not configured. Set OPENROUTER_API_KEY."),
+            (ModelUse.MEMORY, "Memory model not configured. Set GOOGLE_API_KEY."),
+            (ModelUse.VISION, "Vision model not configured. Set GOOGLE_API_KEY."),
         ],
     )
-    def test_a_missing_key_raises_naming_it(
-        self, monkeypatch: pytest.MonkeyPatch, openrouter: None, use: ModelUse, missing: str
+    def test_a_missing_key_raises_naming_the_lane_and_the_key_that_fixes_it(
+        self, monkeypatch: pytest.MonkeyPatch, openrouter: None, use: ModelUse, message: str
     ) -> None:
+        """Callers only log this: the line itself has to tell the operator which lane is down and which key to set."""
         monkeypatch.setattr(settings, "OPENROUTER_API_KEY", None)
         monkeypatch.setattr(settings, "GOOGLE_API_KEY", None)
 
-        with pytest.raises(LLMNotConfiguredError, match=missing):
+        with pytest.raises(LLMNotConfiguredError) as raised:
             resolve_model(use)
+
+        assert str(raised.value) == message
 
     @pytest.mark.parametrize("use", list(ModelUse))
     def test_sim_mode_serves_every_use_from_the_stub(
@@ -1097,7 +1110,7 @@ class TestMemoryLaneProviderSelection:
         mock_ainvoke.return_value = _Extracted(fact="from-aux")
         config = RunnableConfig(configurable={"user_id": "u1"})
 
-        options = StructuredCallOptions(temperature=0.4, timeout=9.0)
+        options = StructuredCallOptions(temperature=0.4, timeout=9.0, max_attempts=1)
 
         result = await ainvoke_structured_gemini(
             _Extracted, "transcript", label="memory:extract", config=config, options=options
@@ -1113,7 +1126,7 @@ class TestMemoryLaneProviderSelection:
         assert kwargs == {
             "config": config,
             "label": "memory:extract",
-            "options": LLMInvokeOptions(timeout=9.0),
+            "options": LLMInvokeOptions(timeout=9.0, max_attempts=1),
         }
         # An aux outage has somewhere to go: the fallback factory builds the
         # Gemini structured runnable with this call's schema and temperature.
@@ -1896,6 +1909,24 @@ class TestAinvokeStructured:
         assert isinstance(runnable, RunnableBinding)
         assert runnable.kwargs == {"session_id": "conv-1-aux"}
 
+    async def test_the_call_runs_on_the_conversations_aux_sticky_session(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The config has to reach the runnable too, not only the invoke, or the aux call loses its provider pin."""
+        monkeypatch.setattr(settings, "GAIA_SIM_MODE", False)
+        monkeypatch.setattr(settings, "DEV_DEFAULT_MODEL", None)
+        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-test")
+        config = RunnableConfig(configurable={"session_id": "conv-1"})
+
+        with patch(
+            f"{_CLIENT}.ainvoke_llm", new=AsyncMock(return_value=self._Schema(answer="ok"))
+        ) as mock_invoke:
+            await ainvoke_structured(self._Schema, "prompt", label="judge", config=config)
+
+        runnable = mock_invoke.await_args.args[0]
+        assert isinstance(runnable, RunnableBinding)
+        assert runnable.kwargs == {"session_id": "conv-1-aux"}
+
     def test_no_sticky_session_reaches_a_non_openrouter_endpoint(self) -> None:
         """session_id is an OpenRouter routing hint; the custom endpoint rejects it."""
         custom = ChatOpenAI(model="m", api_key=SecretStr("k"), base_url="https://x/v1")
@@ -1967,6 +1998,11 @@ def _provider_replies_with(arguments: str, finish_reason: str = "tool_calls") ->
     return patch.multiple(ChatOpenRouter, _astream=_astream, _agenerate=_agenerate)
 
 
+def _error_line(error: MalformedStructuredOutputError) -> str:
+    """Return the error's own message, without the troubleshooting link LangChain appends on a new line."""
+    return str(error.args[0]).partition("\n")[0]
+
+
 class TestStructuredReplyParsing:
     """A structured reply is the provider's whole answer or an error, never a shortened one.
 
@@ -2033,6 +2069,79 @@ class TestStructuredReplyParsing:
             pytest.raises(MalformedStructuredOutputError),
         ):
             await self._aux_runnable().ainvoke("prompt")
+
+    async def test_unparseable_arguments_keep_the_whole_reply_and_quote_a_bounded_excerpt(
+        self,
+    ) -> None:
+        """The error line quotes the first 300 characters; the whole reply rides llm_output for the trace."""
+        raw = '{"achieved": true, "text": "' + "x" * 400 + "END"
+        with _provider_replies_with(raw), pytest.raises(MalformedStructuredOutputError) as raised:
+            await self._aux_runnable().ainvoke("prompt")
+
+        assert raised.value.llm_output == raw
+        assert _error_line(raised.value) == (
+            f"_Closing: tool-call arguments are not valid JSON: {raw[:300]!r}"
+        )
+
+    def test_a_prose_reply_keeps_the_prose_and_quotes_a_bounded_excerpt(self) -> None:
+        """A model that answered in prose instead of calling the tool: the error shows what it said."""
+        prose = "I think the answer is yes. " * 20
+
+        with pytest.raises(MalformedStructuredOutputError) as raised:
+            _parse_structured_reply(AIMessage(content=prose), _Closing)
+
+        assert raised.value.llm_output == prose
+        assert _error_line(raised.value) == (
+            f"_Closing: reply made no _Closing tool call (content: {prose[:200]!r})"
+        )
+
+    def test_a_reply_that_is_not_from_the_model_names_what_it_was(self) -> None:
+        with pytest.raises(MalformedStructuredOutputError) as raised:
+            _parse_structured_reply(HumanMessage(content="{}"), _Closing)
+
+        assert _error_line(raised.value) == "_Closing: expected an AI reply, got HumanMessage"
+
+    async def test_arguments_that_miss_the_schema_name_the_missing_field(self) -> None:
+        with (
+            _provider_replies_with('{"achieved": true}'),
+            pytest.raises(MalformedStructuredOutputError) as raised,
+        ):
+            await self._aux_runnable().ainvoke("prompt")
+
+        # The pydantic report follows on its own lines, naming the field the reply left out.
+        assert _error_line(raised.value) == (
+            "_Closing: tool-call arguments do not fit the schema: 1 validation error for _Closing"
+        )
+        assert "\ntext\n  Field required" in str(raised.value)
+
+    async def test_the_trace_marks_the_call_as_structured_output_with_its_schema(self) -> None:
+        """LangSmith reads ls_structured_output_format off the model start to show the call's schema and mode."""
+
+        class _StartOptions(AsyncCallbackHandler):
+            def __init__(self) -> None:
+                self.options: list[dict[str, Any]] = []
+
+            async def on_chat_model_start(self, *_: Any, **kwargs: Any) -> None:
+                self.options.append(kwargs["options"])
+
+        handler = _StartOptions()
+        with _provider_replies_with('{"achieved": true, "text": "t"}'):
+            await self._aux_runnable().ainvoke("prompt", config={"callbacks": [handler]})
+
+        (options,) = handler.options
+        structured = options["ls_structured_output_format"]
+        assert structured["kwargs"] == {"method": "function_calling", "tool_choice": "auto"}
+        assert structured["schema"]["title"] == "_Closing"
+
+    async def test_the_parse_step_is_traced_under_the_schemas_tool_name(self) -> None:
+        with _provider_replies_with('{"achieved": true, "text": "t"}'):
+            names = [
+                event["name"]
+                async for event in self._aux_runnable().astream_events("prompt", version="v2")
+                if event["event"] == "on_chain_end"
+            ]
+
+        assert "_Closing" in names
 
     def test_a_malformed_reply_is_re_asked_by_the_lane(self) -> None:
         """Sampling another reply is the remedy, so the lane's retry must cover it."""

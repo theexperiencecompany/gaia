@@ -36,13 +36,17 @@ class _S3Putter(Protocol):
     def put_object(self, *, Bucket: str, Key: str, Body: bytes, ContentType: str) -> object: ...
 
 
-def _r2_configured() -> bool:
-    return bool(
+def _r2_public_base() -> str | None:
+    """Return the bucket's public base URL, no trailing slash, when every R2 setting is present; else None."""
+    base = settings.R2_PUBLIC_BASE_URL
+    if not (
         settings.CLOUDFLARE_ACCOUNT_ID
         and settings.R2_ACCESS_KEY_ID
         and settings.R2_SECRET_ACCESS_KEY
-        and settings.R2_PUBLIC_BASE_URL
-    )
+        and base
+    ):
+        return None
+    return base.rstrip("/")
 
 
 @lru_cache(maxsize=1)
@@ -73,7 +77,8 @@ async def publish_step_screenshot(png: bytes, conversation_id: str, index: int) 
     """Publish one step screenshot and return the URL that serves it, or None."""
     size_bytes = len(png)
     started = perf_counter()
-    if not _r2_configured():
+    base = _r2_public_base()
+    if base is None:
         url = await _store_locally(png, conversation_id, index)
         _log_published(index, size_bytes, "local", url is not None, started)
         return url
@@ -90,7 +95,6 @@ async def publish_step_screenshot(png: bytes, conversation_id: str, index: int) 
         url = await _store_locally(png, conversation_id, index)
         _log_published(index, size_bytes, "local_fallback", url is not None, started)
         return url
-    base = (settings.R2_PUBLIC_BASE_URL or "").rstrip("/")  # guaranteed set by _r2_configured
     _log_published(index, size_bytes, "r2", True, started)
     return f"{base}/{key}"
 
@@ -100,9 +104,11 @@ def _log_published(index: int, size_bytes: int, backend: str, ok: bool, started:
     upload_ms = round((perf_counter() - started) * 1000)
     log.set_ns(
         "browser",
+        screenshot_step_index=index,
         screenshot_backend=backend,
         screenshot_bytes=size_bytes,
         screenshot_upload_ms=upload_ms,
+        screenshot_published=ok,
     )
     log.info(
         f"{LogTag.BROWSER} Browser screenshot published",
