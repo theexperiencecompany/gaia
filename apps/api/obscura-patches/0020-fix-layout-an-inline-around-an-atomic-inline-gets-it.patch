@@ -1,0 +1,167 @@
+From e837dc088a7e1060aa784224a0302646d8cfeb0d Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 25 Sep 2026 00:25:51 +0530
+Subject: [PATCH] fix(layout): an inline around an atomic inline gets its box
+ from its content
+
+A run holding an atomic inline (an <input>) cannot fold to one shaped
+buffer, so it is laid out box by box and shaping gives the spliced inlines
+in it (a <label> wrapping its text and its input, any span beside it) no
+fragment: they reported a zero rect. Their line fragments are now their
+descendants' word and element boxes, merged per line.
+---
+ crates/obscura-render/src/dom.rs | 110 ++++++++++++++++++++++++++++++-
+ 1 file changed, 109 insertions(+), 1 deletion(-)
+
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index 7de1470..ffba27d 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -7977,6 +7977,7 @@ fn layout_dom_once(
+         &mut rects,
+         &mut inline_fragments,
+         &styles,
++        &text_runs,
+     );
+ 
+     let generated_boxes = ifc_items
+@@ -8019,6 +8020,81 @@ fn layout_dom_once(
+     )
+ }
+ 
++/// Line fragments of a spliced inline whose content was laid out box by box
++/// (a run holding an atomic inline, which cannot fold to one shaped buffer):
++/// the word boxes of its text and the boxes of its non-spliced descendants,
++/// merged per line. Boxes whose block-axis extents overlap share a line.
++fn descendant_line_fragments(
++    tree: &DomTree,
++    id: NodeId,
++    split_inlines: &HashSet<NodeId>,
++    styles: &HashMap<NodeId, crate::LayoutStyle>,
++    rects: &HashMap<NodeId, Rect>,
++    text_runs: &HashMap<NodeId, Vec<(Rect, String)>>,
++) -> Vec<Rect> {
++    fn collect(
++        tree: &DomTree,
++        id: NodeId,
++        split_inlines: &HashSet<NodeId>,
++        styles: &HashMap<NodeId, crate::LayoutStyle>,
++        rects: &HashMap<NodeId, Rect>,
++        text_runs: &HashMap<NodeId, Vec<(Rect, String)>>,
++        out: &mut Vec<Rect>,
++    ) {
++        for child in rendered_children(tree, id) {
++            let Some(node) = tree.get_node(child) else {
++                continue;
++            };
++            if matches!(node.data, obscura_dom::tree::NodeData::Text { .. }) {
++                if let Some(words) = text_runs.get(&child) {
++                    out.extend(words.iter().map(|(rect, _)| *rect));
++                }
++                continue;
++            }
++            if !node.is_element() {
++                continue;
++            }
++            let Some(style) = styles.get(&child) else {
++                continue;
++            };
++            if style.display == crate::Display::None
++                || style.float.is_some()
++                || matches!(style.position, Some(taffy::Position::Absolute))
++            {
++                continue;
++            }
++            if style.display_contents || split_inlines.contains(&child) {
++                collect(tree, child, split_inlines, styles, rects, text_runs, out);
++            } else if let Some(rect) = rects.get(&child) {
++                out.push(*rect);
++            }
++        }
++    }
++    let mut boxes = Vec::new();
++    collect(tree, id, split_inlines, styles, rects, text_runs, &mut boxes);
++    boxes.retain(|rect| rect.width > 0.0 || rect.height > 0.0);
++    boxes.sort_by(|a, b| a.y.total_cmp(&b.y).then_with(|| a.x.total_cmp(&b.x)));
++    let mut lines: Vec<Rect> = Vec::new();
++    for rect in boxes {
++        match lines.last_mut() {
++            Some(line) if rect.y < line.y + line.height && rect.y + rect.height > line.y => {
++                let left = line.x.min(rect.x);
++                let top = line.y.min(rect.y);
++                let right = (line.x + line.width).max(rect.x + rect.width);
++                let bottom = (line.y + line.height).max(rect.y + rect.height);
++                *line = Rect {
++                    x: left,
++                    y: top,
++                    width: right - left,
++                    height: bottom - top,
++                };
++            }
++            _ => lines.push(rect),
++        }
++    }
++    lines
++}
++
+ /// Geometry for plain inlines that the box tree spliced out.
+ ///
+ /// CSS2 §9.2.1.1 splits an inline box that contains a block-level box: the
+@@ -8039,6 +8115,7 @@ fn synthesize_split_inline_fragments(
+     rects: &mut HashMap<NodeId, Rect>,
+     inline_fragments: &mut HashMap<NodeId, Vec<Rect>>,
+     styles: &HashMap<NodeId, crate::LayoutStyle>,
++    text_runs: &HashMap<NodeId, Vec<(Rect, String)>>,
+ ) {
+     enum Piece {
+         Inline,
+@@ -8089,7 +8166,17 @@ fn synthesize_split_inline_fragments(
+         collect(tree, id, split_inlines, styles, &mut pieces);
+         let mut line_fragments = inline_fragments.get(&id).cloned().unwrap_or_default();
+         if !pieces.iter().any(|piece| matches!(piece, Piece::Block(_))) {
+-            // No split: shaping already produced the whole geometry.
++            // No split: shaping produced the whole geometry, unless the run
++            // holding this inline could not fold to shaped text (it holds an
++            // atomic inline such as an <input>) and was laid out box by box.
++            // Then its line fragments are its descendants' boxes, per line.
++            if line_fragments.is_empty() {
++                let fragments =
++                    descendant_line_fragments(tree, id, split_inlines, styles, rects, text_runs);
++                if !fragments.is_empty() {
++                    synthesized.push((id, fragments));
++                }
++            }
+             continue;
+         }
+ 
+@@ -15741,6 +15828,27 @@ mod tests {
+         root
+     }
+ 
++    #[test]
++    fn spliced_inline_around_an_atomic_inline_has_a_box() {
++        // A label wrapping its text and an <input> is spliced out of the box
++        // tree, and its run cannot fold to shaped text (the input is atomic),
++        // so shaping gives it no fragment. Its box is its content's boxes.
++        let tree = parse_html(
++            r#"<style>html,body{margin:0;font:16px/20px sans-serif}</style><p><label id="wrap">Name: <input id="field"></label></p><label id="beside">Plain</label><input><p><span id="shaped">only text</span></p>"#,
++        );
++        let laid = layout_dom(&tree, (1280.0, 720.0));
++        let rect = |id: &str| laid.rects.get(&tree.get_element_by_id(id).unwrap()).copied();
++        let wrap = rect("wrap").expect("label around an input must have a box");
++        let field = rect("field").expect("input box");
++        assert!(wrap.x < field.x, "{wrap:?} starts before {field:?}");
++        assert!(wrap.x + wrap.width >= field.x + field.width - 0.5, "{wrap:?} covers {field:?}");
++        assert!(wrap.height > 0.0, "{wrap:?}");
++        let beside = rect("beside").expect("inline in a run with an input must have a box");
++        assert!(beside.width > 0.0 && beside.height > 0.0, "{beside:?}");
++        let shaped = rect("shaped").expect("shaped inline keeps its box");
++        assert!(shaped.width > 0.0, "{shaped:?}");
++    }
++
+     #[test]
+     fn shadow_rendered_children_distribute_named_and_default_slots() {
+         let tree = parse_html(
+-- 
+2.43.0
+
