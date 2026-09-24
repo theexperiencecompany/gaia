@@ -35,9 +35,11 @@ from app.agents.tools.core.registry import (
 )
 from app.agents.tools.execute.resolver import ResolvedTool, is_catalog_slug, resolve_tool
 from app.agents.tools.execute.schema_docs import render_tool_doc
+from app.agents.tools.execute.tool_info import tool_contract
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.models.agent_models import AgentConfigurable, agent_configurable
@@ -110,7 +112,7 @@ async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[st
                 tool_name=name,
             )
             continue
-        docs.append(render_tool_doc(resolved.tool))
+        docs.append(render_tool_doc(await tool_contract(resolved), RETURNS_INLINE_MAX_CHARS))
     return docs
 
 
@@ -276,8 +278,8 @@ Resolves exact names so they can be run. Use this after discovery or when you al
   tool's args schema. They are NEVER bound and CANNOT be called by name. Run them with
   execute(task_description="...", tool_name="TOOL_NAME", data={...}) where `data`
   matches the schema exactly. task_description is one short user-facing line.
-  Docs show ARGS only. Before consuming a tool's output or chaining on its fields,
-  learn the return shape first: get_tool_schema("TOOL_NAME") here, or inside bash
+  Docs show the args and the return shape. A large return shape is depth-collapsed;
+  for its deeper fields call get_tool_schema("TOOL_NAME") here, or inside bash
   scripts gaia.schema("TOOL_NAME") / the cached tool-docs file. Never guess fields.
 - INTERNAL tools (snake_case names like plan_tasks): bound as callable tools; call
   them directly.

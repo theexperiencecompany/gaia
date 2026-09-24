@@ -1,85 +1,43 @@
 """Render a tool's contract as a compact text doc for the model.
 
 This is what replaces bind_tools for proxied tools: the model reads this doc
-and constructs `data` for execute() from it. Docs carry args only, as compact
-field lines budgeted by schema_notation. Return shapes are
-deliberately NOT in discovery docs: they are explored on demand through
-get_tool_schema (host) or gaia.schema/the tool-docs files (sandbox), so the
-context pays for a shape only when something actually consumes it.
+and constructs `data` for execute() from it. The args carry what building a
+call needs; the return shape is keys and types only, so a script can be
+written from the doc alone. Discovery docs and get_tool_schema render the same
+doc and differ only in how much of a large return shape they keep.
 """
 
-from typing import cast
-
-from langchain_core.tools import BaseTool
-from pydantic import BaseModel, JsonValue
-
-from app.agents.tools.execute.schema_notation import _SchemaNode, render_args_budgeted
-from app.constants.execute import (
-    ARGS_SCHEMA_MAX_CHARS,
-    EXECUTE_TOOL_NAME,
-    RESPONSE_SCHEMA_METADATA_KEYS,
-    SCHEMA_DOC_MAX_CHARS,
+from app.agents.tools.execute.schema_notation import (
+    render_args_budgeted,
+    render_compact_type_budgeted,
 )
+from app.agents.tools.execute.tool_info import ToolContract
+from app.constants.execute import ARGS_SCHEMA_MAX_CHARS, EXECUTE_TOOL_NAME
 from app.utils.general_utils import clip_text
 
-# Composio's wrapper injects a config-passthrough parameter into the synthesized
-# signature; it is plumbing, never something the model supplies.
-_INTERNAL_ARG_NAMES = {"__runnable_config__"}
 _DESCRIPTION_MAX_CHARS = 600
+_UNDOCUMENTED_RETURNS = (
+    "Return shape: not documented yet; it is learned from real calls. "
+    "Inspect the first response before consuming fields."
+)
 
 
-def render_tool_doc(tool: BaseTool) -> str:
-    """One tool's usage doc: description and args. Never the returns."""
-    lines = [f"## {tool.name}"]
-    description = tool.description.strip()
-    if description:
-        lines.append(clip_text(description, _DESCRIPTION_MAX_CHARS))
+def render_tool_doc(info: ToolContract, returns_budget: int) -> str:
+    """One tool's doc: description, args, and its return shape within returns_budget."""
+    lines = [f"## {info.tool_name}"]
+    if info.description:
+        lines.append(clip_text(info.description, _DESCRIPTION_MAX_CHARS))
     lines.append(f"Args for {EXECUTE_TOOL_NAME}(tool_name=..., data={{...}}), ? = optional:")
-    lines.append(render_args_budgeted(_args_schema_of(tool), ARGS_SCHEMA_MAX_CHARS))
+    lines.append(render_args_budgeted(info.input_schema, ARGS_SCHEMA_MAX_CHARS))
+    returns = info.effective_output_schema
+    if returns is None:
+        lines.append(_UNDOCUMENTED_RETURNS)
+    else:
+        lines.append(f"Returns: {render_compact_type_budgeted(returns, returns_budget)}")
+        if info.provider_output_schema is None:
+            lines.append(f"(shape observed from {info.observed_call_count} real calls)")
     lines.append(
         f'Run it with: {EXECUTE_TOOL_NAME}(task_description="...", '
-        f'tool_name="{tool.name}", data={{...}})'
+        f'tool_name="{info.tool_name}", data={{...}})'
     )
-    return clip_text("\n".join(lines), SCHEMA_DOC_MAX_CHARS)
-
-
-def _args_schema_of(tool: BaseTool) -> dict[str, JsonValue]:
-    schema = tool.args_schema
-    if isinstance(schema, type) and issubclass(schema, BaseModel):
-        raw = schema.model_json_schema()
-    elif isinstance(schema, dict):
-        raw = dict(schema)
-    else:
-        raw = {"type": "object", "properties": {}}
-    return _compact_schema(raw)
-
-
-def _response_schema_of(tool: BaseTool) -> dict[str, JsonValue] | None:
-    metadata = tool.metadata or {}
-    for key in RESPONSE_SCHEMA_METADATA_KEYS:
-        value = metadata.get(key)
-        if isinstance(value, dict) and value:
-            return _compact_schema(value)
-    return None
-
-
-def _compact_schema(schema: dict[str, JsonValue]) -> dict[str, JsonValue]:
-    """Strip generator noise (titles, internal params, $defs plumbing keys)."""
-    # cast, not isinstance: _strip_noise maps dict->dict by construction.
-    compacted = cast(dict[str, JsonValue], _strip_noise(schema))
-    node: _SchemaNode = cast(_SchemaNode, compacted)
-    properties = node.get("properties")
-    if isinstance(properties, dict):
-        for name in _INTERNAL_ARG_NAMES:
-            properties.pop(name, None)
-        if isinstance(node.get("required"), list):
-            node["required"] = [r for r in node["required"] if r not in _INTERNAL_ARG_NAMES]
-    return compacted
-
-
-def _strip_noise(node: JsonValue) -> JsonValue:
-    if isinstance(node, dict):
-        return {key: _strip_noise(value) for key, value in node.items() if key not in {"title"}}
-    if isinstance(node, list):
-        return [_strip_noise(item) for item in node]
-    return node
+    return "\n".join(lines)

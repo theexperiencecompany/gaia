@@ -238,6 +238,7 @@ class TestAutoBind:
             AsyncMock(return_value=registry),
         )
 
+    @pytest.mark.usefixtures("no_observed_tool_shapes")
     async def test_splits_bind_helpers_from_preloaded_integration_tools(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -261,6 +262,7 @@ class TestAutoBind:
         assert "## GMAIL_FETCH_THREAD" in docs
         assert "NOT bound" in docs
 
+    @pytest.mark.usefixtures("no_observed_tool_shapes")
     async def test_drops_names_the_registry_does_not_hold(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

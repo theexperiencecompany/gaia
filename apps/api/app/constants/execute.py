@@ -14,17 +14,16 @@ TICKET_APPROVE_NAME = "approve"
 TICKET_REVOKE_NAME = "revoke"
 TICKET_NAMES = frozenset({TICKET_APPROVE_NAME, TICKET_REVOKE_NAME})
 
-# A rendered schema doc becomes conversation context the model re-pays for on
-# every later turn, and Composio response schemas alone can run to thousands of
-# tokens — cap the doc, never inject a huge schema wholesale.
-SCHEMA_DOC_MAX_CHARS = 6000
-
 # The args have their own budget inside the doc cap: an oversized schema sheds
 # description text, then nested depth, rather than eating the doc. Args must
 # render inline for the model.
 ARGS_SCHEMA_MAX_CHARS = 3000
-# The get_tool_schema tool's per-section output bound: full depth for almost
-# every tool, degrading by depth for the rare monster schema.
+# A doc is context the model re-pays for on every later turn, so each section
+# is budgeted. Discovery docs inline the return shape up to this size (93% of
+# 1074 sampled Composio shapes fit), so a script can be written from the doc.
+RETURNS_INLINE_MAX_CHARS = 1000
+# The get_tool_schema tool's return-shape bound: full depth for almost every
+# tool, degrading by depth for the rare monster schema.
 TOOL_SCHEMA_RETURNS_MAX_CHARS = 4000
 
 # Keys under which a tool's metadata may carry a provider-supplied response

@@ -35,9 +35,11 @@ or the data is large; keep only trivial one-shot scripts inline.
 ## Rules for the script itself
 
 1. **Shapes first, never guessed.** Before consuming fields of a tool's output,
-   check its return shape: `schema("TOOL_NAME")` in the script (cached at
-   `/workspace/.gaia/tools/TOOL_NAME.json`), or `get_tool_schema` before writing
-   the script. A guessed field name costs a full failed run.
+   read its return shape: the retrieve_tools doc carries it (`Returns:`). When
+   that shape is depth-collapsed, get the deeper fields from `get_tool_schema`
+   before writing the script, or `schema("TOOL_NAME")` in the script (cached at
+   `/workspace/.gaia/tools/TOOL_NAME.json`). A guessed field name costs a full
+   failed run.
 2. **ONE script.** Fetch, filter/compute, act, then print a concise summary.
    Splitting into several bash runs re-fetches everything (each run is a fresh
    process) and burns the per-run call budget.

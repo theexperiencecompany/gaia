@@ -1,9 +1,8 @@
-"""The host-side depth lookup behind the discovery pointer.
+"""The host-side depth lookup behind the discovery docs.
 
 The sandbox has gaia.schema()/the tool-docs file; a plain conversation has this
-bound tool. Both sit on full_tool_info, so the two surfaces cannot drift. The
-return shape renders as compact type notation, never raw schema JSON: a raw
-provider schema can run to hundreds of thousands of characters.
+bound tool. It renders the same doc retrieve_tools does, with a larger budget
+for the return shape, so the two surfaces cannot drift.
 """
 
 import json
@@ -12,16 +11,10 @@ from typing import Annotated
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.tools.execute.schema_notation import (
-    render_args_budgeted,
-    render_compact_type_budgeted,
-)
+from app.agents.tools.execute.schema_docs import render_tool_doc
 from app.agents.tools.execute.tool_info import full_tool_info
-from app.constants.execute import ARGS_SCHEMA_MAX_CHARS, TOOL_SCHEMA_RETURNS_MAX_CHARS
+from app.constants.execute import TOOL_SCHEMA_RETURNS_MAX_CHARS
 from app.models.agent_models import AgentConfigurable, agent_configurable
-from app.utils.general_utils import clip_text
-
-_DESCRIPTION_MAX_CHARS = 600
 
 
 @tool
@@ -32,11 +25,11 @@ async def get_tool_schema(
         "Exact tool name, verbatim from retrieve_tools (e.g. 'GMAIL_FETCH_EMAILS').",
     ],
 ) -> str:
-    """Full contract for one integration tool: args schema plus return shape.
+    """Full contract for one integration tool: args plus the deepest return shape.
 
-    Use when a tool's doc points here instead of inlining its return shape,
-    BEFORE writing code that consumes the tool's output; never guess shapes.
-    Read-only metadata, runs nothing.
+    Use when a retrieve_tools doc collapsed a large return shape and you need
+    its deeper fields, BEFORE writing code that consumes them; never guess
+    shapes. Read-only metadata, runs nothing.
     """
     configurable: AgentConfigurable = agent_configurable(config)
     info = await full_tool_info(configurable.get("user_id"), tool_name)
@@ -48,22 +41,4 @@ async def get_tool_schema(
                 "next": "Use the exact tool name retrieve_tools returned.",
             }
         )
-    lines = [f"## {info.tool_name}"]
-    if info.description:
-        lines.append(clip_text(info.description, _DESCRIPTION_MAX_CHARS))
-    lines.append("Args, ? = optional:")
-    lines.append(render_args_budgeted(info.input_schema, ARGS_SCHEMA_MAX_CHARS))
-    returns_schema = info.provider_output_schema or info.observed_output_schema
-    if returns_schema is None:
-        lines.append(
-            "Return shape: not documented yet; it is learned from real calls. "
-            "Inspect the first response before consuming fields."
-        )
-    else:
-        lines.append(
-            "Returns: "
-            + render_compact_type_budgeted(returns_schema, TOOL_SCHEMA_RETURNS_MAX_CHARS)
-        )
-        if info.provider_output_schema is None:
-            lines.append(f"(shape observed from {info.observed_call_count} real calls)")
-    return "\n".join(lines)
+    return render_tool_doc(info, TOOL_SCHEMA_RETURNS_MAX_CHARS)

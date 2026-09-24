@@ -4,7 +4,10 @@ from typing import Any
 
 import pytest
 
+from app.agents.tools.execute.resolver import ResolvedTool
 from app.agents.tools.execute.schema_docs import render_tool_doc
+from app.agents.tools.execute.tool_info import tool_contract
+from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.services.composio.langchain_composio_service import LangchainProvider
 from tests.factories import make_composio_tool
 
@@ -36,9 +39,11 @@ class TestWrapToolOutputSchema:
         wrapped = LangchainProvider().wrap_tool(make_composio_tool(), _noop_execute)
         assert wrapped.metadata is None
 
-    def test_the_discovery_doc_still_never_carries_the_returns(self) -> None:
-        # The metadata feeds get_tool_schema/gaia.schema, not the discovery doc.
+    @pytest.mark.usefixtures("no_observed_tool_shapes")
+    async def test_the_discovery_doc_carries_the_returns(self) -> None:
         wrapped = LangchainProvider().wrap_tool(
             make_composio_tool(output_parameters=OUTPUT_SCHEMA), _noop_execute
         )
-        assert "Returns" not in render_tool_doc(wrapped)
+        info = await tool_contract(ResolvedTool(wrapped.name, wrapped, True))
+        doc = render_tool_doc(info, RETURNS_INLINE_MAX_CHARS)
+        assert "Returns: {data?:{messages?:any[]}, successful?:bool, error?:str}" in doc

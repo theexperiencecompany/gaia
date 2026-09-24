@@ -63,6 +63,7 @@ def _config(user_id: str) -> RunnableConfig:
 
 @pytest.mark.integration
 class TestRetrieveToolsBindingMode:
+    @pytest.mark.usefixtures("no_observed_tool_shapes")
     async def test_binding_resolves_mcp_names_from_mcp_client(self):
         """exact_tool_names from a user's posthog MCP validate even though absent from tool_registry."""
         user_id = "user-a"
@@ -164,6 +165,7 @@ class TestRetrieveToolsDiscoveryMode:
 
 @pytest.mark.integration
 class TestRetrieveToolsCrossUserIsolation:
+    @pytest.mark.usefixtures("no_observed_tool_shapes")
     async def test_user_b_only_sees_their_own_mcp_tools(self):
         """retrieve_tools for each user must see only that user's MCP tool names."""
         user_a = "user-a"

@@ -1,13 +1,19 @@
-"""render_tool_doc — the discovery contract: compact, budgeted, never invented."""
+"""render_tool_doc — the doc discovery and get_tool_schema share: compact, budgeted, never invented."""
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from typing import Any
+from unittest.mock import AsyncMock, patch
 
+from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, JsonValue
 import pytest
 
-from app.agents.tools.execute.schema_docs import _args_schema_of, render_tool_doc
-from app.constants.execute import SCHEMA_DOC_MAX_CHARS
+from app.agents.tools.execute.resolver import ResolvedTool
+from app.agents.tools.execute.schema_docs import render_tool_doc
+from app.agents.tools.execute.tool_info import tool_contract
+from app.constants.execute import ARGS_SCHEMA_MAX_CHARS, RETURNS_INLINE_MAX_CHARS
+from app.db.repositories.tool_shapes import tool_shapes_repository
+from app.models.tool_shape_models import ToolOutputShapeDocument
 
 
 class _Args(BaseModel):
@@ -15,31 +21,58 @@ class _Args(BaseModel):
     max_results: int = 25
 
 
+USAGE = 'Run it with: execute(task_description="...", tool_name="GMAIL_FETCH_EMAILS", data={...})'
+ARGS_HEADER = "Args for execute(tool_name=..., data={...}), ? = optional:"
+UNDOCUMENTED = (
+    "Return shape: not documented yet; it is learned from real calls. "
+    "Inspect the first response before consuming fields."
+)
+
+
 def _tool(
+    args_schema: type[BaseModel] | dict[str, Any] | None = _Args,
+    output: dict[str, JsonValue] | None = None,
     name: str = "GMAIL_FETCH_EMAILS",
     description: str = "Fetch emails.",
-    metadata: dict | None = None,
-) -> MagicMock:
-    tool = MagicMock()
-    tool.name = name
-    tool.description = description
-    tool.args_schema = _Args
-    tool.metadata = metadata
+) -> StructuredTool:
+    tool = StructuredTool.from_function(
+        func=lambda **kwargs: None,
+        name=name,
+        description=description,
+        metadata={"output_parameters": output} if output else None,
+    )
+    tool.args_schema = args_schema
     return tool
 
 
-def _deep_response_schema() -> dict:
+async def _doc(
+    tool: StructuredTool,
+    budget: int = RETURNS_INLINE_MAX_CHARS,
+    observed: ToolOutputShapeDocument | None = None,
+) -> str:
+    with patch.object(tool_shapes_repository, "get_shape", new=AsyncMock(return_value=observed)):
+        info = await tool_contract(ResolvedTool(tool.name, tool, True))
+    return render_tool_doc(info, budget)
+
+
+def _observed(schema: dict[str, JsonValue], calls: int) -> ToolOutputShapeDocument:
+    return ToolOutputShapeDocument(
+        tool_name="GMAIL_FETCH_EMAILS",
+        output_schema=schema,
+        call_count=calls,
+        last_seen=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+
+def _wide_output(fields: int) -> dict[str, JsonValue]:
     return {
         "type": "object",
         "properties": {
             "data": {
                 "type": "object",
                 "properties": {
-                    f"field_{i}": {
-                        "type": "object",
-                        "properties": {"leaf": {"type": "string", "description": "y" * 200}},
-                    }
-                    for i in range(50)
+                    f"field_{i}": {"type": "object", "properties": {"leaf": {"type": "string"}}}
+                    for i in range(fields)
                 },
             }
         },
@@ -48,32 +81,66 @@ def _deep_response_schema() -> dict:
 
 @pytest.mark.unit
 class TestRenderToolDoc:
-    def test_doc_carries_name_description_and_args(self) -> None:
-        doc = render_tool_doc(_tool())
-        assert "## GMAIL_FETCH_EMAILS" in doc
-        assert "Fetch emails." in doc
-        assert "query: str  # Search query" in doc
-        assert "max_results?: int  # [default: 25]" in doc
-        assert 'tool_name="GMAIL_FETCH_EMAILS"' in doc
+    async def test_a_documented_tool_reads_header_args_returns_then_usage(self) -> None:
+        output: dict[str, JsonValue] = {
+            "type": "object",
+            "properties": {"messages": {"type": "array", "items": {"type": "string"}}},
+            "required": ["messages"],
+        }
+        assert (await _doc(_tool(output=output))).split("\n") == [
+            "## GMAIL_FETCH_EMAILS",
+            "Fetch emails.",
+            ARGS_HEADER,
+            "query: str  # Search query",
+            "max_results?: int  # [default: 25]",
+            "Returns: {messages:str[]}",
+            USAGE,
+        ]
 
-    def test_internal_params_never_reach_the_doc(self) -> None:
+    async def test_a_tool_with_no_description_schema_or_shape_still_documents_its_call(
+        self,
+    ) -> None:
+        assert (await _doc(_tool(args_schema=None, description=""))).split("\n") == [
+            "## GMAIL_FETCH_EMAILS",
+            ARGS_HEADER,
+            "obj",
+            UNDOCUMENTED,
+            USAGE,
+        ]
+
+    async def test_an_observed_shape_renders_with_its_confidence(self) -> None:
+        observed = _observed({"type": "object", "properties": {"ok": {"type": "boolean"}}}, 17)
+        doc = await _doc(_tool(), observed=observed)
+        assert "Returns: {ok?:bool}\n(shape observed from 17 real calls)\n" in doc
+
+    async def test_the_provider_shape_wins_and_needs_no_confidence_note(self) -> None:
+        observed = _observed({"type": "object", "properties": {"ok": {"type": "boolean"}}}, 17)
+        output: dict[str, JsonValue] = {"type": "object", "properties": {"id": {"type": "string"}}}
+        doc = await _doc(_tool(output=output), observed=observed)
+        assert "Returns: {id?:str}\n" + USAGE in doc
+        assert "observed from" not in doc
+
+    async def test_a_return_shape_over_budget_collapses_by_depth(self) -> None:
+        doc = await _doc(_tool(output=_wide_output(50)))
+        returns = doc.split("Returns: ")[1].split("\n")
+        assert len(returns[0]) <= RETURNS_INLINE_MAX_CHARS
+        assert "field_0?:obj" in returns[0]
+        assert returns[1] == "(deeper fields omitted for size; the real data has them)"
+        assert returns[2] == USAGE
+
+    async def test_a_larger_budget_keeps_more_of_the_shape(self) -> None:
+        doc = await _doc(_tool(output=_wide_output(50)), budget=4000)
+        assert "field_0?:{leaf?:str}" in doc
+
+    async def test_internal_params_never_reach_the_doc(self) -> None:
         class _WithInternal(BaseModel):
             query: str
 
-        tool = _tool()
         schema = _WithInternal.model_json_schema()
         schema["properties"]["__runnable_config__"] = {"type": "string"}
-        tool.args_schema = schema
-        assert "__runnable_config__" not in render_tool_doc(tool)
+        assert "__runnable_config__" not in await _doc(_tool(args_schema=schema))
 
-    def test_returns_never_render_in_discovery_docs(self) -> None:
-        # Shapes are explored on demand (get_tool_schema / gaia.schema), never
-        # paid for in every discovery doc - even when the provider supplies one.
-        with_schema = _tool(metadata={"output_parameters": _deep_response_schema()})
-        assert "Returns" not in render_tool_doc(with_schema)
-        assert "Returns" not in render_tool_doc(_tool(metadata=None))
-
-    def test_huge_args_schema_never_starves_the_rest_of_the_doc(self) -> None:
+    async def test_huge_args_schema_never_starves_the_rest_of_the_doc(self) -> None:
         # Real case: GOOGLECALENDAR_EVENTS_LIST's args schema alone exceeded the
         # doc cap, clipping away Returns and the usage line mid-JSON.
         deep_args = {
@@ -86,83 +153,30 @@ class TestRenderToolDoc:
                 for i in range(60)
             },
         }
-        tool = _tool()
-        tool.args_schema = deep_args
-        doc = render_tool_doc(tool)
-        assert 'tool_name="GMAIL_FETCH_EMAILS"' in doc  # usage line survives
+        doc = await _doc(_tool(args_schema=deep_args))
+        assert doc.endswith(USAGE)
         assert "  nested?: str\n" in doc  # descriptions went, structure stayed
         assert "z" * 10 not in doc
 
-    def test_huge_schema_is_capped(self) -> None:
-        huge = {
+    async def test_every_section_is_budgeted(self) -> None:
+        huge: dict[str, JsonValue] = {
             "type": "object",
             "properties": {
                 f"field_{i}": {"type": "string", "description": "x" * 80} for i in range(400)
             },
         }
-        tool = _tool(metadata={"output_parameters": huge})
-        tool.args_schema = huge
-        doc = render_tool_doc(tool)
-        assert len(doc) <= SCHEMA_DOC_MAX_CHARS + 50  # clip marker allowance
+        doc = await _doc(_tool(args_schema=huge, output=huge, description="d" * 5000))
+        fixed_lines = len(USAGE) + len(ARGS_HEADER) + len("## GMAIL_FETCH_EMAILS") + 200
+        assert len(doc) <= 600 + ARGS_SCHEMA_MAX_CHARS + RETURNS_INLINE_MAX_CHARS + fixed_lines
 
-
-@pytest.mark.unit
-class TestRenderToolDocLayout:
-    def test_a_tool_with_no_description_or_schema_still_documents_its_call(self) -> None:
-        tool = _tool(name="PING", description="")
-        tool.args_schema = None
-        assert render_tool_doc(tool).split("\n") == [
-            "## PING",
-            "Args for execute(tool_name=..., data={...}), ? = optional:",
-            "obj",
-            'Run it with: execute(task_description="...", tool_name="PING", data={...})',
-        ]
-
-    def test_a_documented_tool_reads_header_args_then_usage(self) -> None:
-        assert render_tool_doc(_tool()).split("\n") == [
-            "## GMAIL_FETCH_EMAILS",
-            "Fetch emails.",
-            "Args for execute(tool_name=..., data={...}), ? = optional:",
-            "query: str  # Search query",
-            "max_results?: int  # [default: 25]",
-            'Run it with: execute(task_description="...", '
-            'tool_name="GMAIL_FETCH_EMAILS", data={...})',
-        ]
-
-    def test_a_schema_carrying_a_python_value_still_renders(self) -> None:
+    async def test_a_schema_carrying_a_python_value_still_renders(self) -> None:
         """Python-built dict schemas can carry non-JSON defaults; a doc must render them, not crash retrieval."""
-        when = datetime(2026, 1, 1, tzinfo=UTC)
-        tool = _tool()
-        tool.args_schema = {
+        schema = {
             "type": "object",
-            "properties": {"at": {"type": "string", "default": when}},
+            "properties": {"at": {"type": "string", "default": datetime(2026, 1, 1, tzinfo=UTC)}},
         }
-        assert 'at?: str  # [default: "2026-01-01 00:00:00+00:00"]' in render_tool_doc(tool)
-
-
-@pytest.mark.unit
-class TestArgsSchemaOf:
-    def test_internal_params_leave_required_and_titles_leave_nested_variants(self) -> None:
-        tool = _tool()
-        tool.args_schema = {
-            "type": "object",
-            "title": "Args",
-            "properties": {
-                "q": {"anyOf": [{"type": "string", "title": "Q"}]},
-                "__runnable_config__": {"type": "object"},
-            },
-            "required": ["q", "__runnable_config__"],
-        }
-        assert _args_schema_of(tool) == {
-            "type": "object",
-            "properties": {"q": {"anyOf": [{"type": "string"}]}},
-            "required": ["q"],
-        }
-
-    def test_a_tool_without_a_schema_takes_no_args(self) -> None:
-        tool = _tool()
-        tool.args_schema = None
-        assert _args_schema_of(tool) == {"type": "object", "properties": {}}
+        doc = await _doc(_tool(args_schema=schema))
+        assert 'at?: str  # [default: "2026-01-01 00:00:00+00:00"]' in doc
 
 
 def _calendar_like_args() -> dict[str, JsonValue]:
@@ -200,23 +214,17 @@ class _SendArgs(BaseModel):
 
 @pytest.mark.unit
 class TestOversizedArgsKeepTheirContract:
-    @pytest.mark.regression
-    def test_types_required_and_constraints_survive_a_schema_over_budget(self) -> None:
+    async def test_types_required_and_constraints_survive_a_schema_over_budget(self) -> None:
         """Regression: an over-budget args schema collapsed to bare field names, dropping every type, required marker and constraint."""
-        tool = _tool()
-        tool.args_schema = _calendar_like_args()
-        doc = render_tool_doc(tool)
+        doc = await _doc(_tool(args_schema=_calendar_like_args()))
         assert "start_datetime: str" in doc
         assert "format: date-time" in doc
         assert 'visibility?: "default"|"public"|"private"' in doc
         assert "option_0?: bool" in doc
         assert '"fields":' not in doc
 
-    @pytest.mark.regression
-    def test_a_nested_model_renders_its_fields_not_a_ref(self) -> None:
+    async def test_a_nested_model_renders_its_fields_not_a_ref(self) -> None:
         """Regression: a $ref'd nested model (GMAIL_SEND_EMAIL attachments) reached the model as a $defs pointer to chase."""
-        tool = _tool()
-        tool.args_schema = _SendArgs
-        doc = render_tool_doc(tool)
+        doc = await _doc(_tool(args_schema=_SendArgs))
         assert "attachments?: null|{\n  url: str  # A fetchable URL to the file.\n}[]" in doc
         assert "$ref" not in doc

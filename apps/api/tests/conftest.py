@@ -785,6 +785,16 @@ def posthog_provider() -> Iterator[Callable[..., None]]:
     init_posthog()
 
 
+@pytest.fixture
+def no_observed_tool_shapes() -> Iterator[AsyncMock]:
+    """Empty the shape store, so a rendered tool doc carries only the provider's return shape."""
+    with patch(
+        "app.db.repositories.tool_shapes.tool_shapes_repository.get_shape",
+        new=AsyncMock(return_value=None),
+    ) as get_shape:
+        yield get_shape
+
+
 @pytest.fixture(autouse=True)
 def _reset_limit_origin() -> Iterator[None]:
     """Keep a run's limit origin from leaking between tests.

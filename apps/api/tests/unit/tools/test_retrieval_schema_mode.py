@@ -16,8 +16,12 @@ from app.agents.tools.core.registry import DESKTOP_TOOL_CATEGORY
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.agents.tools.execute.schema_docs import render_tool_doc
+from app.agents.tools.execute.tool_info import tool_contract
+from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.models.chat_models import ConversationSource
 from tests.helpers import captured_wide_event
+
+pytestmark = pytest.mark.usefixtures("no_observed_tool_shapes")
 
 MODULE = "app.agents.tools.core.retrieval"
 CONFIG: dict[str, Any] = {"configurable": {"user_id": "u1"}}
@@ -34,6 +38,12 @@ def _gmail_tool() -> StructuredTool:
         name="GMAIL_SEND_EMAIL",
         description="Send an email.",
         args_schema=_GmailSendArgs,
+    )
+
+
+async def _doc(name: str, tool: StructuredTool) -> str:
+    return render_tool_doc(
+        await tool_contract(ResolvedTool(name, tool, True)), RETURNS_INLINE_MAX_CHARS
     )
 
 
@@ -178,6 +188,32 @@ async def _bind(exact: list[str], resolver: AsyncMock, config: dict[str, Any] | 
 
 
 @pytest.mark.unit
+class TestDocsCarryReturnShapes:
+    async def test_a_large_return_shape_is_collapsed_to_the_inline_budget(self) -> None:
+        fields = {
+            f"field_{i}": {"type": "object", "properties": {"leaf": {"type": "string"}}}
+            for i in range(50)
+        }
+        output = {
+            "type": "object",
+            "properties": {"data": {"type": "object", "properties": fields}},
+        }
+        tool = StructuredTool.from_function(
+            func=lambda **kwargs: None,
+            name="GMAIL_SEND_EMAIL",
+            description="Send an email.",
+            args_schema=_GmailSendArgs,
+            metadata={"output_parameters": output},
+        )
+        resolver = AsyncMock(return_value=ResolvedTool("GMAIL_SEND_EMAIL", tool, True))
+        text = (await _bind(["GMAIL_SEND_EMAIL"], resolver))["response_text"]
+        returns = text.split("Returns: ")[1].split("\n")
+        assert "field_0?:obj" in returns[0]
+        assert len(returns[0]) <= RETURNS_INLINE_MAX_CHARS
+        assert returns[1] == "(deeper fields omitted for size; the real data has them)"
+
+
+@pytest.mark.unit
 class TestProxiedResolutionIsPerUser:
     async def test_a_proxied_tools_doc_is_resolved_for_the_calling_user(self) -> None:
         resolver = AsyncMock(return_value=ResolvedTool("GMAIL_SEND_EMAIL", _gmail_tool(), True))
@@ -262,8 +298,8 @@ class TestRenderPreloadBlockContract:
             )
         assert block.split("\n\n") == [
             f"2 integration tool(s) preloaded below. {retrieval._EXECUTE_DOCS_INSTRUCTION}",
-            render_tool_doc(gmail),
-            render_tool_doc(asana),
+            await _doc("GMAIL_SEND_EMAIL", gmail),
+            await _doc("ASANA_CREATE_TASK", asana),
         ]
         assert resolver.await_args_list == [
             call("u1", "GMAIL_SEND_EMAIL"),
@@ -280,7 +316,7 @@ class TestRenderPreloadBlockContract:
                 block = await retrieval.render_preload_block(
                     "u1", ["GMAIL_GHOST", "GMAIL_SEND_EMAIL"]
                 )
-        assert block.split("\n\n")[1:] == [render_tool_doc(gmail)]
+        assert block.split("\n\n")[1:] == [await _doc("GMAIL_SEND_EMAIL", gmail)]
         (warning,) = event["warnings"]
         assert warning["msg"].endswith(
             "retrieve_tools: proxied tool vanished between validation and doc rendering"
