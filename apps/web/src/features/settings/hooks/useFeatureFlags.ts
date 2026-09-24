@@ -56,10 +56,13 @@ export function useFeatureToggle() {
       return { previousEnabled };
     },
     onSuccess: (feature) => setFlag(feature.key, feature),
+    // Refetch too: a 409 means the flag was killed since the page loaded, and
+    // only the server's list shows the switch locked with its reason.
     onError: (_error, { key }, context) => {
       if (context?.previousEnabled !== undefined) {
         setFlag(key, { enabled: context.previousEnabled });
       }
+      qc.invalidateQueries({ queryKey: FEATURE_FLAGS_KEY });
     },
   });
 
