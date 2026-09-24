@@ -494,6 +494,17 @@ class TestAFailedAttemptOnTheEndpoint:
         assert read is not None
         assert read * LLM_RETRY_MAX_ATTEMPTS < LLM_INVOKE_TIMEOUT_SECONDS
 
+    def test_an_unreachable_endpoint_gives_up_before_a_slow_reply_would(self) -> None:
+        """A dead host never answers the handshake; waiting the read budget on it wastes the attempt."""
+        llm = resolve_model()
+
+        assert isinstance(llm, ChatOpenAI)
+        assert isinstance(llm.request_timeout, httpx.Timeout)
+        connect, read = llm.request_timeout.connect, llm.request_timeout.read
+        assert connect is not None
+        assert read is not None
+        assert connect < read
+
 
 @pytest.mark.usefixtures("forced")
 class TestTheEndpointsHttpClients:
