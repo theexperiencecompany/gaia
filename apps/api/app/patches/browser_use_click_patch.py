@@ -45,9 +45,10 @@ _original_click_element_node_impl = DefaultActionWatchdog._click_element_node_im
 
 def _needs_browser_use(node: EnhancedDOMTreeNode) -> bool:
     """Say whether this is a <select> or a file input, which Browser-Use rejects with its own message."""
-    tag = (getattr(node, "tag_name", "") or "").lower()
-    attributes: dict[str, str] = getattr(node, "attributes", None) or {}
-    return tag == "select" or (tag == "input" and attributes.get("type", "").lower() == "file")
+    # tag_name is already lower-cased by the node; an attribute value keeps the page's case.
+    return node.tag_name == "select" or (
+        node.tag_name == "input" and str(node.attributes.get("type")).lower() == "file"
+    )
 
 
 async def _click_element_node_impl(

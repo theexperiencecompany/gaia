@@ -4,13 +4,22 @@ from __future__ import annotations
 
 import pytest
 
-from app.constants.browser import JEV_MAX_ELEMENTS, JevOperation
-from app.services.browser.jev.gateway import JevChoiceAnswer, JevEvaluation, JevUsage
-from app.services.browser.jev.observation import observe
+from app.constants.browser import JEV_MAX_ELEMENTS, JEV_PAGES_READ, JevOperation
+from app.services.browser.jev.gateway import (
+    JevChoiceAnswer,
+    JevEvaluation,
+    JevEvaluationRequest,
+    JevUsage,
+)
+from app.services.browser.jev.observation import JevObservation, observe
 from app.services.browser.jev.policy import (
+    INVALID_ANSWER_MESSAGE,
+    NO_ANSWER_MESSAGE,
     JevDecisionError,
     JevHistoryEntry,
     build_request,
+    choose,
+    page_key,
     resolve,
 )
 from app.services.browser.jev.prompts import (
@@ -19,6 +28,7 @@ from app.services.browser.jev.prompts import (
     NEXT_ACTION,
     TARGET,
 )
+from app.services.browser.jev.seen_text import ReadPage
 
 from .conftest import FakeAXNode, FakeNode, make_state
 
@@ -136,7 +146,6 @@ def test_resolve_reads_only_the_target_head_the_operation_selects(flights_state)
     assert (decision.element.index, decision.element.browser_index) == (2, 23)
     assert decision.target == "2"
     assert decision.confidence == pytest.approx(0.9)
-    assert decision.target_probabilities == {"1": pytest.approx(0.1), "2": pytest.approx(0.9)}
     assert decision.label == "TYPE_TEXT [2] Where to?"
 
 
@@ -180,6 +189,8 @@ def test_resolve_a_control_operation_needs_no_target(flights_state) -> None:
         ("DONE", {"DONE": 0.6, "WAIT": 0.6}),  # does not sum to 1
         ("DONE", {"DONE": 0.2, "WAIT": 0.8}),  # choice is not the argmax
         ("DONE", {"DONE": float("nan"), "WAIT": 0.0}),  # non-finite
+        ("DONE", {"DONE": 1.2, "WAIT": -0.2}),  # sums to 1 but is no distribution
+        ("DONE", {"DONE": 1.01, "WAIT": 0.0}),  # above 1, though the sum is within tolerance
     ],
 )
 def test_an_invalid_operation_answer_executes_nothing(flights_state, choice, probabilities) -> None:
@@ -191,8 +202,10 @@ def test_an_invalid_operation_answer_executes_nothing(flights_state, choice, pro
         }
     )
 
-    with pytest.raises(JevDecisionError, match="Invalid Jev response"):
+    with pytest.raises(JevDecisionError) as raised:
         resolve(request, evaluation, observation)
+
+    assert str(raised.value) == INVALID_ANSWER_MESSAGE
 
 
 def test_a_missing_target_head_executes_nothing(flights_state) -> None:
@@ -200,8 +213,11 @@ def test_a_missing_target_head_executes_nothing(flights_state) -> None:
     request = build_request(observation, "g", [], ALL)
     ops = list(request.questions["operation"].criteria)
 
-    with pytest.raises(JevDecisionError, match="no answer"):
+    with pytest.raises(JevDecisionError) as raised:
         resolve(request, JevEvaluation(answers={"operation": _answer("CLICK", ops)}), observation)
+
+    # Jev reads this back in recent_actions: a silent head is not a bad answer.
+    assert str(raised.value) == NO_ANSWER_MESSAGE
 
 
 def _three_hundred_clickables():
@@ -266,3 +282,291 @@ def test_jev_is_told_when_the_end_of_the_page_is_on_screen(flights_state) -> Non
 
     assert at_end.state["page"]["at_page_bottom"] is True
     assert "at_page_bottom" not in unknown.state["page"]
+
+
+# --- answer validation: the edges of a valid distribution -------------------
+
+
+def _two_way(choice: str, probabilities: dict[str, float], flights_state):
+    observation = observe(flights_state)
+    request = build_request(observation, "g", [], frozenset({JevOperation.DONE, JevOperation.WAIT}))
+    evaluation = JevEvaluation(
+        answers={
+            "operation": JevChoiceAnswer(type="choice", choice=choice, probabilities=probabilities)
+        }
+    )
+    return resolve(request, evaluation, observation)
+
+
+def test_a_certain_answer_with_zero_elsewhere_is_valid(flights_state) -> None:
+    decision = _two_way("DONE", {"DONE": 1.0, "WAIT": 0.0}, flights_state)
+
+    assert decision.operation is JevOperation.DONE
+    assert decision.confidence == 1.0
+
+
+def test_a_choice_tied_with_the_top_within_rounding_is_accepted(flights_state) -> None:
+    """The argmax check allows 1e-6 of float slack, inclusively."""
+    decision = _two_way("DONE", {"DONE": 0.491078, "WAIT": 0.491079}, flights_state)
+
+    assert decision.operation is JevOperation.DONE
+
+
+def test_a_distribution_off_by_exactly_the_tolerance_is_refused(flights_state, monkeypatch) -> None:
+    # A binary-exact tolerance, so the sum lands on the boundary without float noise.
+    monkeypatch.setattr("app.services.browser.jev.policy.JEV_PROBABILITY_SUM_TOLERANCE", 0.25)
+
+    with pytest.raises(JevDecisionError):
+        _two_way("DONE", {"DONE": 0.75, "WAIT": 0.5}, flights_state)
+
+
+def test_a_decision_carries_the_evaluation_it_came_from(flights_state) -> None:
+    """The step's usage, cost and provider are read off it."""
+    observation = observe(flights_state)
+    request = build_request(observation, "g", [], ALL)
+    ops = list(request.questions["operation"].criteria)
+    usage = JevUsage(inputTokens=10, outputTokens=1)
+    control = JevEvaluation(answers={"operation": _answer("DONE", ops)}, usage=usage)
+    targeted = JevEvaluation(
+        answers={
+            "operation": _answer("TYPE_TEXT", ops),
+            "type_text_target": _answer("2", ["1", "2"]),
+        },
+        usage=usage,
+    )
+
+    assert resolve(request, control, observation).evaluation is control
+    assert resolve(request, targeted, observation).evaluation is targeted
+
+
+# --- page identity ----------------------------------------------------------
+
+
+def test_a_page_is_its_url_without_the_fragment_or_a_trailing_slash() -> None:
+    assert page_key("https://news.example/item?id=1#comment-3#reply") == (
+        "https://news.example/item?id=1"
+    )
+    assert page_key("https://shop.example/SKU-12X/") == "https://shop.example/SKU-12X"
+    assert page_key("https://news.example/") == page_key("https://news.example")
+    assert page_key(None) == ""
+
+
+# --- rows the run already opened are not offered again ----------------------
+
+NEWS = "https://news.example/"
+ARTICLE = "https://blog.example/tiny-compilers"
+
+
+def _link(text: str) -> FakeNode:
+    return FakeNode("A", {"href": "/x"}, text=text, ax_node=FakeAXNode(role="link", name=text))
+
+
+def _news_page():
+    return observe(
+        make_state(
+            {
+                1: _link("Tiny compilers in Rust"),
+                2: _link("A history of the transistor"),
+                3: _link("More"),
+                4: FakeNode("BUTTON", text="Hide", ax_node=FakeAXNode(role="button", name="Hide")),
+            },
+            url=NEWS,
+            title="News",
+        )
+    )
+
+
+def _offered_rows(observation, history, pages_read=()) -> set[str]:
+    request = build_request(observation, "read every story", history, ALL, pages_read)
+    return {
+        c["element"].split("] ", 1)[1] for c in request.questions["click_target"].criteria.values()
+    }
+
+
+def _click(label: str, url: str = NEWS, *, changed: bool | None = True) -> JevHistoryEntry:
+    return JevHistoryEntry(
+        action=f"CLICK {label}", kind="click", url=url, target_label=label, page_changed=changed
+    )
+
+
+def _step_on(url: str) -> JevHistoryEntry:
+    return JevHistoryEntry(action="SCROLL_DOWN", kind="scroll_down", url=url)
+
+
+def test_a_row_whose_page_the_run_went_on_to_is_not_offered_again() -> None:
+    """Offering it again is how a list task re-reads its first item forever."""
+    history = [
+        JevHistoryEntry(action="NAVIGATE", kind="navigate", url=NEWS),
+        # The engine reports the list with its fragment and without the slash.
+        _click("Tiny compilers in Rust", url="https://news.example#top"),
+        _step_on(ARTICLE),
+    ]
+
+    offered = _offered_rows(_news_page(), history)
+
+    assert "Tiny compilers in Rust" not in offered
+    assert {"A history of the transistor", "More", "Hide"} <= offered
+
+
+def test_a_click_that_kept_the_run_on_this_page_stays_offered() -> None:
+    """A next-page link or a toggle is clicked again on purpose."""
+    history = [
+        _step_on(ARTICLE),
+        _click("More"),
+        _step_on(NEWS),
+    ]
+
+    assert "More" in _offered_rows(_news_page(), history)
+
+
+def test_the_same_label_clicked_on_another_page_withholds_nothing_here() -> None:
+    history = [
+        _click("Tiny compilers in Rust", url="https://other-list.example/"),
+        _step_on(ARTICLE),
+    ]
+
+    assert "Tiny compilers in Rust" in _offered_rows(_news_page(), history)
+
+
+def test_a_typed_field_is_not_a_row_the_run_opened() -> None:
+    history = [
+        JevHistoryEntry(
+            action="TYPE_TEXT Tiny compilers in Rust",
+            kind="type_text",
+            url=NEWS,
+            target_label="Tiny compilers in Rust",
+            page_changed=True,
+        ),
+        _step_on(ARTICLE),
+    ]
+
+    assert "Tiny compilers in Rust" in _offered_rows(_news_page(), history)
+
+
+def test_one_dead_click_is_retried_but_a_second_withholds_the_control() -> None:
+    once = [_click("Hide", changed=False)]
+    twice = [_click("Hide", changed=False), _click("Hide", changed=False)]
+
+    assert "Hide" in _offered_rows(_news_page(), once)
+    assert "Hide" not in _offered_rows(_news_page(), twice)
+    assert {"Tiny compilers in Rust", "More"} <= _offered_rows(_news_page(), twice)
+
+
+def test_a_click_that_changed_the_page_in_place_is_not_a_dead_click() -> None:
+    history = [_click("Hide"), _click("Hide")]
+
+    assert "Hide" in _offered_rows(_news_page(), history)
+
+
+def _read(url: str, title: str) -> ReadPage:
+    return ReadPage(url=url, title=title, read="to the end")
+
+
+def test_a_row_titled_like_a_page_already_read_is_not_offered_again() -> None:
+    """A story's row names its article's title, even when the run got there by address."""
+    pages = [_read(ARTICLE, "Tiny compilers in Rust")]
+
+    offered = _offered_rows(_news_page(), [], pages)
+
+    assert "Tiny compilers in Rust" not in offered
+    assert "A history of the transistor" in offered
+
+
+def test_reading_this_very_page_withholds_none_of_its_rows() -> None:
+    pages = [_read("https://news.example", "A history of the transistor")]
+
+    assert "A history of the transistor" in _offered_rows(_news_page(), [], pages)
+
+
+def test_a_read_title_just_long_enough_to_match_withholds_its_row() -> None:
+    pages = [_read(ARTICLE, "Hide replies")]  # exactly the 12-character floor
+    page = observe(make_state({1: _link("Hide replies"), 2: _link("Next page")}, url=NEWS))
+
+    assert _offered_rows(page, [], pages) == {"Next page"}
+
+
+def test_a_short_title_already_read_withholds_nothing() -> None:
+    """Short labels ("jobs", "hide") would match inside almost any title."""
+    pages = [_read(ARTICLE, "Hide")]
+
+    assert "Hide" in _offered_rows(_news_page(), [], pages)
+
+
+def test_a_row_matches_a_read_page_whichever_title_holds_the_other() -> None:
+    page = observe(
+        make_state(
+            {
+                1: _link("Parser guide"),
+                2: _link("Tiny Compilers | 120 points"),
+                3: _link("Weather in Oslo today"),
+            },
+            url=NEWS,
+        )
+    )
+    pages = [
+        _read("https://a.example", "The parser guide for beginners"),
+        _read("https://b.example", "tiny compilers"),
+    ]
+
+    assert _offered_rows(page, [], pages) == {"Weather in Oslo today"}
+
+
+def test_when_every_row_was_opened_the_rows_are_offered_rather_than_none() -> None:
+    page = observe(make_state({1: _link("Tiny compilers in Rust")}, url=NEWS))
+    history = [_click("Tiny compilers in Rust"), _step_on(ARTICLE)]
+
+    assert _offered_rows(page, history) == {"Tiny compilers in Rust"}
+
+
+def test_an_offered_dropdown_gets_its_target_question_on_a_page_with_no_text_field() -> None:
+    """SELECT is offered as an operation, so its head must exist or the answer cannot resolve."""
+    page = observe(
+        make_state(
+            {
+                31: FakeNode(
+                    "SELECT",
+                    {"value": "economy"},
+                    ax_node=FakeAXNode(role="combobox", name="Cabin class"),
+                    children_nodes=[
+                        FakeNode("OPTION", {"value": "economy"}, text="Economy"),
+                        FakeNode("OPTION", {"value": "business"}, text="Business"),
+                    ],
+                ),
+                40: FakeNode(
+                    "BUTTON", text="Search", ax_node=FakeAXNode(role="button", name="Search")
+                ),
+            }
+        )
+    )
+
+    request = build_request(page, "g", [], ALL)
+
+    assert "TYPE_TEXT" not in request.questions["operation"].criteria
+    assert "SELECT" in request.questions["operation"].criteria
+    assert "select_target" in request.questions
+
+
+def test_jev_sees_only_the_most_recent_pages_read() -> None:
+    pages = [_read(f"https://p{i}.example", f"Page {i}") for i in range(JEV_PAGES_READ + 3)]
+
+    request = build_request(_news_page(), "g", [], ALL, pages)
+
+    assert request.state["pages_read"] == [dict(p) for p in pages[-JEV_PAGES_READ:]]
+
+
+async def test_choose_hands_jev_the_pages_already_read() -> None:
+    seen: list[JevEvaluationRequest] = []
+
+    class _Client:
+        async def evaluate(self, request: JevEvaluationRequest) -> JevEvaluation:
+            seen.append(request)
+            ops = list(request.questions["operation"].criteria)
+            return JevEvaluation(answers={"operation": _answer("DONE", ops)})
+
+    pages = [_read(ARTICLE, "Tiny compilers in Rust")]
+    observation: JevObservation = _news_page()
+
+    decision = await choose(_Client(), observation, "g", [], ALL, pages)  # type: ignore[arg-type]
+
+    assert decision.operation is JevOperation.DONE
+    assert seen[0].state["pages_read"] == [dict(pages[0])]

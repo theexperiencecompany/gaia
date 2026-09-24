@@ -11,7 +11,9 @@ import pytest
 from app.agents.tools import browser_tool as tool_mod
 from app.agents.tools.browser_tool import guide_browser_task
 from app.constants.browser import HandoffDecision, HandoffStatus
+from app.constants.log_tags import LogTag
 from app.schemas.browser import AgentGuidanceRequest, PendingAgentGuidance
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -32,6 +34,8 @@ class Guided:
         self.resolved: list[tuple[str, HandoffDecision, str, str | None]] = []
         self.cleared: list[str] = []
         self.refreshed: list[tuple[str, str]] = []
+        self.asked_conversations: list[str] = []
+        self.asked_jobs: list[str] = []
 
 
 def _install(
@@ -44,9 +48,11 @@ def _install(
     g = Guided()
 
     async def _slot(conversation_id: str) -> str | None:
+        g.asked_conversations.append(conversation_id)
         return slot
 
     async def _pending(job_id: str) -> PendingAgentGuidance | None:
+        g.asked_jobs.append(job_id)
         return pending
 
     async def _resolve(
@@ -153,3 +159,78 @@ async def test_a_pause_that_already_ended_is_reported_rather_than_confirmed(
     out = await guide_browser_task.ainvoke({"instruction": "click Search"}, config=UI_CONFIG)
 
     assert "stopped waiting for guidance" in out
+
+
+async def test_an_instruction_is_confirmed_as_sent_and_the_request_is_the_conversations_own(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    g = _install(monkeypatch)
+
+    async with captured_wide_event() as event:
+        out = await guide_browser_task.ainvoke({"instruction": "click Search"}, config=UI_CONFIG)
+
+    assert out == tool_mod._INSTRUCTION_SENT
+    assert g.asked_conversations == ["c1"]
+    assert g.asked_jobs == ["job-1"]
+    assert event["browser"] == {"operation": "guide"}
+
+
+async def test_only_an_instruction_given_is_sent_as_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The raw coroutine, so its own defaults decide: the schema the model sees is read from them."""
+    g = _install(monkeypatch)
+
+    assert await guide_browser_task.coroutine(config=UI_CONFIG) == tool_mod._INSTRUCTION_REQUIRED
+    await guide_browser_task.coroutine(config=UI_CONFIG, instruction="click Search")
+
+    assert g.resolved == [("h-1", HandoffDecision.CONTINUE, "u1", "click Search")]
+
+
+async def test_giving_up_without_a_reason_invents_none_and_withdraws_the_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    g = _install(monkeypatch)
+
+    out = await guide_browser_task.coroutine(config=UI_CONFIG, give_up=True)
+
+    assert out == tool_mod._TOLD_TO_STOP
+    assert g.resolved == [("h-1", HandoffDecision.CANCEL, "u1", "")]
+    assert g.cleared == ["job-1"]
+
+
+async def test_a_turn_with_no_stream_still_re_arms_its_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    g = _install(monkeypatch)
+
+    await guide_browser_task.ainvoke(
+        {"instruction": "click Search"},
+        config={"configurable": {"user_id": "u1", "thread_id": "c1"}},
+    )
+
+    assert g.refreshed == [("job-1", "")]
+
+
+async def test_nothing_waiting_points_the_model_back_at_the_join(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install(monkeypatch, pending=None)
+
+    out = await guide_browser_task.ainvoke({"instruction": "click Search"}, config=UI_CONFIG)
+
+    assert out == tool_mod._NOTHING_WAITING
+
+
+async def test_guidance_that_landed_after_the_pause_ended_is_a_warning_naming_both_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install(monkeypatch, status=None)
+
+    async with captured_wide_event() as event:
+        out = await guide_browser_task.ainvoke({"instruction": "click Search"}, config=UI_CONFIG)
+
+    assert out == tool_mod._STOPPED_WAITING
+    (warning,) = [w for w in event["warnings"] if "browser" in w]
+    assert warning["msg"].startswith(LogTag.BROWSER)
+    assert warning["browser"] == {"job_id": "job-1", "handoff_id": "h-1"}

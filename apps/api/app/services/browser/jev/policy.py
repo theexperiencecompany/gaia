@@ -10,7 +10,7 @@ target head matching the chosen operation is read.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import math
 from typing import TypedDict, cast
 
@@ -44,6 +44,11 @@ from app.services.browser.jev.seen_text import ReadPage
 
 class JevDecisionError(ValueError):
     """Jev's answer did not name an offered operation/target; no action executed."""
+
+
+# What the next step's recent_actions tells Jev about a step that executed nothing.
+NO_ANSWER_MESSAGE = "Jev returned no answer for a question; no action executed."
+INVALID_ANSWER_MESSAGE = "Invalid Jev response; no action executed."
 
 
 class _OperationAnswers(TypedDict):
@@ -126,8 +131,6 @@ class JevDecision:
     option: JevSelectOption | None = None
     target: str | None = None
     confidence: float = 0.0
-    operation_probabilities: dict[str, float] = field(default_factory=dict)
-    target_probabilities: dict[str, float] = field(default_factory=dict)
     evaluation: JevEvaluation | None = None
 
     @property
@@ -224,7 +227,7 @@ def _already_opened(
 
 def page_key(url: str | None) -> str:
     """Return the page a URL names, ignoring a fragment and a trailing slash the engine adds and drops."""
-    return (url or "").split("#", 1)[0].rstrip("/")
+    return (url or "").partition("#")[0].rstrip("/")
 
 
 def _opens_again(label: str, opened: frozenset[str]) -> bool:
@@ -268,8 +271,7 @@ def resolve(
     if operation not in JEV_TARGET_OPERATIONS:
         return JevDecision(
             operation=operation,
-            confidence=operation_answer.probabilities.get(operation.value, 0.0),
-            operation_probabilities=operation_answer.probabilities,
+            confidence=operation_answer.probabilities[operation.value],
             evaluation=evaluation,
         )
     head = _target_head(operation)
@@ -280,9 +282,7 @@ def resolve(
         element=element,
         option=option,
         target=target_answer.choice,
-        confidence=operation_answer.probabilities.get(operation.value, 0.0),
-        operation_probabilities=operation_answer.probabilities,
-        target_probabilities=target_answer.probabilities,
+        confidence=operation_answer.probabilities[operation.value],
         evaluation=evaluation,
     )
 
@@ -298,7 +298,7 @@ def _validate_choice(
 
     Anything else executes nothing."""
     if answer is None:
-        raise JevDecisionError("Jev returned no answer for a question; no action executed.")
+        raise JevDecisionError(NO_ANSWER_MESSAGE)
     probabilities = answer.probabilities
     valid = (
         answer.choice in criteria
@@ -308,5 +308,5 @@ def _validate_choice(
         and probabilities[answer.choice] >= max(probabilities.values()) - 1e-6
     )
     if not valid:
-        raise JevDecisionError("Invalid Jev response; no action executed.")
+        raise JevDecisionError(INVALID_ANSWER_MESSAGE)
     return answer

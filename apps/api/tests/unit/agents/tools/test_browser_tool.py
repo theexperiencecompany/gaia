@@ -10,8 +10,10 @@ import pytest
 from app.agents.tools import browser_tool as tool_mod
 from app.agents.tools.browser_tool import browser_task
 from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK
+from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -40,6 +42,8 @@ class Recorder:
         self.relays: list[tuple[str, str]] = []
         self.spawned: list[str] = []
         self.queues: list[str | None] = []
+        self.pools: list[object] = []
+        self.pool = MagicMock(name="pool")
 
     @property
     def request(self) -> BrowserJobRequest:
@@ -72,6 +76,7 @@ def _install(
         pool: object, function: str, payload: dict[str, Any], *, _queue_name: str | None = None
     ) -> object | None:
         recorder.enqueued.append((function, payload))
+        recorder.pools.append(pool)
         recorder.queues.append(_queue_name)
         if enqueue_error is not None:
             raise enqueue_error
@@ -98,7 +103,7 @@ def _install(
     monkeypatch.setattr(tool_mod, "relay_job_events", _relay)
     monkeypatch.setattr(tool_mod, "spawn_logged_task", _spawn)
     monkeypatch.setattr(
-        tool_mod.RedisPoolManager, "get_pool", AsyncMock(return_value=MagicMock(name="pool"))
+        tool_mod.RedisPoolManager, "get_pool", AsyncMock(return_value=recorder.pool)
     )
     return recorder
 
@@ -125,6 +130,25 @@ async def test_a_private_start_url_is_refused_before_any_job_exists(
     )
     assert recorder.claims == []
     assert recorder.enqueued == []
+
+
+async def test_a_refused_start_url_is_reported_on_the_wide_event_with_its_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The refusal never reaches a job, so the wide event is the only record of why a run did not start."""
+    _install(monkeypatch)
+
+    async with captured_wide_event() as event:
+        await browser_task.ainvoke(
+            {"task": "x", "start_url": "http://169.254.169.254/latest/meta-data"},
+            config=UI_CONFIG,
+        )
+
+    # The rate limiter warns too when the turn carries no user; only the refusal carries an error.
+    (warning,) = [w for w in event["warnings"] if "error" in w]
+    assert warning["msg"].startswith(LogTag.BROWSER)
+    assert warning["error"] == "refusing to connect to non-public address 169.254.169.254"
+    assert event["browser"] == {"operation": "task", "source_category": "ui"}
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +311,25 @@ async def test_a_refused_task_does_not_release_the_running_jobs_slot(
     assert recorder.spawned == []
 
 
+async def test_a_second_task_is_pointed_at_the_run_already_holding_the_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The model has to collect the running job, not start another; the event names both sides of the refusal."""
+    recorder = _install(monkeypatch, holder="job-already-running")
+
+    async with captured_wide_event() as event:
+        out = await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+
+    assert out == tool_mod._SLOT_HELD.format(holder="job-already-running")
+    assert recorder.enqueued == []
+    assert event["browser"] == {
+        "operation": "task",
+        "source_category": "ui",
+        "refused": "slot_held",
+        "slot_holder": "job-already-running",
+    }
+
+
 # ---------------------------------------------------------------------------
 # the enqueue failing
 # ---------------------------------------------------------------------------
@@ -305,6 +348,20 @@ async def test_a_dropped_enqueue_frees_the_slot_and_says_so(
     assert recorder.spawned == []
 
 
+async def test_a_job_the_queue_did_not_take_is_an_error_on_the_wide_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ARQ answers None for a job id it already holds; the run never starts, so it must page as an error, naming the job."""
+    recorder = _install(monkeypatch, enqueued_job=None)
+
+    async with captured_wide_event() as event:
+        await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+
+    (error,) = event["errors"]
+    assert error["msg"].startswith(LogTag.BROWSER)
+    assert error["browser"] == {"job_id": recorder.request.job_id}
+
+
 async def test_an_enqueue_that_raises_is_reported_and_frees_the_slot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -317,9 +374,53 @@ async def test_an_enqueue_that_raises_is_reported_and_frees_the_slot(
     assert recorder.released == [("c1", recorder.request.job_id)]
 
 
+async def test_an_enqueue_that_raises_carries_the_cause_on_the_wide_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The tool swallows the exception, so the event is where "redis is down" has to surface."""
+    recorder = _install(monkeypatch, enqueue_error=ConnectionError("redis is down"))
+
+    async with captured_wide_event() as event:
+        await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+
+    (error,) = event["errors"]
+    assert error["msg"].startswith(LogTag.BROWSER)
+    assert error["error_type"] == "ConnectionError"
+    assert error["error"] == "redis is down"
+    assert error["browser"] == {"job_id": recorder.request.job_id}
+
+
+async def test_the_job_is_queued_on_the_shared_worker_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _install(monkeypatch)
+
+    await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+
+    assert recorder.pools == [recorder.pool]
+
+
 # ---------------------------------------------------------------------------
 # the relay and the notice
 # ---------------------------------------------------------------------------
+
+
+async def test_a_started_task_keeps_its_slot_and_relays_its_cards_onto_this_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The model is told the run started under its job id, and the run's cards follow on this turn's stream."""
+    recorder = _install(monkeypatch)
+
+    async with captured_wide_event() as event:
+        out = await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+
+    job_id = recorder.request.job_id
+    assert out == tool_mod._STARTED.format(job_id=job_id)
+    assert recorder.released == []
+    assert recorder.relays == [(job_id, "s1")]
+    # The spawned task's wide event is named by this operation.
+    assert recorder.spawned == ["browser_job_relay"]
+    assert event["browser"] == {"operation": "task", "source_category": "ui", "job_id": job_id}
 
 
 async def test_no_stream_means_no_relay_but_the_job_still_runs(
@@ -382,6 +483,26 @@ async def test_a_task_that_names_one_page_starts_there_so_its_saved_login_is_use
     )
 
     assert recorder.request.start_url == "https://the-internet.herokuapp.com/secure"
+
+
+@pytest.mark.parametrize(
+    ("task", "page"),
+    [
+        ("Read https://en.wikipedia.org/wiki/SpaceX.", "https://en.wikipedia.org/wiki/SpaceX"),
+        ("Is it up? https://example.com/status?", "https://example.com/status"),
+        ("Check the rules.https://example.com/rules", "https://example.com/rules"),
+    ],
+    ids=["full-stop-after", "question-mark-after", "full-stop-before"],
+)
+async def test_the_sentence_around_the_one_page_is_not_part_of_it(
+    monkeypatch: pytest.MonkeyPatch, task: str, page: str
+) -> None:
+    """Punctuation closing the sentence is not in the URL, and a full stop typed right before it names no second site."""
+    recorder = _install(monkeypatch)
+
+    await browser_task.ainvoke({"task": task}, config=UI_CONFIG)
+
+    assert recorder.request.start_url == page
 
 
 @pytest.mark.parametrize(

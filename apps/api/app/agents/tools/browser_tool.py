@@ -68,6 +68,38 @@ _DEAD_WORKER_RESULT = BrowserResultSnapshot(
     summary="the browser worker stopped unexpectedly",
 )
 
+# What each tool tells the model, one name per outcome: the reply is how the model
+# learns which branch it landed in and which tool to call next.
+_UNSAFE_START_URL = "I can't open {url}: {error}. Only public http(s) sites are reachable."
+_SLOT_HELD = (
+    "A browser task is already running in this conversation (job {holder}). "
+    "Call wait_for_browser_task() to collect it before starting another."
+)
+_NOT_QUEUED = "I couldn't start the browser task right now. Try again in a moment."
+_STARTED = (
+    "Browser task started in the background (job {job_id}). Progress and the "
+    "live-view link are streaming into this conversation. Call "
+    "wait_for_browser_task() when you need the outcome; if you end the turn first, "
+    "the result is delivered to the user as a follow-up."
+)
+_NOTHING_RUNNING = "No browser task is running."
+_STILL_RUNNING = (
+    "The browser task is still running; it will be delivered to the user when it finishes."
+)
+_NOTHING_WAITING = (
+    "No browser task is waiting for guidance. Call wait_for_browser_task() to see "
+    "where the run actually is."
+)
+_TOLD_TO_STOP = "Told the browser to stop. Call wait_for_browser_task() for its final result."
+_INSTRUCTION_REQUIRED = (
+    "An instruction is required. Call guide_browser_task with ONE concrete next "
+    "step, or guide_browser_task(give_up=True, reason=...)."
+)
+_INSTRUCTION_SENT = (
+    "Sent that to the browser. Call wait_for_browser_task() again to collect the outcome."
+)
+_STOPPED_WAITING = "The browser task stopped waiting for guidance; call wait_for_browser_task()."
+
 
 @dataclass(frozen=True)
 class _RunParams:
@@ -184,33 +216,25 @@ async def browser_task(
                 f"{LogTag.BROWSER} Browser task refused: start URL is not a public http(s) site",
                 error=str(exc),
             )
-            return f"I can't open {start_url}: {exc}. Only public http(s) sites are reachable."
+            return _UNSAFE_START_URL.format(url=start_url, error=exc)
 
     job_id = uuid.uuid4().hex
     holder = await claim_conversation_slot(params.conversation_id, job_id)
     if holder is not None:
         log.set_ns("browser", refused="slot_held", slot_holder=holder)
-        return (
-            f"A browser task is already running in this conversation (job {holder}). "
-            "Call wait_for_browser_task() to collect it before starting another."
-        )
+        return _SLOT_HELD.format(holder=holder)
 
     task = _with_the_users_words(task, params.user_request)
     request = _job_request(params, job_id, task, start_url)
     await put_job_state(BrowserJobState(job_id=job_id, status=BrowserJobStatus.QUEUED, task=task))
     if not await _enqueue(request):
         await release_conversation_slot(params.conversation_id, job_id)
-        return "I couldn't start the browser task right now. Try again in a moment."
+        return _NOT_QUEUED
 
     log.set_ns("browser", job_id=job_id)
     if params.stream_id:
         spawn_logged_task("browser_job_relay", relay_job_events(job_id, params.stream_id))
-    return (
-        f"Browser task started in the background (job {job_id}). Progress and the "
-        "live-view link are streaming into this conversation. Call "
-        "wait_for_browser_task() when you need the outcome; if you end the turn first, "
-        "the result is delivered to the user as a follow-up."
-    )
+    return _STARTED.format(job_id=job_id)
 
 
 async def _enqueue(request: BrowserJobRequest) -> bool:
@@ -259,7 +283,7 @@ async def wait_for_browser_task(
     params = _run_params(config)
     job_id = await get_conversation_slot(params.conversation_id)
     if job_id is None:
-        return "No browser task is running."
+        return _NOTHING_RUNNING
 
     stream_id = params.stream_id or ""
     await take_joiner_lease(job_id, stream_id)
@@ -309,10 +333,7 @@ async def _poll_job(
             return _JoinOutcome(agent_result_message(_DEAD_WORKER_RESULT))
         if waited >= timeout:
             log.set_ns("browser", job_id=job_id, join="timed_out_still_running")
-            return _JoinOutcome(
-                "The browser task is still running; it will be delivered to the user "
-                "when it finishes."
-            )
+            return _JoinOutcome(_STILL_RUNNING)
         await asyncio.sleep(BROWSER_JOB_POLL_INTERVAL_SECONDS)
         waited += BROWSER_JOB_POLL_INTERVAL_SECONDS
         since_refresh += BROWSER_JOB_POLL_INTERVAL_SECONDS
@@ -338,10 +359,7 @@ async def guide_browser_task(
     job_id = await get_conversation_slot(params.conversation_id)
     pending = await get_guidance_request(job_id) if job_id else None
     if job_id is None or pending is None:
-        return (
-            "No browser task is waiting for guidance. Call wait_for_browser_task() to see "
-            "where the run actually is."
-        )
+        return _NOTHING_WAITING
     # Still this turn's join: the round trip cost a model call, and an expired
     # lease would have the worker narrate the run behind the executor's back.
     await refresh_joiner_lease(job_id, params.stream_id or "")
@@ -354,20 +372,17 @@ async def guide_browser_task(
             params.user_id,
             HandoffDecision.CANCEL,
             reason.strip(),
-            "Told the browser to stop. Call wait_for_browser_task() for its final result.",
+            _TOLD_TO_STOP,
         )
     if not text:
-        return (
-            "An instruction is required. Call guide_browser_task with ONE concrete next "
-            "step, or guide_browser_task(give_up=True, reason=...)."
-        )
+        return _INSTRUCTION_REQUIRED
     return await _resolve_guidance(
         job_id,
         pending.handoff_id,
         params.user_id,
         HandoffDecision.CONTINUE,
         text,
-        "Sent that to the browser. Call wait_for_browser_task() again to collect the outcome.",
+        _INSTRUCTION_SENT,
     )
 
 
@@ -391,5 +406,5 @@ async def _resolve_guidance(
             f"{LogTag.BROWSER} Guidance arrived after the browser task stopped waiting",
             browser={"job_id": job_id, "handoff_id": handoff_id},
         )
-        return "The browser task stopped waiting for guidance; call wait_for_browser_task()."
+        return _STOPPED_WAITING
     return confirmation
