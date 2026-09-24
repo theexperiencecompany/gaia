@@ -5,6 +5,7 @@ import {
   ComputerIcon,
   CreditCardIcon,
   DiscordIcon,
+  LabsIcon,
   Link04Icon,
   MessageMultiple02Icon,
   NoteEditIcon,
@@ -107,6 +108,13 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Browser",
     icon: AiWebBrowsingIcon,
     href: "/settings/browser",
+    isNew: true,
+  },
+  {
+    key: "experimental",
+    label: "Experimental",
+    icon: LabsIcon,
+    href: "/settings/experimental",
     isNew: true,
   },
   // Only rendered inside the Electron app (filtered in SettingsSidebar).

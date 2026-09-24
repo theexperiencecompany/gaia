@@ -14,6 +14,7 @@ export const VALID_SECTIONS = [
   "notifications",
   "devices",
   "browser",
+  "experimental",
   "desktop",
 ] as const;
 
