@@ -133,6 +133,9 @@ async def test_create_context_failure_releases_its_reserved_slot(
     # has — would raise AtCapacityError instead of proceeding.
     session = await host.create_context(None)
     assert session.context_id == "ctx-2"
+    # Nor did it hand back more than it took: the one slot is now in use.
+    with pytest.raises(AtCapacityError):
+        await host.create_context(None)
 
 
 # --- BUG 3: a hung/failed storage dump leaked a capacity slot forever ---

@@ -17,14 +17,19 @@ from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.redis_writer import STREAM_PUBLISH_TASK_NAME
 from app.agents.core.background.session import RunKind, create_session
 from app.constants.browser import BROWSER_TASK_EVENT, BrowserSessionStatus
+from app.constants.log_tags import LogTag
 from app.schemas.browser import BrowserSessionSnapshot, BrowserStepSnapshot
 from app.services.browser import job_events as job_events_mod, job_relay as relay_mod
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
-from app.services.browser.job_lifetime import browser_job_deadline_seconds
+from app.services.browser.job_lifetime import (
+    browser_job_deadline_seconds,
+    browser_job_ttl_seconds,
+)
 from app.services.browser.job_relay import relay_job_events
 from app.services.browser.job_runner import publish_frame_to_job
 from app.utils import background_tasks
 from tests._harness.redis_fakes import FakeRedisClient
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.integration
 
@@ -132,10 +137,51 @@ async def test_the_terminal_frame_ends_the_relay_and_is_never_shown(
     create_session(STREAM_ID, RunKind.LIVE)
     await _publish_a_run()
 
-    await relay_job_events(JOB_ID, STREAM_ID)
+    async with captured_wide_event() as event:
+        await relay_job_events(JOB_ID, STREAM_ID)
     await _drain_publishes()
 
     assert all("browser_job_done" not in chunk for chunk in chunks)
+    assert event["browser"] == {"job_id": JOB_ID, "relay_end": "job_finished"}
+
+
+async def test_cards_published_while_the_relay_reads_continue_from_its_cursor(
+    feed: FakeRedisClient, chunks: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run publishes as it goes: each read picks up after the last card, never from the top."""
+    create_session(STREAM_ID, RunKind.LIVE)
+    read_feed = relay_mod.read_job_events
+    reads = 0
+
+    async def _run_publishes_between_reads(job_id: str, cursor: str, block_ms: int) -> Any:
+        nonlocal reads
+        reads += 1
+        if reads == 2:
+            await publish_frame_to_job(
+                JOB_ID,
+                {
+                    BROWSER_TASK_EVENT: BrowserStepSnapshot(
+                        index=1, goal="open the menu"
+                    ).model_dump(mode="json")
+                },
+            )
+            await publish_job_event(JOB_ID, JOB_TERMINAL_FRAME)
+        return await read_feed(job_id, cursor, block_ms)
+
+    monkeypatch.setattr(relay_mod, "read_job_events", _run_publishes_between_reads)
+    await publish_frame_to_job(
+        JOB_ID,
+        {
+            BROWSER_TASK_EVENT: BrowserSessionSnapshot(
+                task="book a table", status=BrowserSessionStatus.RUNNING, session_id="sess-1"
+            ).model_dump(mode="json")
+        },
+    )
+
+    await relay_job_events(JOB_ID, STREAM_ID)
+    await _drain_publishes()
+
+    assert [f["tool_data"]["data"]["kind"] for f in _frames(chunks)] == ["session", "step"]
 
 
 async def test_a_cancelled_turn_stops_the_relay(
@@ -144,12 +190,18 @@ async def test_a_cancelled_turn_stops_the_relay(
     """The user stopped this turn; the worker's own cancel path ends the run, and nothing more belongs on a stream nobody is reading."""
     create_session(STREAM_ID, RunKind.LIVE)
     await _publish_a_run()
-    monkeypatch.setattr(relay_mod.stream_manager, "is_cancelled", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        relay_mod.stream_manager,
+        "is_cancelled",
+        AsyncMock(side_effect=lambda stream_id: stream_id == STREAM_ID),
+    )
 
-    await relay_job_events(JOB_ID, STREAM_ID)
+    async with captured_wide_event() as event:
+        await relay_job_events(JOB_ID, STREAM_ID)
     await _drain_publishes()
 
     assert chunks == []
+    assert event["browser"] == {"job_id": JOB_ID, "relay_end": "turn_cancelled"}
 
 
 async def test_a_feed_that_cannot_be_read_never_takes_the_turn_down_with_it(
@@ -167,7 +219,12 @@ async def test_a_feed_that_cannot_be_read_never_takes_the_turn_down_with_it(
 
     await relay_job_events(JOB_ID, STREAM_ID)
 
-    fake_log.error.assert_called_once()
+    fake_log.error.assert_called_once_with(
+        f"{LogTag.BROWSER} Browser job relay stopped",
+        error_type="RuntimeError",
+        error="redis down",
+        browser={"job_id": JOB_ID},
+    )
     assert chunks == []
 
 
@@ -192,3 +249,30 @@ async def test_the_relay_waits_out_the_longest_run_the_worker_allows(
     await _drain_publishes()
 
     assert len(_frames(chunks)) == 2
+
+
+async def test_the_relay_stops_reading_at_its_deadline_and_says_so(
+    feed: FakeRedisClient, chunks: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The feed expires then; a card that lands at that instant reaches no one, and the log shows why."""
+    create_session(STREAM_ID, RunKind.LIVE)
+    budget = browser_job_ttl_seconds()
+    read_feed = relay_mod.read_job_events
+
+    async def _card_lands_at_the_deadline(job_id: str, cursor: str, block_ms: int) -> Any:
+        if feed.clock == budget:
+            await _publish_a_run()
+        return await read_feed(job_id, cursor, block_ms)
+
+    monkeypatch.setattr(relay_mod, "read_job_events", _card_lands_at_the_deadline)
+    fake_log = MagicMock()
+    monkeypatch.setattr(relay_mod, "log", fake_log)
+
+    await relay_job_events(JOB_ID, STREAM_ID)
+
+    assert chunks == []
+    fake_log.warning.assert_called_once_with(
+        f"{LogTag.BROWSER} Browser job relay gave up before the job finished",
+        browser={"job_id": JOB_ID},
+        budget_seconds=budget,
+    )

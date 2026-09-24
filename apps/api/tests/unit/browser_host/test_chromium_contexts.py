@@ -307,7 +307,8 @@ async def test_with_the_primary_closed_the_newest_page_of_this_context_is_focuse
     session = await host.create_context(None)
     del engine.pages[session.target_id]
     older = engine.open_page(session.context_id, url="https://shop.test/a")
-    newest = engine.open_page(session.context_id, url="https://shop.test/b")
+    engine.open_page(session.context_id, url="https://shop.test/b")
+    newest = engine.open_page(session.context_id, url="https://shop.test/c")
     engine.open_page(session.context_id, url="https://shop.test/sw.js", kind="service_worker")
     engine.open_page(DEFAULT_CONTEXT, url="https://other.test/")
 
@@ -528,3 +529,57 @@ async def test_crash_recovery_reports_how_many_sessions_died(
         browser={"operation": "crash_recover", "dead_sessions": 2},
     )
     assert relaunched.is_set()
+
+
+# --- disposals racing the reaper ---
+
+
+class _SlowDump(FakeEngine):
+    """Hold the storage dump until the test lets it go, so something else can move first."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.dumping = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def send_raw(
+        self, method: str, params: dict[str, Any] | None = None, session_id: str | None = None
+    ) -> dict[str, Any]:
+        if method == "Storage.getCookies":
+            self.dumping.set()
+            await self.release.wait()
+        return await super().send_raw(method, params, session_id)
+
+
+async def test_a_dispose_whose_session_left_the_registry_mid_dump_still_returns_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Another path (a reap, a crash sweep) may drop the entry while the dump is in flight."""
+    engine = cast(_SlowDump, install_mux(monkeypatch, _SlowDump()))
+    host = make_host()
+    host._root_mux = cast(CdpMux, engine)
+    session = await host.create_context(_state(_LOGIN_COOKIE))
+    dispose = asyncio.create_task(host.dispose_context(session.session_id))
+    await engine.dumping.wait()
+
+    host._sessions.pop(session.session_id)
+    engine.release.set()
+
+    assert (await dispose)["cookies"] == [_LOGIN_COOKIE]
+
+
+async def test_a_reap_the_user_disposed_first_finishes_cleanly(
+    host: ChromiumHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(chromium.browser_host_settings, "BROWSER_HOST_IDLE_TTL_SECONDS", 10)
+    session_id = _idle(host, (await host.create_context(None)).session_id, 60).session_id
+    await host._lock.acquire()
+    dispose = asyncio.create_task(host.dispose_context(session_id))
+    await asyncio.sleep(0.01)  # the dispose reaches the registry lock first
+    reap = asyncio.create_task(host._reap_idle())
+    await asyncio.sleep(0.01)  # the reap queues behind it
+    host._lock.release()
+
+    await asyncio.gather(dispose, reap)
+
+    assert host._sessions == {}

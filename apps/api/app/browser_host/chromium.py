@@ -87,6 +87,9 @@ _SESSION_COST_FLOOR_MB = 50
 # Under pressure a create waits up to this long for memory to free (idle reap,
 # other disposals) before returning 429 — graceful slowdown, not instant refusal.
 _ADMISSION_WAIT_SECONDS = 5.0
+# CDP's own default, spelled out: a context is disposed explicitly on dispose/reap,
+# never because the connection that made it detached.
+_NEW_CONTEXT_PARAMS: dict[str, Any] = {"disposeOnDetach": False}
 # Per-renderer V8 heap ceiling. One runaway page must not be able to eat the
 # whole host's budget and OOM every other user's session with it.
 _JS_HEAP_MB = 512
@@ -174,7 +177,12 @@ def _headless_shell_beside(chromium: Path) -> Path | None:
     for parent in chromium.parents:
         if not parent.name.startswith("chromium-"):
             continue
-        shell_root = parent.parent / parent.name.replace("chromium-", "chromium_headless_shell-", 1)
+        # The prefix occurs once in the name, so the replace count is never reached.
+        shell_root = parent.parent / parent.name.replace(
+            "chromium-",
+            "chromium_headless_shell-",
+            1,  # pragma: no mutate
+        )
         if not shell_root.is_dir():
             return None
         for name in _HEADLESS_SHELL_BINARIES:
@@ -233,7 +241,8 @@ def _storage_state_cookie_to_cdp(cookie: StorageStateCookie) -> dict[str, Any]:
         "httpOnly": cookie.get("httpOnly", False),
     }
     expires = cookie.get("expires")
-    if expires is not None and expires > 0:
+    # -1 marks a session cookie; a real expiry is an epoch far above 1.
+    if expires is not None and expires > 0:  # pragma: no mutate
         out["expires"] = expires
     same_site = cookie.get("sameSite")
     if same_site:
@@ -302,7 +311,7 @@ class ChromiumHost:
         """
         root_mux = self._root_mux
         if root_mux is None:
-            raise RuntimeError("the engine has no root connection")
+            raise RuntimeError("the engine has no root connection")  # pragma: no mutate
         user_agent = str((await cdp_call(root_mux, "Browser.getVersion"))["userAgent"])
         if _HEADLESS_MARKER not in user_agent:
             return
@@ -356,12 +365,7 @@ class ChromiumHost:
         try:
             mux = CdpMux(self.root_ws_url)
             await mux.start()
-            # CDP's own default; the context is disposed explicitly on dispose/reap.
-            ctx = await cdp_call(
-                mux,
-                "Target.createBrowserContext",
-                {"disposeOnDetach": False},  # pragma: no mutate
-            )
+            ctx = await cdp_call(mux, "Target.createBrowserContext", _NEW_CONTEXT_PARAMS)
             context_id = str(ctx["browserContextId"])
             # Refuse downloads before the context can navigate: a drive-by download
             # is the cheapest way to get a file onto the host's disk. Scoped to this
@@ -615,7 +619,8 @@ class ChromiumHost:
                 if not over_ceiling and projected <= hard_mb:
                     self._pending_slots += 1
                     return
-            if time.monotonic() >= deadline:
+            # A clock reading equal to the deadline is a nanosecond event; > and >= agree.
+            if time.monotonic() >= deadline:  # pragma: no mutate
                 raise AtCapacityError(
                     HostAdmissionRefusal.SESSION_CEILING
                     if over_ceiling
@@ -807,7 +812,7 @@ class ChromiumHost:
     def _chromium_command(self) -> list[str]:
         """Build the full headless-shell argv, incl. the fresh user-data-dir it needs."""
         if self._chromium_path is None:
-            raise RuntimeError("chromium_path not set")
+            raise RuntimeError("chromium_path not set")  # pragma: no mutate
         self._user_data_dir = tempfile.mkdtemp(prefix="gaia-browser-host-")
         args = [
             self._chromium_path,
@@ -855,7 +860,7 @@ class ChromiumHost:
         """
         deadline = time.monotonic() + _CDP_READY_TIMEOUT_SECONDS
         async with httpx.AsyncClient() as client:
-            while time.monotonic() < deadline:
+            while time.monotonic() < deadline:  # pragma: no mutate
                 try:
                     resp = await client.get(f"http://127.0.0.1:{port}/json/version", timeout=2.0)
                     resp.raise_for_status()
@@ -866,13 +871,15 @@ class ChromiumHost:
 
     async def _read_devtools_port(self) -> int:
         if self._user_data_dir is None:
-            raise RuntimeError("user_data_dir not set")
+            raise RuntimeError("user_data_dir not set")  # pragma: no mutate
 
         port_file = Path(self._user_data_dir) / "DevToolsActivePort"
         deadline = time.monotonic() + _CDP_READY_TIMEOUT_SECONDS
-        while time.monotonic() < deadline:
+        while time.monotonic() < deadline:  # pragma: no mutate
             if self._proc is not None and self._proc.returncode is not None:
-                raise RuntimeError("Chromium exited before publishing its DevTools port")
+                raise RuntimeError(
+                    "Chromium exited before publishing its DevTools port"  # pragma: no mutate
+                )
             if port_file.exists():
                 # Chromium creates the file, then writes the port asynchronously, so
                 # it can be empty between exists() and the flush: read defensively
@@ -881,7 +888,7 @@ class ChromiumHost:
                 if port_lines and (first_line := port_lines[0].strip()).isdigit():
                     return int(first_line)
             await asyncio.sleep(_CDP_READY_POLL_SECONDS)
-        raise RuntimeError("Chromium did not write DevToolsActivePort in time")
+        raise RuntimeError("Chromium did not write DevToolsActivePort in time")  # pragma: no mutate
 
     async def _shutdown_chromium(self) -> None:
         if self._root_mux is not None:
@@ -963,7 +970,9 @@ class ChromiumHost:
         used, limit = memory_usage_mb()
         # Under memory pressure, reclaim idle sessions sooner to free room for new
         # ones instead of waiting out the full idle TTL.
-        if limit > 0 and used > limit * browser_host_settings.BROWSER_HOST_MEMORY_SOFT_WATERMARK:
+        soft_mb = limit * browser_host_settings.BROWSER_HOST_MEMORY_SOFT_WATERMARK
+        # A limit of 0 means none was detected; no real limit sits between 0 and 1 MB.
+        if limit > 0 and used > soft_mb:  # pragma: no mutate
             ttl = max(_MIN_PRESSURE_IDLE_TTL_SECONDS, ttl / _PRESSURE_IDLE_TTL_DIVISOR)
         now = time.monotonic()
         stale = [

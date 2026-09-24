@@ -921,6 +921,31 @@ class TestAutoResolveHandoffOnNavigation:
 
         resolve.assert_not_awaited()
 
+    async def test_a_blip_back_to_login_starts_the_count_over(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """One read off login, a bounce back, one read off again: still one stable read, not two."""
+        monkeypatch.setattr(session_mod.asyncio, "sleep", AsyncMock())
+        monkeypatch.setattr(
+            session_mod.host_client,
+            "get_session",
+            AsyncMock(
+                side_effect=[
+                    _info("https://x/login"),
+                    _info("https://x/"),
+                    _info("https://x/login"),
+                    _info("https://x/"),
+                    BrowserUnavailableError("gone"),
+                ]
+            ),
+        )
+        resolve = AsyncMock()
+        monkeypatch.setattr(session_mod, "resolve_handoff", resolve)
+
+        await session_mod.auto_resolve_handoff_on_navigation("h1", _handle("sess-1"), "user-1")
+
+        resolve.assert_not_awaited()
+
     async def test_transient_redirect_is_debounced(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A single off-login blip that snaps back must NOT resolve — the stable counter resets, so a mid-login redirect can't complete the handoff early."""
         monkeypatch.setattr(session_mod.asyncio, "sleep", AsyncMock())

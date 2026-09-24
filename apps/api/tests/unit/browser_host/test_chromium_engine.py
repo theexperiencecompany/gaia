@@ -555,6 +555,20 @@ async def test_a_ceiling_of_zero_turns_the_backstop_off(monkeypatch: pytest.Monk
 
 
 @pytest.mark.usefixtures("watermark")
+async def test_a_ceiling_of_one_admits_a_single_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fallback host runs with a ceiling of one."""
+    monkeypatch.setattr(chromium.browser_host_settings, "BROWSER_HOST_MAX_SESSIONS", 1)
+    host = make_host()
+    host._sessions = {"s1": make_session("s1")}
+    _memory(monkeypatch, (100.0, 1000.0))
+
+    with pytest.raises(AtCapacityError) as err:
+        await host._reserve_slot()
+
+    assert err.value.gate is HostAdmissionRefusal.SESSION_CEILING
+
+
+@pytest.mark.usefixtures("watermark")
 async def test_under_pressure_a_create_waits_for_memory_to_free(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -631,8 +645,11 @@ def test_the_engines_memory_is_its_whole_process_tree(monkeypatch: pytest.Monkey
     tree = _PsProcess(
         100 * _MB, [_PsProcess(50 * _MB), _PsProcess(0, broken=True), _PsProcess(25 * _MB)]
     )
-    monkeypatch.setattr(chromium.psutil, "Process", lambda pid: tree)
+    monkeypatch.setattr(
+        chromium.psutil, "Process", lambda pid: tree if pid == 4242 else _PsProcess(0, broken=True)
+    )
     host = make_host()
+    host._proc = cast(asyncio.subprocess.Process, _Proc(pid=4242))
 
     assert host.engine_rss_mb() == 175.0
 
@@ -840,6 +857,7 @@ def test_a_viewer_keeps_a_session_counted_until_it_leaves() -> None:
     watched = (session.viewer_count, session.last_activity_at)
     session.last_activity_at = 0.0
     host.remove_viewer("s1")
+    one_left = session.viewer_count
     host.remove_viewer("s1")
     host.remove_viewer("s1")
     host.add_viewer("unknown")
@@ -847,6 +865,7 @@ def test_a_viewer_keeps_a_session_counted_until_it_leaves() -> None:
 
     assert watched[0] == 2
     assert watched[1] > 0.0
+    assert one_left == 1
     assert session.viewer_count == 0
     assert session.last_activity_at > 0.0
 
