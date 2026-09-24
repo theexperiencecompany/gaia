@@ -17,6 +17,7 @@ from app.services.browser.storage_persistence import (
     load_storage_state,
     save_storage_state,
 )
+from tests.helpers import captured_wide_event
 
 
 @pytest.fixture(autouse=True)
@@ -120,6 +121,24 @@ async def test_load_drops_the_row_and_returns_none_when_the_blob_is_undecryptabl
 
     assert loaded is None
     delete.assert_awaited_once_with("u1", "example.com")
+
+
+async def test_an_unreadable_saved_login_is_a_warning_naming_its_domain_and_the_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = MagicMock(storage_state_blob="not-a-valid-fernet-token", domain="example.com")
+    monkeypatch.setattr(
+        sp.browser_profile_repository, "get_for_domain", AsyncMock(return_value=record)
+    )
+    monkeypatch.setattr(sp.browser_profile_repository, "delete_for_user", AsyncMock())
+
+    async with captured_wide_event() as event:
+        await load_storage_state("u1", "example.com")
+
+    [warning] = event["warnings"]
+    assert "Saved browser login unreadable" in warning["msg"]
+    assert warning["domain"] == "example.com"
+    assert warning["error_type"] == "InvalidToken"
 
 
 async def test_load_none_without_user_or_domain(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -307,3 +326,20 @@ class TestImportBrowserProfile:
             assert prov.source == "import"
             assert prov.source_browser == "Arc"
             assert prov.source_ip == "203.0.113.7"
+
+
+def test_a_malformed_key_fails_loud_naming_the_setting_and_the_expected_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sp.settings, "BROWSER_STATE_ENCRYPTION_KEY", "not-a-fernet-key")
+    sp._cipher = None
+
+    with pytest.raises(ValueError) as exc_info:
+        sp._get_cipher()
+
+    assert str(exc_info.value).startswith(
+        "BROWSER_STATE_ENCRYPTION_KEY is not a valid Fernet key "
+        "(must be 32 url-safe base64-encoded bytes): "
+    )
+    assert exc_info.value.__cause__ is not None
+    assert sp._cipher is None
