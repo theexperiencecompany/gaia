@@ -26,7 +26,10 @@ _original_get_browser_state_summary = BrowserSession.get_browser_state_summary
 def defer_screenshots_for(session: BrowserSession) -> None:
     """Answer this session's state reads without a screenshot from now on."""
     key = id(session)
-    _deferred[key] = weakref.ref(session, lambda _ref: _deferred.pop(key, None))
+    # Re-registering drops the old ref before it can fire, so the default is never read.
+    _deferred[key] = weakref.ref(
+        session, lambda _ref: _deferred.pop(key, None)
+    )  # pragma: no mutate
 
 
 def _is_deferred(session: BrowserSession) -> bool:

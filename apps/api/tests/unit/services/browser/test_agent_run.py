@@ -73,7 +73,7 @@ async def _never_stop() -> bool:
 class _Harness:
     """A run wired to record what it emitted, plus the two Browser-Use callbacks."""
 
-    def __init__(self, *, llm: Any = None, steps_before: int = 0) -> None:
+    def __init__(self, *, llm: Any = None, steps_before: int | None = None) -> None:
         self.frames: list[StepFrame] = []
         self.outputs: list[tuple[int, list[str]]] = []
         self.takeovers: list[tuple[str, str]] = []
@@ -88,7 +88,8 @@ class _Harness:
                 action_results=self._record_outputs,
             ),
             step_timeout=30.0,
-            steps_before=steps_before,
+            # A fresh run takes the constructor's own default.
+            **({} if steps_before is None else {"steps_before": steps_before}),
         )
 
     async def _record_takeover(self, reason: str, category: str) -> str | None:
