@@ -13,6 +13,7 @@ from app.constants.browser import (
 from app.services.browser import job_events as job_events_mod
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
 from tests._harness.redis_fakes import FakeRedisClient
+from tests.helpers import captured_wide_event
 
 
 @pytest.fixture
@@ -64,21 +65,25 @@ async def test_the_feed_is_capped_and_expires_with_the_job(fake_client: FakeRedi
 
 @pytest.mark.unit
 async def test_a_poisoned_frame_is_dropped_and_logged_not_raised(
-    fake_client: FakeRedisClient, monkeypatch: pytest.MonkeyPatch
+    fake_client: FakeRedisClient,
 ) -> None:
     """One unreadable entry must not end the relay — every other card still has to reach the user."""
     await job_events_mod.publish_job_event("job-1", _frame(1))
     key = f"{BROWSER_JOB_EVENTS_PREFIX}job-1"
     fake_client.streams[key].append(("2-0", {"payload": "{not json"}))
     fake_client.streams[key].append(("3-0", {"payload": json.dumps(["not", "a", "mapping"])}))
-    await job_events_mod.publish_job_event("job-1", _frame(4))
+    fake_client.streams[key].append(("4-0", {}))
+    await job_events_mod.publish_job_event("job-1", _frame(5))
 
-    fake_log = MagicMock()
-    monkeypatch.setattr(job_events_mod, "log", fake_log)
-    events = await job_events_mod.read_job_events("job-1", "0-0", 0)
+    async with captured_wide_event() as event:
+        events = await job_events_mod.read_job_events("job-1", "0-0", 0)
 
-    assert [payload for _, payload in events] == [_frame(1), _frame(4)]
-    assert fake_log.error.call_count == 2
+    assert [payload for _, payload in events] == [_frame(1), _frame(5)]
+    errors = event["errors"]
+    assert [error["entry_id"] for error in errors] == ["2-0", "3-0", "4-0"]
+    # An unparseable frame and a parseable non-object one are told apart in the log.
+    assert errors[0]["msg"] and errors[1]["msg"]
+    assert errors[0]["msg"] != errors[1]["msg"]
 
 
 @pytest.mark.unit
@@ -87,9 +92,10 @@ async def test_a_blocking_read_passes_its_budget_to_redis_and_a_zero_does_not_bl
 ) -> None:
     """block=0 must mean "whatever is there now": the worker drains the whole feed with it and can never hang on an empty stream."""
     await job_events_mod.read_job_events("job-1", "0-0", 1000)
+    await job_events_mod.read_job_events("job-1", "0-0", 1)
     await job_events_mod.read_job_events("job-1", "0-0", 0)
 
-    assert [block for _, block in fake_client.xread_calls] == [1000, None]
+    assert [block for _, block in fake_client.xread_calls] == [1000, 1, None]
 
 
 @pytest.mark.unit

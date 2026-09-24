@@ -169,12 +169,14 @@ class BrowserTaskRunner:
         self._handed_off = False
         #: What the user told the run to do instead when they took over.
         self._user_notes: list[str] = []
-        self._handoff_timed_out = False
+        # None reads as falsy exactly like False.
+        self._handoff_timed_out = False  # pragma: no mutate
         self._handoffs = 0
         self._guidances = 0
         #: Set when a blocked run asked for guidance and got none; the summary the
         #: user reads, which is the give-up reason when the agent wrote one.
-        self._blocked_summary: str | None = None
+        # "" reads as falsy exactly like None.
+        self._blocked_summary: str | None = None  # pragma: no mutate
         self._last_step = 0
         # CDN URLs that really uploaded, in step order — the recap's frames.
         self._shots: list[str] = []
@@ -183,9 +185,10 @@ class BrowserTaskRunner:
         self._emit_lock = asyncio.Lock()
         self._emit_tasks: set[asyncio.Task[Any]] = set()
         self._last_frame_at = perf_counter()
-        self._stall_noted = False
+        # None reads as falsy exactly like False.
+        self._stall_noted = False  # pragma: no mutate
         # Waiting on the user or the agent is not a stall; the watcher stands down.
-        self._waiting_on_someone = False
+        self._waiting_on_someone = False  # pragma: no mutate
         self._agent_run = self._build_agent_run()
 
     @property
@@ -295,7 +298,8 @@ class BrowserTaskRunner:
             return await self._resume_on_fallback(task, route, spent=[])
         if isinstance(ended, EngineFailure):
             if await self._should_stop():
-                return RunOutcome(success=False, summary=BROWSER_ENGINE_UNRESPONSIVE_SUMMARY)
+                # Never read: _finish_after_execute judges the stop before the outcome.
+                return RunOutcome(False, BROWSER_ENGINE_UNRESPONSIVE_SUMMARY)  # pragma: no mutate
             self._fall_back_after_engine_failure(route.jev, ended)
             return await self._resume_on_fallback(task, route, spent=await self._agent_run.spent())
         if ended.success:
@@ -465,7 +469,8 @@ class BrowserTaskRunner:
                 HandoffRequest(category=cat, reason=reason), self._session
             )
         finally:
-            self._waiting_on_someone = False
+            # None reads as falsy exactly like False.
+            self._waiting_on_someone = False  # pragma: no mutate
             self._last_frame_at = perf_counter()
         if outcome.status == HandoffStatus.COMPLETED:
             self._handed_off = True
@@ -498,7 +503,8 @@ class BrowserTaskRunner:
         try:
             outcome = await self._request_guidance(request)
         finally:
-            self._waiting_on_someone = False
+            # None reads as falsy exactly like False.
+            self._waiting_on_someone = False  # pragma: no mutate
             self._last_frame_at = perf_counter()
         instruction = (outcome.message or "").strip()
         if outcome.status == HandoffStatus.COMPLETED and instruction:
@@ -545,7 +551,8 @@ class BrowserTaskRunner:
         """
         self._last_step = frame.index
         self._last_frame_at = perf_counter()
-        self._stall_noted = False
+        # None reads as falsy exactly like False.
+        self._stall_noted = False  # pragma: no mutate
         task = spawn_background_task(self._emit_step(frame), name="browser_step_emit")
         self._emit_tasks.add(task)
         task.add_done_callback(self._emit_tasks.discard)
@@ -556,7 +563,8 @@ class BrowserTaskRunner:
             screenshot = await self._render_screenshot(frame)
             if screenshot and screenshot.startswith("http"):
                 self._shots.append(screenshot)
-            screenshot_ms = round((perf_counter() - shot_t0) * 1000)
+            # Feeds only the info-level step timing line.
+            screenshot_ms = round((perf_counter() - shot_t0) * 1000)  # pragma: no mutate
             emit_t0 = perf_counter()
             await self._emit(
                 BrowserStepSnapshot(
@@ -569,7 +577,8 @@ class BrowserTaskRunner:
                     elapsed_ms=frame.since_prev_ms or None,
                 )
             )
-            emit_ms = round((perf_counter() - emit_t0) * 1000)
+            # Feeds only the info-level step timing line.
+            emit_ms = round((perf_counter() - emit_t0) * 1000)  # pragma: no mutate
             log.info(
                 f"{LogTag.BROWSER} step timing",
                 step=frame.index,

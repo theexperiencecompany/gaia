@@ -45,7 +45,6 @@ async def publish_job_event(job_id: str, payload: dict[str, object]) -> None:
         key,
         {"payload": json.dumps(payload)},
         maxlen=BROWSER_JOB_EVENTS_MAXLEN,
-        approximate=True,
     )
     await redis_cache.client.expire(key, browser_job_ttl_seconds())
 
@@ -65,15 +64,16 @@ async def read_job_events(
     for _stream, entries in results:
         for entry_id, fields in entries:
             typed_fields: _StreamFields = _STREAM_FIELDS.validate_python(fields)
-            payload = _decode(entry_id, typed_fields.get("payload", ""))
+            payload = _decode(entry_id, typed_fields.get("payload"))
             if payload is not None:
                 events.append((entry_id, payload))
     return events
 
 
-def _decode(entry_id: str, raw: str) -> dict[str, object] | None:
+def _decode(entry_id: str, raw: str | None) -> dict[str, object] | None:
     # A frame nobody can read is dropped, never raised: one poisoned entry must
-    # not end the relay and cost the user every remaining card.
+    # not end the relay and cost the user every remaining card. An entry with
+    # no payload field at all (raw is None) fails json.loads with TypeError.
     try:
         payload = json.loads(raw)
     except (TypeError, ValueError):

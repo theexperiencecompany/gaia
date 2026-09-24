@@ -103,6 +103,21 @@ async def test_job_state_round_trips_with_its_result(fake_cache: FakeRedisCache)
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("fake_redis")
+async def test_a_stored_job_state_loads_back_as_a_typed_state_through_real_redis() -> None:
+    """Redis holds JSON; the worker and the API both read the state back as a model, never a raw dict."""
+    await jobs_mod.put_job_state(
+        BrowserJobState(job_id="job-1", status=BrowserJobStatus.RUNNING, task="book a table")
+    )
+
+    loaded = await jobs_mod.get_job_state("job-1")
+
+    assert isinstance(loaded, BrowserJobState)
+    assert loaded.status is BrowserJobStatus.RUNNING
+    assert loaded.task == "book a table"
+
+
+@pytest.mark.unit
 async def test_the_joiner_lease_is_held_only_between_take_and_drop(
     fake_cache: FakeRedisCache,
 ) -> None:

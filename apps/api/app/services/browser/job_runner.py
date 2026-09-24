@@ -170,8 +170,10 @@ class BrowserThreadMirror:
 
     def __init__(self, publish: FramePublisher) -> None:
         self._publish = publish
-        self._group_id: str | None = None
-        self._started_at = perf_counter()
+        # "" reads as falsy exactly like None.
+        self._group_id: str | None = None  # pragma: no mutate
+        #: Set when the group opens; nothing reads it before then.
+        self._started_at: float
         # tool_call_ids of the action rows emitted, so an output only ever
         # lands on a row that exists (an errored step emits no rows).
         self._emitted_ids: set[str] = set()
@@ -246,7 +248,9 @@ class BrowserThreadMirror:
             output=output,
             subagent_id=self._group_id,
         )
-        await self._publish({"tool_output": payload.model_dump(mode="json")})
+        # Every field is a str, so the json and python dump modes agree.
+        dumped = payload.model_dump(mode="json")  # pragma: no mutate
+        await self._publish({"tool_output": dumped})
 
     async def _close(self) -> None:
         if not self._group_id:
@@ -259,7 +263,8 @@ class BrowserThreadMirror:
                 )
             }
         )
-        self._group_id = None
+        # "" reads as falsy exactly like None.
+        self._group_id = None  # pragma: no mutate
 
 
 def _build_bot_delivery(request: BrowserJobRequest) -> BotProgressDelivery | None:
@@ -561,7 +566,8 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
         else f"{request.task}\n\nStart at: {request.start_url}"
     )
 
-    session_id: str | None = None
+    # "" reads as falsy exactly like None.
+    session_id: str | None = None  # pragma: no mutate
 
     try:
         async with contextlib.AsyncExitStack() as sessions:

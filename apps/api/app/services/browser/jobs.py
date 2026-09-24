@@ -100,7 +100,11 @@ async def joiner_lease_held(job_id: str) -> bool:
 
 async def request_job_cancel(job_id: str) -> None:
     """Flag a job as cancelled for a stop whose turn has already ended, where the stream's own signal is gone."""
-    await redis_cache.client.set(_cancel_key(job_id), "1", ex=browser_job_ttl_seconds())
+    await redis_cache.client.set(
+        _cancel_key(job_id),
+        "1",  # pragma: no mutate — read by EXISTS alone, the value carries nothing
+        ex=browser_job_ttl_seconds(),
+    )
 
 
 async def job_cancel_requested(job_id: str) -> bool:

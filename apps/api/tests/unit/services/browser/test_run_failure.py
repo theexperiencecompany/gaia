@@ -65,3 +65,18 @@ async def test_a_successful_run_carries_no_reason() -> None:
 
     assert "reason" not in event
     assert event["browser"]["success"] is True
+
+
+async def test_a_finished_run_puts_its_status_steps_and_run_time_on_the_event() -> None:
+    result = BrowserResultSnapshot(
+        status=BrowserSessionStatus.FAILED, success=False, summary="no", steps=7
+    )
+
+    async with log_context("run_browser_job"):
+        record_run_result(result, engine_fallback=False, run_ms=4200)
+        browser = dict(log.get())["browser"]
+
+    assert browser["status"] == "failed"
+    assert browser["steps"] == 7
+    assert browser["run_ms"] == 4200
+    assert browser["engine_fallback"] is False

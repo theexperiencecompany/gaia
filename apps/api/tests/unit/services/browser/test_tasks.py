@@ -6,6 +6,7 @@ at all. Frames and caption regression coverage lives in test_tasks_frames.py.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -140,6 +141,7 @@ async def test_list_browser_tasks_maps_every_field_and_preserves_order(
         _doc(
             id="a",
             task="first",
+            created_at=datetime(2026, 9, 1, 12, 0, tzinfo=UTC),
             steps=1,
             step_goals=["Opening"],
             step_screenshots=["https://cdn/1.png"],
@@ -170,6 +172,7 @@ async def test_list_browser_tasks_maps_every_field_and_preserves_order(
     assert first.success is True
     assert first.steps == 1
     assert first.conversation_id == "c1"
+    assert first.created_at == datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
     assert first.source == "web"
     assert [f.url for f in first.frames] == ["https://cdn/1.png"]
     assert second.status == BrowserSessionStatus.FAILED

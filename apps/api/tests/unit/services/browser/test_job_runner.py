@@ -14,15 +14,19 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.constants.browser import (
+    BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS,
     BROWSER_TASK_EVENT,
+    BROWSER_TOOL_CATEGORY,
     BrowserRunFailure,
     BrowserSessionStatus,
+    HandoffKind,
     HandoffStatus,
     SensitiveCategory,
 )
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
+    AgentGuidanceRequest,
     BrowserAction,
     BrowserActionOutput,
     BrowserResultSnapshot,
@@ -30,6 +34,7 @@ from app.schemas.browser import (
     BrowserStepSnapshot,
     HandoffOutcome,
     HandoffRequest,
+    PendingAgentGuidance,
 )
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
 from app.services.analytics_service import AnalyticsEvents
@@ -40,6 +45,7 @@ from app.services.browser.runner import BrowserRunConfig, BrowserRunnerCallbacks
 from app.services.browser.session import BrowserHostSession
 from app.services.browser.tasks import BrowserTaskRecord
 from shared.py.wide_events import log, wide_task
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -285,6 +291,7 @@ class Harness:
         self.delivery_kwargs: list[dict[str, Any]] = []
         self.delivered: list[tuple[str, Any]] = []
         self.handoffs_created: list[tuple[Any, ...]] = []
+        self.handoff_kwargs: list[dict[str, Any]] = []
         self.handoffs_awaited: list[tuple[Any, ...]] = []
         self.cancel_checks: list[str] = []
         self.job_cancel_checks: list[str] = []
@@ -350,6 +357,9 @@ class RecordingDelivery:
 
     async def session(self, snapshot: object) -> None:
         self._h.delivered.append(("session", snapshot))
+
+    async def note(self, text: str) -> None:
+        self._h.delivered.append(("note", text))
 
 
 async def _noop() -> None:
@@ -442,8 +452,9 @@ def _install(
 
     monkeypatch.setattr(jr, "BotProgressDelivery", _delivery)
 
-    async def _create_pending(*args: Any) -> None:
+    async def _create_pending(*args: Any, **kwargs: Any) -> None:
         h.handoffs_created.append(args)
+        h.handoff_kwargs.append(kwargs)
 
     monkeypatch.setattr(jr, "create_pending_handoff", _create_pending)
 
@@ -1388,13 +1399,13 @@ async def test_a_completed_login_takeover_marks_the_session_worth_saving(
         return _result(BrowserSessionStatus.COMPLETED, True, "done")
 
     h = _install(monkeypatch, run_body=body)
-    monkeypatch.setattr(
-        jr.host_client,
-        "get_session",
-        AsyncMock(return_value=MagicMock(url="https://site.example/account")),
-    )
+    h.session.host_url = PRIMARY_HOST
+    get_session = AsyncMock(return_value=MagicMock(url="https://site.example/account"))
+    monkeypatch.setattr(jr.host_client, "get_session", get_session)
 
     await _run(h, _request(task="x"))
+
+    get_session.assert_awaited_once_with("sess-1", PRIMARY_HOST)
 
     # Saved under the site signed in to, which a run with no start URL has no other way to know.
     h.session.mark_authenticated.assert_called_once_with("https://site.example/account")
@@ -1674,13 +1685,18 @@ async def test_an_already_normalized_mirror_frame_is_published_unchanged(
     _install(monkeypatch, run_body=body)
     published: list[dict[str, Any]] = []
 
+    feeds: set[str] = set()
+
     async def _publish(job_id: str, payload: dict[str, Any]) -> None:
+        feeds.add(job_id)
         published.append(payload)
 
     monkeypatch.setattr(jr, "publish_job_event", _publish)
     monkeypatch.setattr(jr, "publish_frame_to_job", _REAL_PUBLISH_FRAME)
 
     await jr.execute_browser_job(_request(task="x"))
+
+    assert feeds == {"job-1"}
 
     (start,) = [p["subagent_start"] for p in published if "subagent_start" in p]
     assert start["subagent_id"] == "browser:s1"
@@ -1714,14 +1730,17 @@ async def test_a_run_whose_turn_has_ended_still_stops_on_its_own_cancel_flag(
 ) -> None:
     """A stop after the turn is over has no stream signal left to set, so the job's own flag is the only thing the run can hear."""
 
+    heard: list[bool] = []
+
     async def body(h: Harness) -> BrowserResultSnapshot:
-        assert await h.is_cancelled() is True
+        heard.append(await h.is_cancelled())
         return _result(BrowserSessionStatus.CANCELLED, False, "stopped")
 
     h = _install(monkeypatch, run_body=body, job_cancelled=True)
 
     await _run(h, _request(stream_id=None))
 
+    assert heard == [True]
     assert h.job_cancel_checks == ["job-1"]
     assert h.cancel_checks == []
 
@@ -1731,3 +1750,354 @@ def test_a_failed_run_forbids_an_answer_from_memory() -> None:
     out = jr.agent_result_message(_result(BrowserSessionStatus.FAILED, False, "blocked"))
 
     assert "from memory" in out
+
+
+# ---------------------------------------------------------------------------
+# agent_result_message — the stopped run and the changed request, verbatim
+# ---------------------------------------------------------------------------
+
+
+def _stopped_message() -> str:
+    return (
+        "BROWSER TASK WAS STOPPED before it finished. It did NOT complete, so there is no "
+        "result and you must not claim one. It was stopped either because the user asked, "
+        "or because the request that started it ended early; never say the user stopped it "
+        "unless the conversation shows they did.\n\n"
+        "Briefly say the browser task was stopped and ask if they'd like you to try again "
+        f"or do something else. {ONLY_THE_SUMMARY} {NO_META}"
+    )
+
+
+def test_a_stopped_run_the_user_redirected_is_told_both_verbatim() -> None:
+    result = _result(BrowserSessionStatus.CANCELLED, False, "half done")
+    result.user_notes = ["skip the login", "just read the headline"]
+
+    out = jr.agent_result_message(result)
+
+    assert out == (
+        'THE USER CHANGED THE REQUEST MID-RUN to: "skip the login", then "just read the '
+        'headline". Answer THAT, not the original request. The original request was not '
+        "carried out and must not be reported as attempted-and-failed.\n\n" + _stopped_message()
+    )
+
+
+# ---------------------------------------------------------------------------
+# execute_browser_job — the seams the runner is handed reach this job and user
+# ---------------------------------------------------------------------------
+
+
+async def test_the_browser_model_is_built_for_the_user_who_asked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _install(monkeypatch)
+    built_for: list[str | None] = []
+
+    def _build(user_id: str | None = None) -> object:
+        built_for.append(user_id)
+        return LLM_SENTINEL
+
+    monkeypatch.setattr(jr, "build_browser_llm", _build)
+
+    await _run(h, _request(user_id="u7"))
+
+    assert built_for == ["u7"]
+
+
+async def test_a_handoff_is_filed_for_this_user_and_conversation_and_waited_on_for_its_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        await h.request_handoff(
+            HandoffRequest(category=SensitiveCategory.CREDENTIALS, reason="log in")
+        )
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+    monkeypatch.setattr(jr.settings, "BROWSER_USE_HANDOFF_TIMEOUT_SECONDS", 123)
+
+    await _run(h, _request(conversation_id="conv-9"))
+
+    (created,) = h.handoffs_created
+    handoff_id = created[0]
+    assert created == (handoff_id, "u1", "conv-9", "log in")
+    assert h.handoffs_awaited == [(handoff_id, 123)]
+
+
+async def test_a_handoff_card_points_the_user_at_the_paused_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        await h.request_handoff(
+            HandoffRequest(category=SensitiveCategory.PAYMENT, reason="confirm the order")
+        )
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+
+    await _run(h, _request())
+
+    handoff_cards = [c for c in h.cards if c["kind"] == "handoff"]
+    assert [
+        (c["status"], c["category"], c["reason"], c["session_id"], c["live_view_url"])
+        for c in handoff_cards
+    ] == [
+        ("pending", "payment", "confirm the order", "sess-1", "https://live/abc"),
+        ("completed", "payment", "confirm the order", "sess-1", "https://live/abc"),
+    ]
+
+
+async def test_a_bot_user_is_sent_every_card_the_run_emits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = BrowserSessionSnapshot(task="x", status=BrowserSessionStatus.RUNNING, session_id="s1")
+    step = BrowserStepSnapshot(index=1, goal="open")
+    final = _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        await h.emit(session)
+        await h.emit(step)
+        await h.request_handoff(HandoffRequest(reason="verify"))
+        await h.emit(final)
+        return final
+
+    h = _install(monkeypatch, run_body=body)
+
+    await _run(h, _bot_request())
+
+    kinds = [kind for kind, _ in h.delivered]
+    assert kinds == ["session", "step", "handoff", "handoff", "result"]
+    assert h.delivered[0][1] is session
+    assert h.delivered[1][1] is step
+    assert h.delivered[4][1] is final
+    assert [snap.status for kind, snap in h.delivered if kind == "handoff"] == [
+        HandoffStatus.PENDING,
+        HandoffStatus.COMPLETED,
+    ]
+
+
+async def test_a_stall_note_reaches_the_bot_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        assert h.callbacks.note is not None
+        await h.callbacks.note("Still loading the page.")
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+
+    await _run(h, _bot_request())
+
+    assert ("note", "Still loading the page.") in h.delivered
+
+
+async def test_the_run_asks_whether_an_agent_is_still_joined_on_this_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked: list[str] = []
+    answers: list[bool] = []
+
+    async def _lease_held(job_id: str) -> bool:
+        asked.append(job_id)
+        return True
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        assert h.callbacks.agent_joined is not None
+        answers.append(await h.callbacks.agent_joined())
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+    monkeypatch.setattr(jr, "joiner_lease_held", _lease_held)
+
+    await _run(h, _request(job_id="job-7"))
+
+    assert (asked, answers) == (["job-7"], [True])
+
+
+async def test_a_guidance_ask_is_filed_as_an_agent_handoff_and_withdrawn_once_answered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    published: list[tuple[str, PendingAgentGuidance]] = []
+    cleared: list[str] = []
+    outcomes: list[HandoffOutcome] = []
+    ask = AgentGuidanceRequest(reason="the button is gone", task="x")
+
+    async def _put(job_id: str, pending: PendingAgentGuidance) -> None:
+        published.append((job_id, pending))
+
+    async def _clear(job_id: str) -> None:
+        cleared.append(job_id)
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        assert h.callbacks.request_guidance is not None
+        outcomes.append(await h.callbacks.request_guidance(ask))
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(
+        monkeypatch,
+        run_body=body,
+        handoff_outcome=HandoffOutcome(status=HandoffStatus.COMPLETED, message="use search"),
+    )
+    monkeypatch.setattr(jr, "put_guidance_request", _put)
+    monkeypatch.setattr(jr, "clear_guidance_request", _clear)
+
+    event = await _run_event(h, _request(job_id="job-7", conversation_id="conv-9"))
+
+    (created,) = h.handoffs_created
+    handoff_id = created[0]
+    assert created == (handoff_id, "u1", "conv-9", "the button is gone")
+    assert h.handoff_kwargs == [{"kind": HandoffKind.AGENT}]
+    assert h.handoffs_awaited == [(handoff_id, BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS)]
+    assert published == [("job-7", PendingAgentGuidance(handoff_id=handoff_id, request=ask))]
+    assert cleared == ["job-7"]
+    assert [o.message for o in outcomes] == ["use search"]
+    assert event["browser"]["guidance_result"] == "completed"
+
+
+async def test_a_fallback_session_opens_on_the_fallback_host_for_this_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    carried = MagicMock(name="carried_state")
+    opened: list[object] = []
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        assert h.callbacks.open_fallback_session is not None
+        opened.append(await h.callbacks.open_fallback_session("https://page", carried))
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://fallback:8930")
+
+    await _run(h, _request(user_id="u7"))
+
+    assert opened == [h.session]
+    assert h.session_kwargs == {
+        "user_id": "u7",
+        "host_url": "http://fallback:8930",
+        "start_url": "https://page",
+        "carried": carried,
+    }
+
+
+async def test_a_run_with_no_fallback_host_is_given_no_way_to_move(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _install(monkeypatch)
+
+    await _run(h, _request())
+
+    assert h.callbacks.open_fallback_session is None
+
+
+# ---------------------------------------------------------------------------
+# execute_browser_job — timings and the endings that leave a session behind
+# ---------------------------------------------------------------------------
+
+
+async def test_the_run_time_reaches_the_event_and_the_analytics_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = [100.0]
+    captured = _capture(monkeypatch)
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        now[0] += 2.5
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+    monkeypatch.setattr(jr, "perf_counter", lambda: now[0])
+
+    event = await _run_event(h, _request())
+
+    assert event["browser"]["run_ms"] == 2500
+    assert captured[0][2]["duration_ms"] == 2500
+
+
+def _replay_links(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    linked: list[str] = []
+
+    async def _create_replay_link(session_id: str, shots: list[str]) -> str:
+        linked.append(session_id)
+        return "https://gaia.test/replays/abc"
+
+    monkeypatch.setattr(jr, "create_replay_link", _create_replay_link)
+    return linked
+
+
+@pytest.mark.parametrize(
+    "error",
+    [BrowserConcurrencyLimit("Fallback host is full."), BrowserUnavailableError("host lost")],
+)
+async def test_a_host_failure_after_the_session_opened_still_links_its_recap(
+    monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        raise error
+
+    h = _install(monkeypatch, run_body=body)
+    linked = _replay_links(monkeypatch)
+
+    await _run(h, _request())
+
+    assert linked == ["sess-1"]
+    assert h.cards[-1]["replay_url"] == "https://gaia.test/replays/abc"
+
+
+async def test_a_stopped_run_links_its_recap_and_says_it_was_cancelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        raise asyncio.CancelledError
+
+    h = _install(monkeypatch, run_body=body)
+    linked = _replay_links(monkeypatch)
+
+    async with captured_wide_event() as event:
+        with pytest.raises(asyncio.CancelledError):
+            await jr.execute_browser_job(_request())
+
+    assert linked == ["sess-1"]
+    assert h.cards[-1]["replay_url"] == "https://gaia.test/replays/abc"
+    assert event["reason"] == BrowserRunFailure.CANCELLED
+
+
+async def test_a_full_host_is_a_warning_carrying_its_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _install(monkeypatch, session_error=BrowserConcurrencyLimit("Too many browser tasks."))
+
+    event = await _run_event(h, _request())
+
+    (warning,) = event["warnings"]
+    assert warning["msg"]
+    assert warning["error"] == "Too many browser tasks."
+
+
+# ---------------------------------------------------------------------------
+# BrowserThreadMirror — the group's own row
+# ---------------------------------------------------------------------------
+
+
+async def test_mirror_opens_a_spawned_browser_group_in_the_browser_category() -> None:
+    mirror, writes = _mirror()
+
+    await mirror.mirror(_session_snapshot())
+
+    (start,) = [w["subagent_start"] for w in writes]
+    assert (start["subagent_name"], start["agent_type"], start["tool_category"]) == (
+        "Browser",
+        "spawned",
+        BROWSER_TOOL_CATEGORY,
+    )
+
+
+async def test_mirror_closes_the_group_with_how_long_the_run_took(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = [50.0]
+    monkeypatch.setattr(jr, "perf_counter", lambda: now[0])
+    mirror, writes = _mirror()
+
+    await mirror.mirror(_session_snapshot())
+    now[0] += 2.5
+    await mirror.mirror(_result(BrowserSessionStatus.COMPLETED, True, "done"))
+
+    (end,) = [w["subagent_end"] for w in writes if "subagent_end" in w]
+    assert end["duration_ms"] == 2500
