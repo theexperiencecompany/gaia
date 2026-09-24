@@ -55,6 +55,7 @@ from app.services.browser.run_contract import (
     StepFrame,
 )
 from app.services.browser.session import BrowserHostSession
+from app.services.browser.stalled_loads import StalledLoads
 from app.services.browser.tools import build_browser_tools
 from shared.py.wide_events import log
 
@@ -177,6 +178,7 @@ class BrowserAgentRun:
         self._agent: Any = None
         self._page: JevPage | None = None
         self._delegate: JevDelegate | None = None
+        self._stalls: StalledLoads | None = None
         self._clock = StepClock()
         # A run resumed on the fallback engine numbers on from the steps the user already saw.
         self._frames = steps_before
@@ -195,6 +197,7 @@ class BrowserAgentRun:
 
     async def execute(self, task: str) -> RunOutcome:
         from browser_use import Agent, Browser  # noqa: PLC0415 -- heavy optional dep
+        from browser_use.browser.events import BrowserConnectedEvent  # noqa: PLC0415 -- heavy dep
 
         # Before any Browser-Use object exists, so every event bus this run
         # starts takes the run's lock, not the process-wide one.
@@ -208,6 +211,8 @@ class BrowserAgentRun:
             device_scale_factor=1,
             no_viewport=False,
         )
+        stalls = self._stalls = StalledLoads(browser)
+        browser.event_bus.on(BrowserConnectedEvent, stalls.attach)
 
         def runner_for() -> JevRunner:
             return JevRunner(
@@ -216,6 +221,7 @@ class BrowserAgentRun:
                 text_model=text_model,
                 ledger=self._ledger,
                 secrets=self._secrets,
+                stalls=stalls,
                 should_stop=self._hooks.should_stop,
                 user_waiting=self._hooks.user_waiting,
             )
@@ -248,11 +254,14 @@ class BrowserAgentRun:
             step_timeout=int(self._step_timeout),
             page_extraction_llm=text_model,
         )
-        history = await self._agent.run(
-            max_steps=self._config.max_steps,
-            on_step_start=self._on_step_start,
-            on_step_end=self._on_step_end,
-        )
+        try:
+            history = await self._agent.run(
+                max_steps=self._config.max_steps,
+                on_step_start=self._on_step_start,
+                on_step_end=self._on_step_end,
+            )
+        finally:
+            stalls.close()
         self.last_url = await self._current_url()
         if self.no_progress:
             return RunOutcome(False, BROWSER_RUN_NO_PROGRESS_SUMMARY)
@@ -284,10 +293,16 @@ class BrowserAgentRun:
         return self.no_progress or await self._hooks.should_stop()
 
     async def _on_step_start(self, agent: object) -> None:
-        """Hand the agent whatever the user said since its last step, as a follow-up request."""
+        """Hand the agent what the user said since its last step, and any load the browser stopped."""
+        from browser_use.agent.views import ActionResult  # noqa: PLC0415 -- heavy optional dep
+
         del agent
         for message in await self._hooks.take_user_messages():
             self._agent.message_manager.add_new_task(self._secrets.mask(message))
+        if self._stalls is not None and (stalled := self._stalls.take()):
+            # How Browser-Use itself reports a wait between steps: a result the next prompt carries.
+            notes = [ActionResult(long_term_memory=self._secrets.mask(note)) for note in stalled]
+            self._agent.state.last_result = [*(self._agent.state.last_result or []), *notes]
 
     async def _takeover(self, reason: str, category: str) -> str:
         """Hand the browser to the user, then give the agent the note they left."""
@@ -297,7 +312,12 @@ class BrowserAgentRun:
     async def _guidance(self, reason: str) -> str:
         """Ask the agent that started this run how to proceed; the hook raises when none answers."""
         allowed = self._hooks.guidance_allowed
-        if self._hooks.guidance is None or allowed is None or self._page is None or not await allowed():
+        if (
+            self._hooks.guidance is None
+            or allowed is None
+            or self._page is None
+            or not await allowed()
+        ):
             return BROWSER_NO_GUIDANCE_AVAILABLE
         page = await self._page.observe()
         request = AgentGuidanceRequest(
@@ -321,7 +341,9 @@ class BrowserAgentRun:
     async def _screenshot(self) -> str | None:
         return await self._page.screenshot() if self._page is not None else None
 
-    async def _emit_frame(self, *, caption: str, actions: list[BrowserAction], url: str | None, title: str | None) -> None:
+    async def _emit_frame(
+        self, *, caption: str, actions: list[BrowserAction], url: str | None, title: str | None
+    ) -> None:
         """Emit one card under the next number the user sees, with a photo of the page now."""
         self._frames += 1
         self._hooks.step(
@@ -333,7 +355,9 @@ class BrowserAgentRun:
                     action.model_copy(
                         update={
                             "inputs": {
-                                key: self._secrets.redact(value) if isinstance(value, str) else value
+                                key: self._secrets.redact(value)
+                                if isinstance(value, str)
+                                else value
                                 for key, value in action.inputs.items()
                             }
                         }
@@ -348,7 +372,9 @@ class BrowserAgentRun:
         )
 
     async def _emit_burst(self, actions: list[BrowserAction], url: str, title: str) -> None:
-        await self._emit_frame(caption=burst_caption(actions), actions=actions, url=url, title=title)
+        await self._emit_frame(
+            caption=burst_caption(actions), actions=actions, url=url, title=title
+        )
 
     async def _on_step(
         self, browser_state_summary: BrowserStateSummary, agent_output: AgentOutput, n_steps: int
@@ -409,4 +435,3 @@ class BrowserAgentRun:
         ]
         if outputs:
             await self._hooks.action_results(self._frames, outputs)
-

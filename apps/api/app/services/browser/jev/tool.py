@@ -77,12 +77,22 @@ _STOP_MEANING = {
     JevStop.USER_MESSAGE: "The user sent a message; read it (it is in your task) before going on.",
     JevStop.STOPPED: "The run is stopping.",
     JevStop.GATEWAY: "Jev could not decide; continue yourself.",
+    JevStop.LOAD_STALLED: "The site did not answer in time; the tab stayed on the page before it.",
+    JevStop.NAVIGATION_FAILED: "The page could not be opened; the tab stayed where it was.",
 }
 
 
+#: Stops a site caused, not Jev: the same goal may be sent again.
+_SITE_FAILURES = frozenset({JevStop.LOAD_STALLED, JevStop.NAVIGATION_FAILED})
+
+
 class JevParams(BaseModel):
-    goal: str = Field(description="What Jev should achieve, self-contained, with every value quoted.")
-    start_url: str | None = Field(default=None, description="Open this page first; omit to start where the browser is.")
+    goal: str = Field(
+        description="What Jev should achieve, self-contained, with every value quoted."
+    )
+    start_url: str | None = Field(
+        default=None, description="Open this page first; omit to start where the browser is."
+    )
 
 
 def _normalized(goal: str) -> str:
@@ -106,12 +116,19 @@ def _step_action(step: JevStep) -> BrowserAction:
 
 def report(result: BurstResult) -> str:
     """The burst as the agent reads it: why it stopped, what it did, and the page it ended on."""
-    lines = [f'Jev ran on: "{result.goal}"', f"Stopped: {result.stop.value}. {result.detail} {_STOP_MEANING[result.stop]}"]
+    lines = [
+        f'Jev ran on: "{result.goal}"',
+        f"Stopped: {result.stop.value}. {result.detail} {_STOP_MEANING[result.stop]}",
+    ]
     if result.steps:
         lines.append(f"Actions ({len(result.steps)}):")
         for n, step in enumerate(result.steps, 1):
             typed = f' = "{step.text}"' if step.text is not None else ""
-            changed = "" if step.page_changed is None else (" (page changed)" if step.page_changed else " (no change)")
+            changed = (
+                ""
+                if step.page_changed is None
+                else (" (page changed)" if step.page_changed else " (no change)")
+            )
             ident = f" [#{step.ident}]" if step.ident else ""
             link = f" -> {step.href}" if step.href else ""
             lines.append(f"  {n}. {step.operation.value} {step.label}{ident}{link}{typed}{changed}")
@@ -121,13 +138,17 @@ def report(result: BurstResult) -> str:
     if earlier:
         lines.append("Other pages Jev opened in this burst, with the start of their text:")
         for page in earlier:
-            lines.append(f"--- {page.title} ({page.url})\n{page.text[:JEV_REPORT_OPENED_PAGE_CHARS]}")
+            lines.append(
+                f"--- {page.title} ({page.url})\n{page.text[:JEV_REPORT_OPENED_PAGE_CHARS]}"
+            )
     lines.append(f"Now on: {result.title} ({result.url})")
     if result.text:
         visible = result.text[:JEV_REPORT_PAGE_TEXT_CHARS]
         lines.append(f"Visible text of this page, verbatim:\n{visible}")
     if result.hidden_frames:
-        lines.append("Frames on this page Jev cannot see into: " + ", ".join(result.hidden_frames[:5]))
+        lines.append(
+            "Frames on this page Jev cannot see into: " + ", ".join(result.hidden_frames[:5])
+        )
     return "\n".join(lines)
 
 
@@ -156,10 +177,12 @@ class JevDelegate:
             self._runner = self._runner_for()
         result = await self._runner.burst(params.goal, params.start_url)
         self.bursts.append(result)
-        if not result.progressed:
+        if not result.progressed and result.stop not in _SITE_FAILURES:
             self._fruitless.add(goal)
         if result.steps:
-            await self._emit([_step_action(step) for step in result.steps], result.url, result.title)
+            await self._emit(
+                [_step_action(step) for step in result.steps], result.url, result.title
+            )
         text = report(result)
         return ActionResult(extracted_content=text, long_term_memory=text)
 

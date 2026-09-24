@@ -276,6 +276,10 @@ BROWSER_AGENT_REASONING_EFFORT: Literal["low"] = "low"
 # When a browser model call gets an identical second request (first answer wins). Agent
 # calls measured p50 3.2 s, p90 4.5 s, with stalls past the 180 s timeout (2026-09-25).
 BROWSER_AGENT_HEDGE_SECONDS = 12.0
+# A top-level load whose server sends nothing for this long is stopped, as a person
+# presses Stop: until it answers, Chrome answers no script on the tab (measured 2026-09-25).
+BROWSER_LOAD_STALL_SECONDS = 15.0
+BROWSER_LOAD_STOP_TIMEOUT_SECONDS = 5.0
 # A decision can wait out a layout pass, a part judgement and Jev; Browser-Use's 75s cut it off.
 BROWSER_AGENT_LLM_TIMEOUT_SECONDS = 180
 
@@ -394,6 +398,8 @@ class JevStop(StrEnum):
     USER_MESSAGE = "user_message"
     STOPPED = "stopped"
     GATEWAY = "gateway"
+    LOAD_STALLED = "load_stalled"
+    NAVIGATION_FAILED = "navigation_failed"
 
 
 #: Controls offered to Jev per request, in DOM order within the viewport. Vercel's

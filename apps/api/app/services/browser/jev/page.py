@@ -58,6 +58,10 @@ class PageUnresponsive(BrowserAutomationError):
     """A CDP call got no answer in time; whether an input it carried took effect is unknown."""
 
 
+class NavigationFailed(BrowserAutomationError):
+    """The page could not be opened: the site failed, or never answered and its load was stopped."""
+
+
 class UncertainSelect(BrowserAutomationError):
     """A dropdown change was interrupted and may already have fired; inspect before retrying."""
 
@@ -161,7 +165,9 @@ class JevPage:
         self._focused: set[str] = set()
 
     async def _session(self) -> CDPSession:
-        session = await _bounded(self._browser.get_or_create_cdp_session(), "the page's CDP session")
+        session = await _bounded(
+            self._browser.get_or_create_cdp_session(), "the page's CDP session"
+        )
         if session.session_id not in self._focused:
             # A tab behind another (a page that opened a window, a tab the run left)
             # stops producing frames, so requestAnimationFrame never fires and reads
@@ -247,7 +253,13 @@ class JevPage:
         if kind == "scroll":
             await self._mouse(
                 session,
-                {"type": "mouseWheel", "x": 550, "y": 400, "deltaX": 0, "deltaY": action.get("delta", 0)},
+                {
+                    "type": "mouseWheel",
+                    "x": 550,
+                    "y": 400,
+                    "deltaX": 0,
+                    "deltaY": action.get("delta", 0),
+                },
             )
             self._after_input = action
             return
@@ -272,9 +284,17 @@ class JevPage:
         if kind in ("fill", "secret") and text is not None:
             await self._key(
                 session,
-                {"type": "keyDown", "key": "a", "code": "KeyA", "modifiers": _CTRL, "commands": ["selectAll"]},
+                {
+                    "type": "keyDown",
+                    "key": "a",
+                    "code": "KeyA",
+                    "modifiers": _CTRL,
+                    "commands": ["selectAll"],
+                },
             )
-            await self._key(session, {"type": "keyUp", "key": "a", "code": "KeyA", "modifiers": _CTRL})
+            await self._key(
+                session, {"type": "keyUp", "key": "a", "code": "KeyA", "modifiers": _CTRL}
+            )
             # One key event per character, as a person types: Input.insertText
             # fires no key events, and a date picker or <input type=time> that
             # parses keystrokes then drops the value (measured on Chrome).
@@ -290,28 +310,44 @@ class JevPage:
         for event in ("keyDown", "keyUp"):
             await self._key(
                 session,
-                {"type": event, "key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13, "text": "\r"},
+                {
+                    "type": event,
+                    "key": "Enter",
+                    "code": "Enter",
+                    "windowsVirtualKeyCode": 13,
+                    "text": "\r",
+                },
             )
 
     async def _mouse(self, session: CDPSession, params: DispatchMouseEventParameters) -> None:
         await _bounded(
-            session.cdp_client.send.Input.dispatchMouseEvent(params=params, session_id=session.session_id),
+            session.cdp_client.send.Input.dispatchMouseEvent(
+                params=params, session_id=session.session_id
+            ),
             "Input.dispatchMouseEvent",
         )
 
     async def _key(self, session: CDPSession, params: DispatchKeyEventParameters) -> None:
         await _bounded(
-            session.cdp_client.send.Input.dispatchKeyEvent(params=params, session_id=session.session_id),
+            session.cdp_client.send.Input.dispatchKeyEvent(
+                params=params, session_id=session.session_id
+            ),
             "Input.dispatchKeyEvent",
         )
 
     async def body_text(self, limit: int) -> str:
         """The start of the whole page's rendered text, not only what the viewport shows."""
-        text = await self._evaluate(f"(document.body ? document.body.innerText : '').slice(0, {limit})")
+        text = await self._evaluate(
+            f"(document.body ? document.body.innerText : '').slice(0, {limit})"
+        )
         return str(text or "")
 
     async def navigate(self, url: str) -> None:
-        await self._browser.navigate_to(url)
+        try:
+            await self._browser.navigate_to(url)
+        except RuntimeError as exc:
+            # Browser-Use reports every failed navigation (an error page, a stopped load) this way.
+            raise NavigationFailed(str(exc)) from exc
 
     async def go_back(self) -> None:
         await self._evaluate("history.back()")

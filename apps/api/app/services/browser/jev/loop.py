@@ -49,6 +49,7 @@ from app.services.browser.jev.gateway import JevDecisionsClient, JevEvaluation, 
 from app.services.browser.jev.page import (
     Covered,
     JevPage,
+    NavigationFailed,
     PageAction,
     PageState,
     PageUnresponsive,
@@ -58,6 +59,7 @@ from app.services.browser.jev.page import (
 from app.services.browser.jev.questions import TEXT_VALUE
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.ledger import CallComponent, ExecutedAction, ModelCall, RunLedger
+from app.services.browser.stalled_loads import StalledLoads
 from shared.py.wide_events import log
 
 if TYPE_CHECKING:
@@ -141,10 +143,12 @@ class JevRunner:
         text_model: BaseChatModel,
         ledger: RunLedger,
         secrets: RunSecrets,
+        stalls: StalledLoads,
         should_stop: FlagFn,
         user_waiting: FlagFn,
     ) -> None:
         self._page = page
+        self._stalls = stalls
         self._client = client
         self._text_model = text_model
         self._ledger = ledger
@@ -155,13 +159,12 @@ class JevRunner:
 
     async def burst(self, goal: str, start_url: str | None) -> BurstResult:
         """Run Jev on goal from the current page (or start_url) until it stops."""
-        if start_url:
-            await self._page.navigate(start_url)
+        opening = await self._open(start_url) if start_url else None
         page = await self._page.observe()
         self._visit(page)
         state = _Burst(goal=goal, page=page, addresses=goal_addresses(goal))
         try:
-            stop, detail = await self._run(state)
+            stop, detail = opening or await self._run(state)
         except PageUnresponsive as exc:
             stop, detail = JevStop.UNRESPONSIVE, str(exc)
         final = state.page
@@ -183,7 +186,9 @@ class JevRunner:
             url=self._secrets.mask(final.url),
             title=final.title,
             text=self._secrets.mask(final.text),
-            opened=[page for url, page in state.opened.items() if url != self._secrets.mask(final.url)],
+            opened=[
+                page for url, page in state.opened.items() if url != self._secrets.mask(final.url)
+            ],
             hidden_frames=hidden,
         )
 
@@ -209,7 +214,10 @@ class JevRunner:
             if state.stale >= JEV_STALE_LIMIT:
                 return JevStop.STALE, "The page kept changing under each decision."
             if state.covered >= JEV_COVERED_LIMIT:
-                return JevStop.COVERED, "The chosen control is covered, hidden or disabled (an overlay?)."
+                return (
+                    JevStop.COVERED,
+                    "The chosen control is covered, hidden or disabled (an overlay?).",
+                )
             if not await self._page.fresh(state.page):
                 state.page = await self._page.observe()
             try:
@@ -227,7 +235,9 @@ class JevRunner:
             self._masked(state.page),
             state.goal,
             [
-                RecentAction(action=s.label, kind=s.operation.value, text=s.text, page_changed=s.page_changed)
+                RecentAction(
+                    action=s.label, kind=s.operation.value, text=s.text, page_changed=s.page_changed
+                )
                 for s in state.steps[-JEV_RECENT_ACTIONS:]
             ],
             self.visited,
@@ -257,7 +267,8 @@ class JevRunner:
         try:
             if operation is JevOperation.NAVIGATE and decision.url is not None:
                 label = f"Open {decision.url}"
-                await self._page.navigate(decision.url)
+                if (failed := await self._open(decision.url)) is not None:
+                    return failed
             elif operation is JevOperation.GO_BACK:
                 label = "Go back"
                 await self._page.go_back()
@@ -272,7 +283,10 @@ class JevRunner:
                 if operation is JevOperation.TYPE_TEXT:
                     value = await self._value_for(state, action)
                     if value is None:
-                        return JevStop.NEEDS_INPUT, f"The goal gives no value for the field “{label}”."
+                        return (
+                            JevStop.NEEDS_INPUT,
+                            f"The goal gives no value for the field “{label}”.",
+                        )
                     text, typed = value
                     await self._page.act(action, page, text=typed)
                 else:
@@ -317,6 +331,8 @@ class JevRunner:
         except StalePage:
             return JevStop.STALE, "The page did not settle after the last action."
         state.steps[-1] = replace(step, page_changed=state.page.fingerprint != page.fingerprint)
+        if stalled := self._stalls.take():
+            return JevStop.LOAD_STALLED, self._secrets.mask(" ".join(stalled))
         self._visit(state.page)
         opened = self._masked(state.page)
         if opened.url not in state.opened:
@@ -329,9 +345,23 @@ class JevRunner:
             state.opened[opened.url] = state.opened.pop(opened.url)
         return self._stuck(state)
 
+    async def _open(self, url: str) -> tuple[JevStop, str] | None:
+        """Open url; return why the burst ends when the page could not be opened."""
+        try:
+            await self._page.navigate(url)
+        except NavigationFailed as exc:
+            if stalled := self._stalls.take():
+                return JevStop.LOAD_STALLED, self._secrets.mask(" ".join(stalled))
+            return JevStop.NAVIGATION_FAILED, self._secrets.mask(
+                f"{url} could not be opened: {exc}"
+            )
+        return None
+
     def _stuck(self, state: _Burst) -> tuple[JevStop, str] | None:
         """Whether the burst stopped making progress: no change, or a back-and-forth between two moves."""
-        recent = [s for s in state.steps[-JEV_UNCHANGED_LIMIT:] if s.operation is not JevOperation.WAIT]
+        recent = [
+            s for s in state.steps[-JEV_UNCHANGED_LIMIT:] if s.operation is not JevOperation.WAIT
+        ]
         if len(recent) == JEV_UNCHANGED_LIMIT and all(s.page_changed is False for s in recent):
             return JevStop.NO_PROGRESS, f"{JEV_UNCHANGED_LIMIT} actions in a row changed nothing."
         moves = [(s.url, s.label) for s in state.steps[-4:]]
@@ -343,7 +373,9 @@ class JevRunner:
         """What to type into action, as (shown, typed); None when the goal gives no value."""
         page = self._masked(state.page)
         history = [
-            RecentAction(action=s.label, kind=s.operation.value, text=s.text, page_changed=s.page_changed)
+            RecentAction(
+                action=s.label, kind=s.operation.value, text=s.text, page_changed=s.page_changed
+            )
             for s in state.steps[-JEV_RECENT_ACTIONS:]
         ]
         started = perf_counter()
