@@ -60,6 +60,8 @@ class RunSecrets:
     def sensitive_data(self) -> dict[str, str | dict[str, str]]:
         """The map Browser-Use's agent fills <secret>name</secret> from, scoped to the task's sites."""
         scoped: dict[str, str | dict[str, str]] = {}
+        if not self._values:
+            return scoped
         for site in self._sites:
             scoped[f"https://{site}"] = dict(self._values)
             scoped[f"https://*.{site}"] = dict(self._values)

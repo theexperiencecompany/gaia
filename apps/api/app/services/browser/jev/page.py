@@ -84,6 +84,7 @@ class PageAction(TypedDict):
     selected: NotRequired[str]
     expanded: NotRequired[str]
     filled: NotRequired[bool]
+    href: NotRequired[str]
     delta: NotRequired[int]
     rect: NotRequired[Rect]
 
@@ -303,6 +304,11 @@ class JevPage:
             session.cdp_client.send.Input.dispatchKeyEvent(params=params, session_id=session.session_id),
             "Input.dispatchKeyEvent",
         )
+
+    async def body_text(self, limit: int) -> str:
+        """The start of the whole page's rendered text, not only what the viewport shows."""
+        text = await self._evaluate(f"(document.body ? document.body.innerText : '').slice(0, {limit})")
+        return str(text or "")
 
     async def navigate(self, url: str) -> None:
         await self._browser.navigate_to(url)

@@ -24,6 +24,7 @@ from app.constants.browser import (
     JEV_COVERED_LIMIT,
     JEV_PAGE_TEXT_MAX_CHARS,
     JEV_RECENT_ACTIONS,
+    JEV_REPORT_OPENED_PAGE_CHARS,
     JEV_STALE_LIMIT,
     JEV_TEXT_TIMEOUT_SECONDS,
     JEV_TEXT_VALUE_MAX_CHARS,
@@ -78,11 +79,22 @@ class JevStep:
     label: str
     #: The target's id or name attribute, which tells apart controls that share a label.
     ident: str
+    #: Where a clicked link points.
+    href: str
     #: What was typed, with any secret masked; None for every other operation.
     text: str | None
     url: str
     page_changed: bool | None
     decision_ms: int
+
+
+@dataclass(frozen=True)
+class OpenedPage:
+    """A page a burst opened, and its visible text as Jev read it there."""
+
+    url: str
+    title: str
+    text: str
 
 
 @dataclass(frozen=True)
@@ -95,6 +107,8 @@ class BurstResult:
     title: str
     #: The final page's visible text, as Jev read it.
     text: str
+    #: Every other page the burst opened, in order, as Jev read it there.
+    opened: list[OpenedPage]
     #: Frames on the final page whose content Jev cannot see (cross-origin).
     hidden_frames: list[str]
 
@@ -111,6 +125,7 @@ class _Burst:
     page: PageState
     addresses: list[str]
     steps: list[JevStep] = field(default_factory=list)
+    opened: dict[str, OpenedPage] = field(default_factory=dict)
     stale: int = 0
     covered: int = 0
 
@@ -168,6 +183,7 @@ class JevRunner:
             url=self._secrets.mask(final.url),
             title=final.title,
             text=self._secrets.mask(final.text),
+            opened=[page for url, page in state.opened.items() if url != self._secrets.mask(final.url)],
             hidden_frames=hidden,
         )
 
@@ -236,6 +252,7 @@ class JevRunner:
         text: str | None = None
         label = operation.value
         ident = ""
+        href = ""
         action: PageAction | None = None
         try:
             if operation is JevOperation.NAVIGATE and decision.url is not None:
@@ -251,6 +268,7 @@ class JevRunner:
                 action = page.action(decision.action_id)
                 label = action["label"]
                 ident = action.get("ident", "")
+                href = self._secrets.mask(action.get("href", ""))
                 if operation is JevOperation.TYPE_TEXT:
                     value = await self._value_for(state, action)
                     if value is None:
@@ -282,6 +300,7 @@ class JevRunner:
             operation=operation,
             label=label,
             ident=ident,
+            href=href,
             text=text,
             url=self._secrets.mask(page.url),
             page_changed=None,
@@ -299,6 +318,15 @@ class JevRunner:
             return JevStop.STALE, "The page did not settle after the last action."
         state.steps[-1] = replace(step, page_changed=state.page.fingerprint != page.fingerprint)
         self._visit(state.page)
+        opened = self._masked(state.page)
+        if opened.url not in state.opened:
+            # Read once per page: the viewport text of an article is mostly its header.
+            body = await self._page.body_text(JEV_REPORT_OPENED_PAGE_CHARS)
+            state.opened[opened.url] = OpenedPage(
+                url=opened.url, title=opened.title, text=self._secrets.mask(body)
+            )
+        else:
+            state.opened[opened.url] = state.opened.pop(opened.url)
         return self._stuck(state)
 
     def _stuck(self, state: _Burst) -> tuple[JevStop, str] | None:

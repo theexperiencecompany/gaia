@@ -329,7 +329,9 @@ BROWSER_AGENT_ROLE = (
     "through several pages): call `jev` with a sharper, self-contained goal for what "
     "remains, quoting every value to type. Never repeat a goal Jev made no progress on.\n"
     "3. A single step remains, or something Jev cannot do: do it yourself. Navigate to a URL "
-    "you already know, click once, switch tabs, read or summarise a page with `extract`, "
+    "you already know, click once, switch tabs, read or summarise a page with `extract` (to "
+    "read a linked page, navigate to its exact URL from Jev's report or a `find_elements` href, "
+    "then extract; never guess a URL), "
     "search a long page with `search_page`, count with `find_elements` (a CSS selector "
     "returns every match), never count by eye.\n"
     "Work through every part of the task before you finish: a part is reported as not done "
@@ -401,8 +403,11 @@ JEV_GATEWAY_TIMEOUT_SECONDS = 8.0
 JEV_GATEWAY_MAX_ATTEMPTS = 3
 #: After a 402 (out of credit) the failover client skips that gateway this long.
 JEV_OUT_OF_CREDIT_SECONDS = 300.0
-#: How much of the final page's visible text a burst report hands the agent.
+#: How much of the final page's visible text a burst report hands the agent, and of each
+#: other page the burst opened (the most recent ones, up to the count).
 JEV_REPORT_PAGE_TEXT_CHARS = 2000
+JEV_REPORT_OPENED_PAGE_CHARS = 1500
+JEV_REPORT_OPENED_PAGES = 6
 JEV_RECENT_ACTIONS = 10
 JEV_VISITED_PAGES = 12
 #: One burst's bounds, from jev-ultrafast: actions, unchanged non-wait actions in a

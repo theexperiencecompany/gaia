@@ -14,7 +14,13 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from app.constants.browser import JEV_REPORT_PAGE_TEXT_CHARS, JevOperation, JevStop
+from app.constants.browser import (
+    JEV_REPORT_OPENED_PAGE_CHARS,
+    JEV_REPORT_OPENED_PAGES,
+    JEV_REPORT_PAGE_TEXT_CHARS,
+    JevOperation,
+    JevStop,
+)
 from app.schemas.browser import BrowserAction
 from app.services.browser.jev.loop import BurstResult, JevRunner, JevStep
 
@@ -32,10 +38,13 @@ JEV_ACTION = "jev"
 _DESCRIPTION = (
     "Hand a goal to Jev, the fast page operator: it clicks, types, selects, scrolls and "
     "navigates step by step (~1 s per step) until the goal is done or it is stuck, then "
-    "reports every action, where it stopped and why, and the text of the page it ended on. "
-    "Use it for any multi-step on-page work. Give a concrete, self-contained goal naming the "
-    "values to type (quote them) and what counts as done. Never give Jev the same goal again "
-    "after it made no progress on it."
+    "reports every action (with each clicked link's URL), where it stopped and why, and the "
+    "text of the pages it opened. Use it for sequences of interactions: filling forms, "
+    "searching and choosing, clicking through pages. Jev only operates controls: it cannot "
+    "read, summarise, count or compare content, so never ask it to; open the page and use "
+    "extract yourself for that. Give a concrete, self-contained goal naming the values to "
+    "type (quote them) and what counts as done. Never give Jev the same goal again after it "
+    "made no progress on it."
 )
 
 # Jev's steps as the Browser-Use actions the card and the thread already know how to name.
@@ -104,9 +113,15 @@ def report(result: BurstResult) -> str:
             typed = f' = "{step.text}"' if step.text is not None else ""
             changed = "" if step.page_changed is None else (" (page changed)" if step.page_changed else " (no change)")
             ident = f" [#{step.ident}]" if step.ident else ""
-            lines.append(f"  {n}. {step.operation.value} {step.label}{ident}{typed}{changed}")
+            link = f" -> {step.href}" if step.href else ""
+            lines.append(f"  {n}. {step.operation.value} {step.label}{ident}{link}{typed}{changed}")
     else:
         lines.append("Actions: none.")
+    earlier = result.opened[-JEV_REPORT_OPENED_PAGES:]
+    if earlier:
+        lines.append("Other pages Jev opened in this burst, with the start of their text:")
+        for page in earlier:
+            lines.append(f"--- {page.title} ({page.url})\n{page.text[:JEV_REPORT_OPENED_PAGE_CHARS]}")
     lines.append(f"Now on: {result.title} ({result.url})")
     if result.text:
         visible = result.text[:JEV_REPORT_PAGE_TEXT_CHARS]

@@ -90,6 +90,7 @@
     if (rname==='gridcell' && e.querySelector('button,[role="button"]')) continue;
     const base={node:identity(e),role:rname,label:name(e)||rname,
       ident:e.id || e.getAttribute('name') || '',rect:{x:ox+r.x,y:oy+r.y,w:r.width,h:r.height}};
+    if (e.tagName==='A' && e.href) base.href=e.href;
     for (const key of ['checked','selected','expanded']) {
       const value=e.getAttribute('aria-'+key);
       if (value!==null) base[key]=value;
