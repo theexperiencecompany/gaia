@@ -497,6 +497,18 @@ def _build_json_entry(record: Record) -> str:
     return line + "\n"
 
 
+def _stderr_sink(message: Message) -> None:
+    """Callable sink that writes to whatever sys.stderr is when the line is written.
+
+    A stream sink binds the object sys.stderr was at configure time. Under a test
+    runner that is the first session's capture file, closed when that session
+    ends, so every later session in the process (mutmut runs one per mutant) had
+    each line fail with "I/O operation on closed file" and a dump of the record.
+    """
+    sys.stderr.write(message)
+    sys.stderr.flush()
+
+
 def _json_stdout_sink(message: Message) -> None:
     """Callable sink that writes flat JSON to stdout.
 
@@ -681,7 +693,7 @@ def configure_loguru() -> Logger:
     else:
         # Development: colourised human-readable format → stderr
         logger.add(
-            sys.stderr,
+            _stderr_sink,
             format=LOG_CONFIG["format"]["console"],
             level=LOG_CONFIG["level"],
             colorize=LOG_CONFIG["colorize"],
