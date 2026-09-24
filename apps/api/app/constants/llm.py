@@ -365,6 +365,9 @@ OPENAI_REASONING_EFFORT: Final[dict[ReasoningLevel, Literal["none", "low"]]] = {
     ReasoningLevel.OFF: "none",
     ReasoningLevel.LIGHT: "low",
 }
+# A custom-lane call that names no level: gpt-6-luna's own default is "medium",
+# which took memory extraction from a 15 s median to 50 s and a chat turn from 5 s to 31 s.
+DEV_LLM_DEFAULT_REASONING: Final = ReasoningLevel.LIGHT
 
 # Output cap for the env-defined custom dev provider, well under the model's
 # 65,536 ceiling: these cheap lanes RESERVE max_tokens per request, so a 64k cap

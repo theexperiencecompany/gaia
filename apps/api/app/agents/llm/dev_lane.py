@@ -19,6 +19,7 @@ from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     DEV_LLM_BROWSER_HEADERS,
     DEV_LLM_CONNECT_TIMEOUT_SECONDS,
+    DEV_LLM_DEFAULT_REASONING,
     DEV_LLM_READ_TIMEOUT_SECONDS,
     DEV_MODEL_OPTIONS,
     OPENAI_REASONING_EFFORT,
@@ -97,7 +98,9 @@ def build_custom_chat_model(
     """
     endpoint = custom_endpoint()
     responses = endpoint.api is DevLLMApi.RESPONSES
-    effort = OPENAI_REASONING_EFFORT[reasoning] if reasoning is not None else None
+    effort = OPENAI_REASONING_EFFORT[
+        reasoning if reasoning is not None else DEV_LLM_DEFAULT_REASONING
+    ]
     llm = ChatOpenAI(
         model=endpoint.model,
         # OpenAI's reasoning models accept only the default temperature once
@@ -120,7 +123,7 @@ def build_custom_chat_model(
         # User-Agent per request, which overrides a client-level one.
         default_headers=DEV_LLM_BROWSER_HEADERS,
         use_responses_api=responses,
-        reasoning={"effort": effort} if responses and effort else None,
+        reasoning={"effort": effort} if responses else None,
         reasoning_effort=None if responses else effort,
     )
     # Fractional-window middleware reads the window off the profile at graph-build

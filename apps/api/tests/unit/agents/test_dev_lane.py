@@ -200,11 +200,11 @@ class TestTheApiMode:
         assert llm.temperature == 0.4
 
     @pytest.mark.usefixtures("forced")
-    def test_no_reasoning_level_keeps_the_models_default(self) -> None:
+    def test_no_reasoning_level_runs_at_light_effort_not_the_models_medium(self) -> None:
         llm = resolve_model()
 
         assert isinstance(llm, ChatOpenAI)
-        assert llm.reasoning is None
+        assert llm.reasoning == {"effort": "low"}
         assert llm.reasoning_effort is None
 
     @pytest.mark.usefixtures("endpoint")
