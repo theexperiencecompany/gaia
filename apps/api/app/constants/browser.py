@@ -425,7 +425,7 @@ JEV_TEXT_HELPER_RECENT_ACTIONS = 6
 JEV_CLOSING_ANSWER_ACTIONS = 60
 JEV_TEXT_VALUE_MAX_CHARS = 2000
 # Stands in for a value typed into a password field wherever the run's text reaches a person.
-JEV_SECRET_MASK = "[hidden]"
+JEV_SECRET_MASK = "[hidden]"  # nosec B105 -- the placeholder shown in place of a typed password, not a credential
 # The closing answer covers every part of a task; a typed value's cap is far too small for it.
 JEV_SUMMARY_MAX_CHARS = 6000
 # Probability mass across a choice question must sum to ~1; the gateway rounds.
