@@ -362,7 +362,7 @@ class BrowserAgentRun:
                 ],
                 url=self._redact(url) if url else url,
                 title=getattr(state, "title", None),
-                raw_screenshot=raw_screenshot,
+                raw_screenshot=raw_screenshot or getattr(state, "screenshot", None),
                 since_prev_ms=self._clock.tick(),
             )
         )
