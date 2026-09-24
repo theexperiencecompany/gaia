@@ -44,6 +44,24 @@ def test_live_view_url_joins_base_and_session_under_the_live_path(monkeypatch):
 
 
 @pytest.mark.unit
+def test_a_base_url_configured_with_a_trailing_slash_does_not_double_the_slash(monkeypatch):
+    # "https://host/" is how a base is often written in an .env; the join must
+    # still yield one slash, or the link 404s on the router's /live/ route.
+    monkeypatch.setattr(links.settings, "BROWSER_LIVE_VIEW_BASE_URL", "https://browser.heygaia.io/")
+
+    assert live_view.live_view_url("sess-1") == "https://browser.heygaia.io/live/sess-1"
+
+
+@pytest.mark.unit
+def test_a_base_under_a_path_prefix_loses_only_its_trailing_slash(monkeypatch):
+    # Behind a reverse proxy the base carries a path prefix; trimming must touch
+    # the slash alone and leave every character of the prefix in place.
+    monkeypatch.setattr(links.settings, "BROWSER_LIVE_VIEW_BASE_URL", "https://edge.corp/SANDBOX/")
+
+    assert live_view.live_view_url("sess-1") == "https://edge.corp/SANDBOX/live/sess-1"
+
+
+@pytest.mark.unit
 def test_render_live_view_page_escapes_and_embeds_the_session_id():
     page = live_view.render_live_view_page('sess"<script>&</script>')
 

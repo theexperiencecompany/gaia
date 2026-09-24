@@ -1218,7 +1218,6 @@ async def test_bot_delivery_is_built_for_the_originating_platform(
         {
             "platform": ConversationSource.DISCORD,
             "user_id": "u1",
-            "conversation_id": "c1",
             "stream_screenshots": False,
         }
     ]

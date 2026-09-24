@@ -10,6 +10,7 @@ secret never overlaps with the bot-session secret so a leak is contained.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import time
 from typing import TypedDict
 
 from jose import JWTError, jwt
@@ -97,7 +98,7 @@ def takeover_token_ttl_seconds(claims: TakeoverTokenClaims) -> float:
     Bounds the live-view WebSocket to the token's lifetime. claims must come
     from verify_takeover_token; no unverified claim is ever trusted here.
     """
-    return claims["exp"] - datetime.now(UTC).timestamp()
+    return claims["exp"] - time.time()
 
 
 def _get_takeover_secret() -> str:

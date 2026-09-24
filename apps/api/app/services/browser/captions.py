@@ -43,7 +43,7 @@ class _ActionParams(BaseModel):
 
 
 def _navigate_caption(params: _ActionParams, _target: str | None) -> str:
-    host = urlparse(params.url or "").hostname or ""
+    host = urlparse(params.url).hostname if params.url else None
     return f"Opening {host.removeprefix('www.')}" if host else "Opening the page"
 
 

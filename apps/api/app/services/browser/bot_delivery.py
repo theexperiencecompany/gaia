@@ -40,16 +40,14 @@ class BotProgressDelivery:
         *,
         platform: ConversationSource,
         user_id: str,
-        conversation_id: str,
         stream_screenshots: bool,
     ) -> None:
         self._platform = platform
         self._user_id = user_id
-        self._conversation_id = conversation_id
         self._stream_screenshots = stream_screenshots
         self._links: dict[str, str] = {}
         self._steps_shown = 0
-        self._last_label = ""
+        self._last_label = ""  # pragma: no mutate — only compared to a non-empty label
 
     async def session(self, _snapshot: BrowserSessionSnapshot) -> None:
         """Session lifecycle event: deliberately silent.

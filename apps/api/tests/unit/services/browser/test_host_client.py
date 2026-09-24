@@ -174,8 +174,10 @@ class TestCreateSession:
         resp = _mock_response(status_code=429)
         inner, cm, cls_mock = _patch_async_client(None, resp, verb="post")
         with patch.object(host_client.httpx, "AsyncClient", cls_mock):
-            with pytest.raises(BrowserConcurrencyLimit, match="capacity"):
+            with pytest.raises(BrowserConcurrencyLimit) as exc_info:
                 await host_client.create_session(storage_state=None, host_url=_HOST)
+        # Shown to the user as the reason the browser could not start.
+        assert str(exc_info.value) == "The browser host is at capacity; try again shortly."
 
     async def test_http_error_connect_raises_unavailable(self, monkeypatch):
         monkeypatch.setattr(host_client.settings, "BROWSER_HOST_KEY", None)
@@ -229,16 +231,21 @@ class TestGetStorageState:
             result = await host_client.get_storage_state("sess-123", _HOST)
         assert result == stored
         assert cls_mock.call_args[1]["base_url"] == _HOST
+        assert cls_mock.call_args[1]["timeout"] == host_client._DEFAULT_TIMEOUT_SECONDS
         assert cls_mock.call_args[1]["headers"] == {"X-Host-Key": "k4"}
         inner.get.assert_awaited_once_with("/sessions/sess-123/storage-state")
         inner.delete.assert_not_awaited()
 
     async def test_a_gone_session_raises_session_gone(self):
-        resp = _mock_response(status_code=404, raise_for_status_side_effect=_http_status_error(404))
+        url = "http://browser-host:8930/sessions/sess-123/storage-state"
+        resp = _mock_response(
+            status_code=404, raise_for_status_side_effect=_http_status_error(404), url=url
+        )
         inner, cm, cls_mock = _patch_async_client(None, resp, verb="get")
         with patch.object(host_client.httpx, "AsyncClient", cls_mock):
-            with pytest.raises(BrowserSessionGone):
+            with pytest.raises(BrowserSessionGone) as exc_info:
                 await host_client.get_storage_state("sess-123", _HOST)
+        assert str(exc_info.value) == f"Browser host returned 404 for {url}"
 
 
 # ---------------------------------------------------------------------------
@@ -329,3 +336,29 @@ class TestGetSession:
             await host_client.get_session("s1", _HOST)
         assert cls_mock.call_args[1]["headers"] == {"X-Host-Key": "my-secret"}
         assert cls_mock.call_args[1]["base_url"] == _HOST
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: host_client.delete_session("sess-1", _HOST),
+        lambda: host_client.get_storage_state("sess-1", _HOST),
+        lambda: host_client.touch_session("sess-1", _HOST),
+        lambda: host_client.get_session("sess-1", _HOST),
+    ],
+    ids=["delete_session", "get_storage_state", "touch_session", "get_session"],
+)
+async def test_an_unreachable_host_is_reported_as_unavailable_naming_the_host(call):
+    inner = AsyncMock()
+    for verb in ("post", "get", "delete"):
+        setattr(inner, verb, AsyncMock(side_effect=httpx.ConnectError("refused")))
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=inner)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(host_client.httpx, "AsyncClient", MagicMock(return_value=cm)):
+        with pytest.raises(BrowserUnavailableError) as exc_info:
+            await call()
+
+    # Names the host, so an outage of the fallback engine reads as that outage.
+    assert str(exc_info.value) == f"Could not reach the browser host at {_HOST}: refused"

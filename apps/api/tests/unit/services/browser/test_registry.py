@@ -8,10 +8,12 @@ fail-closed behavior when Redis cannot write.
 
 from typing import Any
 
+import fakeredis
 import pytest
 
 from app.services.browser import registry as reg
 from app.services.browser.registry import SessionRegistryEntry
+from tests.helpers import captured_wide_event
 
 
 class _FakeRedis:
@@ -123,3 +125,56 @@ async def test_unregister_does_not_touch_other_sessions(fake_redis: _FakeRedis) 
     await reg.unregister_session("s12")
     assert await reg.session_owner("s12") is None
     assert await reg.session_owner("s13") == "user-13"
+
+
+async def test_an_entry_read_back_through_redis_is_a_typed_registry_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Real serialization, not the dict fake above: the entry crosses Redis as
+    # JSON, and only the read's model turns it back into something with .owner.
+    client = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(reg.redis_cache, "redis", client)
+
+    await reg.register_session("s20", "user-20", live_ws="ws://live/20")
+    entry = await reg.get_session_entry("s20")
+
+    assert entry == SessionRegistryEntry(owner="user-20", live_ws="ws://live/20")
+    assert await reg.session_owner("s20") == "user-20"
+
+
+async def test_registering_tags_the_wide_event_with_the_session_and_operation(
+    fake_redis: _FakeRedis,
+) -> None:
+    async with captured_wide_event() as event:
+        await reg.register_session("s21", "user-21")
+
+    assert event["browser"] == {"session_id": "s21", "operation": "registry_register"}
+
+
+async def test_unregistering_tags_the_wide_event_with_the_session_and_operation(
+    fake_redis: _FakeRedis,
+) -> None:
+    async with captured_wide_event() as event:
+        await reg.unregister_session("s22")
+
+    assert event["browser"] == {"session_id": "s22", "operation": "registry_unregister"}
+
+
+async def test_a_failed_ownership_write_is_a_warning_naming_the_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(reg, "redis_cache", _FakeRedis(fail_writes=True))
+
+    async with captured_wide_event() as event:
+        await reg.register_session("s23", "user-23")
+
+    [warning] = event["warnings"]
+    assert "registry write failed" in warning["msg"]
+    assert warning["session_id"] == "s23"
+
+
+async def test_a_successful_ownership_write_raises_no_warning(fake_redis: _FakeRedis) -> None:
+    async with captured_wide_event() as event:
+        await reg.register_session("s24", "user-24")
+
+    assert "warnings" not in event

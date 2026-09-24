@@ -100,7 +100,8 @@ async def _stored(handoff_id: str) -> HandoffRecord | None:
 
 async def get_conversation_pending_handoff(conversation_id: str) -> str | None:
     """Return the conversation's in-flight handoff id, if a browser task is waiting."""
-    handoff_id = await redis_cache.get(_conv_key(conversation_id), model=str)
+    # model=str only narrows the type: a stored str decodes to the same str without it.
+    handoff_id = await redis_cache.get(_conv_key(conversation_id), model=str)  # pragma: no mutate
     return handoff_id or None
 
 
@@ -181,7 +182,7 @@ async def await_handoff(handoff_id: str, timeout_seconds: int) -> HandoffOutcome
     """
     loop = asyncio.get_event_loop()
     deadline = loop.time() + timeout_seconds
-    while loop.time() < deadline:
+    while loop.time() < deadline:  # pragma: no mutate — < and <= differ only on one clock tick
         # The resolver claims the settle marker before it rewrites the record, so
         # reading the marker here would return a decision without the note it
         # carried -- and the note is the whole point of a continue.

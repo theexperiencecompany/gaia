@@ -15,6 +15,7 @@ from app.constants.browser import (
     BROWSER_REPLAY_CODE_TTL_SECONDS,
 )
 from app.services.browser import shot_store
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -189,3 +190,30 @@ async def test_resolve_does_not_accept_a_session_id_as_its_own_code(
     await shot_store.store_step_screenshot(b"png", "sess-1", 1)
 
     assert await shot_store.resolve_shot_code("sess-1") is None
+
+
+async def test_a_runs_code_is_as_short_as_a_live_view_code(cache: _FakeRedisCache) -> None:
+    # Same entropy as a live-view code: 9 random bytes, 12 url-safe characters.
+    # A default-sized token would put a 43-character code in every step's link.
+    await shot_store.store_step_screenshot(b"png", "sess-1", 1)
+
+    code = cache.values["browser:shotsess:sess-1"]
+    assert isinstance(code, str)
+    assert len(code) == 12
+
+
+async def test_storing_a_frame_records_its_size_time_and_backend_on_the_wide_event(
+    cache: _FakeRedisCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ticks = iter([10.0, 11.5])
+    monkeypatch.setattr(shot_store, "perf_counter", lambda: next(ticks))
+
+    async with captured_wide_event() as event:
+        await shot_store.store_step_screenshot(b"\x89PNG-12345", "sess-9", 1)
+
+    assert event["browser"] == {
+        "session_id": "sess-9",
+        "shot_backend": "local",
+        "shot_bytes": 10,
+        "shot_store_ms": 1500,
+    }
