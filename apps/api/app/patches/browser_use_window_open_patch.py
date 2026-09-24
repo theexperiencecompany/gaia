@@ -65,7 +65,7 @@ async def _get_or_create_cdp_session(
             # page already open would keep the native window.open until it
             # navigated. Running the shim once covers it.
             await cdp_session.cdp_client.send.Runtime.evaluate(
-                params={"expression": WINDOW_OPEN_SHIM, "returnByValue": True},
+                params={"expression": WINDOW_OPEN_SHIM},
                 session_id=cdp_session.session_id,
             )
         except Exception as exc:
