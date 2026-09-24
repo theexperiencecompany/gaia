@@ -130,13 +130,18 @@ def _to_todo_update(updates: TodoUpdateRequest) -> TodoUpdate:
     return update
 
 
-async def _link_workflow(todo_id: str, user_id: str, workflow_id: str) -> None:
-    """Link through the repository's guarded writer; a refusal means a missing or tracked todo."""
-    if await todo_repository.link_workflow(todo_id, user_id=user_id, workflow_id=workflow_id):
+async def _refuse_a_tracked_todo_with_a_workflow(
+    todo_id: str, user_id: str, updates: TodoUpdateRequest
+) -> None:
+    """Refuse an update whose result would be a tracked todo holding a workflow, before any write."""
+    if updates.workflow_id is None and updates.labels is None:
         return
-    if await todo_repository.get(todo_id, user_id=user_id) is None:
+    existing = await todo_repository.get(todo_id, user_id=user_id)
+    if existing is None:
         raise ValueError(f"Todo {todo_id} not found")
-    raise TrackedTodoWorkflowError()
+    labels = existing.labels if updates.labels is None else updates.labels
+    if GAIA_TRACKED_LABEL in labels and (updates.workflow_id or existing.workflow_id):
+        raise TrackedTodoWorkflowError()
 
 
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
@@ -351,6 +356,7 @@ class TodoService:
             },
         )
         update = _to_todo_update(updates)
+        await _refuse_a_tracked_todo_with_a_workflow(todo_id, user_id, updates)
 
         if update.project_id is not None:
             project = await project_repository.get(update.project_id, user_id=user_id)
@@ -379,8 +385,11 @@ class TodoService:
                     log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
                 update = _drop_completion_fields(update)
 
-        if updates.workflow_id is not None:
-            await _link_workflow(todo_id, user_id, updates.workflow_id)
+        if updates.workflow_id is not None and not await todo_repository.link_workflow(
+            todo_id, user_id=user_id, workflow_id=updates.workflow_id
+        ):
+            # The check above passed, so the todo became tracked (or went away) mid-update.
+            raise TrackedTodoWorkflowError()
 
         if update.model_fields_set:
             updated = await todo_repository.update(todo_id, user_id=user_id, update=update)

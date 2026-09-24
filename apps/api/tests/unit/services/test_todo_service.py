@@ -575,6 +575,56 @@ class TestUpdateTodo:
             "Tracked todos run on the agent from their canvas and never link a workflow"
         )
 
+    async def test_linking_and_tracking_in_one_update_is_refused_before_any_write(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """Regression for #1269 review: the link landed first, then the tracked label."""
+        mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+        with pytest.raises(TrackedTodoWorkflowError):
+            await TodoService.update_todo(
+                FAKE_TODO_ID,
+                TodoUpdateRequest(workflow_id="wf1", labels=[GAIA_TRACKED_LABEL]),
+                FAKE_USER_ID,
+            )
+        mock_todo_repo.link_workflow.assert_not_awaited()
+        mock_todo_repo.update.assert_not_awaited()
+
+    async def test_tracking_a_linked_todo_is_refused(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        linked = _make_todo_doc(todo_id=FAKE_TODO_ID, workflow_id="wf1")
+        mock_todo_repo.get = AsyncMock(return_value=linked)
+        with pytest.raises(TrackedTodoWorkflowError):
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(labels=[GAIA_TRACKED_LABEL]), FAKE_USER_ID
+            )
+        mock_todo_repo.get.assert_awaited_once_with(FAKE_TODO_ID, user_id=FAKE_USER_ID)
+        mock_todo_repo.update.assert_not_awaited()
+
+    async def test_relabelling_a_linked_classic_todo_is_allowed(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        linked = _make_todo_doc(todo_id=FAKE_TODO_ID, workflow_id="wf1")
+        mock_todo_repo.get = AsyncMock(return_value=linked)
+        mock_todo_repo.update = AsyncMock(return_value=linked)
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(labels=["errands"]), FAKE_USER_ID
+        )
+        assert mock_todo_repo.update.await_args.kwargs["update"].labels == ["errands"]
+
+    async def test_a_link_refused_after_the_check_is_a_conflict(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """The check passed, so a refused link means the todo became tracked mid-update."""
+        mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+        mock_todo_repo.link_workflow = AsyncMock(return_value=None)
+        with pytest.raises(TrackedTodoWorkflowError):
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(workflow_id="wf1"), FAKE_USER_ID
+            )
+        mock_todo_repo.get.assert_awaited_once_with(FAKE_TODO_ID, user_id=FAKE_USER_ID)
+        mock_todo_repo.update.assert_not_awaited()
+
     async def test_a_workflow_link_to_a_missing_todo_is_not_found(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):

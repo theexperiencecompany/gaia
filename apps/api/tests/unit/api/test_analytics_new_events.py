@@ -928,7 +928,9 @@ def _ledger_decision(*, committed: bool, stale: bool = False) -> LedgerDecision:
 
 
 class TestLedgerApprovalEvents:
-    async def test_committed_decision_captures(self, client: AsyncClient) -> None:
+    """decide_ledger emits hil:decision_submitted per committed decision; the endpoint must not count it twice."""
+
+    async def test_a_committed_decision_emits_no_second_event(self, client: AsyncClient) -> None:
         with (
             patch(
                 "app.api.v1.endpoints.approvals.decide_ledger",
@@ -938,49 +940,24 @@ class TestLedgerApprovalEvents:
         ):
             resp = await client.post("/api/v1/approvals/ap_1/decision", json={"decision": "deny"})
         assert resp.json()["success"] is True
-        mock_capture.assert_called_once_with(AnalyticsEvents.APPROVAL_DECIDED, {"decision": "deny"})
-
-    async def test_stale_decision_does_not_capture(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.approvals.decide_ledger",
-                new=AsyncMock(return_value=_ledger_decision(committed=False, stale=True)),
-            ),
-            patch("app.api.v1.endpoints.approvals.capture_context_event") as mock_capture,
-        ):
-            resp = await client.post(
-                "/api/v1/approvals/ap_1/decision", json={"decision": "approve"}
-            )
-        assert resp.json()["success"] is False
         mock_capture.assert_not_called()
 
-    async def test_batch_captures(self, client: AsyncClient) -> None:
+    async def test_a_batch_emits_no_second_event(self, client: AsyncClient) -> None:
         with (
             patch(
                 "app.api.v1.endpoints.approvals.decide_ledger_batch",
                 new=AsyncMock(
-                    return_value=[
-                        BatchDecisionOutcome(approval_id="ap_1", resolved=True),
-                        BatchDecisionOutcome(approval_id="ap_2", resolved=False),
-                    ]
+                    return_value=[BatchDecisionOutcome(approval_id="ap_1", resolved=True)]
                 ),
             ),
             patch("app.api.v1.endpoints.approvals.capture_context_event") as mock_capture,
         ):
             resp = await client.post(
                 "/api/v1/approvals/batch-decision",
-                json={
-                    "decisions": [
-                        {"approval_id": "ap_1", "decision": "approve"},
-                        {"approval_id": "ap_2", "decision": "approve"},
-                    ]
-                },
+                json={"decisions": [{"approval_id": "ap_1", "decision": "approve"}]},
             )
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(
-            AnalyticsEvents.APPROVAL_DECIDED,
-            {"batch": True, "decisions": 2, "resolved": 1},
-        )
+        mock_capture.assert_not_called()
 
 
 class TestPlatformConnectInit:

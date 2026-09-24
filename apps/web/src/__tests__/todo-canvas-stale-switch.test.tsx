@@ -192,3 +192,51 @@ describe("TodoSidebar workflow section", () => {
     expect(screen.getByTestId("workflow-section")).toBeTruthy();
   });
 });
+
+describe("TodoSidebar inline editors", () => {
+  function renderSidebar() {
+    const onUpdate = vi.fn();
+    render(
+      <TodoSidebar
+        todo={makeTodo("todo-a", { vfs_path: null, description: "old notes" })}
+        onUpdate={onUpdate}
+        onDelete={noop}
+        projects={[]}
+      />,
+    );
+    return onUpdate;
+  }
+
+  it("saves an edited title on blur, trimmed", () => {
+    const onUpdate = renderSidebar();
+    fireEvent.click(screen.getByText("Todo todo-a"));
+    const input = screen.getByDisplayValue("Todo todo-a");
+    fireEvent.blur(input, { target: { value: "  Renamed  " } });
+
+    expect(onUpdate).toHaveBeenCalledWith("todo-a", { title: "Renamed" });
+    expect(screen.getByText("Todo todo-a")).toBeTruthy();
+  });
+
+  it("cancels a title edit on Escape without saving", () => {
+    const onUpdate = renderSidebar();
+    fireEvent.click(screen.getByText("Todo todo-a"));
+    fireEvent.keyDown(screen.getByDisplayValue("Todo todo-a"), {
+      key: "Escape",
+    });
+
+    expect(screen.queryByDisplayValue("Todo todo-a")).toBeNull();
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it("saves an edited description on blur", () => {
+    const onUpdate = renderSidebar();
+    fireEvent.click(screen.getByText("old notes"));
+    fireEvent.blur(screen.getByDisplayValue("old notes"), {
+      target: { value: "new notes" },
+    });
+
+    expect(onUpdate).toHaveBeenCalledWith("todo-a", {
+      description: "new notes",
+    });
+  });
+});
