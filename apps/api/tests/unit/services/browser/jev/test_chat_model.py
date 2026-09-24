@@ -2292,6 +2292,18 @@ async def test_a_typed_password_is_masked_in_the_closing_answer_but_still_typed(
 
 
 @pytest.mark.regression
+async def test_a_password_field_the_run_typed_into_reads_as_filled_on_the_next_step() -> None:
+    """Engines report no value for a password field, so it read empty and was typed again."""
+    model, gateway, _ = await _typed_a_password(_LOGIN_FORM, [("WAIT", None)], [])
+
+    await model.ainvoke([], _agent_output())
+
+    values = [row.get("value") for row in gateway.requests[-1].state["elements"]]
+    assert browser_constants.JEV_SECRET_MASK in values
+    assert _SECRET not in json.dumps(gateway.requests[-1].state)
+
+
+@pytest.mark.regression
 async def test_a_typed_password_is_masked_in_what_the_agent_is_asked_for_guidance() -> None:
     landed = f"{_SUBMITTED}&my-password=gaia+test%2F123"
     model, _, _ = await _typed_a_password(

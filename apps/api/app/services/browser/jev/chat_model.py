@@ -540,7 +540,7 @@ class JevChatModel:
         self._shot = asyncio.create_task(self._capture_screenshot())
         live = await read_live_values(self._browser)
         t3 = perf_counter()
-        observation = observe(state, live, screen)
+        observation = self._secrets.mask_fields(observe(state, live, screen))
         t4 = perf_counter()
         log.info(
             f"{LogTag.BROWSER} Jev step input built",
@@ -906,7 +906,7 @@ class JevChatModel:
                     input_action: {"index": element.browser_index, "text": value, "clear": True}
                 }
                 if element.secret:
-                    self._secrets.add(value)
+                    self._secrets.add(value, element.browser_index)
                     return action, JEV_SECRET_MASK
                 return action, value
             case JevOperation.SELECT if decision.option is not None:

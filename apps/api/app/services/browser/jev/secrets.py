@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from urllib.parse import quote, quote_plus
 
 from app.constants.browser import JEV_SECRET_MASK
+from app.services.browser.jev.observation import JevObservation
 
 
 class TypedSecrets:
@@ -12,10 +14,26 @@ class TypedSecrets:
 
     def __init__(self) -> None:
         self._forms: set[str] = set()
+        self._filled: set[int] = set()
 
-    def add(self, value: str) -> None:
+    def add(self, value: str, field_index: int) -> None:
         # A form sent by GET puts the password in the next page's URL, encoded.
         self._forms |= {form for form in (value, quote_plus(value), quote(value)) if form}
+        self._filled.add(field_index)
+
+    def mask_fields(self, observation: JevObservation) -> JevObservation:
+        """Show a filled password field as filled, never its value.
+
+        Engines leave password values out of what they report, so a field the
+        run typed into would otherwise read empty and be typed again.
+        """
+        elements = tuple(
+            replace(element, value=JEV_SECRET_MASK)
+            if element.secret and (element.value or element.browser_index in self._filled)
+            else element
+            for element in observation.elements
+        )
+        return replace(observation, elements=elements)
 
     def redact(self, text: str) -> str:
         """Return text with every typed secret replaced by the mask."""
