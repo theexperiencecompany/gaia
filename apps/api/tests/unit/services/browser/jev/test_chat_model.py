@@ -29,7 +29,6 @@ import pytest
 from app.constants import browser as browser_constants
 from app.constants.browser import (
     BROWSER_RUN_BLOCKED_SUMMARY,
-    JEV_DONE_REASK_BUDGET,
     JevOperation,
 )
 from app.constants.llm import ReasoningLevel
@@ -481,77 +480,19 @@ async def test_done_reports_the_helpers_summary_of_the_page(flights_state) -> No
     assert helper.system_prompt() == DONE_SUMMARY
 
 
-async def test_an_unconfident_done_is_re_asked_without_done_offered(flights_state) -> None:
-    """Regression: DONE at p=0.49 finished the run and summarised whatever page was showing."""
-    model, gateway, _, _ = _model(flights_state, [("DONE", None), ("CLICK", "4")], confidence=0.49)
-
-    result = await model.ainvoke([], _agent_output())
-
-    assert _action(result.completion) == {"click": {"index": 40}}
-    assert "DONE" not in gateway.requests[1].questions["operation"].criteria
-    assert "CLICK" in gateway.requests[1].questions["operation"].criteria
-
-
-async def test_a_re_ask_that_only_finds_a_less_sure_wait_keeps_the_done(flights_state) -> None:
-    """Two re-asks that surfaced WAIT at p=0.30 cost 12 s on a long page and changed nothing."""
+@pytest.mark.regression
+async def test_an_unconfident_done_the_evidence_check_confirms_ends_the_run(flights_state) -> None:
+    """Regression: a DONE at p=0.55 on the answer page was re-asked without DONE and went BLOCKED."""
     model, gateway, _, _ = _model(
         flights_state,
-        [("DONE", None, 0.5), ("WAIT", None, 0.3)],
+        [("DONE", None, 0.49), ("CLICK", "4", 0.9)],
         [{"text": "The article says 2008."}],
-    )
-
-    result = await model.ainvoke([], _agent_output())
-
-    assert "done" in _action(result.completion)
-    assert len(gateway.requests) == 2
-
-
-async def test_a_confident_done_is_never_re_asked(flights_state) -> None:
-    model, gateway, _, _ = _model(
-        flights_state, [("DONE", None)], [{"text": "The article says 2008."}], confidence=0.8
     )
 
     result = await model.ainvoke([], _agent_output())
 
     assert _action(result.completion)["done"]["success"] is True
     assert len(gateway.requests) == 1
-
-
-async def test_a_later_unconfident_done_is_re_asked_too_while_the_budget_holds(
-    flights_state,
-) -> None:
-    """Regression: a re-ask on step 4 made step 5's DONE at p=0.52 acceptable and it shipped."""
-    model, _, _, _ = _model(
-        flights_state,
-        [("DONE", None), ("CLICK", "4"), ("DONE", None), ("CLICK", "4")],
-        [{"text": "The article says 2008."}],
-        confidence=0.49,
-    )
-
-    await model.ainvoke([], _agent_output())
-    result = await model.ainvoke([], _agent_output())
-
-    assert _action(result.completion) == {"click": {"index": 40}}
-
-
-async def test_an_unconfident_done_is_accepted_once_the_re_ask_budget_is_spent(
-    flights_state,
-) -> None:
-    """Re-asking forever would loop; the budget is per run, not per consecutive step."""
-    script = [("DONE", None), ("CLICK", "4")] * JEV_DONE_REASK_BUDGET + [("DONE", None)]
-    model, _, _, _ = _model(
-        flights_state, script, [{"text": "The article says 2008."}], confidence=0.49
-    )
-
-    for _ in range(JEV_DONE_REASK_BUDGET):
-        await model.ainvoke([], _agent_output())
-    result = await model.ainvoke([], _agent_output())
-
-    assert _action(result.completion)["done"] == {
-        "text": "The article says 2008.",
-        "success": True,
-        "files_to_display": [],
-    }
 
 
 async def test_done_without_a_summary_is_an_honest_failure(flights_state) -> None:

@@ -44,8 +44,6 @@ from app.constants.browser import (
     JEV_CLOSING_ANSWER_ACTIONS,
     JEV_CLOSING_ANSWER_HEDGE_SECONDS,
     JEV_CLOSING_ANSWER_TIMEOUT_SECONDS,
-    JEV_DONE_REASK_BUDGET,
-    JEV_MIN_DONE_CONFIDENCE,
     JEV_PLAN_MAX_STEPS,
     JEV_SECRET_MASK,
     JEV_SUMMARY_MAX_CHARS,
@@ -376,7 +374,6 @@ class JevChatModel:
         #: arrives without cost metadata, so metering falls back to the table.
         self._gateway_cost_usd: float | None = 0.0
         self._viewport: dict[int, ViewportBox] = {}
-        self._done_reasks_left = JEV_DONE_REASK_BUDGET
         self._guidance_allowed: GuidanceGate | None = None
         self._observation: JevObservation | None = None
         self._seen_text = SeenText()
@@ -723,11 +720,7 @@ class JevChatModel:
     async def _choose(
         self, observation: JevObservation, goal: str, offered: frozenset[JevOperation]
     ) -> JevDecision:
-        """Ask Jev for this step, re-asking without DONE while the run's re-ask budget holds.
-
-        A DONE under the floor ends the run on whatever page is showing, and the
-        closing summary then reads like a confident answer to a goal never met.
-        """
+        """Ask Jev for this step; a DONE it picks, however sure, is settled by the part's evidence check."""
         if self._missing and JevOperation.GO_BACK in offered:
             # The last check named what the part still needs, and the page the run
             # just left may be where it is done (a form submitted with a field
@@ -737,33 +730,9 @@ class JevChatModel:
         # so the goal says it the same way: against the password itself the
         # filled field never read as holding it, and Jev typed it again every step.
         goal = self.redact(goal)
-        decision = await choose(
+        return await choose(
             self._client, observation, goal, self._history, offered, self._seen_text.pages
         )
-        if (
-            decision.operation is not JevOperation.DONE
-            or decision.confidence >= JEV_MIN_DONE_CONFIDENCE
-            or self._done_reasks_left <= 0
-            or not offered - _TERMINAL_OPERATIONS
-        ):
-            return decision
-        log.info(
-            f"{LogTag.BROWSER} Jev DONE below the confidence floor; re-asking without it",
-            step=self._steps,
-            confidence=round(decision.confidence, 3),
-        )
-        self._done_reasks_left -= 1
-        alternative = await choose(
-            self._client,
-            observation,
-            goal,
-            self._history,
-            offered - {JevOperation.DONE},
-            self._seen_text.pages,
-        )
-        # A re-ask that surfaces only a less sure WAIT spends a whole step (about
-        # 6s on a long page) to change nothing; the unsure DONE was the better read.
-        return alternative if alternative.confidence >= decision.confidence else decision
 
     async def _action_for(
         self,

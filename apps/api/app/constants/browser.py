@@ -413,13 +413,6 @@ JEV_SUMMARY_MAX_CHARS = 6000
 # Probability mass across a choice question must sum to ~1; the gateway rounds.
 JEV_PROBABILITY_SUM_TOLERANCE = 0.02
 
-# Below this, a chosen DONE is re-asked with DONE withheld. Measured: DONE
-# at 0.49 and 0.44 both finished runs whose goal was never met, and the closing
-# summary then invented an answer from whatever page happened to be showing.
-JEV_MIN_DONE_CONFIDENCE = 0.6
-# How many sub-floor DONEs one run may re-ask, in total rather than in a row:
-# a single re-ask let the very next DONE (p=0.52) through and it shipped.
-JEV_DONE_REASK_BUDGET = 2
 # How long each WAIT in a row on one page waits. Browser-Use sleeps one second
 # less than asked, so a wait of 1 slept nothing and three of them declared a page
 # done 4 s after the click that started its 5 s loader.
