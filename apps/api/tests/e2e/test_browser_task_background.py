@@ -752,7 +752,6 @@ def _form_judge(label: str, context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-@pytest.mark.regression
 async def test_a_form_submitted_with_a_field_skipped_goes_back_to_it_instead_of_giving_up() -> None:
     """Regression: the radio was never chosen, the judge said so after Submit, and the run went BLOCKED and redid the form on the fallback engine."""
     answer = "The page shows \u201cForm submitted\u201d and \u201cReceived!\u201d."
@@ -809,7 +808,6 @@ async def test_a_form_submitted_with_a_field_skipped_goes_back_to_it_instead_of_
 _SECRET = "gaia-test-123"
 
 
-@pytest.mark.regression
 async def test_a_password_the_run_typed_never_reaches_a_card_or_the_answer() -> None:
     """A form sent by GET carries the password in the page it lands on; the user reads cards and the answer, never it."""
     landed = f"{_SENT}&my-password={_SECRET}"

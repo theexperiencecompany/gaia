@@ -53,10 +53,6 @@ RUNTIME_MODEL_IDS = sorted(
         MEMORY_MODEL_NAME,
         VISION_MODEL_NAME,
         HIL_JUDGE_MODEL_NAME,
-        # The browser lane's decision model and its text helper — both metered
-        # from Browser-Use's history.
-        settings.BROWSER_USE_JEV_MODEL,
-        settings.BROWSER_USE_JEV_TEXT_MODEL,
     }
 )
 
@@ -82,6 +78,11 @@ class TestEveryRuntimeModelIsPriced:
     def test_a_referenced_model_never_falls_back_to_default_pricing(self, model_id: str) -> None:
         """DEFAULT_PRICING is ~10x the real rate of the cheap models; a runtime model resolving to it means its COGS numbers are fiction."""
         assert get_model_pricing(model_id) is not DEFAULT_PRICING
+
+    def test_the_browser_lane_models_never_fall_back_to_default_pricing(self) -> None:
+        """The browser lane's decision model and its text helper are settings, metered from Browser-Use's history, so they are read when the test runs rather than frozen at import."""
+        for model_id in (settings.BROWSER_USE_JEV_MODEL, settings.BROWSER_USE_JEV_TEXT_MODEL):
+            assert get_model_pricing(model_id) is not DEFAULT_PRICING, model_id
 
     def test_the_memory_and_vision_model_carries_its_real_rate(self) -> None:
         """The exact production regression: gemini-3.1-flash-lite priced at $0.001/1k input instead of $0.0001."""

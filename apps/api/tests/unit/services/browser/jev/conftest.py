@@ -29,6 +29,7 @@ class FakeNode:
     ax_node: FakeAXNode | None = None
     children_nodes: list[FakeNode] = field(default_factory=list)
     is_visible: bool | None = None
+    backend_node_id: int | None = None
 
     def get_meaningful_text_for_llm(self) -> str:
         for attr in ("value", "aria-label", "title", "placeholder", "alt"):
