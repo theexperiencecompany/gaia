@@ -232,6 +232,7 @@ class JevRunner:
                 return JevStop.BLOCKED, "Jev found no operation that makes progress here."
             return JevStop.DONE, "Jev judged the goal done."
         started = perf_counter()
+        tabs: set[str] = set()
         text: str | None = None
         label = operation.value
         ident = ""
@@ -259,8 +260,6 @@ class JevRunner:
                 else:
                     tabs = await self._page.tab_ids()
                     await self._page.act(action, page)
-                    if operation is JevOperation.CLICK:
-                        await self._page.follow_new_tab(tabs)
         except Covered:
             state.covered += 1
             state.page = await self._page.observe()
@@ -292,6 +291,10 @@ class JevRunner:
         # Recorded before observing: a navigation interrupting the read must not erase the action.
         try:
             state.page = await self._page.observe()
+            # Checked after the read, when a tab the click opened is registered; a
+            # person follows the tab a link opens.
+            if operation is JevOperation.CLICK and await self._page.follow_new_tab(tabs):
+                state.page = await self._page.observe()
         except StalePage:
             return JevStop.STALE, "The page did not settle after the last action."
         state.steps[-1] = replace(step, page_changed=state.page.fingerprint != page.fingerprint)

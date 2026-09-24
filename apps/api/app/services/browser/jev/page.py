@@ -156,9 +156,23 @@ class JevPage:
         self._browser = browser
         #: The last input, whose effect the next observation waits a frame or two for.
         self._after_input: PageAction | None = None
+        #: Page sessions already told to render as if focused.
+        self._focused: set[str] = set()
 
     async def _session(self) -> CDPSession:
-        return await _bounded(self._browser.get_or_create_cdp_session(), "the page's CDP session")
+        session = await _bounded(self._browser.get_or_create_cdp_session(), "the page's CDP session")
+        if session.session_id not in self._focused:
+            # A tab behind another (a page that opened a window, a tab the run left)
+            # stops producing frames, so requestAnimationFrame never fires and reads
+            # that wait for a frame hang. jev-ultrafast keeps its tab focused the same way.
+            await _bounded(
+                session.cdp_client.send.Emulation.setFocusEmulationEnabled(
+                    params={"enabled": True}, session_id=session.session_id
+                ),
+                "Emulation.setFocusEmulationEnabled",
+            )
+            self._focused.add(session.session_id)
+        return session
 
     async def _evaluate(self, expression: str, *, await_promise: bool = False) -> object:
         session = await self._session()
