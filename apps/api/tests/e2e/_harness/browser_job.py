@@ -568,6 +568,7 @@ class _JevAction(BaseModel):
     navigate: dict[str, Any] | None = None
     input_text: dict[str, Any] | None = None
     wait: dict[str, Any] | None = None
+    scroll: dict[str, Any] | None = None
     go_back: dict[str, Any] | None = None
     done: dict[str, Any] | None = None
     request_human_takeover: dict[str, Any] | None = None

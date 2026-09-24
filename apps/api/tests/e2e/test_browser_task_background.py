@@ -805,6 +805,75 @@ async def test_a_form_submitted_with_a_field_skipped_goes_back_to_it_instead_of_
     ]
 
 
+_NEWS = "https://news.test/"
+_STORY = "https://lab.test/news/enzyme"
+_NEWS_VIEW = JevPageView(
+    url=_NEWS,
+    controls=[
+        ("A", {"aria-label": "Claude discovers a novel enzyme system"}),
+        ("A", {"aria-label": "Tutoring company tells parents"}),
+    ],
+    text="Claude discovers a novel enzyme system\nTutoring company tells parents",
+)
+# The live page: headline, date and a hero video fill the first screen.
+_STORY_TOP = JevPageView(
+    url=_STORY,
+    controls=[("A", {"aria-label": "Research"}), ("A", {"aria-label": "News"})],
+    text="Claude discovers a novel enzyme system\nSep 23, 2026",
+)
+_STORY_BODY = JevPageView(
+    url=_STORY,
+    controls=[("A", {"aria-label": "Research"}), ("A", {"aria-label": "News"})],
+    text="We\u2019re introducing a new life sciences research group.",
+)
+
+
+def _story_judge(label: str, context: dict[str, Any]) -> dict[str, Any]:
+    """Judge the part done only when Jev chooses DONE, citing the article read."""
+    return {
+        "requirements": ["article summarised"],
+        "evidence": [{"requirement": "article summarised", "kind": "fact", "source": _STORY}],
+        "done": label == "browser_done_check",
+        "findings": "",
+    }
+
+
+async def test_an_article_opened_from_a_list_is_scrolled_before_the_run_goes_back() -> None:
+    """The run went back from the headline and reported the article body missing."""
+    answer = "Anthropic introduced a life sciences research group."
+    steps = [
+        ScriptedStep(actions=[], decide=True, jev_page=_NEWS_VIEW, url=_NEWS),
+        ScriptedStep(actions=[], decide=True, jev_page=_STORY_TOP, url=_STORY),
+        ScriptedStep(actions=[], decide=True, jev_page=_STORY_BODY, url=_STORY),
+        ScriptedStep(actions=[], decide=True, jev_page=_NEWS_VIEW, url=_NEWS),
+    ]
+    script = JevScript(
+        decisions=[("CLICK", "1"), ("SCROLL_DOWN", None), ("GO_BACK", None), ("DONE", None)],
+        texts=[{"text": answer}],
+        judge=_story_judge,
+    )
+
+    async with browser_job_world(STREAM, steps=steps, jev=script, summary=answer) as world:
+        async with executor_graph([RETRIEVE, START, JOIN, "Done."]) as graph:
+            await _drive(graph, world)
+
+    assert world.jev is not None
+    first_screen = set(world.jev.requests[1].questions["operation"].criteria)
+    assert "SCROLL_DOWN" in first_screen
+    assert not first_screen & {"GO_BACK", "NAVIGATE"}
+    assert "GO_BACK" in world.jev.requests[2].questions["operation"].criteria
+    assert [next(iter(action)) for action in _step_actions(world)] == [
+        "click",
+        "scroll",
+        "go_back",
+        "done",
+    ]
+    results = [card for card in world.cards() if card["kind"] == "result"]
+    assert [(card["status"], card["success"]) for card in results] == [
+        (BrowserSessionStatus.COMPLETED.value, True)
+    ]
+
+
 _SECRET = "gaia-test-123"
 
 
