@@ -16,7 +16,9 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 import secrets
+import shutil
 import tempfile
+import time
 from time import perf_counter
 
 from app.constants.browser import (
@@ -68,8 +70,22 @@ async def resolve_shot_code(code: str) -> str | None:
     return session_id if isinstance(session_id, str) else None
 
 
+def _prune_expired() -> None:
+    """Delete every run whose frames outlived the recap code that serves them."""
+    cutoff = time.time() - BROWSER_REPLAY_CODE_TTL_SECONDS
+    for run in SHOT_ROOT.iterdir():
+        try:
+            if run.stat().st_mtime < cutoff:
+                shutil.rmtree(run)
+        except FileNotFoundError:
+            continue  # a run starting at the same moment pruned it first
+
+
 def _write(png: bytes, session_id: str, index: int) -> None:
     path = shot_path(session_id, index)
+    if not path.parent.exists() and SHOT_ROOT.exists():
+        # Once per run, when its first frame lands: the directory never grows past the recap window.
+        _prune_expired()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(png)
 

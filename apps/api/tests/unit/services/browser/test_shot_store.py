@@ -7,7 +7,9 @@ user opening a dead link.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import time
 
 import pytest
 
@@ -91,6 +93,23 @@ async def test_store_creates_the_runs_directory_when_it_does_not_exist(
     await shot_store.store_step_screenshot(b"png", "sess-1", 1)
 
     assert (shot_root / "sess-1").is_dir()
+
+
+async def test_a_new_run_prunes_frames_whose_recap_link_has_expired(
+    cache: _FakeRedisCache, shot_root: Path
+) -> None:
+    expired, recent = shot_root / "old-run", shot_root / "recent-run"
+    for run in (expired, recent):
+        run.mkdir(parents=True)
+        (run / "step_1.png").write_bytes(b"png")
+    past = time.time() - BROWSER_REPLAY_CODE_TTL_SECONDS - 60
+    os.utime(expired, (past, past))
+
+    await shot_store.store_step_screenshot(b"png", "new-run", 1)
+
+    assert not expired.exists()
+    assert (recent / "step_1.png").exists()
+    assert (shot_root / "new-run" / "step_1.png").exists()
 
 
 async def test_store_overwrites_a_reused_index_rather_than_appending(
