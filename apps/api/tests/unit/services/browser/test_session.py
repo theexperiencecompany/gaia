@@ -179,7 +179,20 @@ async def test_session_fields_are_mapped_from_the_host_response(
         assert s.context_id == "ctx-y"
         assert s.live_view_url == "LV:sid-x"
         assert s.host_url == _HOST
+        # A later handover protects this site's login by it.
+        assert s.start_domain == "x"
     assert live_view_calls == ["sid-x"]
+
+
+async def test_the_wide_event_names_the_session_this_request_created(
+    monkeypatch: pytest.MonkeyPatch, fake_log: _FakeLog
+) -> None:
+    _make_session_fakes(monkeypatch)
+
+    async with session_mod.browser_session(host_url=_HOST, user_id="u1", start_url="https://x"):
+        pass
+
+    assert {"browser": {"session_id": "s1", "operation": "create"}} in fake_log.set_calls
 
 
 async def test_register_session_called_with_session_id_user_id_and_live_ws(
@@ -885,6 +898,29 @@ class TestAutoResolveHandoffOnNavigation:
 
         resolve.assert_awaited_once()
 
+    async def test_one_read_off_the_login_page_is_not_yet_a_sign_in(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A redirect chain passes through pages for one poll; only a page that holds counts."""
+        monkeypatch.setattr(session_mod.asyncio, "sleep", AsyncMock())
+        monkeypatch.setattr(
+            session_mod.host_client,
+            "get_session",
+            AsyncMock(
+                side_effect=[
+                    _info("https://x/login"),
+                    _info("https://x/"),
+                    BrowserUnavailableError("gone"),
+                ]
+            ),
+        )
+        resolve = AsyncMock()
+        monkeypatch.setattr(session_mod, "resolve_handoff", resolve)
+
+        await session_mod.auto_resolve_handoff_on_navigation("h1", _handle("sess-1"), "user-1")
+
+        resolve.assert_not_awaited()
+
     async def test_transient_redirect_is_debounced(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A single off-login blip that snaps back must NOT resolve — the stable counter resets, so a mid-login redirect can't complete the handoff early."""
         monkeypatch.setattr(session_mod.asyncio, "sleep", AsyncMock())
@@ -931,3 +967,19 @@ class TestAutoResolveDoesNotMistakeTheMiddleOfAFlowForItsEnd:
 
     def test_back_on_the_site_off_its_auth_paths_is_done(self) -> None:
         assert session_mod._navigated_away("https://x.com/login", "https://x.com/dashboard")
+
+
+@pytest.mark.unit
+class TestEngineFailure:
+    async def test_the_probe_asks_about_this_session_and_gives_up_quickly(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A wedged engine is what the probe detects; an unbounded read would wedge with it."""
+        get = AsyncMock(return_value=MagicMock(live=True))
+        monkeypatch.setattr(session_mod.host_client, "get_session", get)
+
+        assert await session_mod.engine_failure(_handle("sess-9")) is None
+
+        get.assert_awaited_once_with(
+            "sess-9", _HOST, timeout=session_mod.BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS
+        )
