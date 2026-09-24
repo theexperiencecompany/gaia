@@ -352,6 +352,9 @@ class JevChatModel:
         #: What each finished part produced, in the writer's words: the list a
         #: later part works through, the fact the closing answer reports.
         self._findings: list[str] = []
+        #: What the current part's last judgement found so far (the items it chose,
+        #: in order, and what it read of them); the next judgement and Jev build on it.
+        self._progress = ""
         #: What the last judgement of the current part found no evidence for, and
         #: the state it judged: the gap is only the run's while the run is in it.
         self._missing: list[str] = []
@@ -469,10 +472,17 @@ class JevChatModel:
         judging = self._judgement(observation, goal)
         opening, offered = self._step_options(observation, registered)
         stalled = self._page_stalled()
+        # A page just read while the part has a gap is decided on its own judgement:
+        # decided on the gap from before it, Jev left an article at its headline.
+        new_page = (
+            self._missing_for is not None
+            and bool(self._missing)
+            and self._missing_for[:2] != self._read_state()[:2]
+        )
         # A judgement already done here is a done part not yet applied: no choice needed.
         choosing = (
             asyncio.create_task(self._choose(observation, goal, offered))
-            if opening is None and not stalled and not judging.done()
+            if opening is None and not stalled and not judging.done() and not new_page
             else None
         )
         chosen = await _settled(choosing)
@@ -490,6 +500,7 @@ class JevChatModel:
         if (
             judging.done()
             or stalled
+            or new_page
             or (chosen is not None and chosen.operation in _WAITS_FOR_JUDGEMENT and not stale)
         ):
             while await judging:
@@ -508,6 +519,8 @@ class JevChatModel:
                 goal = self._effective_goal(messages)
                 opening, offered = self._step_options(observation, registered)
                 judging = self._judgement(observation, goal)
+            # What the judgement found still needed on this page is the goal now.
+            goal = self._effective_goal(messages)
         if opening is not None:
             # A new part starts on a site of its own; open it outright instead of
             # spending a decision and a URL answer on what the plan already knows.
@@ -1039,7 +1052,7 @@ class JevChatModel:
             # What is already done, so a URL or a closing answer is written for
             # the part of the goal that is left, not the part already read.
             "pages_read": self._seen_text.pages,
-            "findings": self._findings,
+            "findings": self._findings_so_far(),
         }
         if call.seen_text:
             context["seen_on_pages_read"] = call.seen_text
@@ -1286,6 +1299,10 @@ class JevChatModel:
         findings = (verdict.findings if verdict else "").strip()
         if done and findings:
             self._findings.append(f"Part {part + 1}: {findings}")
+        elif findings and part == self._plan_index:
+            # Kept only once the part was done, each judgement of a list re-chose its
+            # items: the run never settled which three stories it was reading, or their order.
+            self._progress = findings
         cited = [f"{item.kind}: {item.source[:120]}" for item in evidence]
         log.info(
             f"{LogTag.BROWSER} Jev part judged",
@@ -1337,6 +1354,7 @@ class JevChatModel:
         self._judging = None
         self._plan_index += 1
         self._missing = []
+        self._progress = ""
         self._remember(f"DONE part {self._plan_index}: {done.goal[:80]}", "done_part", None)
         log.info(
             f"{LogTag.BROWSER} Jev plan advanced",
@@ -1433,18 +1451,18 @@ class JevChatModel:
         # repeated as still needed, it had Jev fill one field again every step.
         missing = self._missing if self._missing_for == self._read_state() else []
         still_needed = f"{_STILL_NEEDED}{' / '.join(missing)}" if missing else None
+        found = self._findings_so_far()
+        found_so_far = f"{_FOUND_SO_FAR}{' | '.join(found)}" if found else None
         if not self._plan or len(self._plan) == 1:
             # A one-part task is decided on the task itself, and needs to hear the
             # gap too: a form submitted with its radio unchosen was declared BLOCKED.
-            return f"{goal}\n{still_needed}" if still_needed else goal
+            return "\n".join(line for line in (goal, found_so_far, still_needed) if line)
         i, n = self._plan_index, len(self._plan)
         lines = [f"CURRENT PART ({i + 1} of {n}), the only thing to do now: {self._plan[i].goal}"]
         if i:
             lines.append("ALREADY DONE, never redo: " + " / ".join(s.goal for s in self._plan[:i]))
-        if self._findings:
-            lines.append(
-                "FOUND SO FAR, what the parts done produced: " + " | ".join(self._findings)
-            )
+        if found_so_far:
+            lines.append(found_so_far)
         if still_needed:
             lines.append(still_needed)
         if i < n - 1:
@@ -1457,6 +1475,12 @@ class JevChatModel:
             f"FULL TASK for reference: {goal}"
         )
         return "\n".join(lines)
+
+    def _findings_so_far(self) -> list[str]:
+        """Return what the finished parts produced, then what the current part has found so far."""
+        if not self._progress:
+            return list(self._findings)
+        return [*self._findings, f"Part {self._plan_index + 1} so far: {self._progress}"]
 
     def _effective_goal(self, messages: list[BaseMessage], *, whole_task: bool = False) -> str:
         """Return the goal to decide and answer against: what the user changed, how to proceed, then the task.
@@ -1596,6 +1620,7 @@ def _citations(history: list[JevHistoryEntry]) -> set[str]:
 
 _STALLED_STEPS = 8
 _STILL_NEEDED = "STILL NEEDED FOR THIS PART, what the last check found nothing for: "
+_FOUND_SO_FAR = "FOUND SO FAR, what this run has chosen and read: "
 _PRODUCTIVE_KINDS = frozenset({"type_text", "select", "done_part"})
 
 

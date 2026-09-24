@@ -1402,11 +1402,7 @@ async def test_a_list_that_replaces_a_wall_on_the_same_url_is_judged_and_answers
     for _ in range(20):  # the step's wait executes; the wall's judgement comes back
         await asyncio.sleep(0)
     session.state = questions
-    # The list is judged while this step's scroll goes out; its verdict ends the run next step.
-    await model.ainvoke([], _agent_output())
-    for _ in range(20):
-        await asyncio.sleep(0)
-
+    # A page newly read while the wall's gap stands is judged before the step is decided.
     result = await model.ainvoke([], _agent_output())
 
     assert _action(result.completion)["done"]["success"] is True
@@ -1736,11 +1732,11 @@ async def test_a_one_page_category_read_to_its_bottom_answers_the_cheapest_book(
     gateway = ScriptedGateway(script=[("SCROLL_DOWN", None), ("SCROLL_DOWN", None)])
     model = JevChatModel(client=gateway, text_model=helper, structured_call=writer)  # type: ignore[arg-type]  # a scripted gateway and a fake text model stand in for the real ones
     model.bind(FakeSession(travel), "Find the cheapest book in the Travel category")  # type: ignore[arg-type]  # a fake session stands in for Browser-Use's
-    for _ in range(2):
-        await model.ainvoke([], _agent_output())
-        for _ in range(20):  # the scroll executes; the judgement comes back
-            await asyncio.sleep(0)
+    await model.ainvoke([], _agent_output())
+    for _ in range(20):  # the scroll executes; the judgement comes back
+        await asyncio.sleep(0)
 
+    # The page read to its end is judged before the step is decided, and that ends the run.
     result = await model.ainvoke([], _agent_output())
 
     assert judged[-1] == [
@@ -1911,6 +1907,60 @@ _TOP_STORY_PLAN = [
 def _on_part(gateway: ScriptedGateway) -> str:
     goal = str(gateway.requests[-1].questions["operation"].instructions["goal"])
     return next(part for part in ("1 of 2", "2 of 2") if f"CURRENT PART ({part})" in goal)
+
+
+@pytest.mark.regression
+async def test_a_page_just_opened_is_decided_on_what_its_own_judgement_finds_missing() -> None:
+    """Regression: decided on the list's gap, Jev left each article at its headline and never read one."""
+    helper = FakeTextModel()
+
+    async def writer(schema, prompt, *, label, timeout=None, reasoning=None):
+        if prompt[0].content.startswith(PLAN_STEPS):
+            return schema.model_validate({"steps": _TOP_STORY_PLAN})
+        if prompt[0].content.startswith(PART_DONE):
+            on_article = json.loads(prompt[1].content)["page"]["url"] == _ARTICLE
+            gap = ["article body read past its headline"] if on_article else ["top story opened"]
+            return schema.model_validate({"requirements": gap, "done": False, "findings": ""})
+        return await helper.structured(schema, prompt, label=label, timeout=timeout)
+
+    _, gateway = await _run_to_done(
+        make_state({1: FakeNode("A", text="TTS")}, url=_HN),
+        make_state({1: FakeNode("H1", text="TTS")}, url=_ARTICLE),
+        [("CLICK", "1"), ("SCROLL_DOWN", None)],
+        writer,
+        _HN_TASK,
+    )
+
+    assert "article body read past its headline" in str(
+        gateway.requests[-1].questions["operation"].instructions["goal"]
+    )
+
+
+@pytest.mark.regression
+async def test_what_an_unfinished_part_found_reaches_jev_and_the_next_judgement() -> None:
+    """Regression: kept only once a part was done, each judgement re-chose the top three AI stories."""
+    helper = FakeTextModel()
+    judged: list[dict[str, Any]] = []
+    chosen = '#1 "Dynamic Abliteration" (42 points), #5 "Best LLM for every budget" (73 points)'
+
+    async def writer(schema, prompt, *, label, timeout=None, reasoning=None):
+        if prompt[0].content.startswith(PLAN_STEPS):
+            return schema.model_validate({"steps": _TOP_STORY_PLAN})
+        if prompt[0].content.startswith(PART_DONE):
+            judged.append(json.loads(prompt[1].content))
+            return schema.model_validate({"requirements": [], "done": False, "findings": chosen})
+        return await helper.structured(schema, prompt, label=label, timeout=timeout)
+
+    _, gateway = await _run_to_done(
+        make_state({1: FakeNode("A", text="TTS")}, url=_HN),
+        make_state({1: FakeNode("A", text="TTS")}, url=f"{_HN}item?id=1"),
+        [("WAIT", None), ("WAIT", None)],
+        writer,
+        _HN_TASK,
+    )
+
+    assert chosen in str(gateway.requests[-1].questions["operation"].instructions["goal"])
+    assert any(chosen in finding for finding in judged[-1]["findings"])
 
 
 async def test_facts_the_parts_own_listing_shows_are_evidence_for_it() -> None:
