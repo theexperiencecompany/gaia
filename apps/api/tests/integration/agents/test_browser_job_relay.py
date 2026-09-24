@@ -38,6 +38,10 @@ def feed(monkeypatch: pytest.MonkeyPatch) -> FakeRedisClient:
     cache = MagicMock()
     cache.client = client
     monkeypatch.setattr(job_events_mod, "redis_cache", cache)
+    # The relay's deadline runs on the feed's clock, which only an empty
+    # blocking read advances: a relay that never stops ends at its deadline in
+    # fake time rather than spinning the test until it is killed.
+    monkeypatch.setattr(relay_mod, "monotonic", lambda: client.clock)
     return client
 
 
@@ -128,7 +132,7 @@ async def test_the_terminal_frame_ends_the_relay_and_is_never_shown(
     create_session(STREAM_ID, RunKind.LIVE)
     await _publish_a_run()
 
-    await asyncio.wait_for(relay_job_events(JOB_ID, STREAM_ID), timeout=5)
+    await relay_job_events(JOB_ID, STREAM_ID)
     await _drain_publishes()
 
     assert all("browser_job_done" not in chunk for chunk in chunks)
@@ -142,7 +146,7 @@ async def test_a_cancelled_turn_stops_the_relay(
     await _publish_a_run()
     monkeypatch.setattr(relay_mod.stream_manager, "is_cancelled", AsyncMock(return_value=True))
 
-    await asyncio.wait_for(relay_job_events(JOB_ID, STREAM_ID), timeout=5)
+    await relay_job_events(JOB_ID, STREAM_ID)
     await _drain_publishes()
 
     assert chunks == []
@@ -172,21 +176,19 @@ async def test_the_relay_waits_out_the_longest_run_the_worker_allows(
 ) -> None:
     """A run that sat in handoffs for hours still ends on the turn: the relay must not give up while the worker would still let it run."""
     create_session(STREAM_ID, RunKind.LIVE)
-    clock = [0.0]
-    monkeypatch.setattr(relay_mod, "monotonic", lambda: clock[0])
     read_feed = relay_mod.read_job_events
 
     async def _read_after_a_long_wait(job_id: str, cursor: str, block_ms: int) -> Any:
-        if clock[0] == 0.0:
+        if feed.clock == 0.0:
             # Nothing yet: the run is waiting on a human, almost as long as it may.
-            clock[0] = browser_job_deadline_seconds() - 1.0
+            feed.clock = browser_job_deadline_seconds() - 1.0
             return []
         return await read_feed(job_id, cursor, block_ms)
 
     monkeypatch.setattr(relay_mod, "read_job_events", _read_after_a_long_wait)
     await _publish_a_run()
 
-    await asyncio.wait_for(relay_job_events(JOB_ID, STREAM_ID), timeout=5)
+    await relay_job_events(JOB_ID, STREAM_ID)
     await _drain_publishes()
 
     assert len(_frames(chunks)) == 2

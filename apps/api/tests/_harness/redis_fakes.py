@@ -5,6 +5,10 @@ test that drives both through one fake is the only one that can catch them
 disagreeing. Faithful where the code depends on it: SET NX refuses an existing
 key, EXPIRE only touches a key that exists, and XREAD returns strictly what
 follows the cursor, in order.
+
+A blocking XREAD that finds nothing costs its block time on clock, a fake
+monotonic clock a test hands to the code that polls: a poller that never meets
+its stop condition then reaches its deadline in fake time instead of spinning.
 """
 
 from typing import Any
@@ -20,6 +24,7 @@ class FakeRedisClient:
         self.expire_calls: list[tuple[str, int]] = []
         self.xadd_calls: list[tuple[str, int | None, bool]] = []
         self.xread_calls: list[tuple[dict[str, str], int | None]] = []
+        self.clock = 0.0
         self._seq = 0
 
     async def set(
@@ -83,6 +88,8 @@ class FakeRedisClient:
             ]
             if after:
                 results.append((name, after))
+        if not results and block:
+            self.clock += block / 1000
         return results
 
 
