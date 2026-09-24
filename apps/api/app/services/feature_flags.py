@@ -100,6 +100,14 @@ async def _kill_switch_engaged(flag: FeatureFlag, user_id: str) -> bool:
             error_type=type(e).__name__,
         )
         return False
+    if result is None:
+        # The SDK swallows transport errors into None, so this is also the unreachable case.
+        log.warning(
+            "Feature flag kill switch unevaluated, leaving it disengaged",
+            flag=flag.value,
+            kill_switch=key,
+        )
+        return False
     return _coerce_result(result, False)
 
 

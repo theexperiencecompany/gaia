@@ -585,6 +585,21 @@ class TestKillSwitch:
         )
         assert evaluated.call_args.args[2]["fallback_reason"] == "user_choice"
 
+    async def test_an_unanswered_kill_switch_is_logged_and_off(
+        self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        """The SDK turns a connection error into None, so None must be as visible as a raise."""
+        stored_user.return_value = _user_with_choices({"BROWSER_OBSCURA": True})
+        _posthog_serves(mock_client, {})
+
+        with patch("app.services.feature_flags.log") as mock_log:
+            assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is True
+        mock_log.warning.assert_called_once_with(
+            "Feature flag kill switch unevaluated, leaving it disengaged",
+            flag="BROWSER_OBSCURA",
+            kill_switch="BROWSER_OBSCURA_KILL",
+        )
+
     async def test_unconfigured_posthog_leaves_the_kill_switch_off(
         self, stored_user: AsyncMock, no_client: None, evaluated: MagicMock
     ) -> None:
