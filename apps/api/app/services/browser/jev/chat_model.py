@@ -1332,8 +1332,8 @@ class JevChatModel:
         plan = cast(list[_PlanStep], self._plan)
         if plan[part].url or len(plan) > 1:
             return plan[part].url
-        pages: list[ReadPage] = self._seen_text.pages
-        return pages[0]["url"] if pages else None
+        first: ReadPage | None = next(iter(self._seen_text.pages), None)
+        return first["url"] if first else None
 
     def _holds(self, evidence: _Evidence, start_page: str | None) -> bool:
         """Whether the run itself holds this evidence entry, as what the entry says it is.
