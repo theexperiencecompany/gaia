@@ -176,6 +176,33 @@ class TestCacheableHitMissFlow:
         assert result == "sync-result"
         assert calls == ["x"]
 
+    async def test_result_rejected_by_cache_if_is_returned_but_not_stored(self):
+        @Cacheable(key_pattern="static-key", ttl=120, cache_if=lambda value: value != "partial")
+        async def compute() -> str:
+            return "partial"
+
+        with (
+            patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
+            patch("app.decorators.caching.set_cache", new_callable=AsyncMock) as mock_set,
+        ):
+            result = await compute()
+
+        assert result == "partial"
+        mock_set.assert_not_called()
+
+    async def test_result_accepted_by_cache_if_is_stored(self):
+        @Cacheable(key_pattern="static-key", ttl=120, cache_if=lambda value: value != "partial")
+        async def compute() -> str:
+            return "complete"
+
+        with (
+            patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
+            patch("app.decorators.caching.set_cache", new_callable=AsyncMock) as mock_set,
+        ):
+            await compute()
+
+        mock_set.assert_awaited_once_with(key="static-key", value="complete", ttl=120, model=None)
+
 
 class TestCacheableValidation:
     def test_no_key_strategy_raises_at_construction(self):

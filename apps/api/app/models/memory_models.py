@@ -99,6 +99,13 @@ class MemorySearchResult(ResponseModel):
         default=False,
         description="Whether any memory matched the query confidently rather than as a weak fallback",
     )
+    degraded: bool = Field(
+        default=False,
+        description=(
+            "Whether the embedding sidecar failed fast and recall ran without dense "
+            "search or the reranker; such a result is never cached"
+        ),
+    )
 
 
 class MemoryListResponse(ResponseModel):
