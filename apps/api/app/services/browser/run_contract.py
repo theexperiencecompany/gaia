@@ -99,7 +99,7 @@ class StepClock:
     """Wall-clock between steps — the agent's think + execute time, per step."""
 
     def __init__(self) -> None:
-        self._last = 0.0
+        self._last = 0.0  # pragma: no mutate — None is read as falsy by tick() exactly like 0.0
 
     def tick(self) -> int:
         """Milliseconds since the previous step; 0 for the first one."""

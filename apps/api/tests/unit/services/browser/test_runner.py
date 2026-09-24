@@ -12,24 +12,32 @@ import asyncio
 from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from typing import Any, ClassVar
-from unittest.mock import ANY, AsyncMock, MagicMock, Mock
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import browser_use
 import httpx
 import pytest
 
 from app.constants.browser import (
+    BROWSER_AGENT_GUIDANCE_MAX,
     BROWSER_ENGINE_FALLBACK_NOTE,
     BROWSER_ENGINE_FALLBACK_WITHOUT_STATE_NOTE,
+    BROWSER_RUN_BLOCKED_SUMMARY,
     BROWSER_RUN_HANDOFF_TIMED_OUT,
     HANDOFF_AUTORESOLVED_NOTE,
     BrowserEventKind,
+    BrowserRunFailure,
     BrowserSessionStatus,
     HandoffStatus,
     StateCarry,
 )
 from app.constants.log_tags import LogTag
-from app.schemas.browser import BrowserSessionSnapshot, HandoffOutcome, HandoffRequest
+from app.schemas.browser import (
+    AgentGuidanceRequest,
+    BrowserSessionSnapshot,
+    HandoffOutcome,
+    HandoffRequest,
+)
 from app.services.browser import (
     agent_run,
     host_client,
@@ -37,6 +45,7 @@ from app.services.browser import (
     session as session_mod,
 )
 from app.services.browser.agent_run import outcome_from_history
+from app.services.browser.exceptions import BrowserHandoffCancelled
 from app.services.browser.jev.chat_model import JevChatModel
 from app.services.browser.jev.policy import JevHistoryEntry
 from app.services.browser.run_contract import (
@@ -50,6 +59,7 @@ from app.services.browser.runner import BrowserRunnerCallbacks, BrowserTaskRunne
 from app.services.browser.session import BrowserHostSession
 from app.services.llm_metering import LLMCallContext, TokenUsage
 from shared.py.wide_events import log, log_context
+from tests.helpers import WideEventRecorder
 
 
 class _Action:
@@ -1015,8 +1025,12 @@ async def test_timeout_stops_the_agent_and_names_the_task_budget(
 
     monkeypatch.setattr(FakeAgent, "run", _slow_run)
     _, emit = _collector()
-    result = await _make_runner(emit=emit, overrides=_RunnerOverrides(task_timeout=0.01)).run("x")
+    runner = _make_runner(emit=emit, overrides=_RunnerOverrides(task_timeout=0.01))
+    async with log_context("run_browser_job"):
+        result = await runner.run("x")
+        event = dict(log.get())
 
+    assert event["reason"] == BrowserRunFailure.TASK_TIMEOUT
     assert result.status == BrowserSessionStatus.FAILED
     assert result.success is False
     assert result.summary == "Browser task timed out after 0.01s."
@@ -1034,16 +1048,19 @@ async def test_cdp_attach_failure_surfaces_as_browser_unavailable(
     with pytest.raises(BrowserUnavailableError) as err:
         await runner.run("x")
 
-    message = str(err.value)
-    assert "ws://x" in message
-    assert str(exc) in message
-    assert "BROWSER_HOST_URL" in message
+    assert str(err.value) == (
+        f"Could not attach to the browser over CDP at ws://x: {exc}. "
+        "Check that the browser host is reachable from the API at BROWSER_HOST_URL."
+    )
 
 
 async def test_unexpected_failure_summary_carries_the_reason(patch_browser, monkeypatch) -> None:
     runner, _ = await _run_raising(monkeypatch, RuntimeError("LLM provider exploded"))
-    result = await runner.run("x")
+    async with log_context("run_browser_job"):
+        result = await runner.run("x")
+        event = dict(log.get())
 
+    assert event["reason"] == BrowserRunFailure.RUN_CRASHED
     assert result.summary == "Browser task failed: LLM provider exploded"
     assert result.success is False
 
@@ -2763,7 +2780,7 @@ class _AgentRunPausedOnTheUser(_AgentRunOnFailingEngine):
 async def test_a_run_paused_on_the_user_is_never_cut_short_by_the_watchdog(
     fast_watchdog, monkeypatch
 ) -> None:
-    probe = _watched_host(monkeypatch, _engine_wedged)
+    _watched_host(monkeypatch, _engine_wedged)
     _, emit = _collector()
 
     async def _user_takes_their_time(request, session) -> HandoffOutcome:
@@ -2781,8 +2798,8 @@ async def test_a_run_paused_on_the_user_is_never_cut_short_by_the_watchdog(
 
     result = await runner.run("sign in and read")
 
+    # Not a read count: a beat can land before the takeover starts on a loaded box.
     open_fallback.assert_not_awaited()
-    assert probe.reads == 0
     assert (result.status, result.summary) == (
         BrowserSessionStatus.COMPLETED,
         "signed in and read it",
@@ -2831,3 +2848,393 @@ async def test_the_watchdog_stops_reading_the_host_once_the_run_spent_its_budget
     assert result.summary == "Browser task timed out after 0.1s."
     assert reads_at_the_end > 0
     assert probe.reads == reads_at_the_end
+
+
+# ---------------------------------------------------------------------------
+# Guidance: a blocked step asks the agent that started the run
+# ---------------------------------------------------------------------------
+
+
+class _AgentRunAskingForGuidance:
+    """Stands in for BrowserAgentRun: blocked, it asks for guidance while it may, up to a limit."""
+
+    asks: ClassVar[int] = 1
+    #: What each ask came back with: the instruction, or the refusal's text.
+    heard: ClassVar[list[str]] = []
+    allowed: ClassVar[list[bool]] = []
+    stop_after_refusal: ClassVar[list[bool]] = []
+    #: Whether the run swallows a refusal and returns, as Browser-Use does inside an action.
+    swallows_refusal: ClassVar[bool] = False
+
+    def __init__(self, *, session, llm, config, hooks, step_timeout, steps_before) -> None:
+        self._hooks = hooks
+
+    async def execute(self, task: str) -> RunOutcome:
+        cls = type(self)
+        for _ in range(cls.asks):
+            allowed = await self._hooks.guidance_allowed()
+            cls.allowed.append(allowed)
+            if not allowed:
+                break
+            try:
+                cls.heard.append(await self._hooks.guidance(_GUIDANCE_ASK))
+            except BrowserHandoffCancelled as refusal:
+                cls.heard.append(str(refusal))
+                cls.stop_after_refusal.append(await self._hooks.should_stop())
+                if cls.swallows_refusal:
+                    return RunOutcome(success=False, summary="gave up on the page")
+                raise
+        return RunOutcome(success=True, summary="found it via search")
+
+    def stop(self) -> None:
+        return None
+
+
+_GUIDANCE_ASK = AgentGuidanceRequest(reason="the button is gone", task="find the pricing page")
+
+
+def _guided_runner(
+    monkeypatch,
+    request_guidance: AsyncMock | None,
+    *,
+    agent_joined: AsyncMock | None = None,
+    asks: int = 1,
+    swallows: bool = False,
+    note: AsyncMock | None = None,
+) -> BrowserTaskRunner:
+    cls = _AgentRunAskingForGuidance
+    cls.asks, cls.swallows_refusal = asks, swallows
+    cls.heard, cls.allowed, cls.stop_after_refusal = [], [], []
+    monkeypatch.setattr(runner_mod, "BrowserAgentRun", cls)
+    _, emit = _collector()
+    return BrowserTaskRunner(
+        session=_session(),
+        llm=JevChatModel(client=MagicMock(), text_model=MagicMock()),
+        callbacks=BrowserRunnerCallbacks(
+            emit=emit,
+            request_handoff=AsyncMock(),
+            is_cancelled=AsyncMock(return_value=False),
+            agent_joined=agent_joined or AsyncMock(return_value=True),
+            request_guidance=request_guidance,
+            note=note,
+        ),
+        config=_fallback_config(),
+    )
+
+
+def _answering(status: HandoffStatus, message: str | None = None) -> AsyncMock:
+    return AsyncMock(return_value=HandoffOutcome(status=status, message=message))
+
+
+async def test_a_blocked_step_follows_the_instruction_the_joined_agent_gives(monkeypatch) -> None:
+    ask = _answering(HandoffStatus.COMPLETED, " use the search box ")
+    runner = _guided_runner(monkeypatch, ask)
+
+    result = await runner.run("find the pricing page")
+
+    ask.assert_awaited_once_with(_GUIDANCE_ASK)
+    assert _AgentRunAskingForGuidance.heard == ["use the search box"]
+    assert (result.status, result.success) == (BrowserSessionStatus.COMPLETED, True)
+
+
+async def test_a_run_asks_the_agent_at_most_the_guidance_limit(monkeypatch) -> None:
+    runner = _guided_runner(
+        monkeypatch,
+        _answering(HandoffStatus.COMPLETED, "try again"),
+        asks=BROWSER_AGENT_GUIDANCE_MAX + 2,
+    )
+
+    await runner.run("find the pricing page")
+
+    assert _AgentRunAskingForGuidance.allowed == [True] * BROWSER_AGENT_GUIDANCE_MAX + [False]
+
+
+@pytest.mark.parametrize("missing", ["_request_guidance", "_agent_joined"])
+async def test_a_run_with_no_channel_back_to_an_agent_never_asks(monkeypatch, missing: str) -> None:
+    runner = _guided_runner(monkeypatch, _answering(HandoffStatus.COMPLETED, "x"))
+    setattr(runner, missing, None)
+
+    await runner.run("find the pricing page")
+
+    assert _AgentRunAskingForGuidance.allowed == [False]
+
+
+async def test_an_ask_with_no_channel_is_refused_and_says_so(monkeypatch) -> None:
+    runner = _guided_runner(monkeypatch, None)
+
+    with pytest.raises(BrowserHandoffCancelled) as refusal:
+        await runner._handle_guidance(_GUIDANCE_ASK)
+
+    assert str(refusal.value) == "no-guidance-channel"
+
+
+@pytest.mark.parametrize("swallows", [False, True])
+@pytest.mark.parametrize(
+    ("status", "message"),
+    [
+        (HandoffStatus.TIMEOUT, None),
+        (HandoffStatus.TIMEOUT, "use the search box"),
+        (HandoffStatus.COMPLETED, None),
+        (HandoffStatus.COMPLETED, "   "),
+    ],
+)
+async def test_a_blocked_step_the_agent_leaves_unanswered_ends_the_run_blocked(
+    monkeypatch, swallows: bool, status: HandoffStatus, message: str | None
+) -> None:
+    """Whether the refusal propagates or Browser-Use swallows it inside the action, the run ends blocked."""
+    runner = _guided_runner(monkeypatch, _answering(status, message), swallows=swallows)
+
+    async with log_context("run_browser_job"):
+        result = await runner.run("find the pricing page")
+        event = dict(log.get())
+
+    assert _AgentRunAskingForGuidance.heard == [status.value]
+    assert _AgentRunAskingForGuidance.stop_after_refusal == [True]
+    assert event["browser"]["blocked"] == BrowserRunFailure.BLOCKED
+    assert (result.status, result.success, result.summary) == (
+        BrowserSessionStatus.FAILED,
+        False,
+        BROWSER_RUN_BLOCKED_SUMMARY,
+    )
+
+
+async def test_waiting_on_the_agent_is_not_a_stall_and_the_clock_restarts_after(
+    monkeypatch, stall_clock
+) -> None:
+    note = AsyncMock()
+
+    async def a_slow_agent(request: AgentGuidanceRequest) -> HandoffOutcome:
+        stall_clock[0] += 100
+        await _turns()
+        return HandoffOutcome(status=HandoffStatus.COMPLETED, message="use search")
+
+    runner = _guided_runner(monkeypatch, AsyncMock(side_effect=a_slow_agent), note=note)
+    notes_after_ask: list[int] = []
+    real_execute = _AgentRunAskingForGuidance.execute
+
+    async def ask_then_go_quiet(self, task: str) -> RunOutcome:
+        await real_execute(self, task)
+        await _turns()
+        notes_after_ask.append(note.await_count)
+        stall_clock[0] += 10
+        await _turns()
+        return RunOutcome(success=True, summary="done")
+
+    monkeypatch.setattr(_AgentRunAskingForGuidance, "execute", ask_then_go_quiet)
+    runner._agent_run = runner._build_agent_run()
+
+    await runner.run("find the pricing page")
+
+    assert notes_after_ask == [0]
+    assert note.await_count == 1
+
+
+# ---------------------------------------------------------------------------
+# The wide event: why a run moved engines, and what it could not read
+# ---------------------------------------------------------------------------
+
+
+async def test_an_engine_failure_is_recorded_on_the_event_with_the_session_it_left(
+    monkeypatch,
+) -> None:
+    _, emit = _collector()
+    _host_answers(monkeypatch, _session_gone)
+    agent = _failing_engine(_ENGINE_GAVE_OUT, RunOutcome(success=True, summary="67 comments"))
+    runner = _fallback_runner(
+        monkeypatch,
+        _fallback_callbacks(emit, AsyncMock(return_value=_fallback_session())),
+        agent_run=agent,
+    )
+
+    async with log_context("run_browser_job"):
+        await runner.run("count the comments")
+        event = dict(log.get())
+
+    assert event["browser"]["fallback_reason"] == "session_gone"
+    assert event["browser"]["primary_session_id"] == "s1"
+    engine_warnings = [w for w in event["warnings"] if "engine_failure" in w]
+    assert [(w["engine_failure"], w["browser"]) for w in engine_warnings] == [
+        ("session_gone", {"session_id": "s1", "operation": "engine_failure"})
+    ]
+    assert engine_warnings[0]["msg"]
+
+
+async def test_an_agent_that_could_not_attach_to_a_failed_engine_is_logged_with_its_error(
+    monkeypatch,
+) -> None:
+    _, emit = _collector()
+    _host_answers(monkeypatch, _session_gone)
+    agent = _failing_engine(
+        ConnectionAbortedError("CDP handshake refused"),
+        RunOutcome(success=True, summary="67 comments"),
+        last_page=None,
+    )
+    runner = _fallback_runner(
+        monkeypatch,
+        _fallback_callbacks(emit, AsyncMock(return_value=_fallback_session())),
+        agent_run=agent,
+    )
+
+    async with log_context("run_browser_job"):
+        await runner.run("count the comments")
+        event = dict(log.get())
+
+    attach = [w for w in event["warnings"] if w.get("error_type") == "ConnectionAbortedError"]
+    assert [w["browser"] for w in attach] == [{"session_id": "s1"}]
+    assert attach[0]["msg"]
+
+
+async def test_an_unreadable_primary_state_is_logged_with_its_error_and_session(
+    monkeypatch,
+) -> None:
+    _, emit = _collector()
+    _host_answers(monkeypatch, _session_gone)
+    runner = _fallback_runner(
+        monkeypatch, _fallback_callbacks(emit, AsyncMock(return_value=_fallback_session()))
+    )
+
+    async with log_context("run_browser_job"):
+        await runner.run("find fares")
+        event = dict(log.get())
+
+    carry = [
+        w for w in event["warnings"] if w.get("browser", {}).get("operation") == "hand_over_state"
+    ]
+    assert [(w["error_type"], w["browser"]) for w in carry] == [
+        ("BrowserSessionGone", {"session_id": "s1", "operation": "hand_over_state"})
+    ]
+    assert carry[0]["msg"]
+
+
+async def test_a_model_already_moved_to_the_fallback_never_moves_again(monkeypatch) -> None:
+    _, emit = _collector()
+    _host_answers(monkeypatch, _session_gone)
+    open_fallback = AsyncMock(return_value=_fallback_session())
+    runner = _fallback_runner(
+        monkeypatch,
+        _fallback_callbacks(emit, open_fallback),
+        agent_run=_failing_engine(_ENGINE_GAVE_OUT),
+    )
+    runner._llm.continue_on_fallback()
+
+    result = await runner.run("count the comments")
+
+    open_fallback.assert_not_awaited()
+    assert result.status == BrowserSessionStatus.FAILED
+
+
+# ---------------------------------------------------------------------------
+# The stall note: once per silence, re-armed by the next step, paused by a handoff
+# ---------------------------------------------------------------------------
+
+
+def _quiet_frame(index: int) -> StepFrame:
+    return StepFrame(
+        index=index,
+        session_id="s1",
+        goal="read",
+        actions=[],
+        url=None,
+        title=None,
+        raw_screenshot=None,
+        since_prev_ms=0,
+    )
+
+
+async def _turns() -> None:
+    for _ in range(10):
+        await asyncio.sleep(0)
+
+
+@pytest.fixture
+def stall_clock(monkeypatch) -> list[float]:
+    """Drive the runner by a hand-moved clock, with a stall watcher that looks every loop turn."""
+    now = [100.0]
+    monkeypatch.setattr(runner_mod, "perf_counter", lambda: now[0])
+    monkeypatch.setattr(runner_mod, "_STALL_POLL_SECONDS", 0)
+    monkeypatch.setattr(runner_mod, "BROWSER_STALL_NOTE_AFTER_SECONDS", 10)
+    return now
+
+
+async def test_each_silence_gets_one_note_and_a_repeat_says_which_step_and_how_long(
+    stall_clock,
+) -> None:
+    from app.constants.browser import BROWSER_STALL_NOTE
+
+    note = AsyncMock()
+    runner = _make_runner(emit=AsyncMock())
+    runner._note = note
+
+    async def quiet_steps(task: str) -> RunOutcome:
+        runner._record_step(_quiet_frame(1))
+        stall_clock[0] += 10  # exactly the threshold
+        await _turns()
+        runner._record_step(_quiet_frame(2))
+        stall_clock[0] += 45
+        await _turns()
+        return RunOutcome(success=True, summary="done")
+
+    runner._agent_run = SimpleNamespace(execute=quiet_steps, stop=lambda: None)
+    await runner.run("read the page")
+
+    notes = [call.args[0] for call in note.await_args_list]
+    assert len(notes) == 2
+    assert notes[0] == BROWSER_STALL_NOTE
+    assert "step 2" in notes[1]
+    assert "45s" in notes[1]
+
+
+async def test_the_stall_clock_restarts_when_a_handoff_ends(stall_clock) -> None:
+    note = AsyncMock()
+
+    async def a_slow_human(request: HandoffRequest, session: BrowserHostSession) -> HandoffOutcome:
+        stall_clock[0] += 100
+        await _turns()
+        return HandoffOutcome(status=HandoffStatus.COMPLETED)
+
+    runner = _make_runner(emit=AsyncMock(), request_handoff=a_slow_human)
+    runner._note = note
+    notes_after_handoff: list[int] = []
+
+    async def run_that_hands_off(task: str) -> RunOutcome:
+        await runner._handle_takeover("sign in", "credentials")
+        await _turns()
+        notes_after_handoff.append(note.await_count)
+        stall_clock[0] += 10
+        await _turns()
+        return RunOutcome(success=True, summary="done")
+
+    runner._agent_run = SimpleNamespace(execute=run_that_hands_off, stop=lambda: None)
+    await runner.run("sign in and read")
+
+    assert notes_after_handoff == [0]
+    assert note.await_count == 1
+
+
+async def test_a_stall_watcher_that_dies_is_reported_under_its_own_name(stall_clock) -> None:
+    recorder = WideEventRecorder()
+    runner = _make_runner(emit=AsyncMock())
+    runner._note = AsyncMock(side_effect=RuntimeError("bot queue down"))
+
+    async def silent(task: str) -> RunOutcome:
+        stall_clock[0] += 10
+        await _turns()
+        return RunOutcome(success=True, summary="done")
+
+    runner._agent_run = SimpleNamespace(execute=silent, stop=lambda: None)
+    with patch("shared.py.wide_events._loguru", recorder):
+        result = await runner.run("read the page")
+
+    assert result.status == BrowserSessionStatus.COMPLETED
+    assert recorder.event("browser_stall_watch")["error_type"] == "RuntimeError"
+
+
+async def test_a_step_emit_that_dies_is_reported_under_its_own_name() -> None:
+    recorder = WideEventRecorder()
+    runner = _make_runner(emit=AsyncMock(side_effect=RuntimeError("feed down")))
+
+    with patch("shared.py.wide_events._loguru", recorder):
+        runner._record_step(_quiet_frame(1))
+        await asyncio.gather(*runner._emit_tasks, return_exceptions=True)
+
+    assert recorder.event("browser_step_emit")["error_type"] == "RuntimeError"
