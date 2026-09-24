@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.constants.browser import JEV_MAX_ELEMENTS, JevOperation
+from app.services.browser.jev import prompts
 from app.services.browser.jev.gateway import JevChoiceAnswer, JevEvaluation, JevUsage
 from app.services.browser.jev.observation import observe
 from app.services.browser.jev.policy import (
@@ -65,7 +66,7 @@ def test_the_request_shares_one_state_across_an_operation_head_and_one_target_he
     operation = request.questions["operation"]
     assert operation.instructions == {
         "goal": "Fly to London",
-        "rules": [NEXT_ACTION, HUMAN_RULES, NAVIGATE_RULE],
+        "rules": [NEXT_ACTION, HUMAN_RULES, NAVIGATE_RULE, prompts.STILL_NEEDED_RULE],
     }
     assert set(operation.criteria) == {op.value for op in JevOperation}
     target = request.questions["type_text_target"]
@@ -266,3 +267,42 @@ def test_jev_is_told_when_the_end_of_the_page_is_on_screen(flights_state) -> Non
 
     assert at_end.state["page"]["at_page_bottom"] is True
     assert "at_page_bottom" not in unknown.state["page"]
+
+
+_FORM_URL = "https://forms.example/web-form.html"
+_SENT_URL = "https://forms.example/submitted-form.html"
+
+
+def _form_request(history: list[JevHistoryEntry]):
+    form = make_state(
+        {
+            1: FakeNode("INPUT", {"type": "radio", "aria-label": "Radio 2"}),
+            2: FakeNode("BUTTON", text="Submit", ax_node=FakeAXNode(role="button", name="Submit")),
+        },
+        url=_FORM_URL,
+    )
+    return build_request(observe(form), "g", history, ALL)
+
+
+_SUBMITTED = [
+    JevHistoryEntry(action="CLICK [2] Submit", kind="click", url=_FORM_URL, target_label="Submit"),
+    JevHistoryEntry(action="GO_BACK", kind="go_back", url=_SENT_URL),
+]
+
+
+def test_a_form_submitted_and_come_back_to_unchanged_is_not_offered_for_sending_again() -> None:
+    request = _form_request(_SUBMITTED)
+
+    assert set(request.questions["click_target"].criteria) == {"1"}
+
+
+@pytest.mark.regression
+def test_a_form_changed_since_it_was_sent_may_be_sent_again() -> None:
+    """Regression: back on a form for its skipped radio, the Submit it had used was no longer offered."""
+    chose = JevHistoryEntry(
+        action="CLICK [1] Radio 2", kind="click", url=_FORM_URL, target_label="Radio 2"
+    )
+
+    request = _form_request([*_SUBMITTED, chose])
+
+    assert set(request.questions["click_target"].criteria) == {"1", "2"}

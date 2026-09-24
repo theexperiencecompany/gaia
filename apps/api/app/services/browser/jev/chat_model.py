@@ -47,6 +47,7 @@ from app.constants.browser import (
     JEV_DONE_REASK_BUDGET,
     JEV_MIN_DONE_CONFIDENCE,
     JEV_PLAN_MAX_STEPS,
+    JEV_SECRET_MASK,
     JEV_SUMMARY_MAX_CHARS,
     JEV_TEXT_HEDGE_SECONDS,
     JEV_TEXT_HELPER_RECENT_ACTIONS,
@@ -90,6 +91,7 @@ from app.services.browser.jev.prompts import (
     TEXT_VALUE,
     URL_VALUE,
 )
+from app.services.browser.jev.secrets import TypedSecrets
 from app.services.browser.jev.seen_text import ReadPage, SeenText
 from app.services.browser.jev.viewport import NodeHandles, ViewportBox, read_viewport
 from app.services.browser.run_contract import GuidanceGate
@@ -378,6 +380,12 @@ class JevChatModel:
         self._stall_handled_at = 0
         #: This browser's back list as the run moved through it, oldest first.
         self._back_list: list[str] = []
+        #: What was typed into password fields, kept out of everything people read.
+        self._secrets = TypedSecrets()
+
+    def redact(self, text: str) -> str:
+        """Return text with every value this run typed into a password field masked."""
+        return self._secrets.redact(text)
 
     def viewport_points(self) -> dict[int, tuple[float, float]]:
         """Return the last observation's on-screen centres by Browser-Use index, for the UI pulse."""
@@ -605,6 +613,8 @@ class JevChatModel:
                 step=self._steps,
                 url=observation.url[:80],
             )
+            # The check that withheld the DONE may have named what is still needed.
+            goal = self._effective_goal(messages)
             decision = await self._choose(observation, goal, offered - {JevOperation.DONE})
             return _SettledChoice(decision, goal, None)
         if self._advance_plan():
@@ -710,6 +720,11 @@ class JevChatModel:
         A DONE under the floor ends the run on whatever page is showing, and the
         closing summary then reads like a confident answer to a goal never met.
         """
+        if self._missing and JevOperation.GO_BACK in offered:
+            # The last check named what the part still needs, and the page the run
+            # just left may be where it is done (a form submitted with a field
+            # skipped): giving up on a page with no way forward is not the move.
+            offered -= {JevOperation.BLOCKED}
         decision = await choose(
             self._client, observation, goal, self._history, offered, self._seen_text.pages
         )
@@ -806,7 +821,7 @@ class JevChatModel:
                 hedge_after=JEV_CLOSING_ANSWER_HEDGE_SECONDS,
             ),
         )
-        summary = answer.text.strip() if answer else ""
+        summary = self.redact(answer.text).strip() if answer else ""
         if not answer or not summary:
             return None
         if len(summary) > JEV_SUMMARY_MAX_CHARS:
@@ -852,7 +867,7 @@ class JevChatModel:
         reason = await self._field_text(
             GUIDANCE_REASON, goal, observation, None, reasoning=ReasoningLevel.OFF
         )
-        text = reason or _DEFAULT_GUIDANCE_REASON
+        text = self.redact(reason) if reason else _DEFAULT_GUIDANCE_REASON
         return {action: {"reason": text}}, text
 
     async def _may_ask_for_guidance(self) -> bool:
@@ -887,9 +902,13 @@ class JevChatModel:
                     # supplies it instead, per the takeover policy.
                     return _takeover(f"Enter the {element.label}"), None
                 input_action = "input" if "input" in registered else "input_text"
-                return {
+                action = {
                     input_action: {"index": element.browser_index, "text": value, "clear": True}
-                }, value
+                }
+                if element.secret:
+                    self._secrets.add(value)
+                    return action, JEV_SECRET_MASK
+                return action, value
             case JevOperation.SELECT if decision.option is not None:
                 return {
                     "select_dropdown": {
@@ -1085,9 +1104,9 @@ class JevChatModel:
         return AgentGuidanceRequest(
             reason=reason,
             task=self._task or "",
-            url=observation.url if observation else "",
+            url=self.redact(observation.url) if observation else "",
             title=observation.title if observation else "",
-            page_text=observation.text[:BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS]
+            page_text=self.redact(observation.text[:BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS])
             if observation
             else "",
             elements=[
@@ -1255,6 +1274,7 @@ class JevChatModel:
             done=done,
             pages_read=pages,
             evidence=cited,
+            still_needed=self._missing,
         )
         return done
 
@@ -1373,9 +1393,14 @@ class JevChatModel:
         )
 
     def _goal_with_plan(self, goal: str) -> str:
-        """Frame the goal as its current part when the task was split."""
+        """Frame the goal as its current part when the task was split, with what the part still needs."""
+        # The judge knew each article was read only for its title; Jev, not
+        # told, went back to the list for 37 steps.
+        still_needed = f"{_STILL_NEEDED}{' / '.join(self._missing)}" if self._missing else None
         if not self._plan or len(self._plan) == 1:
-            return goal
+            # A one-part task is decided on the task itself, and needs to hear the
+            # gap too: a form submitted with its radio unchosen was declared BLOCKED.
+            return f"{goal}\n{still_needed}" if still_needed else goal
         i, n = self._plan_index, len(self._plan)
         lines = [f"CURRENT PART ({i + 1} of {n}), the only thing to do now: {self._plan[i].goal}"]
         if i:
@@ -1384,13 +1409,8 @@ class JevChatModel:
             lines.append(
                 "FOUND SO FAR, what the parts done produced: " + " | ".join(self._findings)
             )
-        if self._missing:
-            # The judge knew each article was read only for its title; Jev, not
-            # told, went back to the list for 37 steps.
-            lines.append(
-                "STILL NEEDED FOR THIS PART, what the last check found nothing for: "
-                + " / ".join(self._missing)
-            )
+        if still_needed:
+            lines.append(still_needed)
         if i < n - 1:
             lines.append(
                 "STILL TO DO AFTER THIS PART, not yet: "
@@ -1539,6 +1559,7 @@ def _citations(history: list[JevHistoryEntry]) -> set[str]:
 
 
 _STALLED_STEPS = 8
+_STILL_NEEDED = "STILL NEEDED FOR THIS PART, what the last check found nothing for: "
 _PRODUCTIVE_KINDS = frozenset({"type_text", "select", "done_part"})
 
 

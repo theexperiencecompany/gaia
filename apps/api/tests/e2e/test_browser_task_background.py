@@ -8,6 +8,7 @@ proves a run survives an API restart or that Browser-Use behaves as scripted.
 """
 
 import asyncio
+import json
 from typing import Any
 
 import pytest
@@ -21,6 +22,7 @@ from tests.e2e._harness.browser_job import (
     LIVE_STORAGE_STATE,
     REPLAY_URL,
     SHOT_URL_TEMPLATE,
+    JevPageView,
     JevScript,
     JobWorld,
     ScriptedHost,
@@ -718,3 +720,124 @@ async def test_a_browser_request_the_executor_remembers_doing_still_runs_the_bro
     assert NUDGE_NODE in run.visited
     assert run.ran("browser_task")
     assert len(world.enqueued) == 1
+
+
+_FORM = "https://forms.test/web-form.html"
+_SENT = "https://forms.test/submitted-form.html?my-text=Aryan"
+_FORM_VIEW = JevPageView(
+    url=_FORM,
+    controls=[
+        ("INPUT", {"type": "radio", "aria-label": "Radio 2"}),
+        ("BUTTON", {"aria-label": "Submit"}),
+    ],
+    text="Radio 2\nSubmit",
+)
+_SENT_VIEW = JevPageView(url=_SENT, controls=[], text="Form submitted\nReceived!")
+
+
+def _form_judge(label: str, context: dict[str, Any]) -> dict[str, Any]:
+    """Judge the part: Radio 2 and Submit are done only by an action that did them."""
+    taken = [entry["action"] for entry in context["recent_actions"]]
+    needed = {"Radio 2 chosen": "Radio 2", "Submit clicked": "Submit"}
+    evidence = []
+    for requirement, control in needed.items():
+        action = next((action for action in taken if control in action), None)
+        if action is not None:
+            evidence.append({"requirement": requirement, "kind": "action", "source": action})
+    return {
+        "requirements": list(needed),
+        "evidence": evidence,
+        "done": len(evidence) == len(needed),
+        "findings": "",
+    }
+
+
+@pytest.mark.regression
+async def test_a_form_submitted_with_a_field_skipped_goes_back_to_it_instead_of_giving_up() -> None:
+    """Regression: the radio was never chosen, the judge said so after Submit, and the run went BLOCKED and redid the form on the fallback engine."""
+    answer = "The page shows \u201cForm submitted\u201d and \u201cReceived!\u201d."
+    steps = [
+        ScriptedStep(actions=[], decide=True, jev_page=_FORM_VIEW, url=_FORM),
+        ScriptedStep(actions=[], decide=True, jev_page=_SENT_VIEW, url=_SENT),
+        ScriptedStep(actions=[], decide=True, jev_page=_FORM_VIEW, url=_FORM),
+        ScriptedStep(actions=[], decide=True, jev_page=_FORM_VIEW, url=_FORM),
+        ScriptedStep(actions=[], decide=True, jev_page=_SENT_VIEW, url=_SENT),
+    ]
+    script = JevScript(
+        decisions=[
+            ("CLICK", "2"),
+            ("DONE", None),
+            ("GO_BACK", None),
+            ("CLICK", "1"),
+            ("CLICK", "2"),
+            ("DONE", None),
+        ],
+        # A closing answer is started with each DONE; the first is dropped when its check fails.
+        texts=[{"text": answer}, {"text": answer}],
+        judge=_form_judge,
+    )
+
+    async with browser_job_world(
+        STREAM,
+        steps=steps,
+        jev=script,
+        summary=answer,
+        host=ScriptedHost(fallback_url="http://fallback.test"),
+    ) as world:
+        async with executor_graph([RETRIEVE, START, JOIN, "Done."]) as graph:
+            await _drive(graph, world)
+
+    assert world.jev is not None
+    re_ask = world.jev.requests[2].questions["operation"]
+    assert "Radio 2 chosen" in re_ask.instructions["goal"]
+    assert "BLOCKED" not in re_ask.criteria
+    assert [next(iter(action)) for action in _step_actions(world)] == [
+        "click",
+        "go_back",
+        "click",
+        "click",
+        "done",
+    ]
+    assert world.browser.guidance_reasons == []
+    assert [card["session_id"] for card in world.cards() if card["kind"] == "session"] == ["sess-1"]
+    results = [card for card in world.cards() if card["kind"] == "result"]
+    assert [(card["status"], card["success"]) for card in results] == [
+        (BrowserSessionStatus.COMPLETED.value, True)
+    ]
+
+
+_SECRET = "gaia-test-123"
+
+
+@pytest.mark.regression
+async def test_a_password_the_run_typed_never_reaches_a_card_or_the_answer() -> None:
+    """A form sent by GET carries the password in the page it lands on; the user reads cards and the answer, never it."""
+    landed = f"{_SENT}&my-password={_SECRET}"
+    login = JevPageView(
+        url=_FORM,
+        controls=[
+            ("INPUT", {"type": "password", "name": "my-password"}),
+            ("INPUT", {"name": "my-text"}),
+        ],
+    )
+    steps = [
+        ScriptedStep(actions=[], decide=True, jev_page=login, url=_FORM),
+        ScriptedStep(
+            actions=[],
+            decide=True,
+            jev_page=JevPageView(url=landed, controls=[], text="Received!"),
+            url=landed,
+        ),
+    ]
+    answer = f"Signed in with {_SECRET}; landed on {landed}."
+    script = JevScript(
+        decisions=[("TYPE_TEXT", "1"), ("DONE", None)], texts=[{"text": _SECRET}, {"text": answer}]
+    )
+
+    async with browser_job_world(STREAM, steps=steps, jev=script) as world:
+        async with executor_graph([RETRIEVE, START, JOIN, "Done."]) as graph:
+            run = await _drive(graph, world)
+
+    assert _step_actions(world)[0]["input_text"]["text"] != _SECRET
+    assert _SECRET not in json.dumps(world.cards())
+    assert _SECRET not in (run.result_for("wait_for_browser_task") or "")

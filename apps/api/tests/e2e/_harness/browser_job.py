@@ -69,6 +69,8 @@ class ScriptedStep:
     #: The engine under the run dies here: the host loses the session and the run
     #: ends the way Browser-Use ends one, on step failures, with nothing raised.
     engine_dies: bool = False
+    #: The page Jev reads when it decides this step; None keeps the one it read last.
+    jev_page: JevPageView | None = None
 
 
 class _Action:
@@ -147,6 +149,8 @@ class BrowserDouble:
         self.next_step = 0
         #: Kills the engine under the session the run is on; the world wires it.
         self.kill_engine: Callable[[], None] = lambda: None
+        #: The page a Jev-driven run reads; the world wires it.
+        self.page: _JevPage | None = None
 
     def agent(self, **kwargs: Any) -> _ScriptedAgent:
         return _ScriptedAgent(self, **kwargs)
@@ -203,6 +207,8 @@ class _ScriptedAgent:
         """Return the step's actions, scripted or decided by the real Jev policy; None when a handoff was the step."""
         if not step.decide:
             return list(step.actions)
+        if step.jev_page is not None and self._double.page is not None:
+            self._double.page.show(step.jev_page)
         try:
             decided = await self._decide()
         except BrowserHandoffCancelled:
@@ -365,9 +371,10 @@ async def browser_job_world(
     llm: Any = object()
     if jev is not None:
         world.jev = ScriptedJevGateway(jev)
-        helper = _JevTextHelper(jev.texts)
+        helper = _JevTextHelper(jev.texts, jev.judge)
         llm = JevChatModel(client=world.jev, text_model=helper, structured_call=helper.structured)
         page = _JevPage()
+        double.page = page
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     create_session(stream_id, RunKind.LIVE)
 
@@ -542,6 +549,7 @@ class _JevAction(BaseModel):
     navigate: dict[str, Any] | None = None
     input_text: dict[str, Any] | None = None
     wait: dict[str, Any] | None = None
+    go_back: dict[str, Any] | None = None
     done: dict[str, Any] | None = None
     request_human_takeover: dict[str, Any] | None = None
     request_agent_guidance: dict[str, Any] | None = None
@@ -551,7 +559,7 @@ class JevAgentOutput(BaseModel):
     """What Browser-Use asks the model for each step; an `action` field is what routes it to Jev."""
 
     memory: str
-    next_goal: str
+    next_goal: str | None = None
     action: list[_JevAction]
 
 
@@ -573,19 +581,39 @@ class _JevNode:
         return self.get_meaningful_text_for_llm()
 
 
+@dataclass(frozen=True)
+class JevPageView:
+    """One page as Jev reads it: where it is, its controls as (tag, attributes), and its text."""
+
+    url: str
+    controls: list[tuple[str, dict[str, str]]]
+    text: str = ""
+    title: str = "Example"
+
+
 class _JevPage:
     """The browser session Jev observes: one cached state read, one DOM snapshot, no CDP."""
 
     def __init__(self) -> None:
         node = _JevNode("INPUT", {"role": "combobox", "placeholder": "Where to?"})
         self._selector_map = {7: node}
+        self._text = "[1]<input>Where to?"
         self.url = "https://example.test/book"
         self.title = "Book a table"
 
+    def show(self, view: JevPageView) -> None:
+        self._selector_map = {
+            index: _JevNode(tag, attributes)
+            for index, (tag, attributes) in enumerate(view.controls, start=1)
+        }
+        self._text = view.text
+        self.url = view.url
+        self.title = view.title
+
     async def get_browser_state_summary(self, **kwargs: Any) -> Any:
+        text = self._text
         dom_state = SimpleNamespace(
-            selector_map=self._selector_map,
-            llm_representation=lambda: "[1]<input>Where to?",
+            selector_map=self._selector_map, llm_representation=lambda: text
         )
         return SimpleNamespace(dom_state=dom_state, url=self.url, title=self.title)
 
@@ -601,6 +629,8 @@ class JevScript:
     decisions: list[tuple[str, str | None]]
     #: One structured reply per text-helper call, e.g. the takeover reason.
     texts: list[dict[str, Any]] = field(default_factory=list)
+    #: The part check, as (label, context) -> verdict; None takes a chosen DONE at its word.
+    judge: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
 
 
 class ScriptedJevGateway:
@@ -648,8 +678,13 @@ class _JevTextHelper:
     provider = "fake"
     name = "text-helper"
 
-    def __init__(self, replies: list[dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        replies: list[dict[str, Any]],
+        judge: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
+    ) -> None:
         self._replies = list(replies)
+        self._judge = judge
 
     async def ainvoke(self, messages: Any, output_format: Any = None, **kwargs: Any) -> Any:
         from browser_use.llm.views import ChatInvokeCompletion
@@ -673,6 +708,8 @@ class _JevTextHelper:
         if instructions.startswith(PLAN_STEPS):
             return schema.model_validate({"steps": []})
         if instructions.startswith(PART_DONE):
+            if self._judge is not None:
+                return schema.model_validate(self._judge(label, json.loads(prompt[1].content)))
             if label != "browser_done_check":
                 return schema.model_validate({"done": False})
             # A DONE the script chose is taken at its word, cited by the page read.

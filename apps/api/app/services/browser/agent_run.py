@@ -324,6 +324,10 @@ class BrowserAgentRun:
         self._llm.note_from_agent(instruction)
         return instruction
 
+    def _redact(self, text: str) -> str:
+        """Mask what the run typed into password fields: a frame is shown to people and kept."""
+        return self._llm.redact(text) if isinstance(self._llm, JevChatModel) else text
+
     def _emit_frame(
         self,
         *,
@@ -339,13 +343,24 @@ class BrowserAgentRun:
         """
         self._frames += 1
         self._last_step = self._frames
+        url: str | None = getattr(state, "url", None)
         self._hooks.step(
             StepFrame(
                 index=self._frames,
                 session_id=self._session.session_id,
-                goal=goal,
-                actions=actions,
-                url=getattr(state, "url", None),
+                goal=self._redact(goal),
+                actions=[
+                    action.model_copy(
+                        update={
+                            "inputs": {
+                                key: self._redact(value) if isinstance(value, str) else value
+                                for key, value in action.inputs.items()
+                            }
+                        }
+                    )
+                    for action in actions
+                ],
+                url=self._redact(url) if url else url,
                 title=getattr(state, "title", None),
                 raw_screenshot=raw_screenshot or getattr(state, "screenshot", None),
                 since_prev_ms=self._clock.tick(),
@@ -399,7 +414,7 @@ class BrowserAgentRun:
         if self._hooks.action_results is None:
             return
         outputs = [
-            BrowserActionOutput(position=position, output=text)
+            BrowserActionOutput(position=position, output=self._redact(text))
             for position, result in enumerate(results)
             if (text := _summarize_action_result(result))
         ]
