@@ -658,3 +658,21 @@ async def test_an_ancestor_without_a_parent_link_ends_the_walk_as_top_document()
     boxes = (await read_viewport(engine.browser(), {1: _node("html/body/a", parent=top)})).boxes
 
     assert set(boxes) == {1}
+
+
+async def test_a_malformed_row_loses_only_its_own_element() -> None:
+    browser = _browser(
+        {
+            "result": {
+                "value": {
+                    "1": {"on_screen": True},
+                    "not-an-index": {"on_screen": True, "cx": 0.1, "cy": 0.1},
+                    "2": {"on_screen": False, "cx": 0.4, "cy": 0.6},
+                }
+            }
+        }
+    )
+
+    boxes = (await read_viewport(browser, {1: _node("html/body/a"), 2: _node("html/body/b")})).boxes
+
+    assert boxes == {2: ViewportBox(on_screen=False, cx=0.4, cy=0.6)}
