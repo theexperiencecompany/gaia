@@ -149,11 +149,8 @@ class ModelLane:
     def from_configurable(cls, raw: object) -> "ModelLane | None":
         """Rebuild a lane from a configurable, or None when there isn't one.
 
-        None is a real answer, not an error: a bag written before lanes
-        existed (an in-flight queue item or a stored HIL resume_item) has no
-        lane, and the caller resolves a fresh one rather than crashing on it.
-        A lane that IS there is validated whole: only to_configurable writes one,
-        so a malformed lane is a bug in its writer and raises ValidationError.
+        A bag written before lanes existed has none, and the caller resolves a
+        fresh lane. A present lane is validated whole and raises ValidationError.
         """
         if not isinstance(raw, dict) or "provider" not in raw:
             return None
