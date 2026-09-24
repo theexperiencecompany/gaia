@@ -116,5 +116,91 @@ def test_a_page_read_alone_keeps_the_whole_budget() -> None:
     assert JEV_SEEN_TEXT_MAX_CHARS - 120 <= len(memory.all_text) <= JEV_SEEN_TEXT_MAX_CHARS + 50
 
 
+def test_the_blank_tab_before_the_first_navigate_is_no_page_read() -> None:
+    memory = SeenText()
+
+    memory.record("about:blank", "", "", at_bottom=True)
+
+    assert memory.pages == []
+    assert memory.all_text == ""
+
+
+def test_an_anchor_holding_a_second_hash_still_belongs_to_its_page() -> None:
+    memory = SeenText()
+    memory.record("https://books.test/travel", "Full Moon 49.43")
+
+    memory.record("https://books.test/travel#/list#bottom", "See America 48.87")
+
+    assert [page["url"] for page in memory.pages] == ["https://books.test/travel"]
+
+
+def test_a_line_read_on_one_page_is_still_kept_when_another_page_shows_it() -> None:
+    memory = SeenText()
+    memory.record("https://books.test/travel", "Add to basket")
+
+    memory.record("https://books.test/mystery", "Add to basket")
+
+    assert memory.text == "Add to basket"
+
+
+def test_lines_that_exactly_fill_the_cap_are_kept_and_the_next_one_is_not(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.browser.jev.seen_text.JEV_SEEN_TEXT_MAX_CHARS", 20)
+    memory = SeenText()
+
+    memory.record("https://books.test/travel", f"{'a' * 9}\n{'b' * 9}\nc")
+
+    assert memory.text.splitlines() == ["a" * 9, "b" * 9]
+
+
+def test_a_page_read_to_its_bottom_before_its_title_was_known_stays_read_to_the_end() -> None:
+    memory = SeenText()
+    memory.record("https://news.test/", "30. Last story", at_bottom=True)
+
+    memory.record("https://news.test/", "30. Last story", "News")
+
+    assert memory.pages == [{"url": "https://news.test/", "title": "News", "read": "to the end"}]
+
+
+def test_a_screen_without_a_title_does_not_count_as_a_new_document() -> None:
+    memory = SeenText()
+    memory.record("https://news.test/", "30. Last story", "News", at_bottom=True)
+
+    memory.record("https://news.test/", "29. Story")
+
+    assert memory.pages == [{"url": "https://news.test/", "title": "News", "read": "to the end"}]
+
+
+def test_a_short_page_leaves_its_unused_share_to_the_long_one(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.browser.jev.seen_text.JEV_SEEN_TEXT_MAX_CHARS", 60)
+    memory = SeenText()
+    long_lines = [f"long {i}---" for i in range(6)]
+    memory.record("https://a.test/", "\n".join(long_lines))
+    memory.record("https://b.test/", "b")
+
+    closing_input = memory.all_text
+
+    assert (
+        closing_input
+        == "## https://a.test/\n" + "\n".join(long_lines[:5]) + "\n\n## https://b.test/\nb"
+    )
+
+
+def test_long_pages_split_the_budget_alike_to_the_character(monkeypatch) -> None:
+    """Budget 62 over three full pages is 20, 21 and 21: the remainder goes to the later pages."""
+    monkeypatch.setattr("app.services.browser.jev.seen_text.JEV_SEEN_TEXT_MAX_CHARS", 62)
+    memory = SeenText()
+    memory.record("https://a.test/", "\n".join(f"a{i}-------" for i in range(6)))
+    memory.record("https://b.test/", "\n".join(f"b{i}-------" for i in range(6)))
+    memory.record("https://c.test/", "\n".join(["c" * 9, "c" * 10, "x" * 12, "y" * 12, "z" * 12]))
+
+    closing_input = memory.all_text
+
+    assert closing_input == (
+        "## https://a.test/\na0-------\na1-------\n\n"
+        "## https://b.test/\nb0-------\nb1-------\n\n"
+        f"## https://c.test/\n{'c' * 9}\n{'c' * 10}"
+    )
+
+
 def _lines(prefix: str, count: int, width: int) -> str:
     return "\n".join(f"{prefix} {i}: ".ljust(width, "x") for i in range(count))
