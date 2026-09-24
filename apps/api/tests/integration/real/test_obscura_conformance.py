@@ -450,7 +450,6 @@ async def test_typing_reaches_the_focused_field_with_trusted_events(
     assert json.loads(await evaluate("JSON.stringify(window.__keys)")) == [["h", True], ["i", True]]
 
 
-@pytest.mark.regression
 async def test_the_dom_snapshot_reports_what_a_field_holds_now(
     at_form: tuple[Cdp, str, Evaluate],
 ) -> None:

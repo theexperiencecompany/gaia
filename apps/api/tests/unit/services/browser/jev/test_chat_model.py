@@ -486,7 +486,6 @@ async def test_done_reports_the_helpers_summary_of_the_page(flights_state) -> No
     assert helper.system_prompt() == DONE_SUMMARY
 
 
-@pytest.mark.regression
 async def test_an_unconfident_done_the_evidence_check_confirms_ends_the_run(flights_state) -> None:
     """Regression: a DONE at p=0.55 on the answer page was re-asked without DONE and went BLOCKED."""
     model, gateway, _, _ = _model(
@@ -1913,7 +1912,6 @@ def _on_part(gateway: ScriptedGateway) -> str:
     return next(part for part in ("1 of 2", "2 of 2") if f"CURRENT PART ({part})" in goal)
 
 
-@pytest.mark.regression
 async def test_a_page_just_opened_is_decided_on_what_its_own_judgement_finds_missing() -> None:
     """Regression: decided on the list's gap, Jev left each article at its headline and never read one."""
     helper = FakeTextModel()
@@ -1940,7 +1938,6 @@ async def test_a_page_just_opened_is_decided_on_what_its_own_judgement_finds_mis
     )
 
 
-@pytest.mark.regression
 async def test_what_an_unfinished_part_found_reaches_jev_and_the_next_judgement() -> None:
     """Regression: kept only once a part was done, each judgement re-chose the top three AI stories."""
     helper = FakeTextModel()
@@ -2100,7 +2097,6 @@ async def test_the_judge_is_told_the_page_the_part_started_on() -> None:
     assert judged and all(context["start_page"] == _HN for context in judged)
 
 
-@pytest.mark.regression
 async def test_the_judge_of_a_one_part_task_is_told_the_page_the_run_began_on() -> None:
     """Regression: told no start page, the judge made "open HN" a requirement it could not cite and withheld a right DONE."""
     judged: list[dict[str, Any]] = []
@@ -2246,7 +2242,6 @@ async def test_a_withheld_done_is_re_decided_on_what_its_check_found_missing() -
     assert action == {"go_back": {}}
 
 
-@pytest.mark.regression
 async def test_a_gap_judged_before_a_field_was_filled_is_not_repeated_after_it() -> None:
     """Regression: judged once per page read, a form's first gap stood all run and Jev retyped a field."""
     helper = FakeTextModel(replies=[{"text": "gaia-test-123"}])
@@ -2385,7 +2380,6 @@ async def _typed_into_password_form(task: str, now_holds: str) -> ScriptedGatewa
     return gateway
 
 
-@pytest.mark.regression
 async def test_a_typed_password_reads_the_same_in_the_goal_as_in_its_field() -> None:
     """Regression: the field read the mask and the goal the password, so Jev typed it twenty times."""
     mask = browser_constants.JEV_SECRET_MASK
@@ -2398,7 +2392,6 @@ async def test_a_typed_password_reads_the_same_in_the_goal_as_in_its_field() -> 
     assert _SECRET not in request.model_dump_json()
 
 
-@pytest.mark.regression
 async def test_a_password_field_the_page_emptied_reads_empty_so_it_is_filled_again() -> None:
     """Regression: a field typed into once read as filled for good, even after the page cleared it."""
     gateway = await _typed_into_password_form(f'Enter the password "{_SECRET}".', "")
