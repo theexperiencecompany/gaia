@@ -16,6 +16,7 @@ from langchain_core.runnables import RunnableLambda
 from langchain_core.runnables.configurable import RunnableConfigurableFields
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
+import openai
 from pydantic import BaseModel
 import pytest
 import respx
@@ -34,6 +35,7 @@ from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
     DEV_CUSTOM_MODEL_OPTION,
+    DEV_LLM_BROWSER_HEADERS,
     DEV_LLM_MAX_OUTPUT_TOKENS,
     HELPER_MAX_OUTPUT_TOKENS,
     DevLLMApi,
@@ -45,6 +47,8 @@ pytestmark = pytest.mark.unit
 
 _BASE_URL = "https://dev-llm.test/v1"
 _MODEL = "gpt-6-luna"
+_BROWSER_USER_AGENT = DEV_LLM_BROWSER_HEADERS["User-Agent"]
+_CLOUDFLARE_BLOCK = httpx.Response(403, json={"error": {"message": "blocked"}})
 
 
 class _Answer(BaseModel):
@@ -422,3 +426,42 @@ def _refuse(_: LanguageModelInput) -> AIMessage:
 
 def _answer(_: LanguageModelInput) -> AIMessage:
     return AIMessage(content="fallback answered")
+
+
+@pytest.mark.usefixtures("forced")
+class TestTheEndpointsHttpClients:
+    async def test_a_failed_request_is_left_to_the_callers_retry_policy(self) -> None:
+        """An SDK retry under with_llm_retry multiplies every attempt and its backoff."""
+        llm = resolve_model()
+        with respx.mock() as router:
+            route = router.post(f"{_BASE_URL}/responses").mock(
+                return_value=httpx.Response(500, json={"error": {"message": "down"}})
+            )
+
+            with pytest.raises(openai.InternalServerError):
+                await llm.ainvoke("hi")
+
+        assert route.call_count == 1
+
+    @pytest.mark.regression
+    def test_a_sync_request_carries_a_browser_user_agent(self) -> None:
+        """Discounted lanes sit behind Cloudflare, which 403s a programmatic user agent."""
+        llm = resolve_model()
+        with respx.mock() as router:
+            route = router.post(f"{_BASE_URL}/responses").mock(return_value=_CLOUDFLARE_BLOCK)
+
+            with pytest.raises(openai.PermissionDeniedError):
+                llm.invoke("hi")
+
+        assert route.calls.last.request.headers["user-agent"] == _BROWSER_USER_AGENT
+
+    @pytest.mark.regression
+    async def test_an_async_request_carries_a_browser_user_agent(self) -> None:
+        llm = resolve_model()
+        with respx.mock() as router:
+            route = router.post(f"{_BASE_URL}/responses").mock(return_value=_CLOUDFLARE_BLOCK)
+
+            with pytest.raises(openai.PermissionDeniedError):
+                await llm.ainvoke("hi")
+
+        assert route.calls.last.request.headers["user-agent"] == _BROWSER_USER_AGENT
