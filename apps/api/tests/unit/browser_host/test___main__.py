@@ -1,10 +1,10 @@
 """Tests for the python -m app.browser_host entrypoint.
 
 The entrypoint's whole job is wiring: hand the browser-host FastAPI app to
-uvicorn on the configured bind/port with logging left to the app. Running the
-module under __main__ with uvicorn.run faked pins that the guard fires
-and that the exact app + address flow through -- a swapped host/port here would
-publish the internal-only host on the wrong interface.
+uvicorn on the configured bind/port with logging left to the app. main() is
+called through its package path so the exact app + address it passes are pinned
+-- a swapped host/port here would publish the internal-only host on the wrong
+interface -- and one run under __main__ pins that the script guard fires.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.browser_host import __main__ as entrypoint
 from app.browser_host.server import app
 from app.config.browser_host_settings import browser_host_settings
 
@@ -27,9 +28,9 @@ class TestBrowserHostEntrypoint:
     def test_runs_uvicorn_with_the_app_on_configured_bind_and_port(self) -> None:
         with (
             patch("uvicorn.run") as mock_run,
-            patch("shared.py.logging.configure_file_logging"),
+            patch.object(entrypoint, "configure_file_logging"),
         ):
-            runpy.run_module("app.browser_host", run_name="__main__")
+            entrypoint.main()
         mock_run.assert_called_once()
         (passed_app,), kwargs = mock_run.call_args
         assert passed_app is app
@@ -41,14 +42,30 @@ class TestBrowserHostEntrypoint:
         monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_BIND_ADDRESS", "10.0.0.7")
         with (
             patch("uvicorn.run") as mock_run,
+            patch.object(entrypoint, "configure_file_logging"),
+        ):
+            entrypoint.main()
+        assert mock_run.call_args.kwargs["host"] == "10.0.0.7"
+
+    def test_running_the_module_as_a_script_serves_the_host(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # python -m app.browser_host is how the image starts the host, so the
+        # ``__main__`` guard must hand off to main(). A fresh run, as the
+        # interpreter does it: not over the copy the other tests imported.
+        monkeypatch.delitem(sys.modules, "app.browser_host.__main__")
+        with (
+            patch("uvicorn.run") as mock_run,
             patch("shared.py.logging.configure_file_logging"),
         ):
             runpy.run_module("app.browser_host", run_name="__main__")
-        assert mock_run.call_args.kwargs["host"] == "10.0.0.7"
+        (passed_app,), _ = mock_run.call_args
+        assert passed_app is app
 
-    def test_does_not_run_uvicorn_on_plain_import(self) -> None:
+    def test_does_not_run_uvicorn_on_plain_import(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # The ``if __name__ == "__main__"`` guard must keep a normal import inert;
         # importing the module for its ``app`` should never boot a server.
+        monkeypatch.delitem(sys.modules, "app.browser_host.__main__")
         with patch("uvicorn.run") as mock_run:
             runpy.run_module("app.browser_host", run_name="not_main")
         mock_run.assert_not_called()
@@ -70,9 +87,9 @@ class TestBrowserHostEntrypoint:
         monkeypatch.delenv("GAIA_SERVICE_NAME", raising=False)
         with (
             patch("uvicorn.run"),
-            patch("shared.py.logging.configure_file_logging") as file_logging,
+            patch.object(entrypoint, "configure_file_logging") as file_logging,
         ):
-            runpy.run_module("app.browser_host", run_name="__main__")
+            entrypoint.main()
         assert os.environ["GAIA_SERVICE_NAME"] == "browser-host"
         file_logging.assert_called_once_with("./logs/browser-host")
 
