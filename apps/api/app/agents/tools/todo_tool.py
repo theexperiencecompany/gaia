@@ -25,8 +25,8 @@ from app.services.todos.todo_bulk_service import (
     bulk_move_todos as bulk_move_service,
 )
 from app.services.todos.todo_service import (
+    TodoService,
     create_project as create_project_service,
-    create_todo as create_todo_service,
     delete_project as delete_project_service,
     delete_todo as delete_todo_service,
     get_all_labels as get_all_labels_service,
@@ -226,7 +226,7 @@ async def create_todo(
             project_id=project_id,
         )
 
-        result = await create_todo_service(todo_data, user_id)
+        result = await TodoService.create_todo_with_workflow(todo_data, user_id)
         todo_dict = result.model_dump(mode="json")
 
         # Prepare response data

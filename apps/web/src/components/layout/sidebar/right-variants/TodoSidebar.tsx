@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
 import { Input, Textarea } from "@heroui/input";
 import { Delete02Icon } from "@icons";
+import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
 import type React from "react";
 import { useState } from "react";
@@ -182,7 +183,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
           )}
 
           {/* Canvas working memory — only for gaia-tracked todos */}
-          {todo.vfs_path && (
+          {isTrackedTodo(todo) && (
             <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
           )}
 
@@ -222,7 +223,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
           </div>
 
           {/* Tracked todos run on the agent from their canvas, never a workflow */}
-          {!todo.vfs_path && (
+          {!isTrackedTodo(todo) && (
             <WorkflowSection
               key={todo.id}
               hideBg={true}

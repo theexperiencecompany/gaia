@@ -440,6 +440,20 @@ class TestListQueryHelpers:
         assert params.due_date_end == before
 
 
+class TestCreateTodoEndpoint:
+    async def test_a_classic_todo_is_created_with_its_workflow(self, client: AsyncClient) -> None:
+        """POST /todos is the classic entry point: the one path that generates a todo's workflow."""
+        with patch(
+            f"{TODOS_ENDPOINT}.TodoService.create_todo_with_workflow",
+            new=AsyncMock(return_value=_todo_response()),
+        ) as create:
+            resp = await client.post("/api/v1/todos", json={"title": "Buy milk"})
+
+        assert resp.status_code == 201
+        create.assert_awaited_once()
+        assert create.await_args.args[0].title == "Buy milk"
+
+
 class TestGenerateTodoWorkflow:
     async def test_a_tracked_todo_is_refused_and_nothing_is_queued(
         self, client: AsyncClient

@@ -153,7 +153,7 @@ async def create_todo(
         },
     )
     try:
-        return await TodoService.create_todo(todo, user.user_id)
+        return await TodoService.create_todo_with_workflow(todo, user.user_id)
     except AppError:
         raise
     except ValueError as e:

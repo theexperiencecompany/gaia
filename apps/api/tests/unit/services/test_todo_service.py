@@ -307,25 +307,40 @@ class TestCreateTodo:
                 TodoModel(title="x", project_id=FAKE_PROJECT_ID), FAKE_USER_ID
             )
 
-    async def test_queues_workflow_and_indexes(
+    async def test_create_todo_indexes_and_never_generates_a_workflow(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
     ):
+        """create_todo is the path tracked todos take, so generation must not live in it."""
         created = _make_todo_doc(project_id=FAKE_INBOX_ID)
         mock_todo_repo.create = AsyncMock(return_value=created)
         await TodoService.create_todo(TodoModel(title="Buy milk"), FAKE_USER_ID)
-        # Queued as a fire-and-forget background task, so assert the call, not the await.
-        mock_workflow_queue.queue_todo_workflow_generation.assert_called_once()
+        mock_workflow_queue.queue_todo_workflow_generation.assert_not_called()
         mock_vector_utils["store_embedding"].assert_awaited_once_with(
             created.id, created, FAKE_USER_ID
         )
 
-    async def test_a_tracked_todo_gets_no_workflow(
+    async def test_create_todo_with_workflow_queues_generation(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
     ):
-        mock_todo_repo.create = AsyncMock(return_value=_make_todo_doc(project_id=FAKE_INBOX_ID))
-        await TodoService.create_todo(
-            TodoModel(title="Nightly check-in", labels=[GAIA_TRACKED_LABEL]), FAKE_USER_ID
+        created = _make_todo_doc(todo_id=FAKE_TODO_ID, project_id=FAKE_INBOX_ID)
+        mock_todo_repo.create = AsyncMock(return_value=created)
+        result = await TodoService.create_todo_with_workflow(
+            TodoModel(title="Buy milk", description="2%"), FAKE_USER_ID
         )
+        # Queued as a fire-and-forget background task, so assert the call, not the await.
+        mock_workflow_queue.queue_todo_workflow_generation.assert_called_once_with(
+            todo_id=FAKE_TODO_ID, user_id=FAKE_USER_ID, title="Buy milk", description="2%"
+        )
+        assert result.id == FAKE_TODO_ID
+
+    async def test_create_todo_with_workflow_refuses_a_tracked_todo(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
+    ):
+        with pytest.raises(TrackedTodoWorkflowError):
+            await TodoService.create_todo_with_workflow(
+                TodoModel(title="Nightly", labels=[GAIA_TRACKED_LABEL]), FAKE_USER_ID
+            )
+        mock_todo_repo.create.assert_not_awaited()
         mock_workflow_queue.queue_todo_workflow_generation.assert_not_called()
 
     async def test_a_tracked_todo_cannot_be_created_with_a_workflow(

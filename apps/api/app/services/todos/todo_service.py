@@ -228,30 +228,6 @@ class TodoService:
         )
         created = await todo_repository.create(document)
 
-        # Queue workflow generation as fire-and-forget (does not block response).
-        # Tracked todos run on the agent from their canvas, so they get none.
-        if GAIA_TRACKED_LABEL not in document.labels:
-            try:
-                # Deferred import: workflow/ARQ enqueue stack loads only when generation is actually queued
-                from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
-                    WorkflowQueueService,
-                )
-
-                spawn_logged_task(
-                    "todo_workflow_generation",
-                    WorkflowQueueService.queue_todo_workflow_generation(
-                        todo_id=created.id,
-                        user_id=user_id,
-                        title=todo.title,
-                        description=todo.description or "",
-                    ),
-                    user={"id": user_id},
-                    todo={"id": created.id},
-                )
-                log.info("todo.workflow_generation_queued", todo_id=created.id, title=todo.title)
-            except Exception as e:
-                log.warning("todo.workflow_queue_failed", title=todo.title, error=str(e))
-
         # Index for search
         try:
             await store_todo_embedding(created.id, created, user_id)
@@ -272,6 +248,36 @@ class TodoService:
             },
         )
         return TodoResponse.from_document(created)
+
+    @classmethod
+    async def create_todo_with_workflow(cls, todo: TodoModel, user_id: str) -> TodoResponse:
+        """Create a classic todo and queue its workflow generation; tracked todos never take this path."""
+        if GAIA_TRACKED_LABEL in todo.labels:
+            raise TrackedTodoWorkflowError()
+        created = await cls.create_todo(todo, user_id)
+
+        # Fire-and-forget: generation must not block or fail the create.
+        try:
+            # Deferred import: workflow/ARQ enqueue stack loads only when generation is actually queued
+            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
+                WorkflowQueueService,
+            )
+
+            spawn_logged_task(
+                "todo_workflow_generation",
+                WorkflowQueueService.queue_todo_workflow_generation(
+                    todo_id=created.id,
+                    user_id=user_id,
+                    title=todo.title,
+                    description=todo.description or "",
+                ),
+                user={"id": user_id},
+                todo={"id": created.id},
+            )
+            log.info("todo.workflow_generation_queued", todo_id=created.id, title=todo.title)
+        except Exception as e:
+            log.warning("todo.workflow_queue_failed", title=todo.title, error=str(e))
+        return created
 
     @classmethod
     async def get_todo(cls, todo_id: str, user_id: str) -> TodoResponse:
@@ -672,11 +678,6 @@ class ProjectService:
 
 
 # Compatibility functions for old API
-async def create_todo(todo: TodoModel, user_id: str) -> TodoResponse:
-    """Compatibility wrapper for old create_todo function."""
-    return await TodoService.create_todo(todo, user_id)
-
-
 async def get_todo(todo_id: str, user_id: str) -> TodoResponse:
     """Compatibility wrapper for old get_todo function."""
     return await TodoService.get_todo(todo_id, user_id)

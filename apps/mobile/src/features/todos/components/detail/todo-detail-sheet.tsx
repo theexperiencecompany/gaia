@@ -1,3 +1,4 @@
+import { isTrackedTodo } from "@gaia/shared/todos";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { View } from "react-native";
@@ -202,7 +203,8 @@ export const TodoDetailSheet = forwardRef<
                     onDelete={handleDeleteSubtask}
                   />
                   {/* Tracked todos run on the agent from their canvas, never a workflow */}
-                  {!todo.id.startsWith("optimistic-") && !todo.vfs_path ? (
+                  {!todo.id.startsWith("optimistic-") &&
+                  !isTrackedTodo(todo) ? (
                     <TodoWorkflowSection todoId={todo.id} />
                   ) : null}
                 </BottomSheetScrollView>

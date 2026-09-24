@@ -11,6 +11,7 @@ import {
   Folder02Icon,
   Tag01Icon,
 } from "@icons";
+import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
 import { Priority, type Project, type Todo } from "@/types/features/todoTypes";
 import { formatDate } from "@/utils/date/dateUtils";
@@ -35,7 +36,7 @@ const todoHasMeta = (todo: Todo): boolean =>
   !!todo.due_date ||
   !!todo.scheduled_at ||
   !!todo.expires_at ||
-  !!todo.vfs_path ||
+  isTrackedTodo(todo) ||
   todo.labels.length > 0;
 
 const dueChipColor = (isToday: boolean, isOverdue: boolean) => {
@@ -121,7 +122,7 @@ export function TodoItemMeta({
         </Chip>
       )}
 
-      {todo.vfs_path && (
+      {isTrackedTodo(todo) && (
         <Chip
           className="flex items-center text-primary px-1"
           size="sm"

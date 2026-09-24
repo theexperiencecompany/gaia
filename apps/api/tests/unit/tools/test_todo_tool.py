@@ -112,7 +112,7 @@ class TestCreateTodo:
     """Tests for the create_todo tool."""
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.create_todo_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path(
         self,
@@ -153,7 +153,7 @@ class TestCreateTodo:
         assert result["todo"] is None
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.create_todo_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_service_failure_returns_error(
         self,
@@ -174,7 +174,7 @@ class TestCreateTodo:
         assert result["todo"] is None
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.create_todo_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_with_all_optional_params(
         self,
@@ -206,7 +206,7 @@ class TestCreateTodo:
         assert result["todo"]["priority"] == Priority.HIGH
 
     @patch(f"{MODULE}.get_stream_writer")
-    @patch(f"{MODULE}.create_todo_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_workflow_included_in_response(
         self,
@@ -1393,7 +1393,7 @@ class TestPriorityIsAnEnumInTheToolSchema:
 
         with (
             patch(f"{MODULE}.get_stream_writer"),
-            patch(f"{MODULE}.create_todo_service", new=AsyncMock()) as svc,
+            patch(f"{MODULE}.TodoService.create_todo_with_workflow", new=AsyncMock()) as svc,
             patch(f"{MODULE}.get_user_id_from_config", return_value="u1"),
         ):
             with pytest.raises(ValidationError):
