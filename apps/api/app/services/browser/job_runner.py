@@ -14,6 +14,7 @@ from time import perf_counter
 from urllib.parse import urlsplit
 import uuid
 
+from app.config.feature_flags import FeatureFlag
 from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS,
@@ -80,6 +81,7 @@ from app.services.browser.session import (
 )
 from app.services.browser.tasks import BrowserTaskRecord, record_browser_task
 from app.services.chat.chunks import normalize_custom_event
+from app.services.feature_flags import is_enabled
 from app.utils.agent_utils import (
     SubagentStartDetails,
     format_browser_action_entry,
@@ -568,12 +570,17 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
         _build_bot_delivery(request),
     )
 
+    engine = (
+        BrowserEngine.OBSCURA
+        if await is_enabled(FeatureFlag.BROWSER_OBSCURA, request.user_id)
+        else BrowserEngine.CHROMIUM
+    )
     try:
-        host_url, fallback_host = hosts_for(request.engine)
+        host_url, fallback_host = hosts_for(engine)
     except BrowserUnavailableError as exc:
         log.fail(BrowserRunFailure.HOST_UNAVAILABLE)
         return await _terminal_failure(emitter, str(exc))
-    log.set_ns("browser", engine=request.engine.value)
+    log.set_ns("browser", engine=engine.value)
     secrets = RunSecrets(
         request.secrets,
         sites=[

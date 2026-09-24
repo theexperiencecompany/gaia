@@ -9,7 +9,6 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-from app.constants.browser import BrowserEngine
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import BrowserResultSnapshot
 
@@ -28,8 +27,6 @@ class BrowserJobRequest(BaseModel):
     conversation_source: ConversationSource | None = None
     #: Credentials the user gave for the task, by the name the task's <secret>name</secret> uses.
     secrets: dict[str, str] = Field(default_factory=dict)
-    #: The engine the run opens on; Obscura runs fall back to Chrome.
-    engine: BrowserEngine = BrowserEngine.CHROMIUM
 
 
 class BrowserJobStatus(StrEnum):
