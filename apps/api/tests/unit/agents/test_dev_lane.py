@@ -5,6 +5,7 @@ LangChain's Responses parsing and the app's structured-reply parse all run for
 real; only the server is simulated.
 """
 
+import asyncio
 from collections.abc import Iterator
 import json
 from typing import Any
@@ -34,8 +35,11 @@ from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
     DEV_CUSTOM_MODEL_OPTION,
+    DEV_LLM_BROWSER_HEADERS,
     DEV_LLM_MAX_OUTPUT_TOKENS,
     HELPER_MAX_OUTPUT_TOKENS,
+    LLM_INVOKE_TIMEOUT_SECONDS,
+    LLM_RETRY_MAX_ATTEMPTS,
     DevLLMApi,
     ModelUse,
     ReasoningLevel,
@@ -422,3 +426,84 @@ def _refuse(_: LanguageModelInput) -> AIMessage:
 
 def _answer(_: LanguageModelInput) -> AIMessage:
     return AIMessage(content="fallback answered")
+
+
+@pytest.fixture
+def no_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Skip with_llm_retry's real backoff sleeps; the attempts themselves still run."""
+    real_sleep = asyncio.sleep
+
+    async def _no_wait(_seconds: float, result: object = None) -> object:
+        return await real_sleep(0, result)
+
+    monkeypatch.setattr(asyncio, "sleep", _no_wait)
+
+
+@pytest.mark.usefixtures("forced", "no_backoff")
+class TestAFailedAttemptOnTheEndpoint:
+    """gpt-6-luna stalls now and then (measured: 4 of 48 raw-SDK calls hung past 40 s).
+
+    The attempt must end and be retried, not sit until the 300 s call budget runs out.
+    """
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            httpx.ReadTimeout("stalled"),
+            httpx.ConnectError("refused"),
+            httpx.Response(429, json={"error": {"message": "slow down"}}),
+            httpx.Response(503, json={"error": {"message": "overloaded"}}),
+        ],
+        ids=["stalled", "refused", "rate-limited", "overloaded"],
+    )
+    async def test_is_retried_and_the_next_attempt_answers(
+        self, failure: httpx.Response | Exception
+    ) -> None:
+        with respx.mock() as router:
+            route = router.post(f"{_BASE_URL}/responses").mock(
+                side_effect=[failure, httpx.Response(200, json=_responses_reply('{"text": "hi"}'))]
+            )
+
+            result = await ainvoke_structured(_Answer, "say hi", label="dev_lane_test")
+
+        assert result == _Answer(text="hi")
+        assert route.call_count == 2
+
+    async def test_a_request_the_endpoint_rejects_is_not_retried(self) -> None:
+        """A 400 fails the same way every time; retrying it only burns the budget."""
+        with respx.mock() as router:
+            route = router.post(f"{_BASE_URL}/responses").mock(
+                return_value=httpx.Response(400, json={"error": {"message": "bad param"}})
+            )
+
+            with pytest.raises(Exception, match="bad param"):
+                await ainvoke_structured(_Answer, "say hi", label="dev_lane_test")
+
+        assert route.call_count == 1
+
+    @pytest.mark.regression
+    def test_every_attempt_can_time_out_inside_the_call_budget(self) -> None:
+        """With no read timeout the SDK waits 600 s, so one stalled attempt ate the whole 300 s budget."""
+        llm = resolve_model()
+
+        assert isinstance(llm, ChatOpenAI)
+        assert isinstance(llm.request_timeout, httpx.Timeout)
+        read = llm.request_timeout.read
+        assert read is not None
+        assert read * LLM_RETRY_MAX_ATTEMPTS < LLM_INVOKE_TIMEOUT_SECONDS
+
+
+@pytest.mark.regression
+@pytest.mark.usefixtures("forced")
+async def test_the_browser_user_agent_reaches_the_wire() -> None:
+    """Set on the httpx client it was overridden by the SDK's own per-request "AsyncOpenAI/Python" agent."""
+    with respx.mock() as router:
+        route = router.post(f"{_BASE_URL}/responses").mock(
+            return_value=httpx.Response(200, json=_responses_reply('{"text": "hi"}'))
+        )
+
+        await ainvoke_structured(_Answer, "say hi", label="dev_lane_test")
+
+    sent_agent = route.calls.last.request.headers["User-Agent"]
+    assert sent_agent == DEV_LLM_BROWSER_HEADERS["User-Agent"]

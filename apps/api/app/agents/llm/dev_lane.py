@@ -18,6 +18,8 @@ from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     DEV_LLM_BROWSER_HEADERS,
+    DEV_LLM_CONNECT_TIMEOUT_SECONDS,
+    DEV_LLM_READ_TIMEOUT_SECONDS,
     DEV_MODEL_OPTIONS,
     OPENAI_REASONING_EFFORT,
     DevLLMApi,
@@ -91,7 +93,7 @@ def build_custom_chat_model(
 
     ChatOpenAI, not ChatOpenRouter: the openrouter SDK requires a
     system_fingerprint that OpenAI-compatible lanes omit. Cached so each shape
-    shares one pair of httpx clients instead of opening new ones per call.
+    keeps one connection pool instead of opening a new one per call.
     """
     endpoint = custom_endpoint()
     responses = endpoint.api is DevLLMApi.RESPONSES
@@ -108,9 +110,15 @@ def build_custom_chat_model(
         max_retries=0,
         api_key=SecretStr(endpoint.api_key),
         base_url=endpoint.base_url,
-        # Discounted lanes sit behind Cloudflare, which 403s programmatic user agents.
-        http_client=httpx.Client(headers=DEV_LLM_BROWSER_HEADERS),
-        http_async_client=httpx.AsyncClient(headers=DEV_LLM_BROWSER_HEADERS),
+        # Bounded per request so a stalled reply fails fast and with_llm_retry
+        # retries it; the SDK default (600 s) outlasts the whole call budget.
+        timeout=httpx.Timeout(
+            DEV_LLM_READ_TIMEOUT_SECONDS, connect=DEV_LLM_CONNECT_TIMEOUT_SECONDS
+        ),
+        # Discounted lanes sit behind Cloudflare, which 403s programmatic user
+        # agents. A default header, not the httpx client's: the SDK sets its own
+        # User-Agent per request, which overrides a client-level one.
+        default_headers=DEV_LLM_BROWSER_HEADERS,
         use_responses_api=responses,
         reasoning={"effort": effort} if responses and effort else None,
         reasoning_effort=None if responses else effort,
