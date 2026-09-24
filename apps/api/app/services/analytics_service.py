@@ -262,10 +262,12 @@ class AnalyticsEvents(StrEnum):
 
     USAGE_QUERIED = "usage:queried"
 
-    # Fallback exposure for unevaluated flags (complement of $feature_flag_called).
-    # Props: {flag, enabled, fallback_reason}; deduplicated per user/flag/day to
-    # tell served control apart from PostHog down.
+    # Exposure PostHog never saw (complement of $feature_flag_called): a fallback
+    # or a user's own choice. Props: {flag, enabled, fallback_reason};
+    # deduplicated per user/flag/day to tell served control apart from PostHog down.
     FEATURE_FLAG_EVALUATED = "feature_flag:evaluated"
+    # A user switched a user-facing flag in Settings. Props: {flag, enabled}.
+    FEATURE_TOGGLED = "feature:toggled"
     # Background spend only; agent-graph calls are covered by $ai_generation.
     AI_LLM_CALL_COMPLETED = "ai:llm_call_completed"
 

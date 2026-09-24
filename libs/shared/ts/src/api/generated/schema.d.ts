@@ -1203,6 +1203,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/features": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Features
+         * @description The flags the caller may toggle, each with the value in effect for them.
+         */
+        get: operations["features_list_features"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/features/{flag}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Feature
+         * @description Turn one user-facing flag on or off for the caller; unknown and internal flags are 404.
+         */
+        patch: operations["features_update_feature"];
+        trace?: never;
+    };
     "/api/v1/fetch-url-metadata": {
         parameters: {
             query?: never;
@@ -8233,6 +8273,12 @@ export interface components {
             used: number;
         };
         /**
+         * FeatureStage
+         * @description How finished a user-facing feature is, shown next to its toggle.
+         * @enum {string}
+         */
+        FeatureStage: "experimental";
+        /**
          * FeatureUpgrade
          * @description The Pro tier's limits for a feature, so a free user sees the delta.
          */
@@ -14332,6 +14378,14 @@ export interface components {
              */
             timezone: string;
         };
+        /** UpdateUserFeatureFlagRequest */
+        UpdateUserFeatureFlagRequest: {
+            /**
+             * Enabled
+             * @description The caller's choice; it overrides the rollout for them
+             */
+            enabled: boolean;
+        };
         /**
          * UpdateVoiceRequest
          * @description Request body for choosing a voice.
@@ -14442,6 +14496,42 @@ export interface components {
             primary_feature: string;
             /** User Id */
             user_id: string;
+        };
+        /** UserFeatureFlagListResponse */
+        UserFeatureFlagListResponse: {
+            /**
+             * Features
+             * @description Every user-facing flag, in registry order
+             */
+            features: components["schemas"]["UserFeatureFlagResponse"][];
+        };
+        /**
+         * UserFeatureFlagResponse
+         * @description One flag the user may toggle, with the value currently in effect for them.
+         */
+        UserFeatureFlagResponse: {
+            /**
+             * Description
+             * @description One or two sentences on what turning it on changes
+             */
+            description: string;
+            /**
+             * Enabled
+             * @description In effect for the caller: their own choice, else the rollout, else the default
+             */
+            enabled: boolean;
+            /**
+             * Key
+             * @description Flag key, the {flag} path parameter of the PATCH route
+             */
+            key: string;
+            /**
+             * Label
+             * @description Short name shown next to the toggle
+             */
+            label: string;
+            /** @description How finished the feature is */
+            stage: components["schemas"]["FeatureStage"];
         };
         /**
          * UserSubscriptionStatus
@@ -15364,6 +15454,7 @@ export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
 export type EventDeleteResponse = components['schemas']['EventDeleteResponse'];
 export type EventUpdateRequest = components['schemas']['EventUpdateRequest'];
 export type FeaturePeriodUsage = components['schemas']['FeaturePeriodUsage'];
+export type FeatureStage = components['schemas']['FeatureStage'];
 export type FeatureUpgrade = components['schemas']['FeatureUpgrade'];
 export type FeatureUsageSummary = components['schemas']['FeatureUsageSummary'];
 export type FileData = components['schemas']['FileData'];
@@ -15687,6 +15778,7 @@ export type UpdateMessagesResponse = components['schemas']['UpdateMessagesRespon
 export type UpdateProjectRequest = components['schemas']['UpdateProjectRequest'];
 export type UpdateReminderRequest = components['schemas']['UpdateReminderRequest'];
 export type UpdateTimezoneResponse = components['schemas']['UpdateTimezoneResponse'];
+export type UpdateUserFeatureFlagRequest = components['schemas']['UpdateUserFeatureFlagRequest'];
 export type UpdateVoiceRequest = components['schemas']['UpdateVoiceRequest'];
 export type UpdateWorkflowRequest = components['schemas']['UpdateWorkflowRequest'];
 export type URLRequest = components['schemas']['URLRequest'];
@@ -15695,6 +15787,8 @@ export type UsageActivityResponse = components['schemas']['UsageActivityResponse
 export type UsageBudget = components['schemas']['UsageBudget'];
 export type UsageHistoryEntry = components['schemas']['UsageHistoryEntry'];
 export type UsageSummary = components['schemas']['UsageSummary'];
+export type UserFeatureFlagListResponse = components['schemas']['UserFeatureFlagListResponse'];
+export type UserFeatureFlagResponse = components['schemas']['UserFeatureFlagResponse'];
 export type UserSubscriptionStatus = components['schemas']['UserSubscriptionStatus'];
 export type UserUpdateResponse = components['schemas']['UserUpdateResponse'];
 export type ValidationIssue = components['schemas']['ValidationIssue'];
@@ -19145,6 +19239,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceTokenResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    features_list_features: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserFeatureFlagListResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    features_update_feature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                flag: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserFeatureFlagRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserFeatureFlagResponse"];
                 };
             };
             /** @description Unprocessable Entity */

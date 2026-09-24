@@ -1,14 +1,14 @@
 """Unit tests for app/services/feature_flags.py."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag, FeatureStage
 from app.config.settings import settings as app_settings
+from app.models.user_models import UserDocument
 from app.services.analytics_service import AnalyticsEvents
 from app.services.feature_flags import (
-    FEATURE_FLAG_DESCRIPTIONS,
-    FeatureFlag,
     _coerce_result,
     _get_posthog_client,
     is_code_mode_enabled,
@@ -249,8 +249,9 @@ class TestHelpersWithoutUser:
 
 
 class TestRegistry:
-    def test_every_flag_has_a_description(self) -> None:
-        assert set(FEATURE_FLAG_DESCRIPTIONS) == set(FeatureFlag)
+    def test_every_flag_is_declared_with_a_description(self) -> None:
+        assert set(FEATURE_FLAGS) == set(FeatureFlag)
+        assert all(spec.description for spec in FEATURE_FLAGS.values())
 
     def test_flag_keys_unique(self) -> None:
         assert len({f.value for f in FeatureFlag}) == len(list(FeatureFlag))
@@ -307,10 +308,11 @@ FLAG_KILL_SWITCHES = {
 
 
 class TestEveryFlagFailsOpenToItsOwnSetting:
-    def test_every_flag_has_a_kill_switch(self) -> None:
-        assert set(FLAG_KILL_SWITCHES) == set(FeatureFlag)
+    def test_every_internal_flag_has_a_kill_switch(self) -> None:
+        internal = {flag for flag, spec in FEATURE_FLAGS.items() if spec.user_toggle is None}
+        assert set(FLAG_KILL_SWITCHES) == internal
 
-    @pytest.mark.parametrize("flag", list(FeatureFlag), ids=lambda flag: flag.value)
+    @pytest.mark.parametrize("flag", list(FLAG_KILL_SWITCHES), ids=lambda flag: flag.value)
     @pytest.mark.parametrize("env_value", [True, False])
     async def test_an_unevaluated_flag_serves_its_env_default(
         self,
@@ -421,3 +423,117 @@ class TestLogContract:
             mock_dt.now.return_value = real_datetime.now(UTC)
             await is_enabled(FeatureFlag.COMMS_OPENUI, "u1")
             mock_dt.now.assert_called_once_with(UTC)
+
+
+USER_ID = "64abc123def4567890abcdef"
+
+
+def _user_with_choices(choices: dict[str, bool] | None) -> UserDocument:
+    return UserDocument(id=USER_ID, feature_flags=choices)
+
+
+@pytest.fixture
+def stored_user() -> AsyncMock:
+    with patch("app.services.feature_flags.user_repository.get", new_callable=AsyncMock) as get:
+        yield get
+
+
+class TestUserFlagRegistry:
+    def test_obscura_is_the_one_user_facing_flag_and_off_by_default(self) -> None:
+        user_facing = [flag for flag, spec in FEATURE_FLAGS.items() if spec.user_toggle]
+        assert user_facing == [FeatureFlag.BROWSER_OBSCURA]
+        spec = FEATURE_FLAGS[FeatureFlag.BROWSER_OBSCURA]
+        assert spec.default() is False
+        assert spec.user_toggle is not None
+        assert spec.user_toggle.label == "Obscura browser engine"
+        assert spec.user_toggle.stage is FeatureStage.EXPERIMENTAL
+
+    def test_every_user_facing_flag_carries_settings_copy(self) -> None:
+        for spec in FEATURE_FLAGS.values():
+            if spec.user_toggle is not None:
+                assert spec.user_toggle.label
+                assert spec.user_toggle.description
+
+
+class TestEvaluationOrder:
+    """Stored choice beats PostHog beats the default, and only for user-facing flags."""
+
+    @pytest.mark.parametrize("choice", [True, False])
+    async def test_stored_choice_beats_posthog(
+        self,
+        choice: bool,
+        stored_user: AsyncMock,
+        mock_client: MagicMock,
+        evaluated: MagicMock,
+    ) -> None:
+        stored_user.return_value = _user_with_choices({"BROWSER_OBSCURA": choice})
+        mock_client.get_feature_flag.return_value = not choice
+
+        assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is choice
+        mock_client.get_feature_flag.assert_not_called()
+        stored_user.assert_awaited_once_with(USER_ID)
+
+    async def test_the_choice_counts_in_the_exposure_denominator(
+        self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        stored_user.return_value = _user_with_choices({"BROWSER_OBSCURA": True})
+
+        await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID)
+
+        assert evaluated.call_args.args[0] == USER_ID
+        assert evaluated.call_args.args[2] == {
+            "flag": "BROWSER_OBSCURA",
+            "enabled": True,
+            "fallback_reason": "user_choice",
+        }
+
+    @pytest.mark.parametrize("choices", [None, {}], ids=["never_chose", "chose_other_flags"])
+    async def test_without_a_choice_posthog_decides(
+        self,
+        choices: dict[str, bool] | None,
+        stored_user: AsyncMock,
+        mock_client: MagicMock,
+        evaluated: MagicMock,
+    ) -> None:
+        stored_user.return_value = _user_with_choices(choices)
+        mock_client.get_feature_flag.return_value = True
+
+        assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is True
+        mock_client.get_feature_flag.assert_called_once_with("BROWSER_OBSCURA", USER_ID)
+
+    async def test_without_a_choice_or_rollout_the_default_is_off(
+        self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        stored_user.return_value = _user_with_choices(None)
+        mock_client.get_feature_flag.return_value = None
+
+        assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is False
+
+    async def test_a_missing_user_falls_through_to_posthog(
+        self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        stored_user.return_value = None
+        mock_client.get_feature_flag.return_value = True
+
+        assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is True
+
+    async def test_an_internal_flag_ignores_a_stored_choice(
+        self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        stored_user.return_value = _user_with_choices({"CODE_MODE": True})
+        mock_client.get_feature_flag.return_value = False
+
+        assert await is_enabled(FeatureFlag.CODE_MODE, USER_ID) is False
+        stored_user.assert_not_awaited()
+
+    async def test_no_user_reads_no_choice(
+        self, stored_user: AsyncMock, mock_client: MagicMock
+    ) -> None:
+        assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, None) is False
+        stored_user.assert_not_awaited()
+
+
+class TestRetiredChoices:
+    def test_a_stored_key_for_a_removed_flag_does_not_fail_the_user_read(self) -> None:
+        user = _user_with_choices({"BROWSER_OBSCURA": True, "SOME_RETIRED_FLAG": True})
+        assert user.feature_flags == {FeatureFlag.BROWSER_OBSCURA: True}
