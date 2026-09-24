@@ -112,3 +112,17 @@ class TestStalledLoads:
         await _settle()
         assert client.stopped == []
         assert guard.take() == []
+
+    async def test_a_retry_after_a_stall_gets_a_full_window_of_its_own(
+        self, watched: tuple[StalledLoads, _FakeClient], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        guard, client = watched
+        _start(client, "S1")
+        await _settle()
+        guard.take()
+        monkeypatch.setattr(stalled_loads, "BROWSER_LOAD_STALL_SECONDS", 3600)
+        _start(client, "S1")
+        await _settle()
+        assert client.stopped == ["S1"]
+        assert guard.take() == []
+        guard.close()
