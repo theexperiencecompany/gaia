@@ -15,6 +15,7 @@ from bson import ObjectId
 from fastapi import HTTPException
 import pytest
 
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.todo_models import (
     BulkMoveRequest,
     BulkUpdateRequest,
@@ -312,6 +313,15 @@ class TestCreateTodo:
         mock_vector_utils["store_embedding"].assert_awaited_once_with(
             created.id, created, FAKE_USER_ID
         )
+
+    async def test_a_tracked_todo_gets_no_workflow(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
+    ):
+        mock_todo_repo.create = AsyncMock(return_value=_make_todo_doc(project_id=FAKE_INBOX_ID))
+        await TodoService.create_todo(
+            TodoModel(title="Nightly check-in", labels=[GAIA_TRACKED_LABEL]), FAKE_USER_ID
+        )
+        mock_workflow_queue.queue_todo_workflow_generation.assert_not_called()
 
     async def test_captures_todo_created(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue

@@ -201,7 +201,8 @@ export const TodoDetailSheet = forwardRef<
                     onToggle={handleToggleSubtask}
                     onDelete={handleDeleteSubtask}
                   />
-                  {!todo.id.startsWith("optimistic-") ? (
+                  {/* Tracked todos run on the agent from their canvas, never a workflow */}
+                  {!todo.id.startsWith("optimistic-") && !todo.vfs_path ? (
                     <TodoWorkflowSection todoId={todo.id} />
                   ) : null}
                 </BottomSheetScrollView>

@@ -10,6 +10,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone_from_preferences,
 )
 from app.constants.log_tags import LogTag
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
@@ -373,6 +374,11 @@ async def generate_workflow(
     )
     try:
         todo: TodoResponse = await TodoService.get_todo(todo_id, user_id)
+        if GAIA_TRACKED_LABEL in todo.labels:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Tracked todos run on the agent from their canvas and never get a workflow",
+            )
 
         # Check if workflow already exists for this todo
         if todo.workflow_id:

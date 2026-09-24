@@ -57,7 +57,6 @@ from app.workers.tasks.tracked_todo_tasks import (
     _execution_context,
     _extract_learnings,
     _mark_todo_failed,
-    _run_execution,
     execute_tracked_todo,
     resume_tracked_todo,
     safety_net_check_orphaned_todos,
@@ -467,18 +466,18 @@ class TestTriggeredExecutionGating:
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=_doc())
         repo.update = AsyncMock()
-        run_execution = AsyncMock()
+        via_agent = AsyncMock()
         budget = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}._run_execution", run_execution),
+            patch(f"{MODULE}._execute_via_agent", via_agent),
             patch(f"{MODULE}.enforce_daily_cost_budget", budget),
             patch(
                 f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
             ),
         ):
             await _execute_todo_with_retry("todo-1", _pool(), origin)
-        return budget, run_execution
+        return budget, via_agent
 
     async def test_a_triggered_run_takes_the_cost_wall_first(self):
         # A chatty subscription must not be able to spend a user's whole day of
@@ -498,16 +497,16 @@ class TestTriggeredExecutionGating:
 
     async def test_the_origin_reaches_the_execution_dispatch(self):
         origin = self._origin()
-        _, run_execution = await self._run(origin)
+        _, via_agent = await self._run(origin)
 
         # The dispatch receives the fetched doc, the owning user, the loaded user
         # record, and the origin — each positionally/by-name where the callee
         # expects it. A swapped or dropped argument runs the wrong thing.
-        args = run_execution.await_args.args
+        args = via_agent.await_args.args
         assert args[0].id == "todo-1"
         assert args[1] == "user-1"
-        assert run_execution.await_args.kwargs["user_data"].user_id == "user-1"
-        assert run_execution.await_args.kwargs["origin"] is origin
+        assert via_agent.await_args.kwargs["user_data"].user_id == "user-1"
+        assert via_agent.await_args.kwargs["origin"] is origin
 
     async def test_a_triggered_retry_keeps_its_origin(self):
         """Without this a retry looks like an ordinary scheduled run — attribution and payload are lost."""
@@ -518,7 +517,7 @@ class TestTriggeredExecutionGating:
         repo.update = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}._run_execution", AsyncMock(side_effect=RuntimeError("boom"))),
+            patch(f"{MODULE}._execute_via_agent", AsyncMock(side_effect=RuntimeError("boom"))),
             patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
             patch(f"{MODULE}._mark_todo_failed", AsyncMock()),
             patch(
@@ -545,48 +544,48 @@ class TestExecuteTodoWithRetryEarlyExits:
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
         repo.update = AsyncMock()
-        run_execution = AsyncMock()
+        via_agent = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}._run_execution", run_execution),
+            patch(f"{MODULE}._execute_via_agent", via_agent),
             patch(
                 f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
             ),
         ):
             result = await _execute_todo_with_retry("todo-1", pool)
-        return result, repo, run_execution
+        return result, repo, via_agent
 
     async def test_missing_document(self):
-        result, _repo, run_execution = await self._run(None)
+        result, _repo, via_agent = await self._run(None)
         assert result == "not_found:todo-1"
-        run_execution.assert_not_awaited()
+        via_agent.assert_not_awaited()
 
     async def test_already_completed(self):
-        result, _repo, run_execution = await self._run(_doc(completed=True))
+        result, _repo, via_agent = await self._run(_doc(completed=True))
         assert result == "completed:todo-1"
-        run_execution.assert_not_awaited()
+        via_agent.assert_not_awaited()
 
     async def test_expired_todo_is_skipped(self):
         past = datetime.now(UTC) - timedelta(seconds=1)
-        result, _repo, run_execution = await self._run(_doc(expires_at=past))
+        result, _repo, via_agent = await self._run(_doc(expires_at=past))
         assert result == "expired:todo-1"
-        run_execution.assert_not_awaited()
+        via_agent.assert_not_awaited()
 
     async def test_expiry_in_the_future_still_executes(self):
         future = datetime.now(UTC) + timedelta(days=1)
-        result, _repo, run_execution = await self._run(_doc(expires_at=future))
+        result, _repo, via_agent = await self._run(_doc(expires_at=future))
         assert result == "success:todo-1"
-        run_execution.assert_awaited_once()
+        via_agent.assert_awaited_once()
 
     async def test_todo_already_marked_failed_is_skipped(self):
-        result, _repo, run_execution = await self._run(_doc(labels=["gaia-tracked", FAILED_LABEL]))
+        result, _repo, via_agent = await self._run(_doc(labels=["gaia-tracked", FAILED_LABEL]))
         assert result == "skipped:todo-1 (marked failed)"
-        run_execution.assert_not_awaited()
+        via_agent.assert_not_awaited()
 
     async def test_missing_user_id_is_an_error_not_an_execution(self):
-        result, repo, run_execution = await self._run(_doc(user_id=""))
+        result, repo, via_agent = await self._run(_doc(user_id=""))
         assert result == "error:todo-1 (missing user_id)"
-        run_execution.assert_not_awaited()
+        via_agent.assert_not_awaited()
         repo.update.assert_not_awaited()
 
 
@@ -607,7 +606,7 @@ class TestExecuteTodoWithRetrySuccess:
         repo.update = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}._run_execution", AsyncMock()),
+            patch(f"{MODULE}._execute_via_agent", AsyncMock()),
             patch(
                 f"{MODULE}.load_user_context",
                 AsyncMock(side_effect=_user_context(timezone=tz)),
@@ -675,7 +674,7 @@ class TestExecuteTodoWithRetryFailure:
         mark_failed = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}._run_execution", AsyncMock(side_effect=RuntimeError("boom"))),
+            patch(f"{MODULE}._execute_via_agent", AsyncMock(side_effect=RuntimeError("boom"))),
             patch(
                 f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
             ),
@@ -733,95 +732,39 @@ class TestExecuteTodoWithRetryFailure:
 
 
 # ---------------------------------------------------------------------------
-# _run_execution — workflow vs agent dispatch
+# A tracked todo's run is always the agent's, never a workflow's
 # ---------------------------------------------------------------------------
 
 
-class TestRunExecution:
-    async def test_workflow_todo_queues_the_workflow_and_skips_the_agent(self):
-        queue = AsyncMock(return_value=True)
-        via_agent = AsyncMock()
-        with (
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.queue_workflow_execution",
-                queue,
-            ),
-            patch(f"{MODULE}._execute_via_agent", via_agent),
-        ):
-            await _run_execution(_doc(workflow_id="wf-9"), "user-1", user_data={})
+class TestATrackedTodoAlwaysRunsTheAgent:
+    @pytest.fixture(autouse=True)
+    def _route_enqueue(self, route_enqueue_via_pool):
+        return
 
-        via_agent.assert_not_awaited()
-        queue.assert_awaited_once_with(
-            "wf-9",
-            "user-1",
-            {
-                "trigger_type": "scheduled_todo",
-                "todo_id": "todo-1",
-                "workflow_notify_on_completion": True,
-            },
-        )
-
-    @pytest.mark.parametrize("notify_on_run", [True, False])
-    async def test_a_workflow_backed_todo_runs_under_the_todos_own_opt_out(self, notify_on_run):
-        """A generated workflow defaults to notifying, which would message a silent todo's owner."""
-        queue = AsyncMock(return_value=True)
-        with (
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.queue_workflow_execution",
-                queue,
-            ),
-            patch(f"{MODULE}._execute_via_agent", AsyncMock()),
-        ):
-            await _run_execution(
-                _doc(workflow_id="wf-9", notify_on_run=notify_on_run), "user-1", user_data={}
-            )
-
-        assert queue.await_args.args[2]["workflow_notify_on_completion"] is notify_on_run
-
-    async def test_failed_workflow_queue_raises_so_the_retry_ladder_engages(self):
-        with (
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService.queue_workflow_execution",
-                AsyncMock(return_value=False),
-            ),
-            pytest.raises(RuntimeError, match="Failed to queue workflow wf-9 for todo todo-1"),
-        ):
-            await _run_execution(_doc(workflow_id="wf-9"), "user-1", user_data={})
-
-    async def test_todo_without_a_workflow_runs_the_agent(self):
+    async def test_a_linked_workflow_is_ignored_and_the_agent_runs_the_todo(self):
+        """Regression: a replayed playbook froze a nightly check-in into three fixed calls."""
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc(workflow_id="wf-9"))
+        repo.update = AsyncMock()
         via_agent = AsyncMock(return_value="done")
-        doc = _doc()
-        origin = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
-        with patch(f"{MODULE}._execute_via_agent", via_agent):
-            await _run_execution(
-                doc, "user-1", user_data=AuthenticatedUser(user_id="user-1"), origin=origin
-            )
-
-        via_agent.assert_awaited_once()
-        # The doc, its owner, the loaded user record, and the origin all reach the
-        # agent path intact — a dropped or swapped argument runs the wrong todo or
-        # loses the trigger attribution.
-        assert via_agent.await_args.args[0] is doc
-        assert via_agent.await_args.args[1] == "user-1"
-        assert via_agent.await_args.kwargs["user_data"] == AuthenticatedUser(user_id="user-1")
-        assert via_agent.await_args.kwargs["origin"] is origin
-
-    async def test_a_triggered_workflow_todo_stamps_the_trigger_origin_on_the_context(self):
-        """The workflow branch must build its context from the origin, or the run looks like a scheduled one."""
         queue = AsyncMock(return_value=True)
-        origin = TriggerOrigin(
-            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t-1"}
-        )
-        with patch(
-            "app.services.workflow.queue_service.WorkflowQueueService.queue_workflow_execution",
-            queue,
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_via_agent", via_agent),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_workflow_execution",
+                queue,
+            ),
+            patch(
+                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
+            ),
         ):
-            await _run_execution(_doc(workflow_id="wf-9"), "user-1", user_data={}, origin=origin)
+            await _execute_todo_with_retry("todo-1", _pool())
 
-        context = queue.await_args.args[2]
-        assert context["trigger_type"] == TriggerType.TODO_TRIGGER.value
-        assert context["trigger_name"] == "gmail_new_message"
-        assert context["subscription_id"] == "sub-1"
+        queue.assert_not_awaited()
+        via_agent.assert_awaited_once()
+        assert via_agent.await_args.args[0].id == "todo-1"
+        assert via_agent.await_args.args[1] == "user-1"
 
 
 # ---------------------------------------------------------------------------

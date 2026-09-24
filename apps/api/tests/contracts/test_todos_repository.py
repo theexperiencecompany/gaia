@@ -661,3 +661,25 @@ class TestLegacyMigrationScan:
         page_two = await repo.list_tracked_for_legacy_migration(limit=2, after_id=page_one[-1].id)
         assert [t.id for t in page_two] == sorted([first.id, last.id])[2:]
         assert await repo.list_tracked_for_legacy_migration(limit=2, after_id=last.id) == []
+
+
+class TestListTrackedWithWorkflow:
+    """list_tracked_with_workflow is the unlink migration's scan: tracked, linked, and nothing else."""
+
+    async def test_returns_only_tracked_todos_that_still_hold_a_workflow(self, repo, make_doc):
+        linked = await repo.create(
+            make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL], workflow_id="wf1")
+        )
+        await repo.create(make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL]))
+        await repo.create(make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL], workflow_id=""))
+        await repo.create(make_doc(user_id="u1", labels=[], workflow_id="wf2"))
+
+        assert [t.id for t in await repo.list_tracked_with_workflow(limit=10)] == [linked.id]
+
+    async def test_a_cleared_link_drops_out_of_the_scan(self, repo, make_doc):
+        linked = await repo.create(
+            make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL], workflow_id="wf1")
+        )
+        await repo.clear_workflow_id(linked.id, user_id="u1")
+
+        assert await repo.list_tracked_with_workflow(limit=10) == []

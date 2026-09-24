@@ -27,7 +27,7 @@ vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
 
 // Siblings pull in workflow fetches / selects that are irrelevant here.
 vi.mock("@/features/todo/components/WorkflowSection", () => ({
-  default: () => null,
+  default: () => <div data-testid="workflow-section" />,
 }));
 vi.mock("@/features/todo/components/shared/SubtaskManager", () => ({
   default: () => null,
@@ -63,7 +63,7 @@ vi.mock("@/components/common/MarkdownViewerModal", () => ({
     ) : null,
 }));
 
-function makeTodo(id: string): Todo {
+function makeTodo(id: string, overrides: Partial<Todo> = {}): Todo {
   return {
     id,
     user_id: "user-1",
@@ -90,6 +90,7 @@ function makeTodo(id: string): Todo {
     pending_approval: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
+    ...overrides,
   };
 }
 
@@ -192,5 +193,33 @@ describe("TodoSidebar canvas.md across todo switches", () => {
       ),
     );
     expect(getTodoCanvas).toHaveBeenLastCalledWith("todo-b");
+  });
+});
+
+describe("TodoSidebar workflow section", () => {
+  it("is hidden for a tracked todo, which runs on the agent from its canvas", () => {
+    render(
+      <TodoSidebar
+        todo={makeTodo("todo-a")}
+        onUpdate={noop}
+        onDelete={noop}
+        projects={[]}
+      />,
+    );
+
+    expect(screen.queryByTestId("workflow-section")).toBeNull();
+  });
+
+  it("is shown for a classic todo", () => {
+    render(
+      <TodoSidebar
+        todo={makeTodo("todo-a", { vfs_path: null })}
+        onUpdate={noop}
+        onDelete={noop}
+        projects={[]}
+      />,
+    );
+
+    expect(screen.getByTestId("workflow-section")).toBeTruthy();
   });
 });

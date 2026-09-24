@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import math
 import uuid
 
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
@@ -204,27 +205,29 @@ class TodoService:
         )
         created = await todo_repository.create(document)
 
-        # Queue workflow generation as fire-and-forget (does not block response)
-        try:
-            # Deferred import: workflow/ARQ enqueue stack loads only when generation is actually queued
-            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
-                WorkflowQueueService,
-            )
+        # Queue workflow generation as fire-and-forget (does not block response).
+        # Tracked todos run on the agent from their canvas, so they get none.
+        if GAIA_TRACKED_LABEL not in document.labels:
+            try:
+                # Deferred import: workflow/ARQ enqueue stack loads only when generation is actually queued
+                from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
+                    WorkflowQueueService,
+                )
 
-            spawn_logged_task(
-                "todo_workflow_generation",
-                WorkflowQueueService.queue_todo_workflow_generation(
-                    todo_id=created.id,
-                    user_id=user_id,
-                    title=todo.title,
-                    description=todo.description or "",
-                ),
-                user={"id": user_id},
-                todo={"id": created.id},
-            )
-            log.info("todo.workflow_generation_queued", todo_id=created.id, title=todo.title)
-        except Exception as e:
-            log.warning("todo.workflow_queue_failed", title=todo.title, error=str(e))
+                spawn_logged_task(
+                    "todo_workflow_generation",
+                    WorkflowQueueService.queue_todo_workflow_generation(
+                        todo_id=created.id,
+                        user_id=user_id,
+                        title=todo.title,
+                        description=todo.description or "",
+                    ),
+                    user={"id": user_id},
+                    todo={"id": created.id},
+                )
+                log.info("todo.workflow_generation_queued", todo_id=created.id, title=todo.title)
+            except Exception as e:
+                log.warning("todo.workflow_queue_failed", title=todo.title, error=str(e))
 
         # Index for search
         try:

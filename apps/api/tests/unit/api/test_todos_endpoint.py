@@ -11,6 +11,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.constants.general import MAX_PAGE_NUMBER
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.todo_models import (
     BulkOperationResponse,
     BulkUpdateRequest,
@@ -436,6 +437,25 @@ class TestListQueryHelpers:
         assert params.include_stats is True
         assert params.due_date_start == after
         assert params.due_date_end == before
+
+
+class TestGenerateTodoWorkflow:
+    async def test_a_tracked_todo_is_refused_and_nothing_is_queued(
+        self, client: AsyncClient
+    ) -> None:
+        tracked = _todo_response().model_copy(update={"labels": [GAIA_TRACKED_LABEL]})
+        queue = AsyncMock(return_value=True)
+        with (
+            patch(f"{TODOS_ENDPOINT}.TodoService.get_todo", new=AsyncMock(return_value=tracked)),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation",
+                new=queue,
+            ),
+        ):
+            resp = await client.post("/api/v1/todos/todo-1/workflow")
+
+        assert resp.status_code == 409
+        queue.assert_not_awaited()
 
 
 class TestTodoCanvas:

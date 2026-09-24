@@ -466,6 +466,7 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 ### B) Tracked todos (durable, file-backed notes, cross-conversation)
 
 - `apps/api/app/agents/tools/tracked_todo_tools.py` — `create_tracked_todo`, `update_tracked_todo`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos` (lifecycle + metadata only). Backed by `apps/api/app/services/tracked_todo_service.py`. Supports cron recurrence + timezone-aware fire times.
+- Every scheduled or triggered run (`apps/api/app/workers/tasks/tracked_todo_tasks.py`) is an agent run built from the todo's canvas, activity and references. Tracked todos never get a workflow (a playbook replay would freeze the calls); classic todos (C) still auto-generate one.
 - Working notes are two files per todo, `/workspace/gaia-tasks/<slug>-<shortid>/canvas.md` (recall doc) and `activity.md` (dated log), which the executor reads and edits with the generic `read`/`edit`/`write` tools.
 - `apps/api/app/services/gaia_task_files.py` — routes those paths inside the file tools to the todo document (`canvas_content` / `activity_content`), so the notes work in native dev with no JuiceFS and the disk tree stays a read-only projection.
 - `apps/api/app/services/todo_canvas_storage.py` — Mongo-backed read/write/append for canvas, activity and log bodies; every write re-embeds the todo in ChromaDB.
