@@ -808,6 +808,27 @@ class TestBulkOps:
         assert raised.value.message == "A workflow is linked one todo at a time, not in bulk"
         mock_todo_repo.bulk_update.assert_not_called()
 
+    async def test_bulk_update_refuses_to_set_the_tracked_label(
+        self, mock_todo_repo, mock_project_repo
+    ):
+        """A bulk label write could mark already-linked todos tracked; the per-todo check never runs."""
+        req = BulkUpdateRequest(
+            todo_ids=["a", "b"], updates=TodoUpdateRequest(labels=["work", GAIA_TRACKED_LABEL])
+        )
+        with pytest.raises(AppError) as raised:
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+        assert raised.value.status_code == 400
+        assert raised.value.message == "The tracked label is set by GAIA, not in bulk"
+        mock_todo_repo.bulk_update.assert_not_called()
+
+    async def test_bulk_update_may_set_other_labels(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        req = BulkUpdateRequest(todo_ids=["a"], updates=TodoUpdateRequest(labels=["work"]))
+        await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+        assert mock_todo_repo.bulk_update.await_args.args[2].labels == ["work"]
+
     async def test_bulk_update_no_fields_is_noop(self, mock_todo_repo, mock_project_repo):
         req = BulkUpdateRequest(todo_ids=["a"], updates=TodoUpdateRequest())
         result = await TodoService.bulk_update_todos(req, FAKE_USER_ID)

@@ -471,10 +471,15 @@ class TodoService:
         cls, request: BulkUpdateRequest, user_id: str
     ) -> BulkOperationResponse:
         """Bulk update multiple todos."""
+        # A bulk $set skips the per-todo check that keeps a tracked todo unlinked.
         if request.updates.workflow_id is not None:
-            # A bulk $set would bypass link_workflow's tracked-todo guard.
             raise AppError(
                 message="A workflow is linked one todo at a time, not in bulk",
+                status_code=HTTPStatus.BAD_REQUEST,
+            )
+        if request.updates.labels is not None and GAIA_TRACKED_LABEL in request.updates.labels:
+            raise AppError(
+                message="The tracked label is set by GAIA, not in bulk",
                 status_code=HTTPStatus.BAD_REQUEST,
             )
         update = _to_todo_update(request.updates)
