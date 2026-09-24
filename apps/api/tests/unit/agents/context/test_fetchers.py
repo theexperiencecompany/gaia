@@ -125,6 +125,54 @@ class TestMemoryRecallBlock:
         assert "User's manager is Priya" in block
         assert recall.await_args_list[-1].args == ("user-7", "the brief")
 
+    async def test_a_confident_recall_on_the_request_is_reused_instead_of_recalling_the_brief(
+        self,
+    ) -> None:
+        """Comms already recalled on what the user said; the brief's own recall would only add noise its template words match."""
+        found = MemorySearchResult(
+            memories=[memory("User's manager is Priya")], total_count=1, has_confident_match=True
+        )
+        recall = AsyncMock(return_value=found)
+        executor = SectionContext(
+            tier=AgentTier.EXECUTOR,
+            user_id="user-7",
+            query="the brief",
+            request_query="who is Priya",
+        )
+        async with captured_wide_event() as event:
+            with patch("app.memory.engine.memory_engine.recall", recall):
+                block = await build_memory_recall_block(executor)
+
+        assert "User's manager is Priya" in block
+        recall.assert_awaited_once_with("user-7", "who is Priya", limit=5)
+        assert event["dynamic_context"]["memory_recall_reused"] is True
+
+    async def test_a_request_that_matched_nothing_confidently_earns_the_brief_its_own_recall(
+        self,
+    ) -> None:
+        """A bare "yes do it" recalls nothing useful; the brief carries the real subject, so it recalls on that."""
+        weak = MemorySearchResult(
+            memories=[memory("User said yes once")], total_count=1, has_confident_match=False
+        )
+        own = MemorySearchResult(
+            memories=[memory("User's manager is Priya")], total_count=1, has_confident_match=True
+        )
+        recall = AsyncMock(side_effect=[weak, own])
+        executor = SectionContext(
+            tier=AgentTier.EXECUTOR, user_id="user-7", query="the brief", request_query="yes do it"
+        )
+        async with captured_wide_event() as event:
+            with patch("app.memory.engine.memory_engine.recall", recall):
+                block = await build_memory_recall_block(executor)
+
+        assert "User's manager is Priya" in block
+        assert "User said yes once" not in block
+        assert [c.args for c in recall.await_args_list] == [
+            ("user-7", "yes do it"),
+            ("user-7", "the brief"),
+        ]
+        assert event["dynamic_context"]["memory_recall_reused"] is False
+
     async def test_no_memories_yields_no_block(self) -> None:
         with patch(
             "app.memory.engine.memory_engine.recall",

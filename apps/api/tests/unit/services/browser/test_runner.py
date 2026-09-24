@@ -777,6 +777,7 @@ async def test_run_builds_the_tools_with_the_runner_takeover_and_captcha_policy(
 
     assert captured["solve_captcha"] is False
     assert captured["handle_takeover"] == runner._agent_run._takeover
+    assert captured["handle_guidance"] == runner._agent_run._guidance
     assert FakeAgent.last_kwargs["tools"] == "tools-sentinel"
 
 
@@ -1683,9 +1684,13 @@ async def test_a_jev_model_is_bound_to_the_session_and_its_helper_extracts(patch
     jev.text_model = helper
     _, emit = _collector()
 
-    await _make_runner(emit=emit, overrides=_RunnerOverrides(llm=jev)).run("Book it")
+    runner = _make_runner(emit=emit, overrides=_RunnerOverrides(llm=jev))
+    await runner.run("Book it")
 
-    jev.bind.assert_called_once_with(FakeAgent.last_kwargs["browser"], "Book it", ANY)
+    # The gate is the runner's own: Jev asks it before offering to ask for guidance.
+    jev.bind.assert_called_once_with(
+        FakeAgent.last_kwargs["browser"], "Book it", runner._guidance_allowed
+    )
     assert FakeAgent.last_kwargs["llm"] is jev
     assert FakeAgent.last_kwargs["page_extraction_llm"] is helper
     assert set(FakeAgent.last_kwargs) == AGENT_KWARG_KEYS | {"page_extraction_llm"}

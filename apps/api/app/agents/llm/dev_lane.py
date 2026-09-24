@@ -50,7 +50,7 @@ def custom_endpoint() -> CustomEndpoint:
     )
     if not (base_url and api_key and model):
         raise LLMNotConfiguredError(
-            "The custom dev endpoint needs DEV_LLM_BASE_URL, DEV_LLM_API_KEY and DEV_LLM_MODEL."
+            "The custom dev endpoint needs DEV_LLM_BASE_URL, DEV_LLM_API_KEY and DEV_LLM_MODEL."  # pragma: no mutate
         )
     # DevLLMApi() again: the evals harness re-points these settings at runtime.
     return CustomEndpoint(

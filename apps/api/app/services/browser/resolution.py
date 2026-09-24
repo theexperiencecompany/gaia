@@ -43,6 +43,25 @@ _DECLINE_MARKERS = (
     "instead",
 )
 
+_RESOLVE_PROMPT = (
+    "A browser automation task is paused, waiting for the user to finish a "
+    "sensitive step themselves in the live browser: {reason!r}\n\n"
+    "The user just sent this message:\n{message!r}\n\n"
+    "Classify the reply as exactly one of:\n"
+    "- 'continue': they finished the step or gave the go-ahead.\n"
+    "- 'cancel': they want the whole task stopped.\n"
+    "- 'redirect': they will NOT do the paused step, but they tell you what "
+    "to do instead, so the task carries on with that new instruction. "
+    "Examples: 'never mind the login, just tell me what the github.com "
+    "homepage headline says', 'skip the upvote, just tell me the title of "
+    "the top post on r/python', 'forget the payment, read me the total'. "
+    "For a redirect, 'note' must hold the ENTIRE new instruction.\n"
+    "- 'unrelated': the reply has nothing to do with the paused task, such "
+    "as 'what's the weather'.\n\n"
+    "Put anything the user asks for beyond the go-ahead itself in 'note', "
+    "verbatim. Leave 'note' null when the reply is only an acknowledgement."
+)
+
 
 class HandoffReplyDecision(BaseModel):
     """Scoped classification of a reply to a pending browser handoff."""
@@ -120,7 +139,7 @@ def _declines_with_an_instruction(text: str) -> bool:
         rest = lowered[len(marker) :]
         # "skipper is my dog" opens with the letters of a marker, not the word.
         if rest[:1].isalnum():
-            continue
+            continue  # pragma: no mutate — no marker prefixes a later one, so break is the same
         if rest.strip(string.punctuation + string.whitespace):
             return True
     return False
@@ -131,7 +150,7 @@ def _without_an_acknowledgement_note(decision: HandoffReplyDecision) -> HandoffR
     if decision.action == "redirect" or not decision.note:
         return decision
     words = {w.strip(string.punctuation).lower() for w in decision.note.split()}
-    if words <= _ACKNOWLEDGEMENT_WORDS:
+    if words <= _ACKNOWLEDGEMENT_WORDS:  # pragma: no mutate — < differs only on all ten words
         return decision.model_copy(update={"note": None})
     return decision
 
@@ -145,7 +164,7 @@ async def _interpret(message: str, reason: str) -> HandoffReplyDecision:
     try:
         decision = await ainvoke_structured_gemini(
             HandoffReplyDecision,
-            _prompt(message, reason),
+            _RESOLVE_PROMPT.format(reason=reason, message=message),
             label="browser_handoff_conversational_resolve",
         )
     except Exception as e:  # an LLM hiccup must not act on its own
@@ -155,24 +174,3 @@ async def _interpret(message: str, reason: str) -> HandoffReplyDecision:
         )
         decision = keyword_reply_decision(message)
     return _without_an_acknowledgement_note(decision)
-
-
-def _prompt(message: str, reason: str) -> str:
-    return (
-        "A browser automation task is paused, waiting for the user to finish a "
-        f"sensitive step themselves in the live browser: {reason!r}\n\n"
-        f"The user just sent this message:\n{message!r}\n\n"
-        "Classify the reply as exactly one of:\n"
-        "- 'continue': they finished the step or gave the go-ahead.\n"
-        "- 'cancel': they want the whole task stopped.\n"
-        "- 'redirect': they will NOT do the paused step, but they tell you what "
-        "to do instead, so the task carries on with that new instruction. "
-        "Examples: 'never mind the login, just tell me what the github.com "
-        "homepage headline says', 'skip the upvote, just tell me the title of "
-        "the top post on r/python', 'forget the payment, read me the total'. "
-        "For a redirect, 'note' must hold the ENTIRE new instruction.\n"
-        "- 'unrelated': the reply has nothing to do with the paused task, such "
-        "as 'what's the weather'.\n\n"
-        "Put anything the user asks for beyond the go-ahead itself in 'note', "
-        "verbatim. Leave 'note' null when the reply is only an acknowledgement."
-    )

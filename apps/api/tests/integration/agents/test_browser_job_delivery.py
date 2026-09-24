@@ -123,6 +123,9 @@ def redis(monkeypatch: pytest.MonkeyPatch) -> FakeRedisCache:
     cache = FakeRedisCache()
     monkeypatch.setattr(jobs_mod, "redis_cache", cache)
     monkeypatch.setattr(job_events_mod, "redis_cache", cache)
+    # The relay's deadline on the feed's fake clock: a relay that misses its stop
+    # frame ends at the deadline in fake time instead of spinning the test.
+    monkeypatch.setattr(relay_mod, "monotonic", lambda: cache.client.clock)
     return cache
 
 

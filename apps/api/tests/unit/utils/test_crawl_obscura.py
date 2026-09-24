@@ -245,6 +245,20 @@ class TestEnsureCrawlObscura:
         (kwargs,) = spawner.kwargs
         assert (kwargs["stdout"], kwargs["stderr"]) == (subprocess.DEVNULL, subprocess.DEVNULL)
 
+    async def test_the_engine_runs_under_the_load_deadlines(
+        self, mock_poll: AsyncMock, monkeypatch: pytest.MonkeyPatch, no_bind_settle: list[float]
+    ) -> None:
+        """Without them one page that never finishes loading wedges every crawl behind it."""
+        monkeypatch.setattr(browser_host_settings, "OBSCURA_NAV_TIMEOUT_SECONDS", 12)
+        monkeypatch.setattr(browser_host_settings, "OBSCURA_SCRIPT_DEADLINE_SECONDS", 3)
+        spawner = _spawn(monkeypatch, [FakeProcess()])
+
+        await crawl_obscura.ensure_crawl_obscura()
+
+        (kwargs,) = spawner.kwargs
+        assert kwargs["env"]["OBSCURA_NAV_TIMEOUT_MS"] == "12000"
+        assert kwargs["env"]["OBSCURA_SCRIPT_DEADLINE_MS"] == "3000"
+
     async def test_a_process_that_dies_before_termination_does_not_break_the_probe(
         self, mock_poll: AsyncMock, monkeypatch: pytest.MonkeyPatch, no_bind_settle: list[float]
     ) -> None:

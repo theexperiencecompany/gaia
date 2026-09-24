@@ -28,17 +28,23 @@ class _FakeLog:
         self.warning_calls.append((message, kwargs))
 
 
+_PENDING = HandoffRecord(
+    status=HandoffStatus.PENDING, user_id="u1", conversation_id="c1", reason="pay"
+)
+
+
+def _handoff_store(monkeypatch, records: dict[str, HandoffRecord]) -> None:
+    """Serve handoff records by id, as the store does: an unknown id finds nothing."""
+
+    async def _get(handoff_id: str) -> HandoffRecord | None:
+        return records.get(handoff_id)
+
+    monkeypatch.setattr(res_mod, "get_handoff", _get)
+
+
 def _pending(monkeypatch, action: str, note: str | None = None):
     monkeypatch.setattr(res_mod, "get_conversation_pending_handoff", AsyncMock(return_value="h1"))
-    monkeypatch.setattr(
-        res_mod,
-        "get_handoff",
-        AsyncMock(
-            return_value=HandoffRecord(
-                status=HandoffStatus.PENDING, user_id="u1", conversation_id="c1", reason="pay"
-            )
-        ),
-    )
+    _handoff_store(monkeypatch, {"h1": _PENDING})
     monkeypatch.setattr(
         res_mod,
         "_interpret",
@@ -115,10 +121,44 @@ async def test_not_owned_returns_none_without_raising(monkeypatch):
     _pending(monkeypatch, "continue")
     resolve = AsyncMock(side_effect=BrowserHandoffNotOwned())
     monkeypatch.setattr(res_mod, "resolve_handoff", resolve)
+    fake_log = _FakeLog()
+    monkeypatch.setattr(res_mod, "log", fake_log)
 
     action = await resolve_handoff_from_message("c1", "u1", "yep I paid, go on")
     assert action is None
     resolve.assert_awaited_once_with("h1", HandoffDecision.CONTINUE, "u1", message=None)
+    assert fake_log.warning_calls == [
+        (
+            f"{LogTag.BROWSER} Handoff reply ignored: the handoff belongs to another user",
+            {"browser": {"handoff_id": "h1"}, "user_id": "u1"},
+        )
+    ]
+
+
+async def test_the_classifier_reads_the_reply_against_the_paused_step(monkeypatch):
+    """Without the step's reason and the user's words it cannot tell "done" from "stop"."""
+    monkeypatch.setattr(res_mod, "get_conversation_pending_handoff", AsyncMock(return_value="h1"))
+    _handoff_store(
+        monkeypatch,
+        {
+            "h1": HandoffRecord(
+                status=HandoffStatus.PENDING,
+                user_id="u1",
+                conversation_id="c1",
+                reason="Enter the card's 3-D Secure code",
+            )
+        },
+    )
+    classify = AsyncMock(return_value=HandoffReplyDecision(action="unrelated"))
+    monkeypatch.setattr(res_mod, "ainvoke_structured_gemini", classify)
+
+    await resolve_handoff_from_message("c1", "u1", "entered the code, carry on")
+
+    schema, prompt = classify.await_args.args
+    assert schema is HandoffReplyDecision
+    assert "Enter the card's 3-D Secure code" in prompt
+    assert "entered the code, carry on" in prompt
+    assert classify.await_args.kwargs == {"label": "browser_handoff_conversational_resolve"}
 
 
 def _classifier_down(monkeypatch) -> _FakeLog:
@@ -214,7 +254,9 @@ def test_declining_the_step_with_a_new_instruction_is_a_redirect(reply):
     assert keyword_reply_decision(reply) == HandoffReplyDecision(action="redirect", note=reply)
 
 
-@pytest.mark.parametrize("reply", ["skip", "never mind", "nevermind.", "skipper is my dog"])
+@pytest.mark.parametrize(
+    "reply", ["skip", "never mind", "nevermind.", "skipper is my dog", "skips the ads too?"]
+)
 def test_a_decline_without_a_new_instruction_is_not_a_redirect(reply):
     assert keyword_reply_decision(reply).action != "redirect"
 
@@ -245,6 +287,19 @@ async def test_an_acknowledgement_only_note_is_dropped(monkeypatch, action, note
     )
 
     assert await _interpret(note, "pay") == HandoffReplyDecision(action=action, note=None)
+
+
+async def test_a_redirect_keeps_its_note_even_when_it_reads_like_a_go_ahead(monkeypatch):
+    """A redirect's note is the whole new instruction; blanking it strands the run with none."""
+    monkeypatch.setattr(
+        res_mod,
+        "ainvoke_structured_gemini",
+        AsyncMock(return_value=HandoffReplyDecision(action="redirect", note="no, stop")),
+    )
+
+    decision = await _interpret("never mind the login. no, stop", "log in")
+
+    assert decision == HandoffReplyDecision(action="redirect", note="no, stop")
 
 
 async def test_a_real_instruction_note_survives_normalisation(monkeypatch):

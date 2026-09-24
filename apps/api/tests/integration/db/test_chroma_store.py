@@ -132,7 +132,7 @@ def collection_prefix() -> str:
 
 
 @pytest.fixture
-async def ephemeral_client(collection_prefix: str):
+async def ephemeral_client(collection_prefix: str, _precreate_ephemeral_chroma: None):
     """Return a ChromaDB client per test.
 
     Uses real AsyncHttpClient against the chroma service when USE_REAL_SERVICES=1,

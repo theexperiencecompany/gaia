@@ -163,6 +163,23 @@ class TestWorkerShutdown:
 
         assert browser_worker_calls == ["stop"]
 
+    async def test_shutdown_stops_the_browser_worker_this_process_started(self) -> None:
+        """The running worker lives in ARQ's ctx; stopping any other leaves its jobs running."""
+        stopped: list[dict] = []
+
+        async def _stop(ctx: dict) -> None:
+            stopped.append(ctx)
+
+        ctx = {"startup_time": 0}
+        with (
+            patch("app.workers.lifecycle.shutdown.stop_browser_worker", _stop),
+            patch("app.workers.lifecycle.shutdown.unified_shutdown", AsyncMock()),
+        ):
+            await shutdown(ctx)
+
+        assert stopped == [ctx]
+        assert stopped[0] is ctx
+
     async def test_shutdown_calls_unified_shutdown_with_arq_worker(self):
         """unified_shutdown is called with the 'arq_worker' literal."""
         ctx: dict = {"startup_time": 100.0}

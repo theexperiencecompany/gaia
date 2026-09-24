@@ -8,10 +8,12 @@ that errors, an observation the watchdog times out), so the user saw photos 2, 3
 from collections.abc import Awaitable
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.services.browser.agent_run import STEP_ERROR_CAPTION, BrowserAgentRun
+from app.services.browser.jev import JevChatModel
 from app.services.browser.run_contract import BrowserRunConfig, RunHooks, StepFrame
 
 CONFIG = BrowserRunConfig(
@@ -26,13 +28,20 @@ CONFIG = BrowserRunConfig(
 
 
 class _Action:
-    """One of Browser-Use's own action models, as agent_output.action holds them."""
+    """One of Browser-Use's own action models: every action a field, all but the chosen one None."""
 
     def __init__(self, name: str, params: dict[str, Any]) -> None:
-        self._dump = {name: params}
+        self._fields: dict[str, Any] = {"click": None, "navigate": None, "done": None}
+        self._fields[name] = params
 
     def model_dump(self, exclude_none: bool = False) -> dict[str, Any]:
-        return self._dump
+        if not exclude_none:
+            return dict(self._fields)
+        return {
+            name: {key: value for key, value in params.items() if value is not None}
+            for name, params in self._fields.items()
+            if params is not None
+        }
 
 
 class _Result:
@@ -61,28 +70,31 @@ async def _never_stop() -> bool:
     return False
 
 
-async def _no_takeover(reason: str, category: str) -> str | None:
-    return None
-
-
 class _Harness:
     """A run wired to record what it emitted, plus the two Browser-Use callbacks."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, llm: Any = None, steps_before: int | None = None) -> None:
         self.frames: list[StepFrame] = []
         self.outputs: list[tuple[int, list[str]]] = []
+        self.takeovers: list[tuple[str, str]] = []
         self.run = BrowserAgentRun(
             session=SimpleNamespace(cdp_url="ws://browser.test/cdp", session_id="sess-1"),
-            llm=None,
+            llm=llm,
             config=CONFIG,
             hooks=RunHooks(
                 step=self.frames.append,
-                takeover=_no_takeover,
+                takeover=self._record_takeover,
                 should_stop=_never_stop,
                 action_results=self._record_outputs,
             ),
             step_timeout=30.0,
+            # A fresh run takes the constructor's own default.
+            **({} if steps_before is None else {"steps_before": steps_before}),
         )
+
+    async def _record_takeover(self, reason: str, category: str) -> str | None:
+        self.takeovers.append((reason, category))
+        return None
 
     async def _record_outputs(self, step_index: int, outputs: list[Any]) -> None:
         self.outputs.append((step_index, [out.output for out in outputs]))
@@ -171,3 +183,66 @@ class TestStepCaption:
         await harness.run._on_step(_page(), output, 1)
 
         assert harness.frames[-1].goal == "Could not find a way forward on this page"
+
+
+@pytest.mark.unit
+class TestTheFrame:
+    async def test_it_lists_only_the_action_the_model_picked(self, harness: _Harness) -> None:
+        """Browser-Use's action model carries every action as a field; the unset ones are None."""
+        await harness.step(1, "click", index=4, text=None)
+
+        assert [(a.name, a.inputs) for a in harness.frames[0].actions] == [("click", {"index": 4})]
+
+    async def test_it_carries_the_steps_screenshot(self, harness: _Harness) -> None:
+        await harness.step(1, index=4)
+
+        assert harness.frames[0].raw_screenshot == "c2hvdA=="
+
+    async def test_a_jev_run_shows_the_photo_jev_took_for_the_step(self) -> None:
+        """Jev's session reads state without a screenshot; its own capture is the step's photo."""
+        jev = MagicMock(spec=JevChatModel)
+        jev.viewport_points.return_value = {}
+        jev.take_step_screenshot = AsyncMock(return_value="amV2")
+        harness = _Harness(llm=jev)
+
+        await harness.step(1, index=4)
+
+        assert harness.frames[0].raw_screenshot == "amV2"
+
+    async def test_the_first_frame_reports_no_time_since_a_previous_one(
+        self, harness: _Harness
+    ) -> None:
+        await harness.step(1, index=4)
+
+        assert harness.frames[0].since_prev_ms == 0
+
+    async def test_a_first_step_that_errors_before_any_frame_still_gets_one(
+        self, harness: _Harness
+    ) -> None:
+        """The start URL's navigation runs before Browser-Use's first step callback."""
+        await harness.end(_Result(error="net::ERR_NAME_NOT_RESOLVED"))
+
+        assert [frame.goal for frame in harness.frames] == [STEP_ERROR_CAPTION]
+
+
+@pytest.mark.unit
+class TestAResumedRun:
+    async def test_a_result_before_its_first_frame_lands_on_the_last_frame_the_user_saw(
+        self,
+    ) -> None:
+        """The fallback engine's start navigation reports before it frames anything."""
+        harness = _Harness(steps_before=5)
+
+        await harness.end(_Result(content="navigated"))
+        await harness.step(1, index=4)
+
+        assert harness.outputs == [(5, ["navigated"])]
+        assert [frame.index for frame in harness.frames] == [6]
+
+
+@pytest.mark.unit
+async def test_a_takeover_hands_the_user_the_reason_and_its_category(harness: _Harness) -> None:
+    """The category picks the card the user gets (a password step is not a payment)."""
+    await harness.run._takeover("Enter your password", "credentials")
+
+    assert harness.takeovers == [("Enter your password", "credentials")]

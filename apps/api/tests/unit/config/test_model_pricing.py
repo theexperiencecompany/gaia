@@ -150,6 +150,15 @@ class TestEveryRuntimeModelIsPriced:
 
         assert not log.get().get("errors", [])
 
+    @pytest.mark.parametrize("variant", ["nitro", "floor"])
+    def test_an_openrouter_routing_variant_is_priced_as_its_base_model(self, variant: str) -> None:
+        """Routing variants such as :nitro only pick the provider; the default price misprices every turn."""
+        with patch("app.config.model_pricing.log") as mock_log:
+            pricing = get_model_pricing(f"{DEFAULT_MODEL_NAME}:{variant}")
+
+        assert pricing == MODEL_PRICING[DEFAULT_MODEL_NAME]
+        mock_log.error.assert_not_called()
+
     def test_the_onboarding_declaration_matches_the_rate_card(self) -> None:
         """Every id in OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT must carry a rate; the default model stays text-only, or flipping it without the live gate run would 400 real turns mid-stream."""
         assert OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT == {DEFAULT_MODEL_NAME: False}

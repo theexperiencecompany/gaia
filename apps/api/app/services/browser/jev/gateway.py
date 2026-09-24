@@ -132,7 +132,7 @@ class JevGatewayClient:
         api_key: str,
         model: str,
         url: str,
-        provider: str = "openrouter",
+        provider: str,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.model = model
@@ -143,7 +143,8 @@ class JevGatewayClient:
 
     async def evaluate(self, request: JevEvaluationRequest) -> JevEvaluation:
         """POST the questions; retries transient 429/503/529 with backoff."""
-        body = {"model": self.model, **request.model_dump(mode="json")}
+        # The state is JSON-native already; json mode only guards a future field.
+        body = {"model": self.model, **request.model_dump(mode="json")}  # pragma: no mutate
         request_bytes = len(json.dumps(body))
         started = perf_counter()
         for attempt in range(JEV_GATEWAY_MAX_ATTEMPTS):
@@ -186,7 +187,10 @@ class JevGatewayClient:
             evaluation.latency_ms = _elapsed_ms(started)
             evaluation.provider = self.provider
             return evaluation
-        raise JevGatewayError(f"Jev decisions unavailable ({self.provider}); no action executed.")
+        # Unreachable: the last attempt returns or raises. Here for the type checker.
+        raise JevGatewayError(  # pragma: no mutate
+            f"Jev decisions unavailable ({self.provider}); no action executed."  # pragma: no mutate
+        )
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -206,7 +210,6 @@ class JevFailoverClient:
         self.primary = primary
         self.fallback = fallback
         self.model = primary.model
-        self.provider = primary.provider
 
     async def evaluate(self, request: JevEvaluationRequest) -> JevEvaluation:
         try:

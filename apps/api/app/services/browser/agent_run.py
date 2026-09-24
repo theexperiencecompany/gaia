@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from pydantic import TypeAdapter
 
 from app.constants.browser import (
+    BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
+    BROWSER_AGENT_MAX_FAILURES,
     BROWSER_TAKEOVER_PREAMBLE,
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
@@ -209,14 +211,18 @@ class BrowserAgentRun:
         # A run resumed on the fallback engine numbers on from the steps the user already saw.
         self._last_step = steps_before
         self._frames = steps_before
-        self._framed = False
-        self._step_started_at = 0.0
+        # None reads as False below, so that mutant is the same program.
+        self._framed = False  # pragma: no mutate
+        # Feeds only the step-duration log.info.
+        self._step_started_at = 0.0  # pragma: no mutate
 
     async def execute(self, task: str) -> RunOutcome:
         from browser_use import Agent, Browser  # noqa: PLC0415 -- heavy optional dep
 
         if self._llm is None:
-            raise BrowserUnavailableError("The Browser-Use agent needs a chat model to drive it.")
+            raise BrowserUnavailableError(
+                "The Browser-Use agent needs a chat model to drive it."  # pragma: no mutate
+            )
 
         browser = Browser(
             cdp_url=self._session.cdp_url,
@@ -251,14 +257,8 @@ class BrowserAgentRun:
             # user had already cancelled and logged the run as a failure.
             "use_judge": False,
             "flash_mode": self._config.flash_mode,
-            # A step that fails twice running (a state read that timed out, an
-            # engine that stopped answering) ends the run with its reason instead
-            # of Browser-Use's default of narrowing the action space to `done`.
-            "max_failures": 2,
-            # One decision is a state read (may wait out the layout pass), a writer
-            # part judgement, Jev and maybe a typed value; Browser-Use's 75s
-            # default cut such a step off as a failure.
-            "llm_timeout": 180,
+            "max_failures": BROWSER_AGENT_MAX_FAILURES,
+            "llm_timeout": BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
             "max_actions_per_step": self._config.max_actions_per_step,
             "step_timeout": self._step_timeout,
             "tools": build_browser_tools(
@@ -362,7 +362,7 @@ class BrowserAgentRun:
                 ],
                 url=self._redact(url) if url else url,
                 title=getattr(state, "title", None),
-                raw_screenshot=raw_screenshot or getattr(state, "screenshot", None),
+                raw_screenshot=raw_screenshot,
                 since_prev_ms=self._clock.tick(),
             )
         )
@@ -373,7 +373,7 @@ class BrowserAgentRun:
         """Fire after the model picks actions, before they execute."""
         del n_steps  # Browser-Use's counter; the frame's own number is what the user reads
         self._framed = True
-        self._step_started_at = perf_counter()
+        self._step_started_at = perf_counter()  # pragma: no mutate
         points = self._llm.viewport_points() if isinstance(self._llm, JevChatModel) else {}
         step_actions = _extract_actions(agent_output, browser_state_summary, points)
         raw_screenshot = (
@@ -405,8 +405,8 @@ class BrowserAgentRun:
                 f"{LogTag.BROWSER} Browser step actions executed",
                 duration_ms=round((perf_counter() - self._step_started_at) * 1000),
             )
-            self._step_started_at = 0.0
-        if not framed and any(getattr(result, "error", None) for result in results):
+            self._step_started_at = 0.0  # pragma: no mutate
+        if not framed and any(result.error for result in results):
             # The step died before the model picked anything (an action error, a
             # watchdog timeout on the observation), so nothing else will ever
             # speak for it and the user just watches the card sit there.

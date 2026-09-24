@@ -8,11 +8,16 @@ argument swap), and live_view_url/render_live_view_page, neither of which any
 existing test in the suite calls at all.
 """
 
+import base64
+from pathlib import Path
+import re
 from unittest.mock import AsyncMock
 
 import pytest
 
 from app.services.browser import links, live_view
+
+_WORDMARK_PNG = Path(live_view.__file__).parent / "assets" / "gaia_wordmark_white.png"
 
 
 @pytest.mark.unit
@@ -72,6 +77,16 @@ def test_render_live_view_page_escapes_and_embeds_the_session_id():
     assert 'sess"<script>&</script>' not in page
     assert "sess&quot;&lt;script&gt;&amp;&lt;/script&gt;" in page
     assert "(sess&quot;&lt;script&gt;&amp;&lt;/script&gt;)" in page
+
+
+@pytest.mark.unit
+def test_render_live_view_page_inlines_the_wordmark_so_the_page_needs_no_asset_route():
+    page = live_view.render_live_view_page("sess-1")
+
+    src = re.search(r'<img src="data:image/png;base64,([^"]+)" alt="GAIA"', page)
+    assert src is not None
+    assert base64.b64decode(src.group(1)) == _WORDMARK_PNG.read_bytes()
+    assert "__WORDMARK__" not in page
 
 
 @pytest.mark.unit

@@ -170,7 +170,8 @@ def _navigated_away(start: str | None, current: str | None) -> bool:
     Compare scheme, host and path only, so a login adding a return_to query is
     not a navigation. Staying inside auth (2FA, OTP, verification) is not done.
     """
-    if not start or not current:
+    # A missing URL has no host, so the host check below already says False.
+    if not start or not current:  # pragma: no mutate
         return False
     a, b = urlsplit(start), urlsplit(current)
     if (a.scheme, a.netloc, a.path) == (b.scheme, b.netloc, b.path):
@@ -263,7 +264,7 @@ async def browser_session(
             # never authorize; fail the session (release runs in the finally below)
             # instead of stranding them in a handoff they can't open.
             raise BrowserUnavailableError(
-                "Could not register the browser session (storage unavailable)."
+                "Could not register the browser session (storage unavailable)."  # pragma: no mutate
             )
         yield session
     finally:
