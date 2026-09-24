@@ -144,6 +144,19 @@ async def _refuse_a_tracked_todo_with_a_workflow(
         raise TrackedTodoWorkflowError()
 
 
+async def _refuse_a_bulk_tracked_label_change(
+    user_id: str, todo_ids: list[str], labels: list[str]
+) -> None:
+    """Refuse a bulk labels write that would track a selected todo or untrack one."""
+    tracking = GAIA_TRACKED_LABEL in labels
+    todos = await todo_repository.find_by_ids(user_id, todo_ids)
+    if any((GAIA_TRACKED_LABEL in todo.labels) != tracking for todo in todos):
+        raise AppError(
+            message="A bulk label change cannot add or remove the tracked label",
+            status_code=HTTPStatus.BAD_REQUEST,
+        )
+
+
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
     """Rebuild update without the completion fields.
 
@@ -477,10 +490,9 @@ class TodoService:
                 message="A workflow is linked one todo at a time, not in bulk",
                 status_code=HTTPStatus.BAD_REQUEST,
             )
-        if request.updates.labels is not None and GAIA_TRACKED_LABEL in request.updates.labels:
-            raise AppError(
-                message="The tracked label is set by GAIA, not in bulk",
-                status_code=HTTPStatus.BAD_REQUEST,
+        if request.updates.labels is not None:
+            await _refuse_a_bulk_tracked_label_change(
+                user_id, request.todo_ids, request.updates.labels
             )
         update = _to_todo_update(request.updates)
         if not update.model_fields_set:

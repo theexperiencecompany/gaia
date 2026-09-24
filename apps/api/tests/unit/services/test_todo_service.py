@@ -808,18 +808,38 @@ class TestBulkOps:
         assert raised.value.message == "A workflow is linked one todo at a time, not in bulk"
         mock_todo_repo.bulk_update.assert_not_called()
 
-    async def test_bulk_update_refuses_to_set_the_tracked_label(
-        self, mock_todo_repo, mock_project_repo
+    @pytest.mark.parametrize(
+        ("existing_labels", "new_labels"),
+        [
+            ([], ["work", GAIA_TRACKED_LABEL]),  # would track a classic (maybe linked) todo
+            ([GAIA_TRACKED_LABEL], ["work"]),  # would untrack a todo that keeps its canvas
+        ],
+    )
+    async def test_bulk_update_refuses_to_change_whether_a_todo_is_tracked(
+        self, mock_todo_repo, mock_project_repo, existing_labels, new_labels
     ):
-        """A bulk label write could mark already-linked todos tracked; the per-todo check never runs."""
-        req = BulkUpdateRequest(
-            todo_ids=["a", "b"], updates=TodoUpdateRequest(labels=["work", GAIA_TRACKED_LABEL])
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[_make_todo_doc(todo_id="a", labels=existing_labels)]
         )
+        req = BulkUpdateRequest(todo_ids=["a"], updates=TodoUpdateRequest(labels=new_labels))
         with pytest.raises(AppError) as raised:
             await TodoService.bulk_update_todos(req, FAKE_USER_ID)
         assert raised.value.status_code == 400
-        assert raised.value.message == "The tracked label is set by GAIA, not in bulk"
+        assert raised.value.message == "A bulk label change cannot add or remove the tracked label"
+        mock_todo_repo.find_by_ids.assert_awaited_once_with(FAKE_USER_ID, ["a"])
         mock_todo_repo.bulk_update.assert_not_called()
+
+    async def test_bulk_update_may_relabel_tracked_todos_that_stay_tracked(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[_make_todo_doc(todo_id="a", labels=[GAIA_TRACKED_LABEL])]
+        )
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        labels = ["work", GAIA_TRACKED_LABEL]
+        req = BulkUpdateRequest(todo_ids=["a"], updates=TodoUpdateRequest(labels=labels))
+        await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+        assert mock_todo_repo.bulk_update.await_args.args[2].labels == labels
 
     async def test_bulk_update_may_set_other_labels(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
