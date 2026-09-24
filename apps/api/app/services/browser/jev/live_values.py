@@ -56,14 +56,16 @@ async def read_live_values(browser: BrowserSession) -> LiveValues:
 
 def parse_snapshot(snapshot: CaptureSnapshotReturns) -> LiveValues:
     """Decode DOMSnapshot.captureSnapshot's rare-data columns into per-node facts."""
-    strings = snapshot.get("strings", [])
+    # Indexed only for a value row, which a missing table fails on under any default.
+    strings = snapshot.get("strings", [])  # pragma: no mutate
     values: dict[int, str] = {}
     checked: set[int] = set()
     selected: set[int] = set()
     documents: list[DocumentSnapshot] = snapshot.get("documents", [])
     for document in documents:
         nodes: NodeTreeSnapshot = document.get("nodes", {})
-        backend_ids = nodes.get("backendNodeId", [])
+        # As strings: read only through a row, which a missing column fails on either way.
+        backend_ids = nodes.get("backendNodeId", [])  # pragma: no mutate
         input_value: RareStringData | None = nodes.get("inputValue")
         if input_value is not None:
             for row, string_index in zip(

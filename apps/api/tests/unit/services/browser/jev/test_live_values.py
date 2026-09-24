@@ -104,3 +104,39 @@ async def test_a_failed_read_degrades_to_attribute_values_and_is_logged(monkeypa
     logger.warning.assert_called_once_with(
         f"{LogTag.BROWSER} Jev live-value snapshot failed", error_type="ConnectionError"
     )
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        pytest.param({"strings": []}, id="no documents"),
+        pytest.param({"strings": [], "documents": [{}]}, id="a document without nodes"),
+        pytest.param(
+            {"strings": [], "documents": [{"nodes": {"backendNodeId": [1], "inputValue": {}}}]},
+            id="an empty value column",
+        ),
+        pytest.param(
+            {
+                "strings": [],
+                "documents": [
+                    {"nodes": {"backendNodeId": [1], "inputChecked": {}, "optionSelected": {}}}
+                ],
+            },
+            id="boolean columns without rows",
+        ),
+    ],
+)
+def test_a_snapshot_missing_any_column_reads_as_no_live_state(snapshot) -> None:
+    assert parse_snapshot(snapshot) == LiveValues()
+
+
+def test_a_value_column_out_of_step_with_its_rows_is_refused_not_half_read() -> None:
+    snapshot = {
+        "strings": ["a", "b"],
+        "documents": [
+            {"nodes": {"backendNodeId": [1, 2], "inputValue": {"index": [0, 1], "value": [0]}}}
+        ],
+    }
+
+    with pytest.raises(ValueError):
+        parse_snapshot(snapshot)
