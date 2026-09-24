@@ -275,6 +275,26 @@ class TestBuildInitialMessages:
         assert mock_assemble.call_args.args[0].query == "original query"
 
     @pytest.mark.asyncio
+    async def test_the_comms_request_reaches_the_assembler_beside_the_retrieval_query(self):
+        """Recall reuses what comms fetched for the user's own words; losing them re-recalls on the brief."""
+        with self._assembled() as mock_assemble:
+            await build_initial_messages(
+                system_message=SystemMessage(content="sys"),
+                agent_name="agent",
+                task="enhanced task with hints",
+                seed=ThreadSeed(
+                    tier=AgentTier.EXECUTOR,
+                    configurable={},
+                    retrieval_query="book the usual table",
+                    request_query="can you book our usual table for Friday?",
+                ),
+            )
+
+        ctx = mock_assemble.call_args.args[0]
+        assert ctx.request_query == "can you book our usual table for Friday?"
+        assert ctx.query == "book the usual table"
+
+    @pytest.mark.asyncio
     async def test_tier_and_ids_reach_the_assembler(self):
         """The tier selects which sections apply; the wrong one silently loses provider metadata."""
         with self._assembled() as mock_assemble:
@@ -1050,6 +1070,27 @@ class TestPrepareExecutorExecution:
                 recursion_limit=EXECUTOR_RECURSION_LIMIT,
             ),
         }
+
+    @pytest.mark.asyncio
+    async def test_the_users_own_request_rides_to_the_executors_context_with_the_bare_task(self):
+        """The executor recalls on the message comms already recalled on, and on the unenhanced task."""
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        graph, config, system, context = self._prepare_patches(build_config)
+        with graph, config, system, context as mock_assemble:
+            await prepare_executor_execution(
+                task="book the usual table",
+                configurable={
+                    "user_id": "u1",
+                    "thread_id": "t1",
+                    "email": "t@t.com",
+                    "user_name": "Test",
+                    "user_request": "can you book our usual table for Friday?",
+                },
+            )
+
+        ctx = mock_assemble.call_args.args[0]
+        assert ctx.request_query == "can you book our usual table for Friday?"
+        assert ctx.query == "book the usual table"
 
     @pytest.mark.asyncio
     async def test_the_dev_executor_model_comms_stashed_becomes_this_runs_dev_option(self):

@@ -18,7 +18,7 @@ from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
-from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME, EXECUTOR_STATUS_MARKER
+from app.agents.context.slots import EXECUTOR_STATUS_MARKER
 from app.agents.core.background.executor_queue import decode_raw_item, parse_lock_value
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
@@ -36,13 +36,12 @@ async def executor_status_hook(state: State, config: RunnableConfig, store: Base
         if not thread_id or not redis_cache.client:
             return state
 
-        # Skip the whole narration run, not only messages[-1]: the narrated run still
-        # holds the busy lock, so after any tool call the frame said "still going".
+        # The narrated run still holds the busy lock. Its flag decides, never a message
+        # name: narration triggers persist in the thread, and a scan for one silences
+        # every later turn of the conversation.
         if configurable.get("is_result_narration"):
             return state
         messages = state.get("messages", [])
-        if any(getattr(m, "name", None) == BACKGROUND_EXECUTOR_NAME for m in messages):
-            return state
 
         raw = await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{thread_id}")
         if raw is None:

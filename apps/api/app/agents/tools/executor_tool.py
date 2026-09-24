@@ -166,8 +166,9 @@ async def call_executor(
             workflow_id, user_id, fallback_note=base_configurable.get("playbook_fallback")
         )
     else:
-        last_run = ""
-        playbook_check = ""
+        # compose_executor_brief skips a falsy part, so None and "" are equivalent here.
+        last_run = ""  # pragma: no mutate
+        playbook_check = ""  # pragma: no mutate
 
     composed_task = compose_executor_brief(
         task,

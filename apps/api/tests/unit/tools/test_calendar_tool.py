@@ -92,13 +92,17 @@ def tools() -> dict[str, Any]:
     return _tools()
 
 
-def _assert_metadata_failure_logged(logged: MagicMock, error_type: str) -> None:
-    """Assert a calendar-list failure was reported once in the wide event, not swallowed."""
+def _assert_metadata_failure_logged(logged: MagicMock, error_type: str, error: str) -> None:
+    """Assert a calendar-list failure was reported once, naming whose card and why, not swallowed."""
     warnings = [
         c for c in logged.warning.call_args_list if "Calendar metadata unavailable" in c.args[0]
     ]
     assert len(warnings) == 1
-    assert warnings[0].kwargs["error_type"] == error_type
+    assert warnings[0].kwargs == {
+        "user_id": AUTH["user_id"],
+        "error_type": error_type,
+        "error": error,
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -612,7 +616,7 @@ class TestGetDaySummary:
                 tools, GetDaySummaryInput(date="2026-03-15"), events=events, raises_metadata=True
             )
         assert out["events"] == [event.model_dump() for event in events]
-        _assert_metadata_failure_logged(logged, "RuntimeError")
+        _assert_metadata_failure_logged(logged, "RuntimeError", "calendar list down")
 
     def test_a_failed_user_lookup_falls_back_to_utc_and_says_so(self, tools, writer) -> None:
         with (
@@ -633,7 +637,7 @@ class TestGetDaySummary:
         assert mock_events.await_args.kwargs["time_min"] == "2026-03-15T00:00:00+00:00"
         warnings = [c for c in logged.warning.call_args_list if "day summary" in c.args[0]]
         assert len(warnings) == 1
-        assert warnings[0].kwargs["error_type"] == "RuntimeError"
+        assert warnings[0].kwargs == {"user_id": AUTH["user_id"], "error_type": "RuntimeError"}
 
     def test_nothing_is_streamed_for_an_empty_day(self, tools, writer) -> None:
         self._run(tools, GetDaySummaryInput(date="2026-03-15"), events=[])
@@ -731,7 +735,7 @@ class TestFetchEvents:
         with patch(f"{MODULE}.log") as logged:
             out, _ = self._run(tools, FetchEventsInput(), events=events, raises_metadata=True)
         assert out["calendar_fetch_data"] == [event.model_dump() for event in events]
-        _assert_metadata_failure_logged(logged, "RuntimeError")
+        _assert_metadata_failure_logged(logged, "RuntimeError", "down")
 
     def test_nothing_is_streamed_when_there_are_no_events(self, tools, writer) -> None:
         self._run(tools, FetchEventsInput(), events=[])
@@ -809,7 +813,7 @@ class TestFindEvent:
                 raises_metadata=True,
             )
         assert out["calendar_search_data"] == [event.model_dump() for event in events]
-        _assert_metadata_failure_logged(logged, "RuntimeError")
+        _assert_metadata_failure_logged(logged, "RuntimeError", "down")
 
 
 # ---------------------------------------------------------------------------
@@ -1770,7 +1774,7 @@ class TestCreateEvent:
             )
         assert out["created"] is True
         assert out["created_events"][0]["event_id"] == "evt-1"
-        _assert_metadata_failure_logged(logged, "RuntimeError")
+        _assert_metadata_failure_logged(logged, "RuntimeError", "down")
 
     # -- validation --------------------------------------------------------
 

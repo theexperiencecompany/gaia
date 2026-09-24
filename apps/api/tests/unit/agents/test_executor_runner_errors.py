@@ -8,7 +8,8 @@ invitation to re-run work that may have half-landed.
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langgraph.errors import GraphRecursionError
 import pytest
@@ -133,3 +134,52 @@ class TestOrphanedBrowserJob:
 
         assert result.type == "error"
         assert result.text == EXECUTOR_STEP_LIMIT_MESSAGE
+
+
+@pytest.mark.unit
+class TestTheOrphanCancelIsOnTheRunsRecord:
+    """The cancel happens off-screen, so the run's own wide event is the only trace of it."""
+
+    @staticmethod
+    def _lines(log: MagicMock, level: str, phrase: str) -> list[Any]:
+        return [c for c in getattr(log, level).call_args_list if phrase in (c.args[0] or "")]
+
+    async def test_a_cancelled_job_is_named_with_its_conversation_and_stream(
+        self, fake_cache: FakeRedisCache
+    ) -> None:
+        await jobs_mod.claim_conversation_slot("conv-1", "job-1")
+
+        with patch.object(er, "log") as log:
+            await _run_with(GraphRecursionError("limit"))
+
+        [line] = self._lines(log, "warning", "Cancelled the browser job orphaned")
+        assert line.kwargs == {
+            "conversation_id": "conv-1",
+            "stream_id": "stream-1",
+            "browser": {"job_id": "job-1"},
+        }
+
+    async def test_a_run_that_left_no_job_records_no_cancel(
+        self, fake_cache: FakeRedisCache
+    ) -> None:
+        with patch.object(er, "log") as log:
+            await _run_with(RuntimeError("boom"))
+
+        assert self._lines(log, "warning", "Cancelled the browser job orphaned") == []
+
+    async def test_a_cancel_that_could_not_reach_redis_is_recorded_with_its_cause(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            er, "cancel_conversation_browser_job", AsyncMock(side_effect=ConnectionError("down"))
+        )
+
+        with patch.object(er, "log") as log:
+            await _run_with(RuntimeError("boom"))
+
+        [line] = self._lines(log, "error", "Could not cancel the browser job")
+        assert line.kwargs == {
+            "conversation_id": "conv-1",
+            "stream_id": "stream-1",
+            "error": "down",
+        }

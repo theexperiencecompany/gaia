@@ -83,7 +83,7 @@ def bridge():
         }
 
 
-async def publish(bridge: dict) -> None:
+async def publish(bridge: dict, **overrides: Any) -> None:
     await publish_approval_request(
         GatedApproval(
             approval_id="appr-1",
@@ -93,7 +93,8 @@ async def publish(bridge: dict) -> None:
             tool_call=TOOL_CALL,
             summary="Send email — to: bob@example.com",
             integration_name="Gmail",
-        )
+        ),
+        **overrides,
     )
     await asyncio.sleep(0)  # let the fire-and-forget notify task start
 
@@ -135,6 +136,15 @@ class TestPublishExactlyOnce:
         bridge["log"].set.assert_called_once_with(
             hil={"approval_id": "appr-1", "tool": "send_email", "stream_id": STREAM_ID}
         )
+
+    async def test_the_pending_card_says_why_auto_mode_stopped_to_ask(self, bridge: dict) -> None:
+        # Auto mode only pauses a call it judged risky; the card is where the user reads
+        # that judgement before deciding, so it must arrive with the card itself.
+        await publish(bridge, auto_reason="Sends mail to someone outside your contacts")
+
+        data = published_frame(bridge)["data"]
+        assert data["status"] == "pending"
+        assert data["auto_reason"] == "Sends mail to someone outside your contacts"
 
     async def test_a_resume_replay_publishes_nothing_and_wakes_nobody(self, bridge: dict) -> None:
         # The node re-runs from the top on every resume. Re-publishing would stack a

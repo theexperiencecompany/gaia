@@ -1205,6 +1205,32 @@ class TestDispatchAcknowledgement:
         )
 
 
+class TestAResultNarrationTurnStartsNoWork:
+    """Comms re-voicing a finished result must not dispatch again.
+
+    The run being narrated still holds the busy lock, so a dispatch here queued a duplicate
+    of the task that just finished: one user message, two browser runs. The refusal is what
+    comms reads instead of an acknowledgement, so its wording is the behaviour: it must say
+    nothing started, and steer comms to report the outcome and offer a retry itself.
+    """
+
+    async def test_the_call_is_refused_and_nothing_is_spawned_or_locked(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        response = await call_executor_with(
+            config=config_for(is_result_narration=True), task="try the booking again"
+        )
+
+        assert response == (
+            "Not dispatched. This turn only reports a result that already came back; it "
+            "cannot start new work. Report what happened, including the failure and its "
+            "reason if it failed, and ask the user whether they want it retried."
+        )
+        await drain_background_tasks()
+        assert spawned_runs == []
+        assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION_ID}") is None
+
+
 class TestSparedRunHearsNoInterruption:
     """A selective cancel that deliberately SPARES the running task must not tell the executor it was stopped.
 
