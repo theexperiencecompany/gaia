@@ -7,6 +7,7 @@ from . import (
     browser_use_obscura_navigate_patch,
     browser_use_page_ready_patch,
     browser_use_read_result_patch,
+    browser_use_run_lock_patch,
     browser_use_scroll_patch,
     browser_use_select_patch,
     browser_use_stealth_patch,

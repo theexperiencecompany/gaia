@@ -31,6 +31,7 @@ from app.constants.browser import (
     BROWSER_VIEWPORT_WIDTH,
 )
 from app.constants.log_tags import LogTag
+from app.patches.browser_use_run_lock_patch import isolate_run_events
 from app.schemas.browser import (
     AgentGuidanceRequest,
     BrowserAction,
@@ -195,6 +196,9 @@ class BrowserAgentRun:
     async def execute(self, task: str) -> RunOutcome:
         from browser_use import Agent, Browser  # noqa: PLC0415 -- heavy optional dep
 
+        # Before any Browser-Use object exists, so every event bus this run
+        # starts takes the run's lock, not the process-wide one.
+        isolate_run_events()
         llm = await build_agent_llm(self._user_id, self._ledger)
         text_model = build_text_model(self._ledger)
         client = build_jev_client()
