@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 export interface SettingsRowProps {
   label: string;
-  description?: string;
+  description?: ReactNode;
   children?: ReactNode;
   onClick?: () => void;
   stacked?: boolean;

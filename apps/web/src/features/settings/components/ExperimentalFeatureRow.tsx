@@ -17,7 +17,19 @@ export function ExperimentalFeatureRow({
   const { setEnabled, isSaving } = useFeatureToggle();
 
   return (
-    <SettingsRow label={feature.label} description={feature.description}>
+    <SettingsRow
+      label={feature.label}
+      description={
+        <>
+          {feature.description}
+          {feature.unavailable_reason && (
+            <span className="mt-1 block text-amber-400">
+              {feature.unavailable_reason}
+            </span>
+          )}
+        </>
+      }
+    >
       <div className="flex items-center gap-3">
         <Chip size="sm" variant="flat" color="warning">
           {FEATURE_STAGE_LABELS[feature.stage]}
@@ -25,7 +37,7 @@ export function ExperimentalFeatureRow({
         <Switch
           size="sm"
           isSelected={feature.enabled}
-          isDisabled={isSaving}
+          isDisabled={!feature.available || isSaving}
           onValueChange={(enabled) => setEnabled(feature.key, enabled)}
           aria-label={`Turn ${feature.label} ${feature.enabled ? "off" : "on"}`}
         />

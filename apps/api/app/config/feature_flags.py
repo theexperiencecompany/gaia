@@ -4,8 +4,10 @@ A flag is a FeatureFlag member plus one FlagSpec entry in FEATURE_FLAGS. The
 spec carries the dashboard description and the env default (read at call time,
 so the setting stays the kill switch when PostHog cannot decide). A flag with a
 user_toggle is user-facing: it is listed in Settings and a user's stored choice
-beats the PostHog rollout. A flag without one is internal: evaluated by PostHog
-only, never exposed to users, and a stored choice for it is ignored.
+beats the PostHog rollout, and it gets a second dashboard flag for free, the
+kill switch named by kill_switch_key, which forces it off over every choice.
+A flag without one is internal: evaluated by PostHog only, never exposed to
+users, and a stored choice for it is ignored.
 Evaluation lives in app/services/feature_flags.py.
 """
 
@@ -25,6 +27,19 @@ class FeatureFlag(StrEnum):
     HIL_JEV_JUDGE = "HIL_JEV_JUDGE"
     HIL_JEV_REPLY = "HIL_JEV_REPLY"
     BROWSER_OBSCURA = "BROWSER_OBSCURA"
+
+
+# A separate boolean flag, not a value of the rollout flag: stored choices beat the
+# rollout by design, so only a flag evaluated before them can override them.
+KILL_SWITCH_SUFFIX = "_KILL"
+
+#: Shown beside a killed flag's disabled switch in Settings.
+KILL_SWITCH_REASON = "Paused for everyone while we fix a problem. Your choice is kept."
+
+
+def kill_switch_key(flag: FeatureFlag) -> str:
+    """Return the dashboard key that forces a user-facing flag off for everyone (BROWSER_OBSCURA_KILL)."""
+    return f"{flag.value}{KILL_SWITCH_SUFFIX}"
 
 
 class FeatureStage(StrEnum):

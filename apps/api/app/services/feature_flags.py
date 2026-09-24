@@ -6,7 +6,9 @@ PostHog evaluates per distinct_id at request time, so targeting and rollouts
 change from the dashboard with no deploy. The settings value stays the default
 and kill-switch: when PostHog is unreachable or unconfigured, evaluation fails
 open to it. A user-facing flag also honours the choice the user stored in
-Settings, ahead of the rollout; an internal flag never reads one.
+Settings, ahead of the rollout; an internal flag never reads one. Ahead of
+both sits its kill switch, which only PostHog can engage: when PostHog cannot
+answer, the switch stays off and the user's choice stands.
 
 Every call evaluates live, with no cache of the result: a dashboard flip
 applies on the next turn and PostHog's $feature_flag_called stays a complete
@@ -15,11 +17,19 @@ exposure record. Call sites never touch PostHog or settings.ENABLE_* directly.
 
 import asyncio
 from datetime import UTC, datetime
+from typing import NamedTuple
 
 from posthog import Posthog
 
-from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag, UserToggle
+from app.config.feature_flags import (
+    FEATURE_FLAGS,
+    KILL_SWITCH_REASON,
+    FeatureFlag,
+    UserToggle,
+    kill_switch_key,
+)
 from app.constants.analytics import FEATURE_CHOICE_PERSON_PROPERTY_PREFIX, POSTHOG_PROVIDER_KEY
+from app.constants.error_codes import FEATURE_KILLED
 from app.core.lazy_loader import providers
 from app.db.repositories.users import user_repository
 from app.schemas.feature_flags import UserFeatureFlagListResponse, UserFeatureFlagResponse
@@ -68,26 +78,40 @@ async def _stored_choice(flag: FeatureFlag, user_id: str) -> bool | None:
     return user.feature_flags.get(flag)
 
 
-async def is_enabled(flag: FeatureFlag, user_id: str | None, default: bool | None = None) -> bool:
-    """Evaluate the flag for a user, live on every call: stored choice, then PostHog, then the default.
+class _Resolution(NamedTuple):
+    enabled: bool
+    killed: bool
 
-    No user means no evaluation and no I/O; only a user-facing flag reads the
-    stored choice. PostHog runs in a worker thread and fails open to the default.
-    The SDK auto-emits $feature_flag_called on success; feature_flag:evaluated
-    covers every other path so those users still count in the denominator.
-    """
-    spec = FEATURE_FLAGS[flag]
-    fallback = spec.default() if default is None else default
-    if not user_id:
-        return fallback
 
-    if spec.user_toggle is not None:
-        choice = await _stored_choice(flag, user_id)
-        if choice is not None:
-            log.set(flags={flag.value: choice})
-            _track_evaluation(user_id, flag, choice, fallback_reason="user_choice")
-            return choice
+async def _kill_switch_engaged(flag: FeatureFlag, user_id: str) -> bool:
+    """Whether ops forced the flag off; an unreachable or unconfigured PostHog never engages it."""
+    client = _get_posthog_client()
+    if client is None:
+        return False
+    key = kill_switch_key(flag)
+    try:
+        result = await asyncio.to_thread(client.get_feature_flag, key, user_id)
+    except Exception as e:
+        log.warning(
+            "Feature flag kill switch check failed, leaving it disengaged",
+            flag=flag.value,
+            kill_switch=key,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return False
+    if result is None:
+        # The SDK swallows transport errors into None, so this is also the unreachable case.
+        log.warning(
+            "Feature flag kill switch unevaluated, leaving it disengaged",
+            flag=flag.value,
+            kill_switch=key,
+        )
+        return False
+    return _coerce_result(result, False)
 
+
+async def _posthog_value(flag: FeatureFlag, user_id: str, fallback: bool) -> bool:
     client = _get_posthog_client()
     if client is None:
         _track_evaluation(user_id, flag, fallback, fallback_reason="posthog_unconfigured")
@@ -113,13 +137,44 @@ async def is_enabled(flag: FeatureFlag, user_id: str | None, default: bool | Non
     return enabled
 
 
+async def _resolve(flag: FeatureFlag, user_id: str, fallback: bool) -> _Resolution:
+    """Kill switch, then stored choice (user-facing flags only), then PostHog, then the default."""
+    if FEATURE_FLAGS[flag].user_toggle is not None:
+        if await _kill_switch_engaged(flag, user_id):
+            log.set(flags={flag.value: False})
+            _track_evaluation(user_id, flag, False, fallback_reason="killed")
+            return _Resolution(enabled=False, killed=True)
+        choice = await _stored_choice(flag, user_id)
+        if choice is not None:
+            log.set(flags={flag.value: choice})
+            _track_evaluation(user_id, flag, choice, fallback_reason="user_choice")
+            return _Resolution(enabled=choice, killed=False)
+    return _Resolution(enabled=await _posthog_value(flag, user_id, fallback), killed=False)
+
+
+async def is_enabled(flag: FeatureFlag, user_id: str | None, default: bool | None = None) -> bool:
+    """Evaluate the flag for a user, live on every call: kill switch, stored choice, PostHog, default.
+
+    No user means no evaluation and no I/O; only a user-facing flag has a kill
+    switch and a stored choice. PostHog runs in a worker thread and fails open.
+    The SDK auto-emits $feature_flag_called on success; feature_flag:evaluated
+    covers every other path so those users still count in the denominator.
+    """
+    spec = FEATURE_FLAGS[flag]
+    fallback = spec.default() if default is None else default
+    if not user_id:
+        return fallback
+    return (await _resolve(flag, user_id, fallback)).enabled
+
+
 def _track_evaluation(
     user_id: str, flag: FeatureFlag, enabled: bool, fallback_reason: str | None
 ) -> None:
-    """Emit one fallback event per user/flag/day, for paths the SDK never sees.
+    """Emit one event per user/flag/reason/day, for paths the SDK never sees.
 
     Best-effort and enqueue-only so telemetry never breaks or slows a turn; the
-    per-day dedupe key collapses repeats instead of double-counting.
+    per-day dedupe key collapses repeats, and carries the reason so a kill
+    engaged mid-day still shows up the same day.
     """
     try:
         capture_event(
@@ -131,7 +186,7 @@ def _track_evaluation(
                 **({"fallback_reason": fallback_reason} if fallback_reason else {}),
             },
             dedupe_key=(
-                f"feature-flag-evaluated:{flag.value}:{user_id}:"
+                f"feature-flag-evaluated:{flag.value}:{user_id}:{fallback_reason}:"
                 f"{datetime.now(UTC).date().isoformat()}"
             ),
         )
@@ -160,29 +215,33 @@ def _user_facing_flag(key: str) -> tuple[FeatureFlag, UserToggle]:
 
 
 def _feature_response(
-    flag: FeatureFlag, toggle: UserToggle, enabled: bool
+    flag: FeatureFlag, toggle: UserToggle, resolution: _Resolution
 ) -> UserFeatureFlagResponse:
     return UserFeatureFlagResponse(
         key=flag.value,
         label=toggle.label,
         description=toggle.description,
         stage=toggle.stage,
-        enabled=enabled,
+        enabled=resolution.enabled,
+        available=not resolution.killed,
+        unavailable_reason=KILL_SWITCH_REASON if resolution.killed else None,
     )
 
 
 async def list_user_flags(user_id: str) -> UserFeatureFlagListResponse:
     """List every user-facing flag with the value in effect for this user; internal flags never appear."""
     toggles = [
-        (flag, spec.user_toggle)
+        (flag, spec.user_toggle, spec.default())
         for flag, spec in FEATURE_FLAGS.items()
         if spec.user_toggle is not None
     ]
-    values = await asyncio.gather(*(is_enabled(flag, user_id) for flag, _ in toggles))
+    resolutions = await asyncio.gather(
+        *(_resolve(flag, user_id, default) for flag, _, default in toggles)
+    )
     return UserFeatureFlagListResponse(
         features=[
-            _feature_response(flag, toggle, enabled)
-            for (flag, toggle), enabled in zip(toggles, values, strict=True)
+            _feature_response(flag, toggle, resolution)
+            for (flag, toggle, _), resolution in zip(toggles, resolutions, strict=True)
         ]
     )
 
@@ -190,6 +249,15 @@ async def list_user_flags(user_id: str) -> UserFeatureFlagListResponse:
 async def set_user_flag(user_id: str, key: str, enabled: bool) -> UserFeatureFlagResponse:
     """Store the user's choice for a user-facing flag and record it in PostHog."""
     flag, toggle = _user_facing_flag(key)
+    if await _kill_switch_engaged(flag, user_id):
+        raise AppError(
+            message="This feature is paused for everyone right now",
+            why="the flag's kill switch is engaged in PostHog, which overrides every choice",
+            fix="Try again once the feature is back; your current choice is kept",
+            status_code=409,
+            code=FEATURE_KILLED,
+            meta={"flag": flag.value},
+        )
     if not await user_repository.set_feature_flag(user_id, flag, enabled):
         raise AppError(
             message="User not found",
@@ -203,7 +271,7 @@ async def set_user_flag(user_id: str, key: str, enabled: bool) -> UserFeatureFla
     identify_user(
         user_id, {f"{FEATURE_CHOICE_PERSON_PROPERTY_PREFIX}{flag.value.lower()}": enabled}
     )
-    return _feature_response(flag, toggle, enabled)
+    return _feature_response(flag, toggle, _Resolution(enabled=enabled, killed=False))
 
 
 async def is_code_mode_enabled(user_id: str | None) -> bool:
