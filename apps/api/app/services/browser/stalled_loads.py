@@ -87,7 +87,11 @@ class StalledLoads:
     async def _stop_after(self, tab: str, session_id: str, url: str) -> None:
         await asyncio.sleep(BROWSER_LOAD_STALL_SECONDS)
         self._timers.pop(tab, None)
-        log.warning(f"{LogTag.BROWSER} browser load stalled; stopping it", error_type="LoadStalled")
+        log.warning(
+            f"{LogTag.BROWSER} browser load stalled; stopping it",
+            error_type="LoadStalled",
+            browser={"stalled_url": url},
+        )
         self._stalled.append(
             f"{url} sent nothing for {BROWSER_LOAD_STALL_SECONDS:.0f} s, so its loading was stopped; "
             "the tab is still on the page it was on."
