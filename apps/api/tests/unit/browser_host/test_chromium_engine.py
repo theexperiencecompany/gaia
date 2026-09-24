@@ -384,6 +384,21 @@ async def test_shutdown_closes_the_root_and_terminates_the_engine(
     )
 
 
+async def test_shutdown_deletes_the_stopped_engines_profile(tmp_path: Path) -> None:
+    # Every launch makes a fresh profile; a recycled or crashed engine must not leave its old one.
+    profile = tmp_path / "gaia-browser-host-x"
+    (profile / "Default").mkdir(parents=True)
+    (profile / "Default" / "Cookies").write_bytes(b"x" * 1024)
+    host = ChromiumHost()
+    host._proc = cast(asyncio.subprocess.Process, _Proc())
+    host._user_data_dir = str(profile)
+
+    await host._shutdown_chromium()
+
+    assert not profile.exists()
+    assert host._user_data_dir is None
+
+
 async def test_an_engine_that_ignores_terminate_is_killed() -> None:
     host = ChromiumHost()
     proc = _Proc()

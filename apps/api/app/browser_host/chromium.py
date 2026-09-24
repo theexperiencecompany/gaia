@@ -21,6 +21,7 @@ from pathlib import Path
 
 # spawns the Obscura/Chromium CDP server via create_subprocess_exec with a fixed
 # argv from settings, never a shell; import is an intended, confirmed use.
+import shutil
 import subprocess  # nosec B404
 import tempfile
 import time
@@ -905,6 +906,14 @@ class ChromiumHost:
         self._proc = None
         self._root_ws_url = None
         self._sampler = None
+        profile, self._user_data_dir = self._user_data_dir, None
+        if profile is not None:
+            # Every launch makes a fresh profile; a recycled or crashed engine's old one is litter.
+            await asyncio.to_thread(shutil.rmtree, profile, ignore_errors=True)
+            if Path(profile).exists():
+                log.warning(
+                    f"{LogTag.BROWSER} browser profile not fully removed", error_type="OSError"
+                )
 
     async def _reaper_loop(self) -> None:
         while True:
