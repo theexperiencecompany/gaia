@@ -14,7 +14,16 @@ class UserFeatureFlagResponse(ResponseModel):
     description: str = Field(description="One or two sentences on what turning it on changes")
     stage: FeatureStage = Field(description="How finished the feature is")
     enabled: bool = Field(
-        description="In effect for the caller: their own choice, else the rollout, else the default"
+        description=(
+            "In effect for the caller: off while killed, else their own choice, "
+            "else the rollout, else the default"
+        )
+    )
+    available: bool = Field(
+        description="False while ops have the feature killed for everyone; the switch is locked"
+    )
+    unavailable_reason: str | None = Field(
+        default=None, description="Why the switch is locked, shown beside it; null when available"
     )
 
 

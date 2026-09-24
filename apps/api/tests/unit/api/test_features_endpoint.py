@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag
+from app.config.feature_flags import FEATURE_FLAGS, KILL_SWITCH_REASON, FeatureFlag
 from app.models.user_models import UserDocument
 from app.services.analytics_service import AnalyticsEvents
 from tests.conftest import FAKE_USER
@@ -47,9 +47,10 @@ def store() -> Iterator[_UserStore]:
 
 @pytest.fixture
 def posthog() -> Iterator[MagicMock]:
-    """One PostHog client behind both flag evaluation and event capture; no rollout targets anyone."""
+    """One PostHog client behind both flag evaluation and event capture; flag_values holds what it serves."""
     client = MagicMock()
-    client.get_feature_flag.return_value = None
+    client.flag_values = {}
+    client.get_feature_flag.side_effect = lambda key, _user_id: client.flag_values.get(key)
     with (
         patch(f"{SERVICE}._get_posthog_client", return_value=client),
         patch("app.services.analytics_service._get_posthog_client", return_value=client),
@@ -83,6 +84,8 @@ class TestListFeatures:
                     ].user_toggle.description,
                     "stage": "experimental",
                     "enabled": False,
+                    "available": True,
+                    "unavailable_reason": None,
                 }
             ]
         }
@@ -90,7 +93,7 @@ class TestListFeatures:
     async def test_shows_the_rollout_value_before_the_user_chooses(
         self, client: AsyncClient, store: _UserStore, posthog: MagicMock
     ) -> None:
-        posthog.get_feature_flag.return_value = True
+        posthog.flag_values["BROWSER_OBSCURA"] = True
 
         resp = await client.get(URL)
 
@@ -99,6 +102,17 @@ class TestListFeatures:
     async def test_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.get(URL)
         assert resp.status_code == 401
+
+    async def test_a_killed_flag_is_listed_locked_and_off_over_the_users_choice(
+        self, client: AsyncClient, store: _UserStore, posthog: MagicMock
+    ) -> None:
+        store.choices["BROWSER_OBSCURA"] = True
+        posthog.flag_values["BROWSER_OBSCURA_KILL"] = True
+
+        [feature] = (await client.get(URL)).json()["features"]
+
+        assert (feature["enabled"], feature["available"]) == (False, False)
+        assert feature["unavailable_reason"] == KILL_SWITCH_REASON
 
 
 @pytest.mark.unit
@@ -118,7 +132,7 @@ class TestUpdateFeature:
     async def test_the_choice_beats_a_rollout_that_says_otherwise(
         self, client: AsyncClient, store: _UserStore, posthog: MagicMock
     ) -> None:
-        posthog.get_feature_flag.return_value = True
+        posthog.flag_values["BROWSER_OBSCURA"] = True
 
         await client.patch(f"{URL}/BROWSER_OBSCURA", json={"enabled": False})
 
@@ -157,6 +171,31 @@ class TestUpdateFeature:
 
         assert resp.status_code == 404
         assert _toggled_captures(posthog) == []
+
+    async def test_patch_while_killed_is_a_409_and_stores_nothing(
+        self, client: AsyncClient, store: _UserStore, posthog: MagicMock
+    ) -> None:
+        store.choices["BROWSER_OBSCURA"] = False
+        posthog.flag_values["BROWSER_OBSCURA_KILL"] = True
+
+        resp = await client.patch(f"{URL}/BROWSER_OBSCURA", json={"enabled": True})
+
+        assert resp.status_code == 409
+        assert resp.json()["code"] == "FEATURE_KILLED"
+        assert store.choices == {"BROWSER_OBSCURA": False}
+        assert _toggled_captures(posthog) == []
+        posthog.set.assert_not_called()
+
+    async def test_patch_with_posthog_down_is_not_blocked(
+        self, client: AsyncClient, store: _UserStore, posthog: MagicMock
+    ) -> None:
+        posthog.get_feature_flag.side_effect = TimeoutError("posthog down")
+
+        resp = await client.patch(f"{URL}/BROWSER_OBSCURA", json={"enabled": True})
+
+        assert resp.status_code == 200
+        assert resp.json()["available"] is True
+        assert store.choices == {"BROWSER_OBSCURA": True}
 
     async def test_a_missing_body_is_a_422(self, client: AsyncClient) -> None:
         resp = await client.patch(f"{URL}/BROWSER_OBSCURA")

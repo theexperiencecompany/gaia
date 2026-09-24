@@ -18798,13 +18798,18 @@
       "UserFeatureFlagResponse": {
         "description": "One flag the user may toggle, with the value currently in effect for them.",
         "properties": {
+          "available": {
+            "description": "False while ops have the feature killed for everyone; the switch is locked",
+            "title": "Available",
+            "type": "boolean"
+          },
           "description": {
             "description": "One or two sentences on what turning it on changes",
             "title": "Description",
             "type": "string"
           },
           "enabled": {
-            "description": "In effect for the caller: their own choice, else the rollout, else the default",
+            "description": "In effect for the caller: off while killed, else their own choice, else the rollout, else the default",
             "title": "Enabled",
             "type": "boolean"
           },
@@ -18821,6 +18826,18 @@
           "stage": {
             "$ref": "#/components/schemas/FeatureStage",
             "description": "How finished the feature is"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the switch is locked, shown beside it; null when available",
+            "title": "Unavailable Reason"
           }
         },
         "required": [
@@ -18828,7 +18845,9 @@
           "label",
           "description",
           "stage",
-          "enabled"
+          "enabled",
+          "available",
+          "unavailable_reason"
         ],
         "title": "UserFeatureFlagResponse",
         "type": "object"

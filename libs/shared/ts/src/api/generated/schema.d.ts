@@ -14511,13 +14511,18 @@ export interface components {
          */
         UserFeatureFlagResponse: {
             /**
+             * Available
+             * @description False while ops have the feature killed for everyone; the switch is locked
+             */
+            available: boolean;
+            /**
              * Description
              * @description One or two sentences on what turning it on changes
              */
             description: string;
             /**
              * Enabled
-             * @description In effect for the caller: their own choice, else the rollout, else the default
+             * @description In effect for the caller: off while killed, else their own choice, else the rollout, else the default
              */
             enabled: boolean;
             /**
@@ -14532,6 +14537,11 @@ export interface components {
             label: string;
             /** @description How finished the feature is */
             stage: components["schemas"]["FeatureStage"];
+            /**
+             * Unavailable Reason
+             * @description Why the switch is locked, shown beside it; null when available
+             */
+            unavailable_reason: string | null;
         };
         /**
          * UserSubscriptionStatus

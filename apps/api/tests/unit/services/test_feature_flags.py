@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag, FeatureStage
+from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag, FeatureStage, kill_switch_key
 from app.config.settings import settings as app_settings
 from app.models.user_models import UserDocument
 from app.services.analytics_service import AnalyticsEvents
@@ -432,6 +432,15 @@ def _user_with_choices(choices: dict[str, bool] | None) -> UserDocument:
     return UserDocument(id=USER_ID, feature_flags=choices)
 
 
+def _posthog_serves(client: MagicMock, values: dict[str, object]) -> None:
+    """Answer each PostHog flag key from values; a key it lacks is unevaluated (None)."""
+    client.get_feature_flag.side_effect = lambda key, _user_id: values.get(key)
+
+
+def _queried_keys(client: MagicMock) -> list[str]:
+    return [call.args[0] for call in client.get_feature_flag.call_args_list]
+
+
 @pytest.fixture
 def stored_user() -> AsyncMock:
     with patch("app.services.feature_flags.user_repository.get", new_callable=AsyncMock) as get:
@@ -467,16 +476,17 @@ class TestEvaluationOrder:
         evaluated: MagicMock,
     ) -> None:
         stored_user.return_value = _user_with_choices({"BROWSER_OBSCURA": choice})
-        mock_client.get_feature_flag.return_value = not choice
+        _posthog_serves(mock_client, {"BROWSER_OBSCURA": not choice})
 
         assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is choice
-        mock_client.get_feature_flag.assert_not_called()
+        assert "BROWSER_OBSCURA" not in _queried_keys(mock_client)
         stored_user.assert_awaited_once_with(USER_ID)
 
     async def test_the_choice_counts_in_the_exposure_denominator(
         self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         stored_user.return_value = _user_with_choices({"BROWSER_OBSCURA": True})
+        _posthog_serves(mock_client, {})
 
         await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID)
 
@@ -496,10 +506,10 @@ class TestEvaluationOrder:
         evaluated: MagicMock,
     ) -> None:
         stored_user.return_value = _user_with_choices(choices)
-        mock_client.get_feature_flag.return_value = True
+        _posthog_serves(mock_client, {"BROWSER_OBSCURA": True})
 
         assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is True
-        mock_client.get_feature_flag.assert_called_once_with("BROWSER_OBSCURA", USER_ID)
+        mock_client.get_feature_flag.assert_any_call("BROWSER_OBSCURA", USER_ID)
 
     async def test_without_a_choice_or_rollout_the_default_is_off(
         self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
@@ -513,7 +523,7 @@ class TestEvaluationOrder:
         self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         stored_user.return_value = None
-        mock_client.get_feature_flag.return_value = True
+        _posthog_serves(mock_client, {"BROWSER_OBSCURA": True})
 
         assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is True
 
@@ -531,6 +541,92 @@ class TestEvaluationOrder:
     ) -> None:
         assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, None) is False
         stored_user.assert_not_awaited()
+
+
+class TestKillSwitch:
+    """The dashboard's <FLAG>_KILL forces a user-facing flag off for everyone, over every choice."""
+
+    async def test_kill_switch_beats_a_stored_choice(
+        self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        stored_user.return_value = _user_with_choices({"BROWSER_OBSCURA": True})
+        _posthog_serves(mock_client, {"BROWSER_OBSCURA_KILL": True, "BROWSER_OBSCURA": True})
+
+        assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is False
+        assert evaluated.call_args.args[2] == {
+            "flag": "BROWSER_OBSCURA",
+            "enabled": False,
+            "fallback_reason": "killed",
+        }
+
+    async def test_kill_switch_beats_a_rollout(
+        self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        stored_user.return_value = _user_with_choices(None)
+        _posthog_serves(mock_client, {"BROWSER_OBSCURA_KILL": True, "BROWSER_OBSCURA": True})
+
+        assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is False
+        assert "BROWSER_OBSCURA" not in _queried_keys(mock_client)
+
+    async def test_posthog_down_leaves_the_kill_switch_off_and_the_choice_stands(
+        self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        stored_user.return_value = _user_with_choices({"BROWSER_OBSCURA": True})
+        mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
+
+        with patch("app.services.feature_flags.log") as mock_log:
+            assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is True
+        mock_log.warning.assert_called_once_with(
+            "Feature flag kill switch check failed, leaving it disengaged",
+            flag="BROWSER_OBSCURA",
+            kill_switch="BROWSER_OBSCURA_KILL",
+            error="posthog down",
+            error_type="TimeoutError",
+        )
+        assert evaluated.call_args.args[2]["fallback_reason"] == "user_choice"
+
+    async def test_unconfigured_posthog_leaves_the_kill_switch_off(
+        self, stored_user: AsyncMock, no_client: None, evaluated: MagicMock
+    ) -> None:
+        stored_user.return_value = _user_with_choices({"BROWSER_OBSCURA": True})
+
+        assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is True
+
+    async def test_an_unset_kill_switch_is_off(
+        self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        stored_user.return_value = _user_with_choices({"BROWSER_OBSCURA": True})
+        _posthog_serves(mock_client, {"BROWSER_OBSCURA_KILL": False})
+
+        assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is True
+        assert _queried_keys(mock_client) == ["BROWSER_OBSCURA_KILL"]
+
+    async def test_an_internal_flag_has_no_kill_switch(
+        self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        _posthog_serves(mock_client, {"CODE_MODE_KILL": True, "CODE_MODE": True})
+
+        assert await is_enabled(FeatureFlag.CODE_MODE, USER_ID) is True
+        assert _queried_keys(mock_client) == ["CODE_MODE"]
+
+    def test_every_user_flag_derives_a_kill_key_no_flag_already_uses(self) -> None:
+        kill_keys = {
+            kill_switch_key(flag) for flag, spec in FEATURE_FLAGS.items() if spec.user_toggle
+        }
+        assert kill_switch_key(FeatureFlag.BROWSER_OBSCURA) == "BROWSER_OBSCURA_KILL"
+        assert kill_keys.isdisjoint({flag.value for flag in FeatureFlag})
+
+    async def test_a_kill_engaged_mid_day_is_not_deduped_into_the_earlier_choice_event(
+        self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        stored_user.return_value = _user_with_choices({"BROWSER_OBSCURA": True})
+        _posthog_serves(mock_client, {})
+        await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID)
+        _posthog_serves(mock_client, {"BROWSER_OBSCURA_KILL": True})
+        await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID)
+
+        choice_key, killed_key = (call.kwargs["dedupe_key"] for call in evaluated.call_args_list)
+        assert choice_key != killed_key
 
 
 class TestRetiredChoices:
