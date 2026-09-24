@@ -250,6 +250,11 @@ BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS = 1500
 BROWSER_GUIDANCE_MAX_ELEMENTS = 40
 BROWSER_GUIDANCE_RECENT_ACTIONS = 6
 
+# Two failed steps running end the run with its reason, not Browser-Use's narrowing to done.
+BROWSER_AGENT_MAX_FAILURES = 2
+# A decision can wait out a layout pass, a part judgement and Jev; Browser-Use's 75s cut it off.
+BROWSER_AGENT_LLM_TIMEOUT_SECONDS = 180
+
 # Appended to every browser task so the agent uses the takeover action instead
 # of doing sensitive steps itself.
 BROWSER_TAKEOVER_PREAMBLE = (
