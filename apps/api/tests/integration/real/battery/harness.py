@@ -69,8 +69,8 @@ HARNESS_DIR = REPO_ROOT / "apps" / "bots" / "harness"
 #: One scenario end to end, sized for a slow link (2026-09-22 at ~70 KB/s: a page
 #: load ran 30-90 s, a two-site task 13 min); the outcome reports the duration.
 RUN_TIMEOUT_SECONDS = 1200.0
-#: The sender writes its transcript only on exit and comms voices the outcome after
-#: the job ends, so it outlives the run; SIGTERM cuts the window short once done.
+#: Comms voices the outcome after the job ends, so the sender's consumer outlives
+#: the run; SIGTERM cuts the window short once done.
 SENDER_WINDOW_SECONDS = RUN_TIMEOUT_SECONDS + 120.0
 #: After the job ends the executor still voices the outcome; the reply is out
 #: once the conversation's executor lock is released. Bounded by the chat
@@ -80,6 +80,8 @@ OUTCOME_DELIVERY_SECONDS = 15.0
 #: One chat turn from the harness, bounded by the chat model's invoke timeout.
 REPLY_TIMEOUT_SECONDS = 330.0
 _POLL_SECONDS = 2.0
+#: How gaia-sim's console reports a send it could not finish (apps/bots/harness/src/cli.ts).
+_SENDER_FAILED = "gaia-sim failed:"
 #: What a Telegram user types to answer a handoff (the prompt's own words).
 _HANDOFF_REPLIES = {"continue": "done", "cancel": "stop"}
 
@@ -147,10 +149,20 @@ def drain_battery_leftovers(battery_user_id: str) -> int:
 
 
 class Sender(subprocess.Popen[str]):
-    """A bot-harness sender process, with its transcript file and the chat it posts to."""
+    """A bot-harness sender process, with its transcript file, its console and the chat it posts to."""
 
     transcript_path: Path
+    console_path: Path
     channel: str
+
+    def failure(self) -> str | None:
+        """Return why the sender gave up, as its console says, or None while it has not."""
+        failed = [
+            line
+            for line in self.console_path.read_text(errors="replace").splitlines()
+            if line.startswith(_SENDER_FAILED)
+        ]
+        return failed[-1] if failed else None
 
 
 @dataclass
@@ -289,7 +301,8 @@ class Battery:
         # Console to a file, never an unread pipe: a long run's logging filled it and
         # hung the sender. Own session, so killing it also kills children that would
         # otherwise keep consuming the outbound queue.
-        console = (self.out_dir / f"{run_id}.log").open("w")
+        console_path = self.out_dir / f"{run_id}.log"
+        console = console_path.open("w")
         proc = Sender(
             cmd,
             cwd=HARNESS_DIR,
@@ -299,6 +312,7 @@ class Battery:
             start_new_session=True,
         )
         proc.transcript_path = out
+        proc.console_path = console_path
         proc.channel = self.last_channel
         self.senders.append(proc)
         return proc
@@ -336,9 +350,11 @@ class Battery:
         channel = proc.channel
         events = []
         for sender in (proc, *replies):
+            # A sender that died read as a run that said nothing ("no outcome reply").
+            failure = sender.failure()
+            assert failure is None, f"the harness sender failed, not the run: {failure}"
             path = sender.transcript_path
-            if not path.exists():
-                continue
+            assert path.exists(), f"the harness sender recorded nothing; see {sender.console_path}"
             for line in path.read_text().splitlines():
                 if not line.strip():
                     continue

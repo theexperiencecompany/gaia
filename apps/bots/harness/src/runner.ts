@@ -178,6 +178,8 @@ export async function sendOneShot(params: {
   settleMs?: number;
   /** False for a message into a conversation another sender already consumes for. */
   consumesOutbound?: boolean;
+  /** Where each transcript event is written as it is recorded. */
+  outPath?: string;
 }): Promise<SendResult> {
   const {
     apiUrl,
@@ -187,9 +189,10 @@ export async function sendOneShot(params: {
     channelId,
     settleMs = 0,
     consumesOutbound = true,
+    outPath,
   } = params;
   const user = await linkDevUser(apiUrl, email, emulate);
-  const transcript = new TranscriptRecorder(emulate);
+  const transcript = new TranscriptRecorder(emulate, outPath);
   const adapter = await bootAdapter(
     emulate,
     apiUrl,
@@ -226,6 +229,7 @@ export async function runScenario(
   scenario: Scenario,
   apiUrl: string,
   settleMsOverride?: number,
+  outPath?: string,
 ): Promise<ScenarioResult> {
   if (!isEmulatablePlatform(scenario.emulate)) {
     throw new Error(
@@ -234,7 +238,7 @@ export async function runScenario(
   }
   const platform = scenario.emulate;
   const user = await linkDevUser(apiUrl, scenario.user, platform);
-  const transcript = new TranscriptRecorder(platform);
+  const transcript = new TranscriptRecorder(platform, outPath);
   const adapter = await bootAdapter(platform, apiUrl, transcript);
   const cutShort = terminationRequested();
   const failures: string[] = [];

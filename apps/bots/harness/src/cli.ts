@@ -127,15 +127,12 @@ function parseSettleMs(raw: string | undefined): number {
 }
 
 /** Prints a transcript (JSONL to stdout) and optionally writes it to a file. */
-async function emitTranscript(
+function emitTranscript(
   transcript: TranscriptRecorder,
   outPath: string | undefined,
-): Promise<void> {
+): void {
   out(transcript.toJsonl());
-  if (outPath) {
-    await transcript.writeTo(outPath);
-    log(`Transcript written to ${outPath}`);
-  }
+  if (outPath) log(`Transcript written to ${outPath}`);
 }
 
 async function runSend(args: ParsedArgs): Promise<number> {
@@ -170,10 +167,11 @@ async function runSend(args: ParsedArgs): Promise<number> {
     channelId: args.flags.channel,
     settleMs,
     consumesOutbound,
+    outPath: args.flags.out,
   });
 
   log(`Injected as platform user ${result.user.platformUserId}`);
-  await emitTranscript(result.transcript, args.flags.out);
+  emitTranscript(result.transcript, args.flags.out);
   return 0;
 }
 
@@ -203,8 +201,9 @@ async function runRun(args: ParsedArgs): Promise<number> {
     scenario,
     apiUrl,
     settleOverride,
+    args.flags.out,
   );
-  await emitTranscript(result.transcript, args.flags.out);
+  emitTranscript(result.transcript, args.flags.out);
 
   if (result.passed) {
     log(`PASS: ${result.name} (${scenario.turns.length} turn(s))`);
