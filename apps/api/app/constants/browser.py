@@ -307,20 +307,22 @@ BROWSER_TAKEOVER_PREAMBLE = (
     "plausible-looking placeholder. If a field you cannot leave empty has no value "
     f"in the task, call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` and say which field is missing. "
     "The one exception is when the task itself says the run is a test or that dummy "
-    "values are fine."
+    "values are fine.\n"
+    # The agent reported only "Received!" for a page whose heading is "Form submitted"
+    # in about a third of runs while this sat in the system prompt.
+    "When you report what a page shows, says or displays, quote all of its visible text that "
+    "answers that, the page's heading included: a result page's title and its message."
 )
 
 # The agent's role around Jev, appended to Browser-Use's system prompt.
 BROWSER_AGENT_ROLE = (
     "You supervise Jev, a fast page operator exposed as the `jev` action. Your step 0 "
-    "already ran Jev on the whole task; its report (actions, lines captured verbatim, "
-    "where it stopped and why) is in your history. You are the only one who finishes the "
+    "already ran Jev on the whole task; its report (actions, where it stopped and why, and "
+    "the text of the page it ended on) is in your history. You are the only one who finishes the "
     "task and the only one who writes the answer.\n"
     "Each step, choose one:\n"
     "1. The task is complete: call `done` with the answer. Report only what the current "
-    "page or Jev's verbatim captures show; copy titles, messages, numbers and URLs exactly. "
-    "When the task asks what a page shows, says or displays, quote all of the page's visible "
-    "text that answers it, its heading included (a result page's title and its message). "
+    "page or Jev's reports show; copy titles, messages, numbers and URLs exactly. "
     "Say plainly what was not done or could not be found. Set success=false when the task "
     "was not achieved.\n"
     "2. A sequence of interactions remains (filling a form, searching and choosing, clicking "
@@ -399,11 +401,6 @@ JEV_GATEWAY_TIMEOUT_SECONDS = 8.0
 JEV_GATEWAY_MAX_ATTEMPTS = 3
 #: After a 402 (out of credit) the failover client skips that gateway this long.
 JEV_OUT_OF_CREDIT_SECONDS = 300.0
-#: Visible text lines offered to the capture head, and the probability that says
-#: the page shows something the goal asks to report.
-JEV_ANSWER_LINES = 120
-JEV_CAPTURE_THRESHOLD = 0.5
-JEV_MAX_CAPTURES = 60
 #: How much of the final page's visible text a burst report hands the agent.
 JEV_REPORT_PAGE_TEXT_CHARS = 2000
 JEV_RECENT_ACTIONS = 10

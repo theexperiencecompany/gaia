@@ -1,11 +1,10 @@
-"""One Jev decision per step: the operation, its target, and what the page shows that the goal asks for.
+"""One Jev decision per step: the operation and its target.
 
 Ported from browser-use/jev-ultrafast (MIT) jev_ultrafast/model.py: one
 decisions request carries an operation head and one target head per
 operation that has targets, and only the head the chosen operation names is
-read. Two capture heads ride on the same request at no extra latency: whether
-the visible text answers the goal, and which line does. A typed value is a
-second, small decision over the literals the goal spells out.
+read. A typed value is a second, small decision over the literals the goal
+spells out.
 """
 
 from __future__ import annotations
@@ -15,8 +14,6 @@ import math
 import re
 
 from app.constants.browser import (
-    JEV_ANSWER_LINES,
-    JEV_CAPTURE_THRESHOLD,
     JEV_MAX_ELEMENTS,
     JEV_PROBABILITY_SUM_TOLERANCE,
     JEV_RECENT_ACTIONS,
@@ -28,14 +25,11 @@ from app.services.browser.jev.gateway import (
     JevDecisionsClient,
     JevEvaluation,
     JevEvaluationRequest,
-    JevNoulAnswer,
     JevQuestion,
     JsonInput,
 )
 from app.services.browser.jev.page import PageAction, PageState
 from app.services.browser.jev.questions import (
-    ANSWER_LINE,
-    ANSWER_VISIBLE,
     NAVIGATE_TARGET,
     NEXT_ACTION,
     OPERATIONS,
@@ -89,14 +83,13 @@ class Visited:
 
 @dataclass(frozen=True)
 class Decision:
-    """What to execute and what the page showed, with what the call cost."""
+    """What to execute, with what the call cost."""
 
     operation: JevOperation
     #: The snapshot action id for an element or control operation, else None.
     action_id: str | None
     url: str | None
     confidence: float
-    captures: list[str]
     latency_ms: int
     evaluation: JevEvaluation
 
@@ -174,9 +167,9 @@ def goal_addresses(goal: str) -> list[str]:
     return list(dict.fromkeys([*urls, *sites]))
 
 
-def _validate_choice(answer: JevChoiceAnswer | JevNoulAnswer | None, ids: set[str]) -> JevChoiceAnswer:
-    if not isinstance(answer, JevChoiceAnswer):
-        raise JevDecisionError("Jev returned no choice for a question; no action executed.")
+def _validate_choice(answer: JevChoiceAnswer | None, ids: set[str]) -> JevChoiceAnswer:
+    if answer is None:
+        raise JevDecisionError("Jev returned no answer for a question; no action executed.")
     probabilities = answer.probabilities
     numbers = [*probabilities.values(), answer.confidence if answer.confidence is not None else -1.0]
     valid = (
@@ -189,22 +182,6 @@ def _validate_choice(answer: JevChoiceAnswer | JevNoulAnswer | None, ids: set[st
     if not valid:
         raise JevDecisionError("Invalid Jev response; no action executed.")
     return answer
-
-
-def _lines(page: PageState) -> list[str]:
-    return [line for line in page.text.split("\n") if line.strip()][:JEV_ANSWER_LINES]
-
-
-def _captures(evaluation: JevEvaluation, lines: list[str]) -> list[str]:
-    """The verbatim lines the capture heads chose, when the page shows what the goal asks for."""
-    visible = evaluation.answers.get("answer_visible")
-    if not isinstance(visible, JevNoulAnswer) or visible.noul < JEV_CAPTURE_THRESHOLD:
-        return []
-    chosen = evaluation.answers.get("answer_line")
-    if not isinstance(chosen, JevChoiceAnswer):
-        return []
-    key = chosen.choice
-    return [lines[int(key[1:]) - 1]] if key.startswith("L") and key[1:].isdigit() else []
 
 
 async def decide(
@@ -251,12 +228,6 @@ async def decide(
             criteria=dict(address_ids),
             instructions={"goal": goal, "operation": "NAVIGATE", "rules": NAVIGATE_TARGET},
         )
-    lines = _lines(page)
-    questions["answer_visible"] = JevQuestion(type="noul", instructions={"goal": goal, "question": ANSWER_VISIBLE})
-    questions["answer_line"] = JevQuestion(
-        criteria={**{f"L{i + 1}": line for i, line in enumerate(lines)}, NONE_VALUE: "No line holds it."},
-        instructions={"goal": goal, "question": ANSWER_LINE},
-    )
     state: dict[str, object] = {
         "page": {"url": page.url, "title": page.title, "text": page.text},
         "elements": space.elements,
@@ -286,7 +257,6 @@ async def decide(
         action_id=action_id,
         url=url,
         confidence=operation_answer.confidence or 0.0,
-        captures=_captures(evaluation, lines),
         latency_ms=evaluation.latency_ms,
         evaluation=evaluation,
     )

@@ -22,7 +22,6 @@ from app.constants.browser import (
     JEV_BURST_MAX_ACTIONS,
     JEV_CAPTCHA_FRAME_MARKERS,
     JEV_COVERED_LIMIT,
-    JEV_MAX_CAPTURES,
     JEV_PAGE_TEXT_MAX_CHARS,
     JEV_RECENT_ACTIONS,
     JEV_STALE_LIMIT,
@@ -87,21 +86,11 @@ class JevStep:
 
 
 @dataclass(frozen=True)
-class Capture:
-    """A visible line Jev judged to answer the goal, verbatim, and where it was read."""
-
-    line: str
-    url: str
-    title: str
-
-
-@dataclass(frozen=True)
 class BurstResult:
     goal: str
     stop: JevStop
     detail: str
     steps: list[JevStep]
-    captures: list[Capture]
     url: str
     title: str
     #: The final page's visible text, as Jev read it.
@@ -111,7 +100,7 @@ class BurstResult:
 
     @property
     def progressed(self) -> bool:
-        return any(step.page_changed for step in self.steps) or bool(self.captures)
+        return any(step.page_changed for step in self.steps)
 
 
 @dataclass
@@ -122,7 +111,6 @@ class _Burst:
     page: PageState
     addresses: list[str]
     steps: list[JevStep] = field(default_factory=list)
-    captures: list[Capture] = field(default_factory=list)
     stale: int = 0
     covered: int = 0
 
@@ -171,14 +159,12 @@ class JevRunner:
             f"{LogTag.BROWSER} Jev burst ended",
             stop=stop.value,
             actions=len(state.steps),
-            captures=len(state.captures),
         )
         return BurstResult(
             goal=goal,
             stop=stop,
             detail=detail,
             steps=state.steps,
-            captures=state.captures,
             url=self._secrets.mask(final.url),
             title=final.title,
             text=self._secrets.mask(final.text),
@@ -214,7 +200,6 @@ class JevRunner:
                 decision = await self._decide(state)
             except (JevGatewayError, JevDecisionError) as exc:
                 return JevStop.GATEWAY, f"Jev could not decide this step: {exc}"
-            self._capture(state, decision)
             ended = await self._execute(state, decision)
             if ended is not None:
                 return ended
@@ -370,15 +355,6 @@ class JevRunner:
         )
         value = completion.completion.text
         return value if value and value.strip() else None
-
-    def _capture(self, state: _Burst, decision: Decision) -> None:
-        known = {capture.line for capture in state.captures}
-        for line in decision.captures:
-            if line not in known and len(state.captures) < JEV_MAX_CAPTURES:
-                state.captures.append(
-                    Capture(line=line, url=self._secrets.mask(state.page.url), title=state.page.title)
-                )
-                known.add(line)
 
     def _visit(self, page: PageState) -> None:
         url = self._secrets.mask(page.url)

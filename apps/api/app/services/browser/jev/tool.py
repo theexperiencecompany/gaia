@@ -3,8 +3,8 @@
 The run starts with this action as the Agent's initial action, so the first
 burst costs no agent model call; the agent may call it again with a sharper
 goal. The result the agent reads is written from
-the burst's own record: every action, every line captured verbatim, where
-Jev ended and why.
+the burst's own record: every action, where Jev ended and why, and that
+page's text.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ JEV_ACTION = "jev"
 _DESCRIPTION = (
     "Hand a goal to Jev, the fast page operator: it clicks, types, selects, scrolls and "
     "navigates step by step (~1 s per step) until the goal is done or it is stuck, then "
-    "reports every action, the page text lines it captured verbatim, and where it stopped. "
+    "reports every action, where it stopped and why, and the text of the page it ended on. "
     "Use it for any multi-step on-page work. Give a concrete, self-contained goal naming the "
     "values to type (quote them) and what counts as done. Never give Jev the same goal again "
     "after it made no progress on it."
@@ -53,8 +53,8 @@ _STEP_ACTION = {
 
 _STOP_MEANING = {
     JevStop.DONE: (
-        "Jev judged the goal done. The current page is already in your browser state and the "
-        "captures are below: if they answer the task, finish now."
+        "Jev judged the goal done. The page it ended on is already in your browser state and "
+        "its text is below: if they answer the task, finish now."
     ),
     JevStop.BLOCKED: "Jev found nothing on this page that advances the goal.",
     JevStop.NEEDS_INPUT: "The goal gives no value for a field: ask the user, or hand the step over.",
@@ -96,7 +96,7 @@ def _step_action(step: JevStep) -> BrowserAction:
 
 
 def report(result: BurstResult) -> str:
-    """The burst as the agent reads it: why it stopped, what it did, what it captured, where it is."""
+    """The burst as the agent reads it: why it stopped, what it did, and the page it ended on."""
     lines = [f'Jev ran on: "{result.goal}"', f"Stopped: {result.stop.value}. {result.detail} {_STOP_MEANING[result.stop]}"]
     if result.steps:
         lines.append(f"Actions ({len(result.steps)}):")
@@ -107,9 +107,6 @@ def report(result: BurstResult) -> str:
             lines.append(f"  {n}. {step.operation.value} {step.label}{ident}{typed}{changed}")
     else:
         lines.append("Actions: none.")
-    if result.captures:
-        lines.append("Captured verbatim from the pages (evidence for the answer):")
-        lines.extend(f'  - "{c.line}" [{c.title} | {c.url}]' for c in result.captures)
     lines.append(f"Now on: {result.title} ({result.url})")
     if result.text:
         visible = result.text[:JEV_REPORT_PAGE_TEXT_CHARS]

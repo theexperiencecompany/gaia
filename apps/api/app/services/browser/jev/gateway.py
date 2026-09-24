@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 from time import monotonic, perf_counter
-from typing import Annotated, Literal
+from typing import Literal
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -60,11 +60,11 @@ class _GatewayErrorBody(BaseModel):
 
 
 class JevQuestion(BaseModel):
-    """One question: a ``choice`` among ``criteria``, or a ``noul`` yes/no probability."""
+    """One ``choice`` question: pick an option name from ``criteria``."""
 
-    type: Literal["choice", "noul"] = "choice"
+    type: Literal["choice"] = "choice"
     instructions: JsonInput
-    criteria: dict[str, JsonInput] | None = None
+    criteria: dict[str, JsonInput]
 
 
 class JevEvaluationRequest(BaseModel):
@@ -81,18 +81,6 @@ class JevChoiceAnswer(BaseModel):
     # Jev always returns a confidence; absent means the answer is malformed, which
     # decision.py rejects rather than defaulting away.
     confidence: float | None = None
-
-
-class JevNoulAnswer(BaseModel):
-    """A yes/no question's answer: the probability of yes."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    type: Literal["noul"]
-    noul: float
-
-
-JevAnswer = Annotated[JevChoiceAnswer | JevNoulAnswer, Field(discriminator="type")]
 
 
 class JevUsage(BaseModel):
@@ -125,7 +113,7 @@ class JevEvaluation(BaseModel):
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
-    answers: dict[str, JevAnswer]
+    answers: dict[str, JevChoiceAnswer]
     usage: JevUsage | None = None
     latency_ms: int = 0
     #: Which gateway served this answer; set by the client, so a failed-over
@@ -167,7 +155,7 @@ class JevGatewayClient:
     async def evaluate(self, request: JevEvaluationRequest) -> JevEvaluation:
         """POST the questions; retries transient 429/503/529 with backoff."""
         # The state is JSON-native already; json mode only guards a future field.
-        body = {"model": self.model, **self._to_wire(request.model_dump(mode="json", exclude_none=True))}
+        body = {"model": self.model, **request.model_dump(mode="json")}
         request_bytes = len(json.dumps(body))
         started = perf_counter()
         for attempt in range(JEV_GATEWAY_MAX_ATTEMPTS):
@@ -207,7 +195,7 @@ class JevGatewayClient:
                     f"{_error_message(response)}; no action executed.",
                     status_code=response.status_code,
                 )
-            evaluation = JevEvaluation.model_validate(self._from_wire(response.json()))
+            evaluation = JevEvaluation.model_validate(response.json())
             evaluation.latency_ms = _elapsed_ms(started)
             evaluation.provider = self.provider
             return evaluation
@@ -215,29 +203,6 @@ class JevGatewayClient:
         raise JevGatewayError(  # pragma: no mutate
             f"Jev decisions unavailable ({self.provider}); no action executed."  # pragma: no mutate
         )
-
-    def _to_wire(self, body: dict[str, object]) -> dict[str, object]:
-        """Vercel's gateway spells the yes/no question type "boolean"; OpenRouter's, "noul"."""
-        if self.provider != _VERCEL:
-            return body
-        questions = body["questions"]
-        assert isinstance(questions, dict)
-        for question in questions.values():
-            if question.get("type") == "noul":
-                question["type"] = "boolean"
-        return body
-
-    def _from_wire(self, body: dict[str, object]) -> dict[str, object]:
-        if self.provider != _VERCEL:
-            return body
-        answers = body.get("answers")
-        if isinstance(answers, dict):
-            for answer in answers.values():
-                if isinstance(answer, dict) and answer.get("type") == "boolean":
-                    # Vercel answers {"type": "boolean", "probability": p}.
-                    answer["type"] = "noul"
-                    answer["noul"] = answer.pop("probability")
-        return body
 
     async def aclose(self) -> None:
         await self._client.aclose()
