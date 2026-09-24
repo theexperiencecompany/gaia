@@ -126,7 +126,7 @@ class TestEveryRuntimeModelIsPriced:
 
     @pytest.mark.parametrize("variant", ["nitro", "floor"])
     def test_an_openrouter_routing_variant_is_priced_as_its_base_model(self, variant: str) -> None:
-        """ ":nitro" and ":floor" only pick the provider; billing them at the default misprices every turn."""
+        """Routing variants such as :nitro only pick the provider; the default price misprices every turn."""
         with patch("app.config.model_pricing.log") as mock_log:
             pricing = get_model_pricing(f"{DEFAULT_MODEL_NAME}:{variant}")
 
