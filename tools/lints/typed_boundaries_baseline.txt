@@ -111,7 +111,6 @@ apps/api/app/db/mongodb/mongodb.py	TB001
 apps/api/app/db/postgresql.py	TB001
 apps/api/app/db/repositories/usage_daily.py	TB002
 apps/api/app/db/repositories/workflows.py	TB001
-apps/api/app/decorators/caching.py	TB001
 apps/api/app/memory/chroma_store.py	TB002
 apps/api/app/memory/context.py	TB002
 apps/api/app/memory/embeddings.py	TB001

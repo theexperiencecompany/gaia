@@ -13,6 +13,13 @@ from app.utils.cache_utils import create_cache_key_hash
 pytestmark = pytest.mark.unit
 
 
+class _Recall(BaseModel):
+    """A result shaped like one that can come from a fallback path."""
+
+    answer: str
+    degraded: bool
+
+
 class TestPatternToKeyErrors:
     async def test_missing_placeholder_raises_with_exact_message_and_cause(self):
         with pytest.raises(ValueError) as exc_info:
@@ -176,10 +183,10 @@ class TestCacheableHitMissFlow:
         assert result == "sync-result"
         assert calls == ["x"]
 
-    async def test_result_rejected_by_cache_if_is_returned_but_not_stored(self):
-        @Cacheable(key_pattern="static-key", ttl=120, cache_if=lambda value: value != "partial")
-        async def compute() -> str:
-            return "partial"
+    async def test_a_degraded_result_is_returned_but_not_stored(self):
+        @Cacheable(key_pattern="static-key", ttl=120)
+        async def compute() -> _Recall:
+            return _Recall(answer="partial", degraded=True)
 
         with (
             patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
@@ -187,13 +194,13 @@ class TestCacheableHitMissFlow:
         ):
             result = await compute()
 
-        assert result == "partial"
+        assert result == _Recall(answer="partial", degraded=True)
         mock_set.assert_not_called()
 
-    async def test_result_accepted_by_cache_if_is_stored(self):
-        @Cacheable(key_pattern="static-key", ttl=120, cache_if=lambda value: value != "partial")
-        async def compute() -> str:
-            return "complete"
+    async def test_a_full_result_that_can_degrade_is_stored(self):
+        @Cacheable(key_pattern="static-key", ttl=120)
+        async def compute() -> _Recall:
+            return _Recall(answer="complete", degraded=False)
 
         with (
             patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
@@ -201,7 +208,9 @@ class TestCacheableHitMissFlow:
         ):
             await compute()
 
-        mock_set.assert_awaited_once_with(key="static-key", value="complete", ttl=120, model=None)
+        mock_set.assert_awaited_once_with(
+            key="static-key", value=_Recall(answer="complete", degraded=False), ttl=120, model=None
+        )
 
 
 class TestCacheableValidation:

@@ -101,16 +101,10 @@ async def invalidate_recall_cache(user_id: str) -> None:
     await delete_cache(MEMORY_SEARCH_CACHE_PATTERN.format(user_id=user_id))
 
 
-def _is_full_recall(result: MemorySearchResult) -> bool:
-    """Cache only full-pipeline results; a degraded one would outlive the sidecar blip that caused it."""
-    return not result.degraded
-
-
 @Cacheable(
     key_generator=_recall_cache_key,
     ttl=MEMORY_SEARCH_CACHE_TTL,
     model=MemorySearchResult,
-    cache_if=_is_full_recall,
 )
 async def recall(
     user_id: str,

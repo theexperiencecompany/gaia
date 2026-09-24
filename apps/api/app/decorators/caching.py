@@ -1,15 +1,16 @@
 """Redis caching decorators with type-safe model support.
 
 Cacheable: key_pattern/key_generator/smart_hash pick how the key is built;
-model gives typed serialization via Pydantic. CacheInvalidator:
+model gives typed serialization via Pydantic; a result that reports itself
+degraded is returned but never stored. CacheInvalidator:
 key_patterns/key_generator/key clear related entries after a write.
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Mapping
 import functools
 import inspect
-from typing import Any, ParamSpec, TypeVar, cast, overload
+from typing import ParamSpec, Protocol, TypeVar, cast, overload, runtime_checkable
 
 from app.constants.cache import ONE_YEAR_TTL
 from app.constants.log_tags import LogTag
@@ -23,19 +24,30 @@ R = TypeVar("R")
 # A single Callable[P, R] would bind R to the *coroutine* for an already-async
 # callee (measured: 105 errors across 45 files), so the overload pair splits
 # sync/async cases to keep R the awaited value in both.
-_SyncOrAsync = Callable[P, Coroutine[Any, Any, R]] | Callable[P, R]
+_SyncOrAsync = Callable[P, Coroutine[object, object, R]] | Callable[P, R]
 
 # A key generator receives the function's name plus its call args/kwargs and
 # returns the cache key, sync or async — matching the two real key generators
 # in this codebase (_recall_cache_key and CacheInvalidator's custom-key use).
-_KeyGenerator = Callable[..., str] | Callable[..., Coroutine[Any, Any, str]]
+_KeyGenerator = Callable[..., str] | Callable[..., Coroutine[object, object, str]]
 
 # CacheInvalidator's generator may bust one key or several (e.g. a function
 # whose invalidation needs multiple key_patterns but whose signature doesn't
 # expose a flat argument per placeholder -- see install_skill).
 _InvalidationKeyGenerator = (
-    Callable[..., str | list[str]] | Callable[..., Coroutine[Any, Any, str | list[str]]]
+    Callable[..., str | list[str]] | Callable[..., Coroutine[object, object, str | list[str]]]
 )
+
+
+@runtime_checkable
+class DegradableResult(Protocol):
+    """A result that can say it came from a fallback path.
+
+    A degraded result is worse than what the full path returns once its cause
+    clears, so caching it would keep serving the fallback long after that.
+    """
+
+    degraded: bool
 
 
 class Cacheable:
@@ -50,17 +62,15 @@ class Cacheable:
         key_pattern: str | None = None,
         key_generator: _KeyGenerator | None = None,
         ttl: int = ONE_YEAR_TTL,
-        model: type[Any] | None = None,
+        model: type[object] | None = None,
         smart_hash: bool = False,
         namespace: str = "api",
-        cache_if: Callable[[Any], bool] | None = None,
     ):
         """Initialize the cache decorator.
 
         key_pattern: a literal without placeholders acts as a static key.
         model: uses TypeAdapter(model) instead of TypeAdapter(Any) for typed
         (de)serialization.
-        cache_if: a result it rejects is returned but not stored.
         """
         if not key_pattern and not key_generator and not smart_hash:
             raise ValueError("Either key_pattern, key_generator, or smart_hash must be provided.")
@@ -70,14 +80,13 @@ class Cacheable:
         self.namespace = namespace
         self.ttl = ttl
         self.model = model
-        self.cache_if = cache_if
 
     async def _cache_key(
         self,
         func_name: str,
         func: Callable[P, R],
-        args: tuple[Any, ...],
-        kwargs: dict[str, Any],
+        args: tuple[object, ...],
+        kwargs: Mapping[str, object],
     ) -> str:
         """Resolve the cache key from the configured strategy."""
         if self.smart_hash:
@@ -95,7 +104,9 @@ class Cacheable:
         return _pattern_to_key(self.key_pattern, arguments=bound_args.arguments)
 
     @overload
-    def __call__(self, func: Callable[P, Coroutine[Any, Any, R]]) -> Callable[P, Awaitable[R]]: ...
+    def __call__(
+        self, func: Callable[P, Coroutine[object, object, R]]
+    ) -> Callable[P, Awaitable[R]]: ...
 
     @overload
     def __call__(self, func: Callable[P, R]) -> Callable[P, Awaitable[R]]: ...
@@ -120,7 +131,8 @@ class Cacheable:
                 result = cast(R, func(*args, **kwargs))
 
             log.debug(f"{LogTag.API} Cache miss for key", cache_key=cache_key)
-            if self.cache_if is not None and not self.cache_if(result):
+            if isinstance(result, DegradableResult) and result.degraded:
+                log.debug(f"{LogTag.API} Not caching a degraded result", cache_key=cache_key)
                 return result
             log.debug(f"{LogTag.API} Setting cache for key", cache_key=cache_key)
 
@@ -154,7 +166,9 @@ class CacheInvalidator:
             raise ValueError("Either key, key_patterns, or key_generator must be provided.")
 
     @overload
-    def __call__(self, func: Callable[P, Coroutine[Any, Any, R]]) -> Callable[P, Awaitable[R]]: ...
+    def __call__(
+        self, func: Callable[P, Coroutine[object, object, R]]
+    ) -> Callable[P, Awaitable[R]]: ...
 
     @overload
     def __call__(self, func: Callable[P, R]) -> Callable[P, Awaitable[R]]: ...
@@ -197,7 +211,7 @@ class CacheInvalidator:
         return wrapper
 
 
-def _pattern_to_key(pattern: str, arguments: dict[str, Any]) -> str:
+def _pattern_to_key(pattern: str, arguments: Mapping[str, object]) -> str:
     """Fill a key pattern template's placeholders from bound function arguments.
 
     Raises:
