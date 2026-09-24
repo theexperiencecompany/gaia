@@ -87,9 +87,7 @@ _SESSION_COST_FLOOR_MB = 50
 # Under pressure a create waits up to this long for memory to free (idle reap,
 # other disposals) before returning 429 — graceful slowdown, not instant refusal.
 _ADMISSION_WAIT_SECONDS = 5.0
-# CDP's own default, spelled out: a context is disposed explicitly on dispose/reap,
-# never because the connection that made it detached.
-_NEW_CONTEXT_PARAMS: dict[str, Any] = {"disposeOnDetach": False}
+_CTX_OPTS: dict[str, Any] = {"disposeOnDetach": False}
 # Per-renderer V8 heap ceiling. One runaway page must not be able to eat the
 # whole host's budget and OOM every other user's session with it.
 _JS_HEAP_MB = 512
@@ -177,11 +175,8 @@ def _headless_shell_beside(chromium: Path) -> Path | None:
     for parent in chromium.parents:
         if not parent.name.startswith("chromium-"):
             continue
-        # The prefix occurs once in the name, so the replace count is never reached.
-        shell_root = parent.parent / parent.name.replace(
-            "chromium-",
-            "chromium_headless_shell-",
-            1,  # pragma: no mutate
+        shell_root = (
+            parent.parent / f"chromium_headless_shell-{parent.name.removeprefix('chromium-')}"
         )
         if not shell_root.is_dir():
             return None
@@ -365,7 +360,8 @@ class ChromiumHost:
         try:
             mux = CdpMux(self.root_ws_url)
             await mux.start()
-            ctx = await cdp_call(mux, "Target.createBrowserContext", _NEW_CONTEXT_PARAMS)
+            # CDP's default, kept explicit for the engines: dispose/reap ends it, not a detach.
+            ctx = await cdp_call(mux, "Target.createBrowserContext", _CTX_OPTS)  # pragma: no mutate
             context_id = str(ctx["browserContextId"])
             # Refuse downloads before the context can navigate: a drive-by download
             # is the cheapest way to get a file onto the host's disk. Scoped to this
