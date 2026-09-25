@@ -64,6 +64,9 @@ class _FormattedToolError(TypedDict):
 
 # JSON Schema keywords the argument-name mapping walks into.
 _SCHEMA_COMBINATORS = ("anyOf", "oneOf", "allOf")
+# Keywords whose subschema the argument-name mapping follows into a value.
+_ITEMS = "items"
+_ADDITIONAL_PROPERTIES = "additionalProperties"
 # A tool call's validated arguments, dumped to plain JSON; raises on a value JSON cannot hold.
 _ARGUMENTS: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
 
@@ -151,19 +154,26 @@ def _model_names(properties: Iterable[str]) -> dict[str, str]:
     return model_names
 
 
-def _declared_nodes(schema: dict[str, JsonValue]) -> list[dict[str, JsonValue]]:
-    node: JsonSchemaNode = cast(JsonSchemaNode, schema)
-    found: list[dict[str, JsonValue]] = []
-    if "properties" in schema and isinstance(node["properties"], dict):
-        found.append(node["properties"])
+def _alternatives(schema: dict[str, JsonValue]) -> list[dict[str, JsonValue]]:
+    """Return the node and every anyOf/oneOf/allOf option under it: one value may match any."""
+    found = [schema]
     for combinator in _SCHEMA_COMBINATORS:
         options = schema.get(combinator)
         if not isinstance(options, list):
             continue
         for option in options:
             if isinstance(option, dict):
-                found.extend(_declared_nodes(option))
+                found.extend(_alternatives(option))
     return found
+
+
+def _declared_nodes(schema: dict[str, JsonValue]) -> list[dict[str, JsonValue]]:
+    declared: list[dict[str, JsonValue]] = []
+    for alternative in _alternatives(schema):
+        node: JsonSchemaNode = cast(JsonSchemaNode, alternative)
+        if "properties" in alternative and isinstance(node["properties"], dict):
+            declared.append(node["properties"])
+    return declared
 
 
 def _group_model_names(schema: dict[str, JsonValue]) -> dict[str, str]:
@@ -171,38 +181,42 @@ def _group_model_names(schema: dict[str, JsonValue]) -> dict[str, str]:
     return _model_names(dict.fromkeys(name for props in _declared_nodes(schema) for name in props))
 
 
+def _any_of(candidates: list[JsonValue]) -> JsonValue:
+    """Return the one schema a value must match, or any of several."""
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    return {"anyOf": candidates}
+
+
+def _keyword_schema(schema: dict[str, JsonValue], keyword: str) -> JsonValue:
+    """Return a keyword's schema (items, additionalProperties) across the node's alternatives."""
+    return _any_of([alt[keyword] for alt in _alternatives(schema) if keyword in alt])
+
+
 def _to_server_names(value: JsonValue, schema: JsonValue) -> JsonValue:
     """Map the model's argument keys back to the server's, named exactly as the schema was built."""
     if not isinstance(schema, dict):
         return value
-    node: JsonSchemaNode = cast(JsonSchemaNode, schema)
     if isinstance(value, list):
-        items = node["items"] if "items" in schema else None
+        items = _keyword_schema(schema, _ITEMS)
         return [_to_server_names(item, items) for item in value]
     if not isinstance(value, dict):
         return value
     declared = _declared_nodes(schema)
     server_names = {model: server for server, model in _group_model_names(schema).items()}
-    extra_schema = node["additionalProperties"] if "additionalProperties" in schema else None
     renamed: dict[str, JsonValue] = {}
     for key, item in value.items():
         server_name = server_names.get(key, key)
-        renamed[server_name] = _to_server_names(
-            item, _schema_for(server_name, declared, extra_schema)
+        declared_schemas = [props[server_name] for props in declared if server_name in props]
+        item_schema = (
+            _any_of(declared_schemas)
+            if declared_schemas
+            else _keyword_schema(schema, _ADDITIONAL_PROPERTIES)
         )
+        renamed[server_name] = _to_server_names(item, item_schema)
     return renamed
-
-
-def _schema_for(
-    server_name: str, declared: list[dict[str, JsonValue]], extra_schema: JsonValue
-) -> JsonValue:
-    """Return a key's schema; one declared by several options is any of theirs."""
-    candidates = [properties[server_name] for properties in declared if server_name in properties]
-    if not candidates:
-        return extra_schema
-    if len(candidates) == 1:
-        return candidates[0]
-    return {"anyOf": candidates}
 
 
 class SanitizingLangChainAdapter(LangChainAdapter):

@@ -2514,6 +2514,32 @@ class TestAToolWithUnderscoredArguments:
 
         connector.call_tool.assert_awaited_once_with("choose", {"pick": {"item": server_item}})
 
+    @pytest.mark.regression
+    async def test_array_items_declared_by_several_options_map_through_each(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+
+        def _option(key: str) -> dict[str, object]:
+            element = {"type": "object", "properties": {key: {}}}
+            return {"type": "object", "properties": {"rows": {"type": "array", "items": element}}}
+
+        schema = {
+            "type": "object",
+            "properties": {"batch": {"oneOf": [_option("_left"), _option("_right")]}},
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="load", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke({"batch": {"rows": [{"left": 1}, {"right": 2}]}})
+
+        connector.call_tool.assert_awaited_once_with(
+            "load", {"batch": {"rows": [{"_left": 1}, {"_right": 2}]}}
+        )
+
     def test_the_model_sees_names_pydantic_accepts(self) -> None:
         properties = self._tool(MagicMock()).args_schema.model_json_schema()["properties"]
 
