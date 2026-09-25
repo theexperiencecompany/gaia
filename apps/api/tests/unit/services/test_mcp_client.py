@@ -2142,6 +2142,21 @@ class TestSanitizingLangChainAdapter:
 
         assert list(fixed["properties"]) == ["field2fa"]
 
+    def test_fix_schema_names_one_of_options_in_one_namespace(self):
+        schema = {
+            "oneOf": [
+                {"type": "object", "properties": {"_id": {}}, "required": ["_id"]},
+                {"type": "object", "properties": {"id": {}}, "required": ["id"]},
+            ]
+        }
+
+        fixed = SanitizingLangChainAdapter().fix_schema(schema)
+
+        assert [(list(o["properties"]), o["required"]) for o in fixed["oneOf"]] == [
+            (["id_2"], ["id_2"]),
+            (["id"], ["id"]),
+        ]
+
     def test_fix_schema_leaves_non_schema_lists_of_an_object_alone(self):
         schema = {
             "type": "object",
