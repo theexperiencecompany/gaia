@@ -6,9 +6,9 @@ PostHog evaluates per distinct_id at request time, so targeting and rollouts
 change from the dashboard with no deploy. The settings value stays the default
 and kill-switch: when PostHog is unreachable or unconfigured, evaluation fails
 open to it. A user-facing flag also honours the choice the user stored in
-Settings, ahead of the rollout; an internal flag never reads one. Ahead of
-both sits its kill switch, which only PostHog can engage: when PostHog cannot
-answer, the switch stays off and the user's choice stands.
+Settings ahead of the rollout (an unreadable choice fails open to it), and an
+internal flag never reads one. Ahead of both sits a kill switch only PostHog
+can engage: when PostHog cannot answer, it stays off and the choice stands.
 
 Every call evaluates live, with no cache of the result: a dashboard flip
 applies on the next turn and PostHog's $feature_flag_called stays a complete
@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from typing import NamedTuple
 
 from posthog import Posthog
+from pymongo.errors import PyMongoError
 
 from app.config.feature_flags import (
     FEATURE_FLAGS,
@@ -73,8 +74,17 @@ def _get_posthog_client() -> Posthog | None:
 
 
 async def _stored_choice(flag: FeatureFlag, user_id: str) -> bool | None:
-    """Return the user's own choice for the flag, or None when they never made one."""
-    user = await user_repository.get(user_id)
+    """Return the user's own choice for the flag, or None when they never made one or it cannot be read."""
+    try:
+        user = await user_repository.get(user_id)
+    except PyMongoError as e:
+        log.warning(
+            "Feature flag stored choice unreadable, the rollout decides",
+            flag=flag.value,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
     if user is None or user.feature_flags is None:
         return None
     return user.feature_flags.get(flag)

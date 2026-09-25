@@ -571,26 +571,6 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
         _build_bot_delivery(request),
     )
 
-    engine = (
-        BrowserEngine.OBSCURA
-        if await is_enabled(FeatureFlag.BROWSER_OBSCURA, request.user_id)
-        else BrowserEngine.CHROMIUM
-    )
-    try:
-        host_url, fallback_host = hosts_for(engine)
-    except BrowserUnavailableError as exc:
-        log.fail(BrowserRunFailure.HOST_UNAVAILABLE)
-        return await _terminal_failure(emitter, str(exc))
-    log.set_ns("browser", engine=engine.value)
-    secrets = RunSecrets(
-        request.secrets,
-        sites=[
-            host
-            for url in (request.start_url, *goal_addresses(request.task))
-            if url and (host := urlsplit(url).hostname)
-        ],
-    )
-
     # Pin this run's canvas/audio fingerprint to the user, so the same person
     # always presents the same device rather than a new one per task.
     seed_token = set_fingerprint_seed(request.user_id)
@@ -605,6 +585,21 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
     session_id: str | None = None  # pragma: no mutate
 
     try:
+        engine = (
+            BrowserEngine.OBSCURA
+            if await is_enabled(FeatureFlag.BROWSER_OBSCURA, request.user_id)
+            else BrowserEngine.CHROMIUM
+        )
+        host_url, fallback_host = hosts_for(engine)
+        log.set_ns("browser", engine=engine.value)
+        secrets = RunSecrets(
+            request.secrets,
+            sites=[
+                host
+                for url in (request.start_url, *goal_addresses(request.task))
+                if url and (host := urlsplit(url).hostname)
+            ],
+        )
         async with contextlib.AsyncExitStack() as sessions:
             session = await sessions.enter_async_context(
                 browser_session(

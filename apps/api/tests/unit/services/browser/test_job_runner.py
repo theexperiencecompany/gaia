@@ -641,6 +641,23 @@ async def test_a_crash_inside_the_run_is_one_failed_card_on_the_feed(
     )
 
 
+async def test_a_crash_choosing_the_engine_is_one_failed_card_on_the_feed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _install(monkeypatch)
+
+    async def _unreadable(flag: object, user_id: str | None, default: bool | None = None) -> bool:
+        raise RuntimeError("the flag read exploded")
+
+    monkeypatch.setattr(jr, "is_enabled", _unreadable)
+
+    event = await _run_event(h, _request(task="x"))
+
+    assert h.cards == [_failed_card(jr.BROWSER_JOB_CRASHED_SUMMARY)]
+    assert event["reason"] == BrowserRunFailure.RUN_CRASHED
+    assert h.session_kwargs == {}
+
+
 async def test_a_crash_with_an_empty_str_exception_still_reads_as_a_sentence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

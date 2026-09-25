@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag, FeatureStage, kill_switch_key
@@ -560,6 +561,21 @@ class TestEvaluationOrder:
     ) -> None:
         assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, None) is False
         stored_user.assert_not_awaited()
+
+    async def test_a_choice_that_cannot_be_read_falls_back_to_the_rollout_and_is_logged(
+        self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        stored_user.side_effect = ServerSelectionTimeoutError("mongo down")
+        _posthog_serves(mock_client, {"BROWSER_OBSCURA_KILL": False, "BROWSER_OBSCURA": True})
+
+        with patch("app.services.feature_flags.log") as mock_log:
+            assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is True
+        mock_log.warning.assert_called_once_with(
+            "Feature flag stored choice unreadable, the rollout decides",
+            flag="BROWSER_OBSCURA",
+            error="mongo down",
+            error_type="ServerSelectionTimeoutError",
+        )
 
 
 class TestKillSwitch:
