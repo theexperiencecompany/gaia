@@ -22,6 +22,7 @@ from app.constants.browser import (
     BROWSER_AGENT_MAX_FAILURES,
     BROWSER_AGENT_NO_PROGRESS_STEPS,
     BROWSER_AGENT_ROLE,
+    BROWSER_AGENT_URL_QUERY_MAX_CHARS,
     BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS,
     BROWSER_GUIDANCE_MAX_ELEMENTS,
     BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
@@ -255,6 +256,7 @@ class BrowserAgentRun:
             max_actions_per_step=self._config.max_actions_per_step,
             step_timeout=int(self._step_timeout),
             page_extraction_llm=text_model,
+            _url_shortening_limit=BROWSER_AGENT_URL_QUERY_MAX_CHARS,
         )
         try:
             history = await self._agent.run(

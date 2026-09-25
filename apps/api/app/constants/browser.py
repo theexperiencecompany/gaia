@@ -276,6 +276,10 @@ BROWSER_AGENT_REASONING_EFFORT: Literal["low"] = "low"
 # When a browser model call gets an identical second request (first answer wins). Agent
 # calls measured p50 3.2 s, p90 4.5 s, with stalls past the 180 s timeout (2026-09-25).
 BROWSER_AGENT_HEDGE_SECONDS = 12.0
+# Browser-Use shortens any URL whose query passes 25 characters in what the model
+# reads ("?my-text=Aryan&my-pass...1a2b3c4"), so a run asked for the page it landed
+# on reported it could not see it (battery form, 2026-09-25). Room for any real query.
+BROWSER_AGENT_URL_QUERY_MAX_CHARS = 2000
 # A top-level load whose server sends nothing for this long is stopped, as a person
 # presses Stop: until it answers, Chrome answers no script on the tab (measured 2026-09-25).
 BROWSER_LOAD_STALL_SECONDS = 15.0

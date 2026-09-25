@@ -43,6 +43,7 @@ from app.constants.cache import EXECUTOR_BUSY_PREFIX, RATE_LIMIT_KEY_PREFIX
 from app.core.provider_registration import register_lazy_providers
 from app.db.repositories.browser_profiles import BrowserProfilesRepository
 from app.memory.management import delete_all as forget_all_memories
+from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.host_client import get_session
 
 T = TypeVar("T")
@@ -54,6 +55,8 @@ API_URL = os.environ.get("GAIA_BATTERY_API_URL", "http://localhost:8480")
 BOT_API_URL = os.environ.get("GAIA_API_URL", API_URL)
 LIVE_VIEW_BASE_URL = os.environ.get("BROWSER_LIVE_VIEW_BASE_URL", API_URL)
 HOST_URL = os.environ.get("BROWSER_HOST_URL", "http://localhost:8930")
+#: Chrome, the default engine, when BROWSER_HOST_URL runs Obscura (an opt-in user's engine).
+FALLBACK_HOST_URL = os.environ.get("BROWSER_FALLBACK_HOST_URL")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 # Never a person's account: seeding links the harness's synthetic platform id, replacing a real one.
@@ -554,11 +557,23 @@ class Battery:
 
     # -- the live browser during a handoff --------------------------------
 
+    async def host_of(self, session_id: str) -> str:
+        """Return the host holding session_id: a run opens on Chrome, or on Obscura for an opt-in user."""
+        for host in (HOST_URL, FALLBACK_HOST_URL):
+            if host is None:
+                continue
+            try:
+                await get_session(session_id, host)
+            except BrowserUnavailableError:  # 404 on the host without it, or a host that is down
+                continue
+            return host
+        raise AssertionError(f"no browser host holds session {session_id}")
+
     async def type_into_live_session(self, session_id: str, script: str) -> Any:
         """Run JS in the run's own page, the way a person acts in live view during a handoff."""
         from browser_use import Browser
 
-        ws = HOST_URL.replace("http", "ws", 1) + f"/cdp/{session_id}"
+        ws = (await self.host_of(session_id)).replace("http", "ws", 1) + f"/cdp/{session_id}"
         browser = Browser(cdp_url=ws)
         await browser.start()
         try:
@@ -579,8 +594,9 @@ class Battery:
         """
         deadline = time.monotonic() + timeout
         url = ""
+        host = self.run_async(self.host_of(session_id))
         while time.monotonic() < deadline:
-            url = self.run_async(get_session(session_id, HOST_URL)).url or ""
+            url = self.run_async(get_session(session_id, host)).url or ""
             if urlsplit(url).path == path:
                 break
             time.sleep(_POLL_SECONDS / 2)
