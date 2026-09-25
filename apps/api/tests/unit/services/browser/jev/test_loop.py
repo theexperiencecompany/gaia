@@ -737,6 +737,26 @@ async def test_a_page_that_changed_since_it_was_read_is_read_again_before_jev_de
     assert run.jev.decided[0]["page"].url == after.url
 
 
+async def test_jev_sees_what_it_typed_with_a_secret_left_as_its_placeholder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    page = FakePage(*_pages("a", "b", "c"))
+    run = _run(
+        monkeypatch,
+        page,
+        decision(JevOperation.TYPE_TEXT, PASSWORD),
+        decision(JevOperation.DONE),
+        value=MASKED,
+        secrets=_secrets(),
+    )
+
+    await run.burst(f"log in with {MASKED}")
+
+    typed_secret = RecentAction(action="Password", kind="TYPE_TEXT", text=MASKED, page_changed=True)
+    assert run.jev.decided[1]["history"] == [typed_secret]
+    assert page.typed[0] == SECRET
+
+
 async def test_jev_picks_a_value_on_the_masked_page_for_the_field_from_the_goal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
