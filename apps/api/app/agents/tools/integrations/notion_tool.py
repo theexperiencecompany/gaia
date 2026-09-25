@@ -24,6 +24,7 @@ from app.models.integrations.notion import (
     NotionAddPageContentArgs,
     NotionAppendTableBlocksArgs,
     NotionBlockChildren,
+    NotionDatabaseSearchResult,
     NotionFetchBlockContentsArgs,
     NotionGetPagePropertyArgs,
     NotionMovePageRequest,
@@ -264,10 +265,10 @@ def _insert_markdown(
 
 
 def _item_title(item: NotionSearchResult) -> str:
-    if item.object == "database":
+    if isinstance(item, NotionDatabaseSearchResult):
         if item.title:
             return item.title[0].plain_text
-    elif item.object == "page":
+    else:
         for prop_value in item.properties.values():
             if prop_value.type == "title":
                 if prop_value.title:
