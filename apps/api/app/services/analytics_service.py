@@ -34,6 +34,8 @@ class AnalyticsEvents(StrEnum):
     # Browser automation — captured when the run finishes (never on start, so
     # attempts don't count as successes) and when a human resolves a handoff.
     BROWSER_TASK_FINISHED = "browser:task_finished"
+    # The agent moved an Obscura run to Chrome: the sites where the fast engine falls short.
+    BROWSER_ENGINE_SWITCHED = "browser:engine_switched"
     BROWSER_HANDOFF_RESOLVED = "browser:handoff_resolved"
     # The two halves of the `gaia connect` login import: the web session mints a
     # code, then the CLI redeems it. Both are needed to see where the flow drops.

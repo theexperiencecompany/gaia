@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from time import perf_counter
 
+from app.constants.browser import EngineSwitchReason
 from app.schemas.browser import AgentGuidanceRequest, BrowserAction, BrowserActionOutput
 
 # Per-action results, keyed to the step whose rows the thread mirror emitted.
@@ -28,6 +29,8 @@ GuidanceFn = Callable[[AgentGuidanceRequest], Awaitable[str]]
 FlagFn = Callable[[], Awaitable[bool]]
 #: The messages the user sent since the last read, oldest first; reading takes them.
 TakeMessagesFn = Callable[[], Awaitable[list[str]]]
+#: Move the run to the full browser: why, and the page it was on; returns what the agent reads.
+SwitchEngineFn = Callable[[EngineSwitchReason, str | None], Awaitable[str]]
 
 
 @dataclass(frozen=True)
@@ -89,6 +92,8 @@ class RunHooks:
     #: to reach back to ends blocked exactly as it did before guidance existed.
     guidance_allowed: GuidanceGate | None = None
     guidance: GuidanceFn | None = None
+    #: Present only while the run is on Obscura with Chrome behind it.
+    switch_engine: SwitchEngineFn | None = None
 
 
 class StepClock:

@@ -16,11 +16,22 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel
+
+from app.constants.browser import EngineSwitchReason
+
 if TYPE_CHECKING:
     from browser_use import Tools
 
 TakeoverFn = Callable[[str, str], Awaitable[str]]
 AgentGuidanceFn = Callable[[str], Awaitable[str]]
+EngineSwitchFn = Callable[[EngineSwitchReason], Awaitable[str]]
+
+
+class EngineSwitchParams(BaseModel):
+    """The continue_in_full_browser action's one argument: which engine-caused breakage it was."""
+
+    category: EngineSwitchReason
 
 
 def build_browser_tools(
@@ -28,13 +39,15 @@ def build_browser_tools(
     solve_captcha: bool,
     handle_takeover: TakeoverFn,
     handle_guidance: AgentGuidanceFn,
+    handle_engine_switch: EngineSwitchFn | None = None,
 ) -> Tools[None]:
     """Build the Browser-Use Tools the agent can call during a run.
 
     handle_takeover(reason, category) performs the live-view handoff and
     returns a result string to feed back to the agent, or raises to stop the
     run when the user cancels. handle_guidance(reason) asks the agent that
-    started the run instead, on the same contract.
+    started the run instead, on the same contract. handle_engine_switch, given
+    only on the fast engine, moves the run to the full browser.
     """
     from browser_use import Tools  # noqa: PLC0415 -- heavy optional dep
 
@@ -71,6 +84,25 @@ def build_browser_tools(
     async def request_human_takeover(reason: str, category: str = "irreversible") -> str:
         """Return the takeover tool that hands control to the user via live view."""
         return await handle_takeover(reason, category)
+
+    if handle_engine_switch is not None:
+        # Registered by function name; the tool exists only on the fast engine.
+        @tools.action(
+            description=(
+                "Continue this task in the full browser (Chrome). Use it ONLY when this page "
+                "does not work properly in the current fast browser: it renders wrong or stays "
+                "blank, a control you need is missing or does nothing when used, or a page that "
+                "fills itself in by script never does. Do NOT use it for a login, a CAPTCHA, a "
+                "paywall, an error message the site itself shows, or a site that is down or "
+                "slow: those look the same in any browser. The run continues from this page in "
+                "the full browser, still signed in. `category` is renders_wrong | "
+                "control_broken | stays_empty."
+            ),
+            param_model=EngineSwitchParams,
+        )
+        async def continue_in_full_browser(params: EngineSwitchParams) -> str:
+            """Return the tool that moves the run to the full browser, carrying its logins."""
+            return await handle_engine_switch(params.category)
 
     if solve_captcha:
         # Registered by function name; BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP must spell it the same.

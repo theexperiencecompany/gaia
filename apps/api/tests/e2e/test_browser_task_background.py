@@ -13,7 +13,12 @@ from typing import Any
 
 import pytest
 
-from app.constants.browser import BROWSER_RUN_BLOCKED_SUMMARY, BrowserSessionStatus
+from app.constants.browser import (
+    BROWSER_NO_GUIDANCE_AVAILABLE,
+    EngineSwitchReason,
+    BROWSER_RUN_BLOCKED_SUMMARY,
+    BrowserSessionStatus,
+)
 from app.constants.chat import SourceCategory
 from app.models.chat_models import ConversationSource
 from app.services.browser import job_runner
@@ -22,8 +27,6 @@ from tests.e2e._harness.browser_job import (
     LIVE_STORAGE_STATE,
     REPLAY_URL,
     SHOT_URL_TEMPLATE,
-    JevPageView,
-    JevScript,
     JobWorld,
     ScriptedHost,
     ScriptedStep,
@@ -210,19 +213,18 @@ async def test_a_worker_crash_still_reports_a_failure_and_frees_the_conversation
     assert "DID NOT COMPLETE" in world.deliveries[0]["text"]
 
 
-async def test_a_handoff_note_reaches_the_run_and_the_policy_deciding_it() -> None:
-    """The user takes over mid-run and leaves an instruction; a note that stopped at the tool result would leave the policy still working the goal the user just changed."""
+async def test_a_handoff_note_reaches_the_run_and_the_agent_deciding_it() -> None:
+    """The user takes over mid-run and leaves an instruction; the agent reads it as its takeover's result, and the closing reply answers it."""
     from app.constants.browser import HandoffDecision, HandoffStatus
     from app.services.browser.handoff import resolve_handoff
 
     note = "skip the login, just tell me the opening hours"
-    script = JevScript(
-        decisions=[("REQUEST_HUMAN", None), ("TYPE_TEXT", "1")],
-        texts=[{"text": "Sign in and come back", "category": "credentials"}, {"text": "hours"}],
-    )
-    steps = [ScriptedStep(actions=[], decide=True), ScriptedStep(actions=[], decide=True)]
+    steps = [
+        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+        ScriptedStep(actions=[("input", {"index": 1, "text": "hours"})]),
+    ]
 
-    async with browser_job_world(STREAM, steps=steps, jev=script) as world:
+    async with browser_job_world(STREAM, steps=steps) as world:
         async with executor_graph([RETRIEVE, START, JOIN, "Done."]) as graph:
             run_task = asyncio.create_task(
                 run_graph(
@@ -241,9 +243,6 @@ async def test_a_handoff_note_reaches_the_run_and_the_policy_deciding_it() -> No
             await world.settle()
 
     assert world.browser.takeover_notes == [note]
-    assert world.jev is not None
-    assert note in world.jev.goal(1)
-    assert "book a table for two at 7pm" in world.jev.goal(1)
     handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
     assert [card["status"] for card in handoffs] == ["pending", "completed"]
     joined = run.result_for("wait_for_browser_task") or ""
@@ -266,13 +265,12 @@ async def test_a_chat_redirect_makes_the_changed_instruction_lead_the_executors_
         return resolution.HandoffReplyDecision(action="redirect", note=note)
 
     monkeypatch.setattr(resolution, "ainvoke_structured_gemini", _redirect)
-    script = JevScript(
-        decisions=[("REQUEST_HUMAN", None), ("TYPE_TEXT", "1")],
-        texts=[{"text": "Sign in and come back", "category": "credentials"}, {"text": "hours"}],
-    )
-    steps = [ScriptedStep(actions=[], decide=True), ScriptedStep(actions=[], decide=True)]
+    steps = [
+        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+        ScriptedStep(actions=[("input", {"index": 1, "text": "hours"})]),
+    ]
 
-    async with browser_job_world(STREAM, steps=steps, jev=script) as world:
+    async with browser_job_world(STREAM, steps=steps) as world:
         async with executor_graph([RETRIEVE, START, JOIN, "Done."]) as graph:
             run_task = asyncio.create_task(
                 run_graph(
@@ -320,23 +318,16 @@ GUIDE = call(
 )
 JOIN_AGAIN = call("wait_for_browser_task", {}, "w2")
 
+STUCK = "The opening hours are not on this page."
 BLOCK_THEN_ACT = [
-    ScriptedStep(actions=[], decide=True, await_joiner=True),
-    ScriptedStep(actions=[], decide=True),
+    ScriptedStep(actions=[], guidance=STUCK, await_joiner=True),
+    ScriptedStep(actions=[("click", {"index": 3})]),
 ]
 
 
-def _blocked_script(blocks: int = 1) -> JevScript:
-    """Return a Jev script that gives up the given number of times, then types once."""
-    return JevScript(
-        decisions=[("BLOCKED", None)] * blocks + [("TYPE_TEXT", "1")],
-        texts=[{"text": "The opening hours are not on this page."}] * blocks + [{"text": "hours"}],
-    )
-
-
 async def test_a_blocked_run_is_unstuck_by_the_executor_that_started_it() -> None:
-    """A run that ends on BLOCKED throws away everything the executor knows; the whole point is that the instruction reaches the policy deciding the next step."""
-    async with browser_job_world(STREAM, steps=BLOCK_THEN_ACT, jev=_blocked_script()) as world:
+    """A run that ends when stuck throws away everything the executor knows; the whole point is that the instruction reaches the agent deciding the next step."""
+    async with browser_job_world(STREAM, steps=BLOCK_THEN_ACT) as world:
         async with executor_graph([RETRIEVE, START, JOIN, GUIDE, JOIN_AGAIN, "Done."]) as graph:
             run = await _drive(graph, world)
 
@@ -345,9 +336,6 @@ async def test_a_blocked_run_is_unstuck_by_the_executor_that_started_it() -> Non
     assert "The opening hours are not on this page." in asked
     assert "guide_browser_task" in asked
     assert world.browser.guidance_notes == ["open the Contact tab, the hours are there"]
-    assert world.jev is not None
-    assert "open the Contact tab, the hours are there" in world.jev.goal(1)
-    assert "book a table for two at 7pm" in world.jev.goal(1)
     assert (run.results_from("tools") or [])[-1].startswith(
         "The table is booked for 7pm on Friday."
     )
@@ -359,21 +347,13 @@ async def test_guidance_after_a_note_never_asks_the_user_for_the_step_they_decli
     from app.services.browser.handoff import resolve_handoff
 
     note = "skip the login, just tell me the opening hours"
-    script = JevScript(
-        decisions=[("REQUEST_HUMAN", None), ("BLOCKED", None), ("TYPE_TEXT", "1")],
-        texts=[
-            {"text": "Sign in and come back", "category": "credentials"},
-            {"text": "The opening hours are not on this page."},
-            {"text": "hours"},
-        ],
-    )
     steps = [
-        ScriptedStep(actions=[], decide=True),
-        ScriptedStep(actions=[], decide=True, await_joiner=True),
-        ScriptedStep(actions=[], decide=True),
+        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+        ScriptedStep(actions=[], guidance=STUCK, await_joiner=True),
+        ScriptedStep(actions=[("click", {"index": 3})]),
     ]
 
-    async with browser_job_world(STREAM, steps=steps, jev=script) as world:
+    async with browser_job_world(STREAM, steps=steps) as world:
         async with executor_graph([RETRIEVE, START, JOIN, GUIDE, JOIN_AGAIN, "Done."]) as graph:
             run_task = asyncio.create_task(
                 run_graph(
@@ -399,15 +379,13 @@ async def test_guidance_after_a_note_never_asks_the_user_for_the_step_they_decli
     handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
     assert [card["status"] for card in handoffs] == ["pending", "completed"]
     assert world.browser.takeover_notes == [note]
-    assert world.jev is not None
-    assert note in world.jev.goal(2)
 
 
 async def test_the_user_is_never_shown_a_handoff_for_a_question_asked_of_the_executor() -> None:
     """A handoff card and the conversation's pending key would ask the user to answer something they were never told about, and swallow their next chat message."""
     from app.services.browser.handoff import get_conversation_pending_handoff
 
-    async with browser_job_world(STREAM, steps=BLOCK_THEN_ACT, jev=_blocked_script()) as world:
+    async with browser_job_world(STREAM, steps=BLOCK_THEN_ACT) as world:
         async with executor_graph([RETRIEVE, START, JOIN, GUIDE, JOIN_AGAIN, "Done."]) as graph:
             await _drive(graph, world)
 
@@ -422,7 +400,7 @@ async def test_the_join_keeps_its_claim_on_the_result_while_the_executor_answers
     held: list[bool] = []
     guide_and_check = call("guide_browser_task", {"instruction": "click Search"}, "g1")
 
-    async with browser_job_world(STREAM, steps=BLOCK_THEN_ACT, jev=_blocked_script()) as world:
+    async with browser_job_world(STREAM, steps=BLOCK_THEN_ACT) as world:
         async with executor_graph(
             [RETRIEVE, START, JOIN, guide_and_check, JOIN_AGAIN, "Done."]
         ) as graph:
@@ -449,19 +427,18 @@ async def test_the_join_keeps_its_claim_on_the_result_while_the_executor_answers
 async def test_a_blocked_run_with_no_executor_joined_ends_failed_with_what_it_read() -> None:
     """Asking when nobody is listening would stall the run for the whole guidance timeout; ending on "no way forward" would throw away the pages already read."""
     closing = "The booking page lists tables at 6pm and 8pm; I could not reserve one."
-    steps = [ScriptedStep(actions=[], decide=True)]
-    # The script's writer answers the closing message; the run still failed, so a
-    # writer that calls it achieved is overruled.
-    script = JevScript(decisions=[("BLOCKED", None)], texts=[{"text": closing}])
+    steps = [
+        ScriptedStep(actions=[], guidance=STUCK),
+        ScriptedStep(actions=[("done", {"text": closing, "success": False})]),
+    ]
 
-    async with browser_job_world(
-        STREAM, steps=steps, jev=script, successful=False, summary=closing
-    ) as world:
+    async with browser_job_world(STREAM, steps=steps, successful=False, summary=closing) as world:
         async with executor_graph([RETRIEVE, START, "I've started on it."]) as graph:
             await _drive(graph, world)
 
-    assert world.browser.guidance_reasons == []
-    assert _step_actions(world) == [{"done": {"text": closing, "success": False}}]
+    # Nobody is joined to ask: the agent is told so at once and ends with what it read.
+    assert world.browser.guidance_notes == [BROWSER_NO_GUIDANCE_AVAILABLE]
+    assert _step_actions(world)[-1] == {"done": {"text": closing, "success": False}}
     results = [card for card in world.cards() if card["kind"] == "result"]
     assert [card["status"] for card in results] == [BrowserSessionStatus.FAILED.value]
     assert results[0]["success"] is False
@@ -486,31 +463,31 @@ async def test_the_fourth_blocked_step_ends_the_run_instead_of_asking_again() ->
         for n in range(1, rounds + 1)
     ]
     joins = [call("wait_for_browser_task", {}, f"w{n}") for n in range(2, rounds + 2)]
-    # Every guidance is followed by one real attempt: BLOCKED is off the table on
-    # the step right after an answer, so a run can only give up again after trying.
-    script = JevScript(
-        decisions=[("BLOCKED", None), ("CLICK", "1")] * rounds + [("BLOCKED", None)],
-        texts=[{"text": "still stuck"}] * rounds,
-    )
-    steps = [ScriptedStep(actions=[], decide=True, await_joiner=True)] + [
-        ScriptedStep(actions=[], decide=True) for _ in range(rounds * 2)
-    ]
+    # Every answer is followed by one real attempt before the agent asks again.
+    steps: list[ScriptedStep] = []
+    for _ in range(rounds + 1):
+        steps += [
+            ScriptedStep(actions=[], guidance="still stuck", await_joiner=True),
+            ScriptedStep(actions=[("click", {"index": 1})]),
+        ]
     plan: list[Any] = [RETRIEVE, START, JOIN]
     for guide, join in zip(guides, joins, strict=True):
         plan += [guide, join]
     plan.append("Could not do it.")
 
     async with browser_job_world(
-        STREAM, steps=steps, jev=script, successful=False, summary=BROWSER_RUN_BLOCKED_SUMMARY
+        STREAM, steps=steps, successful=False, summary=BROWSER_RUN_BLOCKED_SUMMARY
     ) as world:
         async with executor_graph(plan) as graph:
             run = await _drive(graph, world)
         assert await get_conversation_slot(CONVERSATION) is None
 
-    assert len(world.browser.guidance_reasons) == BROWSER_AGENT_GUIDANCE_MAX
-    assert _step_actions(world)[-1] == {
-        "done": {"text": BROWSER_RUN_BLOCKED_SUMMARY, "success": False}
-    }
+    # The ask past the limit never reaches the executor, and the run ends there.
+    assert len(world.browser.guidance_reasons) == BROWSER_AGENT_GUIDANCE_MAX + 1
+    results = [card for card in world.cards() if card["kind"] == "result"]
+    assert [(card["status"], card["summary"]) for card in results] == [
+        (BrowserSessionStatus.FAILED.value, BROWSER_RUN_BLOCKED_SUMMARY)
+    ]
     assert "DID NOT COMPLETE" in ((run.results_from("tools") or [])[-1])
 
 
@@ -521,7 +498,7 @@ async def test_giving_up_ends_the_run_failed_and_frees_the_conversation() -> Non
         {"give_up": True, "reason": "the site needs an account the user does not have"},
         "g1",
     )
-    async with browser_job_world(STREAM, steps=BLOCK_THEN_ACT, jev=_blocked_script()) as world:
+    async with browser_job_world(STREAM, steps=BLOCK_THEN_ACT) as world:
         async with executor_graph([RETRIEVE, START, JOIN, give_up, JOIN_AGAIN, "Sorry."]) as graph:
             run = await _drive(graph, world)
         assert await get_conversation_slot(CONVERSATION) is None
@@ -538,18 +515,21 @@ async def test_giving_up_ends_the_run_failed_and_frees_the_conversation() -> Non
 async def test_a_run_whose_engine_dies_mid_task_finishes_on_the_fallback_engine() -> None:
     """The primary engine crashing under a run is not the task failing: the run moves to the fallback engine, back on the page it was reading, and finishes there."""
     steps = [
-        ScriptedStep(actions=[], decide=True),
+        ScriptedStep(
+            actions=[("input", {"index": 1, "text": "Friday"})], url="https://example.test/book"
+        ),
         ScriptedStep(actions=[], engine_dies=True),
-        ScriptedStep(actions=[], decide=True, url="https://example.test/book"),
-        ScriptedStep(actions=[], decide=True, url="https://example.test/book"),
+        ScriptedStep(
+            actions=[("navigate", {"url": "https://example.test/book"})],
+            url="https://example.test/book",
+        ),
+        ScriptedStep(
+            actions=[("input", {"index": 1, "text": "Friday"})], url="https://example.test/book"
+        ),
     ]
-    script = JevScript(
-        decisions=[("TYPE_TEXT", "1"), ("TYPE_TEXT", "1")],
-        texts=[{"text": "Friday"}, {"text": "Friday"}],
-    )
 
     async with browser_job_world(
-        STREAM, steps=steps, jev=script, host=ScriptedHost(fallback_url="http://fallback.test")
+        STREAM, steps=steps, host=ScriptedHost(fallback_url="http://fallback.test")
     ) as world:
         async with executor_graph([RETRIEVE, START, JOIN, "Booked."]) as graph:
             run = await _drive(graph, world)
@@ -564,9 +544,9 @@ async def test_a_run_whose_engine_dies_mid_task_finishes_on_the_fallback_engine(
     assert history["step_screenshots"] == [SHOT_URL_TEMPLATE.format(index=i) for i in (1, 2, 3)]
     assert all(history["step_goals"])
     assert [next(iter(action)) for action in _step_actions(world)] == [
-        "input_text",
+        "input",
         "navigate",
-        "input_text",
+        "input",
     ]
     assert _step_actions(world)[1]["navigate"]["url"] == "https://example.test/book"
     results = [card for card in world.cards() if card["kind"] == "result"]
@@ -581,24 +561,23 @@ async def test_a_run_whose_engine_dies_mid_task_finishes_on_the_fallback_engine(
 
 
 async def test_a_login_the_user_made_is_still_signed_in_after_the_run_moves_engines() -> None:
-    """Regression: a user signed in through the live view, the next page blocked the primary engine, and the fallback opened signed out."""
+    """Regression: a user signed in through the live view, the next page did not work in the fast engine, and the full browser opened signed out."""
     from app.constants.browser import HandoffDecision, HandoffStatus
     from app.services.browser import session as session_mod
     from app.services.browser.handoff import resolve_handoff
 
     steps = [
-        ScriptedStep(actions=[], decide=True),
-        ScriptedStep(actions=[], decide=True),
-        ScriptedStep(actions=[], decide=True, url="https://example.test/book"),
-        ScriptedStep(actions=[], decide=True, url="https://example.test/book"),
+        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+        ScriptedStep(
+            actions=[], switch=EngineSwitchReason.STAYS_EMPTY, url="https://example.test/book"
+        ),
+        ScriptedStep(
+            actions=[("input", {"index": 1, "text": "Friday"})], url="https://example.test/book"
+        ),
     ]
-    script = JevScript(
-        decisions=[("REQUEST_HUMAN", None), ("BLOCKED", None), ("TYPE_TEXT", "1")],
-        texts=[{"text": "Sign in and come back", "category": "credentials"}, {"text": "Friday"}],
-    )
 
     async with browser_job_world(
-        STREAM, steps=steps, jev=script, host=ScriptedHost(fallback_url="http://fallback.test")
+        STREAM, steps=steps, host=ScriptedHost(fallback_url="http://fallback.test")
     ) as world:
         async with executor_graph([RETRIEVE, START, JOIN, "Booked."]) as graph:
             run_task = asyncio.create_task(_drive(graph, world))
@@ -724,154 +703,6 @@ async def test_a_browser_request_the_executor_remembers_doing_still_runs_the_bro
 
 _FORM = "https://forms.test/web-form.html"
 _SENT = "https://forms.test/submitted-form.html?my-text=Aryan"
-_FORM_VIEW = JevPageView(
-    url=_FORM,
-    controls=[
-        ("INPUT", {"type": "radio", "aria-label": "Radio 2"}),
-        ("BUTTON", {"aria-label": "Submit"}),
-    ],
-    text="Radio 2\nSubmit",
-)
-_SENT_VIEW = JevPageView(url=_SENT, controls=[], text="Form submitted\nReceived!")
-
-
-def _form_judge(label: str, context: dict[str, Any]) -> dict[str, Any]:
-    """Judge the part: Radio 2 and Submit are done only by an action that did them."""
-    taken = [entry["action"] for entry in context["recent_actions"]]
-    needed = {"Radio 2 chosen": "Radio 2", "Submit clicked": "Submit"}
-    evidence = []
-    for requirement, control in needed.items():
-        action = next((action for action in taken if control in action), None)
-        if action is not None:
-            evidence.append({"requirement": requirement, "kind": "action", "source": action})
-    return {
-        "requirements": list(needed),
-        "evidence": evidence,
-        "done": len(evidence) == len(needed),
-        "findings": "",
-    }
-
-
-async def test_a_form_submitted_with_a_field_skipped_goes_back_to_it_instead_of_giving_up() -> None:
-    """Regression: the radio was never chosen, the judge said so after Submit, and the run went BLOCKED and redid the form on the fallback engine."""
-    answer = "The page shows \u201cForm submitted\u201d and \u201cReceived!\u201d."
-    steps = [
-        ScriptedStep(actions=[], decide=True, jev_page=_FORM_VIEW, url=_FORM),
-        ScriptedStep(actions=[], decide=True, jev_page=_SENT_VIEW, url=_SENT),
-        ScriptedStep(actions=[], decide=True, jev_page=_FORM_VIEW, url=_FORM),
-        ScriptedStep(actions=[], decide=True, jev_page=_FORM_VIEW, url=_FORM),
-        ScriptedStep(actions=[], decide=True, jev_page=_SENT_VIEW, url=_SENT),
-    ]
-    script = JevScript(
-        decisions=[
-            ("CLICK", "2"),
-            ("DONE", None),
-            ("GO_BACK", None),
-            ("CLICK", "1"),
-            ("CLICK", "2"),
-            ("DONE", None),
-        ],
-        # A closing answer is started with each DONE; the first is dropped when its check fails.
-        texts=[{"text": answer}, {"text": answer}],
-        judge=_form_judge,
-    )
-
-    async with browser_job_world(
-        STREAM,
-        steps=steps,
-        jev=script,
-        summary=answer,
-        host=ScriptedHost(fallback_url="http://fallback.test"),
-    ) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, "Done."]) as graph:
-            await _drive(graph, world)
-
-    assert world.jev is not None
-    re_ask = world.jev.requests[2].questions["operation"]
-    assert "Radio 2 chosen" in re_ask.instructions["goal"]
-    assert "BLOCKED" not in re_ask.criteria
-    assert [next(iter(action)) for action in _step_actions(world)] == [
-        "click",
-        "go_back",
-        "click",
-        "click",
-        "done",
-    ]
-    assert world.browser.guidance_reasons == []
-    assert [card["session_id"] for card in world.cards() if card["kind"] == "session"] == ["sess-1"]
-    results = [card for card in world.cards() if card["kind"] == "result"]
-    assert [(card["status"], card["success"]) for card in results] == [
-        (BrowserSessionStatus.COMPLETED.value, True)
-    ]
-
-
-_NEWS = "https://news.test/"
-_STORY = "https://lab.test/news/enzyme"
-_NEWS_VIEW = JevPageView(
-    url=_NEWS,
-    controls=[
-        ("A", {"aria-label": "Claude discovers a novel enzyme system"}),
-        ("A", {"aria-label": "Tutoring company tells parents"}),
-    ],
-    text="Claude discovers a novel enzyme system\nTutoring company tells parents",
-)
-# The live page: headline, date and a hero video fill the first screen.
-_STORY_TOP = JevPageView(
-    url=_STORY,
-    controls=[("A", {"aria-label": "Research"}), ("A", {"aria-label": "News"})],
-    text="Claude discovers a novel enzyme system\nSep 23, 2026",
-)
-_STORY_BODY = JevPageView(
-    url=_STORY,
-    controls=[("A", {"aria-label": "Research"}), ("A", {"aria-label": "News"})],
-    text="We\u2019re introducing a new life sciences research group.",
-)
-
-
-def _story_judge(label: str, context: dict[str, Any]) -> dict[str, Any]:
-    """Judge the part done only when Jev chooses DONE, citing the article read."""
-    return {
-        "requirements": ["article summarised"],
-        "evidence": [{"requirement": "article summarised", "kind": "fact", "source": _STORY}],
-        "done": label == "browser_done_check",
-        "findings": "",
-    }
-
-
-async def test_an_article_opened_from_a_list_is_scrolled_before_the_run_goes_back() -> None:
-    """The run went back from the headline and reported the article body missing."""
-    answer = "Anthropic introduced a life sciences research group."
-    steps = [
-        ScriptedStep(actions=[], decide=True, jev_page=_NEWS_VIEW, url=_NEWS),
-        ScriptedStep(actions=[], decide=True, jev_page=_STORY_TOP, url=_STORY),
-        ScriptedStep(actions=[], decide=True, jev_page=_STORY_BODY, url=_STORY),
-        ScriptedStep(actions=[], decide=True, jev_page=_NEWS_VIEW, url=_NEWS),
-    ]
-    script = JevScript(
-        decisions=[("CLICK", "1"), ("SCROLL_DOWN", None), ("GO_BACK", None), ("DONE", None)],
-        texts=[{"text": answer}],
-        judge=_story_judge,
-    )
-
-    async with browser_job_world(STREAM, steps=steps, jev=script, summary=answer) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, "Done."]) as graph:
-            await _drive(graph, world)
-
-    assert world.jev is not None
-    first_screen = set(world.jev.requests[1].questions["operation"].criteria)
-    assert "SCROLL_DOWN" in first_screen
-    assert not first_screen & {"GO_BACK", "NAVIGATE"}
-    assert "GO_BACK" in world.jev.requests[2].questions["operation"].criteria
-    assert [next(iter(action)) for action in _step_actions(world)] == [
-        "click",
-        "scroll",
-        "go_back",
-        "done",
-    ]
-    results = [card for card in world.cards() if card["kind"] == "result"]
-    assert [(card["status"], card["success"]) for card in results] == [
-        (BrowserSessionStatus.COMPLETED.value, True)
-    ]
 
 
 _SECRET = "gaia-test-123"
@@ -880,31 +711,22 @@ _SECRET = "gaia-test-123"
 async def test_a_password_the_run_typed_never_reaches_a_card_or_the_answer() -> None:
     """A form sent by GET carries the password in the page it lands on; the user reads cards and the answer, never it."""
     landed = f"{_SENT}&my-password={_SECRET}"
-    login = JevPageView(
-        url=_FORM,
-        controls=[
-            ("INPUT", {"type": "password", "name": "my-password"}),
-            ("INPUT", {"name": "my-text"}),
-        ],
-    )
     steps = [
-        ScriptedStep(actions=[], decide=True, jev_page=login, url=_FORM),
         ScriptedStep(
-            actions=[],
-            decide=True,
-            jev_page=JevPageView(url=landed, controls=[], text="Received!"),
-            url=landed,
+            actions=[("input", {"index": 1, "text": _SECRET})],
+            url=_FORM,
+            fields={1: {"type": "password", "name": "my-password"}},
+            outputs=[f"Typed {_SECRET}"],
+        ),
+        ScriptedStep(
+            actions=[("click", {"index": 2})], url=landed, outputs=[f"landed on {landed}"]
         ),
     ]
     answer = f"Signed in with {_SECRET}; landed on {landed}."
-    script = JevScript(
-        decisions=[("TYPE_TEXT", "1"), ("DONE", None)], texts=[{"text": _SECRET}, {"text": answer}]
-    )
 
-    async with browser_job_world(STREAM, steps=steps, jev=script) as world:
+    async with browser_job_world(STREAM, steps=steps, summary=answer) as world:
         async with executor_graph([RETRIEVE, START, JOIN, "Done."]) as graph:
             run = await _drive(graph, world)
 
-    assert _step_actions(world)[0]["input_text"]["text"] != _SECRET
     assert _SECRET not in json.dumps(world.cards())
     assert _SECRET not in (run.result_for("wait_for_browser_task") or "")

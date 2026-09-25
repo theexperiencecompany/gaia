@@ -11,6 +11,7 @@ burst reaches the runner as one frame through RunHooks.
 from __future__ import annotations
 
 import asyncio
+from functools import partial
 import json
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, TypedDict
@@ -32,6 +33,7 @@ from app.constants.browser import (
     BROWSER_TAKEOVER_PREAMBLE,
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
+    EngineSwitchReason,
 )
 from app.constants.log_tags import LogTag
 from app.patches.browser_use_run_lock_patch import isolate_run_events
@@ -57,6 +59,7 @@ from app.services.browser.run_contract import (
     RunOutcome,
     StepClock,
     StepFrame,
+    SwitchEngineFn,
 )
 from app.services.browser.session import BrowserHostSession
 from app.services.browser.stalled_loads import StalledLoads
@@ -253,6 +256,11 @@ class BrowserAgentRun:
             solve_captcha=self._config.solve_captcha,
             handle_takeover=self._takeover,
             handle_guidance=self._guidance,
+            handle_engine_switch=(
+                partial(self._switch_engine, self._hooks.switch_engine)
+                if self._hooks.switch_engine is not None
+                else None
+            ),
         )
         register_jev(tools, self._delegate)
         sensitive_data = self._secrets.sensitive_data() or None
@@ -340,6 +348,12 @@ class BrowserAgentRun:
             # How Browser-Use itself reports a wait between steps: a result the next prompt carries.
             notes = [ActionResult(long_term_memory=self._secrets.mask(note)) for note in stalled]
             self._agent.state.last_result = [*(self._agent.state.last_result or []), *notes]
+
+    async def _switch_engine(self, switch: SwitchEngineFn, category: EngineSwitchReason) -> str:
+        """Move the run to the full browser: the runner resumes it there once this run stops."""
+        answer = await switch(category, await self._current_url())
+        self.stop()
+        return answer
 
     async def _takeover(self, reason: str, category: str) -> str:
         """Hand the browser to the user, then give the agent the note they left."""

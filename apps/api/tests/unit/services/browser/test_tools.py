@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 
 import pytest
 
+from app.constants.browser import EngineSwitchReason
 from app.services.browser.tools import build_browser_tools
 
 CAPTCHA_DESCRIPTION = (
@@ -158,3 +159,38 @@ def test_the_guidance_action_is_registered_even_with_captcha_off() -> None:
     )
 
     assert "request_agent_guidance" in tools.registry.registry.actions
+
+
+class _FakeSwitch:
+    """Records every move to the full browser the agent asks for."""
+
+    def __init__(self) -> None:
+        self.calls: list[EngineSwitchReason] = []
+
+    async def __call__(self, category: EngineSwitchReason) -> str:
+        self.calls.append(category)
+        return "moving"
+
+
+def test_a_run_on_chrome_is_never_offered_the_full_browser() -> None:
+    tools = build_browser_tools(
+        solve_captcha=False, handle_takeover=_FakeTakeover(), handle_guidance=_FakeGuidance()
+    )
+
+    assert "continue_in_full_browser" not in tools.registry.registry.actions
+
+
+async def test_a_run_on_the_fast_engine_can_move_to_the_full_browser_naming_why() -> None:
+    switch = _FakeSwitch()
+    tools = build_browser_tools(
+        solve_captcha=False,
+        handle_takeover=_FakeTakeover(),
+        handle_guidance=_FakeGuidance(),
+        handle_engine_switch=switch,
+    )
+
+    result = await _call_action(tools, "continue_in_full_browser", category="stays_empty")
+
+    assert (switch.calls, result) == ([EngineSwitchReason.STAYS_EMPTY], "moving")
+    with pytest.raises(ValueError):
+        _get_action(tools, "continue_in_full_browser").param_model(category="the site is down")

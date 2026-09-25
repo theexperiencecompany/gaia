@@ -19,19 +19,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import browser_use
 import fakeredis.aioredis
-from pydantic import BaseModel
 
 from app.agents.core.background.session import RunKind, create_session
 from app.agents.tools import browser_tool
 from app.config.settings import settings
-from app.constants.llm import ReasoningLevel
+from app.constants.browser import BrowserEngine, EngineSwitchReason
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserSessionGone
 from app.services.browser.host_client import HostSessionInfo
-from app.services.browser.jev.chat_model import JevChatModel
-from app.services.browser.jev.gateway import JevChoiceAnswer, JevEvaluation, JevUsage
-from app.services.browser.jev.prompts import PART_DONE, PLAN_STEPS
 from app.workers.tasks import browser_tasks
 
 #: What the fake CDN hands back for a step screenshot, per step index.
@@ -61,16 +57,20 @@ class ScriptedStep:
     outputs: list[str] = field(default_factory=list)
     #: Poll should_stop instead of stepping, so a stop arriving mid-run is observable.
     await_stop: bool = False
-    #: Ask the bound Jev policy what to do instead of using this step's actions.
-    decide: bool = False
-    #: Wait until an executor has joined the job before deciding, so a journey
+    #: The agent's request_human_takeover action as the step: (reason, category).
+    takeover: tuple[str, str] | None = None
+    #: The agent's request_agent_guidance action as the step: its reason.
+    guidance: str | None = None
+    #: The agent's continue_in_full_browser action as the step: why the fast engine failed.
+    switch: EngineSwitchReason | None = None
+    #: Wait until an executor has joined the job before stepping, so a journey
     #: about what a joined executor sees is not a race with the turn's own poll.
     await_joiner: bool = False
     #: The engine under the run dies here: the host loses the session and the run
     #: ends the way Browser-Use ends one, on step failures, with nothing raised.
     engine_dies: bool = False
-    #: The page Jev reads when it decides this step; None keeps the one it read last.
-    jev_page: JevPageView | None = None
+    #: The page's controls by index, as (tag, attributes), for the element an action targets.
+    fields: dict[int, dict[str, str]] = field(default_factory=dict)
 
 
 class _Action:
@@ -89,11 +89,26 @@ class _AgentOutput:
         self.action = actions
 
 
+class _Node:
+    """The slice of a Browser-Use DOM node a card and the password check read."""
+
+    def __init__(self, attributes: dict[str, str]) -> None:
+        self.attributes = attributes
+        self.ax_node = None
+        self.node_name = "INPUT"
+
+    def get_meaningful_text_for_llm(self) -> str:
+        return self.attributes.get("aria-label", "")
+
+
 class _PageState:
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, fields: dict[int, dict[str, str]]) -> None:
         self.url = url
         self.title = "Example"
         self.screenshot = "ZmFrZS1zY3JlZW5zaG90"
+        self.dom_state = SimpleNamespace(
+            selector_map={index: _Node(attributes) for index, attributes in fields.items()}
+        )
 
 
 class _ActionResult:
@@ -149,28 +164,51 @@ class BrowserDouble:
         self.next_step = 0
         #: Kills the engine under the session the run is on; the world wires it.
         self.kill_engine: Callable[[], None] = lambda: None
-        #: The page a Jev-driven run reads; the world wires it.
-        self.page: _JevPage | None = None
+        #: Where the scripted browser is now, for the run's resume on a fallback engine.
+        self.url: str | None = None
+        #: The continue_in_full_browser action, when the run on this engine was offered it.
+        self.switch: Callable[[EngineSwitchReason], Any] | None = None
 
     def agent(self, **kwargs: Any) -> _ScriptedAgent:
         return _ScriptedAgent(self, **kwargs)
 
 
+class _BrowserSession:
+    """The agent's browser, as the run reads it: where it is; never connected over CDP."""
+
+    def __init__(self, double: BrowserDouble) -> None:
+        self._double = double
+        self.is_cdp_connected = False
+        self.reset = AsyncMock()
+
+    async def get_current_page_url(self) -> str | None:
+        return self._double.url
+
+
 class _ScriptedAgent:
-    """Stands in for browser_use.Agent, calling back exactly where the real one does."""
+    """Stands in for browser_use.Agent, calling back exactly where the real one does.
+
+    The run's initial `jev` action is not executed: Jev's own loop is proven by its
+    unit tests, and these journeys are about everything around the run.
+    """
 
     def __init__(self, double: BrowserDouble, **kwargs: Any) -> None:
         self._double = double
         self._on_step = kwargs["register_new_step_callback"]
         self._should_stop = kwargs["register_should_stop_callback"]
-        self._llm = kwargs["llm"]
+        self.task = kwargs["task"]
         self._stopped = False
         self.state = _AgentState([])
+        self.browser_session = _BrowserSession(double)
+        self.new_tasks: list[str] = []
+        self.message_manager = SimpleNamespace(add_new_task=self.new_tasks.append)
 
     def stop(self) -> None:
         self._stopped = True
 
-    async def run(self, max_steps: int, on_step_end: Any = None) -> _History:
+    async def run(
+        self, max_steps: int, on_step_start: Any = None, on_step_end: Any = None
+    ) -> _History:
         double = self._double
         while double.next_step < len(double.steps):
             step = double.steps[double.next_step]
@@ -180,13 +218,12 @@ class _ScriptedAgent:
                 return _History("", successful=False, done=False)
             if await self._halts_before(step):
                 break
+            if on_step_start is not None:
+                await on_step_start(self)
             try:
-                step_actions = await self._actions_for(step)
+                ended = await self._perform(step, double.next_step, on_step_end)
             except _RunHalted:
                 break
-            if step_actions is None:
-                continue
-            ended = await self._perform(step, step_actions, double.next_step, on_step_end)
             if ended is not None:
                 return ended
         return _History(double.summary, double.successful)
@@ -203,51 +240,40 @@ class _ScriptedAgent:
             await self._wait_for_joiner()
         return False
 
-    async def _actions_for(self, step: ScriptedStep) -> list[tuple[str, dict[str, Any]]] | None:
-        """Return the step's actions, scripted or decided by the real Jev policy; None when a handoff was the step."""
-        if not step.decide:
-            return list(step.actions)
-        if step.jev_page is not None and self._double.page is not None:
-            self._double.page.show(step.jev_page)
+    async def _perform(self, step: ScriptedStep, index: int, on_step_end: Any) -> _History | None:
+        """Report the step as Browser-Use does, run its takeover or guidance action, and return the history a done action ends the run with."""
+        step_actions = list(step.actions)
+        if step.takeover is not None:
+            step_actions = [
+                (
+                    "request_human_takeover",
+                    {"reason": step.takeover[0], "category": step.takeover[1]},
+                )
+            ]
+        elif step.guidance is not None:
+            step_actions = [("request_agent_guidance", {"reason": step.guidance})]
+        elif step.switch is not None:
+            step_actions = [("continue_in_full_browser", {"category": step.switch.value})]
+        self._double.url = step.url
+        actions = [_Action(name, params) for name, params in step_actions]
+        await self._on_step(_PageState(step.url, step.fields), _AgentOutput(actions), index)
         try:
-            decided = await self._decide()
+            if step.takeover is not None:
+                await self._hand_over(*step.takeover)
+            elif step.guidance is not None:
+                await self._ask_the_agent(step.guidance)
+            elif step.switch is not None:
+                assert self._double.switch is not None, "the run was not offered the full browser"
+                await self._double.switch(step.switch)
         except BrowserHandoffCancelled:
             # Browser-Use turns this into an action error and the run's own flags
             # decide the outcome; the loop has nothing left to do.
             raise _RunHalted from None
-        return None if decided is None else [decided]
-
-    async def _perform(
-        self,
-        step: ScriptedStep,
-        step_actions: list[tuple[str, dict[str, Any]]],
-        index: int,
-        on_step_end: Any,
-    ) -> _History | None:
-        """Report the step as Browser-Use does and return the history a done action ends the run with, else None."""
-        actions = [_Action(name, params) for name, params in step_actions]
-        await self._on_step(_PageState(step.url), _AgentOutput(actions), index)
         if on_step_end is not None:
             self.state = _AgentState(step.outputs)
             await on_step_end(self)
         # A done action ends the run where Browser-Use ends it, with its own text and verdict.
         return _ended_by(step_actions)
-
-    async def _decide(self) -> tuple[str, dict[str, Any]] | None:
-        """Ask the real Jev policy for this step, and perform a takeover it asks for.
-
-        None once the decision was the handoff itself: the takeover IS the step,
-        exactly as Browser-Use executes that action and then continues.
-        """
-        completion = (await self._llm.ainvoke([], JevAgentOutput)).completion
-        name, params = next(iter(completion.action[0].model_dump(exclude_none=True).items()))
-        if name == "request_human_takeover":
-            await self._hand_over(params["reason"], params["category"])
-            return None
-        if name == "request_agent_guidance":
-            await self._ask_the_agent(params["reason"])
-            return None
-        return name, params
 
     async def _hand_over(self, reason: str, category: str) -> None:
         assert self._double.takeover is not None, "the takeover action was never built"
@@ -295,7 +321,6 @@ class JobWorld:
         self.bot_messages: list[str] = []
         self.bot_photos: list[str] = []
         self.deliveries: list[dict[str, Any]] = []
-        self.jev: ScriptedJevGateway | None = None
         self.jobs: list[asyncio.Task[Any]] = []
         self.host_sessions = 0
         #: Sessions whose engine died; the host answers 404 for them.
@@ -349,7 +374,6 @@ async def browser_job_world(
     steps: list[ScriptedStep] | None = None,
     summary: str = "The table is booked for 7pm on Friday.",
     successful: bool = True,
-    jev: JevScript | None = None,
     host: ScriptedHost | None = None,
 ) -> AsyncIterator[JobWorld]:
     """Wire one turn's world: a fake Redis, a scripted browser, an in-process worker."""
@@ -367,14 +391,7 @@ async def browser_job_world(
     )
     world = JobWorld(double)
     scripted_host = host if host is not None else ScriptedHost()
-    page: Any = AsyncMock()
-    llm: Any = object()
-    if jev is not None:
-        world.jev = ScriptedJevGateway(jev)
-        helper = _JevTextHelper(jev.texts, jev.judge)
-        llm = JevChatModel(client=world.jev, text_model=helper, structured_call=helper.structured)
-        page = _JevPage()
-        double.page = page
+    browser = MagicMock()
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     create_session(stream_id, RunKind.LIVE)
 
@@ -400,15 +417,30 @@ async def browser_job_world(
         # sit out the real two-minute budget.
         patch("app.services.browser.job_runner.BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS", 2),
         patch.object(browser_use, "Agent", double.agent),
-        patch.object(browser_use, "Browser", lambda **kwargs: page),
+        patch.object(browser_use, "Browser", lambda **kwargs: browser),
         patch("app.agents.tools.browser_tool.enqueue_worker_job", _enqueue),
         patch("app.agents.tools.browser_tool.RedisPoolManager.get_pool", AsyncMock()),
         patch(
             "app.services.hil.policy.get_hil_preferences",
             AsyncMock(return_value=HILPreferences(mode="always_allow")),
         ),
-        *_host_patches(world, scripted_host, page),
-        patch("app.services.browser.job_runner.build_browser_llm", lambda user_id=None: llm),
+        *_host_patches(world, scripted_host),
+        # A world with a fallback host is an Obscura user's (Chrome behind it); any
+        # other runs on Chrome, the default engine.
+        patch(
+            "app.services.browser.job_runner.is_enabled",
+            AsyncMock(return_value=scripted_host.fallback_url is not None),
+        ),
+        patch.object(
+            settings,
+            "BROWSER_ENGINE",
+            BrowserEngine.OBSCURA if scripted_host.fallback_url else BrowserEngine.CHROMIUM,
+        ),
+        # The models and Jev's gateway are never called: the agent and Jev are scripted.
+        patch("app.services.browser.agent_run.build_agent_llm", AsyncMock(return_value=object())),
+        patch("app.services.browser.agent_run.build_text_model", lambda ledger: object()),
+        patch("app.services.browser.agent_run.build_jev_client", lambda: object()),
+        patch("app.services.browser.agent_run.JevPage", _Page),
         patch("app.services.browser.job_runner.record_browser_task", AsyncMock()),
         patch("app.services.browser.job_runner.capture_event", MagicMock()),
         patch("app.services.browser.agent_run.build_browser_tools", _tools_of(double)),
@@ -432,7 +464,7 @@ async def browser_job_world(
 
 
 def _host_patches(
-    world: JobWorld, scripted_host: ScriptedHost, page: object
+    world: JobWorld, scripted_host: ScriptedHost
 ) -> list[AbstractContextManager[object]]:
     """Stand in for the browser host: sessions it opens, loses when the engine dies, and whose state it reads."""
     double = world.browser
@@ -465,7 +497,7 @@ def _host_patches(
             session_id=session_id,
             live=True,
             last_activity_at=0.0,
-            url=page.url if isinstance(page, _JevPage) else None,
+            url=double.url,
         )
 
     async def _get_storage_state(session_id: str, host_url: str) -> Any:
@@ -535,12 +567,35 @@ def _tools_of(double: BrowserDouble) -> Callable[..., object]:
         solve_captcha: bool,
         handle_takeover: Callable[[str, str], Any],
         handle_guidance: Callable[[str], Any],
+        handle_engine_switch: Callable[[EngineSwitchReason], Any] | None = None,
     ) -> object:
         double.takeover = handle_takeover
         double.guidance = handle_guidance
-        return object()
+        double.switch = handle_engine_switch
+        return _Tools()
 
     return _build
+
+
+class _Tools:
+    """Browser-Use's tool registry, as far as registering the jev action needs it."""
+
+    def action(self, description: str, **kwargs: Any) -> Callable[[Any], Any]:
+        return lambda function: function
+
+
+class _Page:
+    """Jev's view of the tab, as far as a step card's photo and a guidance ask read it."""
+
+    def __init__(self, browser: _BrowserSession) -> None:
+        self._browser = browser
+
+    async def screenshot(self) -> str:
+        return "ZmFrZS1zY3JlZW5zaG90"
+
+    async def observe(self) -> Any:
+        url = await self._browser.get_current_page_url()
+        return SimpleNamespace(url=url or "", title="Example", text="", actions=[])
 
 
 async def _shot_url(index: int) -> str:
@@ -554,190 +609,3 @@ async def _narrate(result_text: str, msg_type: str, conversation_id: str, user: 
 
 def _user() -> Any:
     return MagicMock(user_id="user-e2e", email="e2e@example.test")
-
-
-# ---------------------------------------------------------------------------
-# Jev: the real policy model, with the gateway and the page it reads scripted
-# ---------------------------------------------------------------------------
-
-
-class _JevAction(BaseModel):
-    """The Browser-Use action model Jev fills in, cut down to the operations this suite offers."""
-
-    click: dict[str, Any] | None = None
-    navigate: dict[str, Any] | None = None
-    input_text: dict[str, Any] | None = None
-    wait: dict[str, Any] | None = None
-    scroll: dict[str, Any] | None = None
-    go_back: dict[str, Any] | None = None
-    done: dict[str, Any] | None = None
-    request_human_takeover: dict[str, Any] | None = None
-    request_agent_guidance: dict[str, Any] | None = None
-
-
-class JevAgentOutput(BaseModel):
-    """What Browser-Use asks the model for each step; an `action` field is what routes it to Jev."""
-
-    memory: str
-    next_goal: str | None = None
-    action: list[_JevAction]
-
-
-class _JevNode:
-    """The slice of a Browser-Use DOM node the observation reads."""
-
-    def __init__(self, node_name: str, attributes: dict[str, str]) -> None:
-        self.node_name = node_name
-        self.attributes = attributes
-        self.text = ""
-        self.ax_node = None
-        self.children_nodes: list[_JevNode] = []
-        self.is_visible = True
-
-    def get_meaningful_text_for_llm(self) -> str:
-        return self.attributes.get("placeholder") or self.attributes.get("value") or ""
-
-    def get_all_children_text(self) -> str:
-        return self.get_meaningful_text_for_llm()
-
-
-@dataclass(frozen=True)
-class JevPageView:
-    """One page as Jev reads it: where it is, its controls as (tag, attributes), and its text."""
-
-    url: str
-    controls: list[tuple[str, dict[str, str]]]
-    text: str = ""
-    title: str = "Example"
-
-
-class _JevPage:
-    """The browser session Jev observes: one cached state read, one DOM snapshot, no CDP."""
-
-    def __init__(self) -> None:
-        node = _JevNode("INPUT", {"role": "combobox", "placeholder": "Where to?"})
-        self._selector_map = {7: node}
-        self._text = "[1]<input>Where to?"
-        self.url = "https://example.test/book"
-        self.title = "Book a table"
-
-    def show(self, view: JevPageView) -> None:
-        self._selector_map = {
-            index: _JevNode(tag, attributes)
-            for index, (tag, attributes) in enumerate(view.controls, start=1)
-        }
-        self._text = view.text
-        self.url = view.url
-        self.title = view.title
-
-    async def get_browser_state_summary(self, **kwargs: Any) -> Any:
-        text = self._text
-        dom_state = SimpleNamespace(
-            selector_map=self._selector_map, llm_representation=lambda: text
-        )
-        return SimpleNamespace(dom_state=dom_state, url=self.url, title=self.title)
-
-    async def get_or_create_cdp_session(self) -> Any:
-        return SimpleNamespace(session_id="s", cdp_client=SimpleNamespace(send=SimpleNamespace()))
-
-
-@dataclass
-class JevScript:
-    """What the gateway answers, and what Jev's text helper writes, in call order."""
-
-    #: (operation, target key) per decision; target None for an operation with no element head.
-    decisions: list[tuple[str, str | None]]
-    #: One structured reply per text-helper call, e.g. the takeover reason.
-    texts: list[dict[str, Any]] = field(default_factory=list)
-    #: The part check, as (label, context) -> verdict; None takes a chosen DONE at its word.
-    judge: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
-
-
-class ScriptedJevGateway:
-    """Answers each evaluation from the script, and keeps every request it was sent."""
-
-    model = "typesafe-ai/jev"
-
-    def __init__(self, script: JevScript) -> None:
-        self._decisions = list(script.decisions)
-        self.requests: list[Any] = []
-
-    async def evaluate(self, request: Any) -> Any:
-        self.requests.append(request)
-        operation, target = self._decisions.pop(0)
-        answers = {"operation": _choice(operation, list(request.questions["operation"].criteria))}
-        if target is not None:
-            head = f"{operation.lower()}_target"
-            answers[head] = _choice(target, list(request.questions[head].criteria))
-        return JevEvaluation(
-            answers=answers, usage=JevUsage(inputTokens=120, outputTokens=4), latency_ms=1
-        )
-
-    def goal(self, call: int) -> str:
-        """Return the goal text Jev classified against on one decision."""
-        goal: str = self.requests[call].questions["operation"].instructions["goal"]
-        return goal
-
-
-def _choice(choice: str, keys: list[str]) -> JevChoiceAnswer:
-    """One answer whose distribution passes the policy's own validation."""
-    # A lone key carries the whole distribution, or the policy rejects the answer.
-    top = 0.8 if len(keys) > 1 else 1.0
-    rest = (1 - top) / (len(keys) - 1) if len(keys) > 1 else 0.0
-    return JevChoiceAnswer(
-        type="choice",
-        choice=choice,
-        probabilities={key: (top if key == choice else rest) for key in keys},
-    )
-
-
-class _JevTextHelper:
-    """Jev's text side: the reason it writes for a takeover, the value it types."""
-
-    model = "text-helper"
-    provider = "fake"
-    name = "text-helper"
-
-    def __init__(
-        self,
-        replies: list[dict[str, Any]],
-        judge: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
-    ) -> None:
-        self._replies = list(replies)
-        self._judge = judge
-
-    async def ainvoke(self, messages: Any, output_format: Any = None, **kwargs: Any) -> Any:
-        from browser_use.llm.views import ChatInvokeCompletion
-
-        if output_format is None:
-            return ChatInvokeCompletion(completion="", usage=None)
-        reply = self._replies.pop(0) if self._replies else {}
-        return ChatInvokeCompletion(completion=output_format.model_validate(reply), usage=None)
-
-    async def structured(
-        self,
-        schema: Any,
-        prompt: Any,
-        *,
-        label: str,
-        timeout: float | None = None,
-        reasoning: ReasoningLevel | None = None,
-    ) -> Any:
-        """Answer as the loop's writer: plan and part checks answer themselves, the rest take the scripted replies in order."""
-        instructions = prompt[0].content
-        if instructions.startswith(PLAN_STEPS):
-            return schema.model_validate({"steps": []})
-        if instructions.startswith(PART_DONE):
-            if self._judge is not None:
-                return schema.model_validate(self._judge(label, json.loads(prompt[1].content)))
-            if label != "browser_done_check":
-                return schema.model_validate({"done": False})
-            # A DONE the script chose is taken at its word, cited by the page read.
-            pages = json.loads(prompt[1].content)["pages_read"]
-            return schema.model_validate(
-                {"done": True, "evidence": [pages[0]["url"]] if pages else [], "findings": ""}
-            )
-        reply = self._replies.pop(0) if self._replies else {}
-        if "achieved" in schema.model_fields and isinstance(reply, dict):
-            reply = {"achieved": True, **reply}
-        return schema.model_validate(reply)

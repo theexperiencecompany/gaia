@@ -21,7 +21,12 @@ from app.agents.core.background import redis_writer as rw
 from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.redis_writer import STREAM_PUBLISH_TASK_NAME
 from app.agents.core.background.session import RunKind, create_session
-from app.constants.browser import BROWSER_TASK_EVENT, BrowserSessionStatus, HandoffStatus
+from app.constants.browser import (
+    BROWSER_TASK_EVENT,
+    BrowserEngine,
+    BrowserSessionStatus,
+    HandoffStatus,
+)
 from app.constants.chat import SourceCategory
 from app.models.bot_models import BotSessionDocument
 from app.models.chat_models import ConversationSource
@@ -46,6 +51,7 @@ from app.services.browser import (
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
 from app.services.browser.job_relay import relay_job_events
 from app.services.browser.job_runner import execute_browser_job
+from app.services.browser.ledger import RunLedger
 from app.utils import background_tasks
 from tests._harness.redis_fakes import FakeRedisCache
 
@@ -76,6 +82,7 @@ class _ScriptedBrowser:
         self._callbacks = kwargs["callbacks"]
         self.session = kwargs["session"]
         self.used_fallback = False
+        self.ledger = RunLedger()
 
     async def run(self, task: str) -> BrowserResultSnapshot:
         emit: EmitFn = self._callbacks.emit
@@ -168,7 +175,7 @@ def outbound(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[Any]]:
 
 @pytest.fixture
 def browser(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Everything outside the process: the host session, the browser LLM, the history write."""
+    """Everything outside the process: the host session, the engine choice, the history write."""
     session = MagicMock(session_id="sess-7", live_view_url="https://host.test/live/sess-7")
 
     @asynccontextmanager
@@ -176,7 +183,9 @@ def browser(monkeypatch: pytest.MonkeyPatch) -> None:
         yield session
 
     monkeypatch.setattr(jr, "browser_session", _session)
-    monkeypatch.setattr(jr, "build_browser_llm", lambda **_: object())
+    # Chrome, the default engine: the user has not opted into Obscura.
+    monkeypatch.setattr(jr, "is_enabled", AsyncMock(return_value=False))
+    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
     monkeypatch.setattr(jr, "BrowserTaskRunner", _ScriptedBrowser)
     monkeypatch.setattr(jr, "record_browser_task", AsyncMock())
     monkeypatch.setattr(jr, "capture_event", MagicMock())

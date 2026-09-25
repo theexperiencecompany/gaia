@@ -46,6 +46,14 @@ class EngineFailure(StrEnum):
     UNRESPONSIVE = "unresponsive"
 
 
+class EngineSwitchReason(StrEnum):
+    """Why the agent moved an Obscura run to Chrome: the kinds of breakage the fast engine causes."""
+
+    RENDERS_WRONG = "renders_wrong"
+    CONTROL_BROKEN = "control_broken"
+    STAYS_EMPTY = "stays_empty"
+
+
 class StateCarry(StrEnum):
     """Whether a run moving to the fallback engine took the primary's live cookies and localStorage with it."""
 
@@ -453,6 +461,10 @@ JEV_CAPTCHA_FRAME_MARKERS = ("recaptcha", "hcaptcha", "turnstile", "arkoselabs",
 BROWSER_STALL_NOTE_AFTER_SECONDS = 25.0
 BROWSER_STALL_NOTE = "Still waiting on the page, it's a slow one."
 
+# What the agent's continue_in_full_browser call answers: the run ends here and resumes there.
+BROWSER_ENGINE_SWITCH_ACK = (
+    "Moving this task to the full browser. It continues there from this page, still signed in."
+)
 # Said once when a run moves to the fallback engine, so the steps that follow
 # on another browser do not read as the run starting over.
 BROWSER_ENGINE_FALLBACK_NOTE = (

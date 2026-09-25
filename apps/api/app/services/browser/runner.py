@@ -16,11 +16,13 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from time import perf_counter
 from typing import Any
+from urllib.parse import urlsplit
 
 from app.constants.browser import (
     BROWSER_AGENT_GUIDANCE_MAX,
     BROWSER_ENGINE_FALLBACK_NOTE,
     BROWSER_ENGINE_FALLBACK_WITHOUT_STATE_NOTE,
+    BROWSER_ENGINE_SWITCH_ACK,
     BROWSER_ENGINE_UNRESPONSIVE_SUMMARY,
     BROWSER_RUN_BLOCKED_SUMMARY,
     BROWSER_RUN_HANDOFF_TIMED_OUT,
@@ -29,9 +31,11 @@ from app.constants.browser import (
     BROWSER_TASK_FAILED_PREFIX,
     HANDOFF_AUTORESOLVED_NOTE,
     MAX_HANDOFFS_PER_TASK,
+    BrowserEngine,
     BrowserRunFailure,
     BrowserSessionStatus,
     EngineFailure,
+    EngineSwitchReason,
     HandoffStatus,
     SensitiveCategory,
     StateCarry,
@@ -46,6 +50,7 @@ from app.schemas.browser import (
     HandoffOutcome,
     HandoffRequest,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.browser.agent_run import BrowserAgentRun
 from app.services.browser.engine_watchdog import run_watched
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
@@ -147,6 +152,8 @@ class BrowserTaskRunner:
         #: How the primary engine failed under the run, when it did; its session
         #: then has no state left to carry to the fallback.
         self._engine_failure: EngineFailure | None = None
+        #: Why the agent asked to move the run to the full browser, when it did.
+        self._engine_switch: EngineSwitchReason | None = None
         self._config = config
         self._task_timeout = config.task_timeout_seconds
         # A step that hands off waits on the human, so its budget is active work
@@ -206,6 +213,12 @@ class BrowserTaskRunner:
             action_results=self._action_results,
             guidance_allowed=self._guidance_allowed,
             guidance=self._handle_guidance,
+            # Only on the fast engine: a run already on the fallback has nowhere to move.
+            switch_engine=(
+                self._handle_engine_switch
+                if self._open_fallback_session is not None and not self.used_fallback
+                else None
+            ),
         )
         return BrowserAgentRun(
             session=self._session,
@@ -299,6 +312,8 @@ class BrowserTaskRunner:
                 browser={"session_id": self._session.session_id},
             )
             return await self._resume_on_fallback(task, self._open_fallback_session)
+        if self._engine_switch is not None:
+            return await self._resume_on_fallback(task, self._open_fallback_session)
         if isinstance(ended, EngineFailure):
             if await self._should_stop():
                 # Never read: _finish_after_execute judges the stop before the outcome.
@@ -308,6 +323,21 @@ class BrowserTaskRunner:
         if not ended.success and await self._engine_failed_under_run():
             return await self._resume_on_fallback(task, self._open_fallback_session)
         return ended
+
+    async def _handle_engine_switch(self, reason: EngineSwitchReason, url: str | None) -> str:
+        """Record that the agent found a page the fast engine cannot serve; the run resumes on the full one."""
+        self._engine_switch = reason
+        host = urlsplit(url).hostname if url else None
+        log.set_ns("browser", engine_switch=reason.value, engine_switch_host=host)
+        log.info(f"{LogTag.BROWSER} Browser agent moved the run to the full browser")
+        if self._user_id:
+            # The host alone: which sites the fast engine falls short on, never what the user opened.
+            capture_event(
+                self._user_id,
+                AnalyticsEvents.BROWSER_ENGINE_SWITCHED,
+                {"reason": reason.value, "host": host or "", "engine": BrowserEngine.OBSCURA.value},
+            )
+        return BROWSER_ENGINE_SWITCH_ACK
 
     async def _engine_failed_under_run(self) -> bool:
         """Whether the primary engine itself failed the run; a run the user stopped or a handoff ended is never retried."""
@@ -328,7 +358,9 @@ class BrowserTaskRunner:
         )
         log.set_ns("browser", fallback_reason=failure.value)
 
-    async def _resume_on_fallback(self, task: str, open_session: OpenFallbackSessionFn) -> RunOutcome:
+    async def _resume_on_fallback(
+        self, task: str, open_session: OpenFallbackSessionFn
+    ) -> RunOutcome:
         """Open the fallback engine where the run left off and run the task there from that page."""
         url = self._agent_run.last_url
         self._config = replace(self._config, start_url=url)
@@ -527,7 +559,11 @@ class BrowserTaskRunner:
         self._waiting_on_someone = True
         waiting_since = perf_counter()
         try:
-            outcome = await self._request_guidance(request)
+            # What the user told the run since it started: without it the agent is
+            # guided back to a step the user already declined.
+            outcome = await self._request_guidance(
+                request.model_copy(update={"user_notes": list(self._user_notes)})
+            )
         finally:
             # None reads as falsy exactly like False.
             self._waiting_on_someone = False  # pragma: no mutate
@@ -653,6 +689,8 @@ class BrowserTaskRunner:
     async def _finish_from_outcome(self, outcome: RunOutcome) -> BrowserResultSnapshot:
         status = BrowserSessionStatus.COMPLETED if outcome.success else BrowserSessionStatus.FAILED
         summary = outcome.summary or (
-            "Completed the browser task." if outcome.success else "Could not complete the browser task."
+            "Completed the browser task."
+            if outcome.success
+            else "Could not complete the browser task."
         )
         return await self._finish(status, outcome.success, summary)

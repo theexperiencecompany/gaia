@@ -10,7 +10,7 @@ serialization, a scripted browser, and a stubbed screenshot store. What this
 proves is the production path between those seams: the step cards carry the
 screenshot URLs the upload returned (and the bytes reached the upload, not
 just the captions), the handoff reaches the user with a live-view link, the
-note reaches the policy, and the closing result carries the whole summary.
+note reaches the agent, and the closing result carries the whole summary.
 """
 
 import asyncio
@@ -26,7 +26,6 @@ from app.services.browser.jobs import get_conversation_slot
 from tests.e2e._harness.browser_job import (
     LIVE_VIEW_LINK,
     SHOT_URL_TEMPLATE,
-    JevScript,
     JobWorld,
     ScriptedStep,
     browser_job_world,
@@ -56,17 +55,9 @@ STEPS = [
         url="https://example.test/confirm",
         outputs=["opened the sign-in wall"],
     ),
-    ScriptedStep(actions=[], decide=True),
-    ScriptedStep(actions=[], decide=True),
+    ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+    ScriptedStep(actions=[("input", {"index": 1, "text": "hours"})]),
 ]
-
-JEV = JevScript(
-    decisions=[("REQUEST_HUMAN", None), ("TYPE_TEXT", "1")],
-    texts=[
-        {"text": "Sign in and come back", "category": "credentials"},
-        {"text": "hours"},
-    ],
-)
 
 
 def _configurable(**extra: Any) -> dict[str, Any]:
@@ -103,7 +94,7 @@ async def test_a_full_run_screenshots_hands_off_and_reports() -> None:
         uploads[index] = png
         return SHOT_URL_TEMPLATE.format(index=index)
 
-    async with browser_job_world(STREAM, steps=STEPS, jev=JEV, summary=SUMMARY) as world:
+    async with browser_job_world(STREAM, steps=STEPS, summary=SUMMARY) as world:
         with patch(
             "app.services.browser.runner.publish_step_screenshot",
             side_effect=_record_upload,
