@@ -973,20 +973,25 @@ class ChromiumHost:
             return None
         return total / _BYTES_PER_MB
 
+    def _idle(self) -> bool:
+        """Whether no session is open or being created on the engine."""
+        return not self._sessions and self._pending_slots == 0
+
     async def _recycle_if_bloated(self) -> None:
         """Relaunch an idle engine whose memory has outgrown BROWSER_ENGINE_RECYCLE_MB.
 
         A long-lived engine keeps memory from every context it has disposed and
-        slows with it; with no session open a relaunch costs nobody anything.
+        slows with it; with no session open or being created a relaunch costs
+        nobody anything, and admission waits on the registry lock until it is done.
         """
         limit = browser_host_settings.BROWSER_ENGINE_RECYCLE_MB
-        if limit is None or self._sessions:
+        if limit is None or not self._idle():
             return
         rss = self.engine_rss_mb()
         if rss is None or rss <= limit:
             return
-        async with self._recover_lock:
-            if self._stopping.is_set() or self._sessions:
+        async with self._recover_lock, self._lock:
+            if self._stopping.is_set() or not self._idle():
                 return
             log.warning(
                 f"{LogTag.BROWSER} browser engine recycled over its idle memory limit",

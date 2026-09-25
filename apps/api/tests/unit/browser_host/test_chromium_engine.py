@@ -768,6 +768,44 @@ async def test_an_engine_serving_a_session_is_never_recycled(
     cast(AsyncMock, recyclable._launch).assert_not_awaited()
 
 
+async def test_an_engine_a_session_is_being_created_on_is_never_recycled(
+    recyclable: ChromiumHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _rss(recyclable, monkeypatch, 9999.0)
+    await recyclable._reserve_slot()
+
+    await recyclable._recycle_if_bloated()
+
+    cast(AsyncMock, recyclable._shutdown_chromium).assert_not_awaited()
+
+
+async def test_a_create_that_arrives_mid_recycle_waits_for_the_new_engine(
+    recyclable: ChromiumHost, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _rss(recyclable, monkeypatch, 9999.0)
+    relaunching, relaunched = asyncio.Event(), asyncio.Event()
+    order: list[str] = []
+
+    async def _launch() -> None:
+        relaunching.set()
+        await relaunched.wait()
+        order.append("launched")
+
+    async def _admit() -> None:
+        await recyclable._reserve_slot()
+        order.append("admitted")
+
+    recyclable._launch = _launch  # type: ignore[method-assign]  # a relaunch the test paces
+    recycle = asyncio.create_task(recyclable._recycle_if_bloated())
+    await relaunching.wait()
+    admit = asyncio.create_task(_admit())
+    await asyncio.sleep(0.01)  # the create reaches admission while the engine relaunches
+    relaunched.set()
+    await asyncio.gather(recycle, admit)
+
+    assert order == ["launched", "admitted"]
+
+
 async def test_recycling_can_be_turned_off(
     recyclable: ChromiumHost, monkeypatch: pytest.MonkeyPatch
 ) -> None:
