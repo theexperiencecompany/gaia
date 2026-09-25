@@ -343,8 +343,7 @@ class AIFeature(StrEnum):
     RESEARCH = "research", ("research_queries",)
     MODERATION = "moderation", ("profanity",)
     TITLE_GENERATION = "title_generation", ("chatbot",)
-    # The browser loop also builds f"browser_{output}" labels at runtime; see feature_for_label.
-    BROWSER = "browser", ("browser_done_check", "browser_handoff_conversational_resolve")
+    BROWSER = "browser", ("browser_handoff_conversational_resolve",)
     # A caller whose label no member claims.
     UNATTRIBUTED = "unattributed"
 

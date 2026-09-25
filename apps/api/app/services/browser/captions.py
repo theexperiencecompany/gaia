@@ -133,8 +133,8 @@ def describe_action(name: str, params: Mapping[str, object], target: str | None 
 def step_caption(actions: list[BrowserAction], next_goal: str | None) -> str:
     """Return a step's caption; a step that finishes the run is named after the part it finished.
 
-    Only there is the model's next_goal a caption: Jev puts the plan part's goal
-    in it, where "Finished" told the user nothing about the run's one step.
+    Only there is the model's next_goal a caption: "Finished" tells the user
+    nothing about what the run found.
     """
     finishing = any(
         a.name == "done" and _ActionParams.model_validate(a.inputs).success for a in actions

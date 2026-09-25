@@ -86,3 +86,11 @@ class TestRunLockPatch:
 
     def test_outside_a_run_the_process_wide_lock_is_used(self) -> None:
         assert patch_module._get_run_lock() is patch_module._original_get_global_lock()
+
+
+def test_apply_routes_bubus_lock_lookups_through_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(patch_module.bubus_service, "_get_global_lock", None)
+
+    patch_module.apply()
+
+    assert patch_module.bubus_service._get_global_lock is patch_module._get_run_lock

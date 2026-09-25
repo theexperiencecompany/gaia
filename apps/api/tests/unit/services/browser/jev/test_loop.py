@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from dataclasses import replace
 from typing import Any
 from unittest.mock import MagicMock
@@ -21,89 +20,20 @@ from app.services.browser.jev.gateway import JevEvaluation
 from app.services.browser.jev.loop import BurstContext, JevRunner
 from app.services.browser.jev.page import (
     NavigationFailed,
-    PageAction,
-    PageState,
     PageUnresponsive,
     StalePage,
 )
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.ledger import RunLedger
+from tests.unit.services.browser.jev.conftest import (
+    FakePage,
+    decision,
+    page_state,
+)
 
 pytestmark = pytest.mark.unit
 
 SECRET = "hunter2-secret"
-BUTTON = PageAction(id="e1", node=1, kind="click", label="Next", role="button")
-FIELD = PageAction(id="e2", node=2, kind="fill", label="Name", role="textbox", value="")
-PASSWORD = PageAction(id="e3", node=3, kind="secret", label="Password", role="password", value="")
-
-
-def _state(url: str = "https://site.test/a", text: str = "page", **extra: Any) -> PageState:
-    return PageState(
-        url=url,
-        title="Site",
-        text=text,
-        actions=[BUTTON, FIELD, PASSWORD],
-        marker=None,
-        page_key=None,
-        guards={},
-        frames=extra.get("frames", []),
-        fingerprint=f"{url}|{text}",
-    )
-
-
-class _Page:
-    """The tab as Jev drives it: each input moves to the next scripted state."""
-
-    def __init__(self, *states: PageState, act_raises: Exception | None = None) -> None:
-        self._states: Iterator[PageState] = iter(states)
-        self.current = next(self._states)
-        self.typed: list[str | None] = []
-        self._act_raises = act_raises
-        self.navigated: list[str] = []
-
-    async def observe(self) -> PageState:
-        return self.current
-
-    async def fresh(self, page: PageState, action: PageAction | None = None) -> bool:
-        return page is self.current
-
-    async def act(self, action: PageAction, page: PageState, text: str | None = None) -> None:
-        if self._act_raises is not None:
-            raise self._act_raises
-        self.typed.append(text)
-        self.current = next(self._states, self.current)
-
-    async def navigate(self, url: str) -> None:
-        self.navigated.append(url)
-        self.current = next(self._states, self.current)
-
-    async def go_back(self) -> None:
-        self.current = next(self._states, self.current)
-
-    async def press_enter(self) -> None:
-        self.current = next(self._states, self.current)
-
-    async def tab_ids(self) -> set[str]:
-        return set()
-
-    async def follow_new_tab(self, tabs: set[str]) -> bool:
-        return False
-
-    async def body_text(self, limit: int) -> str:
-        return self.current.text[:limit]
-
-
-def _decision(
-    operation: JevOperation, action_id: str | None = None, url: str | None = None
-) -> Decision:
-    return Decision(
-        operation=operation,
-        action_id=action_id,
-        url=url,
-        confidence=0.9,
-        latency_ms=5,
-        evaluation=JevEvaluation(answers={}, provider="openrouter"),
-    )
 
 
 class _Stalls:
@@ -117,7 +47,7 @@ class _Stalls:
 
 def _runner(
     monkeypatch: pytest.MonkeyPatch,
-    page: _Page,
+    page: FakePage,
     *decisions: Decision,
     value: str = NONE_VALUE,
     stalls: _Stalls | None = None,
@@ -157,9 +87,9 @@ def _runner(
 async def test_a_burst_ends_when_jev_judges_the_goal_done_and_reports_what_changed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    page = _Page(_state(), _state(url="https://site.test/b", text="done page"))
+    page = FakePage(page_state(), page_state(url="https://site.test/b", text="done page"))
     runner = _runner(
-        monkeypatch, page, _decision(JevOperation.CLICK, "e1"), _decision(JevOperation.DONE)
+        monkeypatch, page, decision(JevOperation.CLICK, "e1"), decision(JevOperation.DONE)
     )
 
     result = await runner.burst("go next", None)
@@ -172,10 +102,8 @@ async def test_a_burst_ends_when_jev_judges_the_goal_done_and_reports_what_chang
 
 
 async def test_actions_that_change_nothing_end_the_burst(monkeypatch: pytest.MonkeyPatch) -> None:
-    page = _Page(*[_state()] * (JEV_UNCHANGED_LIMIT + 1))
-    runner = _runner(
-        monkeypatch, page, *[_decision(JevOperation.CLICK, "e1")] * JEV_UNCHANGED_LIMIT
-    )
+    page = FakePage(*[page_state()] * (JEV_UNCHANGED_LIMIT + 1))
+    runner = _runner(monkeypatch, page, *[decision(JevOperation.CLICK, "e1")] * JEV_UNCHANGED_LIMIT)
 
     result = await runner.burst("go next", None)
 
@@ -186,11 +114,11 @@ async def test_actions_that_change_nothing_end_the_burst(monkeypatch: pytest.Mon
 async def test_going_back_and_forth_between_two_moves_ends_the_burst(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    a, b = _state(), _state(url="https://site.test/b")
-    page = _Page(a, b, a, b, a)
+    a, b = page_state(), page_state(url="https://site.test/b")
+    page = FakePage(a, b, a, b, a)
     back_and_forth = [
-        _decision(JevOperation.CLICK, "e1"),
-        _decision(JevOperation.GO_BACK),
+        decision(JevOperation.CLICK, "e1"),
+        decision(JevOperation.GO_BACK),
     ] * 2
     runner = _runner(monkeypatch, page, *back_and_forth)
 
@@ -202,8 +130,8 @@ async def test_going_back_and_forth_between_two_moves_ends_the_burst(
 async def test_a_page_that_keeps_changing_under_each_decision_ends_the_burst(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    page = _Page(_state(), act_raises=StalePage("moved"))
-    runner = _runner(monkeypatch, page, *[_decision(JevOperation.CLICK, "e1")] * JEV_STALE_LIMIT)
+    page = FakePage(page_state(), act_raises=StalePage("moved"))
+    runner = _runner(monkeypatch, page, *[decision(JevOperation.CLICK, "e1")] * JEV_STALE_LIMIT)
 
     result = await runner.burst("go next", None)
 
@@ -214,7 +142,7 @@ async def test_a_page_that_keeps_changing_under_each_decision_ends_the_burst(
 async def test_a_user_message_hands_the_run_back_before_another_decision(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runner = _runner(monkeypatch, _Page(_state()), user_waiting=True)
+    runner = _runner(monkeypatch, FakePage(page_state()), user_waiting=True)
 
     result = await runner.burst("go next", None)
 
@@ -227,7 +155,7 @@ async def test_a_visible_captcha_frame_hands_the_run_back(monkeypatch: pytest.Mo
         "same_origin": False,
         "visible": True,
     }
-    runner = _runner(monkeypatch, _Page(_state(frames=[frame])))
+    runner = _runner(monkeypatch, FakePage(page_state(frames=[frame])))
 
     result = await runner.burst("go next", None)
 
@@ -239,8 +167,8 @@ async def test_a_page_the_browser_stopped_loading_ends_the_burst_with_why(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     note = "https://slow.test/ did not respond within 15 s"
-    page = _Page(_state(), _state())
-    runner = _runner(monkeypatch, page, _decision(JevOperation.CLICK, "e1"), stalls=_Stalls([note]))
+    page = FakePage(page_state(), page_state())
+    runner = _runner(monkeypatch, page, decision(JevOperation.CLICK, "e1"), stalls=_Stalls([note]))
 
     result = await runner.burst("go next", None)
 
@@ -250,13 +178,13 @@ async def test_a_page_the_browser_stopped_loading_ends_the_burst_with_why(
 async def test_an_address_that_cannot_be_opened_ends_the_burst_on_the_page_it_was_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    page = _Page(_state())
+    page = FakePage(page_state())
 
     async def _fails(url: str) -> None:
         raise NavigationFailed("net::ERR_NAME_NOT_RESOLVED")
 
     page.navigate = _fails  # type: ignore[method-assign]  # this one tab's navigation fails
-    runner = _runner(monkeypatch, page, _decision(JevOperation.NAVIGATE, url="https://gone.test/"))
+    runner = _runner(monkeypatch, page, decision(JevOperation.NAVIGATE, url="https://gone.test/"))
 
     result = await runner.burst("open gone.test", None)
 
@@ -268,7 +196,7 @@ async def test_an_address_that_cannot_be_opened_ends_the_burst_on_the_page_it_wa
 async def test_a_field_the_goal_gives_no_value_for_asks_the_agent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runner = _runner(monkeypatch, _Page(_state()), _decision(JevOperation.TYPE_TEXT, "e2"))
+    runner = _runner(monkeypatch, FakePage(page_state()), decision(JevOperation.TYPE_TEXT, "e2"))
 
     result = await runner.burst("fill the form", None)
 
@@ -276,8 +204,10 @@ async def test_a_field_the_goal_gives_no_value_for_asks_the_agent(
 
 
 async def test_a_tab_that_stops_answering_ends_the_burst(monkeypatch: pytest.MonkeyPatch) -> None:
-    page = _Page(_state(), act_raises=PageUnresponsive("Runtime.evaluate got no answer in 20s"))
-    runner = _runner(monkeypatch, page, _decision(JevOperation.CLICK, "e1"))
+    page = FakePage(
+        page_state(), act_raises=PageUnresponsive("Runtime.evaluate got no answer in 20s")
+    )
+    runner = _runner(monkeypatch, page, decision(JevOperation.CLICK, "e1"))
 
     result = await runner.burst("go next", None)
 
@@ -288,13 +218,13 @@ async def test_a_secret_is_typed_into_the_page_and_never_into_what_the_agent_rea
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     secrets = RunSecrets({"password": SECRET}, ["site.test"])
-    landed = _state(url=f"https://site.test/b?pw={SECRET}", text=f"welcome {SECRET}")
-    page = _Page(_state(), landed)
+    landed = page_state(url=f"https://site.test/b?pw={SECRET}", text=f"welcome {SECRET}")
+    page = FakePage(page_state(), landed)
     runner = _runner(
         monkeypatch,
         page,
-        _decision(JevOperation.TYPE_TEXT, "e3"),
-        _decision(JevOperation.DONE),
+        decision(JevOperation.TYPE_TEXT, "e3"),
+        decision(JevOperation.DONE),
         value="<secret>password</secret>",
         secrets=secrets,
     )
@@ -311,8 +241,8 @@ async def test_a_password_field_with_no_stored_secret_is_left_to_the_agent(
 ) -> None:
     # Jev types into a password field only a secret the run was given; the agent
     # types anything else, and the run learns it as a secret there.
-    page = _Page(_state())
-    runner = _runner(monkeypatch, page, _decision(JevOperation.TYPE_TEXT, "e3"), value=NONE_VALUE)
+    page = FakePage(page_state())
+    runner = _runner(monkeypatch, page, decision(JevOperation.TYPE_TEXT, "e3"), value=NONE_VALUE)
 
     result = await runner.burst('log in with password "gaia-test-123"', None)
 

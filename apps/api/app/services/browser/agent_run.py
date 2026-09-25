@@ -13,27 +13,20 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from functools import partial
-import json
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, TypedDict
 
 from pydantic import TypeAdapter
 
 from app.constants.browser import (
-    BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
-    BROWSER_AGENT_MAX_FAILURES,
     BROWSER_AGENT_NO_PROGRESS_STEPS,
-    BROWSER_AGENT_ROLE,
-    BROWSER_AGENT_URL_QUERY_MAX_CHARS,
     BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS,
     BROWSER_GUIDANCE_MAX_ELEMENTS,
     BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
     BROWSER_GUIDANCE_RECENT_ACTIONS,
     BROWSER_NO_GUIDANCE_AVAILABLE,
     BROWSER_RUN_NO_PROGRESS_SUMMARY,
-    BROWSER_TAKEOVER_PREAMBLE,
-    BROWSER_VIEWPORT_HEIGHT,
-    BROWSER_VIEWPORT_WIDTH,
+    BROWSER_TAKEOVER_DONE_NOTE,
     EngineSwitchReason,
 )
 from app.constants.log_tags import LogTag
@@ -45,6 +38,7 @@ from app.schemas.browser import (
     GuidanceAction,
     GuidanceElement,
 )
+from app.services.browser.agent_options import agent_options, browser_options
 from app.services.browser.captions import burst_caption, step_caption
 from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.jev.gateway import build_jev_client
@@ -68,7 +62,8 @@ from app.services.browser.tools import build_browser_tools
 from shared.py.wide_events import log
 
 if TYPE_CHECKING:
-    from browser_use.agent.views import AgentHistoryList, AgentOutput
+    from browser_use import Agent
+    from browser_use.agent.views import ActionResult, AgentHistoryList, AgentOutput
     from browser_use.browser.session import BrowserSession
     from browser_use.browser.views import BrowserStateSummary
     from pydantic import BaseModel
@@ -95,42 +90,35 @@ class _ActionInputs(TypedDict, total=False):
 _ACTION_INPUTS: TypeAdapter[_ActionInputs] = TypeAdapter(_ActionInputs)
 
 
-def _element_label(state: BrowserStateSummary, index: object) -> str | None:
+def _element_label(state: BrowserStateSummary, index: int | None) -> str | None:
     """Return the on-page name of the element an action targets, by its DOM index.
 
     Prefer the accessibility name, then visible text, then labelling
     attributes, then the tag name, so a control is never a bare verb.
     """
-    if not isinstance(index, int):
-        return None
-    selector_map = getattr(getattr(state, "dom_state", None), "selector_map", None) or {}
-    node = selector_map.get(index)
+    node = state.dom_state.selector_map.get(index) if index is not None else None
     if node is None:
         return None
-    ax_node = getattr(node, "ax_node", None)
-    candidates = [getattr(ax_node, "name", None), node.get_meaningful_text_for_llm()]
-    attributes = getattr(node, "attributes", None) or {}
-    candidates += [attributes.get(attr) for attr in _LABEL_ATTRIBUTES]
+    candidates = [
+        node.ax_node.name if node.ax_node else None,
+        node.get_meaningful_text_for_llm(),
+        *(node.attributes.get(attr) for attr in _LABEL_ATTRIBUTES),
+    ]
     for candidate in candidates:
         text = (candidate or "").strip()
         if text:
             return text
-    tag = (getattr(node, "node_name", "") or "").strip()
-    return tag.lower() or None
+    return node.node_name.strip().lower() or None
 
 
-def _extract_actions(
-    agent_output: AgentOutput, state: BrowserStateSummary | None = None
-) -> list[BrowserAction]:
+def _extract_actions(agent_output: AgentOutput, state: BrowserStateSummary) -> list[BrowserAction]:
     """Return the step's actions as the agent's own tool calls, each with the on-page text of what it targets."""
     actions: list[BrowserAction] = []
-    for action in getattr(agent_output, "action", None) or []:
-        dumped = action.model_dump(exclude_none=True) if hasattr(action, "model_dump") else {}
-        for action_name, params in dumped.items():
+    for action in agent_output.action:
+        for action_name, params in action.model_dump(exclude_none=True).items():
             raw_inputs = params if isinstance(params, dict) else {}
-            typed_inputs: _ActionInputs = _ACTION_INPUTS.validate_python(raw_inputs)
-            index = typed_inputs.get("index")
-            target = _element_label(state, index) if state is not None else None
+            index = _ACTION_INPUTS.validate_python(raw_inputs).get("index")
+            target = _element_label(state, index)
             actions.append(BrowserAction(name=action_name, inputs=raw_inputs, target=target))
     return actions
 
@@ -140,31 +128,20 @@ def _types_into_a_password_field(action: BrowserAction, state: BrowserStateSumma
     if action.name != _INPUT_ACTION:
         return False
     index = _ACTION_INPUTS.validate_python(action.inputs).get("index")
-    selector_map = getattr(getattr(state, "dom_state", None), "selector_map", None) or {}
-    node = selector_map.get(index) if isinstance(index, int) else None
-    attributes = getattr(node, "attributes", None) or {}
-    return str(attributes.get("type", "")).lower() == "password"
+    node = state.dom_state.selector_map.get(index) if index is not None else None
+    kind = node.attributes.get("type") if node is not None else None
+    return kind is not None and kind.lower() == "password"
 
 
-def _summarize_action_result(result: object) -> str | None:
+def _summarize_action_result(result: ActionResult) -> str | None:
     """One action's outcome as short display text, or None when there is nothing worth showing."""
-    error = getattr(result, "error", None)
-    if error:
-        text = str(error)
-    else:
-        text = str(
-            getattr(result, "extracted_content", None)
-            or getattr(result, "long_term_memory", None)
-            or ""
-        )
+    text = result.error or result.extracted_content or result.long_term_memory or ""
     collapsed = " ".join(text.split())
     if not collapsed:
         return None
-    return (
-        collapsed
-        if len(collapsed) <= _OUTPUT_MAX_CHARS
-        else collapsed[: _OUTPUT_MAX_CHARS - 1].rstrip() + "…"
-    )
+    if len(collapsed) <= _OUTPUT_MAX_CHARS:
+        return collapsed
+    return collapsed[: _OUTPUT_MAX_CHARS - 1].rstrip() + "…"
 
 
 def outcome_from_history(history: AgentHistoryList[BaseModel]) -> tuple[bool, str | None]:
@@ -172,6 +149,18 @@ def outcome_from_history(history: AgentHistoryList[BaseModel]) -> tuple[bool, st
     final = history.final_result()
     success = bool(history.is_done() and history.is_successful() is not False)
     return success, final
+
+
+@dataclass(frozen=True)
+class _Step:
+    """The agent step in flight: when it started and the actions it picked."""
+
+    started_at: float
+    actions: list[str]
+
+
+#: What makes two agent steps the same: the page and the actions with their arguments.
+_Signature = tuple[str, list[tuple[str, dict[str, Any]]]]
 
 
 @dataclass(frozen=True)
@@ -204,16 +193,13 @@ class BrowserAgentRun:
         self._user_id = setup.user_id
         self._agent: Any = None
         self._page: JevPage | None = None
-        self._delegate: JevDelegate | None = None
         self._stalls: StalledLoads | None = None
         self._clock = StepClock()
         # A run resumed on the fallback engine numbers on from the steps the user already saw.
         self._frames = setup.steps_before
-        self._framed = False
-        self._step_started_at = 0.0
-        self._step_actions: list[str] = []
+        self._step: _Step | None = None
         #: Each agent step's page and actions, to see the agent repeat itself on an unchanged page.
-        self._signatures: list[str] = []
+        self._signatures: list[_Signature] = []
         self.no_progress = False
         #: Where the run was when it ended, for a resume on the fallback engine.
         self.last_url: str | None = None
@@ -237,12 +223,7 @@ class BrowserAgentRun:
             log.set_ns("browser", llm_error=type(exc).__name__)
             raise
         client = build_jev_client()
-        browser = Browser(
-            cdp_url=self._session.cdp_url,
-            viewport={"width": BROWSER_VIEWPORT_WIDTH, "height": BROWSER_VIEWPORT_HEIGHT},
-            device_scale_factor=1,
-            no_viewport=False,
-        )
+        browser = Browser(**browser_options(self._session.cdp_url))
         stalls = self._stalls = StalledLoads(browser)
         browser.event_bus.on(BrowserConnectedEvent, stalls.attach)
 
@@ -260,7 +241,7 @@ class BrowserAgentRun:
                 ),
             )
 
-        self._delegate = JevDelegate(runner_for=runner_for, emit=self._emit_burst)
+        delegate = JevDelegate(runner_for=runner_for, emit=self._emit_burst)
         tools = build_browser_tools(
             solve_captcha=self._config.solve_captcha,
             handle_takeover=self._takeover,
@@ -271,28 +252,15 @@ class BrowserAgentRun:
                 else None
             ),
         )
-        register_jev(tools, self._delegate)
-        sensitive_data = self._secrets.sensitive_data() or None
+        register_jev(tools, delegate)
         self._agent = Agent(
-            task=task + BROWSER_TAKEOVER_PREAMBLE,
+            **agent_options(task, self._config, self._secrets),
             llm=llm,
             browser=browser,
             tools=tools,
-            initial_actions=[{JEV_ACTION: {"goal": task, "start_url": self._config.start_url}}],
-            sensitive_data=sensitive_data,
-            extend_system_message=BROWSER_AGENT_ROLE,
             register_new_step_callback=self._on_step,
             register_should_stop_callback=self._should_stop,
-            use_vision=False,
-            # Browser-Use's post-run judge bills a whole extra call and nothing reads its verdict.
-            use_judge=False,
-            flash_mode=True,
-            max_failures=BROWSER_AGENT_MAX_FAILURES,
-            llm_timeout=BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
-            max_actions_per_step=self._config.max_actions_per_step,
-            step_timeout=self._config.step_budget_seconds,
             page_extraction_llm=text_model,
-            _url_shortening_limit=BROWSER_AGENT_URL_QUERY_MAX_CHARS,
         )
         try:
             history = await self._agent.run(
@@ -367,7 +335,7 @@ class BrowserAgentRun:
     async def _takeover(self, reason: str, category: str) -> str:
         """Hand the browser to the user, then give the agent the note they left."""
         note = await self._hooks.takeover(reason, category)
-        return note or "The user finished that step in the live browser."
+        return note or BROWSER_TAKEOVER_DONE_NOTE
 
     async def _guidance(self, reason: str) -> str:
         """Ask the agent that started this run how to proceed; the hook raises when none answers."""
@@ -441,24 +409,23 @@ class BrowserAgentRun:
     ) -> None:
         """Fire after the agent picks actions, before they execute: one card for its own actions."""
         del n_steps
-        self._framed = True
-        self._step_started_at = perf_counter()
+        started_at = perf_counter()
         if self._page is None:
             self._page = JevPage(self._agent.browser_session)
         actions = _extract_actions(agent_output, browser_state_summary)
+        self._step = _Step(started_at=started_at, actions=[a.name for a in actions])
         for action in actions:
-            if _types_into_a_password_field(action, browser_state_summary):
-                self._secrets.learn(str(action.inputs.get("text", "")))
-        self._step_actions = [a.name for a in actions]
-        self._signatures.append(
-            json.dumps(
-                [browser_state_summary.url, [a.model_dump(exclude={"target"}) for a in actions]],
-                sort_keys=True,
-                default=str,
-            )
-        )
+            typed = action.inputs.get("text")
+            if isinstance(typed, str) and _types_into_a_password_field(
+                action, browser_state_summary
+            ):
+                self._secrets.learn(typed)
+        signature: _Signature = (browser_state_summary.url, [(a.name, a.inputs) for a in actions])
+        self._signatures.append(signature)
         recent = self._signatures[-BROWSER_AGENT_NO_PROGRESS_STEPS:]
-        if len(recent) == BROWSER_AGENT_NO_PROGRESS_STEPS and len(set(recent)) == 1:
+        if len(recent) == BROWSER_AGENT_NO_PROGRESS_STEPS and all(
+            earlier == signature for earlier in recent
+        ):
             # The same action list on the same page, step after step: the run is going nowhere.
             self.no_progress = True
             log.info(f"{LogTag.BROWSER} Browser agent repeated itself; ending the run")
@@ -467,28 +434,27 @@ class BrowserAgentRun:
             # A step that only hands Jev a goal is shown by the burst's own card.
             return
         await self._emit_frame(
-            caption=step_caption(own, getattr(agent_output, "next_goal", None)),
+            caption=step_caption(own, agent_output.next_goal),
             actions=own,
             url=browser_state_summary.url,
             title=browser_state_summary.title,
         )
 
-    async def _on_step_end(self, agent: object) -> None:
+    async def _on_step_end(self, agent: Agent[Any, Any]) -> None:
         """Record the step's actions and mirror their results into the thread."""
-        state = getattr(agent, "state", None)
-        results = getattr(state, "last_result", None) or []
-        framed, self._framed = self._framed, False
-        if self._step_started_at:
+        results = agent.state.last_result or []
+        # A step _on_step saw has its card already (or Jev's burst card stands for it).
+        step, self._step = self._step, None
+        if step is not None:
             self._ledger.executed(
                 ExecutedAction(
                     component=CallComponent.AGENT,
-                    description=", ".join(self._step_actions),
-                    duration_ms=round((perf_counter() - self._step_started_at) * 1000),
-                    count=sum(name != JEV_ACTION for name in self._step_actions),
+                    description=", ".join(step.actions),
+                    duration_ms=round((perf_counter() - step.started_at) * 1000),
+                    count=sum(name != JEV_ACTION for name in step.actions),
                 )
             )
-            self._step_started_at = 0.0
-        if not framed and any(result.error for result in results):
+        elif any(result.error for result in results):
             await self._emit_frame(caption=STEP_ERROR_CAPTION, actions=[], url=None, title=None)
         if self._hooks.action_results is None:
             return

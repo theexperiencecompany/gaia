@@ -688,7 +688,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             {"_id": self._id_value(user_id)},
             {"$set": {f"feature_flags.{flag.value}": enabled}},
             scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
         )
         return updated is not None
 

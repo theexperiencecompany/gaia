@@ -19,8 +19,8 @@ class _Calls:
         self.started = 0
 
     async def __call__(self) -> object:
-        delay, outcome = self._script[self.started]
         self.started += 1
+        delay, outcome = self._script[self.started - 1]
         await asyncio.sleep(delay)
         if isinstance(outcome, BaseException):
             raise outcome
@@ -35,9 +35,9 @@ async def test_a_fast_call_is_never_hedged() -> None:
 
 
 async def test_a_slow_call_gets_one_spare_and_the_spares_answer_wins() -> None:
-    calls = _Calls((10, "stalled"), (0, "spare"))
+    calls = _Calls((3600, "stalled"), (0, "spare"))
 
-    assert await first_answer(calls, hedge_after=0.01, deadline=1) == "spare"
+    assert await first_answer(calls, hedge_after=0.01, deadline=30) == "spare"
     assert calls.started == 2
 
 
@@ -58,6 +58,6 @@ async def test_a_spare_that_fails_leaves_the_slow_call_to_answer() -> None:
 async def test_no_answer_within_the_deadline_times_out() -> None:
     calls = _Calls((10, "late"), (10, "late too"))
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(TimeoutError, match="no answer within"):
         await first_answer(calls, hedge_after=0.01, deadline=0.05)
     assert calls.started == 2

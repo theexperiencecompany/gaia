@@ -5,11 +5,14 @@ from unittest.mock import MagicMock, patch
 
 from httpx import AsyncClient
 import pytest
+from tests.conftest import FAKE_USER
+from tests.helpers import captured_wide_event
 
+from app.api.v1.endpoints.features import list_features, update_feature
 from app.config.feature_flags import FEATURE_FLAGS, KILL_SWITCH_REASON, FeatureFlag
 from app.models.user_models import UserDocument
+from app.schemas.feature_flags import UpdateUserFeatureFlagRequest
 from app.services.analytics_service import AnalyticsEvents
-from tests.conftest import FAKE_USER
 
 URL = "/api/v1/features"
 USER_ID = FAKE_USER.user_id
@@ -204,3 +207,28 @@ class TestUpdateFeature:
     async def test_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.patch(f"{URL}/BROWSER_OBSCURA", json={"enabled": True})
         assert resp.status_code == 401
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("store", "posthog")
+class TestWideEvent:
+    async def test_a_listing_records_who_asked_and_how_many_flags_they_saw(self) -> None:
+        async with captured_wide_event() as event:
+            await list_features(user=FAKE_USER)
+
+        assert event["user"] == {"id": USER_ID}
+        assert event["feature"] == {"operation": "list", "count": 1}
+
+    async def test_a_toggle_records_the_flag_the_choice_and_what_was_stored(self) -> None:
+        async with captured_wide_event() as event:
+            await update_feature(
+                "BROWSER_OBSCURA", UpdateUserFeatureFlagRequest(enabled=True), user=FAKE_USER
+            )
+
+        assert event["user"] == {"id": USER_ID}
+        assert event["feature"] == {
+            "operation": "toggle",
+            "flag": "BROWSER_OBSCURA",
+            "enabled": True,
+            "stored": True,
+        }

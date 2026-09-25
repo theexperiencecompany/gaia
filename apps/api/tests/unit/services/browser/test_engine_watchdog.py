@@ -47,6 +47,7 @@ class _Host:
         self._answers = answers
 
     async def __call__(self, session: BrowserHostSession) -> EngineFailure | None:
+        assert session is _SESSION, "the watchdog must read the run's own session"
         self.reads += 1
         return next(self._answers)
 
@@ -110,7 +111,7 @@ class _StuckRun:
 
 class _QuickRun(_StuckRun):
     async def execute(self, task: str) -> RunOutcome:
-        return RunOutcome(success=True, summary="done")
+        return RunOutcome(success=True, summary=f"done: {task}")
 
 
 async def _watched(
@@ -130,7 +131,7 @@ async def test_a_run_that_finishes_returns_its_own_outcome(
 
     ended = await _watched(_QuickRun())
 
-    assert ended == RunOutcome(success=True, summary="done")
+    assert ended == RunOutcome(success=True, summary="done: t")
 
 
 async def test_consecutive_unanswered_reads_cut_the_run_and_say_how_the_engine_failed(

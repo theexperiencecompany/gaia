@@ -31,6 +31,7 @@ from app.constants.browser import (
     HostAdmissionRefusal,
 )
 from app.constants.log_tags import LogTag
+from tests.helpers import captured_wide_event
 from tests.unit.browser_host.conftest import FakeMux, install_mux, make_host, make_session
 
 pytestmark = pytest.mark.unit
@@ -396,6 +397,26 @@ async def test_shutdown_deletes_the_stopped_engines_profile(tmp_path: Path) -> N
     await host._shutdown_chromium()
 
     assert not profile.exists()
+    assert host._user_data_dir is None
+
+
+async def test_a_profile_that_cannot_be_removed_is_a_warning_not_a_failed_stop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _refuse(path: str) -> None:
+        raise PermissionError(path)
+
+    monkeypatch.setattr(chromium.shutil, "rmtree", _refuse)
+    host = ChromiumHost()
+    host._proc = cast(asyncio.subprocess.Process, _Proc())
+    host._user_data_dir = str(tmp_path)
+
+    async with captured_wide_event() as event:
+        await host._shutdown_chromium()
+
+    [warning] = event["warnings"]
+    assert "profile" in warning["msg"]
+    assert warning["error_type"] == "PermissionError"
     assert host._user_data_dir is None
 
 

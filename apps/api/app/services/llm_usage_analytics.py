@@ -18,8 +18,6 @@ TIER_AGENT_NAMES = frozenset({"comms_agent", "executor_agent"})
 
 #: Built at runtime as ``f"memory:{operation}"``, so it cannot be an exact key.
 _MEMORY_LABEL_PREFIX = "memory:"
-#: The browser loop's one-shots are built as ``f"browser_{output}"``, per output schema.
-_BROWSER_LABEL_PREFIX = "browser_"
 
 
 def llm_feature(agent_name: str, workflow_id: str | None) -> AIFeature:
@@ -39,8 +37,6 @@ def feature_for_label(label: str) -> AIFeature:
     """Return which capability an auxiliary call served, from the label it carries."""
     if label.startswith(_MEMORY_LABEL_PREFIX):
         return AIFeature.MEMORY
-    if label.startswith(_BROWSER_LABEL_PREFIX):
-        return AIFeature.BROWSER
     return AIFeature.for_label(label)
 
 

@@ -909,10 +909,11 @@ class ChromiumHost:
         profile, self._user_data_dir = self._user_data_dir, None
         if profile is not None:
             # Every launch makes a fresh profile; a recycled or crashed engine's old one is litter.
-            await asyncio.to_thread(shutil.rmtree, profile, ignore_errors=True)
-            if Path(profile).exists():
+            try:
+                await asyncio.to_thread(shutil.rmtree, profile)
+            except OSError as exc:
                 log.warning(
-                    f"{LogTag.BROWSER} browser profile not fully removed", error_type="OSError"
+                    f"{LogTag.BROWSER} browser profile not removed", error_type=type(exc).__name__
                 )
 
     async def _reaper_loop(self) -> None:

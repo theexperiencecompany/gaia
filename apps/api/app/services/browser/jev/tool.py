@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from app.constants.browser import (
+    JEV_REPEATED_GOAL_REFUSAL,
     JEV_REPORT_OPENED_PAGE_CHARS,
     JEV_REPORT_OPENED_PAGES,
     JEV_REPORT_PAGE_TEXT_CHARS,
@@ -95,8 +96,9 @@ class JevParams(BaseModel):
     )
 
 
-def _normalized(goal: str) -> str:
-    return " ".join(goal.lower().split())
+def _normalized(goal: str) -> tuple[str, ...]:
+    """Return the goal as its words, so case and spacing never make it a new goal."""
+    return tuple(goal.casefold().split())
 
 
 def _step_action(step: JevStep) -> BrowserAction:
@@ -105,7 +107,8 @@ def _step_action(step: JevStep) -> BrowserAction:
     if step.operation is JevOperation.TYPE_TEXT and step.text is not None:
         inputs["text"] = step.text
     elif step.operation is JevOperation.SELECT:
-        inputs["text"] = step.label.split(" → ")[-1]
+        # The snapshot names an option "field → option"; an option may hold an arrow itself.
+        inputs["text"] = step.label.partition(" → ")[2]
     elif step.operation is JevOperation.NAVIGATE:
         inputs["url"] = step.label.removeprefix("Open ")
     elif step.operation is JevOperation.PRESS_ENTER:
@@ -159,24 +162,17 @@ class JevDelegate:
         self._runner_for = runner_for
         self._emit = emit
         self._runner: JevRunner | None = None
-        self._fruitless: set[str] = set()
-        self.bursts: list[BurstResult] = []
+        self._fruitless: set[tuple[str, ...]] = set()
 
     async def run(self, params: JevParams) -> ActionResult:
         from browser_use.agent.views import ActionResult  # noqa: PLC0415 -- heavy optional dep
 
         goal = _normalized(params.goal)
         if goal in self._fruitless:
-            return ActionResult(
-                error=(
-                    "Jev already made no progress on exactly this goal. Act yourself with "
-                    "browser actions, or give Jev a different, sharper goal."
-                )
-            )
+            return ActionResult(error=JEV_REPEATED_GOAL_REFUSAL)
         if self._runner is None:
             self._runner = self._runner_for()
         result = await self._runner.burst(params.goal, params.start_url)
-        self.bursts.append(result)
         if not result.progressed and result.stop not in _SITE_FAILURES:
             self._fruitless.add(goal)
         if result.steps:

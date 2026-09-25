@@ -23,30 +23,29 @@ async def first_answer(
     Raises the last error when every call started has failed, and
     TimeoutError when none answers within deadline seconds.
     """
-    loop = asyncio.get_running_loop()
-    end = loop.time() + deadline
     pending: set[asyncio.Future[T]] = {asyncio.ensure_future(call())}
     spare_left = True
     error: BaseException
     try:
-        while pending:
-            remaining = end - loop.time()
-            if remaining <= 0:
-                raise TimeoutError(f"no answer within {deadline:.0f}s")
-            wait = min(hedge_after, remaining) if spare_left else remaining
-            done, pending = await asyncio.wait(
-                pending, timeout=wait, return_when=asyncio.FIRST_COMPLETED
-            )
-            for task in done:
-                failure = task.exception()
-                if failure is None:
-                    return task.result()
-                error = failure
-            if not done and spare_left:
-                spare_left = False
-                pending.add(asyncio.ensure_future(call()))
-        # The loop only drains when every call started has failed.
-        raise error
+        async with asyncio.timeout(deadline):
+            while pending:
+                done, pending = await asyncio.wait(
+                    pending,
+                    timeout=hedge_after if spare_left else None,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for task in done:
+                    failure = task.exception()
+                    if failure is None:
+                        return task.result()
+                    error = failure
+                if not done and spare_left:
+                    spare_left = False
+                    pending.add(asyncio.ensure_future(call()))
+    except TimeoutError:
+        raise TimeoutError(f"no answer within {deadline:.0f}s") from None
     finally:
         for task in pending:
             task.cancel()
+    # The loop only drains when every call started has failed.
+    raise error

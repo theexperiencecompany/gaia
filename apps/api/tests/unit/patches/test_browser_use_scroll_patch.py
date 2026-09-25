@@ -93,3 +93,20 @@ def test_apply_routes_the_watchdogs_scroll_through_the_page(
     patch_module.apply()
 
     assert DefaultActionWatchdog._scroll_with_cdp_gesture is patch_module._scroll_with_cdp_gesture
+
+
+async def test_a_chrome_session_scrolls_the_way_browser_use_does(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[object, int]] = []
+
+    async def original(watchdog: object, pixels: int) -> bool:
+        calls.append((watchdog, pixels))
+        return True
+
+    monkeypatch.setattr(patch_module, "_original_scroll_with_cdp_gesture", original)
+    watchdog = _watchdog(_FakeCdp())
+    watchdog.browser_session.cdp_url = "ws://chrome.test:9222/devtools/browser/run-1"
+
+    assert await patch_module._scroll_with_cdp_gesture(watchdog, 800) is True
+    assert calls == [(watchdog, 800)]

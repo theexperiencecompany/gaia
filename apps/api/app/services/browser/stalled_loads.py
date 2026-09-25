@@ -13,7 +13,11 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from app.constants.browser import BROWSER_LOAD_STALL_SECONDS, BROWSER_LOAD_STOP_TIMEOUT_SECONDS
+from app.constants.browser import (
+    BROWSER_LOAD_STALL_SECONDS,
+    BROWSER_LOAD_STALLED_NOTE,
+    BROWSER_LOAD_STOP_TIMEOUT_SECONDS,
+)
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -72,8 +76,8 @@ class StalledLoads:
 
     def _on_committed(self, event: FrameNavigatedEvent, session_id: str | None) -> None:
         del session_id
-        if "parentId" not in event["frame"]:
-            self._cancel(event["frame"]["id"])
+        # A child frame's id is never a tab's, so only a tab's own commit cancels.
+        self._cancel(event["frame"]["id"])
 
     def _on_stopped(self, event: FrameStoppedLoadingEvent, session_id: str | None) -> None:
         del session_id
@@ -86,16 +90,15 @@ class StalledLoads:
 
     async def _stop_after(self, tab: str, session_id: str, url: str) -> None:
         await asyncio.sleep(BROWSER_LOAD_STALL_SECONDS)
-        self._timers.pop(tab, None)
+        # Its own entry, until now: only a cancel removes it sooner, and a cancel ends this wait.
+        del self._timers[tab]
         log.warning(
             f"{LogTag.BROWSER} browser load stalled; stopping it",
             error_type="LoadStalled",
             browser={"stalled_url": url},
         )
         self._stalled.append(
-            f"{url} did not respond within {BROWSER_LOAD_STALL_SECONDS:.0f} s, so its loading was "
-            "stopped and the tab stayed on the page it was on. Sites are often briefly slow; "
-            "the page may load if opened again."
+            BROWSER_LOAD_STALLED_NOTE.format(url=url, seconds=BROWSER_LOAD_STALL_SECONDS)
         )
         try:
             await asyncio.wait_for(

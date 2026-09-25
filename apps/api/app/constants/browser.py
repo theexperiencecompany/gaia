@@ -292,6 +292,12 @@ BROWSER_AGENT_URL_QUERY_MAX_CHARS = 2000
 # presses Stop: until it answers, Chrome answers no script on the tab (measured 2026-09-25).
 BROWSER_LOAD_STALL_SECONDS = 15.0
 BROWSER_LOAD_STOP_TIMEOUT_SECONDS = 5.0
+#: What the agent reads about a load the browser stopped: the plain fact, no retry rule.
+BROWSER_LOAD_STALLED_NOTE = (
+    "{url} did not respond within {seconds:.0f} s, so its loading was stopped and the tab "
+    "stayed on the page it was on. Sites are often briefly slow; the page may load if "
+    "opened again."
+)
 # A decision can wait out a layout pass, a part judgement and Jev; Browser-Use's 75s cut it off.
 BROWSER_AGENT_LLM_TIMEOUT_SECONDS = 180
 
@@ -358,6 +364,8 @@ BROWSER_AGENT_ROLE = (
 )
 
 # Said to the agent when it asks for guidance with no assistant joined to answer.
+#: What the agent reads after a handoff step when the user left no note.
+BROWSER_TAKEOVER_DONE_NOTE = "The user finished that step in the live browser."
 BROWSER_NO_GUIDANCE_AVAILABLE = (
     "No assistant is available to answer. Decide yourself: act, re-delegate to jev, or finish "
     "with an honest account of what could not be done."
@@ -375,6 +383,8 @@ BROWSER_RUN_NO_PROGRESS_SUMMARY = (
 # downscaled stream, a takeover coordinate mismatch and bigger vision payloads.
 BROWSER_VIEWPORT_WIDTH = 1280
 BROWSER_VIEWPORT_HEIGHT = 800
+#: CSS pixels per screen pixel: shots and click points share one coordinate space.
+BROWSER_DEVICE_SCALE_FACTOR = 1
 
 
 # --- Jev decision policy ---
@@ -421,6 +431,11 @@ JEV_GATEWAY_TIMEOUT_SECONDS = 8.0
 JEV_GATEWAY_MAX_ATTEMPTS = 3
 #: After a 402 (out of credit) the failover client skips that gateway this long.
 JEV_OUT_OF_CREDIT_SECONDS = 300.0
+#: What the agent reads when it sends Jev a goal Jev already made no progress on.
+JEV_REPEATED_GOAL_REFUSAL = (
+    "Jev already made no progress on exactly this goal. Act yourself with browser actions, "
+    "or give Jev a different, sharper goal."
+)
 #: How much of the final page's visible text a burst report hands the agent, and of each
 #: other page the burst opened (the most recent ones, up to the count).
 JEV_REPORT_PAGE_TEXT_CHARS = 2000
