@@ -1,5 +1,6 @@
 """Shared test utilities for GAIA API tests."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 import math
@@ -16,6 +17,8 @@ from pydantic import Field
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.types import ASGIApp
+import uvicorn
 
 from app.config.rate_limits import RateLimitConfig
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
@@ -385,3 +388,32 @@ async def pg_advisory_lock(
             yield
         finally:
             await conn.execute("SELECT pg_advisory_unlock(%s)", (lock_id,))
+
+
+#: How long a test's in-process ASGI server gets to start listening.
+_ASGI_STARTUP_TIMEOUT_SECONDS = 5
+
+
+@asynccontextmanager
+async def serve_asgi(app: ASGIApp) -> AsyncIterator[str]:
+    """Serve an ASGI app on a port the OS picks; yield its base URL.
+
+    Binding port 0 leaves no window for another process to take a pre-picked
+    port, and a server that never starts fails the test instead of yielding.
+    """
+    server = uvicorn.Server(
+        uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning", lifespan="on")
+    )
+    task = asyncio.create_task(server.serve())
+    try:
+        async with asyncio.timeout(_ASGI_STARTUP_TIMEOUT_SECONDS):
+            while not server.started:
+                if task.done():
+                    task.result()
+                    raise RuntimeError("test ASGI server exited before it started")
+                await asyncio.sleep(0)
+        port = server.servers[0].sockets[0].getsockname()[1]
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        await task

@@ -13,6 +13,7 @@ Three concerns the base mcp_use adapter doesn't cover:
 """
 
 import asyncio
+from collections.abc import Iterable
 import copy
 from typing import NoReturn, TypedDict, cast
 
@@ -24,8 +25,7 @@ import mcp_use.agents.adapters.langchain_adapter as _mcp_use_lc_adapter
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 from mcp_use.client.connectors.base import BaseConnector
 from mcp_use.errors.error_formatting import format_error
-from pydantic import BaseModel, JsonValue
-from pydantic_core import to_jsonable_python
+from pydantic import BaseModel, JsonValue, TypeAdapter
 
 from app.constants.mcp import (
     EMPTY_TOOL_RESULT,
@@ -64,6 +64,8 @@ class _FormattedToolError(TypedDict):
 
 # JSON Schema keywords the argument-name mapping walks into.
 _SCHEMA_COMBINATORS = ("anyOf", "oneOf", "allOf")
+# A tool call's validated arguments, dumped to plain JSON; raises on a value JSON cannot hold.
+_ARGUMENTS: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
 
 # Key under a LangChain tool's ``metadata`` where we stash the MCP tool's
 # ``annotations`` dict. Written here, read by ``app/services/hil/classification``.
@@ -125,31 +127,47 @@ async def _image_block(item: ImageContent) -> ContentBlock:
     return image.to_block()
 
 
-def _model_property_name(name: str) -> str:
-    """Return the name the model sees for a server property; Pydantic rejects a leading underscore."""
-    if not name.startswith("_"):
-        return name
-    stripped = name.lstrip("_")
-    return stripped if stripped and not stripped[0].isdigit() else f"field{stripped}"
+def _model_names(properties: Iterable[str]) -> dict[str, str]:
+    """Map a node's server property names to the names the model sees.
+
+    Pydantic rejects a leading underscore, so _id is shown as id; a name the node
+    already uses (the server also has id) gets a numeric suffix instead of colliding.
+    """
+    names = list(properties)
+    taken = {name for name in names if not name.startswith("_")}
+    model_names: dict[str, str] = {}
+    for name in names:
+        if name in taken:
+            model_names[name] = name
+            continue
+        stripped = name.lstrip("_")
+        base = stripped if stripped and not stripped[0].isdigit() else f"field{stripped}"
+        candidate, attempt = base, 1
+        while candidate in taken:
+            attempt += 1
+            candidate = f"{base}_{attempt}"
+        taken.add(candidate)
+        model_names[name] = candidate
+    return model_names
 
 
-def _properties_of(schema: dict[str, JsonValue]) -> dict[str, JsonValue]:
-    """Return a node's properties, including those of its anyOf/oneOf/allOf options."""
+def _declared_nodes(schema: dict[str, JsonValue]) -> list[dict[str, JsonValue]]:
     node: JsonSchemaNode = cast(JsonSchemaNode, schema)
-    merged: dict[str, JsonValue] = {}
+    found: list[dict[str, JsonValue]] = []
     if "properties" in schema and isinstance(node["properties"], dict):
-        merged.update(node["properties"])
+        found.append(node["properties"])
     for combinator in _SCHEMA_COMBINATORS:
         options = schema.get(combinator)
-        if isinstance(options, list):
-            for option in options:
-                if isinstance(option, dict):
-                    merged.update(_properties_of(option))
-    return merged
+        if not isinstance(options, list):
+            continue
+        for option in options:
+            if isinstance(option, dict):
+                found.extend(_declared_nodes(option))
+    return found
 
 
 def _to_server_names(value: JsonValue, schema: JsonValue) -> JsonValue:
-    """Rename the model's argument keys back to the server's own, through nested objects and arrays."""
+    """Map keys back per node, as fix_schema named them, so each anyOf option resolves on its own."""
     if not isinstance(schema, dict):
         return value
     node: JsonSchemaNode = cast(JsonSchemaNode, schema)
@@ -158,18 +176,19 @@ def _to_server_names(value: JsonValue, schema: JsonValue) -> JsonValue:
         return [_to_server_names(item, items) for item in value]
     if not isinstance(value, dict):
         return value
-    properties = _properties_of(schema)
-    server_names = {_model_property_name(name): name for name in properties}
+    declared = [
+        ({model: server for server, model in _model_names(properties).items()}, properties)
+        for properties in _declared_nodes(schema)
+    ]
+    extra_schema = node["additionalProperties"] if "additionalProperties" in schema else None
     renamed: dict[str, JsonValue] = {}
     for key, item in value.items():
-        server_name = server_names.get(key, key)
-        item_schema = (
-            properties[server_name]
-            if server_name in properties
-            else node["additionalProperties"]
-            if "additionalProperties" in schema
-            else None
-        )
+        server_name, item_schema = key, extra_schema
+        for server_names, properties in declared:
+            if key in server_names:
+                server_name = server_names[key]
+                item_schema = properties[server_name]
+                break
         renamed[server_name] = _to_server_names(item, item_schema)
     return renamed
 
@@ -208,17 +227,14 @@ class SanitizingLangChainAdapter(LangChainAdapter):
         properties = node["properties"]
 
         renamed_props: dict[str, JsonValue] = {}
-        rename_map: dict[str, str] = {}
+        model_names = _model_names(properties)
         for prop_name, prop_value in properties.items():
-            new_name = _model_property_name(prop_name)
-            if new_name != prop_name:
-                rename_map[prop_name] = new_name
-            renamed_props[new_name] = self.fix_schema(prop_value)
+            renamed_props[model_names[prop_name]] = self.fix_schema(prop_value)
         node["properties"] = renamed_props
 
         required = node.get("required")
         if isinstance(required, list):
-            node["required"] = [rename_map.get(name, name) for name in required]
+            node["required"] = [model_names.get(name, name) for name in required]
         return schema
 
     def _convert_tool(self, mcp_tool: MCPTool, connector: BaseConnector) -> BaseTool | None:
@@ -255,7 +271,9 @@ class SanitizingLangChainAdapter(LangChainAdapter):
             ) -> str | list[ContentBlock] | _FormattedToolError:
                 try:
                     # Nested objects arrive as Pydantic models, under the model's names.
-                    arguments = _to_server_names(to_jsonable_python(kwargs), self.server_schema)
+                    arguments = _to_server_names(
+                        _ARGUMENTS.dump_python(kwargs, mode="json"), self.server_schema
+                    )
                     tool_result: CallToolResult = await self.tool_connector.call_tool(
                         self.mcp_name, arguments
                     )

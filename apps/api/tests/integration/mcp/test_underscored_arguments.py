@@ -4,10 +4,8 @@ Pydantic rejects field names with a leading underscore, so the model is shown
 _id as id. The server still requires _id, and used to receive id instead.
 """
 
-import asyncio
 from collections.abc import AsyncIterator
 import contextlib
-import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from mcp.server.lowlevel import Server
@@ -17,10 +15,10 @@ import pytest
 from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.types import Receive, Scope, Send
-import uvicorn
 
 from app.models.mcp_config import MCPConfig
 from app.services.mcp.mcp_client import MCPClient
+from tests.helpers import serve_asgi
 
 INPUT_SCHEMA = {
     "type": "object",
@@ -30,12 +28,6 @@ INPUT_SCHEMA = {
     },
     "required": ["_id"],
 }
-
-
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 def _underscored_app() -> Starlette:
@@ -66,20 +58,8 @@ def _underscored_app() -> Starlette:
 
 @pytest.fixture
 async def server_url() -> AsyncIterator[str]:
-    port = _free_port()
-    server = uvicorn.Server(
-        uvicorn.Config(_underscored_app(), host="127.0.0.1", port=port, log_level="warning")
-    )
-    task = asyncio.create_task(server.serve())
-    for _ in range(50):
-        if server.started:
-            break
-        await asyncio.sleep(0.05)
-    try:
-        yield f"http://127.0.0.1:{port}/mcp/"
-    finally:
-        server.should_exit = True
-        await task
+    async with serve_asgi(_underscored_app()) as base_url:
+        yield f"{base_url}/mcp/"
 
 
 @pytest.mark.integration

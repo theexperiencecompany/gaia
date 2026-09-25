@@ -2317,6 +2317,70 @@ class TestAToolWithUnderscoredArguments:
 
         connector.call_tool.assert_awaited_once_with("tag", {"labels": {"env": {"_value": "prod"}}})
 
+    @pytest.mark.regression
+    async def test_a_server_with_both_id_and_underscore_id_gets_each_value_back(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {"id": {"type": "string"}, "_id": {"type": "string"}},
+            "required": ["id", "_id"],
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="put", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+        assert set(tool.args_schema.model_json_schema()["required"]) == {"id", "id_2"}
+
+        await tool.ainvoke({"id": "public", "id_2": "internal"})
+
+        connector.call_tool.assert_awaited_once_with("put", {"id": "public", "_id": "internal"})
+
+    async def test_two_names_that_strip_alike_stay_apart(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {"_id": {"type": "string"}, "__id": {"type": "string"}},
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="put", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke({"id": "one", "id_2": "two"})
+
+        connector.call_tool.assert_awaited_once_with("put", {"_id": "one", "__id": "two"})
+
+    async def test_an_object_reached_only_through_one_of_is_mapped(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "filter": {
+                    "oneOf": [
+                        {"type": "object", "properties": {"_since": {"type": "string"}}},
+                        {"type": "null"},
+                    ]
+                }
+            },
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="list", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke({"filter": {"since": "2026-01-01"}})
+
+        connector.call_tool.assert_awaited_once_with("list", {"filter": {"_since": "2026-01-01"}})
+
     def test_the_model_sees_names_pydantic_accepts(self) -> None:
         properties = self._tool(MagicMock()).args_schema.model_json_schema()["properties"]
 

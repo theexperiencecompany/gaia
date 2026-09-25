@@ -5,17 +5,14 @@ The subagent's tool dict and the execute resolver both key on name, so GAIA's
 proxy silently replaced the server's tool and the model never saw it.
 """
 
-import asyncio
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
-import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from mcp.server.fastmcp import FastMCP
 import pytest
-import uvicorn
 
 from app.agents.core.subagents.base_subagent import build_scoped_tool_dict
 from app.agents.tools.execute.execute_tool import execute as gaia_execute
@@ -24,15 +21,10 @@ from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.mcp_config import MCPConfig
 from app.services.mcp import mcp_client as mcp_client_module
 from app.services.mcp.mcp_client import MCPClient
+from tests.helpers import serve_asgi
 
 INTEGRATION_ID = "dodo-integration"
 RENAMED_EXECUTE = "dodo_payments_execute"
-
-
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 def _dodo_like_app():
@@ -51,21 +43,9 @@ def _dodo_like_app():
 
 
 @pytest.fixture
-async def dodo_like_server_url():
-    port = _free_port()
-    server = uvicorn.Server(
-        uvicorn.Config(_dodo_like_app(), host="127.0.0.1", port=port, log_level="warning")
-    )
-    task = asyncio.create_task(server.serve())
-    for _ in range(50):
-        if server.started:
-            break
-        await asyncio.sleep(0.05)
-    try:
-        yield f"http://127.0.0.1:{port}/mcp"
-    finally:
-        server.should_exit = True
-        await task
+async def dodo_like_server_url() -> AsyncIterator[str]:
+    async with serve_asgi(_dodo_like_app()) as base_url:
+        yield f"{base_url}/mcp"
 
 
 @contextmanager
