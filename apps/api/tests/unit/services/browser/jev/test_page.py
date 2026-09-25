@@ -74,8 +74,12 @@ def _state(**changes: Any) -> PageState:
     return PageState(**(fields | changes))
 
 
-def _call_argument(expression: str, script: str) -> Any:
-    return json.loads(expression[len(script) + 1 : -1])
+def _called(expression: str, script: Any) -> tuple[bool, Any]:
+    """Whether expression calls script's function, and the argument it passes."""
+    head, tail = script.call(None).rsplit("null", 1)
+    if not (expression.startswith(head) and expression.endswith(tail)):
+        return False, None
+    return True, json.loads(expression[len(head) : len(expression) - len(tail)])
 
 
 @dataclass
@@ -133,18 +137,19 @@ class _Tab:
     def _run(self, expression: str, *, awaited: bool) -> object:
         if expression == page_mod._SNAPSHOT_JS:
             return self.snapshots.pop(0) if len(self.snapshots) > 1 else self.snapshots[0]
-        if expression.startswith(page_mod._GUARD_JS):
-            node = _call_argument(expression, page_mod._GUARD_JS)
+        called, node = _called(expression, page_mod._GUARD)
+        if called:
             if self.page_key is THROWS:
                 return THROWS
             return [self.page_key, self.guards.get(str(node))]
-        if expression.startswith(page_mod._ACT_JS):
-            action = _call_argument(expression, page_mod._ACT_JS)
+        called, action = _called(expression, page_mod._ACT)
+        if called:
             self.acted.append(action)
             return self.points.get(action.get("node"))
-        if expression.startswith(page_mod._SETTLE_JS):
+        called, action = _called(expression, page_mod._SETTLE)
+        if called:
             if awaited:
-                self.settled.append(_call_argument(expression, page_mod._SETTLE_JS))
+                self.settled.append(action)
             return self.settle
         if expression == "history.back()":
             self.went_back += 1

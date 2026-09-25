@@ -37,9 +37,22 @@ from shared.py.wide_events import log
 
 _ASSETS = Path(__file__).parent
 _SNAPSHOT_JS = (_ASSETS / "snapshot.js").read_text()
-_ACT_JS = (_ASSETS / "act.js").read_text().strip()
-_SETTLE_JS = (_ASSETS / "settle.js").read_text().strip()
-_GUARD_JS = (_ASSETS / "guard.js").read_text().strip()
+
+
+@dataclass(frozen=True)
+class _PageFunction:
+    """One of Jev's scripts: a named function declaration, called inside an IIFE so the page keeps no global."""
+
+    source: str
+    name: str
+
+    def call(self, argument: object) -> str:
+        return f"(() => {{\n{self.source}\nreturn {self.name}({json.dumps(argument)});\n}})()"
+
+
+_ACT = _PageFunction((_ASSETS / "act.js").read_text(), "gaiaJevAct")
+_SETTLE = _PageFunction((_ASSETS / "settle.js").read_text(), "gaiaJevSettle")
+_GUARD = _PageFunction((_ASSETS / "guard.js").read_text(), "gaiaJevGuard")
 #: Ctrl on every platform the hosts run (Linux); select-all before text replaces a field.
 _CTRL = 2
 _SELECT_ALL: tuple[DispatchKeyEventParameters, ...] = (
@@ -225,7 +238,7 @@ class JevPage:
             action, self._after_input = self._after_input, None
             # Read-only and after execution was recorded, so a navigation cutting it short loses nothing.
             with contextlib.suppress(StalePage):
-                await self._evaluate(f"{_SETTLE_JS}({json.dumps(action)})")
+                await self._evaluate(_SETTLE.call(action))
         for _ in range(JEV_OBSERVE_ATTEMPTS):
             try:
                 value = await self._evaluate(_SNAPSHOT_JS)
@@ -256,7 +269,7 @@ class JevPage:
         """
         node = action.get("node") if action is not None else None
         try:
-            current = await self._evaluate(f"{_GUARD_JS}({json.dumps(node)})")
+            current = await self._evaluate(_GUARD.call(node))
         except StalePage:
             return False
         return current == [page.page_key, None if node is None else page.guards.get(str(node))]
@@ -297,7 +310,7 @@ class JevPage:
         """Return where to press the target, or None for a dropdown set in the page; raise when it cannot be."""
         select = action["kind"] == "select"
         try:
-            point = await self._evaluate(f"{_ACT_JS}({json.dumps(action)})")
+            point = await self._evaluate(_ACT.call(action))
         except StalePage as exc:
             if select:
                 raise UncertainSelect(_SELECT_INTERRUPTED) from exc

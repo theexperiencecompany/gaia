@@ -2,7 +2,7 @@
 // visible, inside the viewport and not covered at its centre. Returns the
 // viewport point to press, or null. A <select> is set here, with its events.
 // Ported from browser-use/jev-ultrafast (MIT) jev_ultrafast/browser.py.
-(action => {
+function gaiaJevAct(action) {
   const c=window.__jevFast, e=c?.nodes.get(action.node);
   if (!e?.isConnected || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') ||
       !e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
@@ -20,4 +20,4 @@
     e.dispatchEvent(new Event('change',{bubbles:true}));
   }
   return {x,y};
-})
+}
