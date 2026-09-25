@@ -112,6 +112,42 @@ async def test_a_new_run_prunes_frames_whose_recap_link_has_expired(
     assert (shot_root / "new-run" / "step_1.png").exists()
 
 
+async def test_a_run_is_kept_for_the_whole_recap_ttl_and_pruned_the_moment_it_outlives_it(
+    cache: _FakeRedisCache, shot_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = 2_000_000_000.0
+    monkeypatch.setattr(shot_store.time, "time", lambda: now)
+    at_ttl, past_ttl = shot_root / "at-ttl", shot_root / "past-ttl"
+    for run, age in (
+        (at_ttl, BROWSER_REPLAY_CODE_TTL_SECONDS),
+        (past_ttl, BROWSER_REPLAY_CODE_TTL_SECONDS + 1),
+    ):
+        run.mkdir(parents=True)
+        os.utime(run, (now - age, now - age))
+
+    await shot_store.store_step_screenshot(b"png", "new-run", 1)
+
+    assert at_ttl.exists()
+    assert not past_ttl.exists()
+
+
+async def test_a_run_that_vanishes_mid_prune_does_not_stop_the_rest_or_the_write(
+    cache: _FakeRedisCache, shot_root: Path
+) -> None:
+    shot_root.mkdir(parents=True)
+    # stat() on a dangling link raises FileNotFoundError, exactly as a run another prune just removed.
+    (shot_root / "vanished-run").symlink_to(shot_root / "gone")
+    expired = shot_root / "old-run"
+    expired.mkdir()
+    past = time.time() - BROWSER_REPLAY_CODE_TTL_SECONDS - 60
+    os.utime(expired, (past, past))
+
+    await shot_store.store_step_screenshot(b"png", "new-run", 1)
+
+    assert not expired.exists()
+    assert (shot_root / "new-run" / "step_1.png").exists()
+
+
 async def test_store_overwrites_a_reused_index_rather_than_appending(
     cache: _FakeRedisCache, shot_root: Path
 ) -> None:

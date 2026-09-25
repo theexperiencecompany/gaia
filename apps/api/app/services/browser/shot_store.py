@@ -14,6 +14,7 @@ an ordinary one, so nothing downstream has to know which backend served it.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from pathlib import Path
 import secrets
 import shutil
@@ -74,11 +75,10 @@ def _prune_expired() -> None:
     """Delete every run whose frames outlived the recap code that serves them."""
     cutoff = time.time() - BROWSER_REPLAY_CODE_TTL_SECONDS
     for run in SHOT_ROOT.iterdir():
-        try:
+        # A run starting at the same moment may have pruned this one first.
+        with contextlib.suppress(FileNotFoundError):
             if run.stat().st_mtime < cutoff:
                 shutil.rmtree(run)
-        except FileNotFoundError:
-            continue  # a run starting at the same moment pruned it first
 
 
 def _write(png: bytes, session_id: str, index: int) -> None:
