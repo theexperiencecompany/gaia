@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from functools import partial
+from itertools import compress
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, TypedDict
 
@@ -170,10 +171,12 @@ def outcome_from_history(history: AgentHistoryList[BaseModel]) -> tuple[bool, st
 
 @dataclass(frozen=True)
 class _Step:
-    """The agent step in flight: when it started and the actions it picked."""
+    """The agent step in flight: when it started, the actions it picked, and the card of its own."""
 
     started_at: float
     actions: list[str]
+    #: The card showing every action but jev's, whose rows its results land on; None when there is none.
+    frame: int | None
 
 
 #: What makes two agent steps the same: the page and the actions with their arguments.
@@ -430,7 +433,6 @@ class BrowserAgentRun:
         if self._page is None:
             self._page = JevPage(self._agent.browser_session)
         actions = _extract_actions(agent_output, browser_state_summary)
-        self._step = _Step(started_at=started_at, actions=[a.name for a in actions])
         for action in actions:
             if (typed := _password_typed(action, browser_state_summary)) is not None:
                 self._secrets.learn(typed)
@@ -444,15 +446,18 @@ class BrowserAgentRun:
             self.no_progress = True
             log.info(f"{LogTag.BROWSER} Browser agent repeated itself; ending the run")
         own = [a for a in actions if a.name != JEV_ACTION]
-        if not own:
-            # A step that only hands Jev a goal is shown by the burst's own card.
-            return
-        await self._emit_frame(
-            caption=step_caption(own, agent_output.next_goal),
-            actions=own,
-            url=browser_state_summary.url,
-            title=browser_state_summary.title,
-        )
+        # A step with no card of its own has no own results to place, so "" would read the same.
+        frame: int | None = None  # pragma: no mutate
+        # A step that only hands Jev a goal is shown by the burst's own card.
+        if own:
+            await self._emit_frame(
+                caption=step_caption(own, agent_output.next_goal),
+                actions=own,
+                url=browser_state_summary.url,
+                title=browser_state_summary.title,
+            )
+            frame = self._frames
+        self._step = _Step(started_at=started_at, actions=[a.name for a in actions], frame=frame)
 
     async def _on_step_end(self, agent: Agent[None, BaseModel]) -> None:
         """Record the step's actions and mirror their results into the thread."""
@@ -470,12 +475,14 @@ class BrowserAgentRun:
             )
         elif any(result.error for result in results):
             await self._emit_frame(caption=STEP_ERROR_CAPTION, actions=[], url=None, title=None)
-        if self._hooks.action_results is None:
+        if self._hooks.action_results is None or step is None or step.frame is None:
             return
+        # One result per action run, in order; a step cut short has fewer. Jev's burst has its own card.
+        own = compress(results, (name != JEV_ACTION for name in step.actions))
         outputs = [
             BrowserActionOutput(position=position, output=self._secrets.redact(text))
-            for position, result in enumerate(results)
+            for position, result in enumerate(own)
             if (text := _summarize_action_result(result))
         ]
         if outputs:
-            await self._hooks.action_results(self._frames, outputs)
+            await self._hooks.action_results(step.frame, outputs)

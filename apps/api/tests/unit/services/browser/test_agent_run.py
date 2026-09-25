@@ -32,7 +32,7 @@ from app.constants.browser import (
     JevOperation,
     JevStop,
 )
-from app.schemas.browser import AgentGuidanceRequest, GuidanceElement
+from app.schemas.browser import AgentGuidanceRequest, BrowserAction, GuidanceElement
 from app.services.browser import agent_run as agent_run_mod
 from app.services.browser.agent_run import STEP_ERROR_CAPTION, AgentRunSetup, BrowserAgentRun
 from app.services.browser.exceptions import BrowserUnavailableError
@@ -306,9 +306,24 @@ class TestCards:
 
         assert harness.outputs == [(1, shown)]
 
-    async def test_an_action_with_nothing_to_show_adds_no_output(self, harness: _Harness) -> None:
+    @pytest.mark.parametrize(
+        "result",
+        [_Result(content="  ", memory=None), _Result(content=None, memory=None)],
+        ids=["blank", "nothing"],
+    )
+    async def test_an_action_with_nothing_to_show_adds_no_output(
+        self, harness: _Harness, result: _Result
+    ) -> None:
         await harness.step(index=4)
-        await harness.end(_Result(content="  ", memory=None), _Result(content=None, memory=None))
+        await harness.end(result)
+
+        assert harness.outputs == []
+
+    async def test_a_step_that_only_hands_jev_a_goal_attaches_no_output(
+        self, harness: _Harness
+    ) -> None:
+        await harness.step(JEV_ACTION, goal="open the pricing page")
+        await harness.end(_Result(content="Jev ran: opened the pricing page"))
 
         assert harness.outputs == []
 
@@ -333,6 +348,33 @@ class TestCards:
         await harness.end(_Result(content="Jev ran"))
 
         assert harness.ledger.action_count == 0
+
+
+@pytest.mark.parametrize(
+    "order",
+    [["click", JEV_ACTION], [JEV_ACTION, "click"]],
+    ids=["jev-after", "jev-before"],
+)
+async def test_an_actions_outcome_lands_on_its_own_row_of_its_steps_card_never_on_jevs(
+    harness: _Harness, order: list[str]
+) -> None:
+    landed: list[tuple[int, list[tuple[int, str]]]] = []
+
+    async def _record(step_index: int, outputs: list[Any]) -> None:
+        landed.append((step_index, [(out.position, out.output) for out in outputs]))
+
+    harness.run._hooks = replace(harness.run._hooks, action_results=_record)
+    params = {"click": {"index": 3}, JEV_ACTION: {"goal": "open the pricing page"}}
+    step = _output(*(_Action(name, params[name]) for name in order))
+    await harness.run._on_step(_state(), step, 0)  # type: ignore[arg-type]  # duck-typed Browser-Use views
+    # The burst that runs inside the step shows its own card.
+    await harness.run._emit_burst([BrowserAction(name="click", inputs={})], "https://x.test", "X")
+    results = {"click": _Result(content="clicked"), JEV_ACTION: _Result(content="Jev ran: ...")}
+
+    await harness.end(*(results[name] for name in order))
+
+    step_card = harness.frames[0].index
+    assert landed == [(step_card, [(0, "clicked")])]
 
 
 class TestStepRecords:
