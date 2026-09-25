@@ -84,10 +84,6 @@ _STOP_MEANING = {
 }
 
 
-#: Stops a site caused, not Jev: the same goal may be sent again.
-_SITE_FAILURES = frozenset({JevStop.LOAD_STALLED, JevStop.NAVIGATION_FAILED})
-
-
 class JevParams(BaseModel):
     goal: str = Field(
         description="What Jev should achieve, self-contained, with every value quoted."
@@ -174,7 +170,7 @@ class JevDelegate:
         if self._runner is None:
             self._runner = self._runner_for()
         result = await self._runner.burst(params.goal, params.start_url)
-        if not result.progressed and result.stop not in _SITE_FAILURES:
+        if not result.progressed and result.stop.jev_caused:
             self._fruitless.add(goal)
         if result.steps:
             await self._emit(

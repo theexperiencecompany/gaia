@@ -14,7 +14,7 @@ proceed autonomously (e.g. a configured agent card), or abort.
 """
 
 from enum import Enum, StrEnum
-from typing import Literal
+from typing import Literal, Self
 
 # ---------------------------------------------------------------------------
 # Tool identity
@@ -420,24 +420,37 @@ class JevOperation(StrEnum):
 
 
 class JevStop(StrEnum):
-    """Why a Jev burst handed control back to the agent."""
+    """Why a Jev burst handed control back to the agent, and whether Jev's own judgement caused it.
 
-    DONE = "done"
-    BLOCKED = "blocked"
-    NEEDS_INPUT = "needs_input"
-    NO_PROGRESS = "no_progress"
-    CYCLE = "cycle"
-    MAX_ACTIONS = "max_actions"
-    MAX_DECISIONS = "max_decisions"
-    COVERED = "covered"
-    STALE = "stale"
-    CAPTCHA = "captcha"
-    UNRESPONSIVE = "unresponsive"
-    USER_MESSAGE = "user_message"
-    STOPPED = "stopped"
-    GATEWAY = "gateway"
-    LOAD_STALLED = "load_stalled"
-    NAVIGATION_FAILED = "navigation_failed"
+    A goal Jev made no progress on is refused again only after a stop Jev
+    caused, which the same goal would repeat; the site, the page, the user or
+    the run causing it leaves the goal free to send again.
+    """
+
+    jev_caused: bool
+
+    def __new__(cls, value: str, jev_caused: bool) -> Self:
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.jev_caused = jev_caused
+        return member
+
+    DONE = "done", True
+    BLOCKED = "blocked", True
+    NEEDS_INPUT = "needs_input", True
+    NO_PROGRESS = "no_progress", True
+    CYCLE = "cycle", True
+    MAX_ACTIONS = "max_actions", True
+    MAX_DECISIONS = "max_decisions", True
+    COVERED = "covered", False
+    STALE = "stale", False
+    CAPTCHA = "captcha", False
+    UNRESPONSIVE = "unresponsive", False
+    USER_MESSAGE = "user_message", False
+    STOPPED = "stopped", False
+    GATEWAY = "gateway", False
+    LOAD_STALLED = "load_stalled", False
+    NAVIGATION_FAILED = "navigation_failed", False
 
 
 #: Controls offered to Jev per request, in DOM order within the viewport. Vercel's
