@@ -1031,16 +1031,19 @@ class ChromiumHost:
             # finds the engine already back up (or a stop in progress) and does nothing.
             if self._stopping.is_set() or self.chromium_up:
                 return
-            dead_count = len(self._sessions)
-            for session in self._sessions.values():
+            # Taken off the registry in one step: a release landing while the
+            # sockets close must find its session gone, not change what is iterated.
+            async with self._lock:
+                dead = list(self._sessions.values())
+                self._sessions.clear()
+            for session in dead:
                 session.dead = True
                 # The engine is gone, so these sockets are already broken; closing
                 # them fails their waiters instead of leaving readers on a dead pipe.
                 await session.mux.close()
-            self._sessions.clear()
             log.error(
                 f"{LogTag.BROWSER} browser engine crashed; relaunching",
-                browser={"operation": "crash_recover", "dead_sessions": dead_count},
+                browser={"operation": "crash_recover", "dead_sessions": len(dead)},
             )
             await self._shutdown_chromium()
             await self._launch()

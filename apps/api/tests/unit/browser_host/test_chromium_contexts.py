@@ -619,6 +619,39 @@ async def test_crash_recovery_reports_how_many_sessions_died(
     assert relaunched.is_set()
 
 
+async def test_a_dispose_that_lands_during_crash_recovery_does_not_stop_the_relaunch(
+    host: ChromiumHost, engine: FakeEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = await host.create_context(None)
+    second = await host.create_context(None)
+    host._proc = MagicMock(returncode=-9)
+    relaunched: list[bool] = []
+
+    async def _relaunch() -> None:
+        relaunched.append(True)
+
+    monkeypatch.setattr(host, "_shutdown_chromium", _relaunch)
+    monkeypatch.setattr(host, "_launch", _relaunch)
+    disposals: list[asyncio.Task[object]] = []
+    close = engine.close
+
+    async def _close_while_the_api_releases_the_other() -> None:
+        if not disposals:
+            disposals.append(asyncio.create_task(host.dispose_context(second.session_id)))
+            await asyncio.sleep(0.01)  # the release runs while this socket closes
+        await close()
+
+    monkeypatch.setattr(engine, "close", _close_while_the_api_releases_the_other)
+
+    await host._recover_crash()
+
+    assert relaunched == [True, True]
+    assert (first.dead, second.dead, host._sessions) == (True, True, {})
+    # The release finds its session already gone with the engine, the host's 404.
+    with pytest.raises(chromium.SessionNotFoundError):
+        await disposals[0]
+
+
 # --- disposals racing the reaper ---
 
 
