@@ -1,11 +1,13 @@
-"""Watch the primary engine under a run, and cut the run short once the engine stops answering.
+"""Watch the primary engine under a run, and cut the run short once the engine stops answering it.
 
 Browser-Use learns of a frozen engine only through its own timeouts: a SIGSTOPped
 engine cost a 15 s click timeout and two 120 s state reads, ~285 s, before the run
-returned and the host was asked. The watchdog asks the host on a fixed beat
-instead. The host's answer reflects whether the engine answers CDP at all, never
-how long a page takes, so a heavy page on a live engine is left alone; and a run
-paused on the user or the agent is never judged, since nothing steps while it waits.
+returned and the host was asked. The watchdog asks on a fixed beat instead, two
+things: the host, whether the engine answers CDP at all, and the run's own CDP
+connection, whether it answers a bounded read. Obscura serves each connection on
+its own thread, so a page stuck in layout wedges only its run while the engine
+answers everyone else (a Wikipedia article held one for 432 s). A run paused on
+the user or the agent is never judged, since nothing steps while it waits.
 """
 
 from __future__ import annotations
@@ -80,6 +82,8 @@ async def _watch(
             strikes = 0
             continue
         failure = await engine_failure(session)
+        if failure is None and not await agent_run.connection_answers():
+            failure = EngineFailure.UNRESPONSIVE
         # A handoff may have begun while the read was in flight.
         if failure is None or paused():
             strikes = 0

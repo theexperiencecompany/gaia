@@ -81,6 +81,9 @@ class _StuckRun:
         self.abandoned = False
         self._ignores_cancel = ignores_cancel
         self.release = asyncio.Event()
+        #: Whether the run's own CDP connection answers the watchdog's probe.
+        self.answers = True
+        self.probes = 0
 
     async def execute(self, task: str) -> RunOutcome:
         self.started.set()
@@ -99,6 +102,10 @@ class _StuckRun:
 
     async def abandon(self) -> None:
         self.abandoned = True
+
+    async def connection_answers(self) -> bool:
+        self.probes += 1
+        return self.answers
 
 
 class _QuickRun(_StuckRun):
@@ -146,6 +153,22 @@ async def test_consecutive_unanswered_reads_cut_the_run_and_say_how_the_engine_f
     assert all(w["msg"] for w in _strike_warnings(event))
     # A run that unwound inside its grace leaves no complaint about it.
     assert len(event["warnings"]) == STRIKES
+
+
+async def test_a_run_whose_own_connection_stops_answering_is_cut_while_the_host_says_live(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Obscura serves each CDP connection on its own thread: a page wedging the run's
+    # connection leaves the engine answering the host, and the run must still move.
+    host = _host(monkeypatch, *[None] * 10)
+    run = _StuckRun()
+    run.answers = False
+
+    ended = await asyncio.wait_for(_watched(run), timeout=2)
+
+    assert ended is EngineFailure.UNRESPONSIVE
+    assert (host.reads, run.probes) == (STRIKES, STRIKES)
+    assert run.abandoned is True
 
 
 async def test_an_answered_read_between_misses_starts_the_count_again(

@@ -10,6 +10,7 @@ burst reaches the runner as one frame through RunHooks.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, TypedDict
@@ -21,6 +22,7 @@ from app.constants.browser import (
     BROWSER_AGENT_MAX_FAILURES,
     BROWSER_AGENT_NO_PROGRESS_STEPS,
     BROWSER_AGENT_ROLE,
+    BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS,
     BROWSER_GUIDANCE_MAX_ELEMENTS,
     BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
     BROWSER_GUIDANCE_RECENT_ACTIONS,
@@ -272,6 +274,20 @@ class BrowserAgentRun:
     def stop(self) -> None:
         if self._agent is not None:
             self._agent.stop()
+
+    async def connection_answers(self) -> bool:
+        """Whether the run's own CDP connection answers a bounded read; True before it opens."""
+        browser = self._agent.browser_session if self._agent is not None else None
+        if browser is None or not browser.is_cdp_connected:
+            return True
+        try:
+            await asyncio.wait_for(
+                browser.cdp_client.send.Target.getTargets(),
+                timeout=BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            return False
+        return True
 
     async def abandon(self) -> None:
         """Drop the connection to an engine that stopped answering, failing every call still waiting on it."""
