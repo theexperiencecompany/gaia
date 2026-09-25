@@ -192,10 +192,6 @@ apps/api/app/services/llm_metering.py	TB002
 apps/api/app/services/mail/email_importance_service.py	TB001
 apps/api/app/services/mcp/device_connector.py	TB002
 apps/api/app/services/mcp/device_exec.py	TB002
-apps/api/app/services/mcp/langchain_adapter.py	TB001
-apps/api/app/services/mcp/langchain_adapter.py	TB002
-apps/api/app/services/mcp/mcp_client.py	TB001
-apps/api/app/services/mcp/mcp_client.py	TB002
 apps/api/app/services/mcp/mcp_tools_service.py	TB001
 apps/api/app/services/mcp/mcp_tools_service.py	TB002
 apps/api/app/services/mcp/oauth_discovery.py	TB002

@@ -812,6 +812,22 @@ class TestABackgroundRunsBoundary:
 
 class TestABackgroundRunTheUserStopped:
     @pytest.mark.regression
+    async def test_a_dispatch_after_its_turn_was_stopped_never_starts(
+        self, redis: Any, client_edges: SimpleNamespace
+    ) -> None:
+        client_edges.streams.is_cancelled = AsyncMock(
+            side_effect=lambda sid: sid == LIVE["stream_id"]
+        )
+        execute = AsyncMock(return_value=SubagentOutcome(text="done"))
+        with patch(f"{MODULE}.execute_subagent_stream", new=execute):
+            result = await delegate(_delegation(), background=True, probe_parked=False)
+            await _drain()
+
+        assert "was not started: the user stopped this task" in result
+        execute.assert_not_awaited()
+        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+
+    @pytest.mark.regression
     async def test_it_lands_nothing_so_the_stopped_executor_does_not_restart(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:

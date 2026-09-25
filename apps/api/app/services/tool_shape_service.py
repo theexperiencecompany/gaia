@@ -17,7 +17,7 @@ over later calls, so no lock is warranted.
 
 import json
 import re
-from typing import TypedDict, cast
+from typing import cast
 
 from genson import SchemaBuilder
 
@@ -28,6 +28,7 @@ from app.constants.execute import (
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.tool_shapes import tool_shapes_repository
+from app.models.json_schema_models import JsonSchemaNode
 from shared.py.wide_events import log
 
 # What may become a schema property name: an ALLOWLIST (the denylist it replaced
@@ -41,15 +42,6 @@ _ID_LIKE_KEY = re.compile(r"\d{6,}|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}|^[0-9a-fA-F]{3
 # values become an array under this key so genson unions their shapes, later
 # rewritten to additionalProperties. Collision-free: * fails the allowlist.
 _MAP_KEY_SENTINEL = "*"
-
-
-class _SchemaNode(TypedDict, total=False):
-    """The JSON Schema keywords the sentinel rewrite reads; each value is checked before use."""
-
-    properties: object
-    items: object
-    required: object
-    additionalProperties: object
 
 
 def _is_field_name(key: str) -> bool:
@@ -113,14 +105,14 @@ def _sentinel_to_additional(node: object) -> object:
         return [_sentinel_to_additional(item) for item in node]
     if not isinstance(node, dict):
         return node
-    out: _SchemaNode = cast(
-        _SchemaNode, {key: _sentinel_to_additional(value) for key, value in node.items()}
+    out: JsonSchemaNode = cast(
+        JsonSchemaNode, {key: _sentinel_to_additional(value) for key, value in node.items()}
     )
     properties = out.get("properties")
     if isinstance(properties, dict) and _MAP_KEY_SENTINEL in properties:
         sentinel = properties.pop(_MAP_KEY_SENTINEL)
-        sentinel_schema: _SchemaNode | None = (
-            cast(_SchemaNode, sentinel) if isinstance(sentinel, dict) else None
+        sentinel_schema: JsonSchemaNode | None = (
+            cast(JsonSchemaNode, sentinel) if isinstance(sentinel, dict) else None
         )
         # Unmutated default: a sentinel always samples at least one value, so genson emits items.
         out["additionalProperties"] = (
@@ -144,8 +136,8 @@ def _additional_to_sentinel(node: object) -> object:
         return [_additional_to_sentinel(item) for item in node]
     if not isinstance(node, dict):
         return node
-    out: _SchemaNode = cast(
-        _SchemaNode, {key: _additional_to_sentinel(value) for key, value in node.items()}
+    out: JsonSchemaNode = cast(
+        JsonSchemaNode, {key: _additional_to_sentinel(value) for key, value in node.items()}
     )
     additional = out.get("additionalProperties")
     if isinstance(additional, dict):

@@ -44,6 +44,7 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.agents.prompts.delegation_prompts import (
     BACKGROUND_DELEGATION_ACK,
+    STOPPED_BEFORE_START,
     SUBAGENT_FAILED_RESULT,
     SUBAGENT_PARKED_ENTRY,
     SUBAGENT_RESULT_ENTRY,
@@ -256,6 +257,11 @@ async def _dispatch_background(delegation: Delegation) -> str:
         if tool_call_id:
             await release_bg_dispatch(conversation_id, tool_call_id)
         return THREAD_BUSY_REFUSAL.format(name=delegation.display.name)
+    # Read after the claim: a stop that read the registry before it could not see this run.
+    dispatcher = delegation.ctx.stream_id
+    if dispatcher and await stream_manager.is_cancelled(dispatcher):
+        await RunningSubagents(conversation_id).deregister(record)
+        return STOPPED_BEFORE_START.format(name=delegation.display.name)
     _start_background_run(delegation, record, stream_id, resume=None)
     log.info(
         f"{LogTag.AGENT} Subagent dispatched to background",

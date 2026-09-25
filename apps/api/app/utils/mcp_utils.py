@@ -5,7 +5,7 @@ Contains helper functions for MCP client operations including
 PKCE generation, tool wrapping, and schema handling.
 """
 
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Collection, Iterable
 from functools import wraps
 import inspect
 import re
@@ -32,12 +32,22 @@ def canonical_tool_name_map(names: Iterable[str]) -> dict[str, str]:
     return {n.replace("-", "_"): n for n in names}
 
 
-def source_prefixed_tool_name(source_name: str, tool_name: str) -> str:
-    """Name a tool after its source, e.g. ("Dodo Payments", "execute") -> "dodo_payments_execute"."""
+def source_prefixed_tool_name(source_name: str, tool_name: str, taken: Collection[str]) -> str:
+    """Name a tool after its source, not in taken: ("Dodo Payments", "execute") -> "dodo_payments_execute".
+
+    A name already taken gets a numeric suffix (dodo_payments_execute_2).
+    """
     sep = MCP_TOOL_NAME_SEPARATOR
-    prefix = re.sub(r"[^a-z0-9]+", sep, source_name.lower()).strip(sep)
-    prefix = prefix[: MCP_TOOL_NAME_MAX_CHARS - len(tool_name) - len(sep)].rstrip(sep)
-    return f"{prefix or MCP_UNNAMED_SOURCE_PREFIX}{sep}{tool_name}"
+    slug = re.sub(r"[^a-z0-9]+", sep, source_name.lower()).strip(sep)
+    attempt = 1
+    while True:
+        suffix = f"{sep}{attempt}" if attempt > 1 else ""
+        budget = MCP_TOOL_NAME_MAX_CHARS - len(tool_name) - len(sep) - len(suffix)
+        prefix = slug[:budget].rstrip(sep)
+        name = f"{prefix or MCP_UNNAMED_SOURCE_PREFIX}{sep}{tool_name}{suffix}"
+        if name not in taken:
+            return name
+        attempt += 1
 
 
 _CONNECTION_ERROR_PATTERNS = (

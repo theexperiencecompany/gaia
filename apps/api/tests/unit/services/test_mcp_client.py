@@ -30,7 +30,7 @@ from mcp.types import (
     TextResourceContents,
     Tool,
 )
-from pydantic import AnyUrl
+from pydantic import AnyUrl, ValidationError
 import pytest
 
 from app.constants.device_bridge import DEVICE_TRANSPORT
@@ -38,7 +38,12 @@ from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_RENAMED_TOOL_NOTE
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.models.device import Device
-from app.models.mcp_config import MCPConfig, OAuthDiscovery
+from app.models.integration_models import (
+    Integration,
+    UserIntegrationDocument,
+    UserIntegrationStatus,
+)
+from app.models.mcp_config import MCPConfig, OAuthDiscovery, OidcTokenResponse
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.services.mcp.mcp_client import (
     DCRNotSupportedError,
@@ -133,6 +138,23 @@ def _api_error(status_code: int) -> Exception:
     response.json.return_value = {}
     err.response = response  # type: ignore[attr-defined]  # mirrors the SDK's own attached response
     return err
+
+
+def _custom_doc(name: str, description: str) -> dict[str, object]:
+    """Build a custom_doc the way IntegrationResolver does: a dumped Integration."""
+    return Integration(
+        integration_id=INTEGRATION_ID,
+        name=name,
+        description=description,
+        category="custom",
+        managed_by="mcp",
+    ).model_dump()
+
+
+def _user_integration(
+    integration_id: str, status: UserIntegrationStatus
+) -> UserIntegrationDocument:
+    return UserIntegrationDocument(user_id=USER_ID, integration_id=integration_id, status=status)
 
 
 def _mock_tool(name: str = "test_tool", description: str = "A test tool") -> MagicMock:
@@ -2089,6 +2111,17 @@ class TestSanitizingLangChainAdapter:
         # Stripped underscores, starts with digit -> prefixed with "field"
         assert "field123field" in fixed["properties"]
 
+    def test_fix_schema_required_keeps_names_it_did_not_rename(self):
+        schema = {
+            "type": "object",
+            "properties": {"_id": {"type": "string"}, "name": {"type": "string"}},
+            "required": ["_id", "name"],
+        }
+
+        fixed = SanitizingLangChainAdapter().fix_schema(schema)
+
+        assert fixed["required"] == ["id", "name"]
+
     def test_fix_schema_passthrough_non_dict(self):
         adapter = SanitizingLangChainAdapter()
         assert adapter.fix_schema("string_value") == "string_value"
@@ -2695,10 +2728,10 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
-                "app.services.mcp.mcp_client.get_user_integration_records",
+                "app.services.mcp.mcp_client.user_integration_repository.list_for_user",
                 new_callable=AsyncMock,
                 return_value=[
-                    {"integration_id": "db_int", "status": "connected"},
+                    _user_integration("db_int", "connected"),
                 ],
             ),
         ):
@@ -2716,7 +2749,7 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         client = MCPClient(user_id=USER_ID)
         with (
             patch(
-                "app.services.mcp.mcp_client.get_user_integration_records",
+                "app.services.mcp.mcp_client.user_integration_repository.list_for_user",
                 new_callable=AsyncMock,
                 return_value=[],
             ),
@@ -2728,10 +2761,10 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         client = MCPClient(user_id=USER_ID)
         with (
             patch(
-                "app.services.mcp.mcp_client.get_user_integration_records",
+                "app.services.mcp.mcp_client.user_integration_repository.list_for_user",
                 new_callable=AsyncMock,
                 return_value=[
-                    {"integration_id": "pending_int", "status": "created"},
+                    _user_integration("pending_int", "created"),
                 ],
             ),
         ):
@@ -2742,7 +2775,7 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         client = MCPClient(user_id=USER_ID)
         with (
             patch(
-                "app.services.mcp.mcp_client.get_user_integration_records",
+                "app.services.mcp.mcp_client.user_integration_repository.list_for_user",
                 new_callable=AsyncMock,
                 side_effect=Exception("DB error"),
             ),
@@ -2756,10 +2789,10 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
-                "app.services.mcp.mcp_client.get_user_integration_records",
+                "app.services.mcp.mcp_client.user_integration_repository.list_for_user",
                 new_callable=AsyncMock,
                 return_value=[
-                    {"integration_id": "err_int", "status": "connected"},
+                    _user_integration("err_int", "connected"),
                 ],
             ),
         ):
@@ -3344,7 +3377,7 @@ class TestMCPClientHandleCustomIntegrationConnect:
         tools = [_mock_tool()]
 
         resolved = MagicMock()
-        resolved.custom_doc = {"name": "Resolved Name", "description": "Resolved Desc"}
+        resolved.custom_doc = _custom_doc("Resolved Name", "Resolved Desc")
 
         with (
             patch(
@@ -3760,7 +3793,7 @@ class TestRunPostConnectTasksExact:
 
     async def test_custom_integration_routes_to_custom_handler_with_doc_fields(self):
         resolved = MagicMock()
-        resolved.custom_doc = {"name": "Custom Name", "description": "Custom Desc"}
+        resolved.custom_doc = _custom_doc("Custom Name", "Custom Desc")
         client = MCPClient(user_id=USER_ID)
         client.token_store.store_unauthenticated = AsyncMock()
         client._handle_custom_integration_connect = AsyncMock()
@@ -4184,6 +4217,15 @@ class TestRenameShadowingTools:
             MCP_RENAMED_TOOL_NOTE.format(original="execute", renamed="dodo_payments_execute")
             + "Run code."
         )
+
+    async def test_a_renamed_tool_never_takes_a_name_the_server_already_uses(self) -> None:
+        shadowed = _mock_tool("execute")
+        own = _mock_tool("dodo_payments_execute")
+
+        renamed = await MCPClient._rename_shadowing_tools([shadowed, own], "Dodo Payments")
+
+        assert renamed == {"execute": "dodo_payments_execute_2"}
+        assert own.name == "dodo_payments_execute"
 
     async def test_the_reserved_ticket_names_are_renamed_too(self) -> None:
         ticket = _mock_tool("approve")
@@ -4716,11 +4758,11 @@ class TestExchangeCodeForTokensExact:
             },
             timeout=30,
         )
-        assert result == {"access_token": "at"}
+        assert result == OidcTokenResponse(access_token="at")
 
     async def test_missing_verifier_omits_the_key_entirely(self):
         client = MCPClient(user_id=USER_ID)
-        post = AsyncMock(return_value=_ok_response({}))
+        post = AsyncMock(return_value=_ok_response({"access_token": "at"}))
         with patch(
             "app.services.mcp.mcp_client.httpx.AsyncClient",
             return_value=_fake_http_client(post)(),
@@ -4740,7 +4782,7 @@ class TestExchangeCodeForTokensExact:
 
     async def test_secret_adds_basic_auth_header_with_exact_encoding(self):
         client = MCPClient(user_id=USER_ID)
-        post = AsyncMock(return_value=_ok_response({}))
+        post = AsyncMock(return_value=_ok_response({"access_token": "at"}))
         expected_basic = "Basic " + base64.b64encode(b"cid:sec").decode()
         with patch(
             "app.services.mcp.mcp_client.httpx.AsyncClient",
@@ -4757,7 +4799,7 @@ class TestExchangeCodeForTokensExact:
 
     async def test_no_secret_means_no_authorization_header(self):
         client = MCPClient(user_id=USER_ID)
-        post = AsyncMock(return_value=_ok_response({}))
+        post = AsyncMock(return_value=_ok_response({"access_token": "at"}))
         with patch(
             "app.services.mcp.mcp_client.httpx.AsyncClient",
             return_value=_fake_http_client(post)(),
@@ -4782,7 +4824,34 @@ class TestExchangeCodeForTokensExact:
                 INTEGRATION_ID, "https://auth.example.com/token", self._exchange()
             )
 
-        assert result == {"access_token": "at"}
+        assert result == OidcTokenResponse(access_token="at")
+
+    async def test_the_response_is_validated_and_keeps_the_oidc_id_token(self) -> None:
+        client = MCPClient(user_id=USER_ID)
+        body = {"access_token": "at", "token_type": "bearer", "id_token": "h.p.s"}
+        with patch(
+            "app.services.mcp.mcp_client.httpx.AsyncClient",
+            return_value=_fake_http_client(AsyncMock(return_value=_ok_response(body)))(),
+        ):
+            result = await client._exchange_code_for_tokens(
+                INTEGRATION_ID, "https://auth.example.com/token", self._exchange()
+            )
+
+        assert result.token_type == "Bearer"
+        assert result.id_token == "h.p.s"
+
+    async def test_a_success_without_an_access_token_is_refused(self) -> None:
+        client = MCPClient(user_id=USER_ID)
+        with (
+            patch(
+                "app.services.mcp.mcp_client.httpx.AsyncClient",
+                return_value=_fake_http_client(AsyncMock(return_value=_ok_response({})))(),
+            ),
+            pytest.raises(ValidationError),
+        ):
+            await client._exchange_code_for_tokens(
+                INTEGRATION_ID, "https://auth.example.com/token", self._exchange()
+            )
 
     @pytest.mark.parametrize("status", [300, 301, 400])
     async def test_the_first_non_2xx_status_is_an_error(self, status: int) -> None:
@@ -4907,11 +4976,9 @@ class TestHandleOauthCallbackNonceEnforcement:
     ) -> None:
         """Losing the integration id on any hop exchanges the code against the wrong token endpoint or the wrong stored nonce."""
         client = self._make_client()
-        tokens = {
-            "access_token": "at",
-            "token_type": "Bearer",
-            "id_token": _make_id_token({"nonce": "stored_nonce"}),
-        }
+        tokens = OidcTokenResponse(
+            access_token="at", id_token=_make_id_token({"nonce": "stored_nonce"})
+        )
         client._validate_oidc_nonce = MagicMock()
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(requires_auth=True, client_id="cid")
@@ -4943,7 +5010,9 @@ class TestHandleOauthCallbackNonceEnforcement:
         credentials.assert_awaited_once_with(INTEGRATION_ID, resolved.mcp_config, oauth_config)
         assert exchange.await_args.kwargs["integration_id"] == INTEGRATION_ID
         assert exchange.await_args.kwargs["token_endpoint"] == "https://auth.example.com/token"
-        client._validate_oidc_nonce.assert_called_once_with(INTEGRATION_ID, "stored_nonce", tokens)
+        client._validate_oidc_nonce.assert_called_once_with(
+            INTEGRATION_ID, "stored_nonce", tokens.id_token
+        )
 
     async def test_nonce_mismatch_aborts_before_tokens_are_stored(self):
         client = self._make_client()
@@ -5112,15 +5181,14 @@ class TestServerUrlMatchingHelpersExact:
 
         assert match is None
 
-    def test_connectable_candidate_ids_filters_exactly(self):
+    def test_connectable_candidate_ids_keeps_only_connected_in_order(self):
         docs = [
-            {"integration_id": "a", "status": "connected"},
-            {"integration_id": "b", "status": "created"},
-            {"integration_id": None, "status": "connected"},
-            {"integration_id": "c"},
-            {"integration_id": 123, "status": "connected"},
+            _user_integration("a", "connected"),
+            _user_integration("b", "created"),
+            _user_integration("c", "connected"),
+            _user_integration("d", "expired"),
         ]
-        assert MCPClient._connectable_candidate_ids(docs) == ["a", "c", "123"]
+        assert MCPClient._connectable_candidate_ids(docs) == ["a", "c"]
 
     def test_connectable_candidate_ids_empty_for_no_docs(self):
         assert MCPClient._connectable_candidate_ids([]) == []

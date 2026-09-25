@@ -13,6 +13,7 @@ only. A parked subagent is not here; its resume claims it again.
 from dataclasses import asdict
 import json
 
+from app.agents.core.background.subagent_channel import SubagentCancel
 from app.constants.cache import (
     RUNNING_SUBAGENT_THREAD_PREFIX,
     RUNNING_SUBAGENTS_PREFIX,
@@ -117,7 +118,12 @@ async def stop_stream(conversation_id: str, stream_id: str) -> list[RunningSubag
 
 async def _stop(subagent: RunningSubagent) -> None:
     """Stop the run's own stream; a run sharing its dispatcher's stream stops with it."""
-    if subagent.stream_id and not await stream_manager.is_cancelled(subagent.stream_id):
+    if not subagent.stream_id:
+        # Recorded before runs carried a stream (an older replica, mid-rollout): the
+        # thread's cancel flag is the stop that replica still reads.
+        await SubagentCancel(subagent.subagent_thread_id).request()
+        return
+    if not await stream_manager.is_cancelled(subagent.stream_id):
         await stream_manager.cancel_stream(subagent.stream_id)
         log.info(
             f"{LogTag.AGENT} Stopped a running subagent",

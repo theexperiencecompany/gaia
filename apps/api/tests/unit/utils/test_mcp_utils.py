@@ -260,22 +260,37 @@ class TestConnectionErrorPatterns:
 
 class TestSourcePrefixedToolName:
     def test_prefixes_the_source_slug(self) -> None:
-        assert source_prefixed_tool_name("Dodo Payments", "execute") == "dodo_payments_execute"
+        assert source_prefixed_tool_name("Dodo Payments", "execute", ()) == "dodo_payments_execute"
 
     def test_keeps_only_function_name_safe_characters(self) -> None:
-        assert source_prefixed_tool_name("  Acme-CRM (v2)! ", "read") == "acme_crm_v2_read"
+        assert source_prefixed_tool_name("  Acme-CRM (v2)! ", "read", ()) == "acme_crm_v2_read"
 
     def test_a_source_with_no_ascii_word_characters_gets_the_generic_prefix(self) -> None:
-        assert source_prefixed_tool_name("支付", "execute") == "mcp_execute"
+        assert source_prefixed_tool_name("支付", "execute", ()) == "mcp_execute"
 
     def test_a_long_source_is_cut_to_exactly_the_provider_function_name_limit(self) -> None:
-        name = source_prefixed_tool_name("a" * 100, "execute")
+        name = source_prefixed_tool_name("a" * 100, "execute", ())
 
         assert len(name) == MCP_TOOL_NAME_MAX_CHARS
         assert name.endswith("a_execute")
 
     def test_a_cut_that_lands_on_a_separator_leaves_no_double_separator(self) -> None:
         # 56 prefix chars fit beside "_execute"; the 56th is the separator before "b".
-        name = source_prefixed_tool_name("a" * 55 + " b", "execute")
+        name = source_prefixed_tool_name("a" * 55 + " b", "execute", ())
 
         assert name == "a" * 55 + "_execute"
+
+    def test_a_taken_name_gets_the_first_free_numeric_suffix(self) -> None:
+        taken = {"dodo_payments_execute", "dodo_payments_execute_2"}
+
+        assert source_prefixed_tool_name("Dodo Payments", "execute", taken) == (
+            "dodo_payments_execute_3"
+        )
+
+    def test_a_suffixed_name_still_fits_the_provider_function_name_limit(self) -> None:
+        first = source_prefixed_tool_name("a" * 100, "execute", ())
+
+        second = source_prefixed_tool_name("a" * 100, "execute", {first})
+
+        assert len(second) == MCP_TOOL_NAME_MAX_CHARS
+        assert second.endswith("a_execute_2")

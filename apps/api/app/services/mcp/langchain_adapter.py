@@ -13,7 +13,7 @@ Three concerns the base mcp_use adapter doesn't cover:
 """
 
 import asyncio
-from typing import Any, NoReturn, cast
+from typing import NoReturn, TypedDict, cast
 
 from langchain_core.tools import BaseTool
 
@@ -23,7 +23,7 @@ import mcp_use.agents.adapters.langchain_adapter as _mcp_use_lc_adapter
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 from mcp_use.client.connectors.base import BaseConnector
 from mcp_use.errors.error_formatting import format_error
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from app.constants.mcp import (
     EMPTY_TOOL_RESULT,
@@ -31,11 +31,17 @@ from app.constants.mcp import (
     MCP_UNSUPPORTED_CONTENT_NOTICE,
 )
 from app.constants.media import MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
+from app.models.json_schema_models import JsonSchemaNode
 from app.utils.image_codec import ImageCodec, InvalidImageError
-from app.utils.multimodal import text_content_block
+from app.utils.multimodal import (
+    ContentBlock,
+    extract_text_content,
+    has_media_blocks,
+    text_content_block,
+)
 from mcp.types import (
     CallToolResult,
-    ContentBlock,
+    ContentBlock as McpContentBlock,
     EmbeddedResource,
     ImageContent,
     TextContent,
@@ -43,12 +49,23 @@ from mcp.types import (
     Tool as MCPTool,
 )
 
+
+class _FormattedToolError(TypedDict):
+    """mcp_use's format_error payload, which mcp_use itself types as a bare dict."""
+
+    error: str
+    details: str
+    stack: str
+    code: JsonValue
+    tool: str
+
+
 # Key under a LangChain tool's ``metadata`` where we stash the MCP tool's
 # ``annotations`` dict. Written here, read by ``app/services/hil/classification``.
 MCP_ANNOTATIONS_METADATA_KEY = "mcp_annotations"
 
 
-async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str, Any]]:
+async def _tool_result_to_content(result: CallToolResult) -> str | list[ContentBlock]:
     """Map MCP content items to LangChain message content.
 
     Text-only results collapse to a plain string; image items become inline
@@ -63,7 +80,7 @@ async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str
     # (budget-bounded) batch at once rather than serializing the result's images.
     decoded = iter(await asyncio.gather(*(_image_block(item) for item in kept)))
 
-    blocks: list[dict[str, Any]] = []
+    blocks: list[ContentBlock] = []
     for item in result.content:
         if isinstance(item, TextContent):
             blocks.append(text_content_block(item.text))
@@ -78,12 +95,12 @@ async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str
 
     if not blocks:
         return EMPTY_TOOL_RESULT
-    if any(block["type"] != "text" for block in blocks):
+    if has_media_blocks(list(blocks)):
         return blocks
-    return "\n".join(block["text"] for block in blocks)
+    return extract_text_content(blocks)
 
 
-def _non_media_text(item: ContentBlock) -> str:
+def _non_media_text(item: McpContentBlock) -> str:
     """Text for a content item that is neither plain text nor an inline image.
 
     Never str(item) — that is the pydantic repr this adapter exists to keep
@@ -95,7 +112,7 @@ def _non_media_text(item: ContentBlock) -> str:
     return MCP_UNSUPPORTED_CONTENT_NOTICE.format(kind=type(item).__name__)
 
 
-async def _image_block(item: ImageContent) -> dict[str, Any]:
+async def _image_block(item: ImageContent) -> ContentBlock:
     try:
         image = await ImageCodec.from_base64(item.data)
     except InvalidImageError as exc:
@@ -115,53 +132,43 @@ class SanitizingLangChainAdapter(LangChainAdapter):
     destructiveHint.
     """
 
-    def fix_schema(self, schema: Any) -> Any:  # noqa: ANN401 -- framework contract
-        """Fix JSON schema for Pydantic compatibility.
-
-        Strips leading underscores from property names (updating required
-        to match) in addition to the base class's type/enum fixes. Signature
-        kept as Any because it overrides mcp_use's LangChainAdapter.fix_schema,
-        which is also typed Any there.
-        """
-        if isinstance(schema, dict):
-            # First, apply the base class fixes (type arrays, enums)
-            if "type" in schema and isinstance(schema["type"], list):
-                schema["anyOf"] = [{"type": t} for t in schema["type"]]
-                del schema["type"]
-
-            if "enum" in schema and "type" not in schema:
-                schema["type"] = "string"
-
-            # Now fix property names with leading underscores
-            if "properties" in schema and isinstance(schema["properties"], dict):
-                renamed_props = {}
-                rename_map = {}
-
-                for prop_name, prop_value in schema["properties"].items():
-                    # Strip leading underscores from property names
-                    if prop_name.startswith("_"):
-                        new_name = prop_name.lstrip("_")
-                        # Ensure the new name is valid (not empty, doesn't start with digit)
-                        if not new_name or new_name[0].isdigit():
-                            new_name = f"field{new_name}"
-                        rename_map[prop_name] = new_name
-                        renamed_props[new_name] = self.fix_schema(prop_value)
-                    else:
-                        renamed_props[prop_name] = self.fix_schema(prop_value)
-
-                schema["properties"] = renamed_props
-
-                # Update 'required' array with renamed property names
-                if "required" in schema and isinstance(schema["required"], list):
-                    schema["required"] = [rename_map.get(name, name) for name in schema["required"]]
-            else:
-                # Recursively apply to nested schemas
-                for key, value in schema.items():
-                    schema[key] = self.fix_schema(value)
-
-        elif isinstance(schema, list):
+    def fix_schema(self, schema: JsonValue) -> JsonValue:
+        """Fix a JSON schema for Pydantic: type arrays, bare enums, underscore-prefixed properties."""
+        if isinstance(schema, list):
             return [self.fix_schema(item) for item in schema]
+        if not isinstance(schema, dict):
+            return schema
+        node: JsonSchemaNode = cast(JsonSchemaNode, schema)
 
+        types = node.get("type")
+        if isinstance(types, list):
+            node["anyOf"] = [{"type": t} for t in types]
+            del node["type"]
+        if "enum" in node and "type" not in node:
+            node["type"] = "string"
+
+        if "properties" not in schema or not isinstance(node["properties"], dict):
+            for key, value in schema.items():
+                schema[key] = self.fix_schema(value)
+            return schema
+        properties = node["properties"]
+
+        renamed_props: dict[str, JsonValue] = {}
+        rename_map: dict[str, str] = {}
+        for prop_name, prop_value in properties.items():
+            new_name = prop_name
+            if prop_name.startswith("_"):
+                new_name = prop_name.lstrip("_")
+                # Not empty, and not starting with a digit.
+                if not new_name or new_name[0].isdigit():
+                    new_name = f"field{new_name}"
+                rename_map[prop_name] = new_name
+            renamed_props[new_name] = self.fix_schema(prop_value)
+        node["properties"] = renamed_props
+
+        required = node.get("required")
+        if isinstance(required, list):
+            node["required"] = [rename_map.get(name, name) for name in required]
         return schema
 
     def _convert_tool(self, mcp_tool: MCPTool, connector: BaseConnector) -> BaseTool | None:
@@ -189,10 +196,12 @@ class SanitizingLangChainAdapter(LangChainAdapter):
             def __repr__(self) -> str:
                 return f"MCP tool: {self.name}: {self.description}"
 
-            def _run(self, **kwargs: Any) -> NoReturn:  # noqa: ANN401 -- contract
+            def _run(self, **kwargs: object) -> NoReturn:
                 raise NotImplementedError("MCP tools only support async operations")
 
-            async def _arun(self, **kwargs: Any) -> str | list[dict[str, Any]] | dict[str, Any]:  # noqa: ANN401 -- adapts the untyped MCP client into LangChain tools
+            async def _arun(
+                self, **kwargs: object
+            ) -> str | list[ContentBlock] | _FormattedToolError:
                 try:
                     tool_result: CallToolResult = await self.tool_connector.call_tool(
                         self.mcp_name, kwargs
@@ -200,14 +209,10 @@ class SanitizingLangChainAdapter(LangChainAdapter):
                     try:
                         return await _tool_result_to_content(tool_result)
                     except Exception as e:
-                        # mcp_use ships no py.typed marker, so mypy treats
-                        # format_error's real `-> dict` annotation as Any.
-                        return cast(dict[str, Any], format_error(e, tool=self.name))
+                        return cast(_FormattedToolError, format_error(e, tool=self.name))
                 except Exception as e:
                     if self.handle_tool_error:
-                        # mcp_use ships no py.typed marker, so mypy treats
-                        # format_error's real `-> dict` annotation as Any.
-                        return cast(dict[str, Any], format_error(e, tool=self.name))
+                        return cast(_FormattedToolError, format_error(e, tool=self.name))
                     raise
 
         tool = McpToLangChainAdapter()

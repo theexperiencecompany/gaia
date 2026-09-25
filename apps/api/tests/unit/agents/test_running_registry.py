@@ -12,6 +12,7 @@ import pytest
 
 from app.agents.core.background import running_registry as registry
 from app.agents.core.background.running_registry import RunningSubagents
+from app.agents.core.background.subagent_channel import SubagentCancel
 from app.constants.cache import (
     RUNNING_SUBAGENT_THREAD_PREFIX,
     RUNNING_SUBAGENTS_PREFIX,
@@ -230,3 +231,5 @@ class TestStopAll:
             assert await reg.stop_all() == [legacy]
 
         cancel.assert_not_called()
+        # An older replica still running it reads the thread's cancel flag.
+        assert await SubagentCancel(legacy.subagent_thread_id).is_requested()

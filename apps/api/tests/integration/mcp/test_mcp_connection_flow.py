@@ -187,7 +187,7 @@ class TestMCPConnectionFlow:
                 AsyncMock(return_value=resolved),
             ),
             patch(
-                "app.services.mcp.mcp_client.get_user_integration_records",
+                "app.services.mcp.mcp_client.user_integration_repository.list_for_user",
                 AsyncMock(return_value=[]),
             ),
         ):

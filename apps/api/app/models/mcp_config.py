@@ -2,7 +2,7 @@
 
 from typing import Any, Literal, TypedDict
 
-from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
+from mcp.shared.auth import OAuthMetadata, OAuthToken, ProtectedResourceMetadata
 from pydantic import BaseModel
 
 # Auth kinds a probe can report. The extra ``unknown`` (vs MCPConfig.auth_type)
@@ -41,6 +41,12 @@ class McpProbeResult(TypedDict, total=False):
     auth_type: ProbedAuthType
     oauth_challenge: McpAuthChallenge
     error: str
+
+
+class OidcTokenResponse(OAuthToken):
+    """A token-endpoint response: OAuth 2.1's fields plus the OIDC id_token some servers add."""
+
+    id_token: str | None = None
 
 
 class OAuthErrorResponse(TypedDict):
