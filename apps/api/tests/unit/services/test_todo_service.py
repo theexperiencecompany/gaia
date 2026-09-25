@@ -42,6 +42,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
 )
 from app.services.analytics_service import AnalyticsEvents
+from app.services.todos.errors import TrackedLabelChangeError, TrackedTodoWorkflowError
 from app.services.todos.todo_bulk_service import (
     bulk_complete_todos,
     bulk_delete_todos as bulk_service_delete_todos,
@@ -50,7 +51,6 @@ from app.services.todos.todo_bulk_service import (
 from app.services.todos.todo_service import (
     ProjectService,
     TodoService,
-    TrackedTodoWorkflowError,
     _get_workflow_categories_for_todos,
     create_project,
     delete_project,
@@ -575,30 +575,49 @@ class TestUpdateTodo:
             "Tracked todos run on the agent from their canvas and never link a workflow"
         )
 
+    @pytest.mark.parametrize(
+        ("existing_labels", "workflow_id", "new_labels"),
+        [
+            ([], None, [GAIA_TRACKED_LABEL]),  # tracks a classic todo
+            ([], "wf1", [GAIA_TRACKED_LABEL]),  # tracks a linked todo
+            ([GAIA_TRACKED_LABEL], None, ["errands"]),  # untracks a todo that keeps its canvas
+        ],
+    )
+    async def test_a_label_edit_cannot_change_whether_a_todo_is_tracked(
+        self,
+        mock_todo_repo,
+        mock_project_repo,
+        mock_vector_utils,
+        mock_sync,
+        existing_labels,
+        workflow_id,
+        new_labels,
+    ):
+        existing = _make_todo_doc(
+            todo_id=FAKE_TODO_ID, labels=existing_labels, workflow_id=workflow_id
+        )
+        mock_todo_repo.get = AsyncMock(return_value=existing)
+        with pytest.raises(TrackedLabelChangeError) as refused:
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(labels=new_labels), FAKE_USER_ID
+            )
+        assert refused.value.status_code == 400
+        assert refused.value.message == "A label change cannot add or remove the tracked label"
+        mock_todo_repo.get.assert_awaited_once_with(FAKE_TODO_ID, user_id=FAKE_USER_ID)
+        mock_todo_repo.update.assert_not_awaited()
+
     async def test_linking_and_tracking_in_one_update_is_refused_before_any_write(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
         """Regression for #1269 review: the link landed first, then the tracked label."""
         mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
-        with pytest.raises(TrackedTodoWorkflowError):
+        with pytest.raises(TrackedLabelChangeError):
             await TodoService.update_todo(
                 FAKE_TODO_ID,
                 TodoUpdateRequest(workflow_id="wf1", labels=[GAIA_TRACKED_LABEL]),
                 FAKE_USER_ID,
             )
         mock_todo_repo.link_workflow.assert_not_awaited()
-        mock_todo_repo.update.assert_not_awaited()
-
-    async def test_tracking_a_linked_todo_is_refused(
-        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
-    ):
-        linked = _make_todo_doc(todo_id=FAKE_TODO_ID, workflow_id="wf1")
-        mock_todo_repo.get = AsyncMock(return_value=linked)
-        with pytest.raises(TrackedTodoWorkflowError):
-            await TodoService.update_todo(
-                FAKE_TODO_ID, TodoUpdateRequest(labels=[GAIA_TRACKED_LABEL]), FAKE_USER_ID
-            )
-        mock_todo_repo.get.assert_awaited_once_with(FAKE_TODO_ID, user_id=FAKE_USER_ID)
         mock_todo_repo.update.assert_not_awaited()
 
     async def test_a_tracked_todo_with_a_legacy_link_can_still_be_relabelled(
@@ -838,7 +857,7 @@ class TestBulkOps:
         with pytest.raises(AppError) as raised:
             await TodoService.bulk_update_todos(req, FAKE_USER_ID)
         assert raised.value.status_code == 400
-        assert raised.value.message == "A bulk label change cannot add or remove the tracked label"
+        assert raised.value.message == "A label change cannot add or remove the tracked label"
         mock_todo_repo.find_by_ids.assert_awaited_once_with(FAKE_USER_ID, ["a"])
         mock_todo_repo.bulk_update.assert_not_called()
 

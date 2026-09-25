@@ -34,7 +34,7 @@ from app.models.todo_models import (
     UpdateProjectRequest,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
-from app.services.todos.errors import TrackedTodoWorkflowError
+from app.services.todos.errors import TrackedLabelChangeError, TrackedTodoWorkflowError
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
@@ -124,7 +124,7 @@ def _to_todo_update(updates: TodoUpdateRequest) -> TodoUpdate:
 async def _refuse_a_tracked_todo_with_a_workflow(
     todo_id: str, user_id: str, updates: TodoUpdateRequest
 ) -> None:
-    """Refuse, before any write, an update that would link a tracked todo or track a linked one.
+    """Refuse, before any write, an update that changes tracked status or links a tracked todo.
 
     A tracked todo created before workflows were removed may still hold a
     workflow_id nothing reads; editing it is not refused.
@@ -134,11 +134,10 @@ async def _refuse_a_tracked_todo_with_a_workflow(
     existing = await todo_repository.get(todo_id, user_id=user_id)
     if existing is None:
         raise ValueError(f"Todo {todo_id} not found")
-    labels = existing.labels if updates.labels is None else updates.labels
-    if GAIA_TRACKED_LABEL not in labels:
-        return
-    newly_tracked = GAIA_TRACKED_LABEL not in existing.labels
-    if updates.workflow_id or (newly_tracked and existing.workflow_id):
+    tracked = GAIA_TRACKED_LABEL in existing.labels
+    if updates.labels is not None and (GAIA_TRACKED_LABEL in updates.labels) != tracked:
+        raise TrackedLabelChangeError()
+    if updates.workflow_id and tracked:
         raise TrackedTodoWorkflowError()
 
 
@@ -149,10 +148,7 @@ async def _refuse_a_bulk_tracked_label_change(
     tracking = GAIA_TRACKED_LABEL in labels
     todos = await todo_repository.find_by_ids(user_id, todo_ids)
     if any((GAIA_TRACKED_LABEL in todo.labels) != tracking for todo in todos):
-        raise AppError(
-            message="A bulk label change cannot add or remove the tracked label",
-            status_code=HTTPStatus.BAD_REQUEST,
-        )
+        raise TrackedLabelChangeError()
 
 
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
