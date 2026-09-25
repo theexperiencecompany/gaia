@@ -14,6 +14,7 @@ from app.constants.browser import (
     JEV_OUT_OF_CREDIT_SECONDS,
 )
 from app.constants.log_tags import LogTag
+from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.jev import gateway
 from app.services.browser.jev.gateway import (
     JevEvaluationRequest,
@@ -156,14 +157,54 @@ async def test_a_connection_failure_is_a_gateway_error() -> None:
         await _client(handler).evaluate(REQUEST)
 
 
-async def test_a_malformed_answer_set_is_rejected() -> None:
+@pytest.mark.parametrize(
+    "body",
+    [
+        json.dumps({"answers": {"operation": {"type": "boolean", "probability": 1}}}),
+        "<html>502 Bad Gateway</html>",
+    ],
+    ids=["wrong-shape", "not-json"],
+)
+async def test_a_malformed_answer_is_a_gateway_error(body: str) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200, json={"answers": {"operation": {"type": "boolean", "probability": 1}}}
+        return httpx.Response(200, text=body)
+
+    with pytest.raises(JevGatewayError, match="unreadable answer"):
+        await _client(handler).evaluate(REQUEST)
+
+
+async def test_an_unreadable_answer_is_traced_and_quotes_the_start_of_the_body(
+    monkeypatch,
+) -> None:
+    _one_second_per_read(monkeypatch)
+    logger = MagicMock()
+    monkeypatch.setattr(gateway, "log", logger)
+    body = "<html>" + "x" * 300
+
+    with pytest.raises(JevGatewayError) as err:
+        await _client(lambda _r: httpx.Response(200, text=body), provider="vercel").evaluate(
+            REQUEST
         )
 
-    with pytest.raises(ValueError):
-        await _client(handler).evaluate(REQUEST)
+    assert f"(vercel): {body[:200]}; no action executed." in str(err.value)
+    logger.warning.assert_called_once_with(
+        f"{LogTag.BROWSER} Jev gateway sent an unreadable answer",
+        provider="vercel",
+        request_bytes=_REQUEST_BYTES,
+        latency_ms=1000,
+        error_type="ValidationError",
+    )
+
+
+async def test_a_malformed_answer_from_the_primary_fails_over() -> None:
+    client = JevFailoverClient(
+        primary=_client(lambda _r: httpx.Response(200, text="not json")),
+        fallback=_client(lambda _r: httpx.Response(200, json=ANSWER), provider="vercel"),
+    )
+
+    evaluation = await client.evaluate(REQUEST)
+
+    assert evaluation.provider == "vercel"
 
 
 async def test_gateway_reported_cost_is_parsed() -> None:
@@ -405,10 +446,89 @@ def test_a_failover_client_decides_with_the_primarys_model() -> None:
     assert client.model == "typesafe/jev-latest"
 
 
-def test_a_gateway_that_never_answers_cannot_hold_a_step_forever() -> None:
-    client = JevGatewayClient(api_key="k", model="m", url="https://x.test", provider="vercel")
+@pytest.fixture
+def both_gateways(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(gateway.settings, "OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr(gateway.settings, "BROWSER_JEV_VERCEL_API_KEY", "vk-test")
+    monkeypatch.setattr(gateway.settings, "BROWSER_JEV_PROVIDER", "openrouter")
 
-    assert client._client.timeout == httpx.Timeout(JEV_GATEWAY_TIMEOUT_SECONDS)
+
+def _gateway(client: JevGatewayClient) -> tuple[str, str, str, str]:
+    return (client.provider, client.model, client._url, client._headers["Authorization"])
+
+
+_OPENROUTER = (
+    "openrouter",
+    "~typesafe/jev-latest",
+    "https://openrouter.ai/api/alpha/decisions",
+    "Bearer sk-or-test",
+)
+_VERCEL = (
+    "vercel",
+    "typesafe-ai/jev",
+    "https://ai-gateway.vercel.sh/v1/evaluate",
+    "Bearer vk-test",
+)
+
+
+@pytest.mark.usefixtures("both_gateways")
+@pytest.mark.parametrize(
+    ("provider", "primary", "fallback"),
+    [("openrouter", _OPENROUTER, _VERCEL), ("vercel", _VERCEL, _OPENROUTER)],
+)
+async def test_the_configured_gateway_decides_with_the_other_behind_it(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+    primary: tuple[str, str, str, str],
+    fallback: tuple[str, str, str, str],
+) -> None:
+    monkeypatch.setattr(gateway.settings, "BROWSER_USE_JEV_MODEL", "~typesafe/jev-latest")
+    monkeypatch.setattr(gateway.settings, "BROWSER_JEV_VERCEL_MODEL", "typesafe-ai/jev")
+    monkeypatch.setattr(gateway.settings, "BROWSER_JEV_PROVIDER", provider)
+
+    async with gateway.open_jev_client() as client:
+        assert isinstance(client, JevFailoverClient)
+        assert (_gateway(client.primary), _gateway(client.fallback)) == (primary, fallback)
+
+
+async def test_a_gateway_with_no_other_key_decides_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(gateway.settings, "OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr(gateway.settings, "BROWSER_JEV_VERCEL_API_KEY", "")
+    monkeypatch.setattr(gateway.settings, "BROWSER_JEV_PROVIDER", "openrouter")
+
+    async with gateway.open_jev_client() as client:
+        assert isinstance(client, JevGatewayClient)
+        assert client.provider == "openrouter"
+
+
+async def test_a_gateway_with_no_key_is_unavailable_saying_which(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gateway.settings, "OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr(gateway.settings, "BROWSER_JEV_VERCEL_API_KEY", "")
+    monkeypatch.setattr(gateway.settings, "BROWSER_JEV_PROVIDER", "vercel")
+
+    with pytest.raises(BrowserUnavailableError, match="Jev's vercel gateway has no API key"):
+        async with gateway.open_jev_client():
+            pass
+
+
+@pytest.mark.usefixtures("both_gateways")
+async def test_a_runs_gateways_share_one_connection_pool_closed_when_the_run_ends() -> None:
+    async with gateway.open_jev_client() as client:
+        assert isinstance(client, JevFailoverClient)
+        http = client.primary._client
+        assert client.fallback._client is http
+        assert not http.is_closed
+
+    assert http.is_closed
+
+
+@pytest.mark.usefixtures("both_gateways")
+async def test_a_gateway_that_never_answers_cannot_hold_a_step_forever() -> None:
+    async with gateway.open_jev_client() as client:
+        assert isinstance(client, JevFailoverClient)
+        assert client.primary._client.timeout == httpx.Timeout(JEV_GATEWAY_TIMEOUT_SECONDS)
 
 
 @pytest.mark.parametrize(

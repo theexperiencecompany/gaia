@@ -41,7 +41,7 @@ from app.schemas.browser import (
 from app.services.browser.agent_options import agent_options, browser_options
 from app.services.browser.captions import burst_caption, step_caption
 from app.services.browser.exceptions import BrowserUnavailableError
-from app.services.browser.jev.gateway import build_jev_client
+from app.services.browser.jev.gateway import open_jev_client
 from app.services.browser.jev.loop import BurstContext, JevRunner
 from app.services.browser.jev.page import JevPage, PageAction
 from app.services.browser.jev.secrets import RunSecrets
@@ -239,54 +239,54 @@ class BrowserAgentRun:
             # The run's event says the model, not the browser, was unusable.
             log.set_ns("browser", llm_error=type(exc).__name__)
             raise
-        client = build_jev_client()
-        browser = Browser(**browser_options(self._session.cdp_url))
-        stalls = self._stalls = StalledLoads(browser)
-        browser.event_bus.on(BrowserConnectedEvent, stalls.attach)
+        async with open_jev_client() as client:
+            browser = Browser(**browser_options(self._session.cdp_url))
+            stalls = self._stalls = StalledLoads(browser)
+            browser.event_bus.on(BrowserConnectedEvent, stalls.attach)
 
-        def runner_for() -> JevRunner:
-            return JevRunner(
-                page=self._page_for(self._agent.browser_session),
-                client=client,
-                text_model=text_model,
-                run=BurstContext(
-                    ledger=self._ledger,
-                    secrets=self._secrets,
-                    stalls=stalls,
-                    should_stop=self._hooks.should_stop,
-                    user_waiting=self._hooks.user_waiting,
+            def runner_for() -> JevRunner:
+                return JevRunner(
+                    page=self._page_for(self._agent.browser_session),
+                    client=client,
+                    text_model=text_model,
+                    run=BurstContext(
+                        ledger=self._ledger,
+                        secrets=self._secrets,
+                        stalls=stalls,
+                        should_stop=self._hooks.should_stop,
+                        user_waiting=self._hooks.user_waiting,
+                    ),
+                )
+
+            delegate = JevDelegate(runner_for=runner_for, emit=self._emit_burst)
+            tools = build_browser_tools(
+                solve_captcha=self._config.solve_captcha,
+                handle_takeover=self._takeover,
+                handle_guidance=self._guidance,
+                handle_engine_switch=(
+                    partial(self._switch_engine, self._hooks.switch_engine)
+                    if self._hooks.switch_engine is not None
+                    else None
                 ),
             )
-
-        delegate = JevDelegate(runner_for=runner_for, emit=self._emit_burst)
-        tools = build_browser_tools(
-            solve_captcha=self._config.solve_captcha,
-            handle_takeover=self._takeover,
-            handle_guidance=self._guidance,
-            handle_engine_switch=(
-                partial(self._switch_engine, self._hooks.switch_engine)
-                if self._hooks.switch_engine is not None
-                else None
-            ),
-        )
-        register_jev(tools, delegate)
-        self._agent = Agent(
-            **agent_options(task, self._config, self._secrets),
-            llm=llm,
-            browser=browser,
-            tools=tools,
-            register_new_step_callback=self._on_step,
-            register_should_stop_callback=self._should_stop,
-            page_extraction_llm=text_model,
-        )
-        try:
-            history = await self._agent.run(
-                max_steps=self._config.max_steps,
-                on_step_start=self._on_step_start,
-                on_step_end=self._on_step_end,
+            register_jev(tools, delegate)
+            self._agent = Agent(
+                **agent_options(task, self._config, self._secrets),
+                llm=llm,
+                browser=browser,
+                tools=tools,
+                register_new_step_callback=self._on_step,
+                register_should_stop_callback=self._should_stop,
+                page_extraction_llm=text_model,
             )
-        finally:
-            stalls.close()
+            try:
+                history = await self._agent.run(
+                    max_steps=self._config.max_steps,
+                    on_step_start=self._on_step_start,
+                    on_step_end=self._on_step_end,
+                )
+            finally:
+                stalls.close()
         self.last_url = await self._current_url()
         if self.no_progress:
             return RunOutcome(False, BROWSER_RUN_NO_PROGRESS_SUMMARY)

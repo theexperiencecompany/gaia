@@ -9,7 +9,8 @@ repeats itself on an unchanged page ends; a wedged connection is reported.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import AsyncIterator, Awaitable
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, ClassVar
@@ -589,6 +590,21 @@ _TEXT_MODEL = _TextModel()
 _JEV_CLIENT = MagicMock(model="jev")
 
 
+class _JevGateway:
+    """The run's decisions client, opened for the run and closed when it ends."""
+
+    open: ClassVar[bool] = False
+
+    @classmethod
+    @asynccontextmanager
+    async def opened(cls) -> AsyncIterator[MagicMock]:
+        cls.open = True
+        try:
+            yield _JEV_CLIENT
+        finally:
+            cls.open = False
+
+
 @pytest.fixture
 def built_with(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, object]]:
     """Stand Browser-Use, the models and the stall watcher in for a run; record what each model was built for."""
@@ -606,7 +622,7 @@ def built_with(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, object]]:
     monkeypatch.setattr(browser_use, "Browser", _Browser)
     monkeypatch.setattr(agent_run_mod, "build_agent_llm", _llm)
     monkeypatch.setattr(agent_run_mod, "build_text_model", _text_model)
-    monkeypatch.setattr(agent_run_mod, "build_jev_client", lambda: _JEV_CLIENT)
+    monkeypatch.setattr(agent_run_mod, "open_jev_client", _JevGateway.opened)
     monkeypatch.setattr(agent_run_mod, "StalledLoads", _Stalls)
     monkeypatch.setattr(_Agent, "steps", [])
     monkeypatch.setattr(_Agent, "history", _History("done"))
@@ -686,7 +702,7 @@ class TestExecute:
         ]
 
     @pytest.mark.parametrize("ending", [RuntimeError("engine gone"), asyncio.CancelledError()])
-    async def test_the_stall_watcher_is_closed_however_the_run_ends(
+    async def test_the_stall_watcher_and_jevs_gateway_are_closed_however_the_run_ends(
         self, harness: _Harness, ending: BaseException
     ) -> None:
         _Agent.raises = ending
@@ -694,7 +710,7 @@ class TestExecute:
         with pytest.raises(type(ending)):
             await harness.run.execute("read my orders")
 
-        assert _Stalls.closed is True
+        assert (_Stalls.closed, _JevGateway.open) == (True, False)
         # A run that never finished has no page to resume at.
         assert harness.run.last_url is None
 
@@ -705,10 +721,12 @@ class TestExecute:
 
         assert _Agent.built[-1].ran_steps == CONFIG.max_steps
 
-    async def test_a_run_that_finishes_closes_its_stall_watcher(self, harness: _Harness) -> None:
+    async def test_a_run_that_finishes_closes_its_stall_watcher_and_jevs_gateway(
+        self, harness: _Harness
+    ) -> None:
         await harness.run.execute("read my orders")
 
-        assert _Stalls.closed is True
+        assert (_Stalls.closed, _JevGateway.open) == (True, False)
 
 
 @pytest.mark.usefixtures("built_with")

@@ -439,7 +439,7 @@ async def browser_job_world(
         # The models and Jev's gateway are never called: the agent and Jev are scripted.
         patch("app.services.browser.agent_run.build_agent_llm", AsyncMock(return_value=object())),
         patch("app.services.browser.agent_run.build_text_model", lambda ledger: object()),
-        patch("app.services.browser.agent_run.build_jev_client", lambda: object()),
+        patch("app.services.browser.agent_run.open_jev_client", _unused_jev_client),
         patch("app.services.browser.agent_run.JevPage", _Page),
         patch("app.services.browser.job_runner.record_browser_task", AsyncMock()),
         patch("app.services.browser.job_runner.capture_event", MagicMock()),
@@ -600,6 +600,12 @@ class _Page:
 
 async def _shot_url(index: int) -> str:
     return SHOT_URL_TEMPLATE.format(index=index)
+
+
+@asynccontextmanager
+async def _unused_jev_client() -> AsyncIterator[object]:
+    """Jev's gateway, never called: the bursts are scripted."""
+    yield object()
 
 
 async def _narrate(result_text: str, msg_type: str, conversation_id: str, user: Any) -> str:

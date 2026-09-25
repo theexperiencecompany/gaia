@@ -9,12 +9,14 @@ model id, and the credential differ, so one client covers both.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 import json
 from time import monotonic, perf_counter
 from typing import Literal
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.config.settings import settings
 from app.constants.browser import (
@@ -135,7 +137,7 @@ class JevEvaluation(BaseModel):
 
 
 class JevGatewayClient:
-    """Async client for one credential and model; safe to share across a run."""
+    """One credential and model on an HTTP client it borrows; open_jev_client owns and closes it."""
 
     def __init__(
         self,
@@ -144,14 +146,14 @@ class JevGatewayClient:
         model: str,
         url: str,
         provider: str,
-        client: httpx.AsyncClient | None = None,
+        client: httpx.AsyncClient,
     ) -> None:
         self.model = model
         self.provider = provider
         self._url = url
         # Header names are case-insensitive: a change of case is an equivalent mutant.
         self._headers = {"Authorization": f"Bearer {api_key}"}  # pragma: no mutate
-        self._client = client or httpx.AsyncClient(timeout=JEV_GATEWAY_TIMEOUT_SECONDS)
+        self._client = client
 
     async def evaluate(self, request: JevEvaluationRequest) -> JevEvaluation:
         """POST the questions; retries transient 429/503/529 with backoff."""
@@ -195,7 +197,20 @@ class JevGatewayClient:
                     f"{_error_message(response)}; no action executed.",
                     status_code=response.status_code,
                 )
-            evaluation = JevEvaluation.model_validate(response.json())
+            try:
+                evaluation = JevEvaluation.model_validate_json(response.content)
+            except ValidationError as exc:
+                log.warning(
+                    f"{LogTag.BROWSER} Jev gateway sent an unreadable answer",
+                    provider=self.provider,
+                    request_bytes=request_bytes,
+                    latency_ms=_elapsed_ms(attempt_started),
+                    error_type=type(exc).__name__,
+                )
+                raise JevGatewayError(
+                    f"Jev decisions sent an unreadable answer ({self.provider}): "
+                    f"{response.text[:200]}; no action executed."
+                ) from exc
             evaluation.latency_ms = _elapsed_ms(started)
             evaluation.provider = self.provider
             return evaluation
@@ -203,9 +218,6 @@ class JevGatewayClient:
         raise JevGatewayError(  # pragma: no mutate
             f"Jev decisions unavailable ({self.provider}); no action executed."  # pragma: no mutate
         )
-
-    async def aclose(self) -> None:
-        await self._client.aclose()
 
 
 class JevFailoverClient:
@@ -243,10 +255,6 @@ class JevFailoverClient:
             )
             return await self.fallback.evaluate(request)
 
-    async def aclose(self) -> None:
-        await self.primary.aclose()
-        await self.fallback.aclose()
-
 
 #: What the policy asks for a decision: one gateway, or one with a fallback behind it.
 JevDecisionsClient = JevGatewayClient | JevFailoverClient
@@ -272,8 +280,8 @@ _OPENROUTER_DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
 _VERCEL_EVALUATE_URL = "https://ai-gateway.vercel.sh/v1/evaluate"
 
 
-def build_jev_client() -> JevDecisionsClient:
-    """Return the configured decisions gateway, with the other one behind it when it has a key.
+def _build_jev_client(http: httpx.AsyncClient) -> JevDecisionsClient:
+    """Return the configured decisions gateway on http, with the other one behind it when it has a key.
 
     BROWSER_JEV_PROVIDER picks the primary. Raises BrowserUnavailableError when
     the primary's key is not configured.
@@ -285,6 +293,7 @@ def build_jev_client() -> JevDecisionsClient:
             model=settings.BROWSER_USE_JEV_MODEL,
             url=_OPENROUTER_DECISIONS_URL,
             provider="openrouter",
+            client=http,
         )
     if settings.BROWSER_JEV_VERCEL_API_KEY:
         gateways[_VERCEL] = JevGatewayClient(
@@ -292,6 +301,7 @@ def build_jev_client() -> JevDecisionsClient:
             model=settings.BROWSER_JEV_VERCEL_MODEL,
             url=_VERCEL_EVALUATE_URL,
             provider=_VERCEL,
+            client=http,
         )
     provider = settings.BROWSER_JEV_PROVIDER
     primary = gateways.pop(provider, None)
@@ -299,3 +309,10 @@ def build_jev_client() -> JevDecisionsClient:
         raise BrowserUnavailableError(f"Jev's {provider} gateway has no API key configured.")
     fallback = next(iter(gateways.values()), None)
     return JevFailoverClient(primary=primary, fallback=fallback) if fallback else primary
+
+
+@asynccontextmanager
+async def open_jev_client() -> AsyncIterator[JevDecisionsClient]:
+    """Open a run's decisions gateway, failover included, on one HTTP client closed when the run ends."""
+    async with httpx.AsyncClient(timeout=JEV_GATEWAY_TIMEOUT_SECONDS) as http:
+        yield _build_jev_client(http)
