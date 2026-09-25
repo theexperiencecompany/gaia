@@ -2474,6 +2474,46 @@ class TestAToolWithUnderscoredArguments:
 
         connector.call_tool.assert_awaited_once_with("find", server_args)
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("model_item", "server_item"),
+        [({"left": "a"}, {"_left": "a"}), ({"right": "b"}, {"_right": "b"})],
+    )
+    async def test_a_property_two_options_declare_maps_through_each_options_schema(
+        self, model_item: dict[str, object], server_item: dict[str, object]
+    ) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "pick": {
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "properties": {"item": {"type": "object", "properties": {"_left": {}}}},
+                        },
+                        {
+                            "type": "object",
+                            "properties": {
+                                "item": {"type": "object", "properties": {"_right": {}}}
+                            },
+                        },
+                    ]
+                }
+            },
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="choose", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke({"pick": {"item": model_item}})
+
+        connector.call_tool.assert_awaited_once_with("choose", {"pick": {"item": server_item}})
+
     def test_the_model_sees_names_pydantic_accepts(self) -> None:
         properties = self._tool(MagicMock()).args_schema.model_json_schema()["properties"]
 

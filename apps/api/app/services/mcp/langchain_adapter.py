@@ -187,12 +187,22 @@ def _to_server_names(value: JsonValue, schema: JsonValue) -> JsonValue:
     renamed: dict[str, JsonValue] = {}
     for key, item in value.items():
         server_name = server_names.get(key, key)
-        item_schema = next(
-            (properties[server_name] for properties in declared if server_name in properties),
-            extra_schema,
+        renamed[server_name] = _to_server_names(
+            item, _schema_for(server_name, declared, extra_schema)
         )
-        renamed[server_name] = _to_server_names(item, item_schema)
     return renamed
+
+
+def _schema_for(
+    server_name: str, declared: list[dict[str, JsonValue]], extra_schema: JsonValue
+) -> JsonValue:
+    """Return a key's schema; one declared by several options is any of theirs."""
+    candidates = [properties[server_name] for properties in declared if server_name in properties]
+    if not candidates:
+        return extra_schema
+    if len(candidates) == 1:
+        return candidates[0]
+    return {"anyOf": candidates}
 
 
 class SanitizingLangChainAdapter(LangChainAdapter):
