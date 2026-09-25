@@ -13,8 +13,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.config.feature_flags import FeatureFlag
 from app.constants.browser import (
     BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS,
+    BROWSER_NO_CHROME_HOST,
     BROWSER_TASK_EVENT,
     BROWSER_TOOL_CATEGORY,
     BrowserEngine,
@@ -43,7 +45,7 @@ from app.services.browser import job_runner as jr
 from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
 from app.services.browser.fingerprint import current_fingerprint_seed, seed_for_user
 from app.services.browser.jev.secrets import RunSecrets
-from app.services.browser.ledger import RunLedger
+from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
 from app.services.browser.runner import BrowserRunConfig, BrowserRunnerCallbacks
 from app.services.browser.session import BrowserHostSession
 from app.services.browser.tasks import BrowserTaskRecord
@@ -2055,3 +2057,128 @@ async def test_mirror_closes_the_group_with_how_long_the_run_took(
 
     (end,) = [w["subagent_end"] for w in writes if "subagent_end" in w]
     assert end["duration_ms"] == 2500
+
+
+# ---------------------------------------------------------------------------
+# execute_browser_job — the engine, the hosts and the run's own inputs
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("deployed", "engine", "hosts"),
+    [
+        (BrowserEngine.OBSCURA, BrowserEngine.OBSCURA, (PRIMARY_HOST, "http://chrome:8930")),
+        (BrowserEngine.OBSCURA, BrowserEngine.CHROMIUM, ("http://chrome:8930", None)),
+        # A user opted into Obscura on a Chrome-only deployment runs on Chrome.
+        (BrowserEngine.CHROMIUM, BrowserEngine.OBSCURA, (PRIMARY_HOST, None)),
+        (BrowserEngine.CHROMIUM, BrowserEngine.CHROMIUM, (PRIMARY_HOST, None)),
+    ],
+)
+def test_a_run_opens_on_its_engines_host_and_only_obscura_has_a_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    deployed: BrowserEngine,
+    engine: BrowserEngine,
+    hosts: tuple[str, str | None],
+) -> None:
+    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", deployed)
+    monkeypatch.setattr(jr.settings, "BROWSER_HOST_URL", PRIMARY_HOST)
+    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
+
+    assert jr.hosts_for(engine) == hosts
+
+
+async def test_a_chrome_run_with_no_chrome_host_fails_saying_so(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _install(monkeypatch)
+    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
+
+    event = await _run_event(h, _request())
+
+    assert h.cards == [_failed_card(BROWSER_NO_CHROME_HOST)]
+    assert event["reason"] == BrowserRunFailure.HOST_UNAVAILABLE
+    assert h.session_kwargs == {}
+
+
+@pytest.mark.parametrize(("opted_in", "engine"), [(True, "obscura"), (False, "chromium")])
+async def test_the_engine_is_the_users_own_obscura_choice(
+    monkeypatch: pytest.MonkeyPatch, opted_in: bool, engine: str
+) -> None:
+    h = _install(monkeypatch)
+    asked: list[tuple[object, str | None]] = []
+
+    async def _is_enabled(flag: object, user_id: str | None, default: bool | None = None) -> bool:
+        asked.append((flag, user_id))
+        return opted_in
+
+    monkeypatch.setattr(jr, "is_enabled", _is_enabled)
+    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
+    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
+
+    event = await _run_event(h, _request(user_id="u7"))
+
+    assert asked == [(FeatureFlag.BROWSER_OBSCURA, "u7")]
+    assert event["browser"]["engine"] == engine
+
+
+async def test_a_credential_is_typed_only_on_the_sites_the_task_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _install(monkeypatch)
+
+    await _run(
+        h,
+        _request(
+            task="log in with <secret>password</secret>, then open https://mail.test/inbox",
+            start_url="https://shop.test/login",
+            secrets={"password": "hunter2"},
+        ),
+    )
+
+    secrets: RunSecrets = h.runner_kwargs["secrets"]
+    placeholder = "<secret>password</secret>"
+    assert secrets.value_for(placeholder, "https://shop.test/login") == "hunter2"
+    assert secrets.value_for(placeholder, "https://mail.test/") == "hunter2"
+    assert secrets.value_for(placeholder, "https://evil.test/") is None
+
+
+async def test_the_run_hears_this_jobs_messages(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: list[tuple[str, str]] = []
+
+    async def _waiting(job_id: str) -> bool:
+        asked.append(("waiting", job_id))
+        return True
+
+    async def _take(job_id: str) -> list[str]:
+        asked.append(("take", job_id))
+        return ["use the blue one"]
+
+    monkeypatch.setattr(jr, "job_messages_waiting", _waiting)
+    monkeypatch.setattr(jr, "take_job_messages", _take)
+    h = _install(monkeypatch)
+    await _run(h, _request(job_id="job-9"))
+
+    assert await h.callbacks.user_waiting() is True
+    assert await h.callbacks.take_user_messages() == ["use the blue one"]
+    assert asked == [("waiting", "job-9"), ("take", "job-9")]
+
+
+async def test_the_actions_a_run_executed_reach_the_event_the_capture_and_the_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = _capture(monkeypatch)
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        for n in range(3):
+            h.runner.ledger.executed(
+                ExecutedAction(component=CallComponent.JEV, description=f"CLICK {n}", duration_ms=1)
+            )
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+
+    event = await _run_event(h, _request())
+
+    assert event["browser"]["actions"] == 3
+    assert captured[0][2]["actions"] == 3
+    assert h.record_calls[0]["actions"] == 3

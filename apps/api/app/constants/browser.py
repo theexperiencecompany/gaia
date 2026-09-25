@@ -366,6 +366,8 @@ BROWSER_AGENT_ROLE = (
 # Said to the agent when it asks for guidance with no assistant joined to answer.
 #: What the agent reads after a handoff step when the user left no note.
 BROWSER_TAKEOVER_DONE_NOTE = "The user finished that step in the live browser."
+#: Why a run cannot start when no Chromium host is configured for it.
+BROWSER_NO_CHROME_HOST = "No Chrome browser host is configured (BROWSER_FALLBACK_HOST_URL)."
 BROWSER_NO_GUIDANCE_AVAILABLE = (
     "No assistant is available to answer. Decide yourself: act, re-delegate to jev, or finish "
     "with an honest account of what could not be done."

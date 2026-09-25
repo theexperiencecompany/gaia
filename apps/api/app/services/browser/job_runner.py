@@ -19,6 +19,7 @@ from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS,
     BROWSER_JOB_CRASHED_SUMMARY,
+    BROWSER_NO_CHROME_HOST,
     BROWSER_TASK_EVENT,
     BROWSER_TOOL_CATEGORY,
     BrowserEngine,
@@ -526,9 +527,7 @@ def hosts_for(engine: BrowserEngine) -> tuple[str, str | None]:
     if engine is BrowserEngine.OBSCURA and not primary_is_chrome:
         return settings.BROWSER_HOST_URL, chrome_host
     if chrome_host is None:
-        raise BrowserUnavailableError(
-            "No Chrome browser host is configured (BROWSER_FALLBACK_HOST_URL)."
-        )
+        raise BrowserUnavailableError(BROWSER_NO_CHROME_HOST)
     return chrome_host, None
 
 
