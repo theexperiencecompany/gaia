@@ -174,21 +174,29 @@ def _flag(value: bool) -> Callable[[], Awaitable[bool]]:
     return _read
 
 
+@dataclass
+class _Around:
+    """What the run around a burst tells it: the loads the browser stopped, and its two signals."""
+
+    stalls: _Stalls = field(default_factory=_Stalls)
+    should_stop: Callable[[], Awaitable[bool]] = field(default=_flag(False))
+    user_waiting: Callable[[], Awaitable[bool]] = field(default=_flag(False))
+
+
 def _run(
     monkeypatch: pytest.MonkeyPatch,
     page: FakePage,
     *decisions: Decision,
     value: str = NONE_VALUE,
-    stalls: _Stalls | None = None,
     secrets: RunSecrets | None = None,
     text_model: _TextModel | None = None,
-    should_stop: Callable[[], Awaitable[bool]] = _flag(False),
-    user_waiting: Callable[[], Awaitable[bool]] = _flag(False),
+    around: _Around | None = None,
 ) -> _Run:
     jev = _Jev(list(decisions), value=value)
     monkeypatch.setattr(loop_mod, "decide", jev.decide)
     monkeypatch.setattr(loop_mod, "choose_value", jev.choose_value)
     ledger = RunLedger()
+    around = around or _Around()
     runner = JevRunner(
         page=page,  # type: ignore[arg-type]  # the tab, scripted
         client=MagicMock(model="jev"),
@@ -196,9 +204,9 @@ def _run(
         run=BurstContext(
             ledger=ledger,
             secrets=secrets or RunSecrets({}, []),
-            stalls=stalls or _Stalls(),  # type: ignore[arg-type]  # the one method the loop reads
-            should_stop=should_stop,
-            user_waiting=user_waiting,
+            stalls=around.stalls,  # type: ignore[arg-type]  # the one method the loop reads
+            should_stop=around.should_stop,
+            user_waiting=around.user_waiting,
         ),
     )
     return _Run(runner, jev, ledger)
@@ -293,7 +301,7 @@ async def test_a_burst_asks_jev_a_bounded_number_of_times_even_when_nothing_it_d
 async def test_a_run_asked_to_stop_ends_the_burst_before_jev_decides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    run = _run(monkeypatch, FakePage(page_state()), should_stop=_flag(True))
+    run = _run(monkeypatch, FakePage(page_state()), around=_Around(should_stop=_flag(True)))
 
     result = await run.burst()
 
@@ -304,7 +312,7 @@ async def test_a_run_asked_to_stop_ends_the_burst_before_jev_decides(
 async def test_a_user_message_hands_the_run_back_before_another_decision(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    run = _run(monkeypatch, FakePage(page_state()), user_waiting=_flag(True))
+    run = _run(monkeypatch, FakePage(page_state()), around=_Around(user_waiting=_flag(True)))
 
     result = await run.burst()
 
@@ -469,7 +477,7 @@ async def test_a_page_the_browser_stopped_loading_ends_the_burst_with_why(
         monkeypatch,
         page,
         decision(JevOperation.CLICK, BUTTON),
-        stalls=_Stalls(notes),
+        around=_Around(stalls=_Stalls(notes)),
         secrets=_secrets(),
     )
 
@@ -519,7 +527,7 @@ async def test_a_navigation_the_browser_stopped_ends_the_burst_as_a_stalled_load
         monkeypatch,
         page,
         decision(JevOperation.NAVIGATE, url="https://slow.test/"),
-        stalls=_Stalls([note]),
+        around=_Around(stalls=_Stalls([note])),
     )
 
     result = await run.burst()
@@ -730,7 +738,12 @@ async def test_a_page_that_changed_since_it_was_read_is_read_again_before_jev_de
         page.current = after
         return False
 
-    run = _run(monkeypatch, page, decision(JevOperation.DONE), user_waiting=_moves_meanwhile)
+    run = _run(
+        monkeypatch,
+        page,
+        decision(JevOperation.DONE),
+        around=_Around(user_waiting=_moves_meanwhile),
+    )
 
     await run.burst()
 

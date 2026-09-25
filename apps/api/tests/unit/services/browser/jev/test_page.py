@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 import json
 import re
 from types import SimpleNamespace
@@ -77,34 +78,31 @@ def _call_argument(expression: str, script: str) -> Any:
     return json.loads(expression[len(script) + 1 : -1])
 
 
+@dataclass
 class _Tab:
-    """One page's CDP session as Chrome answers it: only commands addressed to the page's session."""
+    """One page's CDP session as Chrome answers it: only commands addressed to the page's session.
 
-    def __init__(
-        self,
-        *,
-        snapshots: list[object] | None = None,
-        page_key: object = PAGE_KEY,
-        guards: dict[str, object] | None = None,
-        points: dict[int, object] | None = None,
-        settle: object = None,
-        body: str = "",
-        hangs: str | None = None,
-    ) -> None:
-        self.snapshots = list(snapshots or [SNAPSHOT])
-        self.page_key = page_key
-        self.guards = GUARDS if guards is None else guards
-        self.points = points or {}
-        self.settle = settle
-        self.body = body
-        self.hangs = hangs
-        self.focus: list[bool] = []
-        self.settled: list[dict[str, Any]] = []
-        self.acted: list[dict[str, Any]] = []
-        self.went_back = 0
-        self.mouse: list[dict[str, Any]] = []
-        self.keys: list[dict[str, Any]] = []
-        self.shots: list[dict[str, Any]] = []
+    Each field is what one of Jev's scripts reads back; hangs names a call that never answers.
+    """
+
+    snapshots: list[object] = field(default_factory=lambda: [SNAPSHOT])
+    page_key: object = field(default_factory=lambda: PAGE_KEY)
+    guards: dict[str, object] = field(default_factory=lambda: GUARDS)
+    points: dict[int, object] = field(default_factory=dict)
+    settle: object = None
+    body: str = ""
+    hangs: str | None = None
+    focus: list[bool] = field(default_factory=list, init=False)
+    settled: list[dict[str, Any]] = field(default_factory=list, init=False)
+    acted: list[dict[str, Any]] = field(default_factory=list, init=False)
+    went_back: int = field(default=0, init=False)
+    mouse: list[dict[str, Any]] = field(default_factory=list, init=False)
+    keys: list[dict[str, Any]] = field(default_factory=list, init=False)
+    shots: list[dict[str, Any]] = field(default_factory=list, init=False)
+
+    def __post_init__(self) -> None:
+        # The tab reads its own copy: a test's list of snapshots is never consumed under it.
+        self.snapshots = list(self.snapshots)
         self.send = SimpleNamespace(
             Emulation=SimpleNamespace(setFocusEmulationEnabled=self._focus),
             Runtime=SimpleNamespace(evaluate=self._evaluate),

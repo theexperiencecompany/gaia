@@ -254,14 +254,8 @@ class JevRunner:
                     JevStop.CAPTCHA,
                     f"A CAPTCHA is on the page ({captcha[:_CAPTCHA_SRC_CHARS]}).",
                 )
-            if len(state.steps) >= JEV_BURST_MAX_ACTIONS:
-                return _MAX_ACTIONS
-            if state.decisions >= JEV_BURST_MAX_DECISIONS:
-                return _MAX_DECISIONS
-            if state.stale >= JEV_STALE_LIMIT:
-                return _KEPT_CHANGING
-            if state.covered >= JEV_COVERED_LIMIT:
-                return _OVERLAID
+            if (spent := _budget_spent(state)) is not None:
+                return spent
             if not await self._page.fresh(state.page):
                 state.page = await self._page.observe()
             try:
@@ -511,6 +505,17 @@ def _captcha(frames: list[Frame]) -> str | None:
         ),
         None,
     )
+
+
+def _budget_spent(state: _Burst) -> _Ending | None:
+    """Return which of the burst's own budgets is spent, if one is: actions, decisions, stale or covered targets."""
+    spent = (
+        (len(state.steps) >= JEV_BURST_MAX_ACTIONS, _MAX_ACTIONS),
+        (state.decisions >= JEV_BURST_MAX_DECISIONS, _MAX_DECISIONS),
+        (state.stale >= JEV_STALE_LIMIT, _KEPT_CHANGING),
+        (state.covered >= JEV_COVERED_LIMIT, _OVERLAID),
+    )
+    return next((ending for hit, ending in spent if hit), None)
 
 
 def _hidden_frames(frames: list[Frame]) -> list[str]:
