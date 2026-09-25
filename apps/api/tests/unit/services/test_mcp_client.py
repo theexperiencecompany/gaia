@@ -49,6 +49,7 @@ from app.services.mcp.mcp_client import (
     DCRNotSupportedError,
     MCPClient,
     StepUpAuthRequiredError,
+    _extract_response_signal,
     _parse_device_server_url,
     get_mcp_client,
 )
@@ -2111,6 +2112,35 @@ class TestSanitizingLangChainAdapter:
         # Stripped underscores, starts with digit -> prefixed with "field"
         assert "field123field" in fixed["properties"]
 
+    def test_fix_schema_turns_a_type_array_into_an_exact_any_of(self):
+        fixed = SanitizingLangChainAdapter().fix_schema({"type": ["string", "null"]})
+
+        assert fixed == {"anyOf": [{"type": "string"}, {"type": "null"}]}
+
+    def test_fix_schema_types_a_bare_enum_as_string(self):
+        fixed = SanitizingLangChainAdapter().fix_schema({"enum": ["a", "b"]})
+
+        assert fixed == {"enum": ["a", "b"], "type": "string"}
+
+    def test_fix_schema_keeps_the_declared_type_of_a_typed_enum(self):
+        fixed = SanitizingLangChainAdapter().fix_schema({"enum": [1, 2], "type": "integer"})
+
+        assert fixed == {"enum": [1, 2], "type": "integer"}
+
+    def test_fix_schema_strips_only_the_underscores_of_a_property_name(self):
+        schema = {"type": "object", "properties": {"_Xray": {"type": "string"}}}
+
+        fixed = SanitizingLangChainAdapter().fix_schema(schema)
+
+        assert list(fixed["properties"]) == ["Xray"]
+
+    def test_fix_schema_prefixes_a_property_that_would_start_with_a_digit(self):
+        schema = {"type": "object", "properties": {"_2fa": {"type": "string"}}}
+
+        fixed = SanitizingLangChainAdapter().fix_schema(schema)
+
+        assert list(fixed["properties"]) == ["field2fa"]
+
     def test_fix_schema_required_keeps_names_it_did_not_rename(self):
         schema = {
             "type": "object",
@@ -2152,6 +2182,44 @@ class TestSanitizingLangChainAdapter:
         }
         fixed = adapter.fix_schema(schema)
         assert "anyOf" in fixed["items"]
+
+
+class TestAConvertedToolThatFails:
+    @staticmethod
+    def _tool(connector: MagicMock) -> BaseTool:
+        server_tool = Tool(name="execute", description="Run code.", inputSchema={"type": "object"})
+        tool = SanitizingLangChainAdapter()._convert_tool(server_tool, connector)
+        assert tool is not None
+        return tool
+
+    async def test_a_call_that_raises_comes_back_as_mcp_uses_formatted_error(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(side_effect=RuntimeError("server down"))
+
+        result = await self._tool(connector)._arun()
+
+        assert (result["error"], result["details"], result["tool"]) == (
+            "RuntimeError",
+            "server down",
+            "execute",
+        )
+
+    async def test_a_result_that_cannot_be_read_comes_back_as_a_formatted_error(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        with patch(
+            "app.services.mcp.langchain_adapter._tool_result_to_content",
+            new=AsyncMock(side_effect=ValueError("unreadable")),
+        ):
+            result = await self._tool(connector)._arun()
+
+        assert (result["error"], result["details"], result["tool"]) == (
+            "ValueError",
+            "unreadable",
+            "execute",
+        )
 
 
 class TestAConvertedToolRenamedOnGaiasSide:
@@ -2733,12 +2801,13 @@ class TestMCPClientFindIntegrationIdByServerUrl:
                 return_value=[
                     _user_integration("db_int", "connected"),
                 ],
-            ),
+            ) as list_for_user,
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
             result = await client._find_integration_id_by_server_url(SERVER_URL)
 
         assert result == "db_int"
+        list_for_user.assert_awaited_once_with(USER_ID)
 
     async def test_returns_none_for_empty_url(self):
         client = MCPClient(user_id=USER_ID)
@@ -3406,6 +3475,7 @@ class TestMCPClientHandleCustomIntegrationConnect:
             mock_subagent.assert_awaited_once()
             call_kwargs = mock_subagent.call_args[1]
             assert call_kwargs["request"].name == "Resolved Name"
+            assert call_kwargs["request"].description == "Resolved Desc"
 
 
 # ===========================================================================
@@ -4204,6 +4274,28 @@ class TestConnectFailureClassification:
         assert client._refresh_attempts == set()
 
 
+class _ErrorWithResponse(Exception):
+    def __init__(self, response: MagicMock) -> None:
+        super().__init__("refresh failed")
+        self.response = response
+
+
+class TestExtractResponseSignal:
+    def test_reads_the_status_and_the_lowercased_oauth_error_code(self) -> None:
+        response = MagicMock(status_code=400)
+        response.json = MagicMock(return_value={"error": "INVALID_GRANT", "extra": 1})
+
+        assert _extract_response_signal(_ErrorWithResponse(response)) == (400, "invalid_grant")
+
+    def test_a_non_string_error_code_is_not_a_code(self) -> None:
+        response = MagicMock(status_code=401, json=MagicMock(return_value={"error": 7}))
+
+        assert _extract_response_signal(_ErrorWithResponse(response)) == (401, None)
+
+    def test_an_error_with_no_response_carries_no_signal(self) -> None:
+        assert _extract_response_signal(RuntimeError("network down")) == (None, None)
+
+
 @pytest.mark.usefixtures("core_tool_registry")
 class TestRenameShadowingTools:
     async def test_a_tool_named_like_a_gaia_tool_is_renamed_and_told_its_old_name(self) -> None:
@@ -4226,6 +4318,17 @@ class TestRenameShadowingTools:
 
         assert renamed == {"execute": "dodo_payments_execute_2"}
         assert own.name == "dodo_payments_execute"
+
+    async def test_two_renamed_tools_never_share_a_name(self) -> None:
+        registry = MagicMock(get_tool_names=MagicMock(return_value=["grep", "grep_2"]))
+        tools = [_mock_tool("grep"), _mock_tool("grep_2"), _mock_tool("acme_grep")]
+        with patch(
+            "app.services.mcp.mcp_client.get_tool_registry",
+            new=AsyncMock(return_value=registry),
+        ):
+            renamed = await MCPClient._rename_shadowing_tools(tools, "Acme")
+
+        assert renamed == {"grep": "acme_grep_2", "grep_2": "acme_grep_2_2"}
 
     async def test_the_reserved_ticket_names_are_renamed_too(self) -> None:
         ticket = _mock_tool("approve")

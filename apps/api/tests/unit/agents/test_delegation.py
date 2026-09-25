@@ -30,6 +30,7 @@ from app.agents.core.subagents.delegation import (
     runs_in_background,
 )
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
+from app.agents.prompts import delegation_prompts
 from app.agents.prompts.delegation_prompts import (
     BACKGROUND_DELEGATION_ACK,
     SUBAGENT_FAILED_RESULT,
@@ -823,8 +824,9 @@ class TestABackgroundRunTheUserStopped:
             result = await delegate(_delegation(), background=True, probe_parked=False)
             await _drain()
 
-        assert "was not started: the user stopped this task" in result
+        assert result == delegation_prompts.STOPPED_BEFORE_START.format(name="summarise the report")
         execute.assert_not_awaited()
+        assert await RunningSubagents(CONVERSATION).live() == []
         assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
 
     @pytest.mark.regression
