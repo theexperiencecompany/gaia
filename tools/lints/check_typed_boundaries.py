@@ -70,7 +70,8 @@ BOUNDARY_MODULES: dict[str, str] = {
 # Maps keyed by a protocol, not a shape: the key IS the contract (an HTTP
 # header name, an environment variable), so reading it by string is honest.
 PROTOCOL_MAPS = ("os.environ",)
-PROTOCOL_MAP_ATTRIBUTES = ("headers", "query_params", "path_params", "cookies")
+# A DOM node's ``attributes`` is keyed by HTML attribute names, the same kind of contract.
+PROTOCOL_MAP_ATTRIBUTES = ("headers", "query_params", "path_params", "cookies", "attributes")
 
 # A key read on a TypedDict is a declared shape, not a guess: mypy checks the key
 # (apps/api/CLAUDE.md, Type Safety item 6). Repo TypedDicts are discovered from
@@ -108,6 +109,10 @@ EXTERNAL_TYPEDDICT_PATHS = frozenset(
         "cdp_use.cdp.domsnapshot.types.NodeTreeSnapshot",
         "cdp_use.cdp.domsnapshot.types.RareBooleanData",
         "cdp_use.cdp.domsnapshot.types.RareStringData",
+        "cdp_use.cdp.page.events.FrameNavigatedEvent",
+        "cdp_use.cdp.page.events.FrameStartedNavigatingEvent",
+        "cdp_use.cdp.page.events.FrameStoppedLoadingEvent",
+        "cdp_use.cdp.page.types.Frame",
         "cdp_use.cdp.runtime.commands.CallFunctionOnReturns",
         "cdp_use.cdp.runtime.commands.EvaluateReturns",
         "cdp_use.cdp.runtime.types.RemoteObject",

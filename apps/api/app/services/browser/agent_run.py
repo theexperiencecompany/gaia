@@ -43,7 +43,7 @@ from app.services.browser.captions import burst_caption, step_caption
 from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.jev.gateway import build_jev_client
 from app.services.browser.jev.loop import BurstContext, JevRunner
-from app.services.browser.jev.page import JevPage
+from app.services.browser.jev.page import JevPage, PageAction
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION, JevDelegate, register_jev
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
@@ -87,7 +87,14 @@ class _ActionInputs(TypedDict, total=False):
     index: int
 
 
+class _InputInputs(_ActionInputs, total=False):
+    """Browser-Use's input action: the element it types into and the text."""
+
+    text: str
+
+
 _ACTION_INPUTS: TypeAdapter[_ActionInputs] = TypeAdapter(_ActionInputs)
+_INPUT_INPUTS: TypeAdapter[_InputInputs] = TypeAdapter(_InputInputs)
 
 
 def _element_label(state: BrowserStateSummary, index: int | None) -> str | None:
@@ -117,20 +124,23 @@ def _extract_actions(agent_output: AgentOutput, state: BrowserStateSummary) -> l
     for action in agent_output.action:
         for action_name, params in action.model_dump(exclude_none=True).items():
             raw_inputs = params if isinstance(params, dict) else {}
-            index = _ACTION_INPUTS.validate_python(raw_inputs).get("index")
-            target = _element_label(state, index)
+            typed_inputs: _ActionInputs = _ACTION_INPUTS.validate_python(raw_inputs)
+            target = _element_label(state, typed_inputs.get("index"))
             actions.append(BrowserAction(name=action_name, inputs=raw_inputs, target=target))
     return actions
 
 
-def _types_into_a_password_field(action: BrowserAction, state: BrowserStateSummary) -> bool:
-    """Whether a Browser-Use input action types into a password field."""
+def _password_typed(action: BrowserAction, state: BrowserStateSummary) -> str | None:
+    """Return what a Browser-Use input action types into a password field, or None for any other action."""
     if action.name != _INPUT_ACTION:
-        return False
-    index = _ACTION_INPUTS.validate_python(action.inputs).get("index")
+        return None
+    typed_inputs: _InputInputs = _INPUT_INPUTS.validate_python(action.inputs)
+    index = typed_inputs.get("index")
     node = state.dom_state.selector_map.get(index) if index is not None else None
     kind = node.attributes.get("type") if node is not None else None
-    return kind is not None and kind.lower() == "password"
+    if kind is None or kind.lower() != "password":
+        return None
+    return typed_inputs.get("text")
 
 
 def _summarize_action_result(result: ActionResult) -> str | None:
@@ -142,6 +152,13 @@ def _summarize_action_result(result: ActionResult) -> str | None:
     if len(collapsed) <= _OUTPUT_MAX_CHARS:
         return collapsed
     return collapsed[: _OUTPUT_MAX_CHARS - 1].rstrip() + "…"
+
+
+def _guidance_element(number: int, action: PageAction) -> GuidanceElement:
+    """Return one control as a guidance ask lists it: its number on the page, label and role."""
+    return GuidanceElement(
+        index=number, label=action["label"], role=action.get("role", action["kind"])
+    )
 
 
 def outcome_from_history(history: AgentHistoryList[BaseModel]) -> tuple[bool, str | None]:
@@ -355,9 +372,9 @@ class BrowserAgentRun:
             title=page.title,
             page_text=self._secrets.redact(page.text)[:BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS],
             elements=[
-                GuidanceElement(index=n, label=a["label"], role=a.get("role", a["kind"]))
-                for n, a in enumerate(page.actions[:BROWSER_GUIDANCE_MAX_ELEMENTS], 1)
-                if "node" in a
+                _guidance_element(n, action)
+                for n, action in enumerate(page.actions[:BROWSER_GUIDANCE_MAX_ELEMENTS], 1)
+                if "node" in action
             ],
             recent_actions=[
                 GuidanceAction(action=a.description)
@@ -415,10 +432,7 @@ class BrowserAgentRun:
         actions = _extract_actions(agent_output, browser_state_summary)
         self._step = _Step(started_at=started_at, actions=[a.name for a in actions])
         for action in actions:
-            typed = action.inputs.get("text")
-            if isinstance(typed, str) and _types_into_a_password_field(
-                action, browser_state_summary
-            ):
+            if (typed := _password_typed(action, browser_state_summary)) is not None:
                 self._secrets.learn(typed)
         signature: _Signature = (browser_state_summary.url, [(a.name, a.inputs) for a in actions])
         self._signatures.append(signature)
@@ -440,7 +454,7 @@ class BrowserAgentRun:
             title=browser_state_summary.title,
         )
 
-    async def _on_step_end(self, agent: Agent[Any, Any]) -> None:
+    async def _on_step_end(self, agent: Agent[None, BaseModel]) -> None:
         """Record the step's actions and mirror their results into the thread."""
         results = agent.state.last_result or []
         # A step _on_step saw has its card already (or Jev's burst card stands for it).

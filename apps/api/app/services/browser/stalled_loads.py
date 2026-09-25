@@ -29,6 +29,7 @@ if TYPE_CHECKING:
         FrameStartedNavigatingEvent,
         FrameStoppedLoadingEvent,
     )
+    from cdp_use.cdp.page.types import Frame
 
 #: Navigation types that stay on the current document and never wait on a server.
 _SAME_DOCUMENT = frozenset({"sameDocument", "historySameDocument"})
@@ -76,8 +77,9 @@ class StalledLoads:
 
     def _on_committed(self, event: FrameNavigatedEvent, session_id: str | None) -> None:
         del session_id
+        frame: Frame = event["frame"]
         # A child frame's id is never a tab's, so only a tab's own commit cancels.
-        self._cancel(event["frame"]["id"])
+        self._cancel(frame["id"])
 
     def _on_stopped(self, event: FrameStoppedLoadingEvent, session_id: str | None) -> None:
         del session_id
