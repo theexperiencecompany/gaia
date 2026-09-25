@@ -249,12 +249,13 @@ async def test_a_primary_out_of_credit_is_skipped_until_its_window_passes(monkey
         primary=_client(primary, provider="openrouter"),
         fallback=_client(lambda request: httpx.Response(200, json=ANSWER), provider="vercel"),
     )
-    now = [1000.0]
+    # Early in the clock's life: a fresh client must not treat that as inside a window.
+    now = [0.5]
     monkeypatch.setattr(gateway, "monotonic", lambda: now[0])
 
     first = await client.evaluate(REQUEST)
     second = await client.evaluate(REQUEST)
-    now[0] += JEV_OUT_OF_CREDIT_SECONDS + 1
+    now[0] += JEV_OUT_OF_CREDIT_SECONDS
     await client.evaluate(REQUEST)
 
     assert (first.provider, second.provider) == ("vercel", "vercel")

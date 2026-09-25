@@ -149,13 +149,13 @@ class JevGatewayClient:
         self.model = model
         self.provider = provider
         self._url = url
-        self._headers = {"Authorization": f"Bearer {api_key}"}
+        # Header names are case-insensitive: a change of case is an equivalent mutant.
+        self._headers = {"Authorization": f"Bearer {api_key}"}  # pragma: no mutate
         self._client = client or httpx.AsyncClient(timeout=JEV_GATEWAY_TIMEOUT_SECONDS)
 
     async def evaluate(self, request: JevEvaluationRequest) -> JevEvaluation:
         """POST the questions; retries transient 429/503/529 with backoff."""
-        # The state is JSON-native already; json mode only guards a future field.
-        body = {"model": self.model, **request.model_dump(mode="json")}
+        body = {"model": self.model, **request.model_dump()}
         request_bytes = len(json.dumps(body))
         started = perf_counter()
         for attempt in range(JEV_GATEWAY_MAX_ATTEMPTS):

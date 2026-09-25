@@ -65,3 +65,23 @@ def test_the_agent_fills_placeholders_only_on_the_tasks_sites() -> None:
         "https://*.example.test": {"password": PASSWORD},
     }
     assert RunSecrets({}, ["example.test"]).sensitive_data() == {}
+
+
+def test_a_secret_inside_a_longer_one_never_splits_it() -> None:
+    secrets = RunSecrets({"password": "a-secret-x", "pin": "secret"}, ["example.test"])
+
+    assert secrets.mask("typed a-secret-x") == "typed <secret>password</secret>"
+    assert secrets.redact("typed a-secret-x") == f"typed {JEV_SECRET_MASK}"
+    secrets.learn("b-a-secret-x-c")
+    assert secrets.redact("typed b-a-secret-x-c") == f"typed {JEV_SECRET_MASK}"
+
+
+def test_a_page_with_no_host_is_on_none_of_the_tasks_sites() -> None:
+    assert _secrets().value_for("<secret>password</secret>", "about:blank") is None
+
+
+def test_a_secret_that_starts_a_longer_one_never_cuts_it_short() -> None:
+    secrets = RunSecrets({"password": "hunter2-long", "pin": "hunter2"}, ["example.test"])
+
+    assert secrets.mask("hunter2-long") == "<secret>password</secret>"
+    assert secrets.redact("hunter2-long and hunter2") == f"{JEV_SECRET_MASK} and {JEV_SECRET_MASK}"
