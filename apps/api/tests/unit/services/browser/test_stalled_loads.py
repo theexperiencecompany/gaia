@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-import app.services.browser.stalled_loads as stalled_loads
+from app.services.browser import stalled_loads
 from app.services.browser.stalled_loads import StalledLoads
 
 TAB = "TAB-1"

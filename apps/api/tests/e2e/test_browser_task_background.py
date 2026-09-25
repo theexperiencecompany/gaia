@@ -15,9 +15,9 @@ import pytest
 
 from app.constants.browser import (
     BROWSER_NO_GUIDANCE_AVAILABLE,
-    EngineSwitchReason,
     BROWSER_RUN_BLOCKED_SUMMARY,
     BrowserSessionStatus,
+    EngineSwitchReason,
 )
 from app.constants.chat import SourceCategory
 from app.models.chat_models import ConversationSource

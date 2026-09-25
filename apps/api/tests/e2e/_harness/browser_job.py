@@ -188,7 +188,7 @@ class _BrowserSession:
 class _ScriptedAgent:
     """Stands in for browser_use.Agent, calling back exactly where the real one does.
 
-    The run's initial `jev` action is not executed: Jev's own loop is proven by its
+    The run's initial jev action is not executed: Jev's own loop is proven by its
     unit tests, and these journeys are about everything around the run.
     """
 

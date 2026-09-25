@@ -200,7 +200,7 @@ async def browser_task(
     secrets: Annotated[
         dict[str, str] | None,
         "Credentials the user gave for this task (passwords, usernames of accounts), by a short "
-        "name, e.g. {\"password\": \"...\"}. In the task write <secret>name</secret> wherever one "
+        'name, e.g. {"password": "..."}. In the task write <secret>name</secret> wherever one '
         "is used, never the value.",
     ] = None,
 ) -> str:

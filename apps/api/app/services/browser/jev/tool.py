@@ -115,7 +115,7 @@ def _step_action(step: JevStep) -> BrowserAction:
 
 
 def report(result: BurstResult) -> str:
-    """The burst as the agent reads it: why it stopped, what it did, and the page it ended on."""
+    """Return the burst as the agent reads it: why it stopped, what it did, and the page it ended on."""
     lines = [
         f'Jev ran on: "{result.goal}"',
         f"Stopped: {result.stop.value}. {result.detail} {_STOP_MEANING[result.stop]}",

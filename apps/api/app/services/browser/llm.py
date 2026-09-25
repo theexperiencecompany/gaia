@@ -9,7 +9,7 @@ real browser task needs it.
 from __future__ import annotations
 
 from time import perf_counter
-from typing import TYPE_CHECKING, Any, TypeVar, overload
+from typing import TYPE_CHECKING, TypeVar, overload
 
 from pydantic import BaseModel
 from pydantic_core import CoreSchema, core_schema
@@ -89,16 +89,16 @@ class MeteredChatModel:
 
     @overload
     async def ainvoke(
-        self, messages: list[BaseMessage], output_format: None = None, **kwargs: Any
+        self, messages: list[BaseMessage], output_format: None = None, **kwargs: object
     ) -> ChatInvokeCompletion[str]: ...
 
     @overload
     async def ainvoke(
-        self, messages: list[BaseMessage], output_format: type[T], **kwargs: Any
+        self, messages: list[BaseMessage], output_format: type[T], **kwargs: object
     ) -> ChatInvokeCompletion[T]: ...
 
     async def ainvoke(
-        self, messages: list[BaseMessage], output_format: type[T] | None = None, **kwargs: Any
+        self, messages: list[BaseMessage], output_format: type[T] | None = None, **kwargs: object
     ) -> ChatInvokeCompletion[T] | ChatInvokeCompletion[str]:
         started = perf_counter()
         result = await first_answer(
@@ -138,7 +138,9 @@ async def build_agent_llm(user_id: str | None, ledger: RunLedger) -> BaseChatMod
         )
     elif lane.provider is LLMProviderName.OPENROUTER and lane.model:
         if not settings.OPENROUTER_API_KEY:
-            raise BrowserUnavailableError("OPENROUTER_API_KEY is not set; the browser agent needs it.")
+            raise BrowserUnavailableError(
+                "OPENROUTER_API_KEY is not set; the browser agent needs it."
+            )
         model = ChatOpenAI(
             model=lane.model,
             api_key=settings.OPENROUTER_API_KEY,

@@ -1,7 +1,7 @@
 """Drive one browser task: Jev first on the whole task, then the Browser-Use agent steers and finishes.
 
 One long-lived Browser-Use Agent runs on the reasoning model with Jev registered
-as its `jev` action. The Agent's initial action is a Jev burst on the whole
+as its jev action. The Agent's initial action is a Jev burst on the whole
 task, so the first model call the agent makes already reads what Jev did. The
 agent then writes the answer, hands Jev a sharper goal, or acts itself; it is
 the only finisher and the only answer writer. Every agent step and every Jev
@@ -11,6 +11,7 @@ burst reaches the runner as one frame through RunHooks.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from functools import partial
 import json
 from time import perf_counter
@@ -47,7 +48,7 @@ from app.schemas.browser import (
 from app.services.browser.captions import burst_caption, step_caption
 from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.jev.gateway import build_jev_client
-from app.services.browser.jev.loop import JevRunner
+from app.services.browser.jev.loop import BurstContext, JevRunner
 from app.services.browser.jev.page import JevPage
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION, JevDelegate, register_jev
@@ -173,6 +174,17 @@ def outcome_from_history(history: AgentHistoryList[BaseModel]) -> tuple[bool, st
     return success, final
 
 
+@dataclass(frozen=True)
+class AgentRunSetup:
+    """Who a run works for and what it carries across engines: the user, its ledger and secrets, the steps shown."""
+
+    user_id: str | None
+    ledger: RunLedger
+    secrets: RunSecrets
+    #: A run resumed on the fallback engine numbers on from the steps the user already saw.
+    steps_before: int = 0
+
+
 class BrowserAgentRun:
     """Run one Browser-Use Agent, with Jev as its first action and its fast operator."""
 
@@ -182,26 +194,21 @@ class BrowserAgentRun:
         session: BrowserHostSession,
         config: BrowserRunConfig,
         hooks: RunHooks,
-        step_timeout: float,
-        secrets: RunSecrets,
-        ledger: RunLedger,
-        user_id: str | None,
-        steps_before: int = 0,
+        setup: AgentRunSetup,
     ) -> None:
         self._session = session
         self._config = config
         self._hooks = hooks
-        self._step_timeout = step_timeout
-        self._secrets = secrets
-        self._ledger = ledger
-        self._user_id = user_id
+        self._secrets = setup.secrets
+        self._ledger = setup.ledger
+        self._user_id = setup.user_id
         self._agent: Any = None
         self._page: JevPage | None = None
         self._delegate: JevDelegate | None = None
         self._stalls: StalledLoads | None = None
         self._clock = StepClock()
         # A run resumed on the fallback engine numbers on from the steps the user already saw.
-        self._frames = steps_before
+        self._frames = setup.steps_before
         self._framed = False
         self._step_started_at = 0.0
         self._step_actions: list[str] = []
@@ -244,11 +251,13 @@ class BrowserAgentRun:
                 page=self._page_for(self._agent.browser_session),
                 client=client,
                 text_model=text_model,
-                ledger=self._ledger,
-                secrets=self._secrets,
-                stalls=stalls,
-                should_stop=self._hooks.should_stop,
-                user_waiting=self._hooks.user_waiting,
+                run=BurstContext(
+                    ledger=self._ledger,
+                    secrets=self._secrets,
+                    stalls=stalls,
+                    should_stop=self._hooks.should_stop,
+                    user_waiting=self._hooks.user_waiting,
+                ),
             )
 
         self._delegate = JevDelegate(runner_for=runner_for, emit=self._emit_burst)
@@ -281,7 +290,7 @@ class BrowserAgentRun:
             max_failures=BROWSER_AGENT_MAX_FAILURES,
             llm_timeout=BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
             max_actions_per_step=self._config.max_actions_per_step,
-            step_timeout=int(self._step_timeout),
+            step_timeout=self._config.step_budget_seconds,
             page_extraction_llm=text_model,
             _url_shortening_limit=BROWSER_AGENT_URL_QUERY_MAX_CHARS,
         )

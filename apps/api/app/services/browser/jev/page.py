@@ -9,11 +9,12 @@ before input, and no input is ever retried.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable
+import contextlib
 from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
-from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, TypeVar, cast
 
 from app.constants.browser import (
@@ -203,10 +204,8 @@ class JevPage:
         if self._after_input is not None:
             action, self._after_input = self._after_input, None
             # Read-only and after execution was recorded, so a navigation cutting it short loses nothing.
-            try:
+            with contextlib.suppress(StalePage):
                 await self._evaluate(f"{_SETTLE_JS}({json.dumps(action)})", await_promise=True)
-            except StalePage:
-                pass
         for _ in range(JEV_OBSERVE_ATTEMPTS):
             try:
                 value = await self._evaluate(_SNAPSHOT_JS)
@@ -251,58 +250,66 @@ class JevPage:
             return
         session = await self._session()
         if kind == "scroll":
-            await self._mouse(
-                session,
-                {
-                    "type": "mouseWheel",
-                    "x": 550,
-                    "y": 400,
-                    "deltaX": 0,
-                    "deltaY": action.get("delta", 0),
-                },
-            )
+            wheel: DispatchMouseEventParameters = {
+                "type": "mouseWheel",
+                "x": 550,
+                "y": 400,
+                "deltaX": 0,
+                "deltaY": action.get("delta", 0),
+            }
+            await self._mouse(session, wheel)
             self._after_input = action
             return
+        point = await self._target_point(action)
+        self._after_input = action
+        if point is None:
+            return
+        for event in ("mousePressed", "mouseReleased"):
+            await self._mouse(
+                session,
+                {"type": event, "x": point[0], "y": point[1], "button": "left", "clickCount": 1},
+            )
+        if kind in ("fill", "secret") and text is not None:
+            await self._type(session, text)
+
+    async def _target_point(self, action: PageAction) -> tuple[float, float] | None:
+        """Return where to press the target, or None for a dropdown set in the page; raise when it cannot be."""
+        select = action["kind"] == "select"
         try:
             point = await self._evaluate(f"{_ACT_JS}({json.dumps(action)})")
         except StalePage as exc:
-            if kind == "select":
+            if select:
                 raise UncertainSelect("The dropdown change was interrupted.") from exc
             raise
         if point is None:
-            if kind == "select":
+            if select:
                 raise UncertainSelect("The dropdown change was not confirmed.")
             raise Covered("The target changed or is covered.")
-        self._after_input = action
-        if kind == "select":
-            return
-        x, y = cast("dict[str, float]", point)["x"], cast("dict[str, float]", point)["y"]
-        for event in ("mousePressed", "mouseReleased"):
-            await self._mouse(
-                session, {"type": event, "x": x, "y": y, "button": "left", "clickCount": 1}
-            )
-        if kind in ("fill", "secret") and text is not None:
-            await self._key(
-                session,
-                {
-                    "type": "keyDown",
-                    "key": "a",
-                    "code": "KeyA",
-                    "modifiers": _CTRL,
-                    "commands": ["selectAll"],
-                },
-            )
-            await self._key(
-                session, {"type": "keyUp", "key": "a", "code": "KeyA", "modifiers": _CTRL}
-            )
-            # One key event per character, as a person types: Input.insertText
-            # fires no key events, and a date picker or <input type=time> that
-            # parses keystrokes then drops the value (measured on Chrome).
-            for char in text:
-                key = "Enter" if char == "\n" else char
-                typed = "\r" if char == "\n" else char
-                await self._key(session, {"type": "keyDown", "key": key, "text": typed})
-                await self._key(session, {"type": "keyUp", "key": key})
+        if select:
+            return None
+        where = cast("dict[str, float]", point)
+        return where["x"], where["y"]
+
+    async def _type(self, session: CDPSession, text: str) -> None:
+        """Replace the focused field's text, one key event per character as a person types.
+
+        Input.insertText fires no key events, and a date picker or <input type=time>
+        that parses keystrokes then drops the value (measured on Chrome).
+        """
+        select_all: DispatchKeyEventParameters = {
+            "type": "keyDown",
+            "key": "a",
+            "code": "KeyA",
+            "modifiers": _CTRL,
+            "commands": ["selectAll"],
+        }
+        await self._key(session, select_all)
+        await self._key(session, {"type": "keyUp", "key": "a", "code": "KeyA", "modifiers": _CTRL})
+        for char in text:
+            key = "Enter" if char == "\n" else char
+            typed = "\r" if char == "\n" else char
+            await self._key(session, {"type": "keyDown", "key": key, "text": typed})
+            await self._key(session, {"type": "keyUp", "key": key})
 
     async def press_enter(self) -> None:
         """Press Enter in whatever holds focus: submits a typed search or form."""
@@ -336,7 +343,7 @@ class JevPage:
         )
 
     async def body_text(self, limit: int) -> str:
-        """The start of the whole page's rendered text, not only what the viewport shows."""
+        """Return the start of the whole page's rendered text, not only what the viewport shows."""
         text = await self._evaluate(
             f"(document.body ? document.body.innerText : '').slice(0, {limit})"
         )
@@ -368,7 +375,7 @@ class JevPage:
         return {tab.target_id for tab in await self._browser.get_tabs()}
 
     async def screenshot(self) -> str:
-        """The focused tab as a base64 JPEG, for the step card."""
+        """Return the focused tab as a base64 JPEG, for the step card."""
         session = await self._session()
         result = await _bounded(
             session.cdp_client.send.Page.captureScreenshot(

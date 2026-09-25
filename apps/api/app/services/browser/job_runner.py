@@ -66,6 +66,7 @@ from app.services.browser.jobs import (
     take_job_messages,
 )
 from app.services.browser.replay import create_replay_link
+from app.services.browser.run_contract import FinishedRun
 from app.services.browser.run_failure import record_run_result
 from app.services.browser.runner import (
     BrowserRunConfig,
@@ -470,14 +471,7 @@ async def _run_guidance(
 
 
 async def persist_run_outcome(
-    request: BrowserJobRequest,
-    *,
-    session_id: str,
-    result: BrowserResultSnapshot,
-    actions: int,
-    run_t0: float,
-    emitter: ProgressEmitter,
-    engine_fallback: bool,
+    request: BrowserJobRequest, run: FinishedRun, *, emitter: ProgressEmitter
 ) -> None:
     """Record analytics + the browser-history row for a finished run.
 
@@ -488,6 +482,7 @@ async def persist_run_outcome(
     """
     if not request.user_id:
         return
+    result = run.result
     capture_event(
         request.user_id,
         AnalyticsEvents.BROWSER_TASK_FINISHED,
@@ -495,12 +490,12 @@ async def persist_run_outcome(
             "status": result.status.value,
             "success": result.success,
             "steps": result.steps,
-            "actions": actions,
-            "duration_ms": round((perf_counter() - run_t0) * 1000),
+            "actions": run.actions,
+            "duration_ms": run.run_ms,
             "source": request.source_category or "web",
             # With success, says whether the fallback engine recovered a run
             # the primary could not finish, and so points at engine gaps.
-            "engine_fallback": engine_fallback,
+            "engine_fallback": run.engine_fallback,
         },
     )
     await record_browser_task(
@@ -508,11 +503,11 @@ async def persist_run_outcome(
             user_id=request.user_id,
             conversation_id=request.conversation_id,
             task=request.task,
-            session_id=session_id,
+            session_id=run.session_id,
             source=request.conversation_source.value if request.conversation_source else "",
         ),
         result,
-        actions=actions,
+        actions=run.actions,
         step_goals=[emitter.step_goals.get(i, "") for i in range(1, result.steps + 1)],
         step_screenshots=[emitter.step_shots.get(i, "") for i in range(1, result.steps + 1)],
     )
@@ -675,21 +670,15 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
             )
             run_t0 = perf_counter()
             result = await runner.run(full_task)
-            record_run_result(
-                result,
+            finished = FinishedRun(
+                result=result,
+                session_id=runner.session.session_id,
                 actions=runner.ledger.action_count,
                 engine_fallback=runner.used_fallback,
                 run_ms=round((perf_counter() - run_t0) * 1000),
             )
-            await persist_run_outcome(
-                request,
-                session_id=runner.session.session_id,
-                result=result,
-                actions=runner.ledger.action_count,
-                run_t0=run_t0,
-                emitter=emitter,
-                engine_fallback=runner.used_fallback,
-            )
+            record_run_result(finished)
+            await persist_run_outcome(request, finished, emitter=emitter)
             return result
     except BrowserConcurrencyLimit as exc:
         log.warning(f"{LogTag.BROWSER} Browser host at capacity", error=str(exc))

@@ -43,11 +43,9 @@ def build_browser_tools(
 ) -> Tools[None]:
     """Build the Browser-Use Tools the agent can call during a run.
 
-    handle_takeover(reason, category) performs the live-view handoff and
-    returns a result string to feed back to the agent, or raises to stop the
-    run when the user cancels. handle_guidance(reason) asks the agent that
-    started the run instead, on the same contract. handle_engine_switch, given
-    only on the fast engine, moves the run to the full browser.
+    handle_takeover and handle_guidance return the text the agent reads next, or
+    raise to stop the run; handle_engine_switch, given only on the fast engine,
+    moves the run to the full browser.
     """
     from browser_use import Tools  # noqa: PLC0415 -- heavy optional dep
 

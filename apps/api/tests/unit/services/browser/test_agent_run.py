@@ -18,7 +18,7 @@ import pytest
 
 from app.constants.browser import BROWSER_AGENT_NO_PROGRESS_STEPS
 from app.services.browser import agent_run as agent_run_mod
-from app.services.browser.agent_run import STEP_ERROR_CAPTION, BrowserAgentRun
+from app.services.browser.agent_run import STEP_ERROR_CAPTION, AgentRunSetup, BrowserAgentRun
 from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION
@@ -95,10 +95,11 @@ class _Harness:
                 take_user_messages=self._take_messages,
                 action_results=self._record_outputs,
             ),
-            step_timeout=30.0,
-            secrets=RunSecrets({"password": SECRET}, ["example.test"]),
-            ledger=self.ledger,
-            user_id="user-1",
+            setup=AgentRunSetup(
+                user_id="user-1",
+                ledger=self.ledger,
+                secrets=RunSecrets({"password": SECRET}, ["example.test"]),
+            ),
         )
         self.new_tasks: list[str] = []
         self.run._agent = SimpleNamespace(

@@ -10,7 +10,6 @@ so a navigation that interrupts it cannot erase it.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 import json
 from time import perf_counter
@@ -59,14 +58,12 @@ from app.services.browser.jev.page import (
 from app.services.browser.jev.questions import TEXT_VALUE
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.ledger import CallComponent, ExecutedAction, ModelCall, RunLedger
+from app.services.browser.run_contract import FlagFn
 from app.services.browser.stalled_loads import StalledLoads
 from shared.py.wide_events import log
 
 if TYPE_CHECKING:
     from browser_use.llm.base import BaseChatModel
-
-#: Asked between decisions: whether the run must stop, and whether the user sent a message.
-FlagFn = Callable[[], Awaitable[bool]]
 
 
 class _TextValue(BaseModel):
@@ -119,6 +116,21 @@ class BurstResult:
         return any(step.page_changed for step in self.steps)
 
 
+@dataclass(frozen=True)
+class _Performed:
+    """What one executed decision did, as its step records it."""
+
+    label: str
+    #: The target's id or name attribute.
+    ident: str = ""
+    #: Where a clicked link points.
+    href: str = ""
+    #: What was typed, as shown (a secret stays its placeholder).
+    text: str | None = None
+    #: The tabs open before a click, to follow one it opens.
+    tabs: frozenset[str] = frozenset()
+
+
 @dataclass
 class _Burst:
     """One burst's working state."""
@@ -132,6 +144,18 @@ class _Burst:
     covered: int = 0
 
 
+@dataclass(frozen=True)
+class BurstContext:
+    """What every burst shares with the run around it: its ledger, secrets, stopped loads and signals."""
+
+    ledger: RunLedger
+    secrets: RunSecrets
+    stalls: StalledLoads
+    #: Asked between decisions: whether the run must stop, and whether the user sent a message.
+    should_stop: FlagFn
+    user_waiting: FlagFn
+
+
 class JevRunner:
     """Runs Jev bursts on one browser session; what it has visited carries across bursts."""
 
@@ -141,20 +165,16 @@ class JevRunner:
         page: JevPage,
         client: JevDecisionsClient,
         text_model: BaseChatModel,
-        ledger: RunLedger,
-        secrets: RunSecrets,
-        stalls: StalledLoads,
-        should_stop: FlagFn,
-        user_waiting: FlagFn,
+        run: BurstContext,
     ) -> None:
         self._page = page
-        self._stalls = stalls
         self._client = client
         self._text_model = text_model
-        self._ledger = ledger
-        self._secrets = secrets
-        self._should_stop = should_stop
-        self._user_waiting = user_waiting
+        self._ledger = run.ledger
+        self._secrets = run.secrets
+        self._stalls = run.stalls
+        self._should_stop = run.should_stop
+        self._user_waiting = run.user_waiting
         self.visited: list[Visited] = []
 
     async def burst(self, goal: str, start_url: str | None) -> BurstResult:
@@ -248,50 +268,12 @@ class JevRunner:
 
     async def _execute(self, state: _Burst, decision: Decision) -> tuple[JevStop, str] | None:
         """Execute one decision; return why the burst ends, or None to take another step."""
-        page = state.page
         operation = decision.operation
         if operation in (JevOperation.DONE, JevOperation.BLOCKED):
-            if not await self._page.fresh(page):
-                state.page = await self._page.observe()
-                return None
-            if operation is JevOperation.BLOCKED:
-                return JevStop.BLOCKED, "Jev found no operation that makes progress here."
-            return JevStop.DONE, "Jev judged the goal done."
+            return await self._conclude(state, operation)
         started = perf_counter()
-        tabs: set[str] = set()
-        text: str | None = None
-        label = operation.value
-        ident = ""
-        href = ""
-        action: PageAction | None = None
         try:
-            if operation is JevOperation.NAVIGATE and decision.url is not None:
-                label = f"Open {decision.url}"
-                if (failed := await self._open(decision.url)) is not None:
-                    return failed
-            elif operation is JevOperation.GO_BACK:
-                label = "Go back"
-                await self._page.go_back()
-            elif operation is JevOperation.PRESS_ENTER:
-                label = "Press Enter"
-                await self._page.press_enter()
-            elif decision.action_id is not None:
-                action = page.action(decision.action_id)
-                label = action["label"]
-                ident = action.get("ident", "")
-                href = self._secrets.mask(action.get("href", ""))
-                if operation is JevOperation.TYPE_TEXT:
-                    value = await self._value_for(state, action)
-                    if value is None:
-                        return (
-                            JevStop.NEEDS_INPUT,
-                            f"The goal gives no value for the field “{label}”.",
-                        )
-                    text, typed = value
-                    await self._page.act(action, page, text=typed)
-                else:
-                    tabs = await self._page.tab_ids()
-                    await self._page.act(action, page)
+            performed = await self._perform(state, decision)
         except Covered:
             state.covered += 1
             state.page = await self._page.observe()
@@ -302,37 +284,98 @@ class JevRunner:
             state.stale += 1
             state.page = await self._page.observe()
             return None
+        if not isinstance(performed, _Performed):
+            return performed
         state.stale = state.covered = 0
-        self._ledger.executed(
-            ExecutedAction(
-                component=CallComponent.JEV,
-                description=self._secrets.redact(f"{operation.value} {label}"),
-                duration_ms=round((perf_counter() - started) * 1000),
-            )
-        )
-        step = JevStep(
-            operation=operation,
-            label=label,
-            ident=ident,
-            href=href,
-            text=text,
-            url=self._secrets.mask(page.url),
-            page_changed=None,
-            decision_ms=decision.latency_ms,
-        )
-        state.steps.append(step)
+        before = state.page
+        step = self._record(state, decision, performed, started)
         # Recorded before observing: a navigation interrupting the read must not erase the action.
         try:
             state.page = await self._page.observe()
             # Checked after the read, when a tab the click opened is registered; a
             # person follows the tab a link opens.
-            if operation is JevOperation.CLICK and await self._page.follow_new_tab(tabs):
+            if operation is JevOperation.CLICK and await self._page.follow_new_tab(
+                set(performed.tabs)
+            ):
                 state.page = await self._page.observe()
         except StalePage:
             return JevStop.STALE, "The page did not settle after the last action."
-        state.steps[-1] = replace(step, page_changed=state.page.fingerprint != page.fingerprint)
+        state.steps[-1] = replace(step, page_changed=state.page.fingerprint != before.fingerprint)
         if stalled := self._stalls.take():
             return JevStop.LOAD_STALLED, self._secrets.mask(" ".join(stalled))
+        await self._read(state)
+        return self._stuck(state)
+
+    async def _conclude(self, state: _Burst, operation: JevOperation) -> tuple[JevStop, str] | None:
+        """Return DONE or BLOCKED once the page it was judged on still stands, else read it again."""
+        if not await self._page.fresh(state.page):
+            state.page = await self._page.observe()
+            return None
+        if operation is JevOperation.BLOCKED:
+            return JevStop.BLOCKED, "Jev found no operation that makes progress here."
+        return JevStop.DONE, "Jev judged the goal done."
+
+    async def _perform(self, state: _Burst, decision: Decision) -> _Performed | tuple[JevStop, str]:
+        """Carry out one decision on the page; return what it did, or why the burst ends instead."""
+        operation = decision.operation
+        if operation is JevOperation.NAVIGATE and decision.url is not None:
+            failed = await self._open(decision.url)
+            return failed if failed is not None else _Performed(label=f"Open {decision.url}")
+        if operation is JevOperation.GO_BACK:
+            await self._page.go_back()
+            return _Performed(label="Go back")
+        if operation is JevOperation.PRESS_ENTER:
+            await self._page.press_enter()
+            return _Performed(label="Press Enter")
+        if decision.action_id is None:
+            return _Performed(label=operation.value)
+        action = state.page.action(decision.action_id)
+        target = _Performed(
+            label=action["label"],
+            ident=action.get("ident", ""),
+            href=self._secrets.mask(action.get("href", "")),
+        )
+        if operation is JevOperation.TYPE_TEXT:
+            value = await self._value_for(state, action)
+            if value is None:
+                return (
+                    JevStop.NEEDS_INPUT,
+                    f"The goal gives no value for the field “{target.label}”.",
+                )
+            text, typed = value
+            await self._page.act(action, state.page, text=typed)
+            return replace(target, text=text)
+        tabs = await self._page.tab_ids()
+        await self._page.act(action, state.page)
+        return replace(target, tabs=frozenset(tabs))
+
+    def _record(
+        self, state: _Burst, decision: Decision, performed: _Performed, started: float
+    ) -> JevStep:
+        """Record an executed action in the ledger and the burst, before the page is read again."""
+        operation = decision.operation
+        self._ledger.executed(
+            ExecutedAction(
+                component=CallComponent.JEV,
+                description=self._secrets.redact(f"{operation.value} {performed.label}"),
+                duration_ms=round((perf_counter() - started) * 1000),
+            )
+        )
+        step = JevStep(
+            operation=operation,
+            label=performed.label,
+            ident=performed.ident,
+            href=performed.href,
+            text=performed.text,
+            url=self._secrets.mask(state.page.url),
+            page_changed=None,
+            decision_ms=decision.latency_ms,
+        )
+        state.steps.append(step)
+        return step
+
+    async def _read(self, state: _Burst) -> None:
+        """Note the page the action led to: visited, and its text read once for the report."""
         self._visit(state.page)
         opened = self._masked(state.page)
         if opened.url not in state.opened:
@@ -343,7 +386,6 @@ class JevRunner:
             )
         else:
             state.opened[opened.url] = state.opened.pop(opened.url)
-        return self._stuck(state)
 
     async def _open(self, url: str) -> tuple[JevStop, str] | None:
         """Open url; return why the burst ends when the page could not be opened."""
@@ -370,7 +412,7 @@ class JevRunner:
         return None
 
     async def _value_for(self, state: _Burst, action: PageAction) -> tuple[str, str] | None:
-        """What to type into action, as (shown, typed); None when the goal gives no value."""
+        """Return what to type into action, as (shown, typed); None when the goal gives no value."""
         page = self._masked(state.page)
         history = [
             RecentAction(
@@ -425,7 +467,7 @@ class JevRunner:
         self.visited.append(Visited(title=page.title, url=url))
 
     def _masked(self, page: PageState) -> PageState:
-        """The page as Jev may read it: no secret value in its address or text."""
+        """Return the page as Jev may read it: no secret value in its address or text."""
         return replace(page, url=self._secrets.mask(page.url), text=self._secrets.mask(page.text))
 
     def _record_call(self, evaluation: JevEvaluation, latency_ms: int) -> None:

@@ -240,10 +240,9 @@ class CommonSettings(BaseAppSettings):
     BROWSER_USE_MAX_STEPS: int = 100
     BROWSER_USE_MAX_ACTIONS_PER_STEP: int = 5
     BROWSER_USE_TASK_TIMEOUT_SECONDS: int = 600
-    # How long a paused run waits for the human to finish a handoff step (a login,
-    # a CAPTCHA). The one source: the job deadline, its Redis TTLs, the relay's
-    # wait and the per-step budget all derive from it (job_lifetime.py). Kept
-    # alive by the keepalive in session.py; resolving sooner resumes at once.
+    # How long a paused run waits for the user's handoff step (a login, a CAPTCHA).
+    # The one source: the job deadline, its TTLs, the relay's wait and the per-step
+    # budget all derive from it (job_lifetime.py); resolving sooner resumes at once.
     BROWSER_USE_HANDOFF_TIMEOUT_SECONDS: int = 600
     # Active work budget for a single step. The effective per-step timeout adds the
     # handoff timeout on top, so a step that pauses for a human live-view takeover

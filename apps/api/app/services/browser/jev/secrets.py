@@ -48,7 +48,7 @@ class RunSecrets:
         return list(self._values)
 
     def value_for(self, placeholder: str, url: str) -> str | None:
-        """The value a <secret>name</secret> placeholder stands for on url's page; None off the task's sites or when none was given."""
+        """Return the value a <secret>name</secret> placeholder stands for on url's page, or None off the task's sites."""
         match = _PLACEHOLDER.fullmatch(placeholder)
         host = (urlsplit(url).hostname or "").lower()
         on_site = any(host == site or host.endswith("." + site) for site in self._sites)
@@ -84,7 +84,7 @@ class RunSecrets:
         return _PLACEHOLDER.sub(JEV_SECRET_MASK, text)
 
     def sensitive_data(self) -> dict[str, str | dict[str, str]]:
-        """The map Browser-Use's agent fills <secret>name</secret> from, scoped to the task's sites."""
+        """Return the map Browser-Use's agent fills <secret>name</secret> from, scoped to the task's sites."""
         scoped: dict[str, str | dict[str, str]] = {}
         if not self._values:
             return scoped

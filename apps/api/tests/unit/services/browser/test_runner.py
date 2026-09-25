@@ -38,6 +38,7 @@ from app.schemas.browser import (
 )
 from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import engine_watchdog, runner as runner_mod
+from app.services.browser.agent_run import AgentRunSetup
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.ledger import CallComponent, ModelCall
@@ -71,11 +72,11 @@ class _ScriptedRun:
     made: ClassVar[list[_ScriptedRun]] = []
 
     def __init__(
-        self, *, session: BrowserHostSession, hooks: RunHooks, steps_before: int, **_: Any
+        self, *, session: BrowserHostSession, hooks: RunHooks, setup: AgentRunSetup, **_: Any
     ) -> None:
         self.session = session
         self.hooks = hooks
-        self.steps_before = steps_before
+        self.steps_before = setup.steps_before
         self.last_url: str | None = PAGE
         self.abandoned = False
         self.stopped = False

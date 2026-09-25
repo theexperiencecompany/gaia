@@ -16,11 +16,11 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.services.browser.jev import gateway
 from app.services.browser.jev.gateway import (
-    JevQuestion,
     JevEvaluationRequest,
     JevFailoverClient,
     JevGatewayClient,
     JevGatewayError,
+    JevQuestion,
 )
 
 pytestmark = pytest.mark.unit

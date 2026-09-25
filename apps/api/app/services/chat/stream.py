@@ -550,11 +550,9 @@ async def _resolve_pending_browser_handoff_turn(
 ) -> bool:
     """Resolve a paused browser task's handoff from the user's chat reply, or pass the reply to the running task.
 
-    Records a resolution into the thread (skipped when nothing is pending or
-    addressed) and returns False always, so the normal turn voices the ack. The
-    paused task resumes on its own stream. A reply that resolves no handoff
-    while a browser task runs goes to that task's inbox: its agent reads it at
-    its next step.
+    Always returns False, so the normal turn voices the ack; the paused task
+    resumes on its own stream. A reply that resolves no handoff while a browser
+    task runs goes to that task's inbox, where its agent reads it next step.
     """
     user_id = user.user_id
     message = user_message_content_from(body)

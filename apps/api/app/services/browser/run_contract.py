@@ -14,7 +14,12 @@ from dataclasses import dataclass
 from time import perf_counter
 
 from app.constants.browser import EngineSwitchReason
-from app.schemas.browser import AgentGuidanceRequest, BrowserAction, BrowserActionOutput
+from app.schemas.browser import (
+    AgentGuidanceRequest,
+    BrowserAction,
+    BrowserActionOutput,
+    BrowserResultSnapshot,
+)
 
 # Per-action results, keyed to the step whose rows the thread mirror emitted.
 # Awaitable: the mirror publishes them, and a publish crosses a process boundary.
@@ -49,6 +54,11 @@ class BrowserRunConfig:
     #: task gives up when the task names more than one.
     start_url: str | None = None
 
+    @property
+    def step_budget_seconds(self) -> int:
+        """Return one step's budget: active work plus a whole handoff, so a paused step is never cut as stuck."""
+        return self.step_timeout_seconds + self.handoff_timeout_seconds
+
 
 @dataclass(frozen=True)
 class StepFrame:
@@ -63,6 +73,18 @@ class StepFrame:
     title: str | None
     raw_screenshot: str | None
     since_prev_ms: int
+
+
+@dataclass(frozen=True)
+class FinishedRun:
+    """How a job's run ended, as the job records it: its result card, where, how much work, how long."""
+
+    result: BrowserResultSnapshot
+    session_id: str
+    #: Browser actions executed, Jev's and the agent's.
+    actions: int
+    engine_fallback: bool
+    run_ms: int
 
 
 @dataclass(frozen=True)

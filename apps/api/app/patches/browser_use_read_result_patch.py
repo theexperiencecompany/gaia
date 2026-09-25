@@ -12,6 +12,7 @@ state, as extract already does.
 Pinned to browser-use==0.11.13; the import fails loudly if the method moves.
 """
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from browser_use.agent.views import ActionResult
@@ -21,12 +22,13 @@ from browser_use.tools.service import Tools
 #: The actions whose matches are otherwise summarised away.
 _READ_ACTIONS = frozenset({"find_elements", "search_page"})
 
-_original_act = Tools.act
+_original_act: Callable[..., Awaitable[ActionResult]] = Tools.act
 
 
-async def _act(self: Tools[Any], action: ActionModel, *args: Any, **kwargs: Any) -> ActionResult:
+async def _act(self: Tools[Any], action: ActionModel, **kwargs: object) -> ActionResult:
     """Run the action; a read action's matches are shown to the model at its next step."""
-    result = await _original_act(self, action, *args, **kwargs)
+    # Browser-Use passes everything but action by keyword; a positional call fails loudly here.
+    result = await _original_act(self, action=action, **kwargs)
     names = set(action.model_dump(exclude_unset=True))
     if names & _READ_ACTIONS and result.extracted_content and not result.error:
         result.include_extracted_content_only_once = True

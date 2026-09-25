@@ -1,31 +1,14 @@
 """Give each browser run its own bubus event lock instead of one for the whole process.
 
 bubus runs every EventBus's handlers under one process-wide re-entrant lock
-(bubus/service.py:951, _get_global_lock at :204), so every Browser-Use session
-in a worker process queues its state reads, navigations and screenshots behind
-every other session's. Measured 2026-09-25, four runs in one process: 22.9 to
-34.5 s each, against 12.6 to 23.4 s with a lock per run and 6 to 11 s alone.
-Upstream keeps the lock by design (browser-use/bubus#21): it serialises
-handlers that touch shared browser state, and bubus 1.5.6 is still what
-browser-use 0.13.10 pins.
-
-A lock per run keeps that guarantee, because nothing a run's handlers share is
-shared with another run:
-- Each run builds its own Agent and BrowserSession, and each creates its own
-  EventBus (browser_use/agent/service.py:582, browser/session.py:695 and :720):
-  its own CDP connection, watchdogs, agent state and file system.
-- Browser-Use never forwards events between buses (the one `.on('*', ...)` is
-  the CLI's logger, browser_use/cli.py:936), so no event crosses runs.
-- bubus's process-global state is the EventBus.all_instances WeakSet and the
-  cross-bus parent lookups in event_history (bubus/service.py:261, :297, :995,
-  :1307). Every access copies or tests without an await in between, so on one
-  event loop it cannot interleave with another run, lock or no lock.
-- A bus's run loop task starts inside the run (on its first dispatch), so it
-  inherits the run's context and reads the run's lock; re-entrancy is tracked
-  per context by bubus's own holds_global_lock ContextVar, unchanged.
-Code outside a run keeps the process-wide lock.
-
-Pinned to bubus==1.5.6; the import fails loudly if _get_global_lock moves.
+(bubus/service.py:951), so every Browser-Use session in a worker queued behind
+every other's: four runs in one process took 22.9-34.5 s each, 12.6-23.4 s with a
+lock per run, 6-11 s alone (2026-09-25). Upstream keeps the lock (bubus#21).
+A lock per run is safe: each run builds its own Agent, BrowserSession and
+EventBuses, Browser-Use never forwards events between buses, and bubus's
+process-global state is only read or copied without an await between. A bus's
+run-loop task starts inside the run, so it inherits the run's lock; outside a
+run the process-wide lock is used. Pinned to bubus==1.5.6.
 """
 
 from contextvars import ContextVar

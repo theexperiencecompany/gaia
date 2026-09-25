@@ -51,7 +51,7 @@ from app.schemas.browser import (
     HandoffRequest,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
-from app.services.browser.agent_run import BrowserAgentRun
+from app.services.browser.agent_run import AgentRunSetup, BrowserAgentRun
 from app.services.browser.engine_watchdog import run_watched
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.jev.secrets import RunSecrets
@@ -156,10 +156,8 @@ class BrowserTaskRunner:
         self._engine_switch: EngineSwitchReason | None = None
         self._config = config
         self._task_timeout = config.task_timeout_seconds
-        # A step that hands off waits on the human, so its budget is active work
-        # plus one full handoff; the wall clock allows every permitted handoff on
-        # top of the active-work budget so takeovers are never starved by a timeout.
-        self._step_timeout = config.step_timeout_seconds + config.handoff_timeout_seconds
+        # The wall clock allows every permitted handoff on top of the active-work
+        # budget, so takeovers are never starved by a timeout.
         self._wall_clock_timeout = (
             config.task_timeout_seconds + MAX_HANDOFFS_PER_TASK * config.handoff_timeout_seconds
         )
@@ -224,11 +222,12 @@ class BrowserTaskRunner:
             session=self._session,
             config=self._config,
             hooks=hooks,
-            step_timeout=self._step_timeout,
-            secrets=self._secrets,
-            ledger=self.ledger,
-            user_id=self._user_id,
-            steps_before=self._last_step,
+            setup=AgentRunSetup(
+                user_id=self._user_id,
+                ledger=self.ledger,
+                secrets=self._secrets,
+                steps_before=self._last_step,
+            ),
         )
 
     async def run(self, task: str) -> BrowserResultSnapshot:
@@ -479,7 +478,7 @@ class BrowserTaskRunner:
         return False
 
     async def _take_user_messages(self) -> list[str]:
-        """The user's mid-task messages, kept for the result too: the reply must answer what they asked last."""
+        """Take the user's mid-task messages, kept for the result too: the reply must answer what they asked last."""
         messages = await self._callbacks.take_user_messages()
         self._user_notes.extend(messages)
         return messages

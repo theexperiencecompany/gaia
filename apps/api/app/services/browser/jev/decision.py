@@ -57,7 +57,9 @@ _QUOTED = re.compile(r"\"([^\"]{1,200})\"|“([^”]{1,200})”|(?<![\w])'([^']{
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _DATE = re.compile(r"\b\d{1,4}[/.-]\d{1,2}[/.-]\d{1,4}\b")
 _URL = re.compile(r"https?://[^\s<>\"'()\[\]]+")
-_SITE = re.compile(r"\b(?:[a-z0-9-]+\.)+(?:com|org|net|io|dev|ai|edu|gov|co|uk|de|app|info)\b", re.I)
+_SITE = re.compile(
+    r"\b(?:[a-z0-9-]+\.)+(?:com|org|net|io|dev|ai|edu|gov|co|uk|de|app|info)\b", re.I
+)
 _SECRET_PLACEHOLDER = re.compile(r"<secret>([\w.-]+)</secret>")
 
 
@@ -145,13 +147,13 @@ def action_space(actions: list[PageAction]) -> _ActionSpace:
 
 
 def _fields(action: PageAction, keys: tuple[str, ...]) -> dict[str, object]:
-    """The named fields an action carries, for Jev's element descriptors."""
+    """Return the named fields an action carries, for Jev's element descriptors."""
     present: dict[str, object] = dict(action)
     return {key: present[key] for key in keys if present.get(key) is not None}
 
 
 def literals(goal: str) -> list[str]:
-    """The values a goal spells out, in order: quoted text, emails, dates, URLs."""
+    """Return the values a goal spells out, in order: quoted text, emails, dates, URLs."""
     found: list[str] = []
     for match in _QUOTED.finditer(goal):
         found.append(next(group for group in match.groups() if group))
@@ -161,7 +163,7 @@ def literals(goal: str) -> list[str]:
 
 
 def goal_addresses(goal: str) -> list[str]:
-    """The pages a goal names: its URLs, and bare sites as https addresses."""
+    """Return the pages a goal names: its URLs, and bare sites as https addresses."""
     urls = [match.group(0).rstrip(".,;:!?") for match in _URL.finditer(goal)]
     sites = [f"https://{match.group(0).lower()}/" for match in _SITE.finditer(_URL.sub(" ", goal))]
     return list(dict.fromkeys([*urls, *sites]))
@@ -171,7 +173,10 @@ def _validate_choice(answer: JevChoiceAnswer | None, ids: set[str]) -> JevChoice
     if answer is None:
         raise JevDecisionError("Jev returned no answer for a question; no action executed.")
     probabilities = answer.probabilities
-    numbers = [*probabilities.values(), answer.confidence if answer.confidence is not None else -1.0]
+    numbers = [
+        *probabilities.values(),
+        answer.confidence if answer.confidence is not None else -1.0,
+    ]
     valid = (
         answer.choice in ids
         and set(probabilities) == ids
@@ -216,11 +221,17 @@ async def decide(
                 index: {
                     "element": f"[{index}] {action['label']}",
                     "current_value": action.get("current_value", action.get("value", "")),
-                    **_fields(action, ("role", "ident", "checked", "selected", "expanded", "filled")),
+                    **_fields(
+                        action, ("role", "ident", "checked", "selected", "expanded", "filled")
+                    ),
                 }
                 for index, action in candidates.items()
             },
-            instructions={"goal": goal, "operation": operation.value, "rules": [NEXT_ACTION, TARGET]},
+            instructions={
+                "goal": goal,
+                "operation": operation.value,
+                "rules": [NEXT_ACTION, TARGET],
+            },
         )
     address_ids = {f"U{i + 1}": url for i, url in enumerate(addresses)}
     if address_ids:
@@ -244,7 +255,8 @@ async def decide(
     url: str | None = None
     if operation in space.targets:
         target = _validate_choice(
-            evaluation.answers.get(operation.value.lower() + "_target"), set(space.targets[operation])
+            evaluation.answers.get(operation.value.lower() + "_target"),
+            set(space.targets[operation]),
         )
         action_id = space.targets[operation][target.choice]["id"]
     elif operation in space.controls:
@@ -301,4 +313,3 @@ async def choose_value(
     if answer.choice in (GENERATE, NONE_VALUE):
         return answer.choice, evaluation
     return options[int(answer.choice[1:]) - 1], evaluation
-

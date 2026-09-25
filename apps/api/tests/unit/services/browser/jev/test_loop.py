@@ -18,7 +18,7 @@ from app.constants.browser import (
 from app.services.browser.jev import loop as loop_mod
 from app.services.browser.jev.decision import NONE_VALUE, Decision
 from app.services.browser.jev.gateway import JevEvaluation
-from app.services.browser.jev.loop import JevRunner
+from app.services.browser.jev.loop import BurstContext, JevRunner
 from app.services.browser.jev.page import (
     NavigationFailed,
     PageAction,
@@ -144,11 +144,13 @@ def _runner(
         page=page,  # type: ignore[arg-type]  # the tab, scripted
         client=MagicMock(model="jev"),
         text_model=MagicMock(),
-        ledger=RunLedger(),
-        secrets=secrets or RunSecrets({}, []),
-        stalls=stalls or _Stalls(),  # type: ignore[arg-type]  # the one method the loop reads
-        should_stop=_never,
-        user_waiting=_waiting,
+        run=BurstContext(
+            ledger=RunLedger(),
+            secrets=secrets or RunSecrets({}, []),
+            stalls=stalls or _Stalls(),  # type: ignore[arg-type]  # the one method the loop reads
+            should_stop=_never,
+            user_waiting=_waiting,
+        ),
     )
 
 
@@ -253,7 +255,7 @@ async def test_an_address_that_cannot_be_opened_ends_the_burst_on_the_page_it_wa
     async def _fails(url: str) -> None:
         raise NavigationFailed("net::ERR_NAME_NOT_RESOLVED")
 
-    page.navigate = _fails  # type: ignore[method-assign]
+    page.navigate = _fails  # type: ignore[method-assign]  # this one tab's navigation fails
     runner = _runner(monkeypatch, page, _decision(JevOperation.NAVIGATE, url="https://gone.test/"))
 
     result = await runner.burst("open gone.test", None)
