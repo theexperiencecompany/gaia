@@ -335,7 +335,8 @@ class JevRunner:
         if decision.url is not None:
             failed = await self._open(decision.url)
             return failed if failed is not None else _Performed(label=f"Open {decision.url}")
-        if decision.action_id is None:
+        action = decision.target
+        if action is None:
             # GO_BACK and PRESS_ENTER act on the page, not on an observed target.
             label = _PAGE_LEVEL_LABELS[operation]
             if operation is JevOperation.GO_BACK:
@@ -343,7 +344,6 @@ class JevRunner:
             else:
                 await self._page.press_enter()
             return _Performed(label=label)
-        action: PageAction = state.page.action(decision.action_id)
         target = _Performed(
             label=action["label"],
             ident=action.get("ident", ""),

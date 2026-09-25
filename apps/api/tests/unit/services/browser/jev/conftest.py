@@ -112,11 +112,11 @@ class FakePage:
 
 
 def decision(
-    operation: JevOperation, action_id: str | None = None, url: str | None = None
+    operation: JevOperation, target: PageAction | None = None, url: str | None = None
 ) -> Decision:
     return Decision(
         operation=operation,
-        action_id=action_id,
+        target=target,
         url=url,
         confidence=0.9,
         latency_ms=5,

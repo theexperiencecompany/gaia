@@ -29,7 +29,7 @@ from app.services.browser.jev.gateway import (
     JevQuestion,
     JsonInput,
 )
-from app.services.browser.jev.page import PageAction, PageState
+from app.services.browser.jev.page import PageAction, PageState, SelectOption
 from app.services.browser.jev.questions import (
     NAVIGATE_TARGET,
     NEXT_ACTION,
@@ -53,6 +53,8 @@ _CONTROL_OPERATION = {
 }
 NONE_VALUE = "NONE"
 GENERATE = "GENERATE"
+#: Between a dropdown's label and the option chosen in it, in a select step's label.
+OPTION_SEPARATOR = " → "
 _ELEMENT_FIELDS = ("role", "ident", "value", "checked", "selected", "expanded", "filled")
 #: What a target question shows of each candidate besides its label and current value.
 _TARGET_FIELDS = ("role", "ident", "checked", "selected", "expanded", "filled")
@@ -104,8 +106,8 @@ class Decision:
     """What to execute, with what the call cost."""
 
     operation: JevOperation
-    #: The snapshot action id for an element or control operation, else None.
-    action_id: str | None
+    #: The snapshot action an element or control operation executes (for a dropdown, the chosen option), else None.
+    target: PageAction | None
     url: str | None
     confidence: float
     latency_ms: int
@@ -170,27 +172,36 @@ def action_space(actions: list[PageAction]) -> _ActionSpace:
                 continue
             fields = {k: v for k, v in _fields(action, _ELEMENT_FIELDS).items() if v != ""}
             element = _Element(
-                index=str(len(space.elements) + 1),
-                label=action["label"].split(" → ")[0],
-                fields=fields,
+                index=str(len(space.elements) + 1), label=action["label"], fields=fields
             )
-            if kind == "select":
-                # A dropdown shows its current choice; each option it offers is a target.
-                element.fields["value"] = action["current_value"]
-                element.options = []
             by_node[node] = element
             space.elements.append(element)
         operation = _KIND_OPERATION[kind]
         if operation not in element.operations:
             element.operations.append(operation)
-        target = element.index
-        if element.options is not None:
-            target = f"{element.index}:{len(element.options) + 1}"
+        targets = space.targets.setdefault(operation, {})
+        if kind != "select":
+            targets[element.index] = action
+            continue
+        # A dropdown shows its current choice; each option it offers is a target.
+        element.fields["value"] = action["current_value"]
+        element.options = []
+        for n, option in enumerate(action["options"], 1):
+            target, chosen = f"{element.index}:{n}", _option_action(action, option)
             element.options.append(
-                {"index": target, "label": action["label"], "value": action["value"]}
+                {"index": target, "label": chosen["label"], "value": option["value"]}
             )
-        space.targets.setdefault(operation, {})[target] = action
+            targets[target] = chosen
     return space
+
+
+def _option_action(select: PageAction, option: SelectOption) -> PageAction:
+    """Return the action that sets select to option, named "field → option" as the step records it."""
+    chosen = select.copy()
+    del chosen["options"]
+    chosen["value"] = option["value"]
+    chosen["label"] = f"{select['label']}{OPTION_SEPARATOR}{option['label']}"
+    return chosen
 
 
 def _fields(action: PageAction, keys: tuple[str, ...]) -> dict[str, object]:
@@ -330,23 +341,21 @@ async def decide(
         evaluation.answers.get(_OPERATION_QUESTION), set(operations)
     )
     operation = JevOperation(operation_answer.choice)
-    action_id: str | None = None
+    chosen: PageAction | None = None
     url: str | None = None
     if operation in space.targets:
         target = _validate_choice(
             evaluation.answers.get(_target_question(operation)), set(space.targets[operation])
         )
-        chosen: PageAction = space.targets[operation][target.choice]
-        action_id = chosen["id"]
+        chosen = space.targets[operation][target.choice]
     elif operation in controls:
-        control: PageAction = controls[operation]
-        action_id = control["id"]
+        chosen = controls[operation]
     elif operation is JevOperation.NAVIGATE:
         target = _validate_choice(evaluation.answers.get(_NAVIGATE_QUESTION), set(address_ids))
         url = address_ids[target.choice]
     return Decision(
         operation=operation,
-        action_id=action_id,
+        target=chosen,
         url=url,
         confidence=operation_answer.confidence,
         latency_ms=evaluation.latency_ms,

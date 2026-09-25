@@ -93,6 +93,13 @@ class Rect(TypedDict):
     h: float
 
 
+class SelectOption(TypedDict):
+    """A choice a dropdown offers that it does not already hold."""
+
+    value: str
+    label: str
+
+
 class PageAction(TypedDict):
     """One executable target from the snapshot; ids are code-owned, never model-written."""
 
@@ -111,6 +118,8 @@ class PageAction(TypedDict):
     href: NotRequired[str]
     delta: NotRequired[int]
     rect: NotRequired[Rect]
+    #: A dropdown's choices; the action that picks one carries its value instead.
+    options: NotRequired[list[SelectOption]]
 
 
 class Frame(TypedDict):
@@ -153,10 +162,6 @@ class PageState:
     guards: dict[str, object]
     frames: list[Frame]
     fingerprint: str
-
-    def action(self, action_id: str) -> PageAction:
-        actions: list[PageAction] = self.actions
-        return next(a for a in actions if a["id"] == action_id)
 
 
 def _fingerprint(snapshot: _Snapshot) -> str:

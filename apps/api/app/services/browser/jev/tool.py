@@ -23,6 +23,7 @@ from app.constants.browser import (
     JevStop,
 )
 from app.schemas.browser import BrowserAction
+from app.services.browser.jev.decision import OPTION_SEPARATOR
 from app.services.browser.jev.loop import BurstResult, JevRunner, JevStep
 
 if TYPE_CHECKING:
@@ -104,8 +105,8 @@ def _step_action(step: JevStep) -> BrowserAction:
     if step.operation is JevOperation.TYPE_TEXT and step.text is not None:
         inputs["text"] = step.text
     elif step.operation is JevOperation.SELECT:
-        # The snapshot names an option "field → option"; an option may hold an arrow itself.
-        inputs["text"] = step.label.partition(" → ")[2]
+        # A select step is named "field → option"; an option may hold an arrow itself.
+        inputs["text"] = step.label.partition(OPTION_SEPARATOR)[2]
     elif step.operation is JevOperation.NAVIGATE:
         inputs["url"] = step.label.removeprefix("Open ")
     elif step.operation is JevOperation.PRESS_ENTER:

@@ -60,6 +60,18 @@ def _page(*actions: PageAction) -> PageState:
 SEARCH = _action("e1", 11, "fill", "Search", role="searchbox", ident="q", value="")
 OPEN_SEARCH = _action("e9", 11, "click", "Open Search", role="searchbox", ident="q", value="")
 BUY = _action("e2", 12, "click", "Buy now", role="button", ident="", value="")
+SIZE = _action(
+    "e3",
+    13,
+    "select",
+    "Shirt size",
+    role="combobox",
+    ident="size",
+    value="m",
+    current_value="Medium",
+    options=[{"value": "s", "label": "Small"}, {"value": "l", "label": "Large"}],
+)
+# What choosing each option executes: the dropdown set to it, named as the step records it.
 SIZE_S = _action(
     "e3",
     13,
@@ -71,7 +83,7 @@ SIZE_S = _action(
     current_value="Medium",
 )
 SIZE_L = _action(
-    "e4",
+    "e3",
     13,
     "select",
     "Shirt size → Large",
@@ -143,12 +155,38 @@ def _asked(jev: _Jev) -> JevEvaluationRequest:
 
 
 def test_each_element_gets_one_index_and_a_dropdowns_options_are_its_targets() -> None:
-    space = action_space([SEARCH, BUY, SIZE_S, SIZE_L, SCROLL])
+    space = action_space([SEARCH, BUY, SIZE, SCROLL])
 
     assert [element.index for element in space.elements] == ["1", "2", "3"]
     assert space.targets[JevOperation.SELECT] == {"3:1": SIZE_S, "3:2": SIZE_L}
     assert space.targets[JevOperation.CLICK] == {"2": BUY}
     assert space.controls == {JevOperation.SCROLL_DOWN: SCROLL}
+
+
+def test_a_dropdown_of_many_options_is_one_element_and_crowds_out_no_control() -> None:
+    countries = [{"value": f"c{n}", "label": f"Country {n}"} for n in range(300)]
+    country = _action(
+        "e3",
+        13,
+        "select",
+        "Country",
+        role="combobox",
+        value="c0",
+        current_value="—",
+        options=countries,
+    )
+    submit = _action("e4", 14, "click", "Submit order", role="button")
+
+    space = action_space([SEARCH, country, submit])
+
+    assert [element.label for element in space.elements] == ["Search", "Country", "Submit order"]
+    assert space.targets[JevOperation.CLICK] == {"3": submit}
+    options = space.targets[JevOperation.SELECT]
+    assert len(options) == 300
+    assert (options["2:300"]["value"], options["2:300"]["label"]) == (
+        "c299",
+        "Country → Country 299",
+    )
 
 
 def test_controls_ahead_of_the_elements_do_not_hide_them() -> None:
@@ -173,9 +211,7 @@ async def test_jev_is_asked_about_the_page_its_elements_what_it_did_and_where_it
     jev = _Jev(operation="DONE")
     history = [RecentAction(action="Search", kind="TYPE_TEXT", text="shoes", page_changed=True)]
     visited = [Visited("Home", "https://shop.test/"), Visited("Results", "https://shop.test/r")]
-    page = _page(
-        SEARCH, OPEN_SEARCH, BUY, SIZE_S, SIZE_L, PASSWORD, NAME, REMEMBER, REVIEWS, SCROLL
-    )
+    page = _page(SEARCH, OPEN_SEARCH, BUY, SIZE, PASSWORD, NAME, REMEMBER, REVIEWS, SCROLL)
 
     await decide(jev, page, "buy shoes", history, visited, [])
 
@@ -253,7 +289,7 @@ async def test_the_operation_question_offers_what_the_page_and_the_run_allow_und
     visited = [Visited("A", "https://a.test/"), Visited("B", "https://b.test/")]
 
     await decide(
-        jev, _page(SEARCH, BUY, SIZE_S, SCROLL, WAIT), "go", [], visited, ["https://c.test/"]
+        jev, _page(SEARCH, BUY, SIZE, SCROLL, WAIT), "go", [], visited, ["https://c.test/"]
     )
 
     question = _asked(jev).questions["operation"]
@@ -284,7 +320,7 @@ async def test_only_operations_the_page_and_the_run_allow_are_offered() -> None:
 
 async def test_each_target_question_offers_that_operations_own_targets_as_they_stand_now() -> None:
     jev = _Jev(operation="DONE")
-    page = _page(NAME, REMEMBER, REVIEWS, SIZE_S, SIZE_L, PASSWORD)
+    page = _page(NAME, REMEMBER, REVIEWS, SIZE, PASSWORD)
 
     await decide(jev, page, "check out", [], [], ["https://a.test/", "https://b.test/"])
 
@@ -340,32 +376,32 @@ async def test_each_target_question_offers_that_operations_own_targets_as_they_s
 
 
 @pytest.mark.parametrize(
-    ("choices", "action_id", "url"),
+    ("choices", "target", "url"),
     [
-        ({"operation": "CLICK", "click_target": "2"}, "e2", None),
-        ({"operation": "SELECT", "select_target": "3:2"}, "e4", None),
-        ({"operation": "SCROLL_DOWN"}, "scroll_down", None),
+        ({"operation": "CLICK", "click_target": "2"}, BUY, None),
+        ({"operation": "SELECT", "select_target": "3:2"}, SIZE_L, None),
+        ({"operation": "SCROLL_DOWN"}, SCROLL, None),
         ({"operation": "NAVIGATE", "navigate_target": "U2"}, None, "https://b.test/"),
         ({"operation": "DONE"}, None, None),
     ],
 )
 async def test_the_decision_names_the_chosen_snapshot_action_or_address(
-    choices: dict[str, str], action_id: str | None, url: str | None
+    choices: dict[str, str], target: PageAction | None, url: str | None
 ) -> None:
     jev = _Jev(**choices)
 
     decision = await decide(
         jev,
-        _page(SEARCH, BUY, SIZE_S, SIZE_L, SCROLL),
+        _page(SEARCH, BUY, SIZE, SCROLL),
         "buy",
         [],
         [],
         ["https://a.test/", "https://b.test/"],
     )
 
-    assert (decision.operation, decision.action_id, decision.url) == (
+    assert (decision.operation, decision.target, decision.url) == (
         JevOperation(choices["operation"]),
-        action_id,
+        target,
         url,
     )
     assert (decision.confidence, decision.latency_ms) == (0.8, 3)

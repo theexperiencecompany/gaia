@@ -44,7 +44,7 @@ from app.services.browser.jev.tool import JEV_ACTION
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
 from app.services.browser.run_contract import BrowserRunConfig, RunHooks, RunOutcome, StepFrame
 from tests.helpers import captured_wide_event
-from tests.unit.services.browser.jev.conftest import FakePage, decision, page_state
+from tests.unit.services.browser.jev.conftest import BUTTON, FIELD, FakePage, decision, page_state
 
 pytestmark = pytest.mark.unit
 
@@ -791,8 +791,8 @@ class TestJevInTheRun:
     def decisions(self, monkeypatch: pytest.MonkeyPatch) -> list[object]:
         clients: list[object] = []
         script = [
-            decision(JevOperation.TYPE_TEXT, "e2"),
-            decision(JevOperation.CLICK, "e1"),
+            decision(JevOperation.TYPE_TEXT, FIELD),
+            decision(JevOperation.CLICK, BUTTON),
             decision(JevOperation.DONE),
         ]
 

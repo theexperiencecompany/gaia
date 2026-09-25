@@ -99,9 +99,11 @@
     if (secret(e)) {
       if (!e.readOnly) actions.push({...base,kind:'secret',value:'',filled:e.value.length>0});
     } else if (e.tagName==='SELECT') {
-      for (const o of e.options) if (!o.selected && !o.disabled && !o.closest('optgroup[disabled]'))
-        actions.push({...base,kind:'select',value:o.value,
-          current_value:[...e.selectedOptions].map(o=>o.label).join(', '),label:base.label+' → '+o.label});
+      // One action per dropdown, its choices inside it: a long list never crowds out the controls after it.
+      const options=[...e.options].filter(o=>!o.selected && !o.disabled && !o.closest('optgroup[disabled]'))
+        .map(o=>({value:o.value,label:o.label}));
+      if (options.length) actions.push({...base,kind:'select',value:e.value,
+        current_value:[...e.selectedOptions].map(o=>o.label).join(', '),options});
     } else {
       const editable=!e.readOnly && e.getAttribute('aria-readonly')!=='true' &&
         (['textbox','searchbox','spinbutton'].includes(rname) ||

@@ -46,7 +46,9 @@ from app.services.browser.jev.questions import TEXT_VALUE
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.ledger import CallComponent, ExecutedAction, ModelCall, RunLedger
 from tests.unit.services.browser.jev.conftest import (
+    BUTTON,
     FIELD,
+    PASSWORD,
     FakePage,
     decision,
     page_state,
@@ -220,7 +222,7 @@ async def test_a_burst_ends_when_jev_judges_the_goal_done_and_reports_what_it_di
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     page = FakePage(page_state(), page_state(url="https://site.test/b", text="done page"))
-    run = _run(monkeypatch, page, decision(JevOperation.CLICK, "e1"), decision(JevOperation.DONE))
+    run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON), decision(JevOperation.DONE))
 
     result = await run.burst("go next")
 
@@ -353,7 +355,7 @@ async def test_a_captcha_frame_that_is_not_shown_does_not_stop_jev(
 async def test_a_burst_stops_at_its_action_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(loop_mod, "JEV_BURST_MAX_ACTIONS", 2)
     page = FakePage(*_pages("a", "b", "c"))
-    run = _run(monkeypatch, page, *[decision(JevOperation.CLICK, "e1")] * 2)
+    run = _run(monkeypatch, page, *[decision(JevOperation.CLICK, BUTTON)] * 2)
 
     result = await run.burst()
 
@@ -363,7 +365,7 @@ async def test_a_burst_stops_at_its_action_budget(monkeypatch: pytest.MonkeyPatc
 
 async def test_actions_that_change_nothing_end_the_burst(monkeypatch: pytest.MonkeyPatch) -> None:
     page = FakePage(*[page_state()] * (JEV_UNCHANGED_LIMIT + 1))
-    run = _run(monkeypatch, page, *[decision(JevOperation.CLICK, "e1")] * JEV_UNCHANGED_LIMIT)
+    run = _run(monkeypatch, page, *[decision(JevOperation.CLICK, BUTTON)] * JEV_UNCHANGED_LIMIT)
 
     result = await run.burst()
 
@@ -377,8 +379,8 @@ async def test_going_back_and_forth_between_two_moves_ends_the_burst(
 ) -> None:
     start, a, b = _pages("start", "a", "b")
     page = FakePage(start, a, b, a, b, a)
-    back_and_forth = [decision(JevOperation.CLICK, "e1"), decision(JevOperation.GO_BACK)] * 2
-    run = _run(monkeypatch, page, decision(JevOperation.CLICK, "e1"), *back_and_forth)
+    back_and_forth = [decision(JevOperation.CLICK, BUTTON), decision(JevOperation.GO_BACK)] * 2
+    run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON), *back_and_forth)
 
     result = await run.burst()
 
@@ -390,7 +392,7 @@ async def test_a_page_that_keeps_changing_under_each_decision_ends_the_burst(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     page = FakePage(page_state(), act_raises=StalePage("moved"))
-    run = _run(monkeypatch, page, *[decision(JevOperation.CLICK, "e1")] * JEV_STALE_LIMIT)
+    run = _run(monkeypatch, page, *[decision(JevOperation.CLICK, BUTTON)] * JEV_STALE_LIMIT)
 
     result = await run.burst()
 
@@ -402,7 +404,7 @@ async def test_a_decision_the_page_outran_is_made_again_until_the_limit(
 ) -> None:
     outcomes: list[Exception | None] = [StalePage("moved")] * (JEV_STALE_LIMIT - 1) + [None]
     page = FakePage(*_pages("a", "b"), act_raises=outcomes)
-    clicks = [decision(JevOperation.CLICK, "e1")] * JEV_STALE_LIMIT
+    clicks = [decision(JevOperation.CLICK, BUTTON)] * JEV_STALE_LIMIT
     run = _run(monkeypatch, page, *clicks, decision(JevOperation.DONE))
 
     result = await run.burst()
@@ -413,7 +415,7 @@ async def test_a_decision_the_page_outran_is_made_again_until_the_limit(
 
 async def test_a_covered_control_twice_ends_the_burst(monkeypatch: pytest.MonkeyPatch) -> None:
     page = FakePage(page_state(), act_raises=Covered("covered"))
-    run = _run(monkeypatch, page, *[decision(JevOperation.CLICK, "e1")] * 2)
+    run = _run(monkeypatch, page, *[decision(JevOperation.CLICK, BUTTON)] * 2)
 
     result = await run.burst()
 
@@ -431,7 +433,7 @@ async def test_a_control_covered_once_at_a_time_is_decided_again(
     monkeypatch: pytest.MonkeyPatch, outcomes: list[Exception | None]
 ) -> None:
     page = FakePage(*_pages("a", "b", "c"), act_raises=list(outcomes))
-    clicks = [decision(JevOperation.CLICK, "e1")] * len(outcomes)
+    clicks = [decision(JevOperation.CLICK, BUTTON)] * len(outcomes)
     run = _run(monkeypatch, page, *clicks, decision(JevOperation.DONE))
 
     result = await run.burst()
@@ -447,7 +449,7 @@ async def test_a_dropdown_change_that_may_have_fired_ends_the_burst_saying_so(
     run = _run(
         monkeypatch,
         FakePage(page_state(), act_raises=uncertain),
-        decision(JevOperation.CLICK, "e1"),
+        decision(JevOperation.CLICK, BUTTON),
     )
 
     result = await run.burst()
@@ -466,7 +468,7 @@ async def test_a_page_the_browser_stopped_loading_ends_the_burst_with_why(
     run = _run(
         monkeypatch,
         page,
-        decision(JevOperation.CLICK, "e1"),
+        decision(JevOperation.CLICK, BUTTON),
         stalls=_Stalls(notes),
         secrets=_secrets(),
     )
@@ -561,7 +563,7 @@ async def test_a_field_the_goal_gives_no_value_for_asks_the_agent_naming_the_fie
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     page = FakePage(page_state())
-    run = _run(monkeypatch, page, decision(JevOperation.TYPE_TEXT, "e2"))
+    run = _run(monkeypatch, page, decision(JevOperation.TYPE_TEXT, FIELD))
 
     result = await run.burst("fill the form")
 
@@ -575,7 +577,7 @@ async def test_a_tab_that_stops_answering_ends_the_burst(monkeypatch: pytest.Mon
     run = _run(
         monkeypatch,
         FakePage(page_state(), act_raises=unresponsive),
-        decision(JevOperation.CLICK, "e1"),
+        decision(JevOperation.CLICK, BUTTON),
     )
 
     result = await run.burst()
@@ -606,8 +608,8 @@ async def test_a_gateway_failure_choosing_a_value_ends_the_burst_with_its_steps(
     run = _run(
         monkeypatch,
         page,
-        decision(JevOperation.CLICK, "e1"),
-        decision(JevOperation.TYPE_TEXT, "e2"),
+        decision(JevOperation.CLICK, BUTTON),
+        decision(JevOperation.TYPE_TEXT, FIELD),
     )
     run.jev.value_error = JevGatewayError("503 from the gateway")
 
@@ -635,8 +637,8 @@ async def test_a_text_model_that_fails_ends_the_burst_with_its_steps(
     run = _run(
         monkeypatch,
         page,
-        decision(JevOperation.CLICK, "e1"),
-        decision(JevOperation.TYPE_TEXT, "e2"),
+        decision(JevOperation.CLICK, BUTTON),
+        decision(JevOperation.TYPE_TEXT, FIELD),
         value=GENERATE,
         text_model=text_model,
     )
@@ -653,7 +655,7 @@ async def test_a_page_that_never_settles_on_a_reread_ends_the_burst(
 ) -> None:
     # Covered, then read again while the page is still being replaced.
     page = FakePage(page_state(), act_raises=Covered("covered"))
-    run = _run(monkeypatch, page, decision(JevOperation.CLICK, "e1"))
+    run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON))
     reads = iter([page.current])
 
     async def _observe() -> PageState:
@@ -673,7 +675,7 @@ async def test_a_page_that_never_settles_after_an_action_ends_the_burst_with_the
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     run = _run(
-        monkeypatch, FakePage(page_state(), unsettled=True), decision(JevOperation.CLICK, "e1")
+        monkeypatch, FakePage(page_state(), unsettled=True), decision(JevOperation.CLICK, BUTTON)
     )
 
     result = await run.burst()
@@ -691,7 +693,7 @@ async def test_jev_decides_on_the_masked_page_with_the_goal_its_recent_actions_a
     monkeypatch.setattr(loop_mod, "JEV_RECENT_ACTIONS", 2)
     first = page_state(url=f"https://site.test/a?pw={SECRET}", text=f"hi {SECRET}")
     page = FakePage(first, *_pages("b", "c", "d"))
-    clicks = [decision(JevOperation.CLICK, "e1")] * 3
+    clicks = [decision(JevOperation.CLICK, BUTTON)] * 3
     run = _run(monkeypatch, page, *clicks, decision(JevOperation.DONE), secrets=_secrets())
 
     await run.burst("open https://docs.test/ then log in")
@@ -743,8 +745,8 @@ async def test_jev_picks_a_value_on_the_masked_page_for_the_field_from_the_goal(
     run = _run(
         monkeypatch,
         page,
-        decision(JevOperation.CLICK, "e1"),
-        decision(JevOperation.TYPE_TEXT, "e2"),
+        decision(JevOperation.CLICK, BUTTON),
+        decision(JevOperation.TYPE_TEXT, FIELD),
         decision(JevOperation.DONE),
         value="Ada",
         secrets=_secrets(),
@@ -777,8 +779,8 @@ async def test_a_value_the_goal_only_implies_is_written_by_the_text_model(
     run = _run(
         monkeypatch,
         page,
-        decision(JevOperation.CLICK, "e1"),
-        decision(JevOperation.TYPE_TEXT, "e2"),
+        decision(JevOperation.CLICK, BUTTON),
+        decision(JevOperation.TYPE_TEXT, FIELD),
         decision(JevOperation.DONE),
         value=GENERATE,
         text_model=text_model,
@@ -808,7 +810,7 @@ async def test_a_written_value_that_is_blank_asks_the_agent(
     run = _run(
         monkeypatch,
         page,
-        decision(JevOperation.TYPE_TEXT, "e2"),
+        decision(JevOperation.TYPE_TEXT, FIELD),
         value=GENERATE,
         text_model=_TextModel(written),
     )
@@ -830,7 +832,7 @@ async def test_a_secret_is_typed_into_the_page_and_never_into_what_the_agent_rea
     run = _run(
         monkeypatch,
         page,
-        decision(JevOperation.TYPE_TEXT, "e3"),
+        decision(JevOperation.TYPE_TEXT, PASSWORD),
         decision(JevOperation.DONE),
         value=MASKED,
         secrets=_secrets(),
@@ -851,7 +853,7 @@ async def test_a_secret_is_never_typed_on_a_site_the_task_does_not_name(
     run = _run(
         monkeypatch,
         page,
-        decision(JevOperation.TYPE_TEXT, "e3"),
+        decision(JevOperation.TYPE_TEXT, PASSWORD),
         value=MASKED,
         secrets=_secrets("bank.test"),
     )
@@ -868,7 +870,7 @@ async def test_a_password_field_with_no_stored_secret_is_left_to_the_agent(
     # Jev types into a password field only a secret the run was given; the agent
     # types anything else, and the run learns it as a secret there.
     page = FakePage(page_state())
-    run = _run(monkeypatch, page, decision(JevOperation.TYPE_TEXT, "e3"), value=NONE_VALUE)
+    run = _run(monkeypatch, page, decision(JevOperation.TYPE_TEXT, PASSWORD), value=NONE_VALUE)
 
     result = await run.burst('log in with password "gaia-test-123"')
 
@@ -897,8 +899,8 @@ async def test_each_step_names_its_target_where_a_link_points_and_the_page_it_wa
     run = _run(
         monkeypatch,
         page,
-        decision(JevOperation.CLICK, "e4"),
-        decision(JevOperation.SCROLL_DOWN, "scroll_down"),
+        decision(JevOperation.CLICK, link),
+        decision(JevOperation.SCROLL_DOWN, SCROLL),
         decision(JevOperation.DONE),
         secrets=_secrets(),
     )
@@ -967,7 +969,7 @@ async def test_pages_opened_along_the_way_are_read_once_masked_and_listed_in_the
     run = _run(
         monkeypatch,
         page,
-        *[decision(JevOperation.CLICK, "e1")] * 4,
+        *[decision(JevOperation.CLICK, BUTTON)] * 4,
         decision(JevOperation.DONE),
         secrets=_secrets(),
     )
@@ -988,7 +990,7 @@ async def test_a_click_that_opens_a_tab_continues_on_that_tab(
 ) -> None:
     start, b, tab = _pages("start", "b", "tab")
     page = FakePage(start, b, new_tab=tab)
-    run = _run(monkeypatch, page, decision(JevOperation.CLICK, "e1"), decision(JevOperation.DONE))
+    run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON), decision(JevOperation.DONE))
 
     result = await run.burst()
 
@@ -1016,9 +1018,9 @@ async def test_the_pages_visited_are_kept_to_the_latest_few_across_bursts(
     run = _run(
         monkeypatch,
         page,
-        *[decision(JevOperation.CLICK, "e1")] * 3,
+        *[decision(JevOperation.CLICK, BUTTON)] * 3,
         decision(JevOperation.DONE),
-        decision(JevOperation.CLICK, "e1"),
+        decision(JevOperation.CLICK, BUTTON),
         decision(JevOperation.DONE),
     )
 
@@ -1047,13 +1049,13 @@ async def test_every_jev_call_and_action_lands_in_the_run_ledger_with_secrets_hi
         provider="vercel",
         usage=JevUsage(inputTokens=12, outputTokens=3, cost=0.002),
     )
-    click = replace(decision(JevOperation.CLICK, "e1"), evaluation=evaluation)
+    click = replace(decision(JevOperation.CLICK, pay), evaluation=evaluation)
     page = FakePage(replace(page_state(), actions=[pay, FIELD]), *_pages("b", "c"))
     run = _run(
         monkeypatch,
         page,
         click,
-        decision(JevOperation.TYPE_TEXT, "e2"),
+        decision(JevOperation.TYPE_TEXT, FIELD),
         decision(JevOperation.DONE),
         value="Ada",
         secrets=_secrets(),

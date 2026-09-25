@@ -226,7 +226,6 @@ async def test_a_snapshot_is_read_into_the_page_state() -> None:
     state = await page.observe()
 
     assert state == _state(fingerprint=state.fingerprint)
-    assert state.action("e2") == LINK
     # No input preceded this read, so there was nothing to wait for.
     assert tab.settled == []
 
