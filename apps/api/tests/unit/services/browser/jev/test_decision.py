@@ -523,6 +523,37 @@ def test_the_pages_a_goal_names_are_its_urls_and_its_bare_sites() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("goal", "site"),
+    [
+        ("log in to netflix.ca", "https://netflix.ca/"),
+        ("book on www.sncf-connect.fr.", "https://www.sncf-connect.fr/"),
+        ("order from Flipkart.in today", "https://flipkart.in/"),
+        ("check bbc.co.uk", "https://bbc.co.uk/"),
+    ],
+)
+def test_a_bare_site_under_any_public_suffix_is_an_address(goal: str, site: str) -> None:
+    assert goal_addresses(goal) == [site]
+
+
+def test_the_domain_of_an_email_address_is_not_an_address() -> None:
+    assert goal_addresses("sign in as me@gmail.com, then open maps.google.com") == [
+        "https://maps.google.com/"
+    ]
+
+
+def test_a_site_right_before_a_url_or_an_email_address_is_still_an_address() -> None:
+    assert goal_addresses("see bbc.co.uk.https://example.com/rules and ft.com,me@gmail.com") == [
+        "https://example.com/rules",
+        "https://bbc.co.uk/",
+        "https://ft.com/",
+    ]
+
+
+def test_a_file_name_or_version_is_not_an_address() -> None:
+    assert goal_addresses("attach report.pdf and v1.2 notes, e.g. the summary") == []
+
+
 def test_a_site_inside_a_url_is_not_a_second_address() -> None:
     assert goal_addresses("see https://docs.example.com/guide") == [
         "https://docs.example.com/guide"

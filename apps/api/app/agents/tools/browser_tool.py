@@ -10,7 +10,6 @@ the ARQ worker, through ``app/services/browser/job_runner.py``.
 
 import asyncio
 from dataclasses import dataclass
-import re
 from typing import Annotated
 import uuid
 
@@ -38,6 +37,7 @@ from app.services.browser.agent_guidance import (
     guidance_message,
 )
 from app.services.browser.handoff import resolve_handoff
+from app.services.browser.jev.decision import named_sites, named_urls
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.job_relay import relay_job_events
 from app.services.browser.job_runner import agent_result_message
@@ -158,19 +158,14 @@ def _with_the_users_words(task: str, user_request: str | None) -> str:
     )
 
 
-_PAGE_URL = re.compile(r"https?://[^\s<>\"'()\[\]]+")
-_BARE_SITE = re.compile(r"\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b", re.IGNORECASE)
-
-
 def _the_one_page_in(task: str) -> str | None:
     """Return the http(s) URL the task names, when it names that page and no other.
 
     A site named without its scheme ("news.ycombinator.com") is a page too, so a
     task that also names one has no single start.
     """
-    pages = {match.group(0).rstrip(".,;:!?") for match in _PAGE_URL.finditer(task)}
-    elsewhere = _BARE_SITE.search(_PAGE_URL.sub(" ", task))
-    return pages.pop() if len(pages) == 1 and elsewhere is None else None
+    pages = set(named_urls(task))
+    return pages.pop() if len(pages) == 1 and not named_sites(task) else None
 
 
 def _job_request(

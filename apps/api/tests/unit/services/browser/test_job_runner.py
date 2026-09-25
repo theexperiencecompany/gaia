@@ -2159,6 +2159,26 @@ async def test_a_credential_is_typed_only_on_the_sites_the_task_names(
     assert secrets.value_for(placeholder, "https://evil.test/") is None
 
 
+async def test_a_credential_is_typed_on_a_bare_site_the_task_names_never_on_its_email_domain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _install(monkeypatch)
+
+    await _run(
+        h,
+        _request(
+            task="log in to netflix.ca as me@gmail.com with <secret>password</secret>",
+            secrets={"password": "hunter2"},
+        ),
+    )
+
+    secrets: RunSecrets = h.runner_kwargs["secrets"]
+    placeholder = "<secret>password</secret>"
+    assert secrets.value_for(placeholder, "https://www.netflix.ca/login") == "hunter2"
+    assert secrets.value_for(placeholder, "https://gmail.com/") is None
+    assert secrets.value_for(placeholder, "https://accounts.gmail.com/") is None
+
+
 async def test_the_run_hears_this_jobs_messages(monkeypatch: pytest.MonkeyPatch) -> None:
     asked: list[tuple[str, str]] = []
 
