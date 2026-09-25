@@ -224,7 +224,7 @@ jobs:
           echo "bots=$bots" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
 
       - name: Determine version scheme
         if: steps.affected.outputs.api == 'true' || steps.affected.outputs.bots == 'true'
@@ -367,7 +367,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
 
       # phase=build runs BEFORE the quality gate, so it publishes only the
       # immutable :<sha> tag (the duplicate tag lines below collapse to one);
@@ -448,7 +448,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
 
       # Same phase rule as docker-web: no :latest before the gate — the
       # deploy's `deploy.sh retag` (post-convergence) and promote-latest
