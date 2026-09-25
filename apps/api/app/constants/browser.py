@@ -281,6 +281,7 @@ BROWSER_GUIDANCE_ANSWER = (
 BROWSER_AGENT_MAX_FAILURES = 2
 # The browser agent's reasoning effort on any lane: it steers and signs off, Jev does the stepping.
 BROWSER_AGENT_REASONING_EFFORT: Literal["low"] = "low"
+BROWSER_AGENT_OPENROUTER_KEY_MISSING = "OPENROUTER_API_KEY is not set; the browser agent needs it."
 # When a browser model call gets an identical second request (first answer wins). Agent
 # calls measured p50 3.2 s, p90 4.5 s, with stalls past the 180 s timeout (2026-09-25).
 BROWSER_AGENT_HEDGE_SECONDS = 12.0
@@ -476,6 +477,9 @@ JEV_SCREENSHOT_QUALITY = 70
 #: The tiny model writes a value only when no literal from the goal fits; it reads this much page text.
 JEV_TEXT_TIMEOUT_SECONDS = 30.0
 JEV_TEXT_HEDGE_SECONDS = 6.0
+JEV_TEXT_OPENROUTER_KEY_MISSING = (
+    "OPENROUTER_API_KEY is not set; Jev decisions and the text model both need it."
+)
 JEV_PAGE_TEXT_MAX_CHARS = 6000
 JEV_TEXT_VALUE_MAX_CHARS = 2000
 # Stands in for a value typed into a password field wherever the run's text reaches a person.

@@ -10,6 +10,7 @@ from tests.helpers import captured_wide_event
 
 from app.api.v1.endpoints.features import list_features, update_feature
 from app.config.feature_flags import FEATURE_FLAGS, KILL_SWITCH_REASON, FeatureFlag
+from app.constants.feature_flags import FEATURE_NOT_FOUND_MESSAGE
 from app.models.user_models import UserDocument
 from app.schemas.feature_flags import UpdateUserFeatureFlagRequest
 from app.services.analytics_service import AnalyticsEvents
@@ -20,19 +21,19 @@ SERVICE = "app.services.feature_flags"
 
 
 class _UserStore:
-    """Stands in for the users collection: set_feature_flag writes what get reads back."""
+    """Stands in for the users collection holding the session's user: set_feature_flag writes what get reads back."""
 
     def __init__(self) -> None:
         self.choices: dict[str, bool] = {}
         self.exists = True
 
     async def get(self, user_id: str) -> UserDocument | None:
-        if not self.exists:
+        if not self.exists or user_id != USER_ID:
             return None
         return UserDocument(id=user_id, feature_flags=self.choices)
 
     async def set_feature_flag(self, user_id: str, flag: FeatureFlag, enabled: bool) -> bool:
-        if not self.exists:
+        if not self.exists or user_id != USER_ID:
             return False
         self.choices[flag.value] = enabled
         return True
@@ -50,10 +51,12 @@ def store() -> Iterator[_UserStore]:
 
 @pytest.fixture
 def posthog() -> Iterator[MagicMock]:
-    """One PostHog client behind both flag evaluation and event capture; flag_values holds what it serves."""
+    """One PostHog client behind both flag evaluation and event capture; flag_values is what it serves the session's user."""
     client = MagicMock()
     client.flag_values = {}
-    client.get_feature_flag.side_effect = lambda key, _user_id: client.flag_values.get(key)
+    client.get_feature_flag.side_effect = lambda key, distinct_id: (
+        client.flag_values.get(key) if distinct_id == USER_ID else None
+    )
     with (
         patch(f"{SERVICE}._get_posthog_client", return_value=client),
         patch("app.services.analytics_service._get_posthog_client", return_value=client),
@@ -161,7 +164,7 @@ class TestUpdateFeature:
         resp = await client.patch(f"{URL}/{flag}", json={"enabled": True})
 
         assert resp.status_code == 404
-        assert resp.json()["message"] == "Feature not found"
+        assert resp.json()["message"] == FEATURE_NOT_FOUND_MESSAGE
         assert store.choices == {}
         assert _toggled_captures(posthog) == []
 

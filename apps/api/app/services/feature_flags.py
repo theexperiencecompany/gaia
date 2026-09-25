@@ -30,6 +30,16 @@ from app.config.feature_flags import (
 )
 from app.constants.analytics import FEATURE_CHOICE_PERSON_PROPERTY_PREFIX, POSTHOG_PROVIDER_KEY
 from app.constants.error_codes import FEATURE_KILLED
+from app.constants.feature_flags import (
+    FEATURE_KILLED_FIX,
+    FEATURE_KILLED_MESSAGE,
+    FEATURE_KILLED_WHY,
+    FEATURE_NOT_FOUND_FIX,
+    FEATURE_NOT_FOUND_MESSAGE,
+    FEATURE_NOT_FOUND_WHY,
+    FEATURE_USER_NOT_FOUND_MESSAGE,
+    FEATURE_USER_NOT_FOUND_WHY,
+)
 from app.core.lazy_loader import providers
 from app.db.repositories.users import user_repository
 from app.schemas.feature_flags import UserFeatureFlagListResponse, UserFeatureFlagResponse
@@ -38,19 +48,11 @@ from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 
-def _coerce_result(result: object, default: bool) -> bool:
-    """Interpret a PostHog flag value against a default.
-
-    None means unevaluated (no targeting matched, or an upstream error) and
-    falls back to the default; any non-control variant string counts as enabled.
-    """
-    if result is None:
-        return default
-    if isinstance(result, bool):
-        return result
-    if isinstance(result, str):
-        return result.strip().lower() not in ("", "false", "off", "disabled", "control")
-    return bool(result)
+def _answer_enables(answer: object) -> bool:
+    """Interpret a flag value PostHog did evaluate: any non-control variant string counts as enabled."""
+    if isinstance(answer, str):
+        return answer.strip().lower() not in ("", "false", "off", "disabled", "control")
+    return bool(answer)
 
 
 def _get_posthog_client() -> Posthog | None:
@@ -80,7 +82,7 @@ async def _stored_choice(flag: FeatureFlag, user_id: str) -> bool | None:
 
 class _Resolution(NamedTuple):
     enabled: bool
-    killed: bool
+    killed: bool = False
 
 
 async def _kill_switch_engaged(flag: FeatureFlag, user_id: str) -> bool:
@@ -108,7 +110,7 @@ async def _kill_switch_engaged(flag: FeatureFlag, user_id: str) -> bool:
             kill_switch=key,
         )
         return False
-    return _coerce_result(result, False)
+    return _answer_enables(result)
 
 
 async def _posthog_value(flag: FeatureFlag, user_id: str, fallback: bool) -> bool:
@@ -129,27 +131,25 @@ async def _posthog_value(flag: FeatureFlag, user_id: str, fallback: bool) -> boo
         _track_evaluation(user_id, flag, fallback, fallback_reason="evaluation_error")
         return fallback
 
-    evaluated = result is not None
-    enabled = _coerce_result(result, fallback)
-    log.set(flags={flag.value: enabled})
-    if not evaluated:
-        _track_evaluation(user_id, flag, enabled, fallback_reason="flag_unevaluated")
-    return enabled
+    if result is None:
+        _track_evaluation(user_id, flag, fallback, fallback_reason="flag_unevaluated")
+        return fallback
+    return _answer_enables(result)
 
 
 async def _resolve(flag: FeatureFlag, user_id: str, fallback: bool) -> _Resolution:
     """Kill switch, then stored choice (user-facing flags only), then PostHog, then the default."""
-    if FEATURE_FLAGS[flag].user_toggle is not None:
-        if await _kill_switch_engaged(flag, user_id):
-            log.set(flags={flag.value: False})
-            _track_evaluation(user_id, flag, False, fallback_reason="killed")
-            return _Resolution(enabled=False, killed=True)
-        choice = await _stored_choice(flag, user_id)
-        if choice is not None:
-            log.set(flags={flag.value: choice})
-            _track_evaluation(user_id, flag, choice, fallback_reason="user_choice")
-            return _Resolution(enabled=choice, killed=False)
-    return _Resolution(enabled=await _posthog_value(flag, user_id, fallback), killed=False)
+    user_facing = FEATURE_FLAGS[flag].user_toggle is not None
+    if user_facing and await _kill_switch_engaged(flag, user_id):
+        _track_evaluation(user_id, flag, False, fallback_reason="killed")
+        resolution = _Resolution(enabled=False, killed=True)
+    elif user_facing and (choice := await _stored_choice(flag, user_id)) is not None:
+        _track_evaluation(user_id, flag, choice, fallback_reason="user_choice")
+        resolution = _Resolution(enabled=choice)
+    else:
+        resolution = _Resolution(enabled=await _posthog_value(flag, user_id, fallback))
+    log.set(flags={flag.value: resolution.enabled})
+    return resolution
 
 
 async def is_enabled(flag: FeatureFlag, user_id: str | None, default: bool | None = None) -> bool:
@@ -205,9 +205,9 @@ def _user_facing_flag(key: str) -> tuple[FeatureFlag, UserToggle]:
     toggle = FEATURE_FLAGS[flag].user_toggle if flag is not None else None
     if flag is None or toggle is None:
         raise AppError(
-            message="Feature not found",
-            why="no user-facing feature flag has this key",
-            fix="List the toggleable features with GET /api/v1/features",
+            message=FEATURE_NOT_FOUND_MESSAGE,
+            why=FEATURE_NOT_FOUND_WHY,
+            fix=FEATURE_NOT_FOUND_FIX,
             status_code=404,
             meta={"flag": key},
         )
@@ -228,22 +228,23 @@ def _feature_response(
     )
 
 
+async def _user_feature(
+    flag: FeatureFlag, toggle: UserToggle, user_id: str
+) -> UserFeatureFlagResponse:
+    resolution = await _resolve(flag, user_id, FEATURE_FLAGS[flag].default())
+    return _feature_response(flag, toggle, resolution)
+
+
 async def list_user_flags(user_id: str) -> UserFeatureFlagListResponse:
     """List every user-facing flag with the value in effect for this user; internal flags never appear."""
-    toggles = [
-        (flag, spec.user_toggle, spec.default())
-        for flag, spec in FEATURE_FLAGS.items()
-        if spec.user_toggle is not None
-    ]
-    resolutions = await asyncio.gather(
-        *(_resolve(flag, user_id, default) for flag, _, default in toggles)
+    features = await asyncio.gather(
+        *(
+            _user_feature(flag, spec.user_toggle, user_id)
+            for flag, spec in FEATURE_FLAGS.items()
+            if spec.user_toggle is not None
+        )
     )
-    return UserFeatureFlagListResponse(
-        features=[
-            _feature_response(flag, toggle, resolution)
-            for (flag, toggle, _), resolution in zip(toggles, resolutions, strict=True)
-        ]
-    )
+    return UserFeatureFlagListResponse(features=list(features))
 
 
 async def set_user_flag(user_id: str, key: str, enabled: bool) -> UserFeatureFlagResponse:
@@ -251,17 +252,17 @@ async def set_user_flag(user_id: str, key: str, enabled: bool) -> UserFeatureFla
     flag, toggle = _user_facing_flag(key)
     if await _kill_switch_engaged(flag, user_id):
         raise AppError(
-            message="This feature is paused for everyone right now",
-            why="the flag's kill switch is engaged in PostHog, which overrides every choice",
-            fix="Try again once the feature is back; your current choice is kept",
+            message=FEATURE_KILLED_MESSAGE,
+            why=FEATURE_KILLED_WHY,
+            fix=FEATURE_KILLED_FIX,
             status_code=409,
             code=FEATURE_KILLED,
             meta={"flag": flag.value},
         )
     if not await user_repository.set_feature_flag(user_id, flag, enabled):
         raise AppError(
-            message="User not found",
-            why="no user document matches the authenticated session's id",
+            message=FEATURE_USER_NOT_FOUND_MESSAGE,
+            why=FEATURE_USER_NOT_FOUND_WHY,
             status_code=404,
             meta={"user_id": user_id},
         )
@@ -271,7 +272,7 @@ async def set_user_flag(user_id: str, key: str, enabled: bool) -> UserFeatureFla
     identify_user(
         user_id, {f"{FEATURE_CHOICE_PERSON_PROPERTY_PREFIX}{flag.value.lower()}": enabled}
     )
-    return _feature_response(flag, toggle, _Resolution(enabled=enabled, killed=False))
+    return _feature_response(flag, toggle, _Resolution(enabled=enabled))
 
 
 async def is_code_mode_enabled(user_id: str | None) -> bool:
