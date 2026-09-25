@@ -94,8 +94,15 @@ class _InputInputs(_ActionInputs, total=False):
     text: str
 
 
+class _FieldAttributes(TypedDict, total=False):
+    """The HTML attributes of a form control read here: its input type."""
+
+    type: str
+
+
 _ACTION_INPUTS: TypeAdapter[_ActionInputs] = TypeAdapter(_ActionInputs)
 _INPUT_INPUTS: TypeAdapter[_InputInputs] = TypeAdapter(_InputInputs)
+_FIELD_ATTRIBUTES: TypeAdapter[_FieldAttributes] = TypeAdapter(_FieldAttributes)
 
 
 def _element_label(state: BrowserStateSummary, index: int | None) -> str | None:
@@ -138,7 +145,10 @@ def _password_typed(action: BrowserAction, state: BrowserStateSummary) -> str | 
     typed_inputs: _InputInputs = _INPUT_INPUTS.validate_python(action.inputs)
     index = typed_inputs.get("index")
     node = state.dom_state.selector_map.get(index) if index is not None else None
-    kind = node.attributes.get("type") if node is not None else None
+    if node is None:
+        return None
+    attributes: _FieldAttributes = _FIELD_ATTRIBUTES.validate_python(node.attributes)
+    kind = attributes.get("type")
     if kind is None or kind.lower() != "password":
         return None
     return typed_inputs.get("text")

@@ -70,8 +70,7 @@ BOUNDARY_MODULES: dict[str, str] = {
 # Maps keyed by a protocol, not a shape: the key IS the contract (an HTTP
 # header name, an environment variable), so reading it by string is honest.
 PROTOCOL_MAPS = ("os.environ",)
-# A DOM node's ``attributes`` is keyed by HTML attribute names, the same kind of contract.
-PROTOCOL_MAP_ATTRIBUTES = ("headers", "query_params", "path_params", "cookies", "attributes")
+PROTOCOL_MAP_ATTRIBUTES = ("headers", "query_params", "path_params", "cookies")
 
 # A key read on a TypedDict is a declared shape, not a guess: mypy checks the key
 # (apps/api/CLAUDE.md, Type Safety item 6). Repo TypedDicts are discovered from
@@ -83,8 +82,6 @@ EXTERNAL_TYPEDDICTS = (
     "UsageMetadata",
     "InputTokenDetails",
     "OutputTokenDetails",
-    "StorageState",
-    "StorageStateCookie",
 )
 # Library TypedDicts app classes subclass, by the path they are imported from: the
 # local name is often an alias (``State as _BigtoolState``), so the bare name can't
@@ -103,6 +100,8 @@ EXTERNAL_TYPEDDICT_PATHS = frozenset(
         "langchain_core.messages.ReasoningContentBlock",
         "langchain_core.messages.content.ReasoningContentBlock",
         "composio.core.models.tools.ToolExecutionResponse",
+        "playwright.sync_api.StorageState",
+        "playwright.sync_api.StorageStateCookie",
         "cdp_use.cdp.dom.commands.ResolveNodeReturns",
         "cdp_use.cdp.domsnapshot.commands.CaptureSnapshotReturns",
         "cdp_use.cdp.domsnapshot.types.DocumentSnapshot",

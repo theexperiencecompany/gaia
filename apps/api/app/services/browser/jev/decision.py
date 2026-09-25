@@ -187,9 +187,10 @@ def action_space(actions: list[PageAction]) -> _ActionSpace:
         element.fields["value"] = action["current_value"]
         element.options = []
         for n, option in enumerate(action["options"], 1):
-            target, chosen = f"{element.index}:{n}", _option_action(action, option)
+            target = f"{element.index}:{n}"
+            chosen: PageAction = _option_action(action, option)
             element.options.append(
-                {"index": target, "label": chosen["label"], "value": option["value"]}
+                {"index": target, "label": chosen["label"], "value": chosen["value"]}
             )
             targets[target] = chosen
     return space
