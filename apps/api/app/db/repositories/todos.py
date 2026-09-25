@@ -383,18 +383,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             filt["_id"] = {"$gt": ObjectId(after_id)}
         return await self._find(filt, sort=[("_id", 1)], limit=limit)
 
-    async def list_tracked_with_workflow(
-        self, *, limit: int, after_id: str | None = None
-    ) -> list[TodoDocument]:
-        """Tracked todos still linked to a workflow, in id order: the unlink migration's scan."""
-        filt: dict[str, object] = {
-            "labels": GAIA_TRACKED_LABEL,
-            "workflow_id": {"$nin": [None, ""]},
-        }
-        if after_id is not None:
-            filt["_id"] = {"$gt": ObjectId(after_id)}
-        return await self._find(filt, sort=[("_id", 1)], limit=limit)
-
     async def find_active_by_composio_trigger(self, composio_trigger_id: str) -> list[TodoDocument]:
         """Every user's incomplete todos actively subscribed to composio_trigger_id (per-resource dispatch)."""
         return await self._find(

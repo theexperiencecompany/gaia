@@ -40,11 +40,8 @@ from app.models.todo_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
-from app.services.todos.todo_service import (
-    ProjectService,
-    TodoService,
-    TrackedTodoWorkflowError,
-)
+from app.services.todos.errors import TrackedTodoWorkflowError
+from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError

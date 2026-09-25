@@ -27,7 +27,7 @@ from app.models.todo_models import (
     TodoUpdateRequest,
 )
 from app.services.analytics_service import AnalyticsEvents
-from app.services.todos.todo_service import TrackedTodoWorkflowError
+from app.services.todos.errors import TrackedTodoWorkflowError
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
 ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture_context_event"

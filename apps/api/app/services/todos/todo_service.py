@@ -34,6 +34,7 @@ from app.models.todo_models import (
     UpdateProjectRequest,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.todos.errors import TrackedTodoWorkflowError
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
@@ -47,16 +48,6 @@ from app.utils.todo_vector_utils import (
     update_todo_embedding,
 )
 from shared.py.wide_events import log, spawn_logged_task
-
-
-class TrackedTodoWorkflowError(AppError):
-    """Raised (409) when a workflow would be linked to a tracked todo."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            message="Tracked todos run on the agent from their canvas and never link a workflow",
-            status_code=HTTPStatus.CONFLICT,
-        )
 
 
 async def _get_workflow_categories_for_todos(
@@ -133,14 +124,21 @@ def _to_todo_update(updates: TodoUpdateRequest) -> TodoUpdate:
 async def _refuse_a_tracked_todo_with_a_workflow(
     todo_id: str, user_id: str, updates: TodoUpdateRequest
 ) -> None:
-    """Refuse an update whose result would be a tracked todo holding a workflow, before any write."""
+    """Refuse, before any write, an update that would link a tracked todo or track a linked one.
+
+    A tracked todo created before workflows were removed may still hold a
+    workflow_id nothing reads; editing it is not refused.
+    """
     if updates.workflow_id is None and updates.labels is None:
         return
     existing = await todo_repository.get(todo_id, user_id=user_id)
     if existing is None:
         raise ValueError(f"Todo {todo_id} not found")
     labels = existing.labels if updates.labels is None else updates.labels
-    if GAIA_TRACKED_LABEL in labels and (updates.workflow_id or existing.workflow_id):
+    if GAIA_TRACKED_LABEL not in labels:
+        return
+    newly_tracked = GAIA_TRACKED_LABEL not in existing.labels
+    if updates.workflow_id or (newly_tracked and existing.workflow_id):
         raise TrackedTodoWorkflowError()
 
 

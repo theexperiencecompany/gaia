@@ -601,6 +601,19 @@ class TestUpdateTodo:
         mock_todo_repo.get.assert_awaited_once_with(FAKE_TODO_ID, user_id=FAKE_USER_ID)
         mock_todo_repo.update.assert_not_awaited()
 
+    async def test_a_tracked_todo_with_a_legacy_link_can_still_be_relabelled(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """Tracked todos created before this change may still hold a workflow_id nothing reads."""
+        legacy = _make_todo_doc(
+            todo_id=FAKE_TODO_ID, labels=[GAIA_TRACKED_LABEL], workflow_id="wf-legacy"
+        )
+        mock_todo_repo.get = AsyncMock(return_value=legacy)
+        mock_todo_repo.update = AsyncMock(return_value=legacy)
+        labels = [GAIA_TRACKED_LABEL, "errands"]
+        await TodoService.update_todo(FAKE_TODO_ID, TodoUpdateRequest(labels=labels), FAKE_USER_ID)
+        assert mock_todo_repo.update.await_args.kwargs["update"].labels == labels
+
     async def test_relabelling_a_linked_classic_todo_is_allowed(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
