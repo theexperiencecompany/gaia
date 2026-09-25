@@ -327,8 +327,7 @@ async def test_a_resolved_node_handle_drives_the_live_element(
 
 async def test_describe_node_reports_no_parent(at_wiki: tuple[Cdp, str, Evaluate]) -> None:
     # dom/service.py:493 builds each node's xpath by walking parent_node; with no
-    # parent the xpath collapses to a bare tag name (see jev/viewport.py, which
-    # measures the live document instead).
+    # parent the xpath collapses to a bare tag name (Jev reads the live document instead).
     client, session_id, _ = at_wiki
     document = await client.ok("DOM.getDocument", {"depth": -1}, session_id)
     found = await client.ok(
@@ -453,8 +452,8 @@ async def test_typing_reaches_the_focused_field_with_trusted_events(
 async def test_the_dom_snapshot_reports_what_a_field_holds_now(
     at_form: tuple[Cdp, str, Evaluate],
 ) -> None:
-    # app/services/browser/jev/live_values.py reads these columns; without them
-    # every field Jev had filled read as empty and it typed the field again.
+    # Engine patch 0019. No GAIA code reads these columns now (Jev reads the live
+    # document); this keeps the patch honest for any CDP client that does.
     client, session_id, evaluate = at_form
     await evaluate(f"document.querySelector('{_TEXT_FIELD}').focus()")
     await _type(client, session_id, "h", "KeyH", 72)
