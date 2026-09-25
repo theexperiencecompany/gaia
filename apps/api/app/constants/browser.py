@@ -508,7 +508,7 @@ BROWSER_USER_WORDS_MAX_CHARS = 1000
 
 # One browser task per conversation; the value is the job id so a refused second
 # task can name the run the user is already watching. A heartbeat lease, not a
-# fixed TTL: a run may sit 30 minutes in a handoff, a dead worker must not.
+# fixed TTL: a run may sit a whole handoff window (BROWSER_USE_HANDOFF_TIMEOUT_SECONDS) paused, a dead worker must not.
 BROWSER_JOB_LOCK_PREFIX = "browser:job:lock:"
 BROWSER_JOB_LOCK_TTL_SECONDS = 120
 BROWSER_JOB_HEARTBEAT_SECONDS = 30
