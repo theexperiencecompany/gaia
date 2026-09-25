@@ -31,6 +31,9 @@ from shared.py.wide_events import log
 if TYPE_CHECKING:
     from browser_use.browser.session import BrowserSession, CDPSession
     from cdp_use.cdp.input.commands import DispatchKeyEventParameters, DispatchMouseEventParameters
+    from cdp_use.cdp.page.commands import CaptureScreenshotReturns
+    from cdp_use.cdp.runtime.commands import EvaluateReturns
+    from cdp_use.cdp.runtime.types import RemoteObject
 
 _ASSETS = Path(__file__).parent
 _SNAPSHOT_JS = (_ASSETS / "snapshot.js").read_text()
@@ -41,6 +44,24 @@ _GUARD_JS = (_ASSETS / "guard.js").read_text().strip()
 _MARKER_JS = f"(() => {{ const state={_SNAPSHOT_JS}; return state?.marker ?? null; }})()"
 #: Ctrl on every platform the hosts run (Linux); select-all before text replaces a field.
 _CTRL = 2
+_SELECT_ALL: tuple[DispatchKeyEventParameters, ...] = (
+    {"type": "keyDown", "key": "a", "code": "KeyA", "modifiers": _CTRL, "commands": ["selectAll"]},
+    {"type": "keyUp", "key": "a", "code": "KeyA", "modifiers": _CTRL},
+)
+_ENTER: tuple[DispatchKeyEventParameters, ...] = (
+    {"type": "keyDown", "key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13, "text": "\r"},
+    {"type": "keyUp", "key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13, "text": "\r"},
+)
+#: Where the wheel turns: over the page's main column, inside the viewport.
+_WHEEL_X, _WHEEL_Y = 550, 400
+
+_CHANGED_DURING_EVALUATION = "The document changed during evaluation."
+_NOT_SETTLED = "The page did not settle."
+_MOVED_ON = "The page changed since this decision."
+_SELECT_INTERRUPTED = "The dropdown change was interrupted."
+_SELECT_UNCONFIRMED = "The dropdown change was not confirmed."
+_COVERED = "The target changed or is covered."
+_SESSION_CALL = "the page's CDP session"
 
 _T = TypeVar("_T")
 
@@ -100,6 +121,11 @@ class Frame(TypedDict):
     visible: bool
 
 
+class _Point(TypedDict):
+    x: float
+    y: float
+
+
 class _Scroll(TypedDict):
     y: float
     height: float
@@ -133,17 +159,14 @@ class PageState:
     fingerprint: str
 
     def action(self, action_id: str) -> PageAction:
-        return next(a for a in self.actions if a["id"] == action_id)
+        actions: list[PageAction] = self.actions
+        return next(a for a in actions if a["id"] == action_id)
 
 
 def _fingerprint(snapshot: _Snapshot) -> str:
-    content = {
-        "url": snapshot["url"],
-        "text": snapshot["text"],
-        "actions": snapshot["actions"],
-        "scroll": snapshot["scroll"],
-    }
-    return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
+    """Hash what a person sees change: the address, the text, the controls and the scroll."""
+    content = [snapshot["url"], snapshot["text"], snapshot["actions"], snapshot["scroll"]]
+    return hashlib.sha256(json.dumps(content).encode()).hexdigest()
 
 
 async def _bounded(call: Awaitable[_T], what: str) -> _T:
@@ -166,9 +189,7 @@ class JevPage:
         self._focused: set[str] = set()
 
     async def _session(self) -> CDPSession:
-        session = await _bounded(
-            self._browser.get_or_create_cdp_session(), "the page's CDP session"
-        )
+        session = await _bounded(self._browser.get_or_create_cdp_session(), _SESSION_CALL)
         if session.session_id not in self._focused:
             # A tab behind another (a page that opened a window, a tab the run left)
             # stops producing frames, so requestAnimationFrame never fires and reads
@@ -182,22 +203,20 @@ class JevPage:
             self._focused.add(session.session_id)
         return session
 
-    async def _evaluate(self, expression: str, *, await_promise: bool = False) -> object:
+    async def _evaluate(self, expression: str) -> object:
+        """Return what expression evaluates to in the page, a promise awaited."""
         session = await self._session()
-        response = await _bounded(
+        response: EvaluateReturns = await _bounded(
             session.cdp_client.send.Runtime.evaluate(
-                params={
-                    "expression": expression,
-                    "returnByValue": True,
-                    "awaitPromise": await_promise,
-                },
+                params={"expression": expression, "returnByValue": True, "awaitPromise": True},
                 session_id=session.session_id,
             ),
             "Runtime.evaluate",
         )
         if response.get("exceptionDetails"):
-            raise StalePage("The document changed during evaluation.")
-        return response.get("result", {}).get("value")
+            raise StalePage(_CHANGED_DURING_EVALUATION)
+        result: RemoteObject = response["result"]
+        return result.get("value")
 
     async def observe(self) -> PageState:
         """Read the page once; retried briefly while a navigation is replacing the document."""
@@ -205,14 +224,14 @@ class JevPage:
             action, self._after_input = self._after_input, None
             # Read-only and after execution was recorded, so a navigation cutting it short loses nothing.
             with contextlib.suppress(StalePage):
-                await self._evaluate(f"{_SETTLE_JS}({json.dumps(action)})", await_promise=True)
+                await self._evaluate(f"{_SETTLE_JS}({json.dumps(action)})")
         for _ in range(JEV_OBSERVE_ATTEMPTS):
             try:
                 value = await self._evaluate(_SNAPSHOT_JS)
             except StalePage:
                 value = None
             if value is not None:
-                snapshot = cast("_Snapshot", value)
+                snapshot: _Snapshot = cast("_Snapshot", value)
                 return PageState(
                     url=snapshot["url"],
                     title=snapshot["title"],
@@ -225,25 +244,29 @@ class JevPage:
                     fingerprint=_fingerprint(snapshot),
                 )
             await asyncio.sleep(JEV_OBSERVE_RETRY_SECONDS)
-        raise StalePage("The page did not settle.")
+        raise StalePage(_NOT_SETTLED)
 
     async def fresh(self, page: PageState, action: PageAction | None = None) -> bool:
         """Whether a decision made on page still holds.
 
         An element decision checks the page key and its own target's guard, so
         unrelated visible change (a ticking countdown) does not invalidate it; a
-        page-level one checks the whole snapshot marker.
+        page-level one checks the whole snapshot marker. Nothing holds on a
+        document replaced while it was checked.
         """
-        if action is not None and "node" in action:
-            node = action["node"]
-            current = await self._evaluate(f"{_GUARD_JS}({json.dumps(node)})")
-            return current == [page.page_key, page.guards.get(str(node))]
-        return await self._evaluate(_MARKER_JS) == page.marker
+        try:
+            if action is not None and "node" in action:
+                node = action["node"]
+                current = await self._evaluate(f"{_GUARD_JS}({json.dumps(node)})")
+                return current == [page.page_key, page.guards.get(str(node))]
+            return await self._evaluate(_MARKER_JS) == page.marker
+        except StalePage:
+            return False
 
     async def act(self, action: PageAction, page: PageState, text: str | None = None) -> None:
         """Execute one observed action; raises before any input when the page moved on."""
-        if not await self.fresh(page, action if action["kind"] != "scroll" else None):
-            raise StalePage("The page changed since this decision.")
+        if not await self.fresh(page, action):
+            raise StalePage(_MOVED_ON)
         kind = action["kind"]
         if kind == "wait":
             await asyncio.sleep(JEV_WAIT_SECONDS)
@@ -252,10 +275,10 @@ class JevPage:
         if kind == "scroll":
             wheel: DispatchMouseEventParameters = {
                 "type": "mouseWheel",
-                "x": 550,
-                "y": 400,
+                "x": _WHEEL_X,
+                "y": _WHEEL_Y,
                 "deltaX": 0,
-                "deltaY": action.get("delta", 0),
+                "deltaY": action["delta"],
             }
             await self._mouse(session, wheel)
             self._after_input = action
@@ -269,7 +292,7 @@ class JevPage:
                 session,
                 {"type": event, "x": point[0], "y": point[1], "button": "left", "clickCount": 1},
             )
-        if kind in ("fill", "secret") and text is not None:
+        if text is not None:
             await self._type(session, text)
 
     async def _target_point(self, action: PageAction) -> tuple[float, float] | None:
@@ -279,15 +302,15 @@ class JevPage:
             point = await self._evaluate(f"{_ACT_JS}({json.dumps(action)})")
         except StalePage as exc:
             if select:
-                raise UncertainSelect("The dropdown change was interrupted.") from exc
+                raise UncertainSelect(_SELECT_INTERRUPTED) from exc
             raise
         if point is None:
             if select:
-                raise UncertainSelect("The dropdown change was not confirmed.")
-            raise Covered("The target changed or is covered.")
+                raise UncertainSelect(_SELECT_UNCONFIRMED)
+            raise Covered(_COVERED)
         if select:
             return None
-        where = cast("dict[str, float]", point)
+        where: _Point = cast("_Point", point)
         return where["x"], where["y"]
 
     async def _type(self, session: CDPSession, text: str) -> None:
@@ -296,35 +319,21 @@ class JevPage:
         Input.insertText fires no key events, and a date picker or <input type=time>
         that parses keystrokes then drops the value (measured on Chrome).
         """
-        select_all: DispatchKeyEventParameters = {
-            "type": "keyDown",
-            "key": "a",
-            "code": "KeyA",
-            "modifiers": _CTRL,
-            "commands": ["selectAll"],
-        }
-        await self._key(session, select_all)
-        await self._key(session, {"type": "keyUp", "key": "a", "code": "KeyA", "modifiers": _CTRL})
+        for params in _SELECT_ALL:
+            await self._key(session, params)
         for char in text:
-            key = "Enter" if char == "\n" else char
-            typed = "\r" if char == "\n" else char
-            await self._key(session, {"type": "keyDown", "key": key, "text": typed})
-            await self._key(session, {"type": "keyUp", "key": key})
+            if char == "\n":
+                for params in _ENTER:
+                    await self._key(session, params)
+                continue
+            await self._key(session, {"type": "keyDown", "key": char, "text": char})
+            await self._key(session, {"type": "keyUp", "key": char})
 
     async def press_enter(self) -> None:
         """Press Enter in whatever holds focus: submits a typed search or form."""
         session = await self._session()
-        for event in ("keyDown", "keyUp"):
-            await self._key(
-                session,
-                {
-                    "type": event,
-                    "key": "Enter",
-                    "code": "Enter",
-                    "windowsVirtualKeyCode": 13,
-                    "text": "\r",
-                },
-            )
+        for params in _ENTER:
+            await self._key(session, params)
 
     async def _mouse(self, session: CDPSession, params: DispatchMouseEventParameters) -> None:
         await _bounded(
@@ -344,10 +353,11 @@ class JevPage:
 
     async def body_text(self, limit: int) -> str:
         """Return the start of the whole page's rendered text, not only what the viewport shows."""
-        text = await self._evaluate(
-            f"(document.body ? document.body.innerText : '').slice(0, {limit})"
+        return str(
+            await self._evaluate(
+                f"(document.body ? document.body.innerText : '').slice(0, {limit})"
+            )
         )
-        return str(text or "")
 
     async def navigate(self, url: str) -> None:
         try:
@@ -377,11 +387,11 @@ class JevPage:
     async def screenshot(self) -> str:
         """Return the focused tab as a base64 JPEG, for the step card."""
         session = await self._session()
-        result = await _bounded(
+        result: CaptureScreenshotReturns = await _bounded(
             session.cdp_client.send.Page.captureScreenshot(
                 params={"format": "jpeg", "quality": JEV_SCREENSHOT_QUALITY},
                 session_id=session.session_id,
             ),
             "Page.captureScreenshot",
         )
-        return str(result["data"])
+        return result["data"]
