@@ -68,7 +68,6 @@ apps/api/app/agents/tools/playbook_tools.py	TB002	deferred-until=2026-10-15; #87
 apps/api/app/agents/tools/reminder_tool.py	TB001
 apps/api/app/agents/tools/reminder_tool.py	TB002
 apps/api/app/agents/tools/subscription_tool.py	TB002
-apps/api/app/agents/tools/todo_tool.py	TB002
 apps/api/app/agents/tools/todo_tools.py	TB001
 apps/api/app/agents/tools/todo_tools.py	TB002
 apps/api/app/agents/tools/webpage_tool.py	TB001

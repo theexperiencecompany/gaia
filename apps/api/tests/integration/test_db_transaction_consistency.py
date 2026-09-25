@@ -265,11 +265,6 @@ class TestTodoCreationWithSubtasks:
                 "app.services.todos.todo_service.project_repository.get_or_create_inbox",
                 AsyncMock(return_value=_inbox_project()),
             ),
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService."
-                "queue_todo_workflow_generation",
-                AsyncMock(),
-            ),
             patch("app.services.todos.todo_service.store_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
         ):
@@ -304,11 +299,6 @@ class TestTodoCreationWithSubtasks:
             patch(
                 "app.services.todos.todo_service.project_repository.get_or_create_inbox",
                 AsyncMock(return_value=_inbox_project()),
-            ),
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService."
-                "queue_todo_workflow_generation",
-                AsyncMock(),
             ),
             patch("app.services.todos.todo_service.store_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),

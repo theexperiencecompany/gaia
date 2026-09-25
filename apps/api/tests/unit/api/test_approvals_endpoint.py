@@ -8,6 +8,7 @@ shapes, payload forwarding, and the AppError status mapping are verified.
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
+import pytest
 
 from app.models.hil_models import ApprovalLedgerDocument, HILMode, HILPreferences, LedgerState
 from app.schemas.hil_schemas import BatchDecisionOutcome
@@ -20,6 +21,8 @@ from app.services.hil.resolution import (
 
 APPROVALS_BASE = "/api/v1/approvals"
 USER_ID = "507f1f77bcf86cd799439011"
+
+pytestmark = pytest.mark.usefixtures("hil_barrier_mode")
 
 
 def _prefs(

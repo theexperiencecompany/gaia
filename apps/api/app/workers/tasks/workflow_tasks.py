@@ -64,7 +64,6 @@ from app.models.notification.notification_models import (
 )
 from app.models.payment_models import PlanType
 from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
-from app.models.todo_models import TodoUpdate
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
@@ -209,8 +208,8 @@ async def process_workflow_generation_task(
                     todo_id=todo_id,
                 )
 
-            linked = await todo_repository.update(
-                todo_id, user_id=user_id, update=TodoUpdate(workflow_id=workflow.id)
+            linked = await todo_repository.link_workflow(
+                todo_id, user_id=user_id, workflow_id=workflow.id
             )
 
             if linked is not None:
@@ -279,9 +278,11 @@ async def process_workflow_generation_task(
                 return (
                     f"Successfully generated standalone workflow {workflow.id} for todo {todo_id}"
                 )
+            # Refused: nothing may be left holding a workflow no todo points at.
+            await WorkflowService.delete_workflow(workflow.id, user_id)
             raise create_error(
                 message=f"Todo {todo_id} not found or not updated",
-                why="the todo was deleted or the workflow-link update matched no document",
+                why="the todo was deleted, or is tracked and never links a workflow",
                 fix="verify the todo still exists before regenerating its workflow",
                 todo_id=todo_id,
             )

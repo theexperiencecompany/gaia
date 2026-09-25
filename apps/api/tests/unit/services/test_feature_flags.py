@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag, FeatureStage, kill_switch_key
-from app.config.settings import settings as app_settings
+from app.config.settings import CommonSettings, ProductionSettings, settings as app_settings
 from app.constants.error_codes import FEATURE_KILLED
 from app.constants.feature_flags import (
     FEATURE_KILLED_FIX,
@@ -145,7 +145,10 @@ class TestCoerce:
 
 
 class TestFlags:
-    async def test_is_code_mode_enabled_defaults_off(self, no_client: None) -> None:
+    async def test_is_code_mode_enabled_off_when_setting_off(
+        self, monkeypatch: pytest.MonkeyPatch, no_client: None
+    ) -> None:
+        monkeypatch.setattr(app_settings, "ENABLE_CODE_MODE", False)
         assert await is_code_mode_enabled("u1") is False
 
     async def test_is_code_mode_enabled_live(
@@ -155,8 +158,11 @@ class TestFlags:
         assert await is_code_mode_enabled("u1") is True
         mock_client.get_feature_flag.assert_called_once_with("CODE_MODE", "u1")
 
-    async def test_is_hil_ledger_enabled_defaults_off(self, no_client: None) -> None:
-        assert await is_hil_ledger_enabled("u1") is False
+    async def test_is_hil_ledger_enabled_on_when_setting_on(
+        self, monkeypatch: pytest.MonkeyPatch, no_client: None
+    ) -> None:
+        monkeypatch.setattr(app_settings, "ENABLE_HIL_LEDGER", True)
+        assert await is_hil_ledger_enabled("u1") is True
 
     async def test_is_hil_ledger_enabled_live(
         self, mock_client: MagicMock, evaluated: MagicMock
@@ -317,6 +323,13 @@ FLAG_KILL_SWITCHES = {
     FeatureFlag.HIL_JEV_JUDGE: "ENABLE_HIL_JEV_JUDGE",
     FeatureFlag.HIL_JEV_REPLY: "ENABLE_HIL_JEV_REPLY",
 }
+
+
+class TestShippedDefaults:
+    @pytest.mark.parametrize("setting", ["ENABLE_HIL_LEDGER", "ENABLE_CODE_MODE"])
+    @pytest.mark.parametrize("settings_class", [CommonSettings, ProductionSettings])
+    def test_ships_on(self, setting: str, settings_class: type[CommonSettings]) -> None:
+        assert settings_class.model_fields[setting].default is True
 
 
 class TestEveryFlagFailsOpenToItsOwnSetting:

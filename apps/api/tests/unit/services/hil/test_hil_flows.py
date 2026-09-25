@@ -38,6 +38,8 @@ from .conftest import (
 
 MODULE = "app.services.hil.gate"
 
+pytestmark = pytest.mark.usefixtures("hil_barrier_mode")
+
 
 class Handler:
     """Stand in for the real tool and record WHEN it ran — receipt-before-action ordering is a requirement, not an accident."""

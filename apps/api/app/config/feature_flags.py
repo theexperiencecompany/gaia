@@ -77,14 +77,16 @@ FEATURE_FLAGS: dict[FeatureFlag, FlagSpec] = {
     FeatureFlag.CODE_MODE: FlagSpec(
         description=(
             "Bash runs seed the `gaia.execute` client and mint a per-invocation "
-            "token; off runs bash with no GAIA_EXECUTE_* env."
+            "token; off runs bash with no GAIA_EXECUTE_* env. On by default "
+            "(see ENABLE_CODE_MODE)."
         ),
         default=lambda: settings.ENABLE_CODE_MODE,
     ),
     FeatureFlag.HIL_LEDGER: FlagSpec(
         description=(
             "Gated calls register PENDING in the approval ledger and return "
-            "instead of parking the run; off keeps the interrupt barrier."
+            "instead of parking the run; off keeps the interrupt barrier. On by "
+            "default (see ENABLE_HIL_LEDGER)."
         ),
         default=lambda: settings.ENABLE_HIL_LEDGER,
     ),

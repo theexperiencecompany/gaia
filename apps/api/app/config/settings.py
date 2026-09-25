@@ -131,14 +131,14 @@ class CommonSettings(BaseAppSettings):
     # prompt on renderable channels (web/mobile/desktop). Off swaps a markdown-only
     # note so voice rules are not crowded out; text-only channels are unaffected.
     ENABLE_COMMS_OPENUI: bool = True
-    # Experiment: code mode — bash-injected `gaia.execute` client letting
-    # sandbox scripts call GAIA tools back server-side. Off mints no token
+    # Code mode — bash-injected `gaia.execute` client letting sandbox scripts
+    # call GAIA tools back server-side. On by default; off mints no token
     # (bash itself still runs; scripts just get no GAIA_EXECUTE_* env).
-    ENABLE_CODE_MODE: bool = False
-    # Experiment: executor-free HIL ledger — gated calls register PENDING and
-    # return instead of parking the run on an interrupt. Off keeps the
+    ENABLE_CODE_MODE: bool = True
+    # Executor-free HIL ledger — gated calls register PENDING and return
+    # instead of parking the run on an interrupt. On by default; off keeps the
     # interrupt-and-resume barrier.
-    ENABLE_HIL_LEDGER: bool = False
+    ENABLE_HIL_LEDGER: bool = True
     # JEV choice judge for auto mode — a structured decision call classifies first
     # (49/50 on the calibration set, zero dangerous accepts), LLM intent judge as
     # the transport-failure fallback. On by default; a JEV outage never opens the gate.

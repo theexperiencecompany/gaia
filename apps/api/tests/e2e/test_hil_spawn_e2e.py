@@ -40,7 +40,7 @@ from app.models.hil_models import HILApprovalStatus, HILPreferences
 from app.services.hil.approvals_store import list_pending_for_conversation, mark_decided
 from tests.helpers import PassthroughFakeLLM
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("hil_barrier_mode")]
 
 SLACK_TASK = "post the release note to #eng"
 NOTE_TASK = "ALPHA: record the meeting note"

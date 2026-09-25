@@ -27,6 +27,8 @@ os.environ["ENABLE_CODE_MODE"] = "false"
 # tests assert the OpenUI variant, so a developer's ENABLE_COMMS_OPENUI=false in
 # .env would flip the suite's static prompts. Flag-off paths opt in per test.
 os.environ["ENABLE_COMMS_OPENUI"] = "true"
+# The HIL ledger ships ON too; barrier-path tests opt out via hil_barrier_mode.
+os.environ["ENABLE_HIL_LEDGER"] = "true"
 os.environ.setdefault(
     "MONGO_DB",
     "mongodb://localhost:27017/gaia_test?serverSelectionTimeoutMS=100&connectTimeoutMS=100",

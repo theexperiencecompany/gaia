@@ -41,7 +41,7 @@ from app.services.platform_link_service import (
     Platform,
     PlatformLinkService,
 )
-from app.services.todos.todo_service import create_todo
+from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.errors import create_error
 from shared.py.wide_events import log
@@ -152,7 +152,10 @@ async def seed_dev_data(
     platform_user_ids = {platform: f"dev-{platform}-{user_id}" for platform in platform_links}
 
     await asyncio.gather(
-        *(create_todo(TodoModel(title=f"Sample todo {i + 1}"), user_id) for i in range(todos)),
+        *(
+            TodoService.create_todo_with_workflow(TodoModel(title=f"Sample todo {i + 1}"), user_id)
+            for i in range(todos)
+        ),
         *(
             create_conversation_service(
                 ConversationModel(
