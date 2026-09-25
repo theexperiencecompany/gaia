@@ -268,7 +268,7 @@ async def delete_session(request: Request, session_id: str) -> DeleteSessionResp
         storage_state = await _host.dispose_context(session_id)
     except SessionNotFoundError as exc:
         raise _session_not_found() from exc
-    except EngineUnresponsiveError as exc:
+    except (EngineUnresponsiveError, CDPTimeoutError) as exc:
         raise _engine_unresponsive() from exc
     return DeleteSessionResponse(storage_state=storage_state)
 

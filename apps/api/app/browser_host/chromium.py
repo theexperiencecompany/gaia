@@ -33,7 +33,7 @@ import httpx
 from playwright.sync_api import StorageState, StorageStateCookie, sync_playwright
 import psutil
 
-from app.browser_host.cdp_mux import CdpMux, CdpTransport
+from app.browser_host.cdp_mux import CdpCommandError, CdpMux, CdpTransport
 from app.browser_host.memory import memory_usage_mb
 from app.browser_host.metrics import ProcessSampler, SessionMetrics
 from app.browser_host.obscura_launch import obscura_serve_argv, obscura_serve_env
@@ -69,6 +69,10 @@ _CDP_READY_POLL_SECONDS = 0.2
 # so a wedged renderer would otherwise freeze the session lock and the reaper
 # while the process stays alive and looks healthy.
 _CDP_CALL_TIMEOUT_SECONDS = 20.0
+# One page's localStorage read; pages are read at once, so a tab that cannot
+# answer in this long is left out and the dump still returns well inside the
+# API's 15 s request for it.
+_PAGE_STORAGE_TIMEOUT_SECONDS = 5.0
 # The health probe backs a container healthcheck, so it must give up well inside
 # the orchestrator's own timeout rather than share the generous call budget.
 _CDP_HEALTH_TIMEOUT_SECONDS = 5.0
@@ -713,34 +717,54 @@ class ChromiumHost:
         return {"cookies": cookies, "origins": origins}
 
     async def _dump_origins(self, session: HostSession) -> list[OriginState]:
+        """Read every open page's localStorage at once; a page that cannot answer is left out, not the dump."""
         targets = await cdp_call(session.mux, "Target.getTargets")
         page_ids = [
             ti["targetId"]
             for ti in targets["targetInfos"]
             if ti["type"] == "page" and ti.get("browserContextId") == session.context_id
         ]
-        origins: list[OriginState] = []
-        for target_id in page_ids:
+        read = await asyncio.gather(
+            *(self._page_origin(session, target_id) for target_id in page_ids)
+        )
+        return [origin for origin in read if origin is not None]
+
+    async def _page_origin(self, session: HostSession, target_id: str) -> OriginState | None:
+        """Read one page's origin and localStorage, or None when it has none or cannot answer."""
+        try:
             attached = await cdp_call(
-                session.mux, "Target.attachToTarget", {"targetId": target_id, "flatten": True}
+                session.mux,
+                "Target.attachToTarget",
+                {"targetId": target_id, "flatten": True},
+                timeout=_PAGE_STORAGE_TIMEOUT_SECONDS,
             )
             page_session = attached["sessionId"]
             try:
                 result = await cdp_call(
                     session.mux,
                     "Runtime.evaluate",
-                    {
-                        "expression": _LOCAL_STORAGE_DUMP_JS,
-                        "returnByValue": True,
-                    },
+                    {"expression": _LOCAL_STORAGE_DUMP_JS, "returnByValue": True},
                     session_id=page_session,
+                    timeout=_PAGE_STORAGE_TIMEOUT_SECONDS,
                 )
             finally:
-                await cdp_call(session.mux, "Target.detachFromTarget", {"sessionId": page_session})
-            value = result["result"].get("value")
-            if value and value.get("origin") and value.get("localStorage"):
-                origins.append({"origin": value["origin"], "localStorage": value["localStorage"]})
-        return origins
+                await cdp_call(
+                    session.mux,
+                    "Target.detachFromTarget",
+                    {"sessionId": page_session},
+                    timeout=_PAGE_STORAGE_TIMEOUT_SECONDS,
+                )
+        except (CDPTimeoutError, CdpCommandError) as exc:
+            log.warning(
+                f"{LogTag.BROWSER} browser page left out of the storage dump",
+                error_type=type(exc).__name__,
+                browser={"session_id": session.session_id, "operation": "dump_page"},
+            )
+            return None
+        value = result["result"].get("value")
+        if value and value.get("origin") and value.get("localStorage"):
+            return {"origin": value["origin"], "localStorage": value["localStorage"]}
+        return None
 
     async def _engine_responsive(self, timeout: float) -> bool:
         """Whether the engine answers a CDP round-trip on the root connection within timeout."""

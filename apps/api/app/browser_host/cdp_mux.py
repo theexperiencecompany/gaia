@@ -69,6 +69,10 @@ class CdpConnectionClosed(RuntimeError):
     """Raised when the session's engine connection is gone, so callers fail instead of hanging."""
 
 
+class CdpCommandError(RuntimeError):
+    """Raised when the engine answers a command with its own error object."""
+
+
 class CdpMux:
     """The one CDP connection behind a session, multiplexed across its consumers."""
 
@@ -139,7 +143,7 @@ class CdpMux:
     ) -> CdpFrame:
         """Issue one CDP command and return its result.
 
-        Raises RuntimeError carrying the engine's own error object, so a failed
+        Raises CdpCommandError carrying the engine's own error object, so a failed
         command is a failure rather than an empty result the caller misreads.
         """
         message: CdpFrame = {"method": method, "params": params or {}}
@@ -147,7 +151,7 @@ class CdpMux:
             message["sessionId"] = session_id
         reply = await self._send_tracked(message)
         if "error" in reply:
-            raise RuntimeError(reply["error"])
+            raise CdpCommandError(reply["error"])
         result = reply.get("result", {})
         if not isinstance(result, dict):
             raise RuntimeError(f"malformed CDP result for {method}: {result!r}")

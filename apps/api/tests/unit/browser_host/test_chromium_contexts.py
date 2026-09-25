@@ -17,7 +17,7 @@ from playwright.sync_api import StorageState
 import pytest
 
 from app.browser_host import chromium
-from app.browser_host.cdp_mux import CdpMux
+from app.browser_host.cdp_mux import CdpCommandError, CdpMux
 from app.browser_host.chromium import ChromiumHost, EngineUnresponsiveError, HostSession
 from app.constants.log_tags import LogTag
 from tests.unit.browser_host.conftest import DEFAULT_CONTEXT, FakeEngine, install_mux, make_host
@@ -200,6 +200,94 @@ async def test_the_dump_reads_localstorage_from_this_contexts_pages_only(
         {"origin": "https://shop.test", "localStorage": [{"name": "cart", "value": "3"}]}
     ]
     assert engine.attached == {}, "every page the dump attached to is detached again"
+
+
+class _WedgedPage(FakeEngine):
+    """One page stops answering, as a tab stuck in a script loop does; the others still answer."""
+
+    def __init__(self, error: Exception) -> None:
+        super().__init__()
+        self.wedged: set[str] = set()
+        self._error = error
+
+    def _Runtime_evaluate(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
+        if self.attached.get(session_id or "", ("", False))[0] in self.wedged:
+            raise self._error
+        return super()._Runtime_evaluate(params, session_id)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(chromium.CDPTimeoutError("Runtime.evaluate"), id="unanswered"),
+        pytest.param(CdpCommandError({"code": -32000, "message": "Target crashed"}), id="failed"),
+    ],
+)
+async def test_a_page_that_cannot_be_read_does_not_lose_the_rest_of_the_state(
+    monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    engine = cast(_WedgedPage, install_mux(monkeypatch, _WedgedPage(error)))
+    host = make_host()
+    host._root_mux = cast(CdpMux, engine)
+    session = await host.create_context(_state(_LOGIN_COOKIE))
+    engine.open_page(session.context_id, url="https://shop.test/cart", storage={"cart": "3"})
+    engine.wedged.add(
+        engine.open_page(session.context_id, url="https://stuck.test/", storage={"x": "1"})
+    )
+
+    state = await host.dispose_context(session.session_id)
+
+    assert state["cookies"] == [_LOGIN_COOKIE]
+    assert state["origins"] == [
+        {"origin": "https://shop.test", "localStorage": [{"name": "cart", "value": "3"}]}
+    ]
+
+
+class _HungPage(FakeEngine):
+    """One page never answers one command: the others, and every other page, still do."""
+
+    def __init__(self, method: str) -> None:
+        super().__init__()
+        self.hung: set[str] = set()
+        self._method = method
+
+    async def send_raw(
+        self, method: str, params: dict[str, Any] | None = None, session_id: str | None = None
+    ) -> dict[str, Any]:
+        target = (params or {}).get("targetId") or self.attached.get(
+            (params or {}).get("sessionId") or session_id or "", ("", False)
+        )[0]
+        if method == self._method and target in self.hung:
+            await asyncio.Event().wait()
+        return await super().send_raw(method, params, session_id)
+
+
+@pytest.mark.parametrize(
+    "method", ["Target.attachToTarget", "Runtime.evaluate", "Target.detachFromTarget"]
+)
+async def test_a_page_that_never_answers_is_left_out_within_its_own_budget(
+    monkeypatch: pytest.MonkeyPatch, method: str
+) -> None:
+    monkeypatch.setattr(chromium, "_PAGE_STORAGE_TIMEOUT_SECONDS", 0.05)
+    engine = cast(_HungPage, install_mux(monkeypatch, _HungPage(method)))
+    host = make_host()
+    host._root_mux = cast(CdpMux, engine)
+    session = await host.create_context(None)
+    engine.open_page(session.context_id, url="https://shop.test/cart", storage={"cart": "3"})
+    engine.hung.add(
+        engine.open_page(session.context_id, url="https://stuck.test/", storage={"x": "1"})
+    )
+    logger = MagicMock()
+    monkeypatch.setattr(chromium, "log", logger)
+
+    state = await asyncio.wait_for(host.storage_state(session.session_id), timeout=5)
+
+    assert [origin["origin"] for origin in state["origins"]] == ["https://shop.test"]
+    logger.warning.assert_called_once_with(
+        f"{LogTag.BROWSER} browser page left out of the storage dump",
+        error_type="CDPTimeoutError",
+        browser={"session_id": session.session_id, "operation": "dump_page"},
+    )
 
 
 # --- dispose ---
