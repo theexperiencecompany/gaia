@@ -39,7 +39,6 @@ SIZE_L = PageAction(id="e3", node=9, kind="select", label="Size → Large", valu
 SCROLL = PageAction(id="scroll_down", kind="scroll", label="Scroll down", delta=560)
 WAIT = PageAction(id="wait", kind="wait", label="Wait for the page to update")
 PAGE_KEY = ["key"]
-MARKER = ["marker"]
 GUARDS = {"7": ["guard-of-7"], "8": ["guard-of-8"], "9": ["guard-of-9"]}
 #: What Runtime.evaluate reports when the script threw (the document was replaced under it).
 THROWS = object()
@@ -52,7 +51,6 @@ SNAPSHOT: dict[str, Any] = {
     "text": "Welcome",
     "scroll": {"y": 0, "height": 2400},
     "actions": [FIELD, LINK, SIZE_L, SCROLL, WAIT],
-    "marker": MARKER,
     "page_key": PAGE_KEY,
     "guards": GUARDS,
     "omitted_actions": 0,
@@ -67,7 +65,6 @@ def _state(**changes: Any) -> PageState:
         "title": SNAPSHOT["title"],
         "text": SNAPSHOT["text"],
         "actions": SNAPSHOT["actions"],
-        "marker": MARKER,
         "page_key": PAGE_KEY,
         "guards": GUARDS,
         "frames": SNAPSHOT["frames"],
@@ -87,7 +84,6 @@ class _Tab:
         self,
         *,
         snapshots: list[object] | None = None,
-        marker: object = MARKER,
         page_key: object = PAGE_KEY,
         guards: dict[str, object] | None = None,
         points: dict[int, object] | None = None,
@@ -96,7 +92,6 @@ class _Tab:
         hangs: str | None = None,
     ) -> None:
         self.snapshots = list(snapshots or [SNAPSHOT])
-        self.marker = marker
         self.page_key = page_key
         self.guards = GUARDS if guards is None else guards
         self.points = points or {}
@@ -140,8 +135,6 @@ class _Tab:
     def _run(self, expression: str, *, awaited: bool) -> object:
         if expression == page_mod._SNAPSHOT_JS:
             return self.snapshots.pop(0) if len(self.snapshots) > 1 else self.snapshots[0]
-        if expression == page_mod._MARKER_JS:
-            return self.marker
         if expression.startswith(page_mod._GUARD_JS):
             node = _call_argument(expression, page_mod._GUARD_JS)
             if self.page_key is THROWS:
@@ -258,14 +251,6 @@ async def test_the_fingerprint_changes_with_what_a_person_sees(field: str) -> No
     assert moved.fingerprint != first.fingerprint
 
 
-async def test_the_fingerprint_ignores_a_marker_that_ticks() -> None:
-    page, _ = _page(_Tab(snapshots=[SNAPSHOT, SNAPSHOT | {"marker": ["ticked"]}]))
-
-    first, ticked = await page.observe(), await page.observe()
-
-    assert ticked.fingerprint == first.fingerprint
-
-
 async def test_a_page_being_replaced_is_read_again_until_it_settles() -> None:
     page, _ = _page(_Tab(snapshots=[None, THROWS, SNAPSHOT]))
 
@@ -303,10 +288,8 @@ async def test_a_navigation_that_cuts_the_settle_wait_short_still_reads_the_new_
     assert state.url == SNAPSHOT["url"]
 
 
-async def test_an_element_decision_holds_while_its_page_and_target_do_though_other_parts_tick() -> (
-    None
-):
-    page, _ = _page(_Tab(marker=["ticked"]))
+async def test_an_element_decision_holds_while_its_page_and_target_do() -> None:
+    page, _ = _page(_Tab())
 
     assert await page.fresh(_state(), FIELD) is True
 
@@ -324,14 +307,26 @@ async def test_an_element_decision_is_stale_once_its_page_or_target_changed(tab:
     assert await page.fresh(_state(), FIELD) is False
 
 
-@pytest.mark.parametrize(("marker", "fresh"), [(MARKER, True), (["scrolled"], False)])
-async def test_a_page_level_decision_holds_only_while_the_whole_page_does(
-    marker: object, fresh: bool
+@pytest.mark.parametrize(("page_key", "fresh"), [(PAGE_KEY, True), (["scrolled"], False)])
+async def test_a_page_level_decision_holds_only_while_the_page_key_does(
+    page_key: object, fresh: bool
 ) -> None:
-    page, _ = _page(_Tab(marker=marker))
+    page, _ = _page(_Tab(page_key=page_key))
 
     assert await page.fresh(_state()) is fresh
     assert await page.fresh(_state(), SCROLL) is fresh
+
+
+async def test_a_page_whose_text_keeps_ticking_holds_page_level_decisions() -> None:
+    ticks = [SNAPSHOT | {"text": f"Sale ends in 0:{59 - n}"} for n in range(3)]
+    tab = _Tab(snapshots=ticks)
+    page, _ = _page(tab)
+    state = await page.observe()
+
+    assert await page.fresh(state) is True
+    await page.act(WAIT, state)
+    await page.act(SCROLL, state)
+    assert [event["type"] for event in tab.mouse] == ["mouseWheel"]
 
 
 async def test_a_decision_on_a_page_that_moved_on_sends_no_input() -> None:
@@ -433,7 +428,7 @@ async def test_a_scroll_turns_the_wheel_inside_the_viewport_and_settles_before_t
 
 
 async def test_a_scroll_on_a_page_that_moved_turns_nothing() -> None:
-    tab = _Tab(marker=["scrolled"])
+    tab = _Tab(page_key=["scrolled"])
     page, _ = _page(tab)
 
     with pytest.raises(StalePage):
@@ -591,6 +586,6 @@ async def test_the_card_photo_is_a_jpeg_of_the_tab() -> None:
 async def test_a_decision_on_a_document_being_replaced_no_longer_holds(
     action: PageAction | None,
 ) -> None:
-    page, _ = _page(_Tab(marker=THROWS, page_key=THROWS))
+    page, _ = _page(_Tab(page_key=THROWS))
 
     assert await page.fresh(_state(), action) is False

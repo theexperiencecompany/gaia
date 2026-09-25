@@ -15,6 +15,7 @@ from browser_use.llm.exceptions import ModelProviderError
 import pytest
 
 from app.constants.browser import (
+    JEV_BURST_MAX_ACTIONS,
     JEV_SECRET_MASK,
     JEV_STALE_LIMIT,
     JEV_UNCHANGED_LIMIT,
@@ -268,6 +269,23 @@ async def test_a_judgement_on_a_page_that_moved_on_is_made_again_on_the_new_page
 
     assert (result.stop, result.url) == (JevStop.DONE, after.url)
     assert run.jev.decided[1]["page"].url == after.url
+
+
+async def test_a_burst_asks_jev_a_bounded_number_of_times_even_when_nothing_it_decides_holds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    page = FakePage(page_state())
+
+    async def _never_holds(state: PageState, action: PageAction | None = None) -> bool:
+        return False
+
+    page.fresh = _never_holds  # type: ignore[method-assign]  # every judgement lands on a moved page
+    run = _run(monkeypatch, page, *[decision(JevOperation.DONE)] * (4 * JEV_BURST_MAX_ACTIONS))
+
+    result = await run.burst()
+
+    assert result.stop is JevStop.MAX_DECISIONS
+    assert len(run.jev.decided) == 2 * JEV_BURST_MAX_ACTIONS
 
 
 async def test_a_run_asked_to_stop_ends_the_burst_before_jev_decides(

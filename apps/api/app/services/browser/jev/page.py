@@ -40,8 +40,6 @@ _SNAPSHOT_JS = (_ASSETS / "snapshot.js").read_text()
 _ACT_JS = (_ASSETS / "act.js").read_text().strip()
 _SETTLE_JS = (_ASSETS / "settle.js").read_text().strip()
 _GUARD_JS = (_ASSETS / "guard.js").read_text().strip()
-# The snapshot's full marker, recomputed in place: equal only when nothing it read changed.
-_MARKER_JS = f"(() => {{ const state={_SNAPSHOT_JS}; return state?.marker ?? null; }})()"
 #: Ctrl on every platform the hosts run (Linux); select-all before text replaces a field.
 _CTRL = 2
 _SELECT_ALL: tuple[DispatchKeyEventParameters, ...] = (
@@ -136,7 +134,6 @@ class _Snapshot(TypedDict):
     title: str
     text: str
     actions: list[PageAction]
-    marker: object
     page_key: object
     guards: dict[str, object]
     omitted_actions: int
@@ -152,7 +149,6 @@ class PageState:
     title: str
     text: str
     actions: list[PageAction]
-    marker: object
     page_key: object
     guards: dict[str, object]
     frames: list[Frame]
@@ -237,7 +233,6 @@ class JevPage:
                     title=snapshot["title"],
                     text=snapshot["text"],
                     actions=snapshot["actions"],
-                    marker=snapshot["marker"],
                     page_key=snapshot["page_key"],
                     guards=snapshot["guards"],
                     frames=snapshot["frames"],
@@ -249,19 +244,17 @@ class JevPage:
     async def fresh(self, page: PageState, action: PageAction | None = None) -> bool:
         """Whether a decision made on page still holds.
 
-        An element decision checks the page key and its own target's guard, so
-        unrelated visible change (a ticking countdown) does not invalidate it; a
-        page-level one checks the whole snapshot marker. Nothing holds on a
-        document replaced while it was checked.
+        Every decision checks the page key (document, address, scroll, viewport,
+        form state) and an element decision its own target's guard too; visible
+        text elsewhere (a clock, a countdown) invalidates neither. Nothing holds
+        on a document replaced while it was checked.
         """
+        node = action.get("node") if action is not None else None
         try:
-            if action is not None and "node" in action:
-                node = action["node"]
-                current = await self._evaluate(f"{_GUARD_JS}({json.dumps(node)})")
-                return current == [page.page_key, page.guards.get(str(node))]
-            return await self._evaluate(_MARKER_JS) == page.marker
+            current = await self._evaluate(f"{_GUARD_JS}({json.dumps(node)})")
         except StalePage:
             return False
+        return current == [page.page_key, None if node is None else page.guards.get(str(node))]
 
     async def act(self, action: PageAction, page: PageState, text: str | None = None) -> None:
         """Execute one observed action; raises before any input when the page moved on."""

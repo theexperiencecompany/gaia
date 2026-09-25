@@ -50,7 +50,6 @@ def _page(*actions: PageAction) -> PageState:
         title="Shop",
         text="Search the shop",
         actions=list(actions),
-        marker=None,
         page_key=None,
         guards={},
         frames=[],

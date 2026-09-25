@@ -429,6 +429,7 @@ class JevStop(StrEnum):
     NO_PROGRESS = "no_progress"
     CYCLE = "cycle"
     MAX_ACTIONS = "max_actions"
+    MAX_DECISIONS = "max_decisions"
     COVERED = "covered"
     STALE = "stale"
     CAPTCHA = "captcha"
@@ -462,6 +463,8 @@ JEV_VISITED_PAGES = 12
 #: One burst's bounds, from jev-ultrafast: actions, unchanged non-wait actions in a
 #: row, and consecutive stale or covered targets before the agent takes over.
 JEV_BURST_MAX_ACTIONS = 25
+#: Decisions (paid model calls) per burst, as jev-ultrafast bounds them: none may loop unbounded.
+JEV_BURST_MAX_DECISIONS = 2 * JEV_BURST_MAX_ACTIONS
 JEV_UNCHANGED_LIMIT = 3
 JEV_STALE_LIMIT = 3
 JEV_COVERED_LIMIT = 2

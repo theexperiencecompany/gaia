@@ -71,6 +71,7 @@ _STOP_MEANING = {
     JevStop.NO_PROGRESS: "Jev's last actions changed nothing on the page.",
     JevStop.CYCLE: "Jev went back and forth without progress.",
     JevStop.MAX_ACTIONS: "Jev used its action budget for one burst; it may be partway.",
+    JevStop.MAX_DECISIONS: "Jev used its decision budget for one burst without settling on the page.",
     JevStop.COVERED: "An overlay or hidden control blocks the target; deal with it yourself.",
     JevStop.STALE: "The page kept changing under Jev's decisions.",
     JevStop.CAPTCHA: "A CAPTCHA is on the page: hand it to the user with solve_captcha_with_help.",

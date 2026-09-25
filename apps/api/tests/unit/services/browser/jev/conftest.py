@@ -21,7 +21,6 @@ def page_state(url: str = "https://site.test/a", text: str = "page", **extra: An
         title="Site",
         text=text,
         actions=[BUTTON, FIELD, PASSWORD],
-        marker=None,
         page_key=None,
         guards={},
         frames=extra.get("frames", []),

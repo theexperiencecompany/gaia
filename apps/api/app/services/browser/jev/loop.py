@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from app.constants.browser import (
     JEV_BURST_MAX_ACTIONS,
+    JEV_BURST_MAX_DECISIONS,
     JEV_CAPTCHA_FRAME_MARKERS,
     JEV_COVERED_LIMIT,
     JEV_PAGE_TEXT_MAX_CHARS,
@@ -73,6 +74,10 @@ _Ending = tuple[JevStop, str]
 _ASKED_TO_STOP: _Ending = (JevStop.STOPPED, "The run was asked to stop.")
 _USER_MESSAGE: _Ending = (JevStop.USER_MESSAGE, "The user sent a message.")
 _MAX_ACTIONS: _Ending = (JevStop.MAX_ACTIONS, f"{JEV_BURST_MAX_ACTIONS} actions in one burst.")
+_MAX_DECISIONS: _Ending = (
+    JevStop.MAX_DECISIONS,
+    f"{JEV_BURST_MAX_DECISIONS} decisions in one burst.",
+)
 _KEPT_CHANGING: _Ending = (JevStop.STALE, "The page kept changing under each decision.")
 _OVERLAID: _Ending = (
     JevStop.COVERED,
@@ -169,6 +174,7 @@ class _Burst:
     addresses: list[str]
     steps: list[JevStep] = field(default_factory=list)
     opened: dict[str, OpenedPage] = field(default_factory=dict)
+    decisions: int = 0
     stale: int = 0
     covered: int = 0
 
@@ -251,6 +257,8 @@ class JevRunner:
                 )
             if len(state.steps) >= JEV_BURST_MAX_ACTIONS:
                 return _MAX_ACTIONS
+            if state.decisions >= JEV_BURST_MAX_DECISIONS:
+                return _MAX_DECISIONS
             if state.stale >= JEV_STALE_LIMIT:
                 return _KEPT_CHANGING
             if state.covered >= JEV_COVERED_LIMIT:
@@ -266,6 +274,7 @@ class JevRunner:
                 return ended
 
     async def _decide(self, state: _Burst) -> Decision:
+        state.decisions += 1
         started = perf_counter()
         decision = await decide(
             self._client,
