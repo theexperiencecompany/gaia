@@ -43,6 +43,7 @@ from app.schemas.browser import (
     GuidanceElement,
 )
 from app.services.browser.captions import burst_caption, step_caption
+from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.jev.gateway import build_jev_client
 from app.services.browser.jev.loop import JevRunner
 from app.services.browser.jev.page import JevPage
@@ -218,8 +219,13 @@ class BrowserAgentRun:
         # Before any Browser-Use object exists, so every event bus this run
         # starts takes the run's lock, not the process-wide one.
         isolate_run_events()
-        llm = await build_agent_llm(self._user_id, self._ledger)
-        text_model = build_text_model(self._ledger)
+        try:
+            llm = await build_agent_llm(self._user_id, self._ledger)
+            text_model = build_text_model(self._ledger)
+        except BrowserUnavailableError as exc:
+            # The run's event says the model, not the browser, was unusable.
+            log.set_ns("browser", llm_error=type(exc).__name__)
+            raise
         client = build_jev_client()
         browser = Browser(
             cdp_url=self._session.cdp_url,

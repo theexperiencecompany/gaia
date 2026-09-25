@@ -15,6 +15,7 @@ import pytest
 
 from app.constants.browser import (
     BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS,
+    BrowserEngine,
     BROWSER_TASK_EVENT,
     BROWSER_TOOL_CATEGORY,
     BrowserRunFailure,
@@ -37,6 +38,8 @@ from app.schemas.browser import (
     PendingAgentGuidance,
 )
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
+from app.services.browser.jev.secrets import RunSecrets
+from app.services.browser.ledger import RunLedger
 from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import job_runner as jr
 from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
@@ -146,10 +149,8 @@ def test_a_done_runs_own_answer_is_what_the_executor_hears() -> None:
 
         usage = None
 
-    outcome = outcome_from_history(_History())
-    out = jr.agent_result_message(
-        _result(BrowserSessionStatus.COMPLETED, outcome.success, outcome.summary)
-    )
+    success, summary = outcome_from_history(_History())  # type: ignore[arg-type]  # a duck-typed history
+    out = jr.agent_result_message(_result(BrowserSessionStatus.COMPLETED, success, summary or ""))
 
     assert answer in out
     assert out.startswith(answer)
@@ -267,7 +268,6 @@ def test_a_cancelled_run_reports_no_result_whatever_the_run_left_behind() -> Non
 # execute_browser_job — harness
 # ---------------------------------------------------------------------------
 
-LLM_SENTINEL = object()
 # Not the settings default, so a job that opened its session on any other host shows.
 PRIMARY_HOST = "http://primary-host:8930"
 
@@ -379,7 +379,12 @@ def _install(
     h = Harness()
     final = result if result is not None else _result(BrowserSessionStatus.COMPLETED, True, "Done")
 
-    monkeypatch.setattr(jr, "build_browser_llm", lambda user_id=None: LLM_SENTINEL)
+    async def _obscura_off(flag: object, user_id: str | None, default: bool | None = None) -> bool:
+        return False
+
+    # Chrome, the default engine, on the configured host; Obscura is an opt-in flag.
+    monkeypatch.setattr(jr, "is_enabled", _obscura_off)
+    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
     monkeypatch.setattr(jr.settings, "BROWSER_HOST_URL", PRIMARY_HOST)
     monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", None)
     monkeypatch.setattr(jr, "publish_frame_to_job", h.publish)
@@ -410,6 +415,7 @@ def _install(
             h.runner = self
             self.session = kwargs["session"]
             self.used_fallback = False
+            self.ledger = RunLedger()
 
         async def run(self, task: str) -> BrowserResultSnapshot:
             h.run_task = task
@@ -423,6 +429,7 @@ def _install(
         record: BrowserTaskRecord,
         result: BrowserResultSnapshot,
         *,
+        actions: int,
         step_goals: list[str] | None = None,
         step_screenshots: list[str] | None = None,
     ) -> Any:
@@ -430,6 +437,7 @@ def _install(
             {
                 "record": record,
                 "result": result,
+                "actions": actions,
                 "step_goals": step_goals,
                 "step_screenshots": step_screenshots,
             }
@@ -475,31 +483,6 @@ def _install(
 # ---------------------------------------------------------------------------
 # execute_browser_job — gating and early returns
 # ---------------------------------------------------------------------------
-
-
-async def test_llm_unavailable_ends_the_run_with_a_failed_card(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Nobody is holding a tool call to hear an exception, so an unusable model is a terminal card carrying the reason."""
-    h = _install(monkeypatch)
-    monkeypatch.setattr(
-        jr,
-        "build_browser_llm",
-        MagicMock(side_effect=BrowserUnavailableError("no API key for 'google'")),
-    )
-    fake_log = MagicMock()
-    monkeypatch.setattr(jr, "log", fake_log)
-
-    out = await _run(h, _request(task="do it"))
-
-    assert out == _failed_message("no API key for 'google'")
-    assert h.cards == [_failed_card("no API key for 'google'")]
-    assert h.session_kwargs == {}
-    fake_log.warning.assert_called_once_with(
-        f"{LogTag.BROWSER} Browser LLM unavailable",
-        error_type="BrowserUnavailableError",
-        error="no API key for 'google'",
-    )
 
 
 async def test_capacity_limit_is_reported_as_a_terminal_card_verbatim(
@@ -581,18 +564,6 @@ async def test_a_run_that_did_not_succeed_is_a_failed_event_with_its_typed_reaso
 
     assert event["outcome"] == "failed"
     assert event["reason"] == reason
-
-
-async def test_an_unusable_model_is_an_llm_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    h = _install(monkeypatch)
-    monkeypatch.setattr(
-        jr, "build_browser_llm", MagicMock(side_effect=BrowserUnavailableError("no key"))
-    )
-
-    event = await _run_event(h, _request())
-
-    assert event["outcome"] == "failed"
-    assert event["reason"] == BrowserRunFailure.LLM_ERROR
 
 
 async def test_a_finished_run_records_its_status_steps_and_engine_on_the_event(
@@ -808,10 +779,6 @@ async def test_runner_is_configured_from_settings_and_config(
     monkeypatch.setattr(jr.settings, "BROWSER_USE_HANDOFF_TIMEOUT_SECONDS", 333)
     monkeypatch.setattr(jr.settings, "BROWSER_USE_STREAM_SCREENSHOTS", False)
     monkeypatch.setattr(jr.settings, "BROWSER_USE_SOLVE_CAPTCHA", False)
-    # Deliberately the opposite of ``BrowserRunConfig.flash_mode``'s own default:
-    # pinned to the default, a config that never forwards the setting at all
-    # looks identical to one that does.
-    monkeypatch.setattr(jr.settings, "BROWSER_USE_FLASH_MODE", False)
 
     await _run(h, _request(conversation_id="conv-9", root_request_id="req-42"))
 
@@ -827,11 +794,10 @@ async def test_runner_is_configured_from_settings_and_config(
         handoff_timeout_seconds=333,
         stream_screenshots=False,
         solve_captcha=False,
-        flash_mode=False,
     )
+    assert isinstance(kwargs.pop("secrets"), RunSecrets)
     assert kwargs == {
         "session": h.session,
-        "llm": LLM_SENTINEL,
         "user_id": "u1",
         "root_request_id": "req-42",
     }
@@ -1785,23 +1751,6 @@ def test_a_stopped_run_the_user_redirected_is_told_both_verbatim() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_the_browser_model_is_built_for_the_user_who_asked(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    h = _install(monkeypatch)
-    built_for: list[str | None] = []
-
-    def _build(user_id: str | None = None) -> object:
-        built_for.append(user_id)
-        return LLM_SENTINEL
-
-    monkeypatch.setattr(jr, "build_browser_llm", _build)
-
-    await _run(h, _request(user_id="u7"))
-
-    assert built_for == ["u7"]
-
-
 async def test_a_handoff_is_filed_for_this_user_and_conversation_and_waited_on_for_its_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1950,7 +1899,7 @@ async def test_a_guidance_ask_is_filed_as_an_agent_handoff_and_withdrawn_once_an
     assert event["browser"]["guidance_result"] == "completed"
 
 
-async def test_a_fallback_session_opens_on_the_fallback_host_for_this_user(
+async def test_an_obscura_runs_fallback_session_opens_on_the_chrome_host_for_this_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     carried = MagicMock(name="carried_state")
@@ -1962,6 +1911,12 @@ async def test_a_fallback_session_opens_on_the_fallback_host_for_this_user(
         return _result(BrowserSessionStatus.COMPLETED, True, "done")
 
     h = _install(monkeypatch, run_body=body)
+
+    async def _obscura_on(flag: object, user_id: str | None, default: bool | None = None) -> bool:
+        return True
+
+    monkeypatch.setattr(jr, "is_enabled", _obscura_on)
+    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
     monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://fallback:8930")
 
     await _run(h, _request(user_id="u7"))

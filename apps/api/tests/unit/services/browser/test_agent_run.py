@@ -19,10 +19,12 @@ import pytest
 from app.constants.browser import BROWSER_AGENT_NO_PROGRESS_STEPS
 from app.services.browser import agent_run as agent_run_mod
 from app.services.browser.agent_run import STEP_ERROR_CAPTION, BrowserAgentRun
+from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION
 from app.services.browser.ledger import CallComponent, RunLedger
 from app.services.browser.run_contract import BrowserRunConfig, RunHooks, StepFrame
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -283,3 +285,18 @@ class TestConnectionProbe:
         )
 
         assert await harness.run.connection_answers() is answers
+
+
+async def test_a_model_that_cannot_be_built_is_named_on_the_runs_event(
+    harness: _Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _no_model(user_id: str | None, ledger: RunLedger) -> None:
+        raise BrowserUnavailableError("OPENROUTER_API_KEY is not set")
+
+    monkeypatch.setattr(agent_run_mod, "build_agent_llm", _no_model)
+
+    async with captured_wide_event() as event:
+        with pytest.raises(BrowserUnavailableError):
+            await harness.run.execute("read the page")
+
+    assert event["browser"]["llm_error"] == "BrowserUnavailableError"
