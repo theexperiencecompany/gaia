@@ -158,7 +158,7 @@ def test_a_form_is_filled_and_submitted_with_every_field(battery: Battery) -> No
     replies = [t for t in outcome.transcript.texts if "Use the browser for this" not in t]
     for delivered in (outcome.summary, str(outcome.transcript.photos), *replies):
         assert "gaia-test-123" not in delivered, delivered
-    assert outcome.step_count >= 6, "a nine-field form takes at least six actions"
+    assert outcome.action_count >= 6, "a nine-field form takes at least six actions"
     assert len(outcome.transcript.photos) >= 4, "step photos did not reach Telegram"
     _one_final_message(outcome)
     _no_contradiction(outcome)
@@ -183,7 +183,9 @@ def test_a_two_site_research_task_reports_every_part(battery: Battery) -> None:
     titles = hn_front_page_titles()
     named = [t for t in titles if len(t) > 12 and t.lower() in outcome.summary.lower()]
     assert len(named) >= 3, f"fewer than three real front-page stories named: {named}"
-    assert 8 <= outcome.step_count <= 40
+    # Did real, visible work across both sites, without running away.
+    assert outcome.action_count >= 8, outcome.action_count
+    assert outcome.step_count <= 40, outcome.step_count
     _one_final_message(outcome)
     _no_contradiction(outcome)
 

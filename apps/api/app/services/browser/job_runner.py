@@ -474,6 +474,7 @@ async def persist_run_outcome(
     *,
     session_id: str,
     result: BrowserResultSnapshot,
+    actions: int,
     run_t0: float,
     emitter: ProgressEmitter,
     engine_fallback: bool,
@@ -494,6 +495,7 @@ async def persist_run_outcome(
             "status": result.status.value,
             "success": result.success,
             "steps": result.steps,
+            "actions": actions,
             "duration_ms": round((perf_counter() - run_t0) * 1000),
             "source": request.source_category or "web",
             # With success, says whether the fallback engine recovered a run
@@ -510,6 +512,7 @@ async def persist_run_outcome(
             source=request.conversation_source.value if request.conversation_source else "",
         ),
         result,
+        actions=actions,
         step_goals=[emitter.step_goals.get(i, "") for i in range(1, result.steps + 1)],
         step_screenshots=[emitter.step_shots.get(i, "") for i in range(1, result.steps + 1)],
     )
@@ -522,11 +525,15 @@ def hosts_for(engine: BrowserEngine) -> tuple[str, str | None]:
     is a Chromium host. Chrome is the default engine, Obscura an opt-in one.
     """
     primary_is_chrome = settings.BROWSER_ENGINE is BrowserEngine.CHROMIUM
-    chrome_host = settings.BROWSER_HOST_URL if primary_is_chrome else settings.BROWSER_FALLBACK_HOST_URL
+    chrome_host = (
+        settings.BROWSER_HOST_URL if primary_is_chrome else settings.BROWSER_FALLBACK_HOST_URL
+    )
     if engine is BrowserEngine.OBSCURA and not primary_is_chrome:
         return settings.BROWSER_HOST_URL, chrome_host
     if chrome_host is None:
-        raise BrowserUnavailableError("No Chrome browser host is configured (BROWSER_FALLBACK_HOST_URL).")
+        raise BrowserUnavailableError(
+            "No Chrome browser host is configured (BROWSER_FALLBACK_HOST_URL)."
+        )
     return chrome_host, None
 
 
@@ -670,6 +677,7 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
             result = await runner.run(full_task)
             record_run_result(
                 result,
+                actions=runner.ledger.action_count,
                 engine_fallback=runner.used_fallback,
                 run_ms=round((perf_counter() - run_t0) * 1000),
             )
@@ -677,6 +685,7 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
                 request,
                 session_id=runner.session.session_id,
                 result=result,
+                actions=runner.ledger.action_count,
                 run_t0=run_t0,
                 emitter=emitter,
                 engine_fallback=runner.used_fallback,

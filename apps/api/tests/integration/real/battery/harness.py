@@ -219,6 +219,11 @@ class RunOutcome:
     def step_count(self) -> int:
         return int((self.task_record or {}).get("steps") or 0)
 
+    @property
+    def action_count(self) -> int:
+        """Browser actions the run executed: one Jev burst of many actions is still one step."""
+        return int((self.task_record or {}).get("actions") or 0)
+
 
 class Battery:
     """The stack, as one scenario sees it."""

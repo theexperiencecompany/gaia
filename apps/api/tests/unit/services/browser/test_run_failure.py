@@ -18,7 +18,7 @@ async def _event_after(
     async with log_context("run_browser_job"):
         if facts:
             log.set_ns("browser", **facts)
-        record_run_result(result, engine_fallback=False, run_ms=1)
+        record_run_result(result, actions=0, engine_fallback=False, run_ms=1)
         return dict(log.get())
 
 
@@ -49,7 +49,7 @@ async def test_an_unsuccessful_run_is_failed_with_the_reason_its_facts_give(
 async def test_a_reason_the_run_already_gave_is_kept() -> None:
     async with log_context("run_browser_job"):
         log.fail(BrowserRunFailure.TASK_TIMEOUT)
-        record_run_result(_failed(), engine_fallback=True, run_ms=1)
+        record_run_result(_failed(), actions=0, engine_fallback=True, run_ms=1)
         event = dict(log.get())
 
     assert event["reason"] == BrowserRunFailure.TASK_TIMEOUT
@@ -67,16 +67,17 @@ async def test_a_successful_run_carries_no_reason() -> None:
     assert event["browser"]["success"] is True
 
 
-async def test_a_finished_run_puts_its_status_steps_and_run_time_on_the_event() -> None:
+async def test_a_finished_run_puts_its_status_steps_actions_and_run_time_on_the_event() -> None:
     result = BrowserResultSnapshot(
         status=BrowserSessionStatus.FAILED, success=False, summary="no", steps=7
     )
 
     async with log_context("run_browser_job"):
-        record_run_result(result, engine_fallback=False, run_ms=4200)
+        record_run_result(result, actions=23, engine_fallback=False, run_ms=4200)
         browser = dict(log.get())["browser"]
 
     assert browser["status"] == "failed"
     assert browser["steps"] == 7
+    assert browser["actions"] == 23
     assert browser["run_ms"] == 4200
     assert browser["engine_fallback"] is False

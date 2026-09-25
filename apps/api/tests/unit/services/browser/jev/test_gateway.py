@@ -8,11 +8,15 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
-from app.constants.browser import JEV_GATEWAY_MAX_ATTEMPTS, JEV_GATEWAY_TIMEOUT_SECONDS
+from app.constants.browser import (
+    JEV_GATEWAY_MAX_ATTEMPTS,
+    JEV_GATEWAY_TIMEOUT_SECONDS,
+    JEV_OUT_OF_CREDIT_SECONDS,
+)
 from app.constants.log_tags import LogTag
 from app.services.browser.jev import gateway
 from app.services.browser.jev.gateway import (
-    JevChoiceQuestion,
+    JevQuestion,
     JevEvaluationRequest,
     JevFailoverClient,
     JevGatewayClient,
@@ -24,7 +28,7 @@ pytestmark = pytest.mark.unit
 REQUEST = JevEvaluationRequest(
     state={"page": {"url": "https://x", "title": "X", "text": "hi"}, "elements": []},
     questions={
-        "operation": JevChoiceQuestion(
+        "operation": JevQuestion(
             instructions={"goal": "g", "rules": ["r"]}, criteria={"DONE": "done", "WAIT": "wait"}
         )
     },
@@ -230,6 +234,31 @@ async def test_a_primary_that_exhausts_its_retries_hands_the_same_request_to_the
     assert len(fallback_bodies) == 1
     assert primary_bodies[0]["state"] == fallback_bodies[0]["state"]
     assert primary_bodies[0]["questions"] == fallback_bodies[0]["questions"]
+
+
+async def test_a_primary_out_of_credit_is_skipped_until_its_window_passes(monkeypatch) -> None:
+    # Every request would be refused on credit until the account is topped up; asking again only adds latency.
+    primary_calls = 0
+
+    def primary(request: httpx.Request) -> httpx.Response:
+        nonlocal primary_calls
+        primary_calls += 1
+        return httpx.Response(402, json={"error": {"message": "Insufficient credits"}})
+
+    client = JevFailoverClient(
+        primary=_client(primary, provider="openrouter"),
+        fallback=_client(lambda request: httpx.Response(200, json=ANSWER), provider="vercel"),
+    )
+    now = [1000.0]
+    monkeypatch.setattr(gateway, "monotonic", lambda: now[0])
+
+    first = await client.evaluate(REQUEST)
+    second = await client.evaluate(REQUEST)
+    now[0] += JEV_OUT_OF_CREDIT_SECONDS + 1
+    await client.evaluate(REQUEST)
+
+    assert (first.provider, second.provider) == ("vercel", "vercel")
+    assert primary_calls == 2, "skipped inside the window, asked again once it passed"
 
 
 async def test_the_fallback_is_never_asked_when_the_primary_answers() -> None:

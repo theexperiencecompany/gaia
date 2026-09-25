@@ -1,20 +1,30 @@
-"""The step frames a browser run hands the user: numbered by what was emitted, never silent on an errored step.
+"""What a browser run hands the user and the agent between steps.
 
-Browser-Use's own counter advances for steps that never reach a frame (an action
-that errors, an observation the watchdog times out), so the user saw photos 2, 3,
-4 and then 100s of nothing until 7.
+Cards are numbered by what the user saw, never silent on an errored step, and
+never shown twice for a step Jev's own burst card already covers; the agent
+hears the user's mid-task words and any load the browser stopped; a run that
+repeats itself on an unchanged page ends; a wedged connection is reported.
 """
 
+from __future__ import annotations
+
+import asyncio
 from collections.abc import Awaitable
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
+from app.constants.browser import BROWSER_AGENT_NO_PROGRESS_STEPS
+from app.services.browser import agent_run as agent_run_mod
 from app.services.browser.agent_run import STEP_ERROR_CAPTION, BrowserAgentRun
-from app.services.browser.jev import JevChatModel
+from app.services.browser.jev.secrets import RunSecrets
+from app.services.browser.jev.tool import JEV_ACTION
+from app.services.browser.ledger import CallComponent, RunLedger
 from app.services.browser.run_contract import BrowserRunConfig, RunHooks, StepFrame
+
+pytestmark = pytest.mark.unit
 
 CONFIG = BrowserRunConfig(
     max_steps=20,
@@ -25,82 +35,96 @@ CONFIG = BrowserRunConfig(
     stream_screenshots=True,
     solve_captcha=False,
 )
+SECRET = "hunter2-secret"
 
 
 class _Action:
-    """One of Browser-Use's own action models: every action a field, all but the chosen one None."""
+    """One of Browser-Use's action models: every action a field, all but the chosen one None."""
 
     def __init__(self, name: str, params: dict[str, Any]) -> None:
-        self._fields: dict[str, Any] = {"click": None, "navigate": None, "done": None}
+        self._fields: dict[str, Any] = {
+            "click": None,
+            "navigate": None,
+            "done": None,
+            JEV_ACTION: None,
+        }
         self._fields[name] = params
 
     def model_dump(self, exclude_none: bool = False) -> dict[str, Any]:
-        if not exclude_none:
-            return dict(self._fields)
-        return {
-            name: {key: value for key, value in params.items() if value is not None}
-            for name, params in self._fields.items()
-            if params is not None
-        }
+        return {name: params for name, params in self._fields.items() if params is not None}
 
 
 class _Result:
-    """One executed action's ActionResult, errored or not."""
-
     def __init__(self, *, error: str | None = None, content: str = "") -> None:
         self.error = error
         self.extracted_content = content
         self.long_term_memory = None
 
 
-def _page(url: str = "https://example.test/page") -> Any:
+class _Page:
+    async def screenshot(self) -> str:
+        return "c2hvdA=="
+
+
+def _state(
+    url: str = "https://example.test/page", selector_map: dict[int, Any] | None = None
+) -> Any:
     return SimpleNamespace(
-        dom_state=SimpleNamespace(selector_map={}),
-        url=url,
-        title="Example",
-        screenshot="c2hvdA==",
+        dom_state=SimpleNamespace(selector_map=selector_map or {}), url=url, title="Example"
     )
 
 
-def _output(name: str, params: dict[str, Any]) -> Any:
-    return SimpleNamespace(action=[_Action(name, params)])
-
-
-async def _never_stop() -> bool:
-    return False
-
-
 class _Harness:
-    """A run wired to record what it emitted, plus the two Browser-Use callbacks."""
+    """A run wired to record its cards and outputs, with Browser-Use's callbacks driven by hand."""
 
-    def __init__(self, *, llm: Any = None, steps_before: int | None = None) -> None:
+    def __init__(self, *, messages: list[str] | None = None) -> None:
         self.frames: list[StepFrame] = []
         self.outputs: list[tuple[int, list[str]]] = []
-        self.takeovers: list[tuple[str, str]] = []
+        self.ledger = RunLedger()
+        self._messages = list(messages or [])
         self.run = BrowserAgentRun(
-            session=SimpleNamespace(cdp_url="ws://browser.test/cdp", session_id="sess-1"),
-            llm=llm,
+            session=SimpleNamespace(cdp_url="ws://browser.test/cdp", session_id="sess-1"),  # type: ignore[arg-type]  # a duck-typed host session
             config=CONFIG,
             hooks=RunHooks(
                 step=self.frames.append,
-                takeover=self._record_takeover,
-                should_stop=_never_stop,
+                takeover=self._takeover,
+                should_stop=self._never,
+                user_waiting=self._never,
+                take_user_messages=self._take_messages,
                 action_results=self._record_outputs,
             ),
             step_timeout=30.0,
-            # A fresh run takes the constructor's own default.
-            **({} if steps_before is None else {"steps_before": steps_before}),
+            secrets=RunSecrets({"password": SECRET}, ["example.test"]),
+            ledger=self.ledger,
+            user_id="user-1",
         )
+        self.new_tasks: list[str] = []
+        self.run._agent = SimpleNamespace(
+            browser_session=MagicMock(),
+            message_manager=SimpleNamespace(add_new_task=self.new_tasks.append),
+            state=SimpleNamespace(last_result=None),
+        )
+        self.run._page = _Page()  # type: ignore[assignment]  # the screenshot is all a card reads
 
-    async def _record_takeover(self, reason: str, category: str) -> str | None:
-        self.takeovers.append((reason, category))
+    @staticmethod
+    async def _never() -> bool:
+        return False
+
+    @staticmethod
+    async def _takeover(reason: str, category: str) -> str | None:
         return None
+
+    async def _take_messages(self) -> list[str]:
+        taken, self._messages = self._messages, []
+        return taken
 
     async def _record_outputs(self, step_index: int, outputs: list[Any]) -> None:
         self.outputs.append((step_index, [out.output for out in outputs]))
 
-    async def step(self, n_steps: int, name: str = "click", **params: Any) -> None:
-        await self.run._on_step(_page(), _output(name, params), n_steps)
+    async def step(
+        self, name: str = "click", url: str = "https://example.test/page", **params: Any
+    ) -> None:
+        await self.run._on_step(_state(url), SimpleNamespace(action=[_Action(name, params)]), 0)  # type: ignore[arg-type]  # duck-typed Browser-Use views
 
     def end(self, *results: _Result) -> Awaitable[None]:
         return self.run._on_step_end(SimpleNamespace(state=SimpleNamespace(last_result=results)))
@@ -111,161 +135,151 @@ def harness() -> _Harness:
     return _Harness()
 
 
-@pytest.mark.unit
-class TestFrameNumbering:
-    async def test_frames_are_numbered_by_what_the_user_saw_not_by_browser_uses_counter(
-        self, harness: _Harness
-    ) -> None:
-        await harness.step(2, index=4)
+class TestCards:
+    async def test_cards_are_numbered_by_what_the_user_saw(self, harness: _Harness) -> None:
+        await harness.step(index=4)
         await harness.end(_Result(content="clicked"))
         await harness.end(_Result(error="Step 3 timed out after 30 seconds"))
-        await harness.step(7, index=9)
-        await harness.end(_Result(content="clicked"))
-
-        assert [frame.index for frame in harness.frames] == [1, 2, 3]
-
-    async def test_a_step_that_never_reached_a_frame_still_gets_one_saying_so(
-        self, harness: _Harness
-    ) -> None:
-        await harness.step(2, index=4)
-        await harness.end(_Result(content="clicked"))
-        await harness.end(_Result(error="Step 3 timed out after 30 seconds"))
-
-        assert [frame.goal for frame in harness.frames][-1] == STEP_ERROR_CAPTION
-        assert harness.frames[-1].actions == []
-        assert harness.frames[-1].raw_screenshot is None
-
-    async def test_a_step_that_errored_after_its_frame_is_not_framed_twice(
-        self, harness: _Harness
-    ) -> None:
-        await harness.step(2, index=4)
-        await harness.end(_Result(error="element is not clickable"))
-
-        assert len(harness.frames) == 1
-        assert harness.frames[0].goal != STEP_ERROR_CAPTION
-
-    async def test_an_action_result_lands_on_the_frame_number_the_user_can_see(
-        self, harness: _Harness
-    ) -> None:
-        await harness.step(2, index=4)
-        await harness.end(_Result(content="clicked"))
-        await harness.end(_Result(error="Step 3 timed out after 30 seconds"))
-        await harness.step(7, index=9)
+        await harness.step(index=9)
         await harness.end(_Result(content="confirmed"))
 
-        assert harness.outputs[0] == (1, ["clicked"])
+        assert [frame.index for frame in harness.frames] == [1, 2, 3]
+        assert harness.frames[1].goal == STEP_ERROR_CAPTION
         assert harness.outputs[-1] == (3, ["confirmed"])
 
-
-@pytest.mark.unit
-class TestStepCaption:
-    async def test_a_finishing_step_is_named_after_the_part_it_finished(
+    async def test_a_step_that_errored_after_its_card_is_not_shown_twice(
         self, harness: _Harness
     ) -> None:
-        """Regression: the only step of a one-step run read "Step 1 · Finished"."""
-        output = SimpleNamespace(
-            next_goal="Read the top story on news.ycombinator.com",
-            action=[_Action("done", {"text": "The top story is X.", "success": True})],
+        await harness.step(index=4)
+        await harness.end(_Result(error="element is not clickable"))
+
+        assert [frame.goal == STEP_ERROR_CAPTION for frame in harness.frames] == [False]
+
+    async def test_a_step_that_only_hands_jev_a_goal_gets_no_card_of_its_own(
+        self, harness: _Harness
+    ) -> None:
+        await harness.step(JEV_ACTION, goal="open the pricing page")
+        await harness.end(_Result(content="Jev ran"))
+
+        assert harness.frames == []
+
+    async def test_a_secret_in_an_action_or_its_output_never_reaches_the_user(
+        self, harness: _Harness
+    ) -> None:
+        await harness.step("click", index=3, text=SECRET)
+        await harness.end(_Result(content=f"typed {SECRET}"))
+
+        assert SECRET not in repr(harness.frames)
+        assert SECRET not in repr(harness.outputs)
+
+    async def test_a_password_the_agent_types_is_hidden_from_the_user_from_then_on(
+        self, harness: _Harness
+    ) -> None:
+        password_field = SimpleNamespace(
+            attributes={"type": "password"}, ax_node=None, node_name="INPUT"
+        )
+        password_field.get_meaningful_text_for_llm = lambda: ""
+        state = _state(selector_map={8: password_field})
+
+        await harness.run._on_step(
+            state,
+            SimpleNamespace(action=[_Action("input", {"index": 8, "text": "gaia-test-123"})]),
+            0,
+        )  # type: ignore[arg-type]  # duck-typed Browser-Use views
+        await harness.end(_Result(content="submitted-form.html?my-password=gaia-test-123"))
+
+        assert "gaia-test-123" not in repr(harness.frames)
+        assert "gaia-test-123" not in repr(harness.outputs)
+
+    async def test_every_step_is_recorded_as_an_executed_agent_action(
+        self, harness: _Harness
+    ) -> None:
+        await harness.step(index=4)
+        await harness.end(_Result(content="clicked"))
+
+        [action] = harness.ledger.actions
+        assert (action.component, action.description, action.count) == (
+            CallComponent.AGENT,
+            "click",
+            1,
         )
 
-        await harness.run._on_step(_page(), output, 1)
-
-        assert harness.frames[-1].goal == "Read the top story on news.ycombinator.com"
-
-    async def test_a_finish_that_did_not_achieve_the_goal_says_so_not_the_part(
+    async def test_a_step_that_hands_jev_a_goal_counts_no_action_of_its_own(
         self, harness: _Harness
     ) -> None:
-        output = SimpleNamespace(
-            next_goal="Buy the item on shop.test",
-            action=[_Action("done", {"text": "There is no Buy button.", "success": False})],
-        )
+        # Jev records each action it executes; the hand-off itself does nothing on the page.
+        await harness.step(JEV_ACTION, goal="open the pricing page")
+        await harness.end(_Result(content="Jev ran"))
 
-        await harness.run._on_step(_page(), output, 1)
-
-        assert harness.frames[-1].goal == "Could not find a way forward on this page"
+        assert harness.ledger.action_count == 0
 
 
-@pytest.mark.unit
-class TestTheFrame:
-    async def test_it_lists_only_the_action_the_model_picked(self, harness: _Harness) -> None:
-        """Browser-Use's action model carries every action as a field; the unset ones are None."""
-        await harness.step(1, "click", index=4, text=None)
+async def test_the_same_actions_on_an_unchanged_page_end_the_run(harness: _Harness) -> None:
+    for _ in range(BROWSER_AGENT_NO_PROGRESS_STEPS - 1):
+        await harness.step(index=4)
+    assert harness.run.no_progress is False
 
-        assert [(a.name, a.inputs) for a in harness.frames[0].actions] == [("click", {"index": 4})]
+    await harness.step(index=4)
 
-    async def test_it_carries_the_steps_screenshot(self, harness: _Harness) -> None:
-        await harness.step(1, index=4)
-
-        assert harness.frames[0].raw_screenshot == "c2hvdA=="
-
-    async def test_a_jev_run_shows_the_photo_jev_took_for_the_step(self) -> None:
-        """Jev's session reads state without a screenshot; its own capture is the step's photo."""
-        jev = MagicMock(spec=JevChatModel)
-        jev.viewport_points.return_value = {}
-        jev.take_step_screenshot = AsyncMock(return_value="amV2")
-        harness = _Harness(llm=jev)
-
-        await harness.step(1, index=4)
-
-        assert harness.frames[0].raw_screenshot == "amV2"
-
-    async def test_a_jev_step_with_no_photo_of_its_own_shows_the_states(self) -> None:
-        """A run resumed on the fallback engine frames its first step before Jev captured anything."""
-        jev = MagicMock(spec=JevChatModel)
-        jev.viewport_points.return_value = {}
-        jev.take_step_screenshot = AsyncMock(return_value=None)
-        harness = _Harness(llm=jev)
-
-        await harness.step(1, index=4)
-
-        assert harness.frames[0].raw_screenshot == "c2hvdA=="
-
-    async def test_a_password_typed_in_the_step_is_masked_in_the_frame(self) -> None:
-        """A frame is shown to people and kept, so what went into a password field never reaches it."""
-        jev = MagicMock(spec=JevChatModel)
-        jev.viewport_points.return_value = {}
-        jev.take_step_screenshot = AsyncMock(return_value="amV2")
-        jev.redact.side_effect = lambda text: text.replace("hunter2", "********")
-        harness = _Harness(llm=jev)
-
-        await harness.step(1, "click", index=4, text="hunter2")
-
-        assert harness.frames[0].actions[0].inputs == {"index": 4, "text": "********"}
-
-    async def test_the_first_frame_reports_no_time_since_a_previous_one(
-        self, harness: _Harness
-    ) -> None:
-        await harness.step(1, index=4)
-
-        assert harness.frames[0].since_prev_ms == 0
-
-    async def test_a_first_step_that_errors_before_any_frame_still_gets_one(
-        self, harness: _Harness
-    ) -> None:
-        """The start URL's navigation runs before Browser-Use's first step callback."""
-        await harness.end(_Result(error="net::ERR_NAME_NOT_RESOLVED"))
-
-        assert [frame.goal for frame in harness.frames] == [STEP_ERROR_CAPTION]
+    assert harness.run.no_progress is True
+    assert await harness.run._should_stop() is True
 
 
-@pytest.mark.unit
-class TestAResumedRun:
-    async def test_a_result_before_its_first_frame_lands_on_the_last_frame_the_user_saw(
+async def test_a_different_page_is_progress_even_with_the_same_action(harness: _Harness) -> None:
+    for n in range(BROWSER_AGENT_NO_PROGRESS_STEPS):
+        await harness.step(index=4, url=f"https://example.test/page/{n}")
+
+    assert harness.run.no_progress is False
+
+
+class TestBetweenSteps:
+    async def test_the_users_words_reach_the_agent_as_a_follow_up_request_with_secrets_masked(
         self,
     ) -> None:
-        """The fallback engine's start navigation reports before it frames anything."""
-        harness = _Harness(steps_before=5)
+        harness = _Harness(messages=[f"use {SECRET} instead"])
 
-        await harness.end(_Result(content="navigated"))
-        await harness.step(1, index=4)
+        await harness.run._on_step_start(None)
 
-        assert harness.outputs == [(5, ["navigated"])]
-        assert [frame.index for frame in harness.frames] == [6]
+        assert len(harness.new_tasks) == 1
+        assert SECRET not in harness.new_tasks[0]
+
+    async def test_a_load_the_browser_stopped_reaches_the_agent_as_a_result(
+        self, harness: _Harness
+    ) -> None:
+        harness.run._stalls = SimpleNamespace(
+            take=lambda: ["https://slow.test/ sent nothing for 15 s"]
+        )  # type: ignore[assignment]  # the take() the run reads
+
+        await harness.run._on_step_start(None)
+
+        [note] = harness.run._agent.state.last_result
+        assert "slow.test" in note.long_term_memory
 
 
-@pytest.mark.unit
-async def test_a_takeover_hands_the_user_the_reason_and_its_category(harness: _Harness) -> None:
-    """The category picks the card the user gets (a password step is not a payment)."""
-    await harness.run._takeover("Enter your password", "credentials")
+class _Client:
+    def __init__(self, answers: bool) -> None:
+        self._answers = answers
+        self.send = SimpleNamespace(Target=SimpleNamespace(getTargets=self._get_targets))
 
-    assert harness.takeovers == [("Enter your password", "credentials")]
+    async def _get_targets(self) -> dict[str, list[object]]:
+        if not self._answers:
+            await asyncio.Event().wait()
+        return {"targetInfos": []}
+
+
+class TestConnectionProbe:
+    async def test_a_run_that_has_not_connected_yet_is_not_judged(self, harness: _Harness) -> None:
+        harness.run._agent = None
+
+        assert await harness.run.connection_answers() is True
+
+    @pytest.mark.parametrize("answers", [True, False])
+    async def test_it_reports_whether_the_runs_own_connection_answers_in_time(
+        self, harness: _Harness, monkeypatch: pytest.MonkeyPatch, answers: bool
+    ) -> None:
+        monkeypatch.setattr(agent_run_mod, "BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS", 0.05)
+        harness.run._agent.browser_session = SimpleNamespace(
+            is_cdp_connected=True, cdp_client=_Client(answers)
+        )
+
+        assert await harness.run.connection_answers() is answers

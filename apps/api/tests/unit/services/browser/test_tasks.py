@@ -67,6 +67,7 @@ async def test_record_browser_task_persists_every_field(monkeypatch: pytest.Monk
             steps=4,
             replay_url="https://cdn/r.mp4",
         ),
+        actions=17,
         step_goals=["Opening", "Typing"],
         step_screenshots=["https://cdn/1.png", ""],
     )
@@ -79,6 +80,7 @@ async def test_record_browser_task_persists_every_field(monkeypatch: pytest.Monk
     assert saved.status == BrowserSessionStatus.FAILED
     assert saved.success is False
     assert saved.steps == 4
+    assert saved.actions == 17
     assert saved.step_goals == ["Opening", "Typing"]
     assert saved.step_screenshots == ["https://cdn/1.png", ""]
     assert saved.source == "telegram"
@@ -101,6 +103,7 @@ async def test_record_browser_task_defaults_goals_screenshots_and_source(
             session_id="sess1",
         ),
         _result(),
+        actions=0,
     )
 
     saved = mock_create.await_args.args[0]

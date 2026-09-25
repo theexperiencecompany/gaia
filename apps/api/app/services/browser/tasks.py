@@ -35,6 +35,7 @@ async def record_browser_task(
     record: BrowserTaskRecord,
     result: BrowserResultSnapshot,
     *,
+    actions: int,
     step_goals: list[str] | None = None,
     step_screenshots: list[str] | None = None,
 ) -> None:
@@ -48,6 +49,7 @@ async def record_browser_task(
             success=result.success,
             session_id=record.session_id,
             steps=result.steps,
+            actions=actions,
             step_goals=step_goals or [],
             step_screenshots=step_screenshots or [],
             source=record.source,

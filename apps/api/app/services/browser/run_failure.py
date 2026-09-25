@@ -28,13 +28,16 @@ class _RunEvent(BaseModel):
     browser: _RunFacts = _RunFacts()
 
 
-def record_run_result(result: BrowserResultSnapshot, *, engine_fallback: bool, run_ms: int) -> None:
+def record_run_result(
+    result: BrowserResultSnapshot, *, actions: int, engine_fallback: bool, run_ms: int
+) -> None:
     """Put a finished run on its event; one that did not succeed is failed with its reason."""
     log.set_ns(
         "browser",
         status=result.status.value,
         success=result.success,
         steps=result.steps,
+        actions=actions,
         run_ms=run_ms,
         engine_fallback=engine_fallback,
     )

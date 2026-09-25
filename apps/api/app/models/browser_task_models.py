@@ -21,6 +21,9 @@ class BrowserTaskDocument(UserScopedDocument):
     success: bool
     session_id: str
     steps: int = 0
+    #: Browser actions executed, Jev's and the agent's: the work the run did. A step
+    #: is one card, and one Jev burst of many actions is one step.
+    actions: int = 0
     step_goals: list[str] = Field(default_factory=list)
     # The screenshots that actually reached R2, in step order. Recorded rather
     # than derived: an upload can fail, and a guessed URL renders as a broken

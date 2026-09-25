@@ -38,6 +38,9 @@ class ExecutedAction:
     component: CallComponent
     description: str
     duration_ms: int
+    #: The browser actions this entry stands for: one for Jev's, an agent step's own
+    #: actions for the agent's (a step that hands Jev a goal counts none; Jev counts its).
+    count: int = 1
 
 
 @dataclass
@@ -56,3 +59,8 @@ class RunLedger:
 
     def executed(self, action: ExecutedAction) -> None:
         self.actions.append(action)
+
+    @property
+    def action_count(self) -> int:
+        """How many browser actions the run executed, Jev's and the agent's."""
+        return sum(action.count for action in self.actions)

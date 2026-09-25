@@ -73,6 +73,8 @@ if TYPE_CHECKING:
 _LABEL_ATTRIBUTES = ("aria-label", "value", "title", "placeholder", "alt", "name", "id")
 
 _OUTPUT_MAX_CHARS = 1000
+#: Browser-Use's typing action.
+_INPUT_ACTION = "input"
 
 #: Caption for a step that produced no action to describe — one whose actions
 #: errored or whose observation stalled.
@@ -126,6 +128,17 @@ def _extract_actions(
             target = _element_label(state, index) if state is not None else None
             actions.append(BrowserAction(name=action_name, inputs=raw_inputs, target=target))
     return actions
+
+
+def _types_into_a_password_field(action: BrowserAction, state: BrowserStateSummary) -> bool:
+    """Whether a Browser-Use input action types into a password field."""
+    if action.name != _INPUT_ACTION:
+        return False
+    index = _ACTION_INPUTS.validate_python(action.inputs).get("index")
+    selector_map = getattr(getattr(state, "dom_state", None), "selector_map", None) or {}
+    node = selector_map.get(index) if isinstance(index, int) else None
+    attributes = getattr(node, "attributes", None) or {}
+    return str(attributes.get("type", "")).lower() == "password"
 
 
 def _summarize_action_result(result: object) -> str | None:
@@ -404,6 +417,9 @@ class BrowserAgentRun:
         if self._page is None:
             self._page = JevPage(self._agent.browser_session)
         actions = _extract_actions(agent_output, browser_state_summary)
+        for action in actions:
+            if _types_into_a_password_field(action, browser_state_summary):
+                self._secrets.learn(str(action.inputs.get("text", "")))
         self._step_actions = [a.name for a in actions]
         self._signatures.append(
             json.dumps(
@@ -439,6 +455,7 @@ class BrowserAgentRun:
                     component=CallComponent.AGENT,
                     description=", ".join(self._step_actions),
                     duration_ms=round((perf_counter() - self._step_started_at) * 1000),
+                    count=sum(name != JEV_ACTION for name in self._step_actions),
                 )
             )
             self._step_started_at = 0.0
