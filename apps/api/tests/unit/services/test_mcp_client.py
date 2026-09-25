@@ -2142,6 +2142,17 @@ class TestSanitizingLangChainAdapter:
 
         assert list(fixed["properties"]) == ["field2fa"]
 
+    def test_fix_schema_leaves_non_schema_lists_of_an_object_alone(self):
+        schema = {
+            "type": "object",
+            "properties": {"_id": {"type": "string"}},
+            "examples": [{"type": ["string", "null"]}],
+        }
+
+        fixed = SanitizingLangChainAdapter().fix_schema(schema)
+
+        assert fixed["examples"] == [{"type": ["string", "null"]}]
+
     def test_fix_schema_leaves_a_required_name_it_has_no_property_for(self):
         schema = {
             "type": "object",
@@ -2194,6 +2205,16 @@ class TestSanitizingLangChainAdapter:
         }
         fixed = adapter.fix_schema(schema)
         assert "anyOf" in fixed["items"]
+
+
+class TestAConvertedToolCalledSynchronously:
+    def test_it_refuses_because_mcp_calls_are_async(self) -> None:
+        server_tool = Tool(name="ping", description="d", inputSchema={"type": "object"})
+        tool = SanitizingLangChainAdapter()._convert_tool(server_tool, MagicMock())
+        assert tool is not None
+
+        with pytest.raises(NotImplementedError, match="^MCP tools only support async operations$"):
+            tool.invoke({})
 
 
 class TestAConvertedToolThatFails:
@@ -2391,6 +2412,49 @@ class TestAToolWithUnderscoredArguments:
         await tool.ainvoke({"filter": {"since": "2026-01-01"}})
 
         connector.call_tool.assert_awaited_once_with("list", {"filter": {"_since": "2026-01-01"}})
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("model_args", "server_args"),
+        [
+            ({"target": {"id": "public"}}, {"target": {"id": "public"}}),
+            ({"target": {"id_2": "internal"}}, {"target": {"_id": "internal"}}),
+        ],
+    )
+    async def test_one_of_options_naming_id_and_underscore_id_each_map_back(
+        self, model_args: dict[str, object], server_args: dict[str, object]
+    ) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "properties": {"_id": {"type": "string"}},
+                            "required": ["_id"],
+                        },
+                        {
+                            "type": "object",
+                            "properties": {"id": {"type": "string"}},
+                            "required": ["id"],
+                        },
+                    ]
+                }
+            },
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="find", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke(model_args)
+
+        connector.call_tool.assert_awaited_once_with("find", server_args)
 
     def test_the_model_sees_names_pydantic_accepts(self) -> None:
         properties = self._tool(MagicMock()).args_schema.model_json_schema()["properties"]

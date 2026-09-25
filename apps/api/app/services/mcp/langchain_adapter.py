@@ -166,8 +166,13 @@ def _declared_nodes(schema: dict[str, JsonValue]) -> list[dict[str, JsonValue]]:
     return found
 
 
+def _group_model_names(schema: dict[str, JsonValue]) -> dict[str, str]:
+    """Name a node's properties and its combinator options' together: they share one object's keys."""
+    return _model_names(dict.fromkeys(name for props in _declared_nodes(schema) for name in props))
+
+
 def _to_server_names(value: JsonValue, schema: JsonValue) -> JsonValue:
-    """Map keys back per node, as fix_schema named them, so each anyOf option resolves on its own."""
+    """Map the model's argument keys back to the server's, named exactly as the schema was built."""
     if not isinstance(schema, dict):
         return value
     node: JsonSchemaNode = cast(JsonSchemaNode, schema)
@@ -176,19 +181,16 @@ def _to_server_names(value: JsonValue, schema: JsonValue) -> JsonValue:
         return [_to_server_names(item, items) for item in value]
     if not isinstance(value, dict):
         return value
-    declared = [
-        ({model: server for server, model in _model_names(properties).items()}, properties)
-        for properties in _declared_nodes(schema)
-    ]
+    declared = _declared_nodes(schema)
+    server_names = {model: server for server, model in _group_model_names(schema).items()}
     extra_schema = node["additionalProperties"] if "additionalProperties" in schema else None
     renamed: dict[str, JsonValue] = {}
     for key, item in value.items():
-        server_name, item_schema = key, extra_schema
-        for server_names, properties in declared:
-            if key in server_names:
-                server_name = server_names[key]
-                item_schema = properties[server_name]
-                break
+        server_name = server_names.get(key, key)
+        item_schema = next(
+            (properties[server_name] for properties in declared if server_name in properties),
+            extra_schema,
+        )
         renamed[server_name] = _to_server_names(item, item_schema)
     return renamed
 
@@ -207,8 +209,12 @@ class SanitizingLangChainAdapter(LangChainAdapter):
 
     def fix_schema(self, schema: JsonValue) -> JsonValue:
         """Fix a JSON schema for Pydantic: type arrays, bare enums, underscore-prefixed properties."""
+        return self._sanitize(schema, None)
+
+    def _sanitize(self, schema: JsonValue, group_names: dict[str, str] | None) -> JsonValue:
+        """Sanitize one node; a combinator option is named in its parent's group, one object's keys."""
         if isinstance(schema, list):
-            return [self.fix_schema(item) for item in schema]
+            return [self._sanitize(item, None) for item in schema]
         if not isinstance(schema, dict):
             return schema
         node: JsonSchemaNode = cast(JsonSchemaNode, schema)
@@ -220,21 +226,22 @@ class SanitizingLangChainAdapter(LangChainAdapter):
         if "enum" in node and "type" not in node:
             node["type"] = "string"
 
-        if "properties" not in schema or not isinstance(node["properties"], dict):
-            for key, value in schema.items():
-                schema[key] = self.fix_schema(value)
+        names = group_names if group_names is not None else _group_model_names(schema)
+        has_properties = "properties" in schema and isinstance(node["properties"], dict)
+        for key, value in schema.items():
+            if key in _SCHEMA_COMBINATORS and isinstance(value, list):
+                schema[key] = [self._sanitize(option, names) for option in value]
+            elif not has_properties:
+                schema[key] = self._sanitize(value, None)
+        if not has_properties:
             return schema
-        properties = node["properties"]
 
-        renamed_props: dict[str, JsonValue] = {}
-        model_names = _model_names(properties)
-        for prop_name, prop_value in properties.items():
-            renamed_props[model_names[prop_name]] = self.fix_schema(prop_value)
-        node["properties"] = renamed_props
-
+        node["properties"] = {
+            names[name]: self._sanitize(value, None) for name, value in node["properties"].items()
+        }
         required = node.get("required")
         if isinstance(required, list):
-            node["required"] = [model_names.get(name, name) for name in required]
+            node["required"] = [names.get(name, name) for name in required]
         return schema
 
     def _convert_tool(self, mcp_tool: MCPTool, connector: BaseConnector) -> BaseTool | None:

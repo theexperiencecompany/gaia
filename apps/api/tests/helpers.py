@@ -412,6 +412,12 @@ async def serve_asgi(app: ASGIApp) -> AsyncIterator[str]:
                     task.result()
                     raise RuntimeError("test ASGI server exited before it started")
                 await asyncio.sleep(0)
+    except BaseException:
+        # A server stuck in startup never sees should_exit; cancel it rather than wait forever.
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        raise
+    try:
         port = server.servers[0].sockets[0].getsockname()[1]
         yield f"http://127.0.0.1:{port}"
     finally:
