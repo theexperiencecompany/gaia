@@ -10,9 +10,10 @@ import asyncio
 import base64
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
+import copy
 from datetime import UTC, datetime, timedelta
 import json
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
@@ -2220,6 +2221,106 @@ class TestAConvertedToolThatFails:
             "unreadable",
             "execute",
         )
+
+
+class TestAToolWithUnderscoredArguments:
+    """Pydantic rejects leading-underscore field names, so the model sees them without the underscore."""
+
+    SCHEMA: ClassVar[dict[str, object]] = {
+        "type": "object",
+        "properties": {
+            "_id": {"type": "string"},
+            "name": {"type": "string"},
+            "meta": {"type": "object", "properties": {"_rev": {"type": "string"}}},
+            "items": {
+                "type": "array",
+                "items": {"type": "object", "properties": {"_key": {"type": "string"}}},
+            },
+        },
+        "required": ["_id"],
+    }
+
+    @classmethod
+    def _tool(cls, connector: MagicMock) -> BaseTool:
+        server_tool = Tool(name="get", description="d", inputSchema=copy.deepcopy(cls.SCHEMA))
+        tool = SanitizingLangChainAdapter()._convert_tool(server_tool, connector)
+        assert tool is not None
+        return tool
+
+    @pytest.mark.regression
+    async def test_the_server_receives_its_own_argument_names_back(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+
+        await self._tool(connector).ainvoke(
+            {"id": "a", "name": "n", "meta": {"rev": "r"}, "items": [{"key": "k"}]}
+        )
+
+        connector.call_tool.assert_awaited_once_with(
+            "get", {"_id": "a", "name": "n", "meta": {"_rev": "r"}, "items": [{"_key": "k"}]}
+        )
+
+    @pytest.mark.regression
+    async def test_an_optional_nested_object_is_mapped_through_its_any_of(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "filter": {
+                    "anyOf": [
+                        {"type": "object", "properties": {"_since": {"type": "string"}}},
+                        {"type": "null"},
+                    ]
+                }
+            },
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="list", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke({"filter": {"since": "2026-01-01"}})
+
+        connector.call_tool.assert_awaited_once_with("list", {"filter": {"_since": "2026-01-01"}})
+
+    @pytest.mark.regression
+    async def test_a_map_arguments_values_are_mapped_through_additional_properties(
+        self,
+    ) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "labels": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {"_value": {"type": "string"}},
+                    },
+                }
+            },
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="tag", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke({"labels": {"env": {"value": "prod"}}})
+
+        connector.call_tool.assert_awaited_once_with("tag", {"labels": {"env": {"_value": "prod"}}})
+
+    def test_the_model_sees_names_pydantic_accepts(self) -> None:
+        properties = self._tool(MagicMock()).args_schema.model_json_schema()["properties"]
+
+        assert set(properties) == {"id", "name", "meta", "items"}
 
 
 class TestAConvertedToolRenamedOnGaiasSide:

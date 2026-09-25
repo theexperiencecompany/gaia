@@ -13,6 +13,7 @@ Three concerns the base mcp_use adapter doesn't cover:
 """
 
 import asyncio
+import copy
 from typing import NoReturn, TypedDict, cast
 
 from langchain_core.tools import BaseTool
@@ -24,6 +25,7 @@ from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 from mcp_use.client.connectors.base import BaseConnector
 from mcp_use.errors.error_formatting import format_error
 from pydantic import BaseModel, JsonValue
+from pydantic_core import to_jsonable_python
 
 from app.constants.mcp import (
     EMPTY_TOOL_RESULT,
@@ -59,6 +61,9 @@ class _FormattedToolError(TypedDict):
     code: JsonValue
     tool: str
 
+
+# JSON Schema keywords the argument-name mapping walks into.
+_SCHEMA_COMBINATORS = ("anyOf", "oneOf", "allOf")
 
 # Key under a LangChain tool's ``metadata`` where we stash the MCP tool's
 # ``annotations`` dict. Written here, read by ``app/services/hil/classification``.
@@ -120,6 +125,55 @@ async def _image_block(item: ImageContent) -> ContentBlock:
     return image.to_block()
 
 
+def _model_property_name(name: str) -> str:
+    """Return the name the model sees for a server property; Pydantic rejects a leading underscore."""
+    if not name.startswith("_"):
+        return name
+    stripped = name.lstrip("_")
+    return stripped if stripped and not stripped[0].isdigit() else f"field{stripped}"
+
+
+def _properties_of(schema: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    """Return a node's properties, including those of its anyOf/oneOf/allOf options."""
+    node: JsonSchemaNode = cast(JsonSchemaNode, schema)
+    merged: dict[str, JsonValue] = {}
+    if "properties" in schema and isinstance(node["properties"], dict):
+        merged.update(node["properties"])
+    for combinator in _SCHEMA_COMBINATORS:
+        options = schema.get(combinator)
+        if isinstance(options, list):
+            for option in options:
+                if isinstance(option, dict):
+                    merged.update(_properties_of(option))
+    return merged
+
+
+def _to_server_names(value: JsonValue, schema: JsonValue) -> JsonValue:
+    """Rename the model's argument keys back to the server's own, through nested objects and arrays."""
+    if not isinstance(schema, dict):
+        return value
+    node: JsonSchemaNode = cast(JsonSchemaNode, schema)
+    if isinstance(value, list):
+        items = node["items"] if "items" in schema else None
+        return [_to_server_names(item, items) for item in value]
+    if not isinstance(value, dict):
+        return value
+    properties = _properties_of(schema)
+    server_names = {_model_property_name(name): name for name in properties}
+    renamed: dict[str, JsonValue] = {}
+    for key, item in value.items():
+        server_name = server_names.get(key, key)
+        item_schema = (
+            properties[server_name]
+            if server_name in properties
+            else node["additionalProperties"]
+            if "additionalProperties" in schema
+            else None
+        )
+        renamed[server_name] = _to_server_names(item, item_schema)
+    return renamed
+
+
 class SanitizingLangChainAdapter(LangChainAdapter):
     """LangChain adapter that sanitizes MCP schemas and preserves annotations.
 
@@ -156,12 +210,8 @@ class SanitizingLangChainAdapter(LangChainAdapter):
         renamed_props: dict[str, JsonValue] = {}
         rename_map: dict[str, str] = {}
         for prop_name, prop_value in properties.items():
-            new_name = prop_name
-            if prop_name.startswith("_"):
-                new_name = prop_name.lstrip("_")
-                # Not empty, and not starting with a digit.
-                if not new_name or new_name[0].isdigit():
-                    new_name = f"field{new_name}"
+            new_name = _model_property_name(prop_name)
+            if new_name != prop_name:
                 rename_map[prop_name] = new_name
             renamed_props[new_name] = self.fix_schema(prop_value)
         node["properties"] = renamed_props
@@ -188,8 +238,9 @@ class SanitizingLangChainAdapter(LangChainAdapter):
             mcp_name: str = mcp_tool.name
             description: str = mcp_tool.description or ""
             args_schema: type[BaseModel] = _mcp_use_lc_adapter.jsonschema_to_pydantic(
-                adapter_self.fix_schema(mcp_tool.inputSchema)
+                adapter_self.fix_schema(copy.deepcopy(mcp_tool.inputSchema))
             )
+            server_schema: dict[str, JsonValue] = mcp_tool.inputSchema
             tool_connector: BaseConnector = connector
             handle_tool_error: bool = True
 
@@ -203,8 +254,10 @@ class SanitizingLangChainAdapter(LangChainAdapter):
                 self, **kwargs: object
             ) -> str | list[ContentBlock] | _FormattedToolError:
                 try:
+                    # Nested objects arrive as Pydantic models, under the model's names.
+                    arguments = _to_server_names(to_jsonable_python(kwargs), self.server_schema)
                     tool_result: CallToolResult = await self.tool_connector.call_tool(
-                        self.mcp_name, kwargs
+                        self.mcp_name, arguments
                     )
                     try:
                         return await _tool_result_to_content(tool_result)
