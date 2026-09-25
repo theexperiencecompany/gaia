@@ -13,7 +13,6 @@ from typing import Any
 
 from browser_use import ChatOpenAI as BrowserUseChatOpenAI
 import httpx
-from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 import pytest
 import respx
@@ -33,10 +32,9 @@ from app.constants.llm import (
     DevLLMApi,
     LLMProviderName,
     ModelUse,
-    ReasoningLevel,
 )
-from app.services.browser.jev.chat_model import JevChatModel, canonical_structured_call
-from app.services.browser.llm import build_browser_llm
+from app.services.browser.ledger import RunLedger
+from app.services.browser.llm import build_agent_llm, build_text_model
 
 pytestmark = pytest.mark.integration
 
@@ -140,34 +138,22 @@ async def test_the_hil_judge_runs_on_the_endpoint_not_its_pinned_model(
     assert "models" not in sent
 
 
-async def test_the_browser_writer_runs_on_the_endpoint_with_its_reasoning_off(
-    endpoint: respx.Route,
-) -> None:
-    writer = canonical_structured_call(user_id=None)
-
-    result = await writer(
-        _Answer,
-        [SystemMessage(content="Write the value."), HumanMessage(content="{}")],
-        label="jev_text_value",
-        reasoning=ReasoningLevel.OFF,
-    )
-
-    assert result == _Answer(text="done")
-    sent = _sent(endpoint)
-    assert sent["model"] == _MODEL
-    assert sent["reasoning"] == {"effort": "none"}
-
-
 def test_the_browser_text_model_runs_on_the_endpoint() -> None:
-    browser_llm = build_browser_llm()
-    assert isinstance(browser_llm, JevChatModel)
-    text_model = browser_llm.text_model
+    text_model = build_text_model(RunLedger())._inner
 
     assert isinstance(text_model, BrowserUseChatOpenAI)
     assert text_model.model == _MODEL
     assert str(text_model.base_url) == _BASE_URL
     # Browser-Use's client speaks chat completions, where gpt-6-luna rejects "minimal".
     assert text_model.reasoning_effort == "low"
+
+
+async def test_the_browser_agent_runs_on_the_endpoint_at_low_effort() -> None:
+    agent_model = (await build_agent_llm(None, RunLedger()))._inner
+
+    assert isinstance(agent_model, BrowserUseChatOpenAI)
+    assert (agent_model.model, str(agent_model.base_url)) == (_MODEL, _BASE_URL)
+    assert agent_model.reasoning_effort == "low"
 
 
 async def test_memory_extraction_runs_on_the_endpoint(endpoint: respx.Route) -> None:
