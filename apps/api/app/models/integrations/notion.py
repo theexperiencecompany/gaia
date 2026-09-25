@@ -9,7 +9,7 @@ References:
 - https://docs.composio.dev/toolkits/notion
 """
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -42,19 +42,33 @@ class NotionPropertyValue(BaseModel):
     title: list[NotionRichTextSegment] = Field(default_factory=list)
 
 
-class NotionSearchResult(BaseModel):
-    """A page or database as ``POST /v1/search`` lists it.
+class NotionPageSearchResult(BaseModel):
+    """A page as ``POST /v1/search`` lists it; its title is the property with ``type: "title"``."""
 
-    Databases carry their ``title`` at the top level; pages carry it inside
-    the ``properties`` map under whichever property has ``type: "title"``.
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    object: Literal["page"]
+    properties: dict[str, NotionPropertyValue] = Field(default_factory=dict)
+
+
+class NotionDatabaseSearchResult(BaseModel):
+    """A database as ``POST /v1/search`` lists it; its title is at the top level.
+
+    A database's ``properties`` map is its column schema (a title column is
+    ``{}``, not a list of segments), so it is not read.
     """
 
     model_config = ConfigDict(extra="ignore")
 
     id: str
-    object: Literal["page", "database"]
+    object: Literal["database"]
     title: list[NotionRichTextSegment] = Field(default_factory=list)
-    properties: dict[str, NotionPropertyValue] = Field(default_factory=dict)
+
+
+NotionSearchResult = Annotated[
+    NotionPageSearchResult | NotionDatabaseSearchResult, Field(discriminator="object")
+]
 
 
 class NotionSearchResponse(BaseModel):
