@@ -21,6 +21,7 @@ from app.services.chat.stream import (
     _run_chat_stream,
     _StreamState,
 )
+from tests.helpers import captured_wide_event
 
 CONVERSATION_ID = "conv-1"
 STREAM_ID = "stream-1"
@@ -59,6 +60,26 @@ def published(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     )
     monkeypatch.setattr(type(chat_stream.stream_manager), "complete_stream", AsyncMock())
     return chunks
+
+
+class _Inbox:
+    """The running browser job's inbox for a conversation: records what a reply posted to it."""
+
+    def __init__(self) -> None:
+        self.running_job: str | None = None
+        self.posted: list[tuple[str, str]] = []
+
+    async def post(self, conversation_id: str, text: str) -> str | None:
+        self.posted.append((conversation_id, text))
+        return self.running_job
+
+
+@pytest.fixture(autouse=True)
+def inbox(monkeypatch: pytest.MonkeyPatch) -> _Inbox:
+    """Stand in for the job inbox in Redis: a unit test never reaches the process-wide client."""
+    inbox = _Inbox()
+    monkeypatch.setattr(chat_stream, "post_conversation_message", inbox.post)
+    return inbox
 
 
 @pytest.fixture
@@ -116,18 +137,38 @@ class TestNothingPendingOrMissingInputs:
         persist.assert_not_awaited()
 
     async def test_unrelated_reply_runs_as_a_normal_turn(
-        self, published: list[str], persist: AsyncMock
+        self, published: list[str], persist: AsyncMock, inbox: _Inbox
     ) -> None:
         with patch.object(
             chat_stream, "resolve_handoff_from_message", AsyncMock(return_value="unrelated")
         ):
-            result = await _resolve_pending_browser_handoff_turn(
-                _body(), _user(), CONVERSATION_ID, STREAM_ID, _StreamState()
-            )
+            async with captured_wide_event() as event:
+                result = await _resolve_pending_browser_handoff_turn(
+                    _body(), _user(), CONVERSATION_ID, STREAM_ID, _StreamState()
+                )
 
         assert result is False
         assert not published
         persist.assert_not_awaited()
+        # Offered to a running browser task; with none running, nothing is recorded.
+        assert inbox.posted == [(CONVERSATION_ID, "yes please continue")]
+        assert "browser" not in event
+
+    async def test_a_reply_during_a_running_browser_task_reaches_that_task(
+        self, published: list[str], persist: AsyncMock, inbox: _Inbox
+    ) -> None:
+        inbox.running_job = "job-7"
+        with patch.object(
+            chat_stream, "resolve_handoff_from_message", AsyncMock(return_value=None)
+        ):
+            async with captured_wide_event() as event:
+                result = await _resolve_pending_browser_handoff_turn(
+                    _body("use the blue one"), _user(), CONVERSATION_ID, STREAM_ID, _StreamState()
+                )
+
+        assert result is False
+        assert inbox.posted == [(CONVERSATION_ID, "use the blue one")]
+        assert event["browser"] == {"job_id": "job-7", "message_to_running_job": True}
 
     @pytest.mark.parametrize("action", ["Continue", "Cancel", "continued", "", "cancel "])
     async def test_near_miss_action_runs_as_a_normal_turn(
