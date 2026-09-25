@@ -46,11 +46,13 @@ FEATURE_FLAG_DESCRIPTIONS: dict[FeatureFlag, str] = {
     ),
     FeatureFlag.CODE_MODE: (
         "Bash runs seed the `gaia.execute` client and mint a per-invocation "
-        "token; off runs bash with no GAIA_EXECUTE_* env."
+        "token; off runs bash with no GAIA_EXECUTE_* env. On by default "
+        "(see ENABLE_CODE_MODE)."
     ),
     FeatureFlag.HIL_LEDGER: (
         "Gated calls register PENDING in the approval ledger and return "
-        "instead of parking the run; off keeps the interrupt barrier."
+        "instead of parking the run; off keeps the interrupt barrier. On by "
+        "default (see ENABLE_HIL_LEDGER)."
     ),
     FeatureFlag.HIL_JEV_JUDGE: (
         "Auto mode classifies with the JEV choice judge first, falling back "

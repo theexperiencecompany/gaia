@@ -416,6 +416,7 @@ async def test_a_replayed_tool_resolves_the_run_user() -> None:
     assert recorder.calls[0][1]["user"] == "u_1"
 
 
+@pytest.mark.usefixtures("hil_barrier_mode")
 async def test_a_gated_call_is_refused_without_invoking_the_tool() -> None:
     """The real gate, in the real graph: a background run cannot ask, so it refuses."""
     recorder = _Recorder()
@@ -431,6 +432,31 @@ async def test_a_gated_call_is_refused_without_invoking_the_tool() -> None:
     # production HIL inside the graph rather than from a check the runner kept.
     assert UNPAUSABLE_DENIAL_TEMPLATE.format(tool="list_events") in (result.failure or "")
     # Nothing was attempted, so nothing may reach the trace the next run reads.
+    assert result.trace == []
+
+
+async def test_a_ledger_gated_call_stops_the_replay_pending_without_invoking_the_tool() -> None:
+    """The real ledger gate, in the real graph: the call is queued for the user and the replay stops."""
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+    ledger = MagicMock()
+    ledger.find_live = AsyncMock(return_value=None)
+    ledger.find_latest_denied = AsyncMock(return_value=None)
+    ledger.register = AsyncMock(return_value="ap_ledger01")
+    with (
+        patch(f"{GATE}.approval_ledger_repository", ledger),
+        patch(f"{GATE}.recall_declined_call", AsyncMock(return_value=None)),
+        patch(f"{GATE}._integration_name_for", AsyncMock(return_value=None)),
+        patch(f"{GATE}.publish_ledger_request", AsyncMock()) as publish,
+    ):
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry, policy="ask")
+
+    assert recorder.calls == []
+    assert result.ok is False
+    assert "refused by the approval gate: PENDING ap_ledger01" in (result.failure or "")
+    assert ledger.register.await_args.args[0].tool_name == "list_events"
+    # A background replay has no live watcher to hold the card for.
+    assert publish.await_args.kwargs["live"] is False
     assert result.trace == []
 
 

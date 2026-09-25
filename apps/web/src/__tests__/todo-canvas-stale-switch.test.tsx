@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TodoSidebar } from "@/components/layout/sidebar/right-variants/TodoSidebar";
 import { getTodoCanvas } from "@/features/todo/api/todoApi";
-import { Priority, type Todo } from "@/types/features/todoTypes";
+import { makeTodo } from "./fixtures/todo";
 
 /**
  * Regression test: switching the selected todo must show its own canvas.md.
@@ -27,7 +27,7 @@ vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
 
 // Siblings pull in workflow fetches / selects that are irrelevant here.
 vi.mock("@/features/todo/components/WorkflowSection", () => ({
-  default: () => null,
+  default: () => <div data-testid="workflow-section" />,
 }));
 vi.mock("@/features/todo/components/shared/SubtaskManager", () => ({
   default: () => null,
@@ -62,36 +62,6 @@ vi.mock("@/components/common/MarkdownViewerModal", () => ({
       </div>
     ) : null,
 }));
-
-function makeTodo(id: string): Todo {
-  return {
-    id,
-    user_id: "user-1",
-    title: `Todo ${id}`,
-    description: null,
-    labels: [],
-    due_date: null,
-    due_date_timezone: null,
-    priority: Priority.NONE,
-    project_id: "project-1",
-    completed: false,
-    completed_at: null,
-    notify_on_run: true,
-    subtasks: [],
-    workflow_id: null,
-    vfs_path: `/todos/${id}/canvas.md`,
-    scheduled_at: null,
-    recurrence: null,
-    expires_at: null,
-    references: [],
-    workflow_categories: [],
-    trigger_subscriptions: [],
-    gaia_retry_count: 0,
-    pending_approval: null,
-    created_at: "2026-01-01T00:00:00Z",
-    updated_at: "2026-01-01T00:00:00Z",
-  };
-}
 
 const noop = vi.fn();
 
@@ -192,5 +162,81 @@ describe("TodoSidebar canvas.md across todo switches", () => {
       ),
     );
     expect(getTodoCanvas).toHaveBeenLastCalledWith("todo-b");
+  });
+});
+
+describe("TodoSidebar workflow section", () => {
+  it("is hidden for a tracked todo, which runs on the agent from its canvas", () => {
+    render(
+      <TodoSidebar
+        todo={makeTodo("todo-a")}
+        onUpdate={noop}
+        onDelete={noop}
+        projects={[]}
+      />,
+    );
+
+    expect(screen.queryByTestId("workflow-section")).toBeNull();
+  });
+
+  it("is shown for a classic todo", () => {
+    render(
+      <TodoSidebar
+        todo={makeTodo("todo-a", { vfs_path: null })}
+        onUpdate={noop}
+        onDelete={noop}
+        projects={[]}
+      />,
+    );
+
+    expect(screen.getByTestId("workflow-section")).toBeTruthy();
+  });
+});
+
+describe("TodoSidebar inline editors", () => {
+  function renderSidebar() {
+    const onUpdate = vi.fn();
+    render(
+      <TodoSidebar
+        todo={makeTodo("todo-a", { vfs_path: null, description: "old notes" })}
+        onUpdate={onUpdate}
+        onDelete={noop}
+        projects={[]}
+      />,
+    );
+    return onUpdate;
+  }
+
+  it("saves an edited title on blur, trimmed", () => {
+    const onUpdate = renderSidebar();
+    fireEvent.click(screen.getByText("Todo todo-a"));
+    const input = screen.getByDisplayValue("Todo todo-a");
+    fireEvent.blur(input, { target: { value: "  Renamed  " } });
+
+    expect(onUpdate).toHaveBeenCalledWith("todo-a", { title: "Renamed" });
+    expect(screen.getByText("Todo todo-a")).toBeTruthy();
+  });
+
+  it("cancels a title edit on Escape without saving", () => {
+    const onUpdate = renderSidebar();
+    fireEvent.click(screen.getByText("Todo todo-a"));
+    fireEvent.keyDown(screen.getByDisplayValue("Todo todo-a"), {
+      key: "Escape",
+    });
+
+    expect(screen.queryByDisplayValue("Todo todo-a")).toBeNull();
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it("saves an edited description on blur", () => {
+    const onUpdate = renderSidebar();
+    fireEvent.click(screen.getByText("old notes"));
+    fireEvent.blur(screen.getByDisplayValue("old notes"), {
+      target: { value: "new notes" },
+    });
+
+    expect(onUpdate).toHaveBeenCalledWith("todo-a", {
+      description: "new notes",
+    });
   });
 });

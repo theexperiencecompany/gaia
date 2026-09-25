@@ -10,6 +10,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone_from_preferences,
 )
 from app.constants.log_tags import LogTag
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
@@ -39,9 +40,11 @@ from app.models.todo_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.todos.errors import TrackedTodoWorkflowError
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
+from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -147,7 +150,9 @@ async def create_todo(
         },
     )
     try:
-        return await TodoService.create_todo(todo, user.user_id)
+        return await TodoService.create_todo_with_workflow(todo, user.user_id)
+    except AppError:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except Exception as e:
@@ -187,6 +192,8 @@ async def bulk_update_todos(
         result = await TodoService.bulk_update_todos(request, user.user_id)
         capture_context_event(AnalyticsEvents.TODO_UPDATED, {"bulk_count": len(request.todo_ids)})
         return result
+    except AppError:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -327,6 +334,8 @@ async def update_todo(
                 )
 
         return updated_todo
+    except AppError:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except Exception as e:
@@ -373,6 +382,8 @@ async def generate_workflow(
     )
     try:
         todo: TodoResponse = await TodoService.get_todo(todo_id, user_id)
+        if GAIA_TRACKED_LABEL in todo.labels:
+            raise TrackedTodoWorkflowError()
 
         # Check if workflow already exists for this todo
         if todo.workflow_id:
@@ -411,6 +422,8 @@ async def generate_workflow(
             message="Workflow generation started. Listen for 'workflow.generated' WebSocket event.",
         )
 
+    except AppError:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except HTTPException:

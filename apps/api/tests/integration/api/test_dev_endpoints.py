@@ -411,7 +411,9 @@ class TestDevServiceLogic:
                 return_value=user,
             ),
             patch.object(dev_service.user_repository, "complete_onboarding", mock_complete),
-            patch.object(dev_service, "create_todo", new_callable=AsyncMock) as mock_todo,
+            patch.object(
+                dev_service.TodoService, "create_todo_with_workflow", new_callable=AsyncMock
+            ) as mock_todo,
             patch.object(
                 dev_service, "create_conversation_service", new_callable=AsyncMock
             ) as mock_convo,
@@ -424,6 +426,12 @@ class TestDevServiceLogic:
             )
 
         assert mock_todo.await_count == 3
+        assert [c.args[0].title for c in mock_todo.await_args_list] == [
+            "Sample todo 1",
+            "Sample todo 2",
+            "Sample todo 3",
+        ]
+        assert {c.args[1] for c in mock_todo.await_args_list} == {result.user_id}
         assert mock_convo.await_count == 2
         assert mock_link.await_count == 2
         assert result.todos_created == 3
@@ -458,7 +466,9 @@ class TestDevServiceLogic:
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch.object(dev_service, "create_todo", new_callable=AsyncMock) as mock_todo,
+            patch.object(
+                dev_service.TodoService, "create_todo_with_workflow", new_callable=AsyncMock
+            ) as mock_todo,
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
