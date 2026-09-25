@@ -500,7 +500,7 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 
 ## 14. MCP
 
-- `apps/api/app/services/mcp/mcp_client.py` — `MCPClient` (source of truth for live per-user MCP tools; owns the warm sessions).
+- `apps/api/app/services/mcp/mcp_client.py` — `MCPClient` (source of truth for live per-user MCP tools; owns the warm sessions). A server tool named like a GAIA tool (Dodo Payments' `execute`) is renamed `<integration>_<name>` at connect (`_rename_shadowing_tools`), else GAIA's tool shadows it unreachably; the adapter still calls the server by its own `mcp_name`.
 - `apps/api/app/services/mcp/mcp_token_store.py` — `MCPTokenStore(user_id)` (stores OAuth tokens for auth-required MCP integrations).
 - `apps/api/app/services/mcp/mcp_tools_store.py` — `get_mcp_tools_store()` (ChromaDB for MCP tool embeddings).
 - `apps/api/app/constants/mcp.py` — `INSTACART_MCP_SERVER_URL`, `YELP_MCP_SERVER_URL`, etc.

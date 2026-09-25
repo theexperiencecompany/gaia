@@ -37,3 +37,16 @@ MCP_MEDIA_DROPPED_NOTICE = (
 # A content item that is neither text nor an inlinable image (audio, a binary
 # resource). Its pydantic repr must never be what the model sees.
 MCP_UNSUPPORTED_CONTENT_NOTICE = "[{kind} omitted: this result type cannot be shown as text.]"
+
+# An MCP tool named like one of GAIA's own tools (Dodo's "execute") is renamed
+# <source>_<name>; bounded by the providers' function-name limit (OpenAI: 64).
+MCP_TOOL_NAME_MAX_CHARS = 64
+# The <source> part when the integration's name has no ASCII letters or digits.
+MCP_UNNAMED_SOURCE_PREFIX = "mcp"
+# Leads a renamed tool's description: the server's docs, results and other tools
+# still use its own name, and the model must map that name to the renamed one.
+MCP_RENAMED_TOOL_NOTE = (
+    "Note: this tool is called {original} on its own server, so its docs, results and "
+    "other tools may refer to it as {original}. Here it is named {renamed}; always call "
+    "it as {renamed}.\n\n"
+)

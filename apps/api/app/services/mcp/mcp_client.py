@@ -25,9 +25,11 @@ from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.client.session import MCPSession
 from pydantic import AnyHttpUrl, AnyUrl
 
+from app.agents.tools.core.registry import get_tool_registry
 from app.config.settings import settings
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, OAUTH_DISCOVERY_PREFIX
 from app.constants.device_bridge import DEVICE_TRANSPORT
+from app.constants.execute import TICKET_NAMES
 from app.constants.log_tags import LogTag
 from app.constants.mcp import (
     COMPOSIO_MCP_HOST,
@@ -36,6 +38,7 @@ from app.constants.mcp import (
     GAIA_OAUTH_PRIVACY_PATH,
     GAIA_OAUTH_TOS_PATH,
     MAX_OAUTH_INVALID_SCOPE_DROPS,
+    MCP_RENAMED_TOOL_NOTE,
 )
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import index_tools_to_store
@@ -90,6 +93,7 @@ from app.utils.mcp_oauth_utils import (
     validate_pkce_support,
 )
 from app.utils.mcp_utils import (
+    source_prefixed_tool_name,
     wrap_tools_with_null_filter,
 )
 from app.utils.url_safety import assert_public_http_url
@@ -737,6 +741,34 @@ class MCPClient:
         return raw_tools
 
     @staticmethod
+    async def _rename_shadowing_tools(
+        raw_tools: list[BaseTool], integration_id: str, source_name: str
+    ) -> None:
+        """Rename the server's tools a GAIA tool name would shadow, leaving them unreachable.
+
+        Done once here so every consumer (tool dicts, indexes, resolver) sees one name;
+        the adapter still calls the server by the tool's own mcp_name.
+        """
+        registry = await get_tool_registry()
+        reserved = {*registry.get_tool_names(), *TICKET_NAMES}
+        renamed: dict[str, str] = {}
+        for raw_tool in raw_tools:
+            if raw_tool.name in reserved:
+                original = raw_tool.name
+                raw_tool.name = source_prefixed_tool_name(source_name, original)
+                raw_tool.description = (
+                    MCP_RENAMED_TOOL_NOTE.format(original=original, renamed=raw_tool.name)
+                    + raw_tool.description
+                )
+                renamed[original] = raw_tool.name
+        if renamed:
+            log.info(
+                f"{LogTag.MCP} Renamed MCP tools that GAIA tool names shadow",
+                integration_id=integration_id,
+                renamed=renamed,
+            )
+
+    @staticmethod
     def _stamp_tool_metadata(
         raw_tools: list[BaseTool],
         integration_id: str,
@@ -972,6 +1004,7 @@ class MCPClient:
             client = await self._open_session(integration_id, mcp_config)
 
             raw_tools = await self._convert_tools_safe(client, integration_id)
+            await self._rename_shadowing_tools(raw_tools, integration_id, resolved.name)
 
             # CRITICAL: Wrap tools to filter None values before MCP invocation.
             # MCP servers expect optional params to be OMITTED, not sent as null.

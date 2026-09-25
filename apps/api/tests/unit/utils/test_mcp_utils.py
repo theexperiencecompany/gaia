@@ -11,8 +11,10 @@ from unittest.mock import AsyncMock, MagicMock
 from langchain_core.tools import BaseTool
 import pytest
 
+from app.constants.mcp import MCP_TOOL_NAME_MAX_CHARS
 from app.utils.mcp_utils import (
     _CONNECTION_ERROR_PATTERNS,
+    source_prefixed_tool_name,
     wrap_tool_with_null_filter,
     wrap_tools_with_null_filter,
 )
@@ -254,3 +256,20 @@ class TestConnectionErrorPatterns:
     )
     def test_contains_key_patterns(self, expected: str) -> None:
         assert expected in _CONNECTION_ERROR_PATTERNS
+
+
+class TestSourcePrefixedToolName:
+    def test_prefixes_the_source_slug(self) -> None:
+        assert source_prefixed_tool_name("Dodo Payments", "execute") == "dodo_payments_execute"
+
+    def test_keeps_only_function_name_safe_characters(self) -> None:
+        assert source_prefixed_tool_name("  Acme-CRM (v2)! ", "read") == "acme_crm_v2_read"
+
+    def test_a_source_with_no_ascii_word_characters_gets_the_generic_prefix(self) -> None:
+        assert source_prefixed_tool_name("支付", "execute") == "mcp_execute"
+
+    def test_fits_the_provider_function_name_limit_without_cutting_the_tool_name(self) -> None:
+        name = source_prefixed_tool_name("a very long integration name " * 5, "execute")
+        assert len(name) <= MCP_TOOL_NAME_MAX_CHARS
+        assert name.endswith("_execute")
+        assert "__" not in name

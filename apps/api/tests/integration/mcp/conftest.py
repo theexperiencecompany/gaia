@@ -25,3 +25,8 @@ def _mock_ssrf_guard() -> Iterator[None]:
         ),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def _core_tool_registry(core_tool_registry: None) -> None:
+    """Every connect in this suite renames its tools around GAIA's real core tool names."""

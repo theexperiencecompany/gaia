@@ -355,6 +355,7 @@ class TestMCPClientConnect:
             )
 
 
+@pytest.mark.usefixtures("core_tool_registry")
 class TestMCPClientDoConnect:
     @pytest.fixture(autouse=True)
     def _mock_ssrf_guard(self) -> Iterator[None]:
@@ -4147,6 +4148,7 @@ class TestConnectFailureClassification:
         assert client._refresh_attempts == set()
 
 
+@pytest.mark.usefixtures("core_tool_registry")
 class TestDoConnectWiringExact:
     @pytest.fixture(autouse=True)
     def _mock_ssrf_guard(self) -> Iterator[None]:

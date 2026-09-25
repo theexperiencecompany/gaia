@@ -167,10 +167,9 @@ class SanitizingLangChainAdapter(LangChainAdapter):
     def _convert_tool(self, mcp_tool: MCPTool, connector: BaseConnector) -> BaseTool | None:
         """Convert an MCP tool to LangChain format.
 
-        Mirrors mcp_use's implementation except for two fixes: result parsing
-        (see _tool_result_to_content) avoids leaking pydantic reprs and
-        destroying media blocks, and MCP annotations survive so the HIL gate
-        can read destructiveHint.
+        Mirrors mcp_use's implementation except: result parsing avoids pydantic
+        reprs and lost media, MCP annotations survive for the HIL gate, and the
+        server is called by mcp_name so name can be renamed on GAIA's side.
         """
         if mcp_tool.name in self.disallowed_tools:
             return None
@@ -179,6 +178,7 @@ class SanitizingLangChainAdapter(LangChainAdapter):
 
         class McpToLangChainAdapter(BaseTool):
             name: str = mcp_tool.name or "NO NAME"
+            mcp_name: str = mcp_tool.name
             description: str = mcp_tool.description or ""
             args_schema: type[BaseModel] = _mcp_use_lc_adapter.jsonschema_to_pydantic(
                 adapter_self.fix_schema(mcp_tool.inputSchema)
@@ -195,7 +195,7 @@ class SanitizingLangChainAdapter(LangChainAdapter):
             async def _arun(self, **kwargs: Any) -> str | list[dict[str, Any]] | dict[str, Any]:  # noqa: ANN401 -- adapts the untyped MCP client into LangChain tools
                 try:
                     tool_result: CallToolResult = await self.tool_connector.call_tool(
-                        self.name, kwargs
+                        self.mcp_name, kwargs
                     )
                     try:
                         return await _tool_result_to_content(tool_result)

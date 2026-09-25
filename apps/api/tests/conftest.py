@@ -695,6 +695,21 @@ def free_plan() -> Iterator[MagicMock]:
 
 
 @pytest.fixture
+def core_tool_registry() -> Iterator[None]:
+    """Serve MCP connects GAIA's real core tool registry, whose names they rename around."""
+    from app.agents.tools.core.registry import ToolRegistry
+
+    registry = ToolRegistry()
+    registry.setup()
+    with patch(
+        "app.services.mcp.mcp_client.get_tool_registry",
+        new_callable=AsyncMock,
+        return_value=registry,
+    ):
+        yield
+
+
+@pytest.fixture
 def mock_mongodb():
     return AsyncMock()
 
